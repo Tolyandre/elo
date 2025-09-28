@@ -2,28 +2,26 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
+type Player struct {
+	ID string `json:"id"`
+}
+
 var sheetsService *sheets.Service
 
 func InitGoogleSheetsService() {
-	keyFilePath := flag.String("google-service-account-key", "", "Path to the credentials file")
-	flag.Parse()
-
-	if *keyFilePath == "" {
-		log.Fatal("google-service-account-key flag is required and cannot be empty")
-	}
-
 	ctx := context.Background()
-	credentials, err := ioutil.ReadFile(*keyFilePath)
+	credentials, err := ioutil.ReadFile(*KeyFilePath)
 	if err != nil {
 		log.Fatal("unable to read key file:", err)
 	}
@@ -40,17 +38,34 @@ func InitGoogleSheetsService() {
 	if err != nil {
 		log.Fatalf("unable to retrieve sheets service: %v", err)
 	}
-}
 
-func Demo() {
-	docId := "1bf6bmd63dvO9xjtnoTGmkcWJJE0NetQRjKkgcQvovQQ"
-	doc, err := sheetsService.Spreadsheets.Get(docId).Do()
+	doc, err := sheetsService.Spreadsheets.Get(*DocId).Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve data from document: %v", err)
 	}
-	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
 
-	val, err := sheetsService.Spreadsheets.Values.Get(docId, "Rank!A:C").Do()
+	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
+}
+
+func GetPlayers(c *gin.Context) {
+	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Партии!C1:1").Do()
+	if err != nil {
+		log.Fatalf("unable to retrieve range from document: %v", err)
+	}
+
+	var players []Player
+	for _, cell := range val.Values[0] {
+		players = append(players, Player{
+			ID: fmt.Sprintf("%v", cell),
+		})
+	}
+
+	c.IndentedJSON(http.StatusOK, players)
+}
+
+func Demo() {
+
+	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Rank!A:C").Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve range from document: %v", err)
 	}

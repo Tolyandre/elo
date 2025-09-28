@@ -12,5 +12,8 @@ Demo https://tolyandre.github.io/elo/
 
 ```bash
 cd elo-web-service
-go run google-sheet-elo.go main.go --google-service-account-key ../google-service-account-key.json
+go run *.go \
+    --google-service-account-key ../google-service-account-key.json \
+    --doc-id 1bf6bmd63dvO9xjtnoTGmkcWJJE0NetQRjKkgcQvovQQ \
+    --bind-address localhost:42981
 ```

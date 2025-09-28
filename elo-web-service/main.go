@@ -22,13 +22,16 @@ var albums = []album{
 }
 
 func main() {
+	ParseCommandLineFlags()
 	InitGoogleSheetsService()
-	Demo()
+	//Demo()
 
 	router := gin.Default()
 	router.GET("/albums", getAlbums)
+	router.GET("/players", GetPlayers)
 
-	router.Run("localhost:8080")
+	//router.Run("localhost:8080")
+	router.Run(*BindAddress)
 }
 
 // getAlbums responds with the list of all albums as JSON.
