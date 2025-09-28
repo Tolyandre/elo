@@ -39,3 +39,6 @@
 # typescript
 /nextjs/*.tsbuildinfo
 /nextjs/next-env.d.ts
+
+# google service account key
+/google-service-account-key.json
