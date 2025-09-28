@@ -24,7 +24,6 @@ var albums = []album{
 func main() {
 	ParseCommandLineFlags()
 	InitGoogleSheetsService()
-	//Demo()
 
 	router := gin.Default()
 	router.GET("/albums", getAlbums)
