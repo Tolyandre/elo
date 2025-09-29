@@ -45,23 +45,38 @@ export default function AddGamePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gameName.trim()) return;
-    // TODO: Replace with your API endpoint for submitting game results
-    // Example POST request:
-    /*
-    await fetch("/api/games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ gameName, participants }),
+    if (participants.length === 0) return;
+
+    // Формируем объект Score: { [playerId]: points }
+    const score: Record<string, number> = {};
+    participants.forEach(p => {
+      score[p.id] = p.points;
     });
-    */
-    setSuccess(true);
+
+    const payload = {
+      game: gameName,
+      score,
+    };
+
+    try {
+      const res = await fetch("https://toly.is-cool.dev/elo-web-service/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("Ошибка при сохранении матча");
+      setSuccess(true);
+    } catch (err) {
+      setSuccess(false);
+      alert("Ошибка при отправке данных");
+    }
   };
 
   if (loading) return <div className="p-4">Загрузка игроков...</div>;
 
   return (
     <main className="max-w-xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Результат игры</h1>
+      <h1 className="text-2xl font-bold mb-4">Результат партии</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label className="block font-semibold mb-2" htmlFor="gameName">
@@ -127,7 +142,7 @@ export default function AddGamePage() {
         </button>
         {success && (
           <div className="text-green-600 font-semibold mt-2">
-            Сохранение пока не реализовано!
+            Партия добавлена!
           </div>
         )}
       </form>

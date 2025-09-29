@@ -19,6 +19,11 @@ type Player struct {
 	Elo float64 `json:"elo"`
 }
 
+type Match struct {
+	Game  string             `json:"game" binding:"required"`
+	Score map[string]float64 `json:"score" binding:"required"`
+}
+
 var sheetsService *sheets.Service
 
 func InitGoogleSheetsService() {
@@ -29,7 +34,7 @@ func InitGoogleSheetsService() {
 	}
 
 	scopes := []string{
-		"https://www.googleapis.com/auth/spreadsheets.readonly",
+		"https://www.googleapis.com/auth/spreadsheets",
 	}
 	config, err := google.JWTConfigFromJSON(credentials, scopes...)
 	if err != nil {
@@ -60,6 +65,59 @@ func GetPlayers(c *gin.Context) {
 
 	c.IndentedJSON(http.StatusOK, players)
 }
+
+func AddMatch(c *gin.Context) {
+	var payload Match
+
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Get player names from row 1 (C1:Z1)
+	headerRange := "Партии!C1:Z1"
+	headerResp, err := sheetsService.Spreadsheets.Values.Get(*DocId, headerRange).Do()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to read player headers"})
+		return
+	}
+	playerHeaders := make([]string, 0)
+	if len(headerResp.Values) > 0 {
+		for _, cell := range headerResp.Values[0] {
+			playerHeaders = append(playerHeaders, fmt.Sprintf("%v", cell))
+		}
+	}
+
+	fmt.Println(playerHeaders)
+
+	// Make a new row to append
+	// A - empty, B - name of game, C-Z - players score
+	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
+	row[0] = ""                                        // A: empty
+	row[1] = payload.Game                              // B: name of game
+	for i, playerID := range playerHeaders {
+		if score, ok := payload.Score[playerID]; ok {
+			row[2+i] = score
+		} else {
+			row[2+i] = ""
+		}
+	}
+
+	// Append the row to the end of "Партии"
+	appendRange := "Партии!A:Z"
+	_, err = sheetsService.Spreadsheets.Values.Append(*DocId, appendRange, &sheets.ValueRange{
+		Values: [][]interface{}{row},
+	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to append match: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"status": "match saved"})
+}
+
 func parseFloat(val interface{}) float64 {
 	switch v := val.(type) {
 	case float64:

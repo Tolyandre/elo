@@ -29,10 +29,18 @@ func main() {
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
+		AllowMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowHeaders: []string{"Origin", "Content-Type"},
 	}))
+
+	router.OPTIONS("/matches", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
 	router.GET("/ping", getPing)
 	router.GET("/albums", getAlbums)
 	router.GET("/players", GetPlayers)
+	router.POST("/matches", AddMatch)
 
 	//router.Run("localhost:8080")
 	router.Run(*BindAddress)
