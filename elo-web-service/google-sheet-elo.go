@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2/google"
@@ -93,9 +94,9 @@ func AddMatch(c *gin.Context) {
 	fmt.Println(playerHeaders)
 
 	// Make a new row to append
-	// A - empty, B - name of game, C-Z - players score
+	// A - date, B - name of game, C-Z - players score
 	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
-	row[0] = ""                                        // A: empty
+	row[0] = time.Now().Format("2006-01-02 15:04:05")  // A: дата и время
 	row[1] = payload.Game                              // B: name of game
 	for i, playerID := range playerHeaders {
 		if score, ok := payload.Score[playerID]; ok {
