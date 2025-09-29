@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,6 +27,9 @@ func main() {
 	InitGoogleSheetsService()
 
 	router := gin.Default()
+	router.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"*"},
+	}))
 	router.GET("/ping", getPing)
 	router.GET("/albums", getAlbums)
 	router.GET("/players", GetPlayers)

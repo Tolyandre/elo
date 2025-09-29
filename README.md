@@ -23,6 +23,7 @@ go run command-line-flags.go google-sheet-elo.go main.go \
 
 Check syntax of nix module:
 ```bash
+cd nix
 nix-instantiate --strict test-syntax.nix
 ```
 
@@ -30,5 +31,12 @@ Run integration test in virtual machine:
 ```bash
 nix-build test-integration.nix
 ```
+
+In case of error `go: inconsistent vendoring in /build/elo-web-service` remove vendorHash value in `default.nix`, then run:
+```bash
+nix-build
+```
+Then update vendorHash with a new value from error message.
+
 
 

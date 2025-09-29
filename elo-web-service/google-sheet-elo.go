@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2/google"
@@ -14,7 +15,8 @@ import (
 )
 
 type Player struct {
-	ID string `json:"id"`
+	ID  string  `json:"id"`
+	Elo float64 `json:"elo"`
 }
 
 var sheetsService *sheets.Service
@@ -41,19 +43,36 @@ func InitGoogleSheetsService() {
 }
 
 func GetPlayers(c *gin.Context) {
-	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Партии!C1:1").Do()
+	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Elo v2!C1:500").Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve range from document: %v", err)
 	}
 
 	var players []Player
-	for _, cell := range val.Values[0] {
+	for i, cell := range val.Values[0] {
+		var eloCell = val.Values[len(val.Values)-1][i]
+
 		players = append(players, Player{
-			ID: fmt.Sprintf("%v", cell),
+			ID:  fmt.Sprintf("%v", cell),
+			Elo: parseFloat(eloCell),
 		})
 	}
 
 	c.IndentedJSON(http.StatusOK, players)
+}
+func parseFloat(val interface{}) float64 {
+	switch v := val.(type) {
+	case float64:
+		return v
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	default:
+		return 0
+	}
 }
 
 func Demo() {
