@@ -38,13 +38,6 @@ func InitGoogleSheetsService() {
 	if err != nil {
 		log.Fatalf("unable to retrieve sheets service: %v", err)
 	}
-
-	doc, err := sheetsService.Spreadsheets.Get(*DocId).Do()
-	if err != nil {
-		log.Fatalf("unable to retrieve data from document: %v", err)
-	}
-
-	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
 }
 
 func GetPlayers(c *gin.Context) {
@@ -64,6 +57,12 @@ func GetPlayers(c *gin.Context) {
 }
 
 func Demo() {
+	doc, err := sheetsService.Spreadsheets.Get(*DocId).Do()
+	if err != nil {
+		log.Fatalf("unable to retrieve data from document: %v", err)
+	}
+
+	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
 
 	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Rank!A:C").Do()
 	if err != nil {

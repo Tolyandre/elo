@@ -11,9 +11,9 @@ var BindAddress *string
 
 func ParseCommandLineFlags() {
 
-	KeyFilePath = flag.String("google-service-account-key", "", "Path to the credentials file")
-	DocId = flag.String("doc-id", "", "Google sheets document ID (identifier after /d/ in url)")
-	BindAddress = flag.String("bind-address", "localhost:8080", "Interface and port to bind to")
+	KeyFilePath = flag.String("google-service-account-key", "", "Path to the Google service account key file")
+	DocId = flag.String("doc-id", "", "Google sheets document ID (identifier after /d/ in the document url)")
+	BindAddress = flag.String("address", "localhost:8080", "Interface and port to listen to")
 	flag.Parse()
 
 	if *KeyFilePath == "" {

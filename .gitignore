@@ -42,3 +42,6 @@
 
 # google service account key
 /google-service-account-key.json
+
+# nix
+/nix/result

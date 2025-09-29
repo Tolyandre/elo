@@ -10,10 +10,25 @@ Demo https://tolyandre.github.io/elo/
 
 ## Building backend
 
+### Go
 ```bash
 cd elo-web-service
-go run *.go \
+go run command-line-flags.go google-sheet-elo.go main.go \
     --google-service-account-key ../google-service-account-key.json \
     --doc-id 1bf6bmd63dvO9xjtnoTGmkcWJJE0NetQRjKkgcQvovQQ \
-    --bind-address localhost:42981
+    --address localhost:42981
 ```
+
+### NixOS
+
+Check syntax of nix module:
+```bash
+nix-instantiate --strict test-syntax.nix
+```
+
+Run integration test in virtual machine:
+```bash
+nix-build test-integration.nix
+```
+
+

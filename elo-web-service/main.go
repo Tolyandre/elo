@@ -26,6 +26,7 @@ func main() {
 	InitGoogleSheetsService()
 
 	router := gin.Default()
+	router.GET("/ping", getPing)
 	router.GET("/albums", getAlbums)
 	router.GET("/players", GetPlayers)
 
@@ -36,4 +37,8 @@ func main() {
 // getAlbums responds with the list of all albums as JSON.
 func getAlbums(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, albums)
+}
+
+func getPing(c *gin.Context) {
+	c.String(http.StatusOK, "pong")
 }
