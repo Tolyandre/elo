@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Player = {
     id: string;
@@ -52,7 +53,7 @@ export default function PlayersPage() {
                 </h1>
                 <LoadingOrError />
 
-                <table className="w-full table-auto border-collapse">
+                <table className="w-full table-auto border-collapse mb-6">
                     <tbody>
                         {players.map((player) => (
                             <tr key={player.id} >
@@ -62,6 +63,12 @@ export default function PlayersPage() {
                         ))}
                     </tbody>
                 </table>
+                <Link
+                  href="/add-game"
+                  className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
+                >
+                  Добавить игру
+                </Link>
             </main>
         </div>
     );
