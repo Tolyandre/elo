@@ -3,11 +3,11 @@ name: Build and test nix module
 on: 
   push:
     branches: [ "main" ]
-    paths: ["elo-web-service/**", "nix"]
+    paths: ["elo-web-service/**", "nix/**"]
 
   pull_request:
     branches: [ "main" ]
-    paths: ["elo-web-service/**", "nix"]
+    paths: ["elo-web-service/**", "nix/**"]
 
 jobs:
   nix-tests:

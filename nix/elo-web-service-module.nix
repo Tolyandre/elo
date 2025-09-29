@@ -29,11 +29,12 @@ in
       description = "Elo web service";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${elo-web-service}/bin/elo-web-service --address ${toString config.services.elo-web-service.address} --google-service-account-key ${toString config.services.elo-web-service.google-service-account-key} --doc-id ${toString config.services.elo-web-service.doc-id}";
+        ExecStart = "${elo-web-service}/bin/elo-web-service --address ${toString config.services.elo-web-service.address} --google-service-account-key %d/google-service-account-key --doc-id ${toString config.services.elo-web-service.doc-id}";
         Restart = "always";
         WorkingDirectory = "/var/lib/elo-web-service";
         User = "elo-web-service";
         Group = "elo-web-service";
+        LoadCredential = ["google-service-account-key:${config.services.elo-web-service.google-service-account-key}"];
       };
     };
 
