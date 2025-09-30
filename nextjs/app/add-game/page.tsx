@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Player = {
   id: string;
@@ -18,6 +19,7 @@ export default function AddGamePage() {
   const [gameName, setGameName] = useState("");
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     fetch("https://toly.is-cool.dev/elo-web-service/players")
@@ -47,7 +49,6 @@ export default function AddGamePage() {
     if (!gameName.trim()) return;
     if (participants.length === 0) return;
 
-    // Формируем объект Score: { [playerId]: points }
     const score: Record<string, number> = {};
     participants.forEach(p => {
       score[p.id] = p.points;
@@ -66,6 +67,9 @@ export default function AddGamePage() {
       });
       if (!res.ok) throw new Error("Ошибка при сохранении матча");
       setSuccess(true);
+      setTimeout(() => {
+        router.push("/");
+      }, 1200); // Redirect after 1.2 seconds
     } catch (err) {
       setSuccess(false);
       alert("Ошибка при отправке данных");
@@ -142,7 +146,7 @@ export default function AddGamePage() {
         </button>
         {success && (
           <div className="text-green-600 font-semibold mt-2">
-            Партия добавлена!
+            Партия добавлена! Перенаправление...
           </div>
         )}
       </form>
