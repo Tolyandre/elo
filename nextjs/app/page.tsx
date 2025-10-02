@@ -5,9 +5,14 @@ import Link from "next/link";
 import { PlayersProvider, usePlayers } from "./PlayersContext";
 
 function LoadingOrError() {
-    const { loading, error, pingError } = usePlayers();
+    const { loading, error } = usePlayers();
     if (loading) return <div>Загрузка...</div>;
     if (error) return <div>Ошибка: {error}</div>;
+    return null;
+}
+
+function PingError() {
+    const { pingError } = usePlayers();
     if (pingError) return <div>Сервер хостится на ПК и бывает выключен. Попробуйте утром</div>;
     return null;
 }
@@ -36,6 +41,7 @@ export default function PlayersPage() {
                 <main className="font-sans items-center p-8 rounded-lg shadow-md max-w-sm w-full">
                     <h1 className="text-2xl font-semibold mb-4">Игроки</h1>
                     <LoadingOrError />
+                    <PingError />
                     <PlayersTable />
                     <Link
                         href="/add-game"
