@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PlayersProvider, usePlayers, Player } from "../PlayersContext";
+import { usePlayers } from "../PlayersContext";
 
 type Participant = {
     id: string;
@@ -63,6 +63,7 @@ function AddGameForm() {
             if (!res.ok) throw new Error("Ошибка при сохранении матча");
             setSuccess(true);
             setTimeout(() => {
+                // TODO  revalidatePath('/posts') https://nextjs.org/docs/app/getting-started/updating-data#revalidating
                 router.push("/");
             }, 1200);
         } catch (err) {
@@ -153,11 +154,9 @@ function AddGameForm() {
 
 export default function AddGamePage() {
     return (
-        <PlayersProvider>
-            <main className="max-w-xl mx-auto p-4">
-                <h1 className="text-2xl font-bold mb-4">Результат партии</h1>
-                <AddGameForm />
-            </main>
-        </PlayersProvider>
+        <main className="max-w-xl mx-auto p-4">
+            <h1 className="text-2xl font-bold mb-4">Результат партии</h1>
+            <AddGameForm />
+        </main>
     );
 }

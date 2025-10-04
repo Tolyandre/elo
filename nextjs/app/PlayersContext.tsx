@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+"use client"
+
+import React, { createContext, useContext, useEffect, useState, ReactNode, use } from "react";
+import { getPlayersPromise } from "./api";
 
 export type Player = {
     id: string;
@@ -6,7 +9,10 @@ export type Player = {
 };
 
 type PlayersContextType = {
+    //playersPromise: Promise<Player[]>;
     players: Player[];
+
+    // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
     error: string | null;
     pingError: boolean;
@@ -14,29 +20,35 @@ type PlayersContextType = {
 
 const PlayersContext = createContext<PlayersContextType | undefined>(undefined);
 
-export function PlayersProvider({ children }: { children: ReactNode }) {
+export function PlayersProvider({ children
+}: {
+    children: ReactNode
+}) {
     const [players, setPlayers] = useState<Player[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [pingError, setPingError] = useState(false);
 
+    const pingPromise = fetch("https://toly.is-cool.dev/elo-web-service/ping");
+
+    let playersPromise: Promise<any> | null = null;
+
     useEffect(() => {
-        fetch("https://toly.is-cool.dev/elo-web-service/players")
-            .then((res) => {
-                if (!res.ok) throw new Error("Failed to fetch players");
-                return res.json();
-            })
+        playersPromise = getPlayersPromise();
+
+        playersPromise
             .then((data) => {
                 const sorted = [...data].sort((a, b) => b.elo - a.elo);
                 setPlayers(sorted);
                 setLoading(false);
+                return sorted;
             })
             .catch((err) => {
                 setError(err.message);
                 setLoading(false);
             });
 
-        fetch("https://toly.is-cool.dev/elo-web-service/ping")
+        pingPromise
             .catch(() => {
                 setPingError(true);
             });
@@ -49,7 +61,7 @@ export function PlayersProvider({ children }: { children: ReactNode }) {
     );
 }
 
-export function usePlayers() {
+export function usePlayers(): PlayersContextType {
     const context = useContext(PlayersContext);
     if (!context) throw new Error("usePlayers must be used within PlayersProvider");
     return context;
