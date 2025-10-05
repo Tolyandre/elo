@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PlayersProvider } from "./PlayersContext";
-import { getPlayersPromise } from "./api";
-import { useEffect } from "react";
+import { PingError } from "./ping-error";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,7 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <PlayersProvider>{children}</PlayersProvider>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="font-sans items-center p-8 rounded-lg shadow-md max-w-sm w-full">
+            <PingError />
+            <PlayersProvider>{children}</PlayersProvider>
+          </div>
+        </div>
       </body>
     </html>
   );

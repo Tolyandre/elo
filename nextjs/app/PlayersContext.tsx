@@ -9,13 +9,11 @@ export type Player = {
 };
 
 type PlayersContextType = {
-    //playersPromise: Promise<Player[]>;
     players: Player[];
 
     // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
     error: string | null;
-    pingError: boolean;
 };
 
 const PlayersContext = createContext<PlayersContextType | undefined>(undefined);
@@ -27,16 +25,9 @@ export function PlayersProvider({ children
     const [players, setPlayers] = useState<Player[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [pingError, setPingError] = useState(false);
-
-    const pingPromise = fetch("https://toly.is-cool.dev/elo-web-service/ping");
-
-    let playersPromise: Promise<any> | null = null;
 
     useEffect(() => {
-        playersPromise = getPlayersPromise();
-
-        playersPromise
+        getPlayersPromise()
             .then((data) => {
                 const sorted = [...data].sort((a, b) => b.elo - a.elo);
                 setPlayers(sorted);
@@ -47,15 +38,10 @@ export function PlayersProvider({ children
                 setError(err.message);
                 setLoading(false);
             });
-
-        pingPromise
-            .catch(() => {
-                setPingError(true);
-            });
     }, []);
 
     return (
-        <PlayersContext.Provider value={{ players, loading, error, pingError }}>
+        <PlayersContext.Provider value={{ players, loading, error }}>
             {children}
         </PlayersContext.Provider>
     );

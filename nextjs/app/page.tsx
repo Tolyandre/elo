@@ -11,15 +11,9 @@ function LoadingOrError() {
     return null;
 }
 
-function PingError() {
-    const { pingError } = usePlayers();
-    if (pingError) return <div>Сервер хостится на ПК и бывает выключен. Попробуйте утром</div>;
-    return null;
-}
-
 function PlayersTable() {
-    const { players, loading, error, pingError } = usePlayers();
-    if (loading || error || pingError) return null;
+    const { players, loading, error } = usePlayers();
+    if (loading || error) return null;
     return (
         <table className="w-full table-auto border-collapse mb-6">
             <tbody>
@@ -36,19 +30,17 @@ function PlayersTable() {
 
 export default function PlayersPage() {
     return (
-        <div className="min-h-screen flex items-center justify-center">
-            <main className="font-sans items-center p-8 rounded-lg shadow-md max-w-sm w-full">
-                <h1 className="text-2xl font-semibold mb-4">Игроки</h1>
-                <LoadingOrError />
-                <PingError />
-                <PlayersTable />
-                <Link
-                    href="/add-game"
-                    className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
-                >
-                    Добавить игру
-                </Link>
-            </main>
-        </div>
+        <main>
+            <h1 className="text-2xl font-semibold mb-4">Игроки</h1>
+            <LoadingOrError />
+            <PlayersTable />
+            <Link
+                href="/add-game"
+                className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
+            >
+                Добавить игру
+            </Link>
+        </main>
+
     );
 }
