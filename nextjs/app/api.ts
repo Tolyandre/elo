@@ -1,12 +1,7 @@
 export function getPlayersPromise() {
     return fetch("https://toly.is-cool.dev/elo-web-service/players")
-        .then((res) => {
-            if (!res.ok)
-                throw new Error("Failed to fetch players");
-
-            const data = res.json();
-            return data;
-        });
+        .then((res) => res.json())
+        .then(handleJsonErrorResponse);
 }
 
 export function getPingPromise() {
@@ -15,4 +10,21 @@ export function getPingPromise() {
             signal: AbortSignal.timeout(3000),
         }
     );
+}
+
+export function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
+    return fetch("https://toly.is-cool.dev/elo-web-service/matches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    })
+        .then((res) => res.json())
+        .then(handleJsonErrorResponse);
+}
+
+function handleJsonErrorResponse(data: any) {
+    if (data.error)
+        throw new Error(data.error);
+
+    return data;
 }

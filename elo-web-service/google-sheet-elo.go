@@ -52,6 +52,9 @@ func GetPlayers(c *gin.Context) {
 	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Elo v2!C1:500").Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve range from document: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "unable to retrieve range from document:" + err.Error(),
+		})
 	}
 
 	var players []Player
@@ -64,7 +67,7 @@ func GetPlayers(c *gin.Context) {
 		})
 	}
 
-	c.IndentedJSON(http.StatusOK, players)
+	c.JSON(http.StatusOK, players)
 }
 
 func AddMatch(c *gin.Context) {

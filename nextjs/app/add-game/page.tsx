@@ -1,25 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../PlayersContext";
+import { addMatchPromise } from "../api";
 
 type Participant = {
     id: string;
     points: string;
 };
 
+type EloChange = {
+    id: string;
+    minus: number;
+    plus: number;
+    delta: number;
+}
+
 function AddGameForm() {
     const { players, loading } = usePlayers();
     const [participants, setParticipants] = useState<Participant[]>([]);
+    const [eloChange, setEloChange] = useState<EloChange[]>([]);
     const [gameName, setGameName] = useState("");
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
+    const [bottomErrorMessage, setBottomErrorMessage] = useState("");
     const router = useRouter();
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
-            setParticipants([...participants, { id, points: "0" }]);
+            setParticipants([...participants, { id, points: "" }]);
         } else {
             setParticipants(participants.filter((p) => p.id !== id));
         }
@@ -31,10 +41,61 @@ function AddGameForm() {
                 p.id === id ? { ...p, points: value } : p
             )
         );
-        // Проверка: разрешаем пустое поле, минус, или корректное число
-        const isValid = value === "" || value === "-" || /^-?\d+$/.test(value);
-        setErrors((prev) => ({ ...prev, [id]: !isValid }));
+
+        setErrors((prev) => ({ ...prev, [id]: !isNumber(value) }));
     };
+
+    function getPlayerElo(playerId: string): number {
+        const elo = players.find(player => player.id == playerId)?.elo;
+        if (typeof (elo) == "undefined")
+            throw "Cannot find player"
+        return elo;
+    }
+
+    useEffect(() => {
+        const d = 400;
+        const k = 32;
+
+        const newElo: EloChange[] = [];
+        const playersCount = participants.length;
+
+        const absoluteLoserScore = participants
+            .map(p => Number(p.points))
+            .reduce((prev, cur) => Math.min(prev, cur), Number.MAX_VALUE);
+
+        participants.forEach((p) => {
+            // (sum(
+            //      map(
+            //          filter(all_players_elo_range, isnumber(all_players_rank)), 
+            //          LAMBDA(elo_i, 
+            //              1/(1+10^((elo_i-player_elo)/d) ) 
+            //          )
+            //      )
+            // )
+            // -0.5) 
+            // / (players_count*(players_count-1)/2)
+
+            const winExpectation = (participants.map(inner_p =>
+                1 / (1 + Math.pow(10, (getPlayerElo(inner_p.id) - getPlayerElo(p.id)) / d))
+            ).reduce((prev, curr) => prev + curr) - 0.5) / (playersCount * (playersCount - 1) / 2);
+
+            // (player_score-ABSOLUTE_LOSER_SCORE_2(players_score_range))
+            // /(sum(players_score_range)-PLAYERS_COUNT(players_score_range)*ABSOLUTE_LOSER_SCORE_2(players_score_range))
+            const normalizedScore = (Number(p.points) - absoluteLoserScore) /
+                (participants.map(inner_p => Number(inner_p.points)).reduce((prev, cur) => prev + cur) - playersCount * absoluteLoserScore);
+            const minus = -k * (isNaN(winExpectation) ? 1 : winExpectation);
+            const plus = k * (isNaN(normalizedScore) ? 1 / playersCount : normalizedScore);
+
+            newElo.push({
+                id: p.id,
+                minus: minus,
+                plus: plus,
+                delta: plus + minus,
+            });
+        });
+
+        setEloChange(newElo);
+    }, [participants, players]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -45,22 +106,14 @@ function AddGameForm() {
 
         const score: Record<string, number> = {};
         participants.forEach(p => {
-            const num = parseInt(p.points, 10);
-            score[p.id] = isNaN(num) ? 0 : num;
+            score[p.id] = Number(p.points);
         });
 
-        const payload = {
-            game: gameName,
-            score,
-        };
-
         try {
-            const res = await fetch("https://toly.is-cool.dev/elo-web-service/matches", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+            await addMatchPromise({
+                game: gameName,
+                score,
             });
-            if (!res.ok) throw new Error("Ошибка при сохранении матча");
             setSuccess(true);
             setTimeout(() => {
                 // TODO  revalidatePath('/posts') https://nextjs.org/docs/app/getting-started/updating-data#revalidating
@@ -68,7 +121,8 @@ function AddGameForm() {
             }, 1200);
         } catch (err) {
             setSuccess(false);
-            alert("Ошибка при отправке данных");
+            if (e instanceof Error)
+                setBottomErrorMessage(e.message);
         }
     };
 
@@ -101,7 +155,7 @@ function AddGameForm() {
                                 onChange={(e) =>
                                     handleSelect(player.id, e.target.checked)
                                 }
-                                className="accent-blue-500"
+                                className="accent-blue-500 "
                             />
                             <span>{player.id} <span className="text-gray-500">({player.elo})</span></span>
                         </label>
@@ -115,7 +169,12 @@ function AddGameForm() {
                         {participants.map((p) => (
                             <div key={p.id} className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="w-32">{p.id}</span>
+                                    <span className="w-32">{p.id}
+                                        <span className="text-sm text-gray-500"> {round(eloChange.find(v => v.id == p.id)?.delta || 0, 0)} (
+                                            <span className="text-red-600"> {round(eloChange.find(v => v.id == p.id)?.minus || 0, 0)} </span>
+                                            <span className="text-green-600">+{round(eloChange.find(v => v.id == p.id)?.plus || 0, 0)}</span>)
+                                        </span>
+                                    </span>
                                     <input
                                         type="text"
                                         inputMode="numeric"
@@ -129,12 +188,15 @@ function AddGameForm() {
                                     <span>очков</span>
                                 </div>
                                 {errors[p.id] && (
-                                    <span className="text-red-600 text-sm">Некорректный формат числа</span>
+                                    <span className="text-red-600 text-xs">Некорректный формат числа</span>
                                 )}
                             </div>
                         ))}
                     </div>
                 </div>
+            )}
+            {bottomErrorMessage && (
+                <div className="text-red-600 text-sm">{bottomErrorMessage}</div>
             )}
             <button
                 type="submit"
@@ -159,4 +221,15 @@ export default function AddGamePage() {
             <AddGameForm />
         </main>
     );
+}
+
+function isNumber(value?: string | number): boolean {
+    return ((value != null) &&
+        (value !== '') &&
+        !isNaN(Number(value.toString())));
+}
+
+function round(num: number, fractionDigits: number): number {
+    const factor = Math.pow(10, fractionDigits);
+    return Math.round(num * factor) / factor;
 }
