@@ -200,7 +200,7 @@ function AddGameForm() {
             )}
             <button
                 type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                 disabled={participants.length === 0 || !gameName.trim()}
             >
                 Сохранить результат
