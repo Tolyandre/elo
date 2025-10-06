@@ -25,6 +25,7 @@ function AddGameForm() {
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
+    const [submitting, setSubmitting] = useState(false);
     const router = useRouter();
 
     const handleSelect = (id: string, checked: boolean) => {
@@ -99,6 +100,7 @@ function AddGameForm() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submitting) return;
         if (!gameName.trim()) return;
         if (participants.length === 0) return;
         // Проверка ошибок
@@ -109,6 +111,7 @@ function AddGameForm() {
             score[p.id] = Number(p.points);
         });
 
+        setSubmitting(true);
         try {
             await addMatchPromise({
                 game: gameName,
@@ -121,8 +124,13 @@ function AddGameForm() {
             }, 1200);
         } catch (err) {
             setSuccess(false);
-            if (e instanceof Error)
-                setBottomErrorMessage(e.message);
+            if (err instanceof Error) {
+                setBottomErrorMessage(err.message);
+            } else {
+                setBottomErrorMessage(String(err));
+            }
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -200,10 +208,21 @@ function AddGameForm() {
             )}
             <button
                 type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-                disabled={participants.length === 0 || !gameName.trim()}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors flex items-center justify-center"
+                disabled={participants.length === 0 || !gameName.trim() || submitting}
+                aria-busy={submitting}
             >
-                Сохранить результат
+                {submitting ? (
+                    <>
+                        <svg className="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        Сохранение...
+                    </>
+                ) : (
+                    'Сохранить результат'
+                )}
             </button>
             {success && (
                 <div className="text-green-600 font-semibold mt-2">
