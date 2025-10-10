@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -29,7 +29,7 @@ var sheetsService *sheets.Service
 
 func InitGoogleSheetsService() {
 	ctx := context.Background()
-	credentials, err := ioutil.ReadFile(*KeyFilePath)
+	credentials, err := os.ReadFile(Config.GoogleServiceAccountKey)
 	if err != nil {
 		log.Fatal("unable to read key file:", err)
 	}
@@ -37,19 +37,19 @@ func InitGoogleSheetsService() {
 	scopes := []string{
 		"https://www.googleapis.com/auth/spreadsheets",
 	}
-	config, err := google.JWTConfigFromJSON(credentials, scopes...)
+	serviceAccountConfig, err := google.JWTConfigFromJSON(credentials, scopes...)
 	if err != nil {
 		log.Fatal("unable to create JWT configuration:", err)
 	}
 
-	sheetsService, err = sheets.NewService(ctx, option.WithHTTPClient(config.Client(ctx)))
+	sheetsService, err = sheets.NewService(ctx, option.WithHTTPClient(serviceAccountConfig.Client(ctx)))
 	if err != nil {
 		log.Fatalf("unable to retrieve sheets service: %v", err)
 	}
 }
 
 func GetPlayers(c *gin.Context) {
-	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Elo v2!C1:500").Do()
+	val, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Elo v2!C1:500").Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve range from document: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -82,7 +82,7 @@ func AddMatch(c *gin.Context) {
 
 	// Get player names from row 1 (C1:Z1)
 	headerRange := "Партии!C1:Z1"
-	headerResp, err := sheetsService.Spreadsheets.Values.Get(*DocId, headerRange).Do()
+	headerResp, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, headerRange).Do()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to read player headers"})
 		return
@@ -111,7 +111,7 @@ func AddMatch(c *gin.Context) {
 
 	// Append the row to the end of "Партии"
 	appendRange := "Партии!A:Z"
-	_, err = sheetsService.Spreadsheets.Values.Append(*DocId, appendRange, &sheets.ValueRange{
+	_, err = sheetsService.Spreadsheets.Values.Append(Config.DocID, appendRange, &sheets.ValueRange{
 		Values: [][]interface{}{row},
 	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
 	if err != nil {
@@ -138,14 +138,14 @@ func parseFloat(val interface{}) float64 {
 }
 
 func Demo() {
-	doc, err := sheetsService.Spreadsheets.Get(*DocId).Do()
+	doc, err := sheetsService.Spreadsheets.Get(Config.DocID).Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve data from document: %v", err)
 	}
 
 	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
 
-	val, err := sheetsService.Spreadsheets.Values.Get(*DocId, "Rank!A:C").Do()
+	val, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Rank!A:C").Do()
 	if err != nil {
 		log.Fatalf("unable to retrieve range from document: %v", err)
 	}

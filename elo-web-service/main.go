@@ -23,7 +23,7 @@ var albums = []album{
 }
 
 func main() {
-	ParseCommandLineFlags()
+	ReadConfiguration()
 	InitGoogleSheetsService()
 
 	router := gin.Default()
@@ -43,7 +43,7 @@ func main() {
 	router.POST("/matches", AddMatch)
 
 	//router.Run("localhost:8080")
-	router.Run(*BindAddress)
+	router.Run(Config.Address)
 }
 
 // getAlbums responds with the list of all albums as JSON.

@@ -12,9 +12,7 @@
             "mode": "auto",
             "program": "./elo-web-service",
             "args": [
-                "--google-service-account-key", "../google-service-account-key.json",
-                "--doc-id", "1bf6bmd63dvO9xjtnoTGmkcWJJE0NetQRjKkgcQvovQQ",
-                "--address", "localhost:8080"
+                "--config-path", "./config/config.dev.yaml"
             ]
         },
         {

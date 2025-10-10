@@ -1,7 +1,12 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
-  elo-web-service = pkgs.callPackage ./default.nix {};
+  elo-web-service = pkgs.callPackage ./default.nix { };
 in
 {
   options.services.elo-web-service = {
@@ -29,14 +34,22 @@ in
       description = "Elo web service";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${elo-web-service}/bin/elo-web-service --address ${toString config.services.elo-web-service.address} --google-service-account-key %d/google-service-account-key --doc-id ${toString config.services.elo-web-service.doc-id}";
+        Environment = "GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key";
+        ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml";
         Restart = "always";
         WorkingDirectory = "/var/lib/elo-web-service";
         User = "elo-web-service";
         Group = "elo-web-service";
-        LoadCredential = ["google-service-account-key:${config.services.elo-web-service.google-service-account-key}"];
+        StateDirectory = "elo-web-service";
+        LoadCredential = [
+          "google-service-account-key:${config.services.elo-web-service.google-service-account-key}"
+        ];
       };
     };
+
+    environment.etc."elo-web-service/config.yaml".text = ''
+      doc_id: "${toString config.services.elo-web-service.doc-id}"
+      address: "${toString config.services.elo-web-service.address}"'';
 
     users.users.elo-web-service = {
       isSystemUser = true;
@@ -45,6 +58,6 @@ in
       group = "elo-web-service";
     };
 
-    users.groups.elo-web-service = {};
+    users.groups.elo-web-service = { };
   };
 }

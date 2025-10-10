@@ -1,0 +1,15 @@
+## Sample configuration for elo-web-service
+#
+# You can override these with environment variables, e.g.
+# GOOGLE_SERVICE_ACCOUNT_KEY=/path/to/key.json
+
+# Path to the Google service account file. 
+# The file is sensitive and should not be commited.
+google_service_account_key: "../google-service-account-key.json"
+
+# Google sheet document identifier to read and store data (value afte /d/ in url)
+# https://docs.google.com/spreadsheets/d/1tOWQdwLUTAJyVlQwnWEMTjL0h-Wk08wB443PUWBtztY/
+doc_id: "1tOWQdwLUTAJyVlQwnWEMTjL0h-Wk08wB443PUWBtztY"
+
+# Interface and port to listen to
+address: "localhost:8080"
