@@ -1,67 +1,24 @@
-package main
+package googlesheet
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
 
 type Player struct {
-	ID  string  `json:"id"`
-	Elo float64 `json:"elo"`
-}
-
-type addMatch struct {
-	Game  string             `json:"game" binding:"required"`
-	Score map[string]float64 `json:"score" binding:"required"`
-}
-
-type matchPlayer struct {
-	EloPay  float64 `json:"eloPay"`
-	EloEarn float64 `json:"eloEarn"`
-	Score   float64 `json:"score"`
-}
-
-type match struct {
-	Id      int                    `json:"id"`
-	Game    string                 `json:"game"`
-	Date    *time.Time             `json:"date"`
-	Players map[string]matchPlayer `json:"score"`
-}
-
-var sheetsService *sheets.Service
-
-func InitGoogleSheetsService() {
-	ctx := context.Background()
-	credentials, err := os.ReadFile(Config.GoogleServiceAccountKey)
-	if err != nil {
-		log.Fatal("unable to read key file:", err)
-	}
-
-	scopes := []string{
-		"https://www.googleapis.com/auth/spreadsheets",
-	}
-	serviceAccountConfig, err := google.JWTConfigFromJSON(credentials, scopes...)
-	if err != nil {
-		log.Fatal("unable to create JWT configuration:", err)
-	}
-
-	sheetsService, err = sheets.NewService(ctx, option.WithHTTPClient(serviceAccountConfig.Client(ctx)))
-	if err != nil {
-		log.Fatalf("unable to retrieve sheets service: %v", err)
-	}
+	ID  string
+	Elo float64
 }
 
 type matchRow struct {
@@ -71,8 +28,37 @@ type matchRow struct {
 	PlayersScore map[string]float64
 }
 
-func parseMatchesSheet() ([]matchRow, error) {
-	matchesResp, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Партии!A:Z").Do()
+var sheetsService *sheets.Service
+var docId string
+
+func Init(googleServiceAccountKeyPath string, doc_Id string) {
+	docId = doc_Id
+
+	ctx := context.Background()
+	credentials, err := os.ReadFile(googleServiceAccountKeyPath)
+	if err != nil {
+		log.Fatal("unable to read key file:", err)
+		os.Exit(1)
+	}
+
+	scopes := []string{
+		"https://www.googleapis.com/auth/spreadsheets",
+	}
+	serviceAccountConfig, err := google.JWTConfigFromJSON(credentials, scopes...)
+	if err != nil {
+		log.Fatal("unable to create JWT configuration:", err)
+		os.Exit(1)
+	}
+
+	sheetsService, err = sheets.NewService(ctx, option.WithHTTPClient(serviceAccountConfig.Client(ctx)))
+	if err != nil {
+		log.Fatalf("unable to retrieve sheets service: %v", err)
+		os.Exit(1)
+	}
+}
+
+func ParseMatchesSheet() ([]matchRow, error) {
+	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:Z").Do()
 	if err != nil {
 		return nil, err
 	}
@@ -149,20 +135,8 @@ func parseCellDate(cell interface{}) *time.Time {
 	return nil
 }
 
-func ListPlayers(c *gin.Context) {
-	players, err := parsePlayersAndElo()
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-	}
-
-	c.JSON(http.StatusOK, players)
-}
-
-func parsePlayersAndElo() ([]Player, error) {
-	val, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Elo v2!C1:500").Do()
+func ParsePlayersAndElo() ([]Player, error) {
+	val, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!C1:500").Do()
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve range from document: %v", err)
 	}
@@ -179,22 +153,11 @@ func parsePlayersAndElo() ([]Player, error) {
 	return players, nil
 }
 
-func AddMatch(c *gin.Context) {
-	var payload addMatch
-
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	// Get player names from row 1 (C1:Z1)
+func AddMatch(game string, score map[string]float64) error {
 	headerRange := "Партии!C1:Z1"
-	headerResp, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, headerRange).Do()
+	headerResp, err := sheetsService.Spreadsheets.Values.Get(docId, headerRange).Do()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to read player headers"})
-		return
+		return fmt.Errorf("unable to read player headers")
 	}
 	playerHeaders := make([]string, 0)
 	if len(headerResp.Values) > 0 {
@@ -207,9 +170,9 @@ func AddMatch(c *gin.Context) {
 	// A - date, B - name of game, C-Z - players score
 	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
 	row[0] = time.Now().Format("2006-01-02 15:04:05")  // A: дата и время
-	row[1] = payload.Game                              // B: name of game
+	row[1] = game                                      // B: name of game
 	for i, playerID := range playerHeaders {
-		if score, ok := payload.Score[playerID]; ok {
+		if score, ok := score[playerID]; ok {
 			row[2+i] = score
 		} else {
 			row[2+i] = ""
@@ -218,47 +181,15 @@ func AddMatch(c *gin.Context) {
 
 	// Append the row to the end of "Партии"
 	appendRange := "Партии!A:Z"
-	_, err = sheetsService.Spreadsheets.Values.Append(Config.DocID, appendRange, &sheets.ValueRange{
+	_, err = sheetsService.Spreadsheets.Values.Append(docId, appendRange, &sheets.ValueRange{
 		Values: [][]interface{}{row},
 	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to append match: " + err.Error()})
-		return
+		//c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to append match: " + err.Error()})
+		return fmt.Errorf("unable to append match: %v", err.Error())
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"status": "match saved"})
-}
-
-func ListMatches(c *gin.Context) {
-	parsedMatches, err := parseMatchesSheet()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		return
-	}
-
-	matches := make([]match, 0, len(parsedMatches))
-	for _, pm := range parsedMatches {
-		m := match{
-			Id:      pm.RowNum,
-			Game:    pm.Game,
-			Date:    pm.Date,
-			Players: make(map[string]matchPlayer, len(pm.PlayersScore)),
-		}
-
-		for pid, score := range pm.PlayersScore {
-			m.Players[pid] = matchPlayer{
-				Score:   score,
-				EloPay:  0,
-				EloEarn: 0,
-			}
-		}
-
-		matches = append(matches, m)
-	}
-
-	c.JSON(http.StatusOK, matches)
+	return nil
 }
 
 func parseFloat(val interface{}) float64 {
@@ -339,23 +270,4 @@ func parseMatchCell(val interface{}) (float64, float64, float64) {
 	}
 
 	return score, pay, earn
-}
-
-func Demo() {
-	doc, err := sheetsService.Spreadsheets.Get(Config.DocID).Do()
-	if err != nil {
-		log.Fatalf("unable to retrieve data from document: %v", err)
-	}
-
-	fmt.Printf("The title of the doc is: %s\n", doc.Properties.Title)
-
-	val, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Rank!A:C").Do()
-	if err != nil {
-		log.Fatalf("unable to retrieve range from document: %v", err)
-	}
-
-	fmt.Printf("Selected major dimension=%v, range=%v\n", val.MajorDimension, val.Range)
-	for _, row := range val.Values {
-		fmt.Println(row)
-	}
 }

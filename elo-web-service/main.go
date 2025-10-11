@@ -5,26 +5,13 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+
+	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
-
-// album represents data about a record album.
-type album struct {
-	ID     string  `json:"id"`
-	Title  string  `json:"title"`
-	Artist string  `json:"artist"`
-	Price  float64 `json:"price"`
-}
-
-// albums slice to seed record album data.
-var albums = []album{
-	{ID: "1", Title: "Blue Train", Artist: "John Coltrane", Price: 56.99},
-	{ID: "2", Title: "Jeru", Artist: "Gerry Mulligan", Price: 17.99},
-	{ID: "3", Title: "Sarah Vaughan and Clifford Brown", Artist: "Sarah Vaughan", Price: 39.99},
-}
 
 func main() {
 	ReadConfiguration()
-	InitGoogleSheetsService()
+	googlesheet.Init(Config.GoogleServiceAccountKey, Config.DocID)
 
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
@@ -38,17 +25,11 @@ func main() {
 	})
 
 	router.GET("/ping", getPing)
-	router.GET("/albums", getAlbums)
 	router.GET("/players", ListPlayers)
 	router.GET("/matches", ListMatches)
 	router.POST("/matches", AddMatch)
 
 	router.Run(Config.Address)
-}
-
-// getAlbums responds with the list of all albums as JSON.
-func getAlbums(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, albums)
 }
 
 func getPing(c *gin.Context) {
