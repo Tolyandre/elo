@@ -21,11 +21,16 @@ type Player struct {
 	Elo float64
 }
 
-type matchRow struct {
+type MatchRow struct {
 	RowNum       int
 	Date         *time.Time
 	Game         string
 	PlayersScore map[string]float64
+}
+
+type EloRow struct {
+	RowNum     int
+	PlayersElo map[string]float64
 }
 
 var sheetsService *sheets.Service
@@ -57,7 +62,7 @@ func Init(googleServiceAccountKeyPath string, doc_Id string) {
 	}
 }
 
-func ParseMatchesSheet() ([]matchRow, error) {
+func ParseMatchesSheet() ([]MatchRow, error) {
 	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:Z").Do()
 	if err != nil {
 		return nil, err
@@ -70,12 +75,12 @@ func ParseMatchesSheet() ([]matchRow, error) {
 	// extract player IDs from header row (columns C..Z)
 	playerIDs := parsePlayerIds(matchesResp)
 
-	matches := make([]matchRow, 0, len(matchesResp.Values))
+	matches := make([]MatchRow, 0, len(matchesResp.Values))
 
 	// iterate over data rows (starting from second row)
 	const averageMaxPlayers = 6
 	for rowIndex, row := range matchesResp.Values[1:] {
-		m := matchRow{
+		m := MatchRow{
 			RowNum:       rowIndex + 2, // spreadsheet row number (header is row 1)
 			PlayersScore: make(map[string]float64, averageMaxPlayers),
 		}
@@ -107,32 +112,44 @@ func ParseMatchesSheet() ([]matchRow, error) {
 	return matches, nil
 }
 
-func parsePlayerIds(matchesResp *sheets.ValueRange) []string {
-	headerRow := matchesResp.Values[0]
-	playerIDs := make([]string, 0, len(matchesResp.Values[0]))
-	if len(headerRow) > 2 {
-		for _, cell := range headerRow[2:] {
-			id := fmt.Sprintf("%v", cell)
-			if id != "" {
-				playerIDs = append(playerIDs, id)
+func ParseEloSheet() ([]EloRow, error) {
+	eloResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!A:Z").Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(eloResp.Values) == 0 {
+		return nil, errors.New("sheet is empty")
+	}
+
+	// extract player IDs from header row (columns C..Z)
+	playerIDs := parsePlayerIds(eloResp)
+
+	elo := make([]EloRow, 0, len(eloResp.Values))
+
+	// iterate over data rows (starting from second row)
+	for rowIndex, row := range eloResp.Values[1:] {
+		m := EloRow{
+			RowNum:     rowIndex + 2, // spreadsheet row number (header is row 1)
+			PlayersElo: make(map[string]float64, len(playerIDs)),
+		}
+
+		// Skip Columns A and B
+
+		// Players score columns C..
+		for i, pid := range playerIDs {
+			colIdx := 2 + i
+			if colIdx < len(row) {
+				cell := row[colIdx]
+				score := parseFloat(cell)
+				m.PlayersElo[pid] = score
+
 			}
 		}
-	}
-	return playerIDs
-}
 
-func parseCellDate(cell interface{}) *time.Time {
-	raw := fmt.Sprintf("%v", cell)
-	if raw != "" {
-		// try the format used by AddMatch first
-		if t, err := time.Parse("2006-01-02 15:04:05", raw); err == nil {
-			return &t
-		} else if t2, err2 := time.Parse(time.RFC3339, raw); err2 == nil {
-			return &t2
-		}
+		elo = append(elo, m)
 	}
-	// could not parse - leave nil (placeholder)
-	return nil
+	return elo, nil
 }
 
 func ParsePlayersAndElo() ([]Player, error) {
@@ -189,6 +206,39 @@ func AddMatch(game string, score map[string]float64) error {
 		return fmt.Errorf("unable to append match: %v", err.Error())
 	}
 
+	return nil
+}
+
+// eloRows must be ordered; first row number 2 has index 0 (first row is header)
+func Elo(eloRows []EloRow, rowNum int) *EloRow {
+	return &eloRows[rowNum-2]
+}
+
+func parsePlayerIds(matchesResp *sheets.ValueRange) []string {
+	headerRow := matchesResp.Values[0]
+	playerIDs := make([]string, 0, len(matchesResp.Values[0]))
+	if len(headerRow) > 2 {
+		for _, cell := range headerRow[2:] {
+			id := fmt.Sprintf("%v", cell)
+			if id != "" {
+				playerIDs = append(playerIDs, id)
+			}
+		}
+	}
+	return playerIDs
+}
+
+func parseCellDate(cell interface{}) *time.Time {
+	raw := fmt.Sprintf("%v", cell)
+	if raw != "" {
+		// try the format used by AddMatch first
+		if t, err := time.Parse("2006-01-02 15:04:05", raw); err == nil {
+			return &t
+		} else if t2, err2 := time.Parse(time.RFC3339, raw); err2 == nil {
+			return &t2
+		}
+	}
+	// could not parse - leave nil (placeholder)
 	return nil
 }
 

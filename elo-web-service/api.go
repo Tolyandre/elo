@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"net/http"
 	"time"
 
@@ -68,14 +69,19 @@ func AddMatch(c *gin.Context) {
 func ListMatches(c *gin.Context) {
 	parsedMatches, err := googlesheet.ParseMatchesSheet()
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		errorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	parsedElo, err := googlesheet.ParseEloSheet()
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	matchesJson := make([]matchJson, 0, len(parsedMatches))
-	for _, pm := range parsedMatches {
+	// skip first row as it contains start elo value (fake match)
+	for _, pm := range parsedMatches[1:] {
 		m := matchJson{
 			Id:      pm.RowNum,
 			Game:    pm.Game,
@@ -83,11 +89,14 @@ func ListMatches(c *gin.Context) {
 			Players: make(map[string]matchPlayerJson, len(pm.PlayersScore)),
 		}
 
+		absoluteLoserScore := getAsboluteLoserScore(&pm)
+
 		for pid, score := range pm.PlayersScore {
+			prevElo := googlesheet.Elo(parsedElo, pm.RowNum-1)
 			m.Players[pid] = matchPlayerJson{
 				Score:   score,
-				EloPay:  0,
-				EloEarn: 0,
+				EloPay:  -elo_const_k * winExpectation(prevElo.PlayersElo[pid], &pm, prevElo),
+				EloEarn: elo_const_k * normalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
 			}
 		}
 
@@ -95,6 +104,52 @@ func ListMatches(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, matchesJson)
+}
+
+const elo_const_k = 32
+const elo_const_d = 400
+
+func winExpectation(currentElo float64, match *googlesheet.MatchRow, prevElo *googlesheet.EloRow) float64 {
+	var playersCount float64 = float64(len(match.PlayersScore))
+	if playersCount == 1 {
+		return 1
+	}
+
+	var sum float64 = 0
+	for p, _ := range match.PlayersScore {
+		sum += 1 / (1 + math.Pow(10, (prevElo.PlayersElo[p]-currentElo)/elo_const_d))
+	}
+
+	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
+}
+
+func normalizedScore(currentScore float64, match *googlesheet.MatchRow, absoluteLoserScore float64) float64 {
+	var playersCount float64 = float64(len(match.PlayersScore))
+	var sum float64 = 0
+	for _, s := range match.PlayersScore {
+		sum += s
+	}
+
+	var score = (currentScore - absoluteLoserScore) / (sum - absoluteLoserScore*playersCount)
+	if math.IsNaN(score) {
+		score = 1 / playersCount
+	}
+
+	return score
+}
+
+func getAsboluteLoserScore(match *googlesheet.MatchRow) float64 {
+	var minSet = false
+	var min float64 = 0
+	for _, s := range match.PlayersScore {
+		if minSet {
+			min = math.Min(min, s)
+		} else {
+			min = s
+		}
+		minSet = true
+	}
+	return min
 }
 
 func errorResponse(c *gin.Context, code int, err error) {
