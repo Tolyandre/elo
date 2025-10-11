@@ -16,6 +16,12 @@ export function getPingPromise() {
     });
 }
 
+export function getMatchesPromise() {
+    return fetch(`${BASE_API}/matches`)
+        .then((res) => res.json())
+        .then(handleJsonErrorResponse);
+}
+
 export function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
     return fetch(`${BASE_API}/matches`, {
         method: 'POST',

@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="font-sans items-center p-8 rounded-lg shadow-md max-w-sm w-full">
+          <div className="font-sans items-center p-8 rounded-lg shadow-md max-w-lg w-full">
             <PingError />
             <PlayersProvider>{children}</PlayersProvider>
           </div>
