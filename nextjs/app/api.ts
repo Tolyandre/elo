@@ -1,9 +1,8 @@
-// Base URL for API requests. Use NEXT_PUBLIC_API_BASE_URL from environment when available.
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
-if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
-    throw new Error('Environment variable NEXT_PUBLIC_API_BASE_URL is not defined');
+if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
+    throw new Error('Environment variable NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL is not defined');
 }
-const BASE_API = process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/+$/, '');
+const BASE_API = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
 export function getPlayersPromise() {
     return fetch(`${BASE_API}/players`)
