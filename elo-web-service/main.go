@@ -39,10 +39,10 @@ func main() {
 
 	router.GET("/ping", getPing)
 	router.GET("/albums", getAlbums)
-	router.GET("/players", GetPlayers)
+	router.GET("/players", ListPlayers)
+	router.GET("/matches", ListMatches)
 	router.POST("/matches", AddMatch)
 
-	//router.Run("localhost:8080")
 	router.Run(Config.Address)
 }
 

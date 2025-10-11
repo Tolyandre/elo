@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,9 +23,22 @@ type Player struct {
 	Elo float64 `json:"elo"`
 }
 
-type Match struct {
+type addMatch struct {
 	Game  string             `json:"game" binding:"required"`
 	Score map[string]float64 `json:"score" binding:"required"`
+}
+
+type matchPlayer struct {
+	EloPay  float64 `json:"eloPay"`
+	EloEarn float64 `json:"eloEarn"`
+	Score   float64 `json:"score"`
+}
+
+type match struct {
+	Id      int                    `json:"id"`
+	Game    string                 `json:"game"`
+	Date    *time.Time             `json:"date"`
+	Players map[string]matchPlayer `json:"score"`
 }
 
 var sheetsService *sheets.Service
@@ -48,13 +64,107 @@ func InitGoogleSheetsService() {
 	}
 }
 
-func GetPlayers(c *gin.Context) {
+type matchRow struct {
+	RowNum       int
+	Date         *time.Time
+	Game         string
+	PlayersScore map[string]float64
+}
+
+func parseMatchesSheet() ([]matchRow, error) {
+	matchesResp, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Партии!A:Z").Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(matchesResp.Values) == 0 {
+		return nil, errors.New("sheet is empty")
+	}
+
+	// extract player IDs from header row (columns C..Z)
+	playerIDs := parsePlayerIds(matchesResp)
+
+	matches := make([]matchRow, 0, len(matchesResp.Values))
+
+	// iterate over data rows (starting from second row)
+	const averageMaxPlayers = 6
+	for rowIndex, row := range matchesResp.Values[1:] {
+		m := matchRow{
+			RowNum:       rowIndex + 2, // spreadsheet row number (header is row 1)
+			PlayersScore: make(map[string]float64, averageMaxPlayers),
+		}
+
+		// Date (column A) - best-effort parsing
+		if len(row) > 0 {
+			m.Date = parseCellDate(row[0])
+		}
+
+		// Game (column B)
+		if len(row) > 1 {
+			m.Game = fmt.Sprintf("%v", row[1])
+		}
+
+		// Players columns C.. - include only when cell non-empty
+		for i, pid := range playerIDs {
+			colIdx := 2 + i
+			if colIdx < len(row) {
+				cell := row[colIdx]
+				score := parseFloatOrNil(cell)
+				if score != nil {
+					m.PlayersScore[pid] = *score
+				}
+			}
+		}
+
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+func parsePlayerIds(matchesResp *sheets.ValueRange) []string {
+	headerRow := matchesResp.Values[0]
+	playerIDs := make([]string, 0, len(matchesResp.Values[0]))
+	if len(headerRow) > 2 {
+		for _, cell := range headerRow[2:] {
+			id := fmt.Sprintf("%v", cell)
+			if id != "" {
+				playerIDs = append(playerIDs, id)
+			}
+		}
+	}
+	return playerIDs
+}
+
+func parseCellDate(cell interface{}) *time.Time {
+	raw := fmt.Sprintf("%v", cell)
+	if raw != "" {
+		// try the format used by AddMatch first
+		if t, err := time.Parse("2006-01-02 15:04:05", raw); err == nil {
+			return &t
+		} else if t2, err2 := time.Parse(time.RFC3339, raw); err2 == nil {
+			return &t2
+		}
+	}
+	// could not parse - leave nil (placeholder)
+	return nil
+}
+
+func ListPlayers(c *gin.Context) {
+	players, err := parsePlayersAndElo()
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+	}
+
+	c.JSON(http.StatusOK, players)
+}
+
+func parsePlayersAndElo() ([]Player, error) {
 	val, err := sheetsService.Spreadsheets.Values.Get(Config.DocID, "Elo v2!C1:500").Do()
 	if err != nil {
-		log.Fatalf("unable to retrieve range from document: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "unable to retrieve range from document:" + err.Error(),
-		})
+		return nil, fmt.Errorf("unable to retrieve range from document: %v", err)
 	}
 
 	var players []Player
@@ -66,12 +176,11 @@ func GetPlayers(c *gin.Context) {
 			Elo: parseFloat(eloCell),
 		})
 	}
-
-	c.JSON(http.StatusOK, players)
+	return players, nil
 }
 
 func AddMatch(c *gin.Context) {
-	var payload Match
+	var payload addMatch
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -93,8 +202,6 @@ func AddMatch(c *gin.Context) {
 			playerHeaders = append(playerHeaders, fmt.Sprintf("%v", cell))
 		}
 	}
-
-	fmt.Println(playerHeaders)
 
 	// Make a new row to append
 	// A - date, B - name of game, C-Z - players score
@@ -122,6 +229,38 @@ func AddMatch(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"status": "match saved"})
 }
 
+func ListMatches(c *gin.Context) {
+	parsedMatches, err := parseMatchesSheet()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	matches := make([]match, 0, len(parsedMatches))
+	for _, pm := range parsedMatches {
+		m := match{
+			Id:      pm.RowNum,
+			Game:    pm.Game,
+			Date:    pm.Date,
+			Players: make(map[string]matchPlayer, len(pm.PlayersScore)),
+		}
+
+		for pid, score := range pm.PlayersScore {
+			m.Players[pid] = matchPlayer{
+				Score:   score,
+				EloPay:  0,
+				EloEarn: 0,
+			}
+		}
+
+		matches = append(matches, m)
+	}
+
+	c.JSON(http.StatusOK, matches)
+}
+
 func parseFloat(val interface{}) float64 {
 	switch v := val.(type) {
 	case float64:
@@ -135,6 +274,71 @@ func parseFloat(val interface{}) float64 {
 	default:
 		return 0
 	}
+}
+
+func parseFloatOrNil(val interface{}) *float64 {
+	switch v := val.(type) {
+	case float64:
+		return &v
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil
+		}
+		return &f
+	default:
+		return nil
+	}
+}
+
+// parseMatchCell parses cell text like "1041 ↑ 2 (-10 +12)" or "1041 ↓ -3 (-8 +5)"
+// Returns (score, eloPay, eloEarn). If a part can't be parsed, it will be 0.
+func parseMatchCell(val interface{}) (float64, float64, float64) {
+	s := strings.TrimSpace(fmt.Sprintf("%v", val))
+	if s == "" {
+		return 0, 0, 0
+	}
+
+	// find numbers inside parentheses: e.g. (-10 +12)
+	parenRe := regexp.MustCompile(`\((-?\d+)\s+([+-]?\d+)\)`)
+	pay := 0.0
+	earn := 0.0
+	if m := parenRe.FindStringSubmatch(s); len(m) == 3 {
+		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+			pay = v
+		}
+		if v2, err2 := strconv.ParseFloat(m[2], 64); err2 == nil {
+			earn = v2
+		}
+	}
+
+	// find score number after arrow ↑ or ↓, e.g. "↑ 2" or "↓ -3"
+	scoreRe := regexp.MustCompile(`[↑↓]\s*([+-]?\d+)`)
+	score := 0.0
+	if m := scoreRe.FindStringSubmatch(s); len(m) == 2 {
+		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+			score = v
+		}
+	} else {
+		// fallback: try to find first standalone number (could be leading 1041) - prefer the small one after arrow but if absent, try any number
+		anyRe := regexp.MustCompile(`([+-]?\d+)`)
+		nums := anyRe.FindAllString(s, -1)
+		if len(nums) > 0 {
+			// if there are multiple numbers, try to pick the one that is not 4-digit (heuristic)
+			chosen := nums[len(nums)-1]
+			for _, n := range nums {
+				if len(n) <= 3 {
+					chosen = n
+					break
+				}
+			}
+			if v, err := strconv.ParseFloat(chosen, 64); err == nil {
+				score = v
+			}
+		}
+	}
+
+	return score, pay, earn
 }
 
 func Demo() {
