@@ -56,17 +56,17 @@ export default function MatchesPage() {
     load();
   }, []);
 
-  if (loading) return <p className="text-center">Загрузка матчей…</p>;
+  if (loading) return <p className="text-center">Загрузка партий…</p>;
   if (error) return <p className="text-red-500 text-center">Ошибка: {error}</p>;
 
   return (
     <main className="space-y-8">
-      <h1 className="text-2xl font-semibold mb-4">Матчи</h1>
+      <h1 className="text-2xl font-semibold mb-4">Партии</h1>
       <Link
         href="/add-game"
         className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
       >
-        Добавить игру
+        Добавить партию
       </Link>
       {matches.map((m) => (
         <MatchCard key={m.id} match={m} />
