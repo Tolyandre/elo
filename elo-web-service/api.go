@@ -116,7 +116,7 @@ func winExpectation(currentElo float64, match *googlesheet.MatchRow, prevElo *go
 	}
 
 	var sum float64 = 0
-	for p, _ := range match.PlayersScore {
+	for p := range match.PlayersScore {
 		sum += 1 / (1 + math.Pow(10, (prevElo.PlayersElo[p]-currentElo)/elo_const_d))
 	}
 

@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/oauth2/google"
@@ -270,54 +268,4 @@ func parseFloatOrNil(val interface{}) *float64 {
 	default:
 		return nil
 	}
-}
-
-// parseMatchCell parses cell text like "1041 ↑ 2 (-10 +12)" or "1041 ↓ -3 (-8 +5)"
-// Returns (score, eloPay, eloEarn). If a part can't be parsed, it will be 0.
-func parseMatchCell(val interface{}) (float64, float64, float64) {
-	s := strings.TrimSpace(fmt.Sprintf("%v", val))
-	if s == "" {
-		return 0, 0, 0
-	}
-
-	// find numbers inside parentheses: e.g. (-10 +12)
-	parenRe := regexp.MustCompile(`\((-?\d+)\s+([+-]?\d+)\)`)
-	pay := 0.0
-	earn := 0.0
-	if m := parenRe.FindStringSubmatch(s); len(m) == 3 {
-		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
-			pay = v
-		}
-		if v2, err2 := strconv.ParseFloat(m[2], 64); err2 == nil {
-			earn = v2
-		}
-	}
-
-	// find score number after arrow ↑ or ↓, e.g. "↑ 2" or "↓ -3"
-	scoreRe := regexp.MustCompile(`[↑↓]\s*([+-]?\d+)`)
-	score := 0.0
-	if m := scoreRe.FindStringSubmatch(s); len(m) == 2 {
-		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
-			score = v
-		}
-	} else {
-		// fallback: try to find first standalone number (could be leading 1041) - prefer the small one after arrow but if absent, try any number
-		anyRe := regexp.MustCompile(`([+-]?\d+)`)
-		nums := anyRe.FindAllString(s, -1)
-		if len(nums) > 0 {
-			// if there are multiple numbers, try to pick the one that is not 4-digit (heuristic)
-			chosen := nums[len(nums)-1]
-			for _, n := range nums {
-				if len(n) <= 3 {
-					chosen = n
-					break
-				}
-			}
-			if v, err := strconv.ParseFloat(chosen, 64); err == nil {
-				score = v
-			}
-		}
-	}
-
-	return score, pay, earn
 }
