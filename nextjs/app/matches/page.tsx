@@ -89,6 +89,8 @@ function MatchCard({ match }: { match: Match }) {
     }))
     .sort((a, b) => b.score - a.score);
 
+    var ranks = players.map(function(v){ return players.findIndex(p => p.score === v.score)+1 });
+
   // Для bar‑диаграммы найдём максимум по eloEarn
   const maxEarn = Math.max(...players.map((p) => p.eloEarn));
 
@@ -100,26 +102,28 @@ function MatchCard({ match }: { match: Match }) {
         {players.map((p, idx) => (
           <li
             key={p.name}
-            className="flex items-center  gap-4 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-4 px-2 py-1 rounded transition-colors"
           >{/* justify-between */}
             {/* Список игроков */}
-            <div className="flex items-center gap-2 min-w-[140px]">
-              <span className="font-semibold">{idx + 1}.</span>
+            <div className="gap-2 min-w-[100px]">
+              <span className="font-semibold">{ranks[idx]}. </span>
               <span>{p.name}</span>
-            </div>
 
-            {/* Итоговый score */}
-            <div className="text-center min-w-[80px]">{p.score}
               <div className="h-2 bg-gray-200 rounded mt-1">
                 <div
                   style={{ width: `${(p.eloEarn / maxEarn) * 100}%` }}
                   className="h-full bg-blue-400 rounded"
-                />
+                /> 
               </div>
             </div>
 
+            {/* Итоговый score */}
+            <div className="text-center min-w-[50px] text-3xl">{p.score}
+              
+            </div>
+
             {/* Изменение Elo */}
-            <div className="text-right min-w-[110px]">
+            <div className="text-right min-w-[60px]">
               <span
                 className={`font-semibold ${
                   p.eloChange > 0

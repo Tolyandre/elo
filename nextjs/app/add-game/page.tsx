@@ -120,7 +120,7 @@ function AddGameForm() {
             setSuccess(true);
             setTimeout(() => {
                 // TODO  revalidatePath('/posts') https://nextjs.org/docs/app/getting-started/updating-data#revalidating
-                router.push("/");
+                router.push("/matches");
             }, 1200);
         } catch (err) {
             setSuccess(false);
