@@ -100,8 +100,8 @@ function MatchCard({ match }: { match: Match }) {
         {players.map((p, idx) => (
           <li
             key={p.name}
-            className="flex items-center justify-between gap-4 px-2 py-1 rounded hover:bg-gray-50 transition-colors"
-          >
+            className="flex items-center  gap-4 px-2 py-1 rounded transition-colors"
+          >{/* justify-between */}
             {/* Список игроков */}
             <div className="flex items-center gap-2 min-w-[140px]">
               <span className="font-semibold">{idx + 1}.</span>
@@ -109,7 +109,14 @@ function MatchCard({ match }: { match: Match }) {
             </div>
 
             {/* Итоговый score */}
-            <div className="text-center min-w-[50px]">{p.score}</div>
+            <div className="text-center min-w-[80px]">{p.score}
+              <div className="h-2 bg-gray-200 rounded mt-1">
+                <div
+                  style={{ width: `${(p.eloEarn / maxEarn) * 100}%` }}
+                  className="h-full bg-blue-400 rounded"
+                />
+              </div>
+            </div>
 
             {/* Изменение Elo */}
             <div className="text-right min-w-[110px]">
@@ -129,14 +136,6 @@ function MatchCard({ match }: { match: Match }) {
               <span className="text-xs text-gray-500">
                 ({p.eloPay.toFixed(1)} + {p.eloEarn.toFixed(1)})
               </span>
-            </div>
-
-            {/* Бар‑диаграмма */}
-            <div className="flex-1 h-4 bg-gray-200 rounded">
-              <div
-                style={{ width: `${(p.eloEarn / maxEarn) * 100}%` }}
-                className="h-full bg-blue-400 rounded"
-              />
             </div>
           </li>
         ))}
