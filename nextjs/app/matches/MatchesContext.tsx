@@ -1,0 +1,66 @@
+"use client"
+
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { getMatchesPromise } from "../api";
+
+/* --- Типы (можно вынести в отдельный файл, если понадобится) --- */
+export type PlayerScore = {
+  eloPay: number;
+  eloEarn: number;
+  score: number;
+};
+
+export type Match = {
+  id: number;
+  game: string;
+  date: string | null;
+  score: Record<string, PlayerScore>;
+};
+
+type MatchesState = {
+  matches: Match[] | null; // `null` – данные ещё не загружены
+  loading: boolean;
+  error: string | null;
+};
+
+/* --- Контекст --- */
+const MatchesContext = createContext<MatchesState | undefined>(undefined);
+
+/* --- Провайдер --- */
+export const MatchesProvider = ({ children }: { children: ReactNode }) => {
+  const [matches, setMatches] = useState<Match[] | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  /* Загружаем данные только один раз (при первом монтировании) */
+  useEffect(() => {
+    if (matches !== null) return; // уже загружено → не повторяем запрос
+
+    const load = async () => {
+      try {
+        const data = await getMatchesPromise();
+        setMatches(data.sort((a: { id: number; }, b: { id: number; }) => b.id - a.id));
+      } catch (e: any) {
+        setError(e.message ?? "Неизвестная ошибка");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [matches]);
+
+  return (
+    <MatchesContext.Provider value={{ matches, loading, error }}>
+      {children}
+    </MatchesContext.Provider>
+  );
+};
+
+/* --- Хук для удобного доступа к контексту --- */
+export const useMatches = () => {
+  const ctx = useContext(MatchesContext);
+  if (!ctx) {
+    throw new Error("useMatches must be used within a MatchesProvider");
+  }
+  return ctx;
+};
