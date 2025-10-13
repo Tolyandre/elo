@@ -45,3 +45,6 @@
 
 # nix
 /nix/result
+
+# golang
+/elo-web-service/__debug_bin**

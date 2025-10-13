@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../PlayersContext";
 import { addMatchPromise } from "../api";
+import { useMatches } from "../matches/MatchesContext";
 
 type Participant = {
     id: string;
@@ -27,6 +28,8 @@ function AddGameForm() {
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const router = useRouter();
+
+    const { invalidate: invalidateMatches } = useMatches();
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -118,8 +121,8 @@ function AddGameForm() {
                 score,
             });
             setSuccess(true);
+            invalidateMatches();
             setTimeout(() => {
-                // TODO  revalidatePath('/posts') https://nextjs.org/docs/app/getting-started/updating-data#revalidating
                 router.push("/matches");
             }, 1200);
         } catch (err) {

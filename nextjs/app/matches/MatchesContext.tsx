@@ -21,6 +21,7 @@ type MatchesState = {
   matches: Match[] | null; // `null` – данные ещё не загружены
   loading: boolean;
   error: string | null;
+  invalidate: () => void;
 };
 
 /* --- Контекст --- */
@@ -32,25 +33,29 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadMatches = async () => {
+    try {
+      const data = await getMatchesPromise();
+      setMatches(data.sort((a: { id: number; }, b: { id: number; }) => b.id - a.id));
+    } catch (e: any) {
+      setError(e.message ?? "Неизвестная ошибка");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /* Загружаем данные только один раз (при первом монтировании) */
   useEffect(() => {
     if (matches !== null) return; // уже загружено → не повторяем запрос
 
-    const load = async () => {
-      try {
-        const data = await getMatchesPromise();
-        setMatches(data.sort((a: { id: number; }, b: { id: number; }) => b.id - a.id));
-      } catch (e: any) {
-        setError(e.message ?? "Неизвестная ошибка");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    loadMatches();
   }, [matches]);
 
+  const invalidate = () => {
+    setMatches(null);
+  };
   return (
-    <MatchesContext.Provider value={{ matches, loading, error }}>
+    <MatchesContext.Provider value={{ matches, loading, error, invalidate }}>
       {children}
     </MatchesContext.Provider>
   );
