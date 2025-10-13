@@ -1,5 +1,4 @@
-// app/components/NavigationBar.tsx
-'use client';                    // компонент клиенский
+'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -7,7 +6,6 @@ import { usePathname } from 'next/navigation';
 export function NavigationBar() {
   const pathname = usePathname();
 
-  // вспомогательная функция для подсветки активной ссылки
   const linkClass = (href: string) =>
     `px-4 py-2 rounded transition-colors ${
       pathname === href
@@ -18,7 +16,7 @@ export function NavigationBar() {
   return (
     <nav className="shadow">
       <div className="container mx-auto flex items-center gap-4 py-3">
-        <Link href="/" className={linkClass('/')}>
+        <Link href="/players" className={linkClass('/players')}>
           Игроки
         </Link>
 

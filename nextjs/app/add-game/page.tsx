@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { usePlayers } from "../PlayersContext";
+import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 
