@@ -30,6 +30,7 @@ function AddGameForm() {
     const router = useRouter();
 
     const { invalidate: invalidateMatches } = useMatches();
+    const { invalidate: invalidatePlayers } = usePlayers();
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -122,6 +123,7 @@ function AddGameForm() {
             });
             setSuccess(true);
             invalidateMatches();
+            invalidatePlayers();
             setTimeout(() => {
                 router.push("/matches");
             }, 1200);

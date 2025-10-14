@@ -14,6 +14,7 @@ type PlayersContextType = {
     // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
     error: string | null;
+    invalidate: () => void;
 };
 
 const PlayersContext = createContext<PlayersContextType | undefined>(undefined);
@@ -25,8 +26,10 @@ export function PlayersProvider({ children
     const [players, setPlayers] = useState<Player[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [stamp, setStamp] = useState<number>(0);
 
     useEffect(() => {
+        setLoading(true);
         getPlayersPromise()
             .then((data) => {
                 const sorted = [...data].sort((a, b) => b.elo - a.elo);
@@ -38,10 +41,14 @@ export function PlayersProvider({ children
                 setError(err.message);
                 setLoading(false);
             });
-    }, []);
+    }, [stamp]);
+
+    const invalidate = () => {
+        setStamp((s) => s + 1);
+    };
 
     return (
-        <PlayersContext.Provider value={{ players, loading, error }}>
+        <PlayersContext.Provider value={{ players, loading, error, invalidate }}>
             {children}
         </PlayersContext.Provider>
     );
