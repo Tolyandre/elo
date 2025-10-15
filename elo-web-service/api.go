@@ -79,6 +79,12 @@ func ListMatches(c *gin.Context) {
 		return
 	}
 
+	settings, err := googlesheet.ParseSettings()
+	if err != nil {
+		errorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
 	matchesJson := make([]matchJson, 0, len(parsedMatches))
 	// skip first row as it contains start elo value (fake match)
 	for _, pm := range parsedMatches[1:] {
@@ -95,8 +101,8 @@ func ListMatches(c *gin.Context) {
 			prevElo := googlesheet.Elo(parsedElo, pm.RowNum-1)
 			m.Players[pid] = matchPlayerJson{
 				Score:   score,
-				EloPay:  -elo_const_k * winExpectation(prevElo.PlayersElo[pid], &pm, prevElo),
-				EloEarn: elo_const_k * normalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
+				EloPay:  -settings.EloConstK * winExpectation(prevElo.PlayersElo[pid], &pm, prevElo, settings.EloConstD),
+				EloEarn: settings.EloConstK * normalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
 			}
 		}
 
@@ -106,10 +112,7 @@ func ListMatches(c *gin.Context) {
 	c.JSON(http.StatusOK, matchesJson)
 }
 
-const elo_const_k = 32
-const elo_const_d = 400
-
-func winExpectation(currentElo float64, match *googlesheet.MatchRow, prevElo *googlesheet.EloRow) float64 {
+func winExpectation(currentElo float64, match *googlesheet.MatchRow, prevElo *googlesheet.EloRow, elo_const_d float64) float64 {
 	var playersCount float64 = float64(len(match.PlayersScore))
 	if playersCount == 1 {
 		return 1
