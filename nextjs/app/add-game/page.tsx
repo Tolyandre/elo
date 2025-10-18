@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
+import { SettingsState, useSettings } from "../settingsContext";
 
 type Participant = {
     id: string;
@@ -31,6 +32,7 @@ function AddGameForm() {
 
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+    const settings = useSettings();
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -58,8 +60,8 @@ function AddGameForm() {
     }
 
     useEffect(() => {
-        const d = 400;
-        const k = 32;
+        const d = settings.eloConstD;
+        const k = settings.eloConstK;
 
         const newElo: EloChange[] = [];
         const playersCount = participants.length;
@@ -69,23 +71,12 @@ function AddGameForm() {
             .reduce((prev, cur) => Math.min(prev, cur), Number.MAX_VALUE);
 
         participants.forEach((p) => {
-            // (sum(
-            //      map(
-            //          filter(all_players_elo_range, isnumber(all_players_rank)), 
-            //          LAMBDA(elo_i, 
-            //              1/(1+10^((elo_i-player_elo)/d) ) 
-            //          )
-            //      )
-            // )
-            // -0.5) 
-            // / (players_count*(players_count-1)/2)
 
             const winExpectation = (participants.map(inner_p =>
                 1 / (1 + Math.pow(10, (getPlayerElo(inner_p.id) - getPlayerElo(p.id)) / d))
             ).reduce((prev, curr) => prev + curr) - 0.5) / (playersCount * (playersCount - 1) / 2);
 
-            // (player_score-ABSOLUTE_LOSER_SCORE_2(players_score_range))
-            // /(sum(players_score_range)-PLAYERS_COUNT(players_score_range)*ABSOLUTE_LOSER_SCORE_2(players_score_range))
+
             const normalizedScore = (Number(p.points) - absoluteLoserScore) /
                 (participants.map(inner_p => Number(inner_p.points)).reduce((prev, cur) => prev + cur) - playersCount * absoluteLoserScore);
             const minus = -k * (isNaN(winExpectation) ? 1 : winExpectation);
@@ -100,7 +91,7 @@ function AddGameForm() {
         });
 
         setEloChange(newElo);
-    }, [participants, players]);
+    }, [participants, players, settings]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

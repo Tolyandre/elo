@@ -32,6 +32,15 @@ export function addMatchPromise(payload: { game: string, score: Record<string, n
         .then(handleJsonErrorResponse);
 }
 
+export async function getSettingsPromise(): Promise<{
+    elo_const_k: string,
+    elo_const_d: string
+}> {
+    const res = await fetch(`${BASE_API}/settings`);
+    const data = await res.json();
+    return handleJsonErrorResponse(data);
+}
+
 function handleJsonErrorResponse(data: any) {
     if (data.error) throw new Error(data.error);
     return data;

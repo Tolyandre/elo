@@ -5,6 +5,7 @@ import { PlayersProvider } from "./players/PlayersContext";
 import { PingError } from "./ping-error";
 import { NavigationBar } from "./navigation-bar";
 import { MatchesProvider } from "./matches/MatchesContext";
+import { SettingsProvider } from "./settingsContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,9 +35,11 @@ export default function RootLayout({
         <div className="min-h-screen flex items-center justify-center">
           <div className="font-sans items-center p-8 rounded-lg shadow-md max-w-lg w-full">
             <PingError />
-            <MatchesProvider>
-              <PlayersProvider>{children}</PlayersProvider>
-            </MatchesProvider>
+            <SettingsProvider>
+              <MatchesProvider>
+                <PlayersProvider>{children}</PlayersProvider>
+              </MatchesProvider>
+            </SettingsProvider>
           </div>
         </div>
       </body>
