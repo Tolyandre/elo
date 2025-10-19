@@ -12,30 +12,30 @@ type Settings struct {
 }
 
 var (
-	settingsCache *Settings
-	cacheMutex    sync.Mutex
-	cacheExpiry   time.Time
+	settingsCache       *Settings
+	settingsCacheMutex  sync.Mutex
+	settingsCacheExpiry time.Time
 )
 
 func ParseSettings() (*Settings, error) {
-	cacheMutex.Lock()
-	defer cacheMutex.Unlock()
+	settingsCacheMutex.Lock()
+	defer settingsCacheMutex.Unlock()
 
-	if time.Now().Before(cacheExpiry) && settingsCache != nil {
+	if time.Now().Before(settingsCacheExpiry) && settingsCache != nil {
 		return settingsCache, nil
 	}
 
-	err := parse()
+	err := parseSettings()
 	if err != nil {
 		return nil, err
 	}
 
-	cacheExpiry = time.Now().Add(4 * time.Hour)
+	settingsCacheExpiry = time.Now().Add(4 * time.Hour)
 
 	return settingsCache, nil
 }
 
-func parse() error {
+func parseSettings() error {
 	response, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!A1:A7").Do()
 	if err != nil {
 		return err

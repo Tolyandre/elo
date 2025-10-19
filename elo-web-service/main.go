@@ -29,6 +29,7 @@ func main() {
 	router.GET("/matches", ListMatches)
 	router.POST("/matches", AddMatch)
 	router.GET("/settings", ListSettings)
+	router.GET("/games", ListGames)
 	router.Run(Config.Address)
 }
 
