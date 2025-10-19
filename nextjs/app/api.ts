@@ -41,6 +41,14 @@ export async function getSettingsPromise(): Promise<{
     return handleJsonErrorResponse(data);
 }
 
+export async function getGamesPromise(): Promise<{
+    games: string[]
+}> {
+    const res = await fetch(`${BASE_API}/games`);
+    const data = await res.json();
+    return handleJsonErrorResponse(data);
+}
+
 function handleJsonErrorResponse(data: any) {
     if (data.error) throw new Error(data.error);
     return data;

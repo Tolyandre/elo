@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { SettingsState, useSettings } from "../settingsContext";
+import { getGamesPromise } from "../api";
 
 type Participant = {
     id: string;
@@ -17,7 +18,7 @@ type EloChange = {
     minus: number;
     plus: number;
     delta: number;
-}
+};
 
 function AddGameForm() {
     const { players, loading } = usePlayers();
@@ -33,6 +34,44 @@ function AddGameForm() {
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
     const settings = useSettings();
+
+    const [games, setGames] = useState<string[]>([]);
+    const [filteredGames, setFilteredGames] = useState<string[]>([]);
+    const [showDropdown, setShowDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        getGamesPromise().then((data) => {
+            if (data.games) {
+                setGames(data.games);
+                setFilteredGames(data.games);
+            }
+        });
+    }, []);
+
+    useEffect(() => {
+        setFilteredGames(
+            games.filter((game) =>
+                game.toLowerCase().includes(gameName.toLowerCase())
+            )
+        );
+    }, [gameName, games]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node)
+            ) {
+                setShowDropdown(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -138,14 +177,39 @@ function AddGameForm() {
                 <label className="block font-semibold mb-2" htmlFor="gameName">
                     Название игры:
                 </label>
-                <input
-                    id="gameName"
-                    type="text"
-                    value={gameName}
-                    onChange={e => setGameName(e.target.value)}
-                    className="border rounded px-2 py-1 w-full"
-                    required
-                />
+                <div className="relative">
+                    <input
+                        id="gameName"
+                        type="text"
+                        value={gameName}
+                        onChange={(e) => {
+                            setGameName(e.target.value);
+                            setShowDropdown(true);
+                        }}
+                        className="border rounded px-2 py-1 w-full"
+                        onFocus={() => setShowDropdown(true)}
+                        required
+                        autoComplete="off"
+                    />
+                    {showDropdown && filteredGames.length > 0 && (
+                        <div
+                            ref={dropdownRef}
+                            className="absolute z-10 mt-1 w-full my-background border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                            {filteredGames.map((game, index) => (
+                                <div
+                                    key={index}
+                                    className="p-2 hover:bg-gray-500 cursor-pointer"
+                                    onClick={() => {
+                                        setGameName(game);
+                                        setShowDropdown(false);
+                                    }}
+                                >
+                                    {game}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
             <div>
                 <h2 className="font-semibold mb-2">Выберите участников:</h2>
