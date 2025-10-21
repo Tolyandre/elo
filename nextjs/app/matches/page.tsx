@@ -95,7 +95,7 @@ export default function MatchesPage() {
         <h1 className="text-2xl font-semibold mb-4">Партии</h1>
 
         <Link
-          href="/add-game"
+          href="/add-match"
           className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
         >
           Добавить партию
