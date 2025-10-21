@@ -2,6 +2,7 @@ package googlesheet
 
 import (
 	"context"
+	"sync"
 
 	"fmt"
 	"log"
@@ -31,6 +32,18 @@ type EloRow struct {
 	PlayersElo map[string]float64
 }
 
+type ParsedData struct {
+	Elo       []EloRow
+	Matches   []MatchRow
+	PlayerIds []string
+}
+
+var (
+	parsedDataCache       *ParsedData
+	parsedDataCacheMutex  sync.Mutex
+	parsedDataCacheExpiry time.Time
+)
+
 var sheetsService *sheets.Service
 var docId string
 
@@ -58,6 +71,35 @@ func Init(googleServiceAccountKeyPath string, doc_Id string) {
 		log.Fatalf("unable to retrieve sheets service: %v", err)
 		os.Exit(1)
 	}
+}
+
+func GetParsedData() (*ParsedData, error) {
+	parsedDataCacheMutex.Lock()
+	defer parsedDataCacheMutex.Unlock()
+
+	if time.Now().Before(parsedDataCacheExpiry) && parsedDataCache != nil {
+		return parsedDataCache, nil
+	}
+
+	matchRow, playerIds, err := parseMatchesSheet()
+	if err != nil {
+		return nil, err
+	}
+
+	eloRows, err := parseEloSheet()
+	if err != nil {
+		return nil, err
+	}
+
+	parsedDataCache = &ParsedData{
+		Matches:   matchRow,
+		Elo:       eloRows,
+		PlayerIds: playerIds,
+	}
+
+	parsedDataCacheExpiry = time.Now().Add(2 * time.Minute)
+
+	return parsedDataCache, nil
 }
 
 func parseCellDate(cell interface{}) *time.Time {

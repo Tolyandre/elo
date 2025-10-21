@@ -43,17 +43,14 @@ func AddMatch(c *gin.Context) {
 }
 
 func ListMatches(c *gin.Context) {
-	parsedMatches, err := googlesheet.ParseMatchesSheet()
+	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
 		errorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	parsedElo, err := googlesheet.ParseEloSheet()
-	if err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
-		return
-	}
+	parsedMatches := parsedData.Matches
+	parsedElo := parsedData.Elo
 
 	settings, err := googlesheet.ParseSettings()
 	if err != nil {

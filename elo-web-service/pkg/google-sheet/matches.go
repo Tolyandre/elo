@@ -8,14 +8,14 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-func ParseMatchesSheet() ([]MatchRow, error) {
+func parseMatchesSheet() ([]MatchRow, []string, error) {
 	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:Z").Do()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if len(matchesResp.Values) == 0 {
-		return nil, errors.New("sheet is empty")
+		return nil, nil, errors.New("matches sheet is empty")
 	}
 
 	// extract player IDs from header row (columns C..Z)
@@ -55,7 +55,7 @@ func ParseMatchesSheet() ([]MatchRow, error) {
 
 		matches = append(matches, m)
 	}
-	return matches, nil
+	return matches, playerIDs, nil
 }
 
 func AddMatch(game string, score map[string]float64) error {
@@ -93,7 +93,7 @@ func AddMatch(game string, score map[string]float64) error {
 		return fmt.Errorf("unable to append match: %v", err.Error())
 	}
 
-	gamesCache = nil
+	parsedDataCache = nil
 
 	return nil
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func ParseEloSheet() ([]EloRow, error) {
+func parseEloSheet() ([]EloRow, error) {
 	eloResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!A:Z").Do()
 	if err != nil {
 		return nil, err
@@ -46,14 +46,14 @@ func ParseEloSheet() ([]EloRow, error) {
 }
 
 func ParsePlayersAndElo() ([]Player, error) {
-	val, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!C1:500").Do()
+	parsedData, err := GetParsedData()
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve range from document: %v", err)
+		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
 	}
 
 	var players []Player
-	for i, cell := range val.Values[0] {
-		var eloCell = val.Values[len(val.Values)-1][i]
+	for _, cell := range parsedData.PlayerIds {
+		var eloCell = parsedData.Elo[len(parsedData.Elo)-1].PlayersElo[cell]
 
 		players = append(players, Player{
 			ID:  fmt.Sprintf("%v", cell),
