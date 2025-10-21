@@ -25,15 +25,21 @@ func GetGames() ([]string, error) {
 		return nil, fmt.Errorf("unable to retrieve games: %v", err)
 	}
 
-	games := make(map[string]bool)
-	for _, row := range gamesResp.Values {
-		if len(row) > 0 {
-			games[fmt.Sprintf("%v", row[0])] = true
-		}
-	}
+	seen := make(map[string]bool)
 	var gameList []string
-	for key := range games {
-		gameList = append(gameList, key)
+	for i := len(gamesResp.Values) - 1; i >= 0; i-- {
+		row := gamesResp.Values[i]
+		if len(row) == 0 {
+			continue
+		}
+		name := fmt.Sprintf("%v", row[0])
+		if name == "" {
+			continue
+		}
+		if !seen[name] {
+			seen[name] = true
+			gameList = append(gameList, name)
+		}
 	}
 
 	gamesCache = gameList
