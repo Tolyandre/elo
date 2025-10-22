@@ -16,7 +16,7 @@ func main() {
 	router := gin.Default()
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders: []string{"Origin", "Content-Type"},
 	}))
 
@@ -30,6 +30,7 @@ func main() {
 	router.POST("/matches", AddMatch)
 	router.GET("/settings", ListSettings)
 	router.GET("/games", ListGames)
+	router.DELETE("/cache", DeleteCache)
 	router.Run(Config.Address)
 }
 

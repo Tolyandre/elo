@@ -55,6 +55,15 @@ export async function getGamesPromise(): Promise<{
     return handleJsonErrorResponse(data);
 }
 
+export function deleteCache(): Promise<any> {
+    return fetch(`${BASE_API}/cache`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+    })
+        .then((res) => res.json())
+        .then(handleJsonErrorResponse);
+}
+
 function handleJsonErrorResponse(data: any) {
     if (data.error) throw new Error(data.error);
     return data;

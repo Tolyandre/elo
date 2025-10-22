@@ -43,8 +43,7 @@ func AddMatch(game string, score map[string]float64) error {
 		return fmt.Errorf("unable to append match: %v", err.Error())
 	}
 
-	parsedDataCache = nil
-
+	InvalidateCache()
 	return nil
 }
 

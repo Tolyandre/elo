@@ -99,9 +99,17 @@ func GetParsedData() (*ParsedData, error) {
 		PlayerIds: playerIds,
 	}
 
-	parsedDataCacheExpiry = time.Now().Add(2 * time.Minute)
+	parsedDataCacheExpiry = time.Now().Add(4 * time.Hour)
 
 	return parsedDataCache, nil
+}
+
+func InvalidateCache() error {
+	parsedDataCacheMutex.Lock()
+	defer parsedDataCacheMutex.Unlock()
+
+	parsedDataCache = nil
+	return nil
 }
 
 func parseCellDate(cell interface{}) *time.Time {
