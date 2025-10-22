@@ -8,8 +8,9 @@ import (
 )
 
 type playerJson struct {
-	ID  string  `json:"id"`
-	Elo float64 `json:"elo"`
+	ID   string  `json:"id"`
+	Elo  float64 `json:"elo"`
+	Rank int     `json:"rank"`
 }
 
 func ListPlayers(c *gin.Context) {
@@ -23,8 +24,9 @@ func ListPlayers(c *gin.Context) {
 	jsonPlayers := make([]playerJson, 0, len(players))
 	for _, p := range players {
 		jsonPlayers = append(jsonPlayers, playerJson{
-			ID:  p.ID,
-			Elo: p.Elo,
+			ID:   p.ID,
+			Elo:  p.Elo,
+			Rank: p.Rank,
 		})
 	}
 

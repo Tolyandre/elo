@@ -4,7 +4,13 @@ if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
 }
 const BASE_API = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
-export function getPlayersPromise() {
+export type Player = {
+    id: string;
+    elo: number;
+    rank: number;
+};
+
+export function getPlayersPromise(): Promise<Player[]> {
     return fetch(`${BASE_API}/players`)
         .then((res) => res.json())
         .then(handleJsonErrorResponse);

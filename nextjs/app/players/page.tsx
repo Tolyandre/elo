@@ -19,8 +19,9 @@ function PlayersTable() {
             <tbody>
                 {players.map((player) => (
                     <tr key={player.id}>
+                        <td className="px-1 py-2">{player.rank}</td>
                         <td className="px-4 py-2">{player.id}</td>
-                        <td className="px-4 py-2">{player.elo}</td>
+                        <td className="px-1 py-2">{player.elo}</td>
                     </tr>
                 ))}
             </tbody>
