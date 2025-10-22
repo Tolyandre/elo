@@ -15,11 +15,6 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-type Player struct {
-	ID  string
-	Elo float64
-}
-
 type MatchRow struct {
 	RowNum       int
 	Date         *time.Time
@@ -32,10 +27,16 @@ type EloRow struct {
 	PlayersElo map[string]float64
 }
 
+type Settings struct {
+	EloConstK float64
+	EloConstD float64
+}
+
 type ParsedData struct {
 	Elo       []EloRow
 	Matches   []MatchRow
 	PlayerIds []string
+	Settings  Settings
 }
 
 var (
@@ -86,12 +87,13 @@ func GetParsedData() (*ParsedData, error) {
 		return nil, err
 	}
 
-	eloRows, err := parseEloSheet()
+	eloRows, settings, err := parseEloSheet()
 	if err != nil {
 		return nil, err
 	}
 
 	parsedDataCache = &ParsedData{
+		Settings:  *settings,
 		Matches:   matchRow,
 		Elo:       eloRows,
 		PlayerIds: playerIds,

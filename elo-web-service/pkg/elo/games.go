@@ -2,11 +2,13 @@ package googlesheet
 
 import (
 	"fmt"
+
+	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 func GetGames() ([]string, error) {
 
-	parsedData, err := GetParsedData()
+	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
 	}

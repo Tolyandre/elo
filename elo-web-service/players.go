@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
+	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
 type playerJson struct {
@@ -13,7 +13,7 @@ type playerJson struct {
 }
 
 func ListPlayers(c *gin.Context) {
-	players, err := googlesheet.ParsePlayersAndElo()
+	players, err := elo.GetPlayersWithElo()
 
 	if err != nil {
 		errorResponse(c, http.StatusBadRequest, err)

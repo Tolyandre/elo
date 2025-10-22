@@ -13,14 +13,14 @@ type settingsJson struct {
 }
 
 func ListSettings(c *gin.Context) {
-	settings, err := googlesheet.ParseSettings()
+	parsedData, err := googlesheet.GetParsedData()
 
 	if err != nil {
 		errorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, settingsJson{
-		EloConstK: settings.EloConstK,
-		EloConstD: settings.EloConstD,
+		EloConstK: parsedData.Settings.EloConstK,
+		EloConstD: parsedData.Settings.EloConstD,
 	})
 }

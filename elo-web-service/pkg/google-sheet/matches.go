@@ -8,6 +8,46 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
+func AddMatch(game string, score map[string]float64) error {
+	headerRange := "Партии!C1:Z1"
+	headerResp, err := sheetsService.Spreadsheets.Values.Get(docId, headerRange).Do()
+	if err != nil {
+		return fmt.Errorf("unable to read player headers")
+	}
+	playerHeaders := make([]string, 0)
+	if len(headerResp.Values) > 0 {
+		for _, cell := range headerResp.Values[0] {
+			playerHeaders = append(playerHeaders, fmt.Sprintf("%v", cell))
+		}
+	}
+
+	// Make a new row to append
+	// A - date, B - name of game, C-Z - players score
+	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
+	row[0] = time.Now().Format("2006-01-02 15:04:05")  // A: дата и время
+	row[1] = game                                      // B: name of game
+	for i, playerID := range playerHeaders {
+		if score, ok := score[playerID]; ok {
+			row[2+i] = score
+		} else {
+			row[2+i] = ""
+		}
+	}
+
+	// Append the row to the end of "Партии"
+	appendRange := "Партии!A:Z"
+	_, err = sheetsService.Spreadsheets.Values.Append(docId, appendRange, &sheets.ValueRange{
+		Values: [][]interface{}{row},
+	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
+	if err != nil {
+		return fmt.Errorf("unable to append match: %v", err.Error())
+	}
+
+	parsedDataCache = nil
+
+	return nil
+}
+
 func parseMatchesSheet() ([]MatchRow, []string, error) {
 	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:Z").Do()
 	if err != nil {
@@ -56,46 +96,6 @@ func parseMatchesSheet() ([]MatchRow, []string, error) {
 		matches = append(matches, m)
 	}
 	return matches, playerIDs, nil
-}
-
-func AddMatch(game string, score map[string]float64) error {
-	headerRange := "Партии!C1:Z1"
-	headerResp, err := sheetsService.Spreadsheets.Values.Get(docId, headerRange).Do()
-	if err != nil {
-		return fmt.Errorf("unable to read player headers")
-	}
-	playerHeaders := make([]string, 0)
-	if len(headerResp.Values) > 0 {
-		for _, cell := range headerResp.Values[0] {
-			playerHeaders = append(playerHeaders, fmt.Sprintf("%v", cell))
-		}
-	}
-
-	// Make a new row to append
-	// A - date, B - name of game, C-Z - players score
-	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
-	row[0] = time.Now().Format("2006-01-02 15:04:05")  // A: дата и время
-	row[1] = game                                      // B: name of game
-	for i, playerID := range playerHeaders {
-		if score, ok := score[playerID]; ok {
-			row[2+i] = score
-		} else {
-			row[2+i] = ""
-		}
-	}
-
-	// Append the row to the end of "Партии"
-	appendRange := "Партии!A:Z"
-	_, err = sheetsService.Spreadsheets.Values.Append(docId, appendRange, &sheets.ValueRange{
-		Values: [][]interface{}{row},
-	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
-	if err != nil {
-		return fmt.Errorf("unable to append match: %v", err.Error())
-	}
-
-	parsedDataCache = nil
-
-	return nil
 }
 
 func parsePlayerIds(matchesResp *sheets.ValueRange) []string {
