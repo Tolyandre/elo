@@ -35,6 +35,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
 
   const loadMatches = async () => {
     try {
+      setLoading(true);
       const data = await getMatchesPromise();
       setMatches(data.sort((a: { id: number; }, b: { id: number; }) => b.id - a.id));
     } catch (e: any) {

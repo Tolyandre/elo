@@ -105,7 +105,11 @@ func GetParsedData() (*ParsedData, error) {
 }
 
 func InvalidateCache() error {
-	parsedDataCacheMutex.Lock()
+	updatingRightNow := !parsedDataCacheMutex.TryLock()
+	if updatingRightNow {
+		return nil
+	}
+
 	defer parsedDataCacheMutex.Unlock()
 
 	parsedDataCache = nil
