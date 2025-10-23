@@ -116,6 +116,15 @@ func InvalidateCache() error {
 	return nil
 }
 
+func RowNumToIndex(rowNum int) int {
+	return rowNum - 2
+}
+
+// spreadsheet row number (header is row 1)
+func IndexToRowNum(index int) int {
+	return index + 2
+}
+
 func parseCellDate(cell interface{}) *time.Time {
 	raw := fmt.Sprintf("%v", cell)
 	if raw != "" {

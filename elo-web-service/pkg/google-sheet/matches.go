@@ -23,9 +23,9 @@ func AddMatch(game string, score map[string]float64) error {
 
 	// Make a new row to append
 	// A - date, B - name of game, C-Z - players score
-	row := make([]interface{}, 1+1+len(playerHeaders)) // A+B+players
-	row[0] = time.Now().Format("2006-01-02 15:04:05")  // A: дата и время
-	row[1] = game                                      // B: name of game
+	row := make([]interface{}, 1+1+len(playerHeaders))      // A+B+players
+	row[0] = time.Now().UTC().Format("2006-01-02 15:04:05") // A: дата и время
+	row[1] = game                                           // B: name of game
 	for i, playerID := range playerHeaders {
 		if score, ok := score[playerID]; ok {
 			row[2+i] = score
@@ -66,7 +66,7 @@ func parseMatchesSheet() ([]MatchRow, []string, error) {
 	const averageMaxPlayers = 6
 	for rowIndex, row := range matchesResp.Values[1:] {
 		m := MatchRow{
-			RowNum:       rowIndex + 2, // spreadsheet row number (header is row 1)
+			RowNum:       IndexToRowNum(rowIndex),
 			PlayersScore: make(map[string]float64, averageMaxPlayers),
 		}
 

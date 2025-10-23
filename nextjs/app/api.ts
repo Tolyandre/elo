@@ -8,6 +8,8 @@ export type Player = {
     id: string;
     elo: number;
     rank: number;
+    rank_day_ago: number;
+    rank_week_ago: number;
 };
 
 export function getPlayersPromise(): Promise<Player[]> {

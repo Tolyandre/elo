@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"time"
 
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
@@ -14,15 +15,40 @@ type Player struct {
 	Rank int
 }
 
-func GetPlayersWithElo() ([]Player, error) {
+func GetPlayersWithElo(time *time.Time) ([]Player, error) {
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
 	}
 
-	var players []Player
+	var lastRowIndex int
+	if time == nil {
+		lastRowIndex = len(parsedData.Elo) - 1
+	} else {
+		lastRowIndex = getRowIndexForDate(parsedData, *time)
+	}
+
+	return getPlayersForRowNum(parsedData, lastRowIndex), nil
+}
+
+// elo at a specified time moment is elo of a previous game
+func getRowIndexForDate(parsedData *googlesheet.ParsedData, date time.Time) int {
+	for i := len(parsedData.Matches) - 1; i >= 0; i-- {
+		if parsedData.Matches[i].Date != nil {
+			if parsedData.Matches[i].Date.After(date) {
+				continue
+			}
+
+			return i
+		}
+	}
+	return 0
+}
+
+func getPlayersForRowNum(parsedData *googlesheet.ParsedData, rowIndex int) []Player {
+	players := make([]Player, 0, len(parsedData.PlayerIds))
 	for _, cell := range parsedData.PlayerIds {
-		var eloCell = parsedData.Elo[len(parsedData.Elo)-1].PlayersElo[cell]
+		var eloCell = parsedData.Elo[rowIndex].PlayersElo[cell]
 
 		players = append(players, Player{
 			ID:  fmt.Sprintf("%v", cell),
@@ -41,6 +67,5 @@ func GetPlayersWithElo() ([]Player, error) {
 			players[i].Rank = i + 1
 		}
 	}
-
-	return players, nil
+	return players
 }
