@@ -23,14 +23,14 @@ func ListPlayers(c *gin.Context) {
 		errorResponse(c, http.StatusBadRequest, err)
 		return
 	}
-	tDay := time.Now().Add(-time.Hour * 24)
+	tDay := time.Now().Add(-time.Hour * 12)
 	dayAgoPlayers, err := elo.GetPlayersWithElo(&tDay)
 	if err != nil {
 		errorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	tWeek := time.Now().Add(-time.Hour * 24 * 7)
+	tWeek := time.Now().Add(-time.Hour * (24*7 - 12))
 	weekAgoPlayers, err := elo.GetPlayersWithElo(&tWeek)
 	if err != nil {
 		errorResponse(c, http.StatusBadRequest, err)
