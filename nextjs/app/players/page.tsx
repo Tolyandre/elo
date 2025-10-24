@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePlayers } from "./PlayersContext";
 import RefreshButton from "../components/RefreshButton";
+import { useState } from "react";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
@@ -42,8 +43,32 @@ function RankChangeIndicator({ currentRank, previousRank }: { currentRank: numbe
 
 function PlayersTable() {
     const { players, loading, error } = usePlayers();
+    const [period, setPeriod] = useState<"day" | "week">("day");
     if (loading || error) return null;
     return (
+        <div>
+            <div className="flex gap-2 items-center mb-3">
+                <a
+                    href="#"
+                    onClick={(e) => {
+                        e.preventDefault();
+                        setPeriod("day");
+                    }}
+                    className={`px-3 py-1 rounded ${period === "day" ? "" : "text-blue-600 underline decoration-dashed"}`}
+                >
+                    за день
+                </a>
+                <a
+                    href="#"
+                    onClick={(e) => {
+                        e.preventDefault();
+                        setPeriod("week");
+                    }}
+                    className={`px-3 py-1 rounded ${period === "week" ? "" : "text-blue-600 underline decoration-dashed"}`}
+                >
+                    за неделю
+                </a>
+            </div>
         <table className="w-full table-auto border-collapse mb-6">
             <tbody>
                 {players.map((player) => {
@@ -52,10 +77,10 @@ function PlayersTable() {
                             <td className="px-1 py-2">
                                 <div className="flex items-center gap-2">
                                     <span>{player.rank}</span>
-                                    <RankChangeIndicator
-                                        currentRank={player.rank}
-                                        previousRank={player.rank_day_ago}
-                                    />
+                                        <RankChangeIndicator
+                                            currentRank={player.rank}
+                                            previousRank={period === "day" ? player.rank_day_ago : player.rank_week_ago}
+                                        />
                                 </div>
                             </td>
                             <td className="px-4 py-2">{player.id}</td>
@@ -65,6 +90,7 @@ function PlayersTable() {
                 })}
             </tbody>
         </table>
+        </div>
     );
 }
 
