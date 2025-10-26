@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { getPingPromise } from "./api";
+import { getPingPromise } from "../api";
 
 export function PingError() {
 
@@ -18,7 +18,7 @@ export function PingError() {
     }, [pathname]);
 
     if (pingError)
-        return <div>Сервер хостится на ПК и бывает выключен. Попробуйте утром</div>;
+        return <div>Сервер хостится на ПК и бывает выключен</div>;
 
     return null;
 }
