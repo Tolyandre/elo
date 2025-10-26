@@ -10,9 +10,13 @@ import (
 
 func AddMatch(game string, score map[string]float64) error {
 	headerRange := "Партии!C1:Z1"
-	headerResp, err := sheetsService.Spreadsheets.Values.Get(docId, headerRange).Do()
+	headerResp, err := sheetsService.Spreadsheets.Values.
+		Get(docId, headerRange).
+		ValueRenderOption("UNFORMATTED_VALUE").
+		Do()
+
 	if err != nil {
-		return fmt.Errorf("unable to read player headers")
+		return fmt.Errorf("unable to read player headers: %v", err)
 	}
 	playerHeaders := make([]string, 0)
 	if len(headerResp.Values) > 0 {

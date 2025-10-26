@@ -7,7 +7,11 @@ import (
 )
 
 func parseEloSheet() ([]EloRow, *Settings, error) {
-	eloResponse, err := sheetsService.Spreadsheets.Values.Get(docId, "Elo v2!A:Z").Do()
+	eloResponse, err := sheetsService.Spreadsheets.Values.
+		Get(docId, "Elo v2!A:Z").
+		ValueRenderOption("UNFORMATTED_VALUE").
+		Do()
+
 	if err != nil {
 		return nil, nil, err
 	}

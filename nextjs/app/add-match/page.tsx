@@ -225,7 +225,7 @@ function AddGameForm() {
                                 }
                                 className="accent-blue-500 "
                             />
-                            <span>{player.id} <span className="text-gray-500">({player.elo})</span></span>
+                            <span>{player.id} <span className="text-gray-500">({player.elo.toFixed(0)})</span></span>
                         </label>
                     ))}
                 </div>
