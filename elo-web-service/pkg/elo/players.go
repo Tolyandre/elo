@@ -57,7 +57,13 @@ func getPlayersForRowNum(parsedData *googlesheet.ParsedData, rowIndex int) []Pla
 	}
 
 	slices.SortFunc(players, func(a, b Player) int {
-		return int(b.Elo - a.Elo)
+		if b.Elo-a.Elo > 0 {
+			return 1
+		}
+		if b.Elo-a.Elo < 0 {
+			return -1
+		}
+		return 0
 	})
 
 	for i := range players {
