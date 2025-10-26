@@ -20,6 +20,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Board games elo",
   description: "Calculate elo rating for board game players",
+  icons: {
+    icon: "favicon-st-patrick.ico",
+  },
 };
 
 export default function RootLayout({
