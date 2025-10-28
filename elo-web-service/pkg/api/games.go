@@ -37,9 +37,16 @@ func ListGames(c *gin.Context) {
 }
 
 func GetGame(c *gin.Context) {
+	type playerJson struct {
+		Id   string  `json:"id"`
+		Elo  float64 `json:"elo"`
+		Rank int     `json:"rank"`
+	}
+
 	type gameJson struct {
-		Id           string `json:"id"`
-		TotalMatches int    `json:"total_matches"`
+		Id           string       `json:"id"`
+		TotalMatches int          `json:"total_matches"`
+		Players      []playerJson `json:"players"`
 	}
 
 	id := c.Param("id")
@@ -49,8 +56,18 @@ func GetGame(c *gin.Context) {
 		return
 	}
 
+	var playerList []playerJson
+	for _, p := range gameStatistics.Players {
+		playerList = append(playerList, playerJson{
+			Id:   p.Id,
+			Elo:  p.Elo,
+			Rank: p.Rank,
+		})
+	}
+
 	c.JSON(http.StatusOK, gameJson{
 		Id:           id,
 		TotalMatches: gameStatistics.TotalMatches,
+		Players:      playerList,
 	})
 }

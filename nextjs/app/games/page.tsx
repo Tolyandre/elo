@@ -1,8 +1,7 @@
 "use client"
 import { Game, getGamePromise } from "@/app/api";
 import { useSearchParams } from "next/navigation";
-import React, { Suspense } from "react";
-import { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 
 export default function GamePage() {
   return (
@@ -37,7 +36,25 @@ function GameWrapped() {
   return (
     <main className="space-y-8">
       <h1 className="text-2xl font-semibold mb-4">{game?.id}</h1>
-      <p className="text-gray-600">Партий сыграно: {game?.total_matches}</p>
+      <p className="text-gray-600">Партий: {game?.total_matches}</p>
+
+      <table className="w-full table-auto border-collapse mb-6">
+        <tbody>
+          {game?.players.map((player) => {
+            return (
+              <tr key={player.id}>
+                <td className="px-1 py-2">
+                  <div className="flex items-center gap-2">
+                    <span>{player.rank}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-2">{player.id}</td>
+                <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </main>
   );
 

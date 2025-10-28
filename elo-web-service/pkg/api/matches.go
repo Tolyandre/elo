@@ -1,11 +1,11 @@
 package api
 
 import (
-	"math"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
@@ -61,14 +61,14 @@ func ListMatches(c *gin.Context) {
 			Players: make(map[string]matchPlayerJson, len(pm.PlayersScore)),
 		}
 
-		absoluteLoserScore := getAsboluteLoserScore(&pm)
+		absoluteLoserScore := elo.GetAsboluteLoserScore(&pm)
 
 		for pid, score := range pm.PlayersScore {
 			prevElo := getByRowNum(parsedData.Elo, pm.RowNum-1)
 			m.Players[pid] = matchPlayerJson{
 				Score:   score,
-				EloPay:  -settings.EloConstK * winExpectation(prevElo.PlayersElo[pid], &pm, prevElo, settings.EloConstD),
-				EloEarn: settings.EloConstK * normalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
+				EloPay:  -settings.EloConstK * elo.WinExpectation(prevElo.PlayersElo[pid], &pm, prevElo, settings.EloConstD),
+				EloEarn: settings.EloConstK * elo.NormalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
 			}
 		}
 
@@ -81,49 +81,6 @@ func ListMatches(c *gin.Context) {
 // eloRows must be ordered; first row number 2 has index 0 (first row is header)
 func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
 	return &eloRows[rowNum-2]
-}
-
-func winExpectation(currentElo float64, match *googlesheet.MatchRow, prevElo *googlesheet.EloRow, elo_const_d float64) float64 {
-	var playersCount float64 = float64(len(match.PlayersScore))
-	if playersCount == 1 {
-		return 1
-	}
-
-	var sum float64 = 0
-	for p := range match.PlayersScore {
-		sum += 1 / (1 + math.Pow(10, (prevElo.PlayersElo[p]-currentElo)/elo_const_d))
-	}
-
-	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
-}
-
-func normalizedScore(currentScore float64, match *googlesheet.MatchRow, absoluteLoserScore float64) float64 {
-	var playersCount float64 = float64(len(match.PlayersScore))
-	var sum float64 = 0
-	for _, s := range match.PlayersScore {
-		sum += s
-	}
-
-	var score = (currentScore - absoluteLoserScore) / (sum - absoluteLoserScore*playersCount)
-	if math.IsNaN(score) {
-		score = 1 / playersCount
-	}
-
-	return score
-}
-
-func getAsboluteLoserScore(match *googlesheet.MatchRow) float64 {
-	var minSet = false
-	var min float64 = 0
-	for _, s := range match.PlayersScore {
-		if minSet {
-			min = math.Min(min, s)
-		} else {
-			min = s
-		}
-		minSet = true
-	}
-	return min
 }
 
 func errorResponse(c *gin.Context, code int, err error) {

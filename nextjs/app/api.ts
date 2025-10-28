@@ -63,6 +63,11 @@ export async function getGamesPromise(): Promise<{
 export type Game = {
     id: string;
     total_matches: number;
+    players: {
+        id: string;
+        elo: number;
+        rank: number;
+    }[];
 };
 
 export async function getGamePromise(id: string): Promise<Game> {

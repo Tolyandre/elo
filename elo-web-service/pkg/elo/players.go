@@ -1,4 +1,4 @@
-package googlesheet
+package elo
 
 import (
 	"fmt"
