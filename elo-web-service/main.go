@@ -6,6 +6,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
+	"github.com/tolyandre/elo-web-service/pkg/api"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
@@ -25,12 +26,12 @@ func main() {
 	})
 
 	router.GET("/ping", getPing)
-	router.GET("/players", ListPlayers)
-	router.GET("/matches", ListMatches)
-	router.POST("/matches", AddMatch)
-	router.GET("/settings", ListSettings)
-	router.GET("/games", ListGames)
-	router.DELETE("/cache", DeleteCache)
+	router.GET("/players", api.ListPlayers)
+	router.GET("/matches", api.ListMatches)
+	router.POST("/matches", api.AddMatch)
+	router.GET("/settings", api.ListSettings)
+	router.GET("/games", api.ListGames)
+	router.DELETE("/cache", api.DeleteCache)
 	router.Run(Config.Address)
 }
 
