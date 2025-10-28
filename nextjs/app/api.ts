@@ -50,7 +50,10 @@ export async function getSettingsPromise(): Promise<{
 }
 
 export async function getGamesPromise(): Promise<{
-    games: string[]
+    games: {
+        id: string,
+        last_played_order: number
+    }[]
 }> {
     const res = await fetch(`${BASE_API}/games`);
     const data = await res.json();

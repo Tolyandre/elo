@@ -20,7 +20,7 @@ func GetGames() ([]string, error) {
 		if len(row.PlayersScore) == 0 {
 			continue
 		}
-		name := fmt.Sprintf("%v", row.Game)
+		name := row.Game
 		if name == "" {
 			continue
 		}

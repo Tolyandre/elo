@@ -43,8 +43,11 @@ function AddGameForm() {
     useEffect(() => {
         getGamesPromise().then((data) => {
             if (data.games) {
-                setGames(data.games);
-                setFilteredGames(data.games);
+                const sortedGameTitles = data.games
+                    .sort((a, b) => a.last_played_order - b.last_played_order)
+                    .map(g => g.id);
+                setGames(sortedGameTitles);
+                setFilteredGames(sortedGameTitles);
             }
         });
     }, []);
