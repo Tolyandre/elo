@@ -6,7 +6,12 @@ import (
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
-func GetGames() ([]string, error) {
+type GameStatistics struct {
+	Id           string
+	TotalMatches int
+}
+
+func GetGameTitlesOrderedByLastPlayed() ([]string, error) {
 
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
@@ -31,4 +36,23 @@ func GetGames() ([]string, error) {
 	}
 
 	return gameList, nil
+}
+
+func GetGameStatistics(id string) (*GameStatistics, error) {
+	parsedData, err := googlesheet.GetParsedData()
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
+	}
+
+	var totalMatches int = 0
+	for _, match := range parsedData.Matches {
+		if match.Game == id {
+			totalMatches++
+		}
+	}
+
+	return &GameStatistics{
+		Id:           id,
+		TotalMatches: totalMatches,
+	}, nil
 }

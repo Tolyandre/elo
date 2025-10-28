@@ -40,7 +40,11 @@ function MatchCard({ match }: { match: Match }) {
 
   return (
     <div className="border border-gray-200 rounded p-4">
-      <h2 className="text-xl font-medium mb-2">{match.game}</h2>
+      <h2 className="text-xl font-medium mb-2">
+        <Link href={`/games?id=${match.game}`} className="underline">
+          {match.game}
+        </Link>
+      </h2>
 
       <ul className="space-y-2">
         {players.map((p, idx) => (

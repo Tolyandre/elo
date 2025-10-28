@@ -31,6 +31,7 @@ func main() {
 	router.POST("/matches", api.AddMatch)
 	router.GET("/settings", api.ListSettings)
 	router.GET("/games", api.ListGames)
+	router.GET("/games/:id", api.GetGame)
 	router.DELETE("/cache", api.DeleteCache)
 	router.Run(Config.Address)
 }

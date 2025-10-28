@@ -60,6 +60,17 @@ export async function getGamesPromise(): Promise<{
     return handleJsonErrorResponse(data);
 }
 
+export type Game = {
+    id: string;
+    total_matches: number;
+};
+
+export async function getGamePromise(id: string): Promise<Game> {
+    const res = await fetch(`${BASE_API}/games/${id}`);
+    const data = await res.json();
+    return handleJsonErrorResponse(data);
+}
+
 export function deleteCache(): Promise<any> {
     return fetch(`${BASE_API}/cache`, {
         method: 'DELETE',
