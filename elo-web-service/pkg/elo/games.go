@@ -52,7 +52,6 @@ func GetGameStatistics(id string) (*GameStatistics, error) {
 	}
 
 	var totalMatches int = 0
-	const startingElo = 1000
 	playersElo := map[string]float64{}
 
 	for _, match := range parsedData.Matches {
@@ -62,7 +61,7 @@ func GetGameStatistics(id string) (*GameStatistics, error) {
 			continue
 		}
 
-		playersElo = CalculateNewElo(playersElo, startingElo,
+		playersElo = CalculateNewElo(playersElo, StartingElo,
 			match.PlayersScore, parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
 	}
 

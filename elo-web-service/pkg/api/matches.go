@@ -61,14 +61,14 @@ func ListMatches(c *gin.Context) {
 			Players: make(map[string]matchPlayerJson, len(pm.PlayersScore)),
 		}
 
-		absoluteLoserScore := elo.GetAsboluteLoserScore(&pm)
+		absoluteLoserScore := elo.GetAsboluteLoserScore(pm.PlayersScore)
 
 		for pid, score := range pm.PlayersScore {
 			prevElo := getByRowNum(parsedData.Elo, pm.RowNum-1)
 			m.Players[pid] = matchPlayerJson{
 				Score:   score,
-				EloPay:  -settings.EloConstK * elo.WinExpectation(prevElo.PlayersElo[pid], &pm, prevElo, settings.EloConstD),
-				EloEarn: settings.EloConstK * elo.NormalizedScore(pm.PlayersScore[pid], &pm, absoluteLoserScore),
+				EloPay:  -settings.EloConstK * elo.WinExpectation(prevElo.PlayersElo[pid], pm.PlayersScore, elo.StartingElo, prevElo.PlayersElo, settings.EloConstD),
+				EloEarn: settings.EloConstK * elo.NormalizedScore(pm.PlayersScore[pid], pm.PlayersScore, absoluteLoserScore),
 			}
 		}
 
