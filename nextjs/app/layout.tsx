@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PlayersProvider } from "./players/PlayersContext";
-import { PingError } from "./components/ping-error";
-import { NavigationBar } from "./components/navigation-bar";
 import { MatchesProvider } from "./matches/MatchesContext";
 import { SettingsProvider } from "./settingsContext";
+import { NavigationBar } from "@/components/navigation-bar";
+import { PingError } from "@/components/ping-error";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

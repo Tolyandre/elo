@@ -1,7 +1,7 @@
 "use client";
 
+import { deleteCache } from "@/app/api";
 import React from "react";
-import { deleteCache } from "../api";
 
 type Props = {
     onInvalidate?: () => void;

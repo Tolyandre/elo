@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import RefreshButton from './RefreshButton';
-import { usePlayers } from '../players/PlayersContext';
-import { useMatches } from '../matches/MatchesContext';
+import RefreshButton from './refresh-button';
+import { usePlayers } from '@/app/players/PlayersContext';
+import { useMatches } from '@/app/matches/MatchesContext';
 
 export function NavigationBar() {
   const pathname = usePathname();

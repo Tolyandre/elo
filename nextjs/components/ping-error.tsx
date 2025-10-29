@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { getPingPromise } from "../api";
+import { getPingPromise } from "@/app/api";
 
 export function PingError() {
 
