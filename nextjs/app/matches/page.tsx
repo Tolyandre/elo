@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMatches, Match } from "./MatchesContext";
-import RefreshButton from "../components/RefreshButton";
 
 function LoadingOrError() {
   const { loading, error } = useMatches();
@@ -95,15 +94,8 @@ function MatchCard({ match }: { match: Match }) {
 }
 
 export default function MatchesPage() {
-  const { invalidate } = useMatches();
-
   return (
       <main className="space-y-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold mb-4">Партии</h1>
-          <RefreshButton onInvalidate={invalidate} ariaLabel="Refresh matches" />
-        </div>
-
         <Link
           href="/add-match"
           className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"

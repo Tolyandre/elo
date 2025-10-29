@@ -3,7 +3,6 @@
 import React from "react";
 import Link from "next/link";
 import { usePlayers } from "./PlayersContext";
-import RefreshButton from "../components/RefreshButton";
 import { useState } from "react";
 
 function LoadingOrError() {
@@ -95,12 +94,9 @@ function PlayersTable() {
 }
 
 export default function PlayersPage() {
-    const { invalidate } = usePlayers();
     return (
         <main>
             <div className="flex items-center justify-between mb-4">
-                <h1 className="text-2xl font-semibold">Игроки</h1>
-                <RefreshButton onInvalidate={invalidate} ariaLabel="Refresh players" />
             </div>
             <LoadingOrError />
             <PlayersTable />

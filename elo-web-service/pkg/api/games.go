@@ -56,7 +56,7 @@ func GetGame(c *gin.Context) {
 		return
 	}
 
-	var playerList []playerJson
+	var playerList []playerJson = make([]playerJson, 0, len(gameStatistics.Players))
 	for _, p := range gameStatistics.Players {
 		playerList = append(playerList, playerJson{
 			Id:   p.Id,

@@ -33,19 +33,21 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <NavigationBar />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="font-sans items-center p-8 rounded-lg shadow-md max-w-lg w-full">
-            <PingError />
-            <SettingsProvider>
-              <MatchesProvider>
-                <PlayersProvider>{children}</PlayersProvider>
-              </MatchesProvider>
-            </SettingsProvider>
-          </div>
-        </div>
-      </body>
+      <SettingsProvider>
+        <MatchesProvider>
+          <PlayersProvider>
+            <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+              <div className="min-h-screen ">
+                <NavigationBar />
+                <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
+                  <PingError />
+                  {children}
+                </div>
+              </div>
+            </body>
+          </PlayersProvider>
+        </MatchesProvider>
+      </SettingsProvider>
     </html>
   );
 }
