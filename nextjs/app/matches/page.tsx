@@ -40,7 +40,7 @@ function MatchCard({ match }: { match: Match }) {
   return (
     <div className="border border-gray-200 rounded p-4">
       <h2 className="text-xl font-medium mb-2">
-        <Link href={`/games?id=${match.game}`} className="underline">
+        <Link href={`/game?id=${match.game}`} className="underline">
           {match.game}
         </Link>
       </h2>
@@ -70,13 +70,12 @@ function MatchCard({ match }: { match: Match }) {
             {/* Изменение Elo */}
             <div className="text-right min-w-[60px]">
               <span
-                className={`font-semibold ${
-                  p.eloChange > 0
+                className={`font-semibold ${p.eloChange > 0
                     ? "text-green-600"
                     : p.eloChange < 0
                       ? "text-red-600"
                       : "text-gray-600"
-                }`}
+                  }`}
               >
                 {p.eloChange >= 0 ? "+" : ""}
                 {p.eloChange.toFixed(1)}
@@ -95,16 +94,19 @@ function MatchCard({ match }: { match: Match }) {
 
 export default function MatchesPage() {
   return (
-      <main className="space-y-8">
-        <Link
-          href="/add-match"
-          className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
-        >
-          Добавить партию
-        </Link>
+    <main className="space-y-8">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold mb-4">Партии</h1>
+      </div>
+      <Link
+        href="/add-match"
+        className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
+      >
+        Добавить партию
+      </Link>
 
-        <LoadingOrError />
-        <MatchesList />
-      </main>
+      <LoadingOrError />
+      <MatchesList />
+    </main>
   );
 }

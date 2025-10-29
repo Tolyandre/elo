@@ -1,55 +1,38 @@
 "use client"
-import { Game, getGamePromise } from "@/app/api";
-import { useSearchParams } from "next/navigation";
-import React, { Suspense, useEffect, useState } from "react";
+import { GameList, getGamesPromise } from "@/app/api";
+import Link from "next/link";
+import React, { useEffect, useState } from "react";
 
-export default function GamePage() {
-  return (
-    <Suspense>
-      <GameWrapped />
-    </Suspense>
-  )
-}
+export default function AllGamesList() {
+  const [games, setGames] = useState<GameList | null>(null);
 
-function GameWrapped() {
-  const searchParams = useSearchParams()
-  const id = searchParams.get('id')
+  useEffect(() => {
+    getGamesPromise()
+      .then((data) => {
+        setGames(data);
+      });
+  }, []);
 
-  if (!id) {
+  if (!games) {
     return (
       <main className="space-y-8">
-        <h1 className="text-2xl font-semibold mb-4">Missing game id</h1>
-        <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
+        <h1 className="text-2xl font-semibold mb-4">Loading games...</h1>
       </main>
     );
   }
 
-  const [game, setGame] = useState<Game | null>(null);
-
-  useEffect(() => {
-    getGamePromise(id)
-      .then((data) => {
-        setGame(data);
-      });
-  }, [id]);
-
   return (
     <main className="space-y-8">
-      <h1 className="text-2xl font-semibold mb-4">{game?.id}</h1>
-      <p className="text-gray-600">Партий: {game?.total_matches}</p>
-
+      <h1 className="text-2xl font-semibold mb-4">Игры</h1>
       <table className="w-full table-auto border-collapse mb-6">
         <tbody>
-          {game?.players.map((player) => {
+          {games.games.map((game) => {
             return (
-              <tr key={player.id}>
-                <td className="px-1 py-2">
-                  <div className="flex items-center gap-2">
-                    <span>{player.rank}</span>
-                  </div>
+              <tr key={game.id}>
+                <td className="px-4 py-2">
+                  <Link className="underline" href={`/game?id=${game.id}`}>{game.id}</Link>
                 </td>
-                <td className="px-4 py-2">{player.id}</td>
-                <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
+                <td className="px-4 py-2">{game.total_matches}</td>
               </tr>
             );
           })}
@@ -57,7 +40,5 @@ function GameWrapped() {
       </table>
     </main>
   );
-
 }
-
 

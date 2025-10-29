@@ -49,12 +49,15 @@ export async function getSettingsPromise(): Promise<{
     return handleJsonErrorResponse(data);
 }
 
-export async function getGamesPromise(): Promise<{
+export type GameList = {
     games: {
-        id: string,
-        last_played_order: number
-    }[]
-}> {
+        id: string;
+        total_matches: number;
+        last_played_order: number;
+    }[];
+};
+
+export async function getGamesPromise(): Promise<GameList> {
     const res = await fetch(`${BASE_API}/games`);
     const data = await res.json();
     return handleJsonErrorResponse(data);

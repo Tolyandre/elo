@@ -28,6 +28,10 @@ export function NavigationBar() {
           Партии
         </Link>
 
+        <Link href="/games" className={linkClass('/games')}>
+          Игры
+        </Link>
+
         <RefreshButton onInvalidate={() => {
           invalidatePlayers();
           invalidateMatches();

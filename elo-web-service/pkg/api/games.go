@@ -11,6 +11,7 @@ func ListGames(c *gin.Context) {
 	type gameJson struct {
 		Id              string `json:"id"`
 		LastPlayedOrder int    `json:"last_played_order"`
+		TotalMatches    int    `json:"total_matches"`
 	}
 
 	type gamesJson struct {
@@ -26,8 +27,9 @@ func ListGames(c *gin.Context) {
 	var gameList []gameJson
 	for i, g := range games {
 		gameList = append(gameList, gameJson{
-			Id:              g,
+			Id:              g.Id,
 			LastPlayedOrder: i,
+			TotalMatches:    g.TotalMatches,
 		})
 	}
 

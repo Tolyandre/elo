@@ -68,27 +68,27 @@ function PlayersTable() {
                     за неделю
                 </a>
             </div>
-        <table className="w-full table-auto border-collapse mb-6">
-            <tbody>
-                {players.map((player) => {
-                    return (
-                        <tr key={player.id}>
-                            <td className="px-1 py-2">
-                                <div className="flex items-center gap-2">
-                                    <span>{player.rank}</span>
+            <table className="w-full table-auto border-collapse mb-6">
+                <tbody>
+                    {players.map((player) => {
+                        return (
+                            <tr key={player.id}>
+                                <td className="px-1 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <span>{player.rank}</span>
                                         <RankChangeIndicator
                                             currentRank={player.rank}
                                             previousRank={period === "day" ? player.rank_day_ago : player.rank_week_ago}
                                         />
-                                </div>
-                            </td>
-                            <td className="px-4 py-2">{player.id}</td>
-                            <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
+                                    </div>
+                                </td>
+                                <td className="px-4 py-2">{player.id}</td>
+                                <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
         </div>
     );
 }
@@ -96,7 +96,8 @@ function PlayersTable() {
 export default function PlayersPage() {
     return (
         <main>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold mb-4">Игроки</h1>
             </div>
             <LoadingOrError />
             <PlayersTable />

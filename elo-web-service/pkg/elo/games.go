@@ -18,7 +18,12 @@ type GameStatistics struct {
 	}
 }
 
-func GetGameTitlesOrderedByLastPlayed() ([]string, error) {
+type GameTitles struct {
+	Id           string
+	TotalMatches int
+}
+
+func GetGameTitlesOrderedByLastPlayed() ([]GameTitles, error) {
 
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
@@ -26,7 +31,7 @@ func GetGameTitlesOrderedByLastPlayed() ([]string, error) {
 	}
 
 	seen := make(map[string]bool)
-	var gameList []string
+	var gameList []GameTitles
 	for i := len(parsedData.Matches) - 1; i >= 0; i-- {
 		row := parsedData.Matches[i]
 		if len(row.PlayersScore) == 0 {
@@ -38,7 +43,18 @@ func GetGameTitlesOrderedByLastPlayed() ([]string, error) {
 		}
 		if !seen[name] {
 			seen[name] = true
-			gameList = append(gameList, name)
+
+			totalMatches := reduce(parsedData.Matches, func(acc int, row *googlesheet.MatchRow) int {
+				if row.Game == name {
+					return acc + 1
+				}
+				return acc
+			}, 0)
+
+			gameList = append(gameList, GameTitles{
+				Id:           name,
+				TotalMatches: totalMatches,
+			})
 		}
 	}
 
@@ -110,4 +126,12 @@ func GetGameStatistics(id string) (*GameStatistics, error) {
 		TotalMatches: totalMatches,
 		Players:      players,
 	}, nil
+}
+
+func reduce[T, M any](s []T, f func(M, *T) M, initValue M) M {
+	acc := initValue
+	for _, v := range s {
+		acc = f(acc, &v)
+	}
+	return acc
 }
