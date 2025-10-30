@@ -6,6 +6,7 @@ import { MatchesProvider } from "./matches/MatchesContext";
 import { SettingsProvider } from "./settingsContext";
 import { NavigationBar } from "@/components/navigation-bar";
 import { PingError } from "@/components/ping-error";
+import { ThemeProvider } from "./theme-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,23 +32,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
 
-  return (
-    <html lang="en">
-      <SettingsProvider>
-        <MatchesProvider>
-          <PlayersProvider>
-            <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-              <div className="min-h-screen ">
-                <NavigationBar />
-                <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
-                  <PingError />
-                  {children}
+  return (    
+      <html lang="en" suppressHydrationWarning /* suppress for ThemeProvider */>
+        <SettingsProvider>
+          <MatchesProvider>
+            <PlayersProvider>
+              <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+                <ThemeProvider  attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+                <div className="min-h-screen ">
+                  <NavigationBar />
+                  <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
+                    <PingError />
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </body>
-          </PlayersProvider>
-        </MatchesProvider>
-      </SettingsProvider>
-    </html>
+                </ThemeProvider>
+              </body>
+            </PlayersProvider>
+          </MatchesProvider>
+        </SettingsProvider>
+      </html>
   );
 }
