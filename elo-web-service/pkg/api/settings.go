@@ -16,7 +16,7 @@ func ListSettings(c *gin.Context) {
 	parsedData, err := googlesheet.GetParsedData()
 
 	if err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	c.JSON(http.StatusOK, settingsJson{

@@ -13,7 +13,8 @@
             "args": [
                 "--config-path",
                 "./config/config.dev.yaml"
-            ]
+            ],
+            "envFile": "${workspaceFolder}/elo-web-service/.env"
         },
         {
             "name": "Next.js: debug full stack",

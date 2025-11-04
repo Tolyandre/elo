@@ -2,7 +2,8 @@
 if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
     throw new Error('Environment variable NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL is not defined');
 }
-const BASE_API = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
+
+export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
 export type Player = {
     id: string;
@@ -12,26 +13,31 @@ export type Player = {
     rank_week_ago: number;
 };
 
+export type User = {
+    id: string;
+    name: string;
+}
+
 export function getPlayersPromise(): Promise<Player[]> {
-    return fetch(`${BASE_API}/players`)
+    return fetch(`${EloWebServiceBaseUrl}/players`)
         .then((res) => res.json())
         .then(handleJsonErrorResponse);
 }
 
 export function getPingPromise() {
-    return fetch(`${BASE_API}/ping`, {
+    return fetch(`${EloWebServiceBaseUrl}/ping`, {
         signal: AbortSignal.timeout(3000),
     });
 }
 
 export function getMatchesPromise() {
-    return fetch(`${BASE_API}/matches`)
+    return fetch(`${EloWebServiceBaseUrl}/matches`)
         .then((res) => res.json())
         .then(handleJsonErrorResponse);
 }
 
 export function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
-    return fetch(`${BASE_API}/matches`, {
+    return fetch(`${EloWebServiceBaseUrl}/matches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -44,7 +50,7 @@ export async function getSettingsPromise(): Promise<{
     elo_const_k: string,
     elo_const_d: string
 }> {
-    const res = await fetch(`${BASE_API}/settings`);
+    const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
     const data = await res.json();
     return handleJsonErrorResponse(data);
 }
@@ -58,7 +64,7 @@ export type GameList = {
 };
 
 export async function getGamesPromise(): Promise<GameList> {
-    const res = await fetch(`${BASE_API}/games`);
+    const res = await fetch(`${EloWebServiceBaseUrl}/games`);
     const data = await res.json();
     return handleJsonErrorResponse(data);
 }
@@ -74,16 +80,22 @@ export type Game = {
 };
 
 export async function getGamePromise(id: string): Promise<Game> {
-    const res = await fetch(`${BASE_API}/games/${id}`);
+    const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
     const data = await res.json();
     return handleJsonErrorResponse(data);
 }
 
 export function deleteCache(): Promise<any> {
-    return fetch(`${BASE_API}/cache`, {
+    return fetch(`${EloWebServiceBaseUrl}/cache`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
     })
+        .then((res) => res.json())
+        .then(handleJsonErrorResponse);
+}
+
+export function getMe(): Promise<{data: User | undefined}> {
+    return fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' })
         .then((res) => res.json())
         .then(handleJsonErrorResponse);
 }

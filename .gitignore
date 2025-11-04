@@ -32,6 +32,8 @@
 
 # env files (can opt-in for committing if needed)
 .env*
+!/nextjs/.env.development.local
+!/elo-web-service/.env.sample
 
 # vercel
 /nextjs/.vercel

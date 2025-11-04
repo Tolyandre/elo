@@ -17,15 +17,27 @@ import { ModeToggle } from "./mode-toggle"
 import RefreshButton from "./refresh-button"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
+import { EloWebServiceBaseUrl, getMe, User } from "@/app/api"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
   const { invalidate: invalidatePlayers } = usePlayers();
   const { invalidate: invalidateMatches } = useMatches();
+  const [me, setMe] = React.useState<{ data: User | undefined } | undefined>(undefined);
+
+  React.useEffect(() => {
+    getMe()
+      .then((user) => {
+        setMe(user);
+      })
+      .catch(() => {
+        setMe(undefined);
+      });
+  }, []);
 
 
   return (
-    <NavigationMenu viewport={isMobile.isMobile}>
+    <NavigationMenu viewport={isMobile.isMobile} delayDuration={0}>
       <NavigationMenuList className="flex-wrap">
         <NavigationMenuItem>
           <NavigationMenuTrigger>Home</NavigationMenuTrigger>
@@ -58,6 +70,31 @@ export function NavigationBar() {
                   invalidateMatches();
                 }} />
               </li>
+
+              {(() => {
+                if (me && me.data?.id) {
+                  return (
+                    <li>
+                      <form action={`${EloWebServiceBaseUrl}/auth/logout`} method="post">
+                        <NavigationMenuLink asChild>
+                          <button type="submit" className="w-full text-left">
+                            <div className="text-sm leading-none font-medium">Выйти</div>
+                            <p className="text-muted-foreground line-clamp-2 text-sm leading-snug">
+                              {me.data.name}
+                            </p>
+                          </button>
+                        </NavigationMenuLink>
+                      </form>
+                    </li>
+                  );
+                }
+
+                return (
+                  <ListItem href={`${EloWebServiceBaseUrl}/auth/login`} title="Войти">
+                    Через Google
+                  </ListItem>
+                );
+              })()}
             </ul>
           </NavigationMenuContent>
         </NavigationMenuItem>

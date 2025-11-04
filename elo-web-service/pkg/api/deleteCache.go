@@ -11,9 +11,9 @@ func DeleteCache(c *gin.Context) {
 	err := googlesheet.InvalidateCache()
 
 	if err != nil {
-		errorResponse(c, http.StatusInternalServerError, err)
+		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	statusMessageResponse(c, http.StatusOK, "Cache invalidated successfully")
+	StatusMessageResponse(c, http.StatusOK, "Cache invalidated successfully")
 }

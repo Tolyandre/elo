@@ -31,21 +31,21 @@ func AddMatch(c *gin.Context) {
 	var payload addMatchJson
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := googlesheet.AddMatch(payload.Game, payload.Score); err != nil {
-		errorResponse(c, http.StatusInternalServerError, err)
+		ErrorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	statusMessageResponse(c, http.StatusCreated, "Match is saved")
+	StatusMessageResponse(c, http.StatusCreated, "Match is saved")
 }
 
 func ListMatches(c *gin.Context) {
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -83,12 +83,12 @@ func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
 	return &eloRows[rowNum-2]
 }
 
-func errorResponse(c *gin.Context, code int, err error) {
+func ErrorResponse(c *gin.Context, code int, err error) {
 	c.JSON(code, gin.H{
 		"error": err.Error(),
 	})
 }
 
-func statusMessageResponse(c *gin.Context, code int, message string) {
+func StatusMessageResponse(c *gin.Context, code int, message string) {
 	c.JSON(code, gin.H{"status": message})
 }

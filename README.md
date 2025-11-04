@@ -5,6 +5,36 @@ This project is a convinent form for this Google Sheet document https://docs.goo
 
 Demo https://tolyandre.github.io/elo/
 
+## Google OAuth2 and service account
+
+To setup credentials use [Google Cloud Console](https://console.developers.google.com/). Create a new project or use existing one.
+
+This project uses:
+- Google Sheets as backend to store games and calculate rating.
+- Google OAuth2 authentication
+
+### Service account
+
+This is a service to service integration to access Google Sheets from elo-web-service.
+
+Create a new service account for elo-web-service. Download a service account key as JSON file and save it in a secure place. Set elo-web-service `google_service_account_key` parameter to path of the key file.
+
+Remember, service account key file is sensitive and should be protected with correct permissions.
+
+### OAuth2 client id and secret
+
+Google OAuth2 is used to authenticate user to authorize data editing.
+
+Create a new OAuth 2.0 Client ID for elo-web-service. Setup authorized JavaScript origins (where static html files are hosted, for GitHub pages I use `https://tolyandre.gitbub.com`). Setup Authorized redirect URIs (I use self-hosted server, in my case it is `https://toly.is-cool.dev/elo-web-service/sessions/oauth/google`).
+
+Download client secret and setup environment variables (see [.env.sample](./elo-web-service/.env.sample`))
+
+Edit branding and OAuth consent screen.
+
+Add Data Access scopes: .../auth/userinfo.email, .../auth/userinfo.profile
+
+
+
 
 ## Building web (nextjs)
 

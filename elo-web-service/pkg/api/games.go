@@ -20,7 +20,7 @@ func ListGames(c *gin.Context) {
 
 	games, err := elo.GetGameTitlesOrderedByLastPlayed()
 	if err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -54,7 +54,7 @@ func GetGame(c *gin.Context) {
 	id := c.Param("id")
 	gameStatistics, err := elo.GetGameStatistics(id)
 	if err != nil {
-		errorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
