@@ -18,7 +18,7 @@ address: "localhost:8080"
 oauth2_auth_uri: https://accounts.google.com/o/oauth2/auth
 
 # Oauth2 callback url
-oauth2_redirect_uri: http://localhost:8080/auth/oauth2-callback
+oauth2_redirect_uri: http://localhost:3000/oauth2-callback
 
 # Oauth2 url to get ID and access token
 oauth2_token_uri: https://oauth2.googleapis.com/token

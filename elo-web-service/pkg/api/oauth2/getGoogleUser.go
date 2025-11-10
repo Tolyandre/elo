@@ -57,13 +57,13 @@ func GetGoogleUser(access_token string, id_token string) (*GoogleUserResult, err
 	}
 
 	userBody := &GoogleUserResult{
-		Id:             GoogleUserRes["id"].(string),
-		Email:          GoogleUserRes["email"].(string),
-		Verified_email: GoogleUserRes["verified_email"].(bool),
-		Name:           GoogleUserRes["name"].(string),
-		Given_name:     GoogleUserRes["given_name"].(string),
-		Picture:        GoogleUserRes["picture"].(string),
-		Family_name:    GoogleUserRes["family_name"].(string),
+		Id: GoogleUserRes["id"].(string),
+		//Email:          GoogleUserRes["email"].(string),
+		//Verified_email: GoogleUserRes["verified_email"].(bool),
+		Name:        GoogleUserRes["name"].(string),
+		Given_name:  GoogleUserRes["given_name"].(string),
+		Picture:     GoogleUserRes["picture"].(string),
+		Family_name: GoogleUserRes["family_name"].(string),
 	}
 
 	return userBody, nil

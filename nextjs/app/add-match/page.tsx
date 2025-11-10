@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
-import { SettingsState, useSettings } from "../settingsContext";
+import { useSettings } from "../settingsContext";
 import { getGamesPromise } from "../api";
 
 type Participant = {

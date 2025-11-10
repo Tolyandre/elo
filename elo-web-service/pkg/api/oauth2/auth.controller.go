@@ -49,11 +49,6 @@ const TokenCookieName = "elo-web-service-token"
 
 func GoogleOAuth(ctx *gin.Context) {
 	code := ctx.Query("code")
-	var frontendRedirectUrl string = "/"
-
-	if ctx.Query("state") != "" {
-		frontendRedirectUrl = ctx.Query("state")
-	}
 
 	if code == "" {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "Authorization code not provided!"})
@@ -86,7 +81,7 @@ func GoogleOAuth(ctx *gin.Context) {
 	}
 
 	setTokenCookie(ctx, token, 60*60)
-	ctx.Redirect(http.StatusTemporaryRedirect, frontendRedirectUrl)
+	api.StatusMessageResponse(ctx, http.StatusOK, "User logged in successfully")
 }
 
 func Login(ctx *gin.Context) {
@@ -113,7 +108,8 @@ func Login(ctx *gin.Context) {
 
 	scope := fmt.Sprintf("%s %s",
 		"https://www.googleapis.com/auth/userinfo.profile",
-		"https://www.googleapis.com/auth/userinfo.email")
+		"",
+		/*"https://www.googleapis.com/auth/userinfo.email"*/)
 	values := url.Values{
 		"redirect_uri":  []string{oauth2RedirectURI},
 		"client_id":     []string{oauth2ClientId},

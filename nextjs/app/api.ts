@@ -18,6 +18,11 @@ export type User = {
     name: string;
 }
 
+export type Status = {
+    status: "success" | "fail";
+    error?: string;
+}
+
 export function getPlayersPromise(): Promise<Player[]> {
     return fetch(`${EloWebServiceBaseUrl}/players`)
         .then((res) => res.json())
@@ -100,7 +105,33 @@ export function getMe(): Promise<{data: User | undefined}> {
         .then(handleJsonErrorResponse);
 }
 
-function handleJsonErrorResponse(data: any) {
-    if (data.error) throw new Error(data.error);
-    return data;
+export async function oauth2Callback(params?: Record<string, string | string[]>): Promise<Status> {
+    // Build query string from params if provided
+    let url = `${EloWebServiceBaseUrl}/auth/oauth2-callback`;
+    if (params && Object.keys(params).length > 0) {
+        const searchParams = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+            if (Array.isArray(value)) {
+                for (const v of value) searchParams.append(key, v);
+            } else if (value !== undefined && value !== null) {
+                searchParams.append(key, String(value));
+            }
+        }
+        url += `?${searchParams.toString()}`;
+    }
+
+    const res = await fetch(url, { method: 'GET', credentials: 'include' });
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
+}
+
+export async function logout(): Promise<Status> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
+}
+
+function handleJsonErrorResponse(body: any) {
+    if (body.error) throw new Error(body.error);
+    return body;
 }

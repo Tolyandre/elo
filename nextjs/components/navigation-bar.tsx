@@ -17,7 +17,7 @@ import { ModeToggle } from "./mode-toggle"
 import RefreshButton from "./refresh-button"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
-import { EloWebServiceBaseUrl, getMe, User } from "@/app/api"
+import { EloWebServiceBaseUrl, getMe, logout, User } from "@/app/api"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
@@ -75,16 +75,22 @@ export function NavigationBar() {
                 if (me && me.data?.id) {
                   return (
                     <li>
-                      <form action={`${EloWebServiceBaseUrl}/auth/logout`} method="post">
-                        <NavigationMenuLink asChild>
-                          <button type="submit" className="w-full text-left">
-                            <div className="text-sm leading-none font-medium">Выйти</div>
-                            <p className="text-muted-foreground line-clamp-2 text-sm leading-snug">
-                              {me.data.name}
-                            </p>
-                          </button>
-                        </NavigationMenuLink>
-                      </form>
+                      <NavigationMenuLink asChild>
+                        <button
+                          type="button"
+                          className="w-full text-left"
+                          onClick={async () => {
+                            await logout();
+                            // TODO: 
+                            setMe(undefined);
+                          }}
+                        >
+                          <div className="text-sm leading-none font-medium">Выйти</div>
+                          <p className="text-muted-foreground line-clamp-2 text-sm leading-snug">
+                            {me?.data?.name}
+                          </p>
+                        </button>
+                      </NavigationMenuLink>
                     </li>
                   );
                 }
