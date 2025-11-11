@@ -10,19 +10,20 @@ import (
 
 	"github.com/tolyandre/elo-web-service/pkg/api"
 	oauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
+	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 func main() {
-	ReadConfiguration()
-	googlesheet.Init(Config.GoogleServiceAccountKey, Config.DocID)
-	oauth2.InitOauth(Config.Oauth2ClientId, Config.Oauth2ClientSecret, Config.Oauth2AuthUri,
-		Config.Oauth2RedirectUri, Config.Oauth2TokenUri, Config.CookieJwtSecret, Config.FrontendUri)
+	cfg.ReadConfiguration()
+	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
+	oauth2.InitOauth(cfg.Config.Oauth2ClientId, cfg.Config.Oauth2ClientSecret, cfg.Config.Oauth2AuthUri,
+		cfg.Config.Oauth2RedirectUri, cfg.Config.Oauth2TokenUri, cfg.Config.CookieJwtSecret, cfg.Config.FrontendUri)
 
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{getDomainWithScheme(Config.FrontendUri)},
+		AllowOrigins:     []string{getDomainWithScheme(cfg.Config.FrontendUri)},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type"},
 		AllowCredentials: true,
@@ -47,7 +48,7 @@ func main() {
 	auth_router.GET("/oauth2-callback", oauth2.GoogleOAuth)
 	auth_router.GET("/me", oauth2.DeserializeUser(), oauth2.GetMe)
 
-	log.Fatal(router.Run(Config.Address))
+	log.Fatal(router.Run(cfg.Config.Address))
 }
 
 func getDomainWithScheme(uri string) string {

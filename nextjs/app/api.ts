@@ -53,7 +53,8 @@ export function addMatchPromise(payload: { game: string, score: Record<string, n
 
 export async function getSettingsPromise(): Promise<{
     elo_const_k: string,
-    elo_const_d: string
+    elo_const_d: string,
+    google_sheet_link: string,
 }> {
     const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
     const data = await res.json();
