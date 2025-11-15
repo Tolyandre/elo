@@ -311,7 +311,7 @@ export default function AddGamePage() {
                     <AlertCircleIcon />
                     <AlertTitle>Чтобы добавить партию, выполните вход.</AlertTitle>
                     <AlertDescription>
-                        <p>Затем запросите доступ у Паши.</p>
+                        <p>Затем разрешите доступ в таблице.</p>
                     </AlertDescription>
                 </Alert>
             )
@@ -323,7 +323,7 @@ export default function AddGamePage() {
                     <AlertCircleIcon />
                     <AlertTitle>Вы пока не можете добавлять партии.</AlertTitle>
                     <AlertDescription>
-                        <p>Запросите доступ у Паши для <b>{me.name}</b></p>
+                        <p>Разрешите доступ в таблице для <b>{me.name}</b></p>
                     </AlertDescription>
                 </Alert>
             )

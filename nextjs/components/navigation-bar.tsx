@@ -54,6 +54,7 @@ export function NavigationBar() {
                 await deleteCache();
                 invalidatePlayers();
                 invalidateMatches();
+                me.invalidate();
               }} title={
                 <>
                   <svg viewBox="0 0 24 24" className="inline-block mr-2 h-6 w-6 align-middle" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
