@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
+	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type CookieJwt struct {
@@ -74,13 +75,16 @@ func GoogleOAuth(ctx *gin.Context) {
 		Name: google_user.Name,
 	}
 
-	token, err := CreateJwt(time.Duration(1*time.Hour), user_data, cookieJwtSecret)
+	const ttlSeconds = 3600
+	token, err := CreateJwt(time.Duration(ttlSeconds)*time.Second, user_data, cookieJwtSecret)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
 		return
 	}
 
-	setTokenCookie(ctx, token, 60*60)
+	googlesheet.AddOrUpdate(google_user.Id, google_user.Name)
+
+	setTokenCookie(ctx, token, ttlSeconds)
 	api.StatusMessageResponse(ctx, http.StatusOK, "User logged in successfully")
 }
 
@@ -125,8 +129,8 @@ func Login(ctx *gin.Context) {
 		api.ErrorResponse(ctx, http.StatusBadRequest, err)
 		return
 	}
-	u.RawQuery = values.Encode()
 
+	u.RawQuery = values.Encode()
 	ctx.Redirect(http.StatusTemporaryRedirect, u.String())
 }
 

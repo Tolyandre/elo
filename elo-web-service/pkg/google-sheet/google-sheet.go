@@ -32,11 +32,18 @@ type Settings struct {
 	EloConstD float64
 }
 
+type UserRow struct {
+	ID      string
+	Name    string
+	CanEdit bool
+}
+
 type ParsedData struct {
 	Elo       []EloRow
 	Matches   []MatchRow
 	PlayerIds []string
 	Settings  Settings
+	Users     []UserRow
 }
 
 var (
@@ -92,11 +99,17 @@ func GetParsedData() (*ParsedData, error) {
 		return nil, err
 	}
 
+	userRows, err := parseUsersSheet()
+	if err != nil {
+		return nil, err
+	}
+
 	parsedDataCache = &ParsedData{
 		Settings:  *settings,
 		Matches:   matchRow,
 		Elo:       eloRows,
 		PlayerIds: playerIds,
+		Users:     userRows,
 	}
 
 	parsedDataCacheExpiry = time.Now().Add(4 * time.Hour)
@@ -166,5 +179,21 @@ func parseFloatOrNil(val interface{}) *float64 {
 		return &f
 	default:
 		return nil
+	}
+}
+
+// Helper to parse various types to bool
+func parseBool(v interface{}) bool {
+	switch t := v.(type) {
+	case bool:
+		return t
+	case float64:
+		return t != 0
+	default:
+		s := fmt.Sprintf("%v", v)
+		if s == "true" || s == "TRUE" || s == "True" || s == "1" {
+			return true
+		}
+		return false
 	}
 }
