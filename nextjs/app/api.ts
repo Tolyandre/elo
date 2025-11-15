@@ -18,6 +18,7 @@ export type Player = {
 export type User = {
     id: string;
     name: string;
+    can_edit: boolean;
 }
 
 export type Status = {
@@ -52,8 +53,7 @@ export function getPingPromise() {
 export async function getPlayersPromise(): Promise<Player[]> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/players`);
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -63,8 +63,7 @@ export async function getPlayersPromise(): Promise<Player[]> {
 
 export async function getMatchesPromise() {
     const res = await fetch(`${EloWebServiceBaseUrl}/matches`);
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
+    return await handleJsonErrorResponse(res);
 }
 
 export async function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
@@ -72,10 +71,10 @@ export async function addMatchPromise(payload: { game: string, score: Record<str
         const res = await fetch(`${EloWebServiceBaseUrl}/matches`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(payload),
         });
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -90,8 +89,7 @@ export async function getSettingsPromise(): Promise<{
 }> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -102,8 +100,7 @@ export async function getSettingsPromise(): Promise<{
 export async function getGamesPromise(): Promise<GameList> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/games`);
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -114,8 +111,7 @@ export async function getGamesPromise(): Promise<GameList> {
 export async function getGamePromise(id: string): Promise<Game> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -129,8 +125,7 @@ export async function deleteCache(): Promise<any> {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
         });
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -144,8 +139,7 @@ export async function getMePromise(): Promise<User | undefined> {
         if (res.status === 401)
             return undefined;
 
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -170,8 +164,7 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
         }
 
         const res = await fetch(url, { method: 'GET', credentials: 'include' });
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -182,8 +175,7 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
 export async function logout(): Promise<Status> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
-        const body = await res.json();
-        return handleJsonErrorResponse(body);
+        return await handleJsonErrorResponse(res);
     }
     catch (error) {
         showToast(error);
@@ -191,9 +183,24 @@ export async function logout(): Promise<Status> {
     }
 }
 
-function handleJsonErrorResponse(body: any) {
+async function handleJsonErrorResponse(response: Response) {
+    let body: any;
+    try {
+        body = await response.json();
+    }
+    catch (error) {
+        if (!response.ok) {
+            throw new Error(`Ошибка ${response.status}`);
+        }
+        throw error;
+    }
+
     if (body.status === "fail") {
         throw new Error(body.message);
+    }
+
+    if (!response.ok) {
+        throw new Error(`Ошибка ${response.status}`);
     }
 
     return body.data;

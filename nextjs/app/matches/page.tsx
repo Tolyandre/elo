@@ -44,7 +44,7 @@ export default function MatchesPage() {
         eloChange: data.eloPay + data.eloEarn,
       }))
       .sort((a, b) => b.score - a.score);
-    
+
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
 
     const maxEarn = blueIndicatorMode

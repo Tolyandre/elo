@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -32,6 +33,28 @@ func AddMatch(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	userID := c.MustGet(CurrentUserKey)
+	parsedData, err := googlesheet.GetParsedData()
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	userRowIndex := slices.IndexFunc(parsedData.Users,
+		func(row googlesheet.UserRow) bool { return row.ID == userID })
+
+	if userRowIndex < 0 {
+		ErrorResponse(c, http.StatusInternalServerError, "User not found")
+		return
+	}
+
+	userRow := parsedData.Users[userRowIndex]
+
+	if !userRow.CanEdit {
+		ErrorResponse(c, http.StatusForbidden, "You are not authorized to add matches")
 		return
 	}
 

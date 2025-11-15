@@ -11,11 +11,6 @@ import (
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
-type CookieJwt struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
-}
-
 type UserResponse struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
@@ -23,7 +18,7 @@ type UserResponse struct {
 
 func LogoutUser(ctx *gin.Context) {
 	setTokenCookie(ctx, "", -1)
-	ctx.JSON(http.StatusOK, gin.H{"status": "success"})
+	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged out successfully")
 }
 
 var (
@@ -70,13 +65,8 @@ func GoogleOAuth(ctx *gin.Context) {
 		return
 	}
 
-	user_data := CookieJwt{
-		ID:   google_user.Id,
-		Name: google_user.Name,
-	}
-
-	const ttlSeconds = 3600
-	token, err := CreateJwt(time.Duration(ttlSeconds)*time.Second, user_data, cookieJwtSecret)
+	const ttlSeconds = 3600 * 24
+	token, err := CreateJwt(time.Duration(ttlSeconds)*time.Second, google_user.Id, cookieJwtSecret)
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return

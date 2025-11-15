@@ -7,6 +7,10 @@ import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useSettings } from "../settingsContext";
 import { getGamesPromise } from "../api";
+import { useMe } from "../meContext";
+import { usePathname } from "next/navigation";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircleIcon } from "lucide-react";
 
 type Participant = {
     id: string;
@@ -297,9 +301,39 @@ function AddGameForm() {
 }
 
 export default function AddGamePage() {
+    const me = useMe();
+    const pathname = usePathname();
+
+    function AuthWarning() {
+        if (!me.id) {
+            return (
+                <Alert>
+                    <AlertCircleIcon />
+                    <AlertTitle>Чтобы добавить партию, выполните вход.</AlertTitle>
+                    <AlertDescription>
+                        <p>Затем запросите доступ у Паши.</p>
+                    </AlertDescription>
+                </Alert>
+            )
+        }
+
+        if (!me.canEdit) {
+            return (
+                <Alert>
+                    <AlertCircleIcon />
+                    <AlertTitle>Вы пока не можете добавлять партии.</AlertTitle>
+                    <AlertDescription>
+                        <p>Запросите доступ у Паши для <b>{me.name}</b></p>
+                    </AlertDescription>
+                </Alert>
+            )
+        }
+    }
+
     return (
         <main className="max-w-xl mx-auto p-4">
             <h1 className="text-2xl font-bold mb-4">Результат партии</h1>
+            <AuthWarning />
             <AddGameForm />
         </main>
     );

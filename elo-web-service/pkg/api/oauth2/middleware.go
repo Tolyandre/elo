@@ -28,14 +28,14 @@ func DeserializeUser() gin.HandlerFunc {
 			return
 		}
 
-		sub, err := ValidateToken(token, cookieJwtSecret)
+		userID, err := ValidateToken(token, cookieJwtSecret)
 		if err != nil {
 			ctx.Abort()
 			api.ErrorResponse(ctx, http.StatusUnauthorized, err)
 			return
 		}
 
-		ctx.Set("currentUser", sub)
+		ctx.Set(api.CurrentUserKey, userID)
 		ctx.Next()
 	}
 }
