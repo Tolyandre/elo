@@ -33,7 +33,7 @@ func ListGames(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gamesJson{
+	SuccessDataResponse(c, gamesJson{
 		Games: gameList,
 	})
 }
@@ -67,7 +67,7 @@ func GetGame(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gameJson{
+	SuccessDataResponse(c, gameJson{
 		Id:           id,
 		TotalMatches: gameStatistics.TotalMatches,
 		Players:      playerList,

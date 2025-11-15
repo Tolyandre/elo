@@ -57,8 +57,8 @@ export async function getSettingsPromise(): Promise<{
     google_sheet_link: string,
 }> {
     const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
-    const data = await res.json();
-    return handleJsonErrorResponse(data);
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
 }
 
 export type GameList = {
@@ -71,8 +71,8 @@ export type GameList = {
 
 export async function getGamesPromise(): Promise<GameList> {
     const res = await fetch(`${EloWebServiceBaseUrl}/games`);
-    const data = await res.json();
-    return handleJsonErrorResponse(data);
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
 }
 
 export type Game = {
@@ -87,8 +87,8 @@ export type Game = {
 
 export async function getGamePromise(id: string): Promise<Game> {
     const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
-    const data = await res.json();
-    return handleJsonErrorResponse(data);
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
 }
 
 export function deleteCache(): Promise<any> {
@@ -100,10 +100,13 @@ export function deleteCache(): Promise<any> {
         .then(handleJsonErrorResponse);
 }
 
-export function getMePromise(): Promise<{data: User | undefined}> {
-    return fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' })
-        .then((res) => res.json())
-        .then(handleJsonErrorResponse);
+export async function getMePromise(): Promise<User | undefined> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
+    if (res.status === 401) 
+        return undefined;
+    
+    const body = await res.json();
+    return handleJsonErrorResponse(body);
 }
 
 export async function oauth2Callback(params?: Record<string, string | string[]>): Promise<Status> {
@@ -133,6 +136,6 @@ export async function logout(): Promise<Status> {
 }
 
 function handleJsonErrorResponse(body: any) {
-    if (body.error) throw new Error(body.error);
-    return body;
+    if (body.status === "fail") throw new Error(body.message);
+    return body.data;
 }

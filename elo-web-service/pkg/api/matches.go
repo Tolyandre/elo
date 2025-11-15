@@ -39,7 +39,7 @@ func AddMatch(c *gin.Context) {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 	}
 
-	StatusMessageResponse(c, http.StatusCreated, "Match is saved")
+	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
 }
 
 func ListMatches(c *gin.Context) {
@@ -75,20 +75,10 @@ func ListMatches(c *gin.Context) {
 		matchesJson = append(matchesJson, m)
 	}
 
-	c.JSON(http.StatusOK, matchesJson)
+	SuccessDataResponse(c, matchesJson)
 }
 
 // eloRows must be ordered; first row number 2 has index 0 (first row is header)
 func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
 	return &eloRows[rowNum-2]
-}
-
-func ErrorResponse(c *gin.Context, code int, err error) {
-	c.JSON(code, gin.H{
-		"error": err.Error(),
-	})
-}
-
-func StatusMessageResponse(c *gin.Context, code int, message string) {
-	c.JSON(code, gin.H{"status": message})
 }

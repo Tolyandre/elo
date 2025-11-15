@@ -52,21 +52,21 @@ func GoogleOAuth(ctx *gin.Context) {
 	code := ctx.Query("code")
 
 	if code == "" {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "Authorization code not provided!"})
+		api.ErrorResponse(ctx, http.StatusBadRequest, "Authorization code not provided")
 		return
 	}
 
 	tokenRes, err := GetOauthToken(code)
 
 	if err != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
+		api.ErrorResponse(ctx, http.StatusBadRequest, err)
 		return
 	}
 
 	google_user, err := GetGoogleUser(tokenRes.Access_token, tokenRes.Id_token)
 
 	if err != nil {
-		ctx.JSON(http.StatusBadGateway, gin.H{"status": "fail", "message": err.Error()})
+		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -78,14 +78,14 @@ func GoogleOAuth(ctx *gin.Context) {
 	const ttlSeconds = 3600
 	token, err := CreateJwt(time.Duration(ttlSeconds)*time.Second, user_data, cookieJwtSecret)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
+		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return
 	}
 
 	googlesheet.AddOrUpdate(google_user.Id, google_user.Name)
 
 	setTokenCookie(ctx, token, ttlSeconds)
-	api.StatusMessageResponse(ctx, http.StatusOK, "User logged in successfully")
+	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged in successfully")
 }
 
 func Login(ctx *gin.Context) {

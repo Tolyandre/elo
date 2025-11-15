@@ -15,5 +15,5 @@ func DeleteCache(c *gin.Context) {
 		return
 	}
 
-	StatusMessageResponse(c, http.StatusOK, "Cache invalidated successfully")
+	SuccessMessageResponse(c, http.StatusOK, "Cache invalidated successfully")
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	api "github.com/tolyandre/elo-web-service/pkg/api"
 )
 
 func DeserializeUser() gin.HandlerFunc {
@@ -22,13 +23,15 @@ func DeserializeUser() gin.HandlerFunc {
 		}
 
 		if token == "" {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "You are not logged in"})
+			ctx.Abort()
+			api.ErrorResponse(ctx, http.StatusUnauthorized, "You are not logged in")
 			return
 		}
 
 		sub, err := ValidateToken(token, cookieJwtSecret)
 		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": err.Error()})
+			ctx.Abort()
+			api.ErrorResponse(ctx, http.StatusUnauthorized, err)
 			return
 		}
 

@@ -22,7 +22,8 @@ func ListSettings(c *gin.Context) {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
-	c.JSON(http.StatusOK, settingsJson{
+
+	SuccessDataResponse(c, settingsJson{
 		EloConstK:       parsedData.Settings.EloConstK,
 		EloConstD:       parsedData.Settings.EloConstD,
 		GoogleSheetLink: fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s", cfg.Config.DocID),

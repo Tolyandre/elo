@@ -48,7 +48,7 @@ func ListPlayers(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, jsonPlayers)
+	SuccessDataResponse(c, jsonPlayers)
 }
 
 func findPlayer(players []elo.Player, id string) *elo.Player {

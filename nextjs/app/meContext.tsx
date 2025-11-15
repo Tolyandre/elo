@@ -22,9 +22,9 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   }, [stamp]);
 
   const loadMe = async () => {
-    const { data } = await getMePromise();
-    setId(data ? data.id : "");
-    setName(data ? data.name : "");
+    const user = await getMePromise();
+    setId(user ? user.id : "");
+    setName(user ? user.name : "");
   };
 
   const doLogout = () => {
