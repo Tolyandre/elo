@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
 if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
     throw new Error('Environment variable NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL is not defined');
@@ -23,44 +25,6 @@ export type Status = {
     error?: string;
 }
 
-export function getPlayersPromise(): Promise<Player[]> {
-    return fetch(`${EloWebServiceBaseUrl}/players`)
-        .then((res) => res.json())
-        .then(handleJsonErrorResponse);
-}
-
-export function getPingPromise() {
-    return fetch(`${EloWebServiceBaseUrl}/ping`, {
-        signal: AbortSignal.timeout(3000),
-    });
-}
-
-export function getMatchesPromise() {
-    return fetch(`${EloWebServiceBaseUrl}/matches`)
-        .then((res) => res.json())
-        .then(handleJsonErrorResponse);
-}
-
-export function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
-    return fetch(`${EloWebServiceBaseUrl}/matches`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    })
-        .then((res) => res.json())
-        .then(handleJsonErrorResponse);
-}
-
-export async function getSettingsPromise(): Promise<{
-    elo_const_k: string,
-    elo_const_d: string,
-    google_sheet_link: string,
-}> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
-}
-
 export type GameList = {
     games: {
         id: string;
@@ -68,12 +32,6 @@ export type GameList = {
         last_played_order: number;
     }[];
 };
-
-export async function getGamesPromise(): Promise<GameList> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/games`);
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
-}
 
 export type Game = {
     id: string;
@@ -85,57 +43,166 @@ export type Game = {
     }[];
 };
 
-export async function getGamePromise(id: string): Promise<Game> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
+export function getPingPromise() {
+    return fetch(`${EloWebServiceBaseUrl}/ping`, {
+        signal: AbortSignal.timeout(3000),
+    });
+}
+
+export async function getPlayersPromise(): Promise<Player[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/players`);
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getMatchesPromise() {
+    const res = await fetch(`${EloWebServiceBaseUrl}/matches`);
     const body = await res.json();
     return handleJsonErrorResponse(body);
 }
 
-export function deleteCache(): Promise<any> {
-    return fetch(`${EloWebServiceBaseUrl}/cache`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-    })
-        .then((res) => res.json())
-        .then(handleJsonErrorResponse);
+export async function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getSettingsPromise(): Promise<{
+    elo_const_k: string,
+    elo_const_d: string,
+    google_sheet_link: string,
+}> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getGamesPromise(): Promise<GameList> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games`);
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getGamePromise(id: string): Promise<Game> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function deleteCache(): Promise<any> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/cache`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
 }
 
 export async function getMePromise(): Promise<User | undefined> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
-    if (res.status === 401) 
-        return undefined;
-    
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
+        if (res.status === 401)
+            return undefined;
+
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
 }
 
 export async function oauth2Callback(params?: Record<string, string | string[]>): Promise<Status> {
-    // Build query string from params if provided
-    let url = `${EloWebServiceBaseUrl}/auth/oauth2-callback`;
-    if (params && Object.keys(params).length > 0) {
-        const searchParams = new URLSearchParams();
-        for (const [key, value] of Object.entries(params)) {
-            if (Array.isArray(value)) {
-                for (const v of value) searchParams.append(key, v);
-            } else if (value !== undefined && value !== null) {
-                searchParams.append(key, String(value));
+    try {
+        // Build query string from params if provided
+        let url = `${EloWebServiceBaseUrl}/auth/oauth2-callback`;
+        if (params && Object.keys(params).length > 0) {
+            const searchParams = new URLSearchParams();
+            for (const [key, value] of Object.entries(params)) {
+                if (Array.isArray(value)) {
+                    for (const v of value) searchParams.append(key, v);
+                } else if (value !== undefined && value !== null) {
+                    searchParams.append(key, String(value));
+                }
             }
+            url += `?${searchParams.toString()}`;
         }
-        url += `?${searchParams.toString()}`;
-    }
 
-    const res = await fetch(url, { method: 'GET', credentials: 'include' });
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
+        const res = await fetch(url, { method: 'GET', credentials: 'include' });
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
 }
 
 export async function logout(): Promise<Status> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
-    const body = await res.json();
-    return handleJsonErrorResponse(body);
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
+        const body = await res.json();
+        return handleJsonErrorResponse(body);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
 }
 
 function handleJsonErrorResponse(body: any) {
-    if (body.status === "fail") throw new Error(body.message);
+    if (body.status === "fail") {
+        throw new Error(body.message);
+    }
+
     return body.data;
+}
+
+function showToast(error: unknown) {
+    if (error instanceof Error) {
+        toast.error(error.message);
+    } else {
+        toast.error("An unknown error occurred " + error);
+    }
 }

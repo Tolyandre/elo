@@ -8,6 +8,7 @@ import { NavigationBar } from "@/components/navigation-bar";
 import { PingError } from "@/components/ping-error";
 import { ThemeProvider } from "./theme-provider";
 import { MeProvider } from "./meContext";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,6 +42,7 @@ export default function RootLayout({
             <PlayersProvider>
               <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
                 <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+                  <Toaster />
                   <div className="min-h-screen ">
                     <NavigationBar />
                     <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
