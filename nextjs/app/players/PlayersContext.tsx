@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, ReactNode, use } from "react";
+import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { getPlayersPromise, Player } from "../api";
 
 type PlayersContextType = {

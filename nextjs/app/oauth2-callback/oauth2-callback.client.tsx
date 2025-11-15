@@ -3,12 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { oauth2Callback } from '../api';
+import { useMe } from '../meContext';
 
 export default function Oauth2CallbackClient() {
     const searchParams = useSearchParams();
     const [status, setStatus] = useState<{ status: string; error?: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
+    const me = useMe();
 
     useEffect(() => {
         const params: Record<string, string | string[]> = {};
@@ -25,11 +27,8 @@ export default function Oauth2CallbackClient() {
             try {
                 const res = await oauth2Callback(params);
                 setStatus(res);
-
-                setTimeout(() => {
-                    router.push("/players");
-                }, 1200);
-
+                me.invalidate();
+                router.push("/players");
             } catch (err: any) {
                 setStatus({ status: 'fail', error: err?.message ?? String(err) });
             } finally {

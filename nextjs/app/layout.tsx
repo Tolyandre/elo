@@ -7,6 +7,7 @@ import { SettingsProvider } from "./settingsContext";
 import { NavigationBar } from "@/components/navigation-bar";
 import { PingError } from "@/components/ping-error";
 import { ThemeProvider } from "./theme-provider";
+import { MeProvider } from "./meContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,24 +34,26 @@ export default function RootLayout({
 }>) {
 
   return (
-      <html lang="en" suppressHydrationWarning /* suppress for ThemeProvider */>
-        <SettingsProvider>
+    <html lang="en" suppressHydrationWarning /* suppress for ThemeProvider */>
+      <SettingsProvider>
+        <MeProvider>
           <MatchesProvider>
             <PlayersProvider>
               <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-                <ThemeProvider  attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-                <div className="min-h-screen ">
-                  <NavigationBar />
-                  <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
-                    <PingError />
-                    {children}
+                <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+                  <div className="min-h-screen ">
+                    <NavigationBar />
+                    <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
+                      <PingError />
+                      {children}
+                    </div>
                   </div>
-                </div>
                 </ThemeProvider>
               </body>
             </PlayersProvider>
           </MatchesProvider>
-        </SettingsProvider>
-      </html>
+        </MeProvider>
+      </SettingsProvider>
+    </html>
   );
 }

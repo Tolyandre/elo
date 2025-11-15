@@ -100,7 +100,7 @@ export function deleteCache(): Promise<any> {
         .then(handleJsonErrorResponse);
 }
 
-export function getMe(): Promise<{data: User | undefined}> {
+export function getMePromise(): Promise<{data: User | undefined}> {
     return fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' })
         .then((res) => res.json())
         .then(handleJsonErrorResponse);
