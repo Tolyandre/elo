@@ -45,8 +45,8 @@ export default function RootLayout({
                   <Toaster />
                   <div className="min-h-screen ">
                     <NavigationBar />
+                    <PingError />
                     <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
-                      <PingError />
                       {children}
                     </div>
                   </div>

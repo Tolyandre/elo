@@ -44,10 +44,9 @@ export type Game = {
     }[];
 };
 
-export function getPingPromise() {
-    return fetch(`${EloWebServiceBaseUrl}/ping`, {
-        signal: AbortSignal.timeout(3000),
-    });
+export async function getPingPromise() {
+    var res = await fetch(`${EloWebServiceBaseUrl}/ping`);
+    return await handleJsonErrorResponse(res);
 }
 
 export async function getPlayersPromise(): Promise<Player[]> {

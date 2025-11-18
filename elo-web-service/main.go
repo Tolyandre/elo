@@ -61,5 +61,5 @@ func getDomainWithScheme(uri string) string {
 }
 
 func getPing(c *gin.Context) {
-	c.String(http.StatusOK, "pong")
+	api.SuccessMessageResponse(c, http.StatusOK, "pong")
 }
