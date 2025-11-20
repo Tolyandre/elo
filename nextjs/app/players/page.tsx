@@ -47,19 +47,10 @@ function EloValueAndDiff({ currentElo, previousElo }: { currentElo: number; prev
         </>
     )
     return (
-        <>
+        <span className="line-clamp-1">
             {currentElo.toFixed(0)} <span className="text-sm text-gray-500">({diff > 0 ? "+" : ""}{diff.toFixed(1)})</span>
-        </>
+        </span>
     )
-
-    // return (
-    //     <span className={`text-sm flex items-center ${diff > 0 ? "text-green-600" : "text-red-600"}`} aria-label={`Elo ${diff > 0 ? "up" : "down"} ${Math.abs(diff)}`}>
-    //         {currentElo.toFixed(0)}
-
-    //         <span className="mr-1">{diff > 0 ? "▴" : "▾"}</span>
-    //         <span>{diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`}</span>
-    //     </span>
-    // );
 }
 
 function PlayersTable() {
@@ -96,7 +87,7 @@ function PlayersTable() {
                         return (
                             <tr key={player.id}>
                                 <td className="px-1 py-2">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1">
                                         <span>{player.now.rank}</span>
                                         <RankChangeIndicator
                                             currentRank={player.now.rank}
@@ -104,7 +95,7 @@ function PlayersTable() {
                                         />
                                     </div>
                                 </td>
-                                <td className="px-4 py-2">{player.id}</td>
+                                <td className="px-1 py-2 min-w-30">{player.id}</td>
                                 <td className="px-1 py-2">
                                     <EloValueAndDiff currentElo={player.now.elo} previousElo={period === "day" ? player.day_ago.elo : player.week_ago.elo} />
                                 </td>

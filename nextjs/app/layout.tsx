@@ -46,7 +46,7 @@ export default function RootLayout({
                   <div className="min-h-screen ">
                     <NavigationBar />
                     <PingError />
-                    <div className="font-sans flex items-center justify-center p-8 rounded-lg shadow-md max-w-lg w-full">
+                    <div className="font-sans flex items-center justify-center p-3 rounded-lg shadow-md max-w-lg w-full">
                       {children}
                     </div>
                   </div>
