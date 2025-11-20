@@ -27,7 +27,7 @@ export function PlayersProvider({ children
         setLoading(true);
         getPlayersPromise()
             .then((data) => {
-                const sorted = [...data].sort((a, b) => a.rank - b.rank);
+                const sorted = [...data].sort((a, b) => a.now.rank - b.now.rank);
                 setPlayers(sorted);
                 setLoading(false);
                 return sorted;

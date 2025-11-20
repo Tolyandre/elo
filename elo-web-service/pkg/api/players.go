@@ -9,11 +9,15 @@ import (
 )
 
 type playerJson struct {
-	ID          string  `json:"id"`
-	Elo         float64 `json:"elo"`
-	Rank        int     `json:"rank"`
-	RankDayAgo  int     `json:"rank_day_ago"`
-	RankWeekAgo int     `json:"rank_week_ago"`
+	ID      string            `json:"id"`
+	Now     playerEloRankJson `json:"now"`
+	DayAgo  playerEloRankJson `json:"day_ago"`
+	WeekAgo playerEloRankJson `json:"week_ago"`
+}
+
+type playerEloRankJson struct {
+	Elo  float64 `json:"elo"`
+	Rank int     `json:"rank"`
 }
 
 func ListPlayers(c *gin.Context) {
@@ -39,12 +43,22 @@ func ListPlayers(c *gin.Context) {
 
 	jsonPlayers := make([]playerJson, 0, len(actualPlayers))
 	for _, p := range actualPlayers {
+		dayAgo := findPlayer(dayAgoPlayers, p.ID)
+		weekAgo := findPlayer(weekAgoPlayers, p.ID)
 		jsonPlayers = append(jsonPlayers, playerJson{
-			ID:          p.ID,
-			Elo:         p.Elo,
-			Rank:        p.Rank,
-			RankDayAgo:  findPlayer(dayAgoPlayers, p.ID).Rank,
-			RankWeekAgo: findPlayer(weekAgoPlayers, p.ID).Rank,
+			ID: p.ID,
+			Now: playerEloRankJson{
+				Elo:  p.Elo,
+				Rank: p.Rank,
+			},
+			DayAgo: playerEloRankJson{
+				Elo:  dayAgo.Elo,
+				Rank: dayAgo.Rank,
+			},
+			WeekAgo: playerEloRankJson{
+				Elo:  weekAgo.Elo,
+				Rank: weekAgo.Rank,
+			},
 		})
 	}
 

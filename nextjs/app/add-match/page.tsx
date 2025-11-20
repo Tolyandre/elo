@@ -99,7 +99,7 @@ function AddGameForm() {
     };
 
     function getPlayerElo(playerId: string): number {
-        const elo = players.find(player => player.id == playerId)?.elo;
+        const elo = players.find(player => player.id == playerId)?.now.elo;
         if (typeof (elo) == "undefined")
             throw "Cannot find player"
         return elo;
@@ -232,7 +232,7 @@ function AddGameForm() {
                                 }
                                 className="accent-blue-500 "
                             />
-                            <span>{player.id} <span className="text-gray-500">({player.elo.toFixed(0)})</span></span>
+                            <span>{player.id} <span className="text-gray-500">({player.now.elo.toFixed(0)})</span></span>
                         </label>
                     ))}
                 </div>
@@ -309,9 +309,9 @@ export default function AddGamePage() {
             return (
                 <Alert>
                     <AlertCircleIcon />
-                    <AlertTitle>Чтобы добавить партию, выполните вход.</AlertTitle>
+                    <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
                     <AlertDescription>
-                        <p>Затем разрешите доступ в таблице.</p>
+                        <p>Если вы в первый раз, то для вашего аккаунта нужно разрешить доступ в таблице</p>
                     </AlertDescription>
                 </Alert>
             )
@@ -321,7 +321,7 @@ export default function AddGamePage() {
             return (
                 <Alert>
                     <AlertCircleIcon />
-                    <AlertTitle>Вы пока не можете добавлять партии.</AlertTitle>
+                    <AlertTitle>Вы пока не можете добавлять партии</AlertTitle>
                     <AlertDescription>
                         <p>Разрешите доступ в таблице для <b>{me.name}</b></p>
                     </AlertDescription>

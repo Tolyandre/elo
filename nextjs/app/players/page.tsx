@@ -12,7 +12,6 @@ function LoadingOrError() {
     return null;
 }
 
-// New function to render rank change indicator
 function RankChangeIndicator({ currentRank, previousRank }: { currentRank: number; previousRank: number | undefined }) {
     const changed = previousRank !== undefined && previousRank !== currentRank;
 
@@ -38,6 +37,29 @@ function RankChangeIndicator({ currentRank, previousRank }: { currentRank: numbe
             <span>-{diff}</span>
         </span>
     );
+}
+
+function EloValueAndDiff({ currentElo, previousElo }: { currentElo: number; previousElo: number }) {
+    const diff = currentElo - previousElo;
+    if (diff === 0) return (
+        <>
+            {currentElo.toFixed(0)}
+        </>
+    )
+    return (
+        <>
+            {currentElo.toFixed(0)} <span className="text-sm text-gray-500">({diff > 0 ? "+" : ""}{diff.toFixed(1)})</span>
+        </>
+    )
+
+    // return (
+    //     <span className={`text-sm flex items-center ${diff > 0 ? "text-green-600" : "text-red-600"}`} aria-label={`Elo ${diff > 0 ? "up" : "down"} ${Math.abs(diff)}`}>
+    //         {currentElo.toFixed(0)}
+
+    //         <span className="mr-1">{diff > 0 ? "▴" : "▾"}</span>
+    //         <span>{diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`}</span>
+    //     </span>
+    // );
 }
 
 function PlayersTable() {
@@ -75,15 +97,17 @@ function PlayersTable() {
                             <tr key={player.id}>
                                 <td className="px-1 py-2">
                                     <div className="flex items-center gap-2">
-                                        <span>{player.rank}</span>
+                                        <span>{player.now.rank}</span>
                                         <RankChangeIndicator
-                                            currentRank={player.rank}
-                                            previousRank={period === "day" ? player.rank_day_ago : player.rank_week_ago}
+                                            currentRank={player.now.rank}
+                                            previousRank={period === "day" ? player.day_ago.rank : player.week_ago.rank}
                                         />
                                     </div>
                                 </td>
                                 <td className="px-4 py-2">{player.id}</td>
-                                <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
+                                <td className="px-1 py-2">
+                                    <EloValueAndDiff currentElo={player.now.elo} previousElo={period === "day" ? player.day_ago.elo : player.week_ago.elo} />
+                                </td>
                             </tr>
                         );
                     })}

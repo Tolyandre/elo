@@ -7,12 +7,16 @@ if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
 
 export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
-export type Player = {
-    id: string;
+export type EloRank = {
     elo: number;
     rank: number;
-    rank_day_ago: number;
-    rank_week_ago: number;
+}
+
+export type Player = {
+    id: string;
+    now: EloRank;
+    day_ago: EloRank;
+    week_ago: EloRank;
 };
 
 export type User = {
