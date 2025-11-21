@@ -72,7 +72,8 @@ in
           "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
           "GIN_MODE=release"
         ];
-        ExecStart = "${pkgs.bash}/bin/bash -c 'set -a; source \"$CREDENTIALS_DIRECTORY/secrets.env\"; exec ${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml'";
+        EnvironmentFile = config.services.elo-web-service.secrets-env-file;
+        ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml";
         Restart = "always";
         WorkingDirectory = "/var/lib/elo-web-service";
         User = "elo-web-service";
@@ -80,7 +81,6 @@ in
         StateDirectory = "elo-web-service";
         LoadCredential = [
           "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
-          "secrets.env:${config.services.elo-web-service.secrets-env-file}"
         ];
       };
     };
