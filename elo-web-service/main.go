@@ -17,8 +17,7 @@ import (
 func main() {
 	cfg.ReadConfiguration()
 	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
-	oauth2.InitOauth(cfg.Config.Oauth2ClientId, cfg.Config.Oauth2ClientSecret, cfg.Config.Oauth2AuthUri,
-		cfg.Config.Oauth2RedirectUri, cfg.Config.Oauth2TokenUri, cfg.Config.CookieJwtSecret, cfg.Config.FrontendUri)
+	oauth2.InitOauth()
 
 	router := gin.Default()
 

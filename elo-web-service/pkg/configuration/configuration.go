@@ -19,6 +19,7 @@ type Configuration struct {
 	Oauth2AuthUri           string `mapstructure:"oauth2_auth_uri"`
 	Oauth2RedirectUri       string `mapstructure:"oauth2_redirect_uri"`
 	CookieJwtSecret         string `mapstructure:"cookie_jwt_secret"`
+	CookieTtlSeconds        int    `mapstructure:"cookie_ttl_seconds"`
 	FrontendUri             string `mapstructure:"frontend_uri"`
 }
 
@@ -61,6 +62,9 @@ func ReadConfiguration() {
 	}
 	if err := viper.BindEnv("cookie_jwt_secret", "ELO_WEB_SERVICE_COOKIE_JWT_SECRET"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_JWT_SECRET: %v", err)
+	}
+	if err := viper.BindEnv("cookie_ttl_seconds", "ELO_WEB_SERVICE_COOKIE_TTL_SECONDS"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_TTL_SECONDS: %v", err)
 	}
 	if err := viper.BindEnv("frontend_uri", "ELO_WEB_SERVICE_FRONTEND_URI"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_FRONTEND_URI: %v", err)
@@ -115,6 +119,11 @@ func ReadConfiguration() {
 
 	if len(missing) > 0 {
 		log.Fatalf("missing required configuration values: %v", missing)
+		os.Exit(1)
+	}
+
+	if Config.CookieTtlSeconds < 60*5 {
+		log.Fatalf("cookie_ttl_seconds must be at least 300 seconds")
 		os.Exit(1)
 	}
 }

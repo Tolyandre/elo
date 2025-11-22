@@ -20,6 +20,7 @@ pkgs.nixosTest {
           oauth2_redirect_uri = "https://fake/oauth2_redirect_uri";
           oauth2_token_uri = "https://fake/oauth2_token_uri";
           frontend_uri = "https://tolyandre.github.io/elo";
+          cookie_ttl_seconds = 600;
         };
 
         google-service-account-key = pkgs.writeText "google-service-account-key.json" ''

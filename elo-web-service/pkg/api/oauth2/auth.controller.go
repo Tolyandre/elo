@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
+	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
@@ -21,24 +22,7 @@ func LogoutUser(ctx *gin.Context) {
 	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged out successfully")
 }
 
-var (
-	oauth2ClientId     string
-	oauth2ClientSecret string
-	oauth2AuthURI      string
-	oauth2RedirectURI  string
-	oauth2TokenURL     string
-	cookieJwtSecret    string
-	frontendDomain     string
-)
-
-func InitOauth(clientId string, clientSecret string, authURI string, redirectURI string, tokenURL string, jwtSecret string, domain string) {
-	oauth2ClientId = clientId
-	oauth2ClientSecret = clientSecret
-	oauth2AuthURI = authURI
-	oauth2RedirectURI = redirectURI
-	oauth2TokenURL = tokenURL
-	cookieJwtSecret = jwtSecret
-	frontendDomain = domain
+func InitOauth() {
 }
 
 const TokenCookieName = "elo-web-service-token"
@@ -65,8 +49,7 @@ func GoogleOAuth(ctx *gin.Context) {
 		return
 	}
 
-	const ttlSeconds = 3600 * 24
-	token, err := CreateJwt(time.Duration(ttlSeconds)*time.Second, google_user.Id, cookieJwtSecret)
+	token, err := CreateJwt(time.Duration(cfg.Config.CookieTtlSeconds)*time.Second, google_user.Id, cfg.Config.CookieJwtSecret)
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return
@@ -74,13 +57,13 @@ func GoogleOAuth(ctx *gin.Context) {
 
 	googlesheet.AddOrUpdate(google_user.Id, google_user.Name)
 
-	setTokenCookie(ctx, token, ttlSeconds)
+	setTokenCookie(ctx, token, cfg.Config.CookieTtlSeconds)
 	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged in successfully")
 }
 
 func Login(ctx *gin.Context) {
 
-	var from string = frontendDomain
+	var from string = cfg.Config.FrontendUri
 
 	if ctx.Query("from") != "" {
 		from = ctx.Query("from")
@@ -93,7 +76,7 @@ func Login(ctx *gin.Context) {
 				return s
 			}
 
-			if getHost(from) != getHost(frontendDomain) {
+			if getHost(from) != getHost(cfg.Config.FrontendUri) {
 				api.ErrorResponse(ctx, http.StatusBadRequest, fmt.Errorf("invalid 'from' domain"))
 				return
 			}
@@ -105,8 +88,8 @@ func Login(ctx *gin.Context) {
 		"",
 		/*"https://www.googleapis.com/auth/userinfo.email"*/)
 	values := url.Values{
-		"redirect_uri":  []string{oauth2RedirectURI},
-		"client_id":     []string{oauth2ClientId},
+		"redirect_uri":  []string{cfg.Config.Oauth2RedirectUri},
+		"client_id":     []string{cfg.Config.Oauth2ClientId},
 		"access_type":   []string{"offline"},
 		"response_type": []string{"code"},
 		"prompt":        []string{"consent"},
@@ -114,7 +97,7 @@ func Login(ctx *gin.Context) {
 		"scope":         []string{scope},
 	}
 
-	u, err := url.Parse(oauth2AuthURI)
+	u, err := url.Parse(cfg.Config.Oauth2AuthUri)
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusBadRequest, err)
 		return

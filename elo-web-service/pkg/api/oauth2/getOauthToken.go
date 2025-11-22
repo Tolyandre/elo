@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
 type OauthToken struct {
@@ -20,13 +22,13 @@ func GetOauthToken(code string) (*OauthToken, error) {
 	values := url.Values{}
 	values.Add("grant_type", "authorization_code")
 	values.Add("code", code)
-	values.Add("client_id", oauth2ClientId)
-	values.Add("client_secret", oauth2ClientSecret)
-	values.Add("redirect_uri", oauth2RedirectURI)
+	values.Add("client_id", cfg.Config.Oauth2ClientId)
+	values.Add("client_secret", cfg.Config.Oauth2ClientSecret)
+	values.Add("redirect_uri", cfg.Config.Oauth2RedirectUri)
 
 	query := values.Encode()
 
-	req, err := http.NewRequest("POST", oauth2TokenURL, bytes.NewBufferString(query))
+	req, err := http.NewRequest("POST", cfg.Config.Oauth2TokenUri, bytes.NewBufferString(query))
 	if err != nil {
 		return nil, err
 	}

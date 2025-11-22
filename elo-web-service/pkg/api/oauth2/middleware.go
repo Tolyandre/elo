@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	api "github.com/tolyandre/elo-web-service/pkg/api"
+	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
 func DeserializeUser() gin.HandlerFunc {
@@ -28,7 +29,7 @@ func DeserializeUser() gin.HandlerFunc {
 			return
 		}
 
-		userID, err := ValidateToken(token, cookieJwtSecret)
+		userID, err := ValidateToken(token, cfg.Config.CookieJwtSecret)
 		if err != nil {
 			ctx.Abort()
 			api.ErrorResponse(ctx, http.StatusUnauthorized, err)

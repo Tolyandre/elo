@@ -25,3 +25,6 @@ oauth2_token_uri: https://oauth2.googleapis.com/token
 
 # Frontend domain and scheme
 frontend_uri: http://localhost:3000
+
+# Cookie expiration time in seconds
+cookie_ttl_seconds: 86400

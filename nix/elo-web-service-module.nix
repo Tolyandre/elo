@@ -42,6 +42,7 @@ in
             type = lib.types.str;
             description = "OAuth2 initial URI";
           };
+
           oauth2_redirect_uri = lib.mkOption {
             type = lib.types.str;
             description = "OAuth2 redirect (callback) URI";
@@ -55,6 +56,12 @@ in
           frontend_uri = lib.mkOption {
             type = lib.types.str;
             description = "Frontend URI (used for CORS and redirects)";
+          };
+
+          cookie_ttl_seconds = lib.mkOption {
+            type = lib.types.int;
+            description = "Cookie TTL in seconds";
+            default = 86400;
           };
         };
       };
