@@ -43,12 +43,15 @@ export default function RootLayout({
               <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
                 <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
                   <Toaster />
-                  <div className="min-h-screen ">
-                    <NavigationBar />
-                    <PingError />
-                    <div className="font-sans flex items-center justify-center p-3 rounded-lg shadow-md max-w-lg w-full">
-                      {children}
+                  <div className="font-sans items-center justify-items-center min-h-screen">
+                    <div className="flex flex-col items-center rounded-lg shadow-md max-w-lg w-full">
+                      <NavigationBar />
+                      <div className="p-3 pt-6">
+                        <PingError />
+                        {children}
+                      </div>
                     </div>
+
                   </div>
                 </ThemeProvider>
               </body>

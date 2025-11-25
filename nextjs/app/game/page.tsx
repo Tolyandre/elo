@@ -37,7 +37,10 @@ function GameWrapped() {
 
   return (
     <main className="space-y-8">
-      <h1 className="text-2xl font-semibold mb-4">{game?.id}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold mb-4 mx-auto">{game?.id}</h1>
+      </div>
+
       <p className="text-gray-600">Партий: {game?.total_matches}</p>
 
       <table className="w-full table-auto border-collapse mb-6">

@@ -23,7 +23,9 @@ export default function AllGamesList() {
 
   return (
     <main className="space-y-8">
-      <h1 className="text-2xl font-semibold mb-4">Игры</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold mb-4 mx-auto">Игры</h1>
+      </div>
       <table className="w-full table-auto border-collapse mb-6">
         <tbody>
           {games.games.map((game) => {

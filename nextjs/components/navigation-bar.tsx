@@ -156,7 +156,7 @@ function ModeToggleSubMenu() {
   const { setTheme } = useTheme()
 
   return (
-    <NavigationMenu defaultValue="">
+    <NavigationMenuSub defaultValue="">
       <NavigationMenuList>
         <NavigationMenuItem value="sub1">
           <NavigationMenuTrigger>
@@ -164,7 +164,7 @@ function ModeToggleSubMenu() {
             <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
             <span className="sr-only">Тема</span>
           </NavigationMenuTrigger>
-          <NavigationMenuContent >
+          <NavigationMenuContent>
             <ul>
               <ListItem title="Светлая" onClick={() => setTheme("light")} />
               <ListItem title="Темная" onClick={() => setTheme("dark")} />
@@ -173,7 +173,7 @@ function ModeToggleSubMenu() {
           </NavigationMenuContent>
         </NavigationMenuItem>
       </NavigationMenuList>
-    </NavigationMenu>
+    </NavigationMenuSub>
   )
 }
 

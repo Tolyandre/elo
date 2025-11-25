@@ -109,7 +109,7 @@ export default function MatchesPage() {
   return (
     <main className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold mb-4">Партии</h1>
+        <h1 className="text-2xl font-semibold mb-4 mx-auto">Партии</h1>
       </div>
       <Link
         href="/add-match"

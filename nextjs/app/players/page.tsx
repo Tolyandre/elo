@@ -112,7 +112,7 @@ export default function PlayersPage() {
     return (
         <main>
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold mb-4">Игроки</h1>
+                <h1 className="text-2xl font-semibold mb-4 mx-auto">Игроки</h1>
             </div>
             <LoadingOrError />
             <PlayersTable />
