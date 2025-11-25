@@ -19,6 +19,9 @@ import { useMatches } from "@/app/matches/MatchesContext"
 import { deleteCache, EloWebServiceBaseUrl, User } from "@/app/api"
 import { useSettings } from "@/app/settingsContext"
 import { useMe } from "@/app/meContext"
+import { NavigationMenuSub } from "@radix-ui/react-navigation-menu"
+import { useTheme } from "next-themes"
+import { Moon, Sun } from "lucide-react"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
@@ -34,6 +37,8 @@ export function NavigationBar() {
           <NavigationMenuTrigger>Меню</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
+
+              <ModeToggleSubMenu />
               <ListItem href={settings.googleSheetLink}
                 title={
                   <>
@@ -85,7 +90,9 @@ export function NavigationBar() {
                   </ListItem>
                 );
               })()}
+
             </ul>
+
           </NavigationMenuContent>
         </NavigationMenuItem>
 
@@ -106,13 +113,6 @@ export function NavigationBar() {
             <Link href="/games">Игры</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
-
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <ModeToggle />
-          </NavigationMenuLink>
-        </NavigationMenuItem>
-
       </NavigationMenuList>
     </NavigationMenu>
   )
@@ -151,3 +151,29 @@ function ListItem({
     </li>
   )
 }
+
+function ModeToggleSubMenu() {
+  const { setTheme } = useTheme()
+
+  return (
+    <NavigationMenu defaultValue="">
+      <NavigationMenuList>
+        <NavigationMenuItem value="sub1">
+          <NavigationMenuTrigger>
+            <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+            <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
+            <span className="sr-only">Тема</span>
+          </NavigationMenuTrigger>
+          <NavigationMenuContent >
+            <ul>
+              <ListItem title="Светлая" onClick={() => setTheme("light")} />
+              <ListItem title="Темная" onClick={() => setTheme("dark")} />
+              <ListItem title="Системная" onClick={() => setTheme("system")} />
+            </ul>
+          </NavigationMenuContent>
+        </NavigationMenuItem>
+      </NavigationMenuList>
+    </NavigationMenu>
+  )
+}
+
