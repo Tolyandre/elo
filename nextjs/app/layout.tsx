@@ -44,7 +44,7 @@ export default function RootLayout({
                 <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
                   <Toaster />
                   <div className="font-sans items-center justify-items-center min-h-screen">
-                    <div className="flex flex-col items-center rounded-lg shadow-md max-w-lg w-full">
+                    <div className="flex flex-col mx-auto rounded-lg shadow-md max-w-lg">
                       <NavigationBar />
                       <div className="p-3 pt-6">
                         <PingError />
