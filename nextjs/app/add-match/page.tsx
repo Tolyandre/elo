@@ -244,11 +244,12 @@ function AddGameForm() {
                         {participants.map((p) => (
                             <div key={p.id} className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="w-32">{p.id}
-                                        <span className="text-sm text-gray-500"> {round(eloChange.find(v => v.id == p.id)?.delta || 0, 0)} (
+                                    <span className="w-40">
+                                        <div>{p.id}</div>
+                                        <div className="text-sm text-gray-500"> {round(eloChange.find(v => v.id == p.id)?.delta || 0, 0)} (
                                             <span className="text-red-600"> {round(eloChange.find(v => v.id == p.id)?.minus || 0, 0)} </span>
                                             <span className="text-green-600">+{round(eloChange.find(v => v.id == p.id)?.plus || 0, 0)}</span>)
-                                        </span>
+                                        </div>
                                     </span>
                                     <input
                                         type="text"
@@ -333,9 +334,9 @@ export default function AddGamePage() {
     return (
         <main className="max-w-xl mx-auto p-4">
             <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold mb-4 mx-auto">Результат партии</h1>
+                <h1 className="text-2xl font-bold mb-4 mx-auto">Результат партии</h1>
             </div>
-            
+
             <AuthWarning />
             <AddGameForm />
         </main>

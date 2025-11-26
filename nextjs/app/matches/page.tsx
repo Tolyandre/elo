@@ -63,10 +63,10 @@ export default function MatchesPage() {
           {players.map((p, idx) => (
             <li
               key={p.name}
-              className="flex items-center gap-4 px-2 py-1 rounded transition-colors"
+              className="flex items-center gap-1 py-1 rounded transition-colors"
             >
-              {/* Список игроков */}
-              <div className="gap-2 min-w-[100px]">
+              {/* Игрок */}
+              <div className="gap-2 min-w-40">
                 <span className="font-semibold">{ranks[idx]}. </span>
                 <span>{p.name}</span>
 
@@ -79,10 +79,10 @@ export default function MatchesPage() {
               </div>
 
               {/* Итоговый score */}
-              <div className="text-center min-w-[50px] text-3xl">{p.score}</div>
+              <div className="text-center w-20 text-3xl">{p.score}</div>
 
               {/* Изменение Elo */}
-              <div className="text-right min-w-[60px]">
+              <div className="text-right w-20">
                 <span
                   className={`font-semibold ${p.eloChange > 0
                     ? "text-green-600"
