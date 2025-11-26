@@ -23,7 +23,7 @@ function RankChangeIndicator({ currentRank, previousRank }: { currentRank: numbe
     if (delta > 0) {
         // Rank improved (number decreased) - show up green
         return (
-            <span className="text-green-600 text-sm flex items-center" aria-label={`Rank up ${diff}`}>
+            <span className="text-green-600 text-sm" aria-label={`Rank up ${diff}`}>
                 <span className="mr-1">▴</span>
                 <span>+{diff}</span>
             </span>
@@ -58,7 +58,7 @@ function PlayersTable() {
     const [period, setPeriod] = useState<"day" | "week">("day");
     if (loading || error) return null;
     return (
-        <div>
+        <>
             <div className="flex gap-2 items-center mb-3">
                 <a
                     href="#"
@@ -81,22 +81,20 @@ function PlayersTable() {
                     за неделю
                 </a>
             </div>
-            <table className="w-full table-auto border-collapse mb-6">
+            <table className="table-auto border-collapse mb-6">
                 <tbody>
                     {players.map((player) => {
                         return (
                             <tr key={player.id}>
-                                <td className="px-1 py-2">
-                                    <div className="flex items-center gap-1">
-                                        <span>{player.now.rank}</span>
-                                        <RankChangeIndicator
-                                            currentRank={player.now.rank}
-                                            previousRank={period === "day" ? player.day_ago.rank : player.week_ago.rank}
-                                        />
-                                    </div>
+                                <td className="py-2 flex items-center gap-1 w-10">
+                                    <span>{player.now.rank}</span>
+                                    <RankChangeIndicator
+                                        currentRank={player.now.rank}
+                                        previousRank={period === "day" ? player.day_ago.rank : player.week_ago.rank}
+                                    />
                                 </td>
-                                <td className="px-1 py-2 min-w-30">{player.id}</td>
-                                <td className="px-1 py-2">
+                                <td className="px-1 py-2 min-w-50">{player.id}</td>
+                                <td className="py-2 w-25">
                                     <EloValueAndDiff currentElo={player.now.elo} previousElo={period === "day" ? player.day_ago.elo : player.week_ago.elo} />
                                 </td>
                             </tr>
@@ -104,7 +102,7 @@ function PlayersTable() {
                     })}
                 </tbody>
             </table>
-        </div>
+        </>
     );
 }
 
