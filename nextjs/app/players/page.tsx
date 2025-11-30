@@ -86,7 +86,7 @@ function PlayersTable() {
                     {players.map((player) => {
                         return (
                             <tr key={player.id}>
-                                <td className="py-2 flex items-center gap-1 w-10">
+                                <td className="py-2 flex items-center gap-1 w-11">
                                     <span>{player.now.rank}</span>
                                     <RankChangeIndicator
                                         currentRank={player.now.rank}

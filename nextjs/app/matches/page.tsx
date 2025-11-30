@@ -2,13 +2,8 @@
 
 import Link from "next/link";
 import { useMatches, Match } from "./MatchesContext";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { useState } from "react";
 
 export default function MatchesPage() {
-
-  const [blueIndicatorMode, setBlueIndicatorMode] = useState(false);
 
   function LoadingOrError() {
     const { loading, error } = useMatches();
@@ -23,13 +18,27 @@ export default function MatchesPage() {
 
     return (
       <>
-        <div className="flex items-center space-x-2">
-          <Switch id="blue-indicator-mode" checked={blueIndicatorMode} onCheckedChange={setBlueIndicatorMode} />
-          <Label htmlFor="blue-indicator-mode">Синяя полоска считается по сумме (вместо максимума)</Label>
-        </div>
-        {matches.map((m) => (
-          <MatchCard key={m.id} match={m} />
-        ))}
+        {/* <ul>
+          <li><div className="h-2 bg-gray-200 rounded mt-1 w-15">
+            <div
+              style={{ width: `100%` }}
+              className="h-full bg-green-400 rounded"
+            />
+          </div> Количество победных очков
+          </li>
+          <li><div className="h-2 bg-gray-200 rounded mt-1 w-15">
+            <div
+              style={{ width: `100%` }}
+              className="h-full bg-red-400 rounded"
+            />
+          </div>
+             Ожидаемое количество победных очков исходя из рейтинга</li>
+        </ul> */}
+        {
+          matches.map((m) => (
+            <MatchCard key={m.id} match={m} />
+          ))
+        }
       </>
     );
   }
@@ -47,9 +56,8 @@ export default function MatchesPage() {
 
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
 
-    const maxEarn = blueIndicatorMode
-      ? players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0)
-      : Math.max(...players.map((p) => p.eloEarn));
+    const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0);
+    const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0);
 
     return (
       <div className="border border-gray-200 rounded p-4">
@@ -70,19 +78,29 @@ export default function MatchesPage() {
                 <span className="font-semibold">{ranks[idx]}. </span>
                 <span>{p.name}</span>
 
-                <div className="h-2 bg-gray-200 rounded mt-1">
+                <div className="relative h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+
+                  {/* Индикатор победных очков */}
                   <div
-                    style={{ width: `${(p.eloEarn / maxEarn) * 100}%` }}
-                    className="h-full bg-blue-400 rounded"
+                    className="absolute top-0 h-1 bg-green-400"
+                    style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
                   />
+
+                  {/* Индикатор вероятности победы (сколько очко вычитаем) */}
+                  <div
+                    className="absolute bottom-0 h-1 bg-red-400"
+                    style={{ width: `${(p.eloPay / totalPay) * 100}%` }}
+                  />
+
                 </div>
+
               </div>
 
               {/* Итоговый score */}
               <div className="text-center w-20 text-3xl">{p.score}</div>
 
               {/* Изменение Elo */}
-              <div className="text-right w-20">
+              <div className="text-right w-21">
                 <span
                   className={`font-semibold ${p.eloChange > 0
                     ? "text-green-600"
