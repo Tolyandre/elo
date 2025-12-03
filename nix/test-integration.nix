@@ -2,7 +2,7 @@
   pkgs ? import <nixpkgs> { },
 }:
 
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "elo-web-service-test";
 
   nodes.machine =
