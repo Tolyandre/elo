@@ -9,6 +9,7 @@ import { PingError } from "@/components/ping-error";
 import { ThemeProvider } from "./theme-provider";
 import { MeProvider } from "./meContext";
 import { Toaster } from "@/components/ui/sonner";
+import { GamesProvider } from "./gamesContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,25 +39,27 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning /* suppress for ThemeProvider */>
       <SettingsProvider>
         <MeProvider>
-          <MatchesProvider>
-            <PlayersProvider>
-              <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-                <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-                  <Toaster />
-                  <div className="font-sans items-center justify-items-center min-h-screen">
-                    <div className="flex flex-col mx-auto rounded-lg shadow-md max-w-lg">
-                      <NavigationBar />
-                      <div className="p-3 pt-6">
-                        <PingError />
-                        {children}
+          <GamesProvider>
+            <MatchesProvider>
+              <PlayersProvider>
+                <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+                  <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+                    <Toaster />
+                    <div className="font-sans items-center justify-items-center min-h-screen">
+                      <div className="flex flex-col mx-auto rounded-lg shadow-md max-w-lg">
+                        <NavigationBar />
+                        <div className="p-3 pt-6">
+                          <PingError />
+                          {children}
+                        </div>
                       </div>
-                    </div>
 
-                  </div>
-                </ThemeProvider>
-              </body>
-            </PlayersProvider>
-          </MatchesProvider>
+                    </div>
+                  </ThemeProvider>
+                </body>
+              </PlayersProvider>
+            </MatchesProvider>
+          </GamesProvider>
         </MeProvider>
       </SettingsProvider>
     </html>

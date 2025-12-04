@@ -11,6 +11,7 @@ import { useMe } from "../meContext";
 import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
+import { useGames } from "../gamesContext";
 
 type Participant = {
     id: string;
@@ -39,28 +40,28 @@ function AddGameForm() {
     const { invalidate: invalidatePlayers } = usePlayers();
     const settings = useSettings();
 
-    const [games, setGames] = useState<string[]>([]);
+    const { games } = useGames();
     const [filteredGames, setFilteredGames] = useState<string[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        getGamesPromise().then((data) => {
-            if (data.games) {
-                const sortedGameTitles = data.games
-                    .sort((a, b) => a.last_played_order - b.last_played_order)
-                    .map(g => g.id);
-                setGames(sortedGameTitles);
-                setFilteredGames(sortedGameTitles);
-            }
-        });
+        // getGamesPromise().then((data) => {
+        //     if (data.games) {
+        //         const sortedGameTitles = data.games
+        //             .sort((a, b) => a.last_played_order - b.last_played_order)
+        //             .map(g => g.id);
+        //         setGames(sortedGameTitles);
+        //         setFilteredGames(sortedGameTitles);
+        //     }
+        // });
     }, []);
 
     useEffect(() => {
         setFilteredGames(
-            games.filter((game) =>
-                game.toLowerCase().includes(gameName.toLowerCase())
-            )
+            games.filter((game) => game.id.toLowerCase().includes(gameName.toLowerCase()))
+                .sort((a, b) => a.last_played_order - b.last_played_order)
+                .map((g) => g.id)
         );
     }, [gameName, games]);
 

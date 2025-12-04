@@ -4,9 +4,11 @@ import React from "react";
 import Link from "next/link";
 import { useMatches, Match } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
+import { GameCombobox } from "@/components/game-combobox";
 
 export default function MatchesPage() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
+  const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
 
   function LoadingOrError() {
     const { loading, error } = useMatches();
@@ -19,13 +21,19 @@ export default function MatchesPage() {
     const { matches } = useMatches();
     if (!matches) return null; // ещё нет данных
 
-    const filtered = selectedPlayerId
+    let filtered = selectedPlayerId
       ? matches.filter((m) => Object.prototype.hasOwnProperty.call(m.score, selectedPlayerId))
       : matches
+
+    if (selectedGameId) {
+      filtered = filtered.filter((m) => m.game === selectedGameId);
+    }
 
     return (
       <>
         <PlayerCombobox value={selectedPlayerId} onChange={setSelectedPlayerId} />
+        <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
+
         {filtered.map((m) => (
           <MatchCard key={m.id} match={m} />
         ))}
