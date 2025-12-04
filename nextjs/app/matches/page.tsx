@@ -1,9 +1,12 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { useMatches, Match } from "./MatchesContext";
+import { PlayerCombobox } from "@/components/player-combobox";
 
 export default function MatchesPage() {
+  const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
 
   function LoadingOrError() {
     const { loading, error } = useMatches();
@@ -16,29 +19,16 @@ export default function MatchesPage() {
     const { matches } = useMatches();
     if (!matches) return null; // ещё нет данных
 
+    const filtered = selectedPlayerId
+      ? matches.filter((m) => Object.prototype.hasOwnProperty.call(m.score, selectedPlayerId))
+      : matches
+
     return (
       <>
-        {/* <ul>
-          <li><div className="h-2 bg-gray-200 rounded mt-1 w-15">
-            <div
-              style={{ width: `100%` }}
-              className="h-full bg-green-400 rounded"
-            />
-          </div> Количество победных очков
-          </li>
-          <li><div className="h-2 bg-gray-200 rounded mt-1 w-15">
-            <div
-              style={{ width: `100%` }}
-              className="h-full bg-red-400 rounded"
-            />
-          </div>
-             Ожидаемое количество победных очков исходя из рейтинга</li>
-        </ul> */}
-        {
-          matches.map((m) => (
-            <MatchCard key={m.id} match={m} />
-          ))
-        }
+        <PlayerCombobox value={selectedPlayerId} onChange={setSelectedPlayerId} />
+        {filtered.map((m) => (
+          <MatchCard key={m.id} match={m} />
+        ))}
       </>
     );
   }
