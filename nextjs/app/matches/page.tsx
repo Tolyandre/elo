@@ -1,14 +1,56 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMatches, Match } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 
 export default function MatchesPage() {
+  return (
+    <Suspense>
+      <MatchesPageWrapped />
+    </Suspense>
+  )
+}
+
+function MatchesPageWrapped() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
   const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  React.useEffect(() => {
+    const p = searchParams.get("player") ?? undefined;
+    const g = searchParams.get("game") ?? undefined;
+    setSelectedPlayerId(p);
+    setSelectedGameId(g);
+  }, [searchParams]);
+
+  function updateQueryParam(key: string, value: string | undefined) {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    if (value == null) {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
+
+    const query = params.toString();
+    const url = query ? `${pathname}?${query}` : pathname;
+    router.replace(url);
+  }
+
+  function handlePlayerChange(id?: string) {
+    setSelectedPlayerId(id);
+    updateQueryParam("player", id);
+  }
+
+  function handleGameChange(id?: string) {
+    setSelectedGameId(id);
+    updateQueryParam("game", id);
+  }
 
   function LoadingOrError() {
     const { loading, error } = useMatches();
@@ -31,8 +73,8 @@ export default function MatchesPage() {
 
     return (
       <>
-        <PlayerCombobox value={selectedPlayerId} onChange={setSelectedPlayerId} />
-        <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
+        <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
+        <GameCombobox value={selectedGameId} onChange={handleGameChange} />
 
         {filtered.map((m) => (
           <MatchCard key={m.id} match={m} />
