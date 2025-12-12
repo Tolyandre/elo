@@ -82,7 +82,7 @@ func AddOrUpdate(ID string, Name string) error {
 // appendUserRow appends a user row to the users sheet and invalidates cache.
 func appendUserRow(user UserRow) error {
 	row := []interface{}{user.ID, user.Name, user.CanEdit}
-	appendRange := "Пользователи!A:Z"
+	appendRange := "Пользователи!A:ZZ"
 	_, err := sheetsService.Spreadsheets.Values.Append(docId, appendRange, &sheets.ValueRange{
 		Values: [][]interface{}{row},
 	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
@@ -94,7 +94,7 @@ func appendUserRow(user UserRow) error {
 }
 
 func parseUsersSheet() ([]UserRow, error) {
-	usersResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Пользователи!A:Z").Do()
+	usersResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Пользователи!A:ZZ").Do()
 	if err != nil {
 		return nil, err
 	}

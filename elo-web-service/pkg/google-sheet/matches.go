@@ -9,7 +9,7 @@ import (
 )
 
 func AddMatch(game string, score map[string]float64) error {
-	headerRange := "Партии!C1:Z1"
+	headerRange := "Партии!C1:1"
 	headerResp, err := sheetsService.Spreadsheets.Values.
 		Get(docId, headerRange).
 		ValueRenderOption("UNFORMATTED_VALUE").
@@ -39,7 +39,7 @@ func AddMatch(game string, score map[string]float64) error {
 	}
 
 	// Append the row to the end of "Партии"
-	appendRange := "Партии!A:Z"
+	appendRange := "Партии!A:ZZ"
 	_, err = sheetsService.Spreadsheets.Values.Append(docId, appendRange, &sheets.ValueRange{
 		Values: [][]interface{}{row},
 	}).ValueInputOption("USER_ENTERED").InsertDataOption("OVERWRITE").Do()
@@ -52,7 +52,7 @@ func AddMatch(game string, score map[string]float64) error {
 }
 
 func parseMatchesSheet() ([]MatchRow, []string, error) {
-	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:Z").Do()
+	matchesResp, err := sheetsService.Spreadsheets.Values.Get(docId, "Партии!A:ZZ").Do()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -61,7 +61,7 @@ func parseMatchesSheet() ([]MatchRow, []string, error) {
 		return nil, nil, errors.New("matches sheet is empty")
 	}
 
-	// extract player IDs from header row (columns C..Z)
+	// extract player IDs from header row (columns C..ZZ)
 	playerIDs := parsePlayerIds(matchesResp)
 
 	matches := make([]MatchRow, 0, len(matchesResp.Values))

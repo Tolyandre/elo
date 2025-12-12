@@ -8,7 +8,7 @@ import (
 
 func parseEloSheet() ([]EloRow, *Settings, error) {
 	eloResponse, err := sheetsService.Spreadsheets.Values.
-		Get(docId, "Elo v2!A:Z").
+		Get(docId, "Elo v2!A:ZZ").
 		ValueRenderOption("UNFORMATTED_VALUE").
 		Do()
 
@@ -20,7 +20,7 @@ func parseEloSheet() ([]EloRow, *Settings, error) {
 		return nil, nil, errors.New("sheet is empty")
 	}
 
-	// extract player IDs from header row (columns C..Z)
+	// extract player IDs from header row (columns C..ZZ)
 	playerIDs := parsePlayerIds(eloResponse)
 
 	elo := make([]EloRow, 0, len(eloResponse.Values))
