@@ -1,11 +1,13 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMatches, Match } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function MatchesPage() {
   return (
@@ -18,6 +20,7 @@ export default function MatchesPage() {
 function MatchesPageWrapped() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
   const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
+  const [roundToInteger, setRoundToInteger] = useState(true);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -75,6 +78,11 @@ function MatchesPageWrapped() {
       <>
         <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
         <GameCombobox value={selectedGameId} onChange={handleGameChange} />
+
+        <div className="flex items-center space-x-2">
+          <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+          <Label htmlFor="round-to-integer">Округлять до целого</Label>
+        </div>
 
         {filtered.map((m) => (
           <MatchCard key={m.id} match={m} />
@@ -150,11 +158,11 @@ function MatchesPageWrapped() {
                     }`}
                 >
                   {p.eloChange >= 0 ? "+" : ""}
-                  {p.eloChange.toFixed(1)}
+                  {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
                 </span>
                 <br />
                 <span className="text-xs text-gray-500">
-                  ({p.eloPay.toFixed(1)} + {p.eloEarn.toFixed(1)})
+                  ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
                 </span>
               </div>
             </li>
