@@ -8,6 +8,7 @@ import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 export default function MatchesPage() {
   return (
@@ -20,7 +21,7 @@ export default function MatchesPage() {
 function MatchesPageWrapped() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
   const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
-  const [roundToInteger, setRoundToInteger] = useState(true);
+  const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();

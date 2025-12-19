@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePlayers } from "./PlayersContext";
 import { useState } from "react";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
@@ -55,7 +56,7 @@ function EloValueAndDiff({ currentElo, previousElo }: { currentElo: number; prev
 
 function PlayersTable() {
     const { players, loading, error } = usePlayers();
-    const [period, setPeriod] = useState<"day" | "week">("day");
+    const [period, setPeriod] = useLocalStorage<"day" | "week">("players-period", "day");
     if (loading || error) return null;
     return (
         <>
