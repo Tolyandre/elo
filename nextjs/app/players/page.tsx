@@ -24,18 +24,18 @@ function RankChangeIndicator({ currentRank, previousRank }: { currentRank: numbe
     if (delta > 0) {
         // Rank improved (number decreased) - show up green
         return (
-            <span className="text-green-600 text-sm" aria-label={`Rank up ${diff}`}>
+            <span className="text-green-600 text-xs" aria-label={`Rank up ${diff}`}>
                 <span className="mr-1">▴</span>
-                <span>+{diff}</span>
+                <span>{diff}</span>
             </span>
         );
     }
 
     // Rank worsened (number increased) - show down red
     return (
-        <span className="text-red-600 text-sm flex items-center" aria-label={`Rank down ${diff}`}>
+        <span className="text-red-600 text-xs" aria-label={`Rank down ${diff}`}>
             <span className="mr-1">▾</span>
-            <span>-{diff}</span>
+            <span>{diff}</span>
         </span>
     );
 }
@@ -87,15 +87,15 @@ function PlayersTable() {
                     {players.map((player) => {
                         return (
                             <tr key={player.id}>
-                                <td className="py-2 flex items-center gap-1 w-11">
-                                    <span>{player.now.rank}</span>
+                                <td className="py-2 text-center align-top min-w-7">{player.now.rank}</td>
+                                <td className="py-2 text-center align-top min-w-7">
                                     <RankChangeIndicator
                                         currentRank={player.now.rank}
                                         previousRank={period === "day" ? player.day_ago.rank : player.week_ago.rank}
                                     />
                                 </td>
-                                <td className="px-1 py-2 min-w-50">{player.id}</td>
-                                <td className="py-2 w-25">
+                                <td className="py-2 px-1 min-w-50">{player.id}</td>
+                                <td className="py-2 px-1 align-top min-w-25">
                                     <EloValueAndDiff currentElo={player.now.elo} previousElo={period === "day" ? player.day_ago.elo : player.week_ago.elo} />
                                 </td>
                             </tr>
