@@ -11,7 +11,7 @@ import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { useGames } from "../gamesContext";
-import { MultiSelect } from "@/components/multi-select";
+import { PlayerMultiSelect } from "@/components/player-multi-select";
 
 type Participant = {
     id: string;
@@ -212,21 +212,7 @@ function AddGameForm() {
             </div>
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                <MultiSelect options={players.map(p => ({
-                    value: p.id,
-                    label: `${p.id}`
-                }))}
-                    responsive={{
-                        mobile: { maxCount: 10, hideIcons: false, compactMode: true },
-                        tablet: { maxCount: 10, hideIcons: false, compactMode: false },
-                        desktop: { maxCount: 10, hideIcons: false, compactMode: false },
-                    }}
-                    placeholder="Выберите игроков"
-                    searchPlaceholder="Искать игрока..."
-                    hideSelectAll={true}
-                    onValueChange={setSelectedPlayerIds}
-                    maxCount={10}
-                    defaultValue={selectedPlayerIds} />
+                <PlayerMultiSelect value={selectedPlayerIds} onChange={setSelectedPlayerIds} />
 
             </div>
             {participants.length > 0 && (
