@@ -222,6 +222,7 @@ function AddGameForm() {
                         desktop: { maxCount: 10, hideIcons: false, compactMode: false },
                     }}
                     placeholder="Выберите игроков"
+                    searchPlaceholder="Искать игрока..."
                     hideSelectAll={true}
                     onValueChange={setSelectedPlayerIds}
                     maxCount={10}
