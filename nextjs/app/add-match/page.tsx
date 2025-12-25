@@ -6,12 +6,12 @@ import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useSettings } from "../settingsContext";
-import { getGamesPromise } from "../api";
 import { useMe } from "../meContext";
 import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { useGames } from "../gamesContext";
+import { MultiSelect } from "@/components/multi-select";
 
 type Participant = {
     id: string;
@@ -28,6 +28,7 @@ type EloChange = {
 function AddGameForm() {
     const { players, loading } = usePlayers();
     const [participants, setParticipants] = useState<Participant[]>([]);
+    const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
     const [eloChange, setEloChange] = useState<EloChange[]>([]);
     const [gameName, setGameName] = useState("");
     const [success, setSuccess] = useState(false);
@@ -46,16 +47,13 @@ function AddGameForm() {
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // getGamesPromise().then((data) => {
-        //     if (data.games) {
-        //         const sortedGameTitles = data.games
-        //             .sort((a, b) => a.last_played_order - b.last_played_order)
-        //             .map(g => g.id);
-        //         setGames(sortedGameTitles);
-        //         setFilteredGames(sortedGameTitles);
-        //     }
-        // });
-    }, []);
+        setParticipants(
+            selectedPlayerIds.map((id) => {
+                const existing = participants.find((p) => p.id === id);
+                return existing ? existing : { id, points: "" };
+            })
+        );
+    }, [selectedPlayerIds]);
 
     useEffect(() => {
         setFilteredGames(
@@ -81,13 +79,6 @@ function AddGameForm() {
         };
     }, []);
 
-    const handleSelect = (id: string, checked: boolean) => {
-        if (checked) {
-            setParticipants([...participants, { id, points: "" }]);
-        } else {
-            setParticipants(participants.filter((p) => p.id !== id));
-        }
-    };
 
     const handlePointsChange = (id: string, value: string) => {
         setParticipants(
@@ -220,23 +211,22 @@ function AddGameForm() {
                 </div>
             </div>
             <div>
-                <h2 className="font-semibold mb-2">Выберите участников:</h2>
-                <div className="grid grid-cols-1 gap-2">
-                    {players.map((player) => (
-                        <label key={player.id} className="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                value={player.id}
-                                checked={participants.some((p) => p.id === player.id)}
-                                onChange={(e) =>
-                                    handleSelect(player.id, e.target.checked)
-                                }
-                                className="accent-blue-500 "
-                            />
-                            <span>{player.id} <span className="text-gray-500">({player.now.elo.toFixed(0)})</span></span>
-                        </label>
-                    ))}
-                </div>
+                <h2 className="font-semibold mb-2">Участники:</h2>
+                <MultiSelect options={players.map(p => ({
+                    value: p.id,
+                    label: `${p.id}`
+                }))}
+                    responsive={{
+                        mobile: { maxCount: 10, hideIcons: false, compactMode: true },
+                        tablet: { maxCount: 10, hideIcons: false, compactMode: false },
+                        desktop: { maxCount: 10, hideIcons: false, compactMode: false },
+                    }}
+                    placeholder="Выберите игроков"
+                    hideSelectAll={true}
+                    onValueChange={setSelectedPlayerIds}
+                    maxCount={10}
+                    defaultValue={selectedPlayerIds} />
+
             </div>
             {participants.length > 0 && (
                 <div>

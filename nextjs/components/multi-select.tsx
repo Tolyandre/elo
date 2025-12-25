@@ -864,8 +864,8 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 																"text-white border-transparent",
 															responsiveSettings.compactMode &&
 																"text-xs px-1.5 py-0.5",
-															screenSize === "mobile" &&
-																"max-w-[120px] truncate",
+															// screenSize === "mobile" &&
+															// 	"max-w-[120px] truncate",
 															singleLine && "flex-shrink-0 whitespace-nowrap",
 															"[&>svg]:pointer-events-auto"
 														)}
