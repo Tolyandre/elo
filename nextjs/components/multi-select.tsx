@@ -969,7 +969,8 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			)}
 		</Button>);
 
-		var content = (<Command>
+		// shouldFilter работает как встроенный фильтр, но здесь реализован свой
+		var content = (<Command shouldFilter={false}> 
 			{searchable && (
 				<CommandInput
 					placeholder={searchPlaceholder}
