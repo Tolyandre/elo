@@ -26,7 +26,7 @@ export function PlayerMultiSelect({
       Array.from(
         new Set(
           matches
-            ?.toSorted((a, b) => a.date == b.date ? 0 : (b?.date?.localeCompare(a?.date ?? "") || 1))
+            ?.toSorted((a, b) => a.date == b.date ? 0 : (new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()))
             ?.slice(0, 5) // не более последних 5 игр
             .flatMap(m => Object.keys(m.score)) // id игроков
         )
