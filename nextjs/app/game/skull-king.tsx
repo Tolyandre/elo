@@ -1,4 +1,5 @@
 import * as mathjs from "mathjs";
+import { Fraction } from "mathjs";
 
 export const suitValues = ["jolly-roger", "chest", "parrot", "map"] as const;
 export type Suit = (typeof suitValues)[number];
@@ -8,7 +9,7 @@ export const specialValues = ["skull-king", "pirate", "tigress", "mermaid", "esc
 export type Special = (typeof specialValues)[number];
 
 export type Card = { type: Suit; value: number; } | { type: Special; };
-export type ProbabilityPoints = { probability: number, points: number };
+export type ProbabilityPoints = { probability: Fraction, points: number };
 
 function isSuitCard(card: Card | null): card is { type: Suit; value: number; } {
     return (
@@ -56,17 +57,17 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
             const unsafeCardsCombinations = mathjs.combinations(unsafeCards, 0);
 
             probabilities.push({
-                probability: sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations / totalCombinations,
+                probability: new Fraction(sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations, totalCombinations),
                 points: (suit14Count + (card.value === numberOfSuitValues ? 1 : 0)) * suit14BonusPoints + bidMatchPoints
             });
         }
 
         const winCards = numberOfSuitValues * 2 /* other suits */ + (card.value - 1) /* current suit */ + numberOfEscapes;
         const looseCards = totalCards - 1 /* current card */ - winCards;
-        const winWithAnyBonusProbability = mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1) / totalCombinations;
+        const winWithAnyBonusProbability = new Fraction(mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1), totalCombinations);
 
         probabilities.push({
-            probability: 1 - winWithAnyBonusProbability,
+            probability: new Fraction(1).sub(winWithAnyBonusProbability),
             points: bidMissPoints
         });
     }
@@ -83,7 +84,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
             const unsafeCardsCombinations = mathjs.combinations(unsafeCards, 0);
 
             probabilities.push({
-                probability: sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations / totalCombinations,
+                probability: new Fraction(sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations, totalCombinations),
                 points: suit14Count * suit14BonusPoints + (card.value === numberOfSuitValues ? jollyRogerBonusPoints : 0) + bidMatchPoints
             });
         }
@@ -93,7 +94,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const winWithAnyBonusProbability = mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1) / totalCombinations;
 
         probabilities.push({
-            probability: 1 - winWithAnyBonusProbability,
+            probability: new Fraction(1).sub(winWithAnyBonusProbability),
             points: bidMissPoints
         });
     }
@@ -101,7 +102,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
         if (numberOfPlayers > numberOfEscapes || turnOrder != 1) {
             probabilities.push({
-                probability: 1,
+                probability: new Fraction(1),
                 points: bidMissPoints
             });
         } else {
@@ -116,19 +117,19 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
             const totalCombinations = mathjs.combinations(totalCards - 1, numberOfPlayers - 1);
 
             probabilities.push({
-                probability: safeCardsCombinations * unsafeCardsCombinations / totalCombinations,
+                probability: new Fraction(safeCardsCombinations * unsafeCardsCombinations, totalCombinations),
                 points: bidMatchPoints
             });
 
             probabilities.push({
-                probability: loseOnUnsafeCardsCombinations / totalCombinations,
+                probability: new Fraction(loseOnUnsafeCardsCombinations, totalCombinations),
                 points: bidMissPoints
             });
         }
     }
     else if (card.type == "kraken") {
         probabilities.push({
-            probability: 1,
+            probability: new Fraction(1),
             points: bidMissPoints
         });
     }
@@ -150,11 +151,9 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
                         const sute14Combinations = mathjs.combinations(3, suit14Count);
                         const jollyRoger14Combinations = mathjs.combinations(1, jollyRoger14Count);
                         const mermaidCombinations = mathjs.combinations(numberOfMermaids, mermaidCount);
+                        const pirateCombinations = mathjs.combinations(otherPirateCards, pirateCount);
 
                         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4
-                            //+ mathjs.max((numberOfPirates - 1 /* current card */ + 1 /* tigress */ - turnOrder - 1), 0)
-                            // + numberOfPirates - 1 /* current card */ + 1 /* tigress */
-                            + otherPirateCards
                             + numberOfEscapes;
                         const safeCardsWithoutBonusCombinations = mathjs.combinations(safeCardsWithoutBonus, numberOfPlayers - 1
                             - suit14Count - jollyRoger14Count - mermaidCount - pirateCount);
@@ -166,20 +165,19 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
                         // на numberOfPlayers-1 игроков вышло pirateCount пиратов
                         // определяем вероятность, что карта пиратов вышла не перед текущим ходом
                         const notLooseBeforeCurrentTurnProbability = (turnOrder - 1 > numberOfPlayers - 1 - pirateCount)
-                            ? 0
-                            : mathjs.combinations(numberOfPlayers - 1, 0)
-                            * mathjs.combinations(numberOfPlayers - 1 - pirateCount, turnOrder - 1)
-                            / mathjs.combinations(numberOfPlayers - 1, pirateCount);
+                            ? new Fraction(0)
+                            : new Fraction(mathjs.combinations(numberOfPlayers - 1 - pirateCount, turnOrder - 1),
+                                mathjs.combinations(numberOfPlayers - 1, turnOrder - 1));
 
-                        const combinations = sute14Combinations * jollyRoger14Combinations * mermaidCombinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations;
+                        const combinations = sute14Combinations * jollyRoger14Combinations * mermaidCombinations * pirateCombinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations;
                         probabilities.push({
-                            probability: notLooseBeforeCurrentTurnProbability * combinations / totalCombinations,
+                            probability: notLooseBeforeCurrentTurnProbability.mul(new Fraction(combinations, totalCombinations)),
                             points: suit14Count * suit14BonusPoints + jollyRoger14Count * jollyRogerBonusPoints
                                 + mermaidCount * mermaidBonusPoints + bidMatchPoints
                         });
 
                         probabilities.push({
-                            probability: (1 - notLooseBeforeCurrentTurnProbability) * combinations / totalCombinations,
+                            probability: new Fraction(1).sub(notLooseBeforeCurrentTurnProbability).mul(combinations).div(totalCombinations),
                             points: bidMissPoints
                         });
 
@@ -188,14 +186,14 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
             }
         }
 
-        // const winCards = numberOfSuitValues * 4 /* suits */ + numberOfEscapes + numberOfMermaids + otherPirateCards;
-        // const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);
-        // const winWithAnyBonusProbability = mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1) / totalCombinations;
+        const winCards = numberOfSuitValues * 4 /* suits */ + numberOfEscapes + numberOfMermaids + otherPirateCards;
+        const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);
+        const winWithAnyBonusProbability = mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1) / totalCombinations;
 
-        // probabilities.push({
-        //     probability: 1 - winWithAnyBonusProbability,
-        //     points: bidMissPoints
-        // });
+        probabilities.push({
+            probability: new Fraction(1).sub(winWithAnyBonusProbability),
+            points: bidMissPoints
+        });
 
         // // игроки перед текущим не должны сыграть пиратов
         // const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);       
@@ -225,10 +223,10 @@ function groupByPoints(
         probabilities.reduce<Record<number, ProbabilityPoints>>(
             (acc, { points, probability }) => {
                 if (!acc[points]) {
-                    acc[points] = { points, probability: 0 };
+                    acc[points] = { points, probability: new Fraction(0) };
                 }
 
-                acc[points].probability += probability;
+                acc[points].probability = acc[points].probability.add(probability);
                 return acc;
             },
             {}

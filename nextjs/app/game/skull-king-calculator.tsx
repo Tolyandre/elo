@@ -12,6 +12,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Suit, Special, Card, suitValues, ProbabilityPoints, calculateProbabilities1, specialValues } from "./skull-king";
+import * as mathjs from "mathjs";
+import { Fraction } from "mathjs";
 
 const suitLabels: Record<Suit, string> = {
     "jolly-roger": "Весёлый Роджер",
@@ -42,13 +44,26 @@ export function SkullKingCalculator() {
     const [card, setCard] = useState<Card | null>(null);
 
     /** расчет вероятности выиграть взятку */
-    const probabilities1 = useMemo<ProbabilityPoints[] | null>(() => {
+    const probabilitiesBid1 = useMemo<{ probability: number; points: number; }[] | null>(() => {
         if (!card) {
             return null;
         }
 
-        return calculateProbabilities1(numberOfPlayers, turnOrder, card, krakenEnabled, whiteWhaleEnabled);
+        return calculateProbabilities1(numberOfPlayers, turnOrder, card, krakenEnabled, whiteWhaleEnabled)
+            .map(({ probability, points }) => ({
+                probability: mathjs.number(probability),
+                points,
+            }))
+            .toSorted((a, b) => b.points - a.points);
     }, [card, numberOfPlayers, turnOrder, krakenEnabled, whiteWhaleEnabled]);
+
+    const mathExpectation = useMemo<number | null>(() => {
+        if (!probabilitiesBid1) {
+            return null;
+        }
+
+        return probabilitiesBid1.reduce((acc, { probability, points }) => acc + probability * (points), 0);
+    }, [probabilitiesBid1]);
 
     /** доступные специальные карты */
     const availableSpecials = useMemo<Special[]>(() => {
@@ -193,12 +208,11 @@ export function SkullKingCalculator() {
 
             <h3 className="text-xl font-semibold">При заявке 1</h3>
             <div className="space-y-2">
-                <Label>Мат. ожидание очков: <pre>{probabilities1?.reduce((acc, { probability, points }) => acc + probability * points, 0).toFixed(2)}</pre></Label>
+                <Label>Мат. ожидание очков: <pre>{mathExpectation?.toFixed(2)}</pre></Label>
             </div>
 
-            {probabilities1 !== null && (
-                probabilities1
-                    .toSorted((a, b) => b.points - a.points)
+            {probabilitiesBid1 !== null && (
+                probabilitiesBid1
                     .map(({ probability, points }, index) => (
                         <div key={index} className="space-y-2">
                             <Label>С вероятностью <pre>{`${(probability * 100).toFixed(2)}%`}</pre> получите очков: <pre>{points}</pre></Label>
@@ -206,7 +220,7 @@ export function SkullKingCalculator() {
                     ))
             )}
             <div className="space-y-2 text-muted-foreground">
-                <Label>Сумма вероятностей для контроля: <pre>{probabilities1?.reduce((acc, { probability }) => acc + probability * 100, 0).toFixed(2)}%</pre></Label>
+                <Label>Сумма вероятностей для контроля: <pre>{probabilitiesBid1?.reduce((acc, { probability }) => acc + probability * 100, 0).toFixed(2)}%</pre></Label>
             </div>
 
         </div>
