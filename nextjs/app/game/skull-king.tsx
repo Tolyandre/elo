@@ -22,9 +22,9 @@ const numberOfMermaids = 2; // количество русалок в колод
 const numberOfEscapes = 5; // количество белых флагов в колоде
 const numberOfSuitValues = 14; // количество значений в каждой масти
 
-const trickMatchPoints = 20;
-const trickMissPoints = -10;
-const zeroTrickPoints = 10;
+const bidMatchPoints = 20;
+const bidMissPoints = -10;
+const zeroBidPoints = 10;
 
 const suit14BonusPoints = 10;
 const jollyRogerBonusPoints = 20;
@@ -57,7 +57,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
             probabilities.push({
                 probability: sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations / totalCombinations,
-                points: (suit14Count + (card.value === numberOfSuitValues ? 1 : 0)) * suit14BonusPoints + trickMatchPoints
+                points: (suit14Count + (card.value === numberOfSuitValues ? 1 : 0)) * suit14BonusPoints + bidMatchPoints
             });
         }
 
@@ -67,7 +67,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
         probabilities.push({
             probability: 1 - winWithAnyBonusProbability,
-            points: trickMissPoints
+            points: bidMissPoints
         });
     }
     else if (card.type === "jolly-roger") {
@@ -84,7 +84,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
             probabilities.push({
                 probability: sute14Combinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations / totalCombinations,
-                points: suit14Count * suit14BonusPoints + (card.value === numberOfSuitValues ? jollyRogerBonusPoints : 0) + trickMatchPoints
+                points: suit14Count * suit14BonusPoints + (card.value === numberOfSuitValues ? jollyRogerBonusPoints : 0) + bidMatchPoints
             });
         }
 
@@ -94,7 +94,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
         probabilities.push({
             probability: 1 - winWithAnyBonusProbability,
-            points: trickMissPoints
+            points: bidMissPoints
         });
     }
     else if (card.type === "escape") {
@@ -102,7 +102,7 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         if (numberOfPlayers > numberOfEscapes || turnOrder != 1) {
             probabilities.push({
                 probability: 1,
-                points: trickMissPoints
+                points: bidMissPoints
             });
         } else {
 
@@ -117,66 +117,122 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
 
             probabilities.push({
                 probability: safeCardsCombinations * unsafeCardsCombinations / totalCombinations,
-                points: trickMatchPoints
+                points: bidMatchPoints
             });
 
             probabilities.push({
                 probability: loseOnUnsafeCardsCombinations / totalCombinations,
-                points: trickMissPoints
+                points: bidMissPoints
             });
         }
     }
     else if (card.type == "kraken") {
         probabilities.push({
             probability: 1,
-            points: trickMissPoints
+            points: bidMissPoints
         });
     }
 
     else if (card.type == "pirate") {
 
-        // игроки перед текущим не должны сыграть опасные карты
-        const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);
-        const looseCardsBeforeCurrentTurn = looseCards + 1 /* tigress */ + numberOfPirates - 1 /* current card */;
+        const otherPirateCards = (numberOfPirates + 1 /* tigress */) - 1/* current card */;
 
-        const notLooseBeforeCurrentTurnProbability = mathjs.combinations(looseCardsBeforeCurrentTurn, 0)
-            * mathjs.combinations(totalCards - 1 /* current card */ - looseCardsBeforeCurrentTurn, turnOrder - 1)
-            / mathjs.combinations(totalCards - 1, turnOrder - 1);
-
-
-        // итенация по количеству номиналов с бонусами некозырной 14 у соперников (бонусов не более 3)
+        // итерация по количеству номиналов с бонусами некозырной 14 у соперников (бонусов не более 3)
         for (let suit14Count = 0; suit14Count <= mathjs.min(numberOfPlayers - 1, 3); suit14Count++) {
-            // итенация по количеству бонусов козырной 14 у соперников (не более 1, у соперников не может быть несколько бонусов)
+            // итерация по количеству бонусов козырной 14 у соперников (не более 1, в пределах количества соперников)
             for (let jollyRoger14Count = 0; jollyRoger14Count <= mathjs.min(numberOfPlayers - 1 - suit14Count, 1); jollyRoger14Count++) {
-                // итенация по количеству бонусов рукслок у соперников (не более количества русалок, у соперников не может быть несколько бонусов)
+                // итерация по количеству бонусов русалок у соперников (не более количества русалок, в пределах количества соперников)
                 for (let mermaidCount = 0; mermaidCount <= mathjs.min(numberOfPlayers - 1 - suit14Count - jollyRoger14Count, numberOfMermaids); mermaidCount++) {
+                    // итерация по количеству карт с пиратами или tigress у соперников
+                    // (не более количества пиратов минус текущая карта, в пределах количества соперников)
+                    for (let pirateCount = 0; pirateCount <= mathjs.min(numberOfPlayers - 1 - suit14Count - jollyRoger14Count - mermaidCount, otherPirateCards); pirateCount++) {
 
-                    const sute14Combinations = mathjs.combinations(3, suit14Count);
-                    const jollyRoger14Combinations = mathjs.combinations(1, jollyRoger14Count);
-                    const mermaidCombinations = mathjs.combinations(numberOfMermaids, mermaidCount);
+                        const sute14Combinations = mathjs.combinations(3, suit14Count);
+                        const jollyRoger14Combinations = mathjs.combinations(1, jollyRoger14Count);
+                        const mermaidCombinations = mathjs.combinations(numberOfMermaids, mermaidCount);
 
-                    const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4
-                        + mathjs.max((numberOfPirates - 1 /* current card */ + 1 /* tigress */ - turnOrder - 1), 0)
-                        + numberOfEscapes;
-                    const safeCardsWithoutBonusCombinations = mathjs.combinations(safeCardsWithoutBonus, numberOfPlayers - 1 
-                        - suit14Count); // ??????
+                        const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4
+                            //+ mathjs.max((numberOfPirates - 1 /* current card */ + 1 /* tigress */ - turnOrder - 1), 0)
+                            // + numberOfPirates - 1 /* current card */ + 1 /* tigress */
+                            + otherPirateCards
+                            + numberOfEscapes;
+                        const safeCardsWithoutBonusCombinations = mathjs.combinations(safeCardsWithoutBonus, numberOfPlayers - 1
+                            - suit14Count - jollyRoger14Count - mermaidCount - pirateCount);
 
-                    const unsafeCards = totalCards - 1 /* current card */ - safeCardsWithoutBonus - 2 /* possible suit14 bonuses */
-                        - 1 /* possible jolly-roger14 bonus */ - numberOfMermaids;
+                        const unsafeCards = totalCards - 1 /* current card */ - safeCardsWithoutBonus - 3 /* possible suit14 bonuses */
+                            - 1 /* possible jolly-roger14 bonus */ - numberOfMermaids;
+                        const unsafeCardsCombinations = mathjs.combinations(unsafeCards, 0);
 
-                    const unsafeCardsCombinations = mathjs.combinations(unsafeCards, 0);
+                        // на numberOfPlayers-1 игроков вышло pirateCount пиратов
+                        // определяем вероятность, что карта пиратов вышла не перед текущим ходом
+                        const notLooseBeforeCurrentTurnProbability = (turnOrder - 1 > numberOfPlayers - 1 - pirateCount)
+                            ? 0
+                            : mathjs.combinations(numberOfPlayers - 1, 0)
+                            * mathjs.combinations(numberOfPlayers - 1 - pirateCount, turnOrder - 1)
+                            / mathjs.combinations(numberOfPlayers - 1, pirateCount);
 
-                    probabilities.push({
-                        probability: notLooseBeforeCurrentTurnProbability * sute14Combinations * jollyRoger14Combinations * mermaidCombinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations
-                            / totalCombinations,
-                        points: suit14Count * suit14BonusPoints + jollyRoger14Count * jollyRogerBonusPoints
-                            + mermaidCount * mermaidBonusPoints + trickMatchPoints
-                    });
+                        const combinations = sute14Combinations * jollyRoger14Combinations * mermaidCombinations * safeCardsWithoutBonusCombinations * unsafeCardsCombinations;
+                        probabilities.push({
+                            probability: notLooseBeforeCurrentTurnProbability * combinations / totalCombinations,
+                            points: suit14Count * suit14BonusPoints + jollyRoger14Count * jollyRogerBonusPoints
+                                + mermaidCount * mermaidBonusPoints + bidMatchPoints
+                        });
 
+                        probabilities.push({
+                            probability: (1 - notLooseBeforeCurrentTurnProbability) * combinations / totalCombinations,
+                            points: bidMissPoints
+                        });
+
+                    }
                 }
             }
         }
+
+        // const winCards = numberOfSuitValues * 4 /* suits */ + numberOfEscapes + numberOfMermaids + otherPirateCards;
+        // const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);
+        // const winWithAnyBonusProbability = mathjs.combinations(looseCards, 0) * mathjs.combinations(winCards, numberOfPlayers - 1) / totalCombinations;
+
+        // probabilities.push({
+        //     probability: 1 - winWithAnyBonusProbability,
+        //     points: bidMissPoints
+        // });
+
+        // // игроки перед текущим не должны сыграть пиратов
+        // const looseCards = 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);       
+
+        // const notLooseBeforeCurrentTurnProbability = mathjs.combinations(looseCardsBeforeCurrentTurn, 0)
+        //     * mathjs.combinations(totalCards - 1 /* current card */ - looseCardsBeforeCurrentTurn, turnOrder - 1)
+        //     / mathjs.combinations(totalCards - 1, turnOrder - 1);
+
+        // const notLooseAfterCurrentTurnProbability = mathjs.combinations(looseCards, 0)
+        //     * mathjs.combinations(totalCards - 1 /* current card */ - looseCards, numberOfPlayers - turnOrder)
+        //     / mathjs.combinations(totalCards - 1 /* current card */, numberOfPlayers - turnOrder);
+
+        // probabilities.push({
+        //     probability: 1 - notLooseBeforeCurrentTurnProbability * notLooseAfterCurrentTurnProbability,
+        //     points: trickMissPoints
+        // });
     }
 
-    return probabilities;
+    return groupByPoints(probabilities);
+    //return probabilities;
 }
+
+function groupByPoints(
+    probabilities: ProbabilityPoints[]
+): ProbabilityPoints[] {
+    return Object.values(
+        probabilities.reduce<Record<number, ProbabilityPoints>>(
+            (acc, { points, probability }) => {
+                if (!acc[points]) {
+                    acc[points] = { points, probability: 0 };
+                }
+
+                acc[points].probability += probability;
+                return acc;
+            },
+            {}
+        )
+    );
+}
+
