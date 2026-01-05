@@ -53,7 +53,7 @@ export function SkullKingCalculator() {
     /** доступные специальные карты */
     const availableSpecials = useMemo<Special[]>(() => {
         return [
-            ...specialValues,
+            ...specialValues.filter((s) => s !== "kraken" && s !== "white-whale"),
             ...(krakenEnabled ? ["kraken"] : []),
             ...(whiteWhaleEnabled ? ["white-whale"] : []),
         ];
@@ -109,8 +109,8 @@ export function SkullKingCalculator() {
             </div>
 
             <div className="flex items-center justify-between">
-                <Label>Белый кит в игре</Label>
-                <Switch
+                <Label>Белый кит в игре <span className="text-xs text-muted-foreground">(не реализовано)</span></Label>
+                <Switch disabled={true}
                     checked={whiteWhaleEnabled}
                     onCheckedChange={setWhiteWhaleEnabled}
                 />
@@ -187,19 +187,28 @@ export function SkullKingCalculator() {
             )}
 
             {/* Debug */}
-            <pre className="rounded bg-muted p-3 text-sm">
+            {/* <pre className="rounded bg-muted p-3 text-sm">
                 {JSON.stringify(card, null, 2)}
-            </pre>
+            </pre> */}
+
+            <h3 className="text-xl font-semibold">При заявке 1</h3>
+            <div className="space-y-2">
+                <Label>Мат. ожидание очков: <pre>{probabilities1?.reduce((acc, { probability, points }) => acc + probability * points, 0).toFixed(2)}</pre></Label>
+            </div>
+
             {probabilities1 !== null && (
                 probabilities1
-                .toSorted((a, b) => b.points - a.points)
-                .map(({ probability, points }) => (
-                    <div key={points} className="space-y-2">
-                        <Label>При заявке 1 с вероятностью <b>{`${(probability * 100).toFixed(2)}%`}</b> получите очков: <b>{points}</b></Label>
-                    </div>
-                ))
+                    .toSorted((a, b) => b.points - a.points)
+                    .map(({ probability, points }, index) => (
+                        <div key={index} className="space-y-2">
+                            <Label>С вероятностью <pre>{`${(probability * 100).toFixed(2)}%`}</pre> получите очков: <pre>{points}</pre></Label>
+                        </div>
+                    ))
             )}
-             
+            <div className="space-y-2 text-muted-foreground">
+                <Label>Сумма вероятностей для контроля: <pre>{probabilities1?.reduce((acc, { probability }) => acc + probability * 100, 0).toFixed(2)}%</pre></Label>
+            </div>
+
         </div>
     );
 }
