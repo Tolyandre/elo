@@ -69,8 +69,8 @@ export function SkullKingCalculator() {
     const availableSpecials = useMemo<Special[]>(() => {
         return [
             ...specialValues.filter((s) => s !== "kraken" && s !== "white-whale"),
-            ...(krakenEnabled ? ["kraken"] : []),
-            ...(whiteWhaleEnabled ? ["white-whale"] : []),
+            ...(krakenEnabled ? ["kraken" as Special] : []),
+            ...(whiteWhaleEnabled ? ["white-whale" as Special] : []),
         ];
     }, [krakenEnabled, whiteWhaleEnabled]);
 
@@ -219,9 +219,9 @@ export function SkullKingCalculator() {
                         </div>
                     ))
             )}
-            <div className="space-y-2 text-muted-foreground">
+            {/* <div className="space-y-2 text-muted-foreground">
                 <Label>Сумма вероятностей для контроля: <pre>{probabilitiesBid1?.reduce((acc, { probability }) => acc + probability * 100, 0).toFixed(2)}%</pre></Label>
-            </div>
+            </div> */}
 
         </div>
     );
