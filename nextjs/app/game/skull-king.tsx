@@ -399,17 +399,19 @@ function calculate(
                     )
                 );
 
-                probabilities.push({
-                    probability,
-                    points: points + currentCardPoints
-                });
-
+                if (!probability.equals(0)) {
+                    probabilities.push({
+                        probability,
+                        points: points + currentCardPoints
+                    });
+                }
                 probabilities.push({
                     probability: new Fraction(1).sub(notLooseBeforeCurrentTurnProbability).mul(
                         combinations * safeCardsWithoutBonusCombinations * sameCardsCombinations
                     ).div(totalCombinations),
                     points: bidMissPoints
                 });
+
             }
 
             return;
