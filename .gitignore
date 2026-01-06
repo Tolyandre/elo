@@ -33,7 +33,7 @@
 # env files (can opt-in for committing if needed)
 .env*
 !.envrc
-!/nextjs/.env.development.local
+!/nextjs/.env.local
 !/elo-web-service/.env.sample
 
 # vercel

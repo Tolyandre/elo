@@ -77,6 +77,11 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/package-lock.json', 'nextjs/yarn.lock') }}-
       - name: Install dependencies
         run: cd nextjs && ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+      - name: Run tests
+        # Use the detected runner so this works with npm/yarn
+        run: cd nextjs && ${{ steps.detect-package-manager.outputs.runner }} vitest --run --reporter dot
+        env:
+          CI: true
       - name: Build with Next.js
         run: cd nextjs && ${{ steps.detect-package-manager.outputs.runner }} next build
       - name: Upload artifact
