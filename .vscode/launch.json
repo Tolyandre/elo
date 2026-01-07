@@ -17,6 +17,19 @@
             "envFile": "${workspaceFolder}/elo-web-service/.env"
         },
         {
+            "name": "Run migrations",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./elo-web-service",
+            "args": [
+                "--config-path",
+                "./config/config.dev.yaml",
+                "--migrate-db"
+            ],
+            "envFile": "${workspaceFolder}/elo-web-service/.env"
+        },
+        {
             "name": "Next.js: debug full stack",
             "type": "node",
             "request": "launch",

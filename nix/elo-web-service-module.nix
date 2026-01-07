@@ -22,8 +22,6 @@ in
       description = "Path to the secrets.env file containing sensitive environment variables like ELO_WEB_SERVICE_OAUTH2_CLIENT_ID, ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET, and ELO_WEB_SERVICE_COOKIE_JWT_SECRET";
     };
 
-    # Deprecated individual options removed: use `config` attribute set below to supply values
-
     config = lib.mkOption {
       type = lib.types.submodule {
         options = {
@@ -63,6 +61,50 @@ in
             description = "Cookie TTL in seconds";
             default = 86400;
           };
+
+          postgres = lib.mkOption {
+            type = lib.types.submodule {
+              options = {
+                enableLocalDatabase = lib.mkOption {
+                  type = lib.types.bool;
+                  default = false;
+                  description = "Enable a local PostgreSQL service and use it as the default database";
+                };
+
+                host = lib.mkOption {
+                  type = lib.types.str;
+                  default = "/run/postgresql";
+                  example = "127.0.0.1";
+                  description = "Postgres host. It can be unix socket path";
+                };
+
+                port = lib.mkOption {
+                  type = lib.types.int;
+                  default = 5432;
+                  description = "Postgres port";
+                };
+
+                user = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Postgres user (optional). User is not used with Unix socket / peer authentication";
+                };
+
+                password = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Postgres password (optional). Password is not used with Unix socket / peer authentication. This value is sensitive";
+                };
+
+                database = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = "Postgres database name (optional). Defaults to user name";
+                };
+              };
+            };
+            description = "Postgres connection settings (written to /etc/elo-web-service/config.yaml)";
+          };
         };
       };
 
@@ -70,41 +112,148 @@ in
     };
   };
 
-  config = lib.mkIf config.services.elo-web-service.enable {
-    systemd.services.elo-web-service = {
-      description = "Elo web service";
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig = {
-        Environment = [
-          "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
-          "GIN_MODE=release"
-        ];
-        EnvironmentFile = config.services.elo-web-service.secrets-env-file;
-        ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml";
-        Restart = "always";
-        WorkingDirectory = "/var/lib/elo-web-service";
-        User = "elo-web-service";
-        Group = "elo-web-service";
-        StateDirectory = "elo-web-service";
-        LoadCredential = [
-          "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
-        ];
+  config = lib.mkIf config.services.elo-web-service.enable (
+    let
+      eloWebServiceInstanceName = "elo-web-service";
+      pgHost = config.services.elo-web-service.config.postgres.host;
+      pgPort = toString config.services.elo-web-service.config.postgres.port;
+      pgDatabase =
+        if config.services.elo-web-service.config.postgres.database == null then
+          eloWebServiceInstanceName
+        else
+          config.services.elo-web-service.config.postgres.database;
+      pgUser =
+        if config.services.elo-web-service.config.postgres.user or eloWebServiceInstanceName == null then
+          eloWebServiceInstanceName
+        else
+          config.services.elo-web-service.config.postgres.user;
+      pgPassword = config.services.elo-web-service.config.postgres.password;
+      pgDsn =
+        let
+          isSocket = lib.hasPrefix "/" pgHost;
+        in
+        if isSocket then
+          "postgres:///${pgDatabase}?host=${pgHost}&port=${toString pgPort}"
+        else
+          "postgres://${pgUser}@${pgHost}:${toString pgPort}/${pgDatabase}";
+    in
+    {
+
+      systemd.services.elo-web-service = {
+        description = "Elo web service";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Environment = (
+            [
+              "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
+              "GIN_MODE=release"
+              "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
+            ]
+            ++ lib.optional (pgPassword != null) [ "ELO_WEB_SERVICE_POSTGRES_PASSWORD=${pgPassword}" ]
+          );
+          EnvironmentFile = config.services.elo-web-service.secrets-env-file;
+          ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml";
+          Restart = "always";
+          WorkingDirectory = "/var/lib/${eloWebServiceInstanceName}";
+          User = eloWebServiceInstanceName;
+          Group = eloWebServiceInstanceName;
+          StateDirectory = eloWebServiceInstanceName;
+          LoadCredential = [
+            "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
+          ];
+        };
+
+        requires = (
+          if config.services.elo-web-service.config.postgres.enableLocalDatabase then
+            [
+              "postgresql.service"
+              "elo-web-service-db-setup.service"
+            ]
+          else
+            [ ]
+        );
+
+        after = (
+          if config.services.elo-web-service.config.postgres.enableLocalDatabase then
+            [
+              "postgresql.service"
+              "elo-web-service-db-setup.service"
+            ]
+          else
+            [ ]
+        );
       };
-    };
 
-    environment.etc."elo-web-service/config.yaml".text =
-      let
-        svcConfig = config.services.elo-web-service.config or { };
-      in
-      lib.generators.toYAML { } svcConfig;
+      # One-shot service: run migrations when using local DB
+      systemd.services.elo-web-service-db-setup =
+        lib.mkIf (config.services.elo-web-service.config.postgres.enableLocalDatabase)
+          {
+            description = "Run elo-web-service migrations";
+            wants = [
+              "postgresql.service"
+              "postgresql-setup.service"
+              "postgresql-setup-start.service"
+            ];
+            after = [
+              "postgresql.service"
+              "postgresql-setup.service"
+              "postgresql-setup-start.service"
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = "yes";
+              User = eloWebServiceInstanceName;
+              EnvironmentFile = config.services.elo-web-service.secrets-env-file;
+              Environment = (
+                [
+                  "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
+                  "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
+                ]
+                ++ lib.optional (pgPassword != null) [ "ELO_WEB_SERVICE_POSTGRES_PASSWORD=${pgPassword}" ]
+              );
+              LoadCredential = [
+                "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
+              ];
+              ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml --migrate-db";
+            };
+          };
 
-    users.users.elo-web-service = {
-      isSystemUser = true;
-      home = "/var/lib/elo-web-service";
-      createHome = true;
-      group = "elo-web-service";
-    };
+      services.postgresql = lib.mkIf config.services.elo-web-service.config.postgres.enableLocalDatabase {
+        enable = true;
+        ensureDatabases = [ pgDatabase ];
+        ensureUsers = [
+          {
+            name = pgUser;
+            ensureDBOwnership = true;
+          }
+        ];
+        # TODO: надо?
+        authentication = lib.mkBefore ''
+          # elo-web-service
+          local ${pgDatabase} ${pgUser} peer
+        '';
+      };
 
-    users.groups.elo-web-service = { };
-  };
+      environment.etc."elo-web-service/config.yaml".text =
+        let
+          svcConfig = config.services.elo-web-service.config or { };
+        in
+        lib.generators.toYAML { } svcConfig;
+
+      users.users = lib.mkMerge [
+        {
+          ${eloWebServiceInstanceName} = {
+            isSystemUser = true;
+            home = "/var/lib/${eloWebServiceInstanceName}";
+            createHome = true;
+            group = eloWebServiceInstanceName;
+          };
+        }
+      ];
+
+      users.groups = lib.mkMerge [
+        { ${eloWebServiceInstanceName} = { }; }
+      ];
+    }
+  );
 }

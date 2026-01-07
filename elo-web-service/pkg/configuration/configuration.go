@@ -21,14 +21,21 @@ type Configuration struct {
 	CookieJwtSecret         string `mapstructure:"cookie_jwt_secret"`
 	CookieTtlSeconds        int    `mapstructure:"cookie_ttl_seconds"`
 	FrontendUri             string `mapstructure:"frontend_uri"`
+	PostgresDSN             string `mapstructure:"postgres_dsn"`
+	PostgresPassword        string `mapstructure:"postgres_password"`
 }
 
 var Config Configuration
 
+// MigrateDB indicates whether the process should run database migrations and exit.
+var MigrateDB bool
+
 func ReadConfiguration() {
 	var configPath = flag.String("config-path", "config.yaml", "Path to the configuration file")
+	var migrateFlag = flag.Bool("migrate-db", false, "Run DB migrations and exit")
 
 	flag.Parse()
+	MigrateDB = *migrateFlag
 
 	viper.SetConfigFile(*configPath)
 	viper.SetDefault("address", "localhost:8080")
@@ -68,6 +75,12 @@ func ReadConfiguration() {
 	}
 	if err := viper.BindEnv("frontend_uri", "ELO_WEB_SERVICE_FRONTEND_URI"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_FRONTEND_URI: %v", err)
+	}
+	if err := viper.BindEnv("postgres_dsn", "ELO_WEB_SERVICE_POSTGRES_DSN"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_POSTGRES_DSN: %v", err)
+	}
+	if err := viper.BindEnv("postgres_password", "ELO_WEB_SERVICE_POSTGRES_PASSWORD"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_POSTGRES_PASSWORD: %v", err)
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -115,6 +128,9 @@ func ReadConfiguration() {
 	}
 	if Config.FrontendUri == "" {
 		missing = append(missing, "frontend_uri")
+	}
+	if Config.PostgresDSN == "" {
+		missing = append(missing, "postgres_dsn")
 	}
 
 	if len(missing) > 0 {

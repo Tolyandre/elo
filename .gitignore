@@ -52,3 +52,4 @@
 
 # golang
 /elo-web-service/__debug_bin**
+/elo-web-service/elo-web-service

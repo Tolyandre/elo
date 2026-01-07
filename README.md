@@ -77,5 +77,20 @@ nix-build
 ```
 Then update vendorHash with a new value from error message.
 
+## Database (Postgres)
+
+Run following queries in context of a test database.
+
+Creating a user for testing:
+
+```sql
+CREATE ROLE "elo-web-service-test" WITH LOGIN;
+GRANT ALL PRIVILEGES ON DATABASE "elo-web-service-test" to "elo-web-service-test";
+GRANT ALL ON SCHEMA public TO "elo-web-service-test";
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "elo-web-service-test";
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "elo-web-service-test";
+
+```
+
 
 

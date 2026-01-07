@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -11,11 +12,20 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/api"
 	oauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
+	"github.com/tolyandre/elo-web-service/pkg/db"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 func main() {
 	cfg.ReadConfiguration()
+	if cfg.MigrateDB {
+		if err := db.MigrateUp(); err != nil {
+			log.Fatalf("migrations failed: %v", err)
+			os.Exit(1)
+		}
+		log.Println("migrations applied; exiting as --migrate-db was provided")
+		return
+	}
 	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
 	oauth2.InitOauth()
 

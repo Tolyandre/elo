@@ -21,6 +21,9 @@ pkgs.testers.nixosTest {
           oauth2_token_uri = "https://fake/oauth2_token_uri";
           frontend_uri = "https://tolyandre.github.io/elo";
           cookie_ttl_seconds = 600;
+          postgres = {
+            enableLocalDatabase = true;
+          };
         };
 
         google-service-account-key = pkgs.writeText "google-service-account-key.json" ''
@@ -49,6 +52,8 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     start_all()
+    machine.wait_for_unit("elo-web-service-db-setup.service")
+    machine.succeed("sudo -u elo-web-service psql -d elo-web-service -c 'select 1'")
     machine.wait_for_unit("elo-web-service.service")
     machine.wait_for_open_port(4949)
     machine.succeed("curl -s http://localhost:4949/ping | grep -i pong")

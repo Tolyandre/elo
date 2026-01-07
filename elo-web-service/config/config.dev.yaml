@@ -28,3 +28,7 @@ frontend_uri: http://localhost:3000
 
 # Cookie expiration time in seconds
 cookie_ttl_seconds: 86400
+
+# Postgres connection string (password can be provided via env var `ELO_WEB_SERVICE_POSTGRES_PASSWORD`)
+# Example: postgres_dsn: "postgres://user-name@localhost:5432/db-name?sslmode=disable"
+postgres_dsn: "postgres://elo-web-service-test@localhost:5432/elo-web-service-test?sslmode=disable"

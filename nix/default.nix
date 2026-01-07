@@ -8,5 +8,5 @@ pkgs.buildGoModule {
 
   # vendorHash is for dependencies
   # `nix-build` shows it on first run
-  vendorHash = "sha256-W1GzgrOPTjY0tozQmmo9FpiFu36YUQ1rkeswRHJohxM=";
+  vendorHash = "sha256-UKJAvhiiSzWTV+fO8wm9p6DsZD2+YG4LzUPRNKpxN6Q=";
 }
