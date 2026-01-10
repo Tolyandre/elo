@@ -9,33 +9,37 @@ import (
 )
 
 type playerJson struct {
-	ID      string            `json:"id"`
+	ID   string          `json:"id"`
+	Rank historyRankJson `json:"rank"`
+}
+
+type historyRankJson struct {
 	Now     playerEloRankJson `json:"now"`
 	DayAgo  playerEloRankJson `json:"day_ago"`
 	WeekAgo playerEloRankJson `json:"week_ago"`
 }
-
 type playerEloRankJson struct {
-	Elo  float64 `json:"elo"`
-	Rank int     `json:"rank"`
+	Elo                  float64 `json:"elo"`
+	Rank                 *int    `json:"rank"`
+	MatchesLeftForRanked int     `json:"matches_left_for_ranked"`
 }
 
 func ListPlayers(c *gin.Context) {
 
-	actualPlayers, err := elo.GetPlayersWithElo(nil)
+	actualPlayers, err := elo.GetPlayersWithRank(nil)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	tDay := time.Now().Add(-time.Hour * 12)
-	dayAgoPlayers, err := elo.GetPlayersWithElo(&tDay)
+	dayAgoPlayers, err := elo.GetPlayersWithRank(&tDay)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	tWeek := time.Now().Add(-time.Hour * (24*7 - 12))
-	weekAgoPlayers, err := elo.GetPlayersWithElo(&tWeek)
+	weekAgoPlayers, err := elo.GetPlayersWithRank(&tWeek)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
@@ -47,17 +51,22 @@ func ListPlayers(c *gin.Context) {
 		weekAgo := findPlayer(weekAgoPlayers, p.ID)
 		jsonPlayers = append(jsonPlayers, playerJson{
 			ID: p.ID,
-			Now: playerEloRankJson{
-				Elo:  p.Elo,
-				Rank: p.Rank,
-			},
-			DayAgo: playerEloRankJson{
-				Elo:  dayAgo.Elo,
-				Rank: dayAgo.Rank,
-			},
-			WeekAgo: playerEloRankJson{
-				Elo:  weekAgo.Elo,
-				Rank: weekAgo.Rank,
+			Rank: historyRankJson{
+				Now: playerEloRankJson{
+					Elo:                  p.Elo,
+					Rank:                 p.Rank,
+					MatchesLeftForRanked: p.MatchesLeftForRanked,
+				},
+				DayAgo: playerEloRankJson{
+					Elo:                  dayAgo.Elo,
+					Rank:                 dayAgo.Rank,
+					MatchesLeftForRanked: p.MatchesLeftForRanked,
+				},
+				WeekAgo: playerEloRankJson{
+					Elo:                  weekAgo.Elo,
+					Rank:                 weekAgo.Rank,
+					MatchesLeftForRanked: p.MatchesLeftForRanked,
+				},
 			},
 		})
 	}

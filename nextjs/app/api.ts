@@ -9,14 +9,17 @@ export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE
 
 export type EloRank = {
     elo: number;
-    rank: number;
+    rank: number | null;
+    matches_left_for_ranked: number
 }
 
 export type Player = {
     id: string;
-    now: EloRank;
-    day_ago: EloRank;
-    week_ago: EloRank;
+    rank: {
+        now: EloRank;
+        day_ago: EloRank;
+        week_ago: EloRank;
+    }
 };
 
 export type User = {

@@ -91,7 +91,7 @@ function AddGameForm() {
     };
 
     function getPlayerElo(playerId: string): number {
-        const elo = players.find(player => player.id == playerId)?.now.elo;
+        const elo = players.find(player => player.id == playerId)?.rank.now.elo;
         if (typeof (elo) == "undefined")
             throw "Cannot find player"
         return elo;
