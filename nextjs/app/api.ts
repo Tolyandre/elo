@@ -22,6 +22,8 @@ export type Player = {
     }
 };
 
+export type Period = keyof Player["rank"];
+
 export type User = {
     id: string;
     name: string;

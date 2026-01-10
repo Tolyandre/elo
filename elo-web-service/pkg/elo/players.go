@@ -111,10 +111,7 @@ func getPlayersForRowNum(parsedData *googlesheet.ParsedData, rowIndex int) []Pla
 	}
 
 	// limit rowIndex to available matches when counting
-	effectiveRow := rowIndex
-	if effectiveRow < 0 {
-		effectiveRow = 0
-	}
+	effectiveRow := max(rowIndex, 0)
 	if effectiveRow >= mLen {
 		effectiveRow = mLen - 1
 	}

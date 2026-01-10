@@ -4,9 +4,7 @@ import React, { useMemo } from "react";
 import Link from "next/link";
 import { usePlayers } from "./PlayersContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { Player } from "../api";
-
-type Period = keyof Player["rank"];
+import { Player, Period } from "../api";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
@@ -125,34 +123,43 @@ function PlayersTable() {
                 </tbody>
             </table>
 
-            <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-semibold mb-4 mx-auto">Недостаточно партий</h2>
-            </div>
-
-            <table className="table-auto border-collapse mb-6">
-                <tbody>
-                    {unRankedPlayers.map((player) => {
-                        const prev = player.rank[period] ?? player.rank.day_ago
-
-                        return (
-                            <tr key={player.id}>
-                                <td className="py-2 text-center align-top min-w-7">{player.rank.now.rank}</td>
-                                <td className="py-2 text-center align-top min-w-7">
-
-                                </td>
-                                <td className="py-2 px-1 min-w-50">{player.id}
-                                    <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
-                                </td>
-                                <td className="py-2 px-1 align-top min-w-25">
-                                    <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
-                                </td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+            <UnrankedPlayersTable players={unRankedPlayers} period={period} />
         </>
     );
+}
+
+function UnrankedPlayersTable({ players, period }: { players: Player[]; period: Period }) {
+    if (players.length === 0)
+        return null
+
+    return (<>
+        <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold mb-4 mx-auto">Недостаточно партий</h2>
+        </div>
+
+        <table className="table-auto border-collapse mb-6">
+            <tbody>
+                {players.map((player) => {
+                    const prev = player.rank[period] ?? player.rank.day_ago
+
+                    return (
+                        <tr key={player.id}>
+                            <td className="py-2 text-center align-top min-w-7">{player.rank.now.rank}</td>
+                            <td className="py-2 text-center align-top min-w-7">
+
+                            </td>
+                            <td className="py-2 px-1 min-w-50">{player.id}
+                                <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
+                            </td>
+                            <td className="py-2 px-1 align-top min-w-25">
+                                <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
+                            </td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </>)
 }
 
 export default function PlayersPage() {
