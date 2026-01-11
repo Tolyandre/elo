@@ -41,8 +41,6 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
     const totalCards = numberOfSuitValues * 4 + 1 /* tigress */ + numberOfPirates + numberOfMermaids + numberOfEscapes +
         + 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0);
 
-    const totalCombinations = mathjs.combinations(totalCards - 1, numberOfPlayers - 1);
-
     if (isSuitCard(card) && card.type !== "jolly-roger") {
 
         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 2 /* other suits */ + (card.value - 1) + numberOfEscapes;
@@ -50,18 +48,19 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const winCards = numberOfSuitValues * 2 /* other suits */ + (card.value - 1) /* current suit */ + numberOfEscapes;
         const looseCards = totalCards - 1 /* current card */ - winCards;
 
-        probabilities.push(...calculate(
-            (card.value === numberOfSuitValues ? suit14BonusPoints : 0),
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: (card.value === numberOfSuitValues ? suit14BonusPoints : 0),
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 2 },
             ],
             safeCardsWithoutBonus,
-            looseCards,
-            0 /* sameCardsCount */,
+            looseCardsCount: looseCards,
+            sameCardsCount: 0,
+            isSuitAndNotTrump: true,
             turnOrder,
             totalCards
-        ));
+        }));
     }
     else if (card.type === "jolly-roger") {
 
@@ -70,19 +69,19 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const winCards = numberOfSuitValues * 3 /* other suits */ + (card.value - 1) /* current jolly-roger suit */ + numberOfEscapes;
         const looseCards = totalCards - 1 /* current card */ - winCards;
 
-        probabilities.push(...calculate(
-            (card.value === numberOfSuitValues ? jollyRogerBonusPoints : 0),
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: (card.value === numberOfSuitValues ? jollyRogerBonusPoints : 0),
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 3 },
-                // { points: 0, cardsCount: safeCardsWithoutBonus }
             ],
             safeCardsWithoutBonus,
-            looseCards,
-            0 /* sameCardsCount */,
+            looseCardsCount: looseCards,
+            sameCardsCount: 0,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
     else if (card.type === "escape") {
 
@@ -90,16 +89,17 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const winCards = numberOfEscapes - 1 /* current card */;
         const looseCards = totalCards - 1 /* current card */ - winCards;
 
-        probabilities.push(...calculate(
-            0,
-            numberOfPlayers - 1,
-            [],
+        probabilities.push(...calculate({
+            currentCardPoints: 0,
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [],
             safeCardsWithoutBonus,
-            looseCards,
-            numberOfEscapes - 1 /* current card */,
+            looseCardsCount: looseCards,
+            sameCardsCount: numberOfEscapes - 1 /* current card */,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
     else if (card.type == "kraken") {
         probabilities.push({
@@ -112,41 +112,42 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const otherPirateCards = numberOfPirates + 1 /* tigress */ - 1 /* current card */;
         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4 + numberOfEscapes;
 
-        probabilities.push(...calculate(
-            0,
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: 0,
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 3 },
                 { points: jollyRogerBonusPoints, cardsCount: 1 },
                 { points: mermaidBonusPoints, cardsCount: numberOfMermaids },
-                //{ points: 0, cardsCount: safeCardsWithoutBonus }
             ],
             safeCardsWithoutBonus,
-            1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
-            otherPirateCards,
+            looseCardsCount: 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
+            sameCardsCount: otherPirateCards,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
 
     else if (card.type === "tigress") {
 
         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4 + numberOfEscapes;
 
-        probabilities.push(...calculate(
-            0,
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: 0,
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 3 },
                 { points: jollyRogerBonusPoints, cardsCount: 1 },
                 { points: mermaidBonusPoints, cardsCount: numberOfMermaids },
             ],
             safeCardsWithoutBonus,
-            1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
-            numberOfPirates,
+            looseCardsCount: 1 /* skull-king */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
+            sameCardsCount: numberOfPirates,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
 
     else if (card.type === "mermaid") {
@@ -154,54 +155,69 @@ export function calculateProbabilities1(numberOfPlayers: number, turnOrder: numb
         const otherMermaidCards = numberOfMermaids - 1 /* current card */;
         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4 + numberOfEscapes;
 
-        probabilities.push(...calculate(
-            0,
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: 0,
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 3 },
                 { points: jollyRogerBonusPoints, cardsCount: 1 },
                 { points: skullKingBonusPoints, cardsCount: 1 },
             ],
             safeCardsWithoutBonus,
-            numberOfPirates + 1 /* tigress */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
-            otherMermaidCards,
+            looseCardsCount: numberOfPirates + 1 /* tigress */ + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
+            sameCardsCount: otherMermaidCards,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
 
     else if (card.type === "skull-king") {
 
         const safeCardsWithoutBonus = (numberOfSuitValues - 1) * 4 + numberOfEscapes;
 
-        probabilities.push(...calculate(
-            0,
-            numberOfPlayers - 1,
-            [
+        probabilities.push(...calculate({
+            currentCardPoints: 0,
+            numberOfOtherPlayers: numberOfPlayers - 1,
+            bonusCards: [
                 { points: suit14BonusPoints, cardsCount: 3 },
                 { points: jollyRogerBonusPoints, cardsCount: 1 },
                 { points: pirateBonusPoints, cardsCount: numberOfPirates + 1 /* tigress */ },
             ],
             safeCardsWithoutBonus,
-            numberOfMermaids + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
-            0,
+            looseCardsCount: numberOfMermaids + (krakenEnabled ? 1 : 0) + (whiteWhaleEnabled ? 1 : 0),
+            sameCardsCount: 0,
+            isSuitAndNotTrump: false,
             turnOrder,
             totalCards
-        ));
+        }));
     }
 
     return groupByPoints(probabilities);
 }
-function calculate(
-    currentCardPoints: number,
-    numberOfOtherPlayers: number,
-    bonusCards: { points: number; cardsCount: number }[],
-    safeCardsWithoutBonus: number,
-    looseCardsCount: number,
-    sameCardsCount: number,
-    turnOrder: number,
-    totalCards: number
-): ProbabilityPoints[] {
+function calculate(opts: {
+    currentCardPoints: number;
+    numberOfOtherPlayers: number;
+    bonusCards: { points: number; cardsCount: number }[];
+    safeCardsWithoutBonus: number;
+    looseCardsCount: number;
+    sameCardsCount: number;
+    isSuitAndNotTrump: boolean;
+    turnOrder: number;
+    totalCards: number;
+}): ProbabilityPoints[] {
+
+    const {
+        currentCardPoints,
+        numberOfOtherPlayers,
+        bonusCards,
+        safeCardsWithoutBonus,
+        looseCardsCount,
+        sameCardsCount,
+        isSuitAndNotTrump,
+        turnOrder,
+        totalCards
+    } = opts;
 
     const probabilities: ProbabilityPoints[] = [];
     const totalCombinations = mathjs.combinations(totalCards - 1 /* current card */, numberOfOtherPlayers);
@@ -225,7 +241,7 @@ function calculate(
                 const sameCardsCombinations = mathjs.combinations(sameCardsCount, sameCardsTaken);
 
                 // вероятность, что такая же карта не вышла ДО текущего хода
-                const notLooseBeforeCurrentTurnProbability =
+                let notLooseBeforeCurrentTurnProbability =
                     turnOrder - 1 > numberOfOtherPlayers - sameCardsTaken
                         ? new Fraction(0)
                         : new Fraction(
@@ -239,6 +255,13 @@ function calculate(
                             )
                         );
 
+                // если карта с мастью и некозырная, побеждаем только если первый игрок сыграл эту масть
+                if (isSuitAndNotTrump) {
+                    notLooseBeforeCurrentTurnProbability = notLooseBeforeCurrentTurnProbability.mul(
+                        turnOrder == 1
+                            ? new Fraction(1)
+                            : new Fraction(numberOfSuitValues - 1 /*current card*/, safeCardsWithoutBonus));
+                }
 
                 const probability = notLooseBeforeCurrentTurnProbability.mul(
                     new Fraction(

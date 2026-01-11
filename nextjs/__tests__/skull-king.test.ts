@@ -47,4 +47,22 @@ describe('calculateProbabilities1', () => {
         expect(mathjs.number(result[0].probability)).equals(1);
         expect(result[0].points).equals(-10);
     });
+
+    it('returns probability and points for chest, turn order 1', () => {
+        const result = calculateProbabilities1(4, 1, { type: 'chest', value: 7 }, true, false);
+
+        const entry = result.find(r => r.points === 20);
+
+        expect(entry).toBeDefined();
+        expect(mathjs.number(entry!.probability)).equals(mathjs.number(new Fraction(111, 782)));
+    });
+
+    it('returns probability and points for chest, turn order 2', () => {
+        const result = calculateProbabilities1(4, 2, { type: 'chest', value: 7 }, true, false);
+
+        const entry = result.find(r => r.points === 20);
+
+        expect(entry).toBeDefined();
+        expect(mathjs.number(entry!.probability)).equals(mathjs.number(new Fraction(39, 782)));
+    });
 });

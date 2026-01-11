@@ -191,12 +191,13 @@ export function SkullKingCalculator() {
 
     return (
         <FormProvider {...form}>
+            <div className="space-y-6 max-w-md">
+                <h2 className="text-xl font-semibold">
+                    Калькулятор первого раунда
+                </h2>
+            </div>
             <div className="mx-auto max-w-md space-y-6">
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Параметры раунда</CardTitle>
-                    </CardHeader>
-
                     <CardContent className="space-y-6">
                         <Field orientation="horizontal">
                             <FieldTitle>Кракен в игре</FieldTitle>
@@ -344,6 +345,11 @@ export function SkullKingCalculator() {
                         </div>
 
                         <Separator />
+
+                        {probabilities && (<div className="flex justify-between">
+                            Вероятности
+                        </div>
+                        )}
 
                         {probabilities?.map(
                             ({ probability, points }, i) => (
