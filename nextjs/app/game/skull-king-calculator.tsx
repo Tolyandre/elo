@@ -1,26 +1,50 @@
-"use client";
+"use client"
 
-import { useEffect, useMemo, useState } from "react";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { useEffect, useMemo } from "react"
+import { useForm, FormProvider, useWatch } from "react-hook-form"
+import * as mathjs from "mathjs"
+
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
     SelectTrigger,
     SelectValue,
-} from "@/components/ui/select";
-import { Suit, Special, Card, suitValues, ProbabilityPoints, calculateProbabilities1, specialValues } from "./skull-king";
-import * as mathjs from "mathjs";
-import { Fraction } from "mathjs";
+} from "@/components/ui/select"
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import {
+    Field,
+    FieldTitle,
+} from "@/components/ui/field"
+
+import {
+    Suit,
+    Special,
+    Card as GameCard,
+    suitValues,
+    specialValues,
+    calculateProbabilities1,
+} from "./skull-king"
+
+import { RHFField } from "@/components/rhf-field"
+import { Fraction } from "mathjs"
 
 const suitLabels: Record<Suit, string> = {
     "jolly-roger": "Весёлый Роджер",
     chest: "Сундук",
     parrot: "Попугай",
     map: "Карта",
-};
+}
 
 const specialLabels: Record<Special, string> = {
     "skull-king": "Король черепов",
@@ -30,199 +54,313 @@ const specialLabels: Record<Special, string> = {
     escape: "Белый флаг",
     kraken: "Кракен",
     "white-whale": "Белый кит",
-};
+}
+
+type FormValues = {
+    numberOfPlayers: number
+    turnOrder: number
+    krakenEnabled: boolean
+    whiteWhaleEnabled: boolean
+    cardType: Suit | Special | null
+    suitValue: number
+}
 
 export function SkullKingCalculator() {
-    const [numberOfPlayers, setNumberOfPlayers] = useState(4);
-    const [turnOrder, setTurnOrder] = useState(1);
+    const form = useForm<FormValues>({
+        defaultValues: {
+            numberOfPlayers: 4,
+            turnOrder: 1,
+            krakenEnabled: false,
+            whiteWhaleEnabled: false,
+            cardType: null,
+            suitValue: 1,
+        },
+    })
 
-    const [krakenEnabled, setKrakenEnabled] = useState(false);
-    const [whiteWhaleEnabled, setWhiteWhaleEnabled] = useState(false);
+    const numberOfPlayers = useWatch({
+        control: form.control,
+        name: "numberOfPlayers",
+    })
 
-    const [selectedType, setSelectedType] = useState<Suit | Special | null>(null);
-    const [suitValue, setSuitValue] = useState(1);
-    const [card, setCard] = useState<Card | null>(null);
+    const turnOrder = useWatch({
+        control: form.control,
+        name: "turnOrder",
+    })
 
-    /** расчет вероятности выиграть взятку */
-    const probabilitiesBid1 = useMemo<{ probability: number; points: number; }[] | null>(() => {
-        if (!card) {
-            return null;
-        }
+    const krakenEnabled = useWatch({
+        control: form.control,
+        name: "krakenEnabled",
+    })
 
-        return calculateProbabilities1(numberOfPlayers, turnOrder, card, krakenEnabled, whiteWhaleEnabled)
-            .map(({ probability, points }) => ({
-                probability: mathjs.number(probability),
-                points,
-            }))
-            .toSorted((a, b) => b.points - a.points);
-    }, [card, numberOfPlayers, turnOrder, krakenEnabled, whiteWhaleEnabled]);
+    const whiteWhaleEnabled = useWatch({
+        control: form.control,
+        name: "whiteWhaleEnabled",
+    })
 
-    const mathExpectation = useMemo<number | null>(() => {
-        if (!probabilitiesBid1) {
-            return null;
-        }
+    const cardType = useWatch({
+        control: form.control,
+        name: "cardType",
+    })
 
-        return probabilitiesBid1.reduce((acc, { probability, points }) => acc + probability * (points), 0);
-    }, [probabilitiesBid1]);
+    const suitValue = useWatch({
+        control: form.control,
+        name: "suitValue",
+    })
 
-    /** доступные специальные карты */
+
+    /* ----------------------- derived game state ----------------------- */
+
     const availableSpecials = useMemo<Special[]>(() => {
         return [
-            ...specialValues.filter((s) => s !== "kraken" && s !== "white-whale"),
+            ...specialValues.filter(
+                (s) => s !== "kraken" && s !== "white-whale",
+            ),
             ...(krakenEnabled ? ["kraken" as Special] : []),
             ...(whiteWhaleEnabled ? ["white-whale" as Special] : []),
-        ];
-    }, [krakenEnabled, whiteWhaleEnabled]);
+        ]
+    }, [krakenEnabled, whiteWhaleEnabled])
 
-    /** если выключили карту — сбрасываем выбор */
+
+    const card: GameCard | null = useMemo(() => {
+        if (!cardType) return null
+
+        if (suitValues.includes(cardType as Suit)) {
+            if (!suitValue) return null
+
+            return {
+                type: cardType as Suit,
+                value: suitValue,
+            }
+        }
+
+        return { type: cardType as Special }
+    }, [cardType, suitValue])
+
+    const probabilities = useMemo(() => {
+        if (
+            !numberOfPlayers ||
+            !turnOrder ||
+            !card
+        ) {
+            return null
+        }
+
+        return calculateProbabilities1(
+            numberOfPlayers,
+            turnOrder,
+            card,
+            krakenEnabled ?? false,
+            whiteWhaleEnabled ?? false,
+        )
+    }, [
+        numberOfPlayers,
+        turnOrder,
+        card,
+        krakenEnabled,
+        whiteWhaleEnabled,
+    ])
+
+    const mathExpectation = useMemo<number | null>(() => {
+        if (!probabilities) {
+            return null;
+        }
+
+        return mathjs.number(probabilities.reduce((acc, { probability, points }) => new Fraction(acc).add(probability.mul(points)), new Fraction(0)));
+    }, [probabilities]);
+
+    /* ----------------------------- effects ---------------------------- */
+
     useEffect(() => {
         if (
-            selectedType &&
-            !suitValues.includes(selectedType as Suit) &&
-            !availableSpecials.includes(selectedType as Special)
+            !numberOfPlayers ||
+            !turnOrder
         ) {
-            setSelectedType(null);
+            return
         }
-    }, [availableSpecials, selectedType]);
 
-    /** ограничение порядка хода */
-    useEffect(() => {
         if (turnOrder > numberOfPlayers) {
-            setTurnOrder(numberOfPlayers);
+            form.setValue(
+                "turnOrder",
+                numberOfPlayers,
+            )
         }
-    }, [numberOfPlayers, turnOrder]);
+    }, [numberOfPlayers, turnOrder])
 
-    /** сборка Card */
-    useEffect(() => {
-        if (!selectedType) {
-            setCard(null);
-            return;
-        }
 
-        if (suitValues.includes(selectedType as Suit)) {
-            setCard({
-                type: selectedType as Suit,
-                value: suitValue,
-            });
-        } else {
-            setCard({
-                type: selectedType as Special,
-            });
-        }
-    }, [selectedType, suitValue]);
+    /* ----------------------------- render ----------------------------- */
 
     return (
-        <div className="space-y-6 max-w-md">
-            <h2 className="text-xl font-semibold">
-                Калькулятор первого раунда
-            </h2>
+        <FormProvider {...form}>
+            <div className="mx-auto max-w-md space-y-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Параметры раунда</CardTitle>
+                    </CardHeader>
 
-            {/* Переключатели */}
-            <div className="flex items-center justify-between">
-                <Label>Кракен в игре</Label>
-                <Switch checked={krakenEnabled} onCheckedChange={setKrakenEnabled} />
-            </div>
+                    <CardContent className="space-y-6">
+                        <Field orientation="horizontal">
+                            <FieldTitle>Кракен в игре</FieldTitle>
+                            <Switch
+                                checked={krakenEnabled}
+                                onCheckedChange={(v) =>
+                                    form.setValue("krakenEnabled", v)
+                                }
+                            />
+                        </Field>
 
-            <div className="flex items-center justify-between">
-                <Label>Белый кит в игре <span className="text-xs text-muted-foreground">(не реализовано)</span></Label>
-                <Switch disabled={true}
-                    checked={whiteWhaleEnabled}
-                    onCheckedChange={setWhiteWhaleEnabled}
-                />
-            </div>
+                        <Field orientation="horizontal">
+                            <FieldTitle>Белый кит в игре <span className="text-xs text-muted-foreground">(не реализовано)</span></FieldTitle>
+                            <Switch
+                                checked={whiteWhaleEnabled}
+                                onCheckedChange={(v) =>
+                                    form.setValue("whiteWhaleEnabled", v)
+                                }
+                                disabled={true}
+                            />
+                        </Field>
 
-            {/* Количество игроков */}
-            <div className="space-y-2">
-                <Label>Количество игроков: {numberOfPlayers}</Label>
-                <Slider
-                    min={2}
-                    max={8}
-                    step={1}
-                    value={[numberOfPlayers]}
-                    onValueChange={([v]) => setNumberOfPlayers(v)}
-                />
-            </div>
+                        <Separator />
 
-            {/* Порядок хода */}
-            <div className="space-y-2">
-                <Label>Порядок хода: {turnOrder}</Label>
-                <Slider
-                    min={1}
-                    max={numberOfPlayers}
-                    step={1}
-                    value={[turnOrder]}
-                    onValueChange={([v]) => setTurnOrder(v)}
-                />
-            </div>
+                        <RHFField
+                            name="cardType"
+                            label="Ваша карта"
+                        >
+                            {({ value, onChange }) => (
+                                <Select
+                                    value={value ?? undefined}
+                                    onValueChange={onChange}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Выберите карту" />
+                                    </SelectTrigger>
 
-            {/* Выбор карты */}
-            <div className="space-y-2">
-                <Label>Ваша карта</Label>
-                <Select
-                    value={selectedType ?? undefined}
-                    onValueChange={(v) => setSelectedType(v as Suit | Special)}
-                >
-                    <SelectTrigger>
-                        <SelectValue placeholder="Выберите карту" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <div className="px-2 py-1 text-sm text-muted-foreground">
-                            Масти
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectLabel>
+                                                Масти
+                                            </SelectLabel>
+                                            {suitValues.map((suit) => (
+                                                <SelectItem
+                                                    key={suit}
+                                                    value={suit}
+                                                >
+                                                    {suitLabels[suit]}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectGroup>
+
+                                        <SelectGroup>
+                                            <SelectLabel>
+                                                Специальные
+                                            </SelectLabel>
+                                            {availableSpecials.map(
+                                                (special) => (
+                                                    <SelectItem
+                                                        key={special}
+                                                        value={special}
+                                                    >
+                                                        {specialLabels[special]}
+                                                    </SelectItem>
+                                                ),
+                                            )}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </RHFField>
+
+                        {cardType && suitValues.includes(cardType as Suit) && (
+                            <RHFField
+                                name="suitValue"
+                                label={`Номинал карты: ${suitValue}`}
+                            >
+                                {({ value, onChange }) => (
+                                    <Slider
+                                        min={1}
+                                        max={14}
+                                        step={1}
+                                        value={[value]}
+                                        onValueChange={([v]) =>
+                                            onChange(v)
+                                        }
+                                    />
+                                )}
+                            </RHFField>
+                        )}
+
+                        <Separator />
+
+                        <RHFField
+                            name="numberOfPlayers"
+                            label={`Количество игроков: ${numberOfPlayers}`}
+                        >
+                            {({ value, onChange }) => (
+                                <Slider
+                                    min={2}
+                                    max={8}
+                                    step={1}
+                                    value={[value]}
+                                    onValueChange={([v]) =>
+                                        onChange(v)
+                                    }
+                                />
+                            )}
+                        </RHFField>
+
+                        <RHFField
+                            name="turnOrder"
+                            label={`Порядок хода: ${turnOrder}`}
+                        >
+                            {({ value, onChange }) => (
+                                <Slider
+                                    min={1}
+                                    max={numberOfPlayers}
+                                    step={1}
+                                    value={[value]}
+                                    onValueChange={([v]) =>
+                                        onChange(v)
+                                    }
+                                />
+                            )}
+                        </RHFField>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            Результат (заявка 1)
+                        </CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                                Мат. ожидание
+                            </span>
+                            <span className="font-mono">
+                                {mathExpectation?.toFixed(2) ?? "—"}
+                            </span>
                         </div>
-                        {suitValues.map((suit) => (
-                            <SelectItem key={suit} value={suit}>
-                                {suitLabels[suit]}
-                            </SelectItem>
-                        ))}
 
-                        <div className="px-2 py-1 text-sm text-muted-foreground">
-                            Специальные
-                        </div>
-                        {availableSpecials.map((special) => (
-                            <SelectItem key={special} value={special}>
-                                {specialLabels[special]}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                        <Separator />
+
+                        {probabilities?.map(
+                            ({ probability, points }, i) => (
+                                <div
+                                    key={i}
+                                    className="flex justify-between font-mono"
+                                >
+                                    <span>
+                                        {(mathjs.number(probability) * 100).toFixed(2)}%
+                                    </span>
+                                    <span>{points} очков</span>
+                                </div>
+                            ),
+                        )}
+                    </CardContent>
+                </Card>
             </div>
-
-            {/* Значение масти */}
-            {selectedType && suitValues.includes(selectedType as Suit) && (
-                <div className="space-y-2">
-                    <Label>Номинал карты: {suitValue}</Label>
-                    <Slider
-                        min={1}
-                        max={14}
-                        step={1}
-                        value={[suitValue]}
-                        onValueChange={([v]) => setSuitValue(v)}
-                    />
-                </div>
-            )}
-
-            {/* Debug */}
-            {/* <pre className="rounded bg-muted p-3 text-sm">
-                {JSON.stringify(card, null, 2)}
-            </pre> */}
-
-            <h3 className="text-xl font-semibold">При заявке 1</h3>
-            <div className="space-y-2">
-                <Label>Мат. ожидание очков: <pre>{mathExpectation?.toFixed(2)}</pre></Label>
-            </div>
-
-            {probabilitiesBid1 !== null && (
-                probabilitiesBid1
-                    .map(({ probability, points }, index) => (
-                        <div key={index} className="space-y-2">
-                            <Label>С вероятностью <pre>{`${(probability * 100).toFixed(2)}%`}</pre> получите очков: <pre>{points}</pre></Label>
-                        </div>
-                    ))
-            )}
-            {/* <div className="space-y-2 text-muted-foreground">
-                <Label>Сумма вероятностей для контроля: <pre>{probabilitiesBid1?.reduce((acc, { probability }) => acc + probability * 100, 0).toFixed(2)}%</pre></Label>
-            </div> */}
-
-        </div>
-    );
+        </FormProvider>
+    )
 }
