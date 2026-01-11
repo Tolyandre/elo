@@ -350,6 +350,10 @@ export function SkullKingCalculator() {
                             Вероятности
                         </div>
                         )}
+                        {/* {probabilities && (<div className="space-y-2 text-muted-foreground">
+                            Сумма вероятностей для контроля: <pre>{(mathjs.number(probabilities?.reduce((acc, { probability }) => acc.add(probability), new Fraction(0))) * 100).toFixed(2)}%</pre>
+                        </div>
+                        )} */}
 
                         {probabilities?.map(
                             ({ probability, points }, i) => (

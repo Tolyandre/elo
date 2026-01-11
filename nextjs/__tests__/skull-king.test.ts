@@ -63,6 +63,6 @@ describe('calculateProbabilities1', () => {
         const entry = result.find(r => r.points === 20);
 
         expect(entry).toBeDefined();
-        expect(mathjs.number(entry!.probability)).equals(mathjs.number(new Fraction(39, 782)));
+        expect(mathjs.number(entry!.probability)).equals(mathjs.number(new Fraction(1803, 28934)));
     });
 });

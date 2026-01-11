@@ -233,10 +233,11 @@ function calculate(opts: {
         if (index === bonusCards.length) {
 
             for (let sameCardsTaken = 0; sameCardsTaken <= Math.min(sameCardsCount, numberOfOtherPlayers - takenPlayers); sameCardsTaken++) {
-                const safeCardsWithoutBonusCombinations = safeCardsWithoutBonus < numberOfOtherPlayers - takenPlayers - sameCardsTaken
+
+                const safeCardsWithouBonusTaken = numberOfOtherPlayers - takenPlayers - sameCardsTaken;
+                const safeCardsWithoutBonusCombinations = safeCardsWithoutBonus < safeCardsWithouBonusTaken
                     ? 0
-                    : mathjs.combinations(safeCardsWithoutBonus,
-                        numberOfOtherPlayers - takenPlayers - sameCardsTaken);
+                    : mathjs.combinations(safeCardsWithoutBonus, safeCardsWithouBonusTaken);
 
                 const sameCardsCombinations = mathjs.combinations(sameCardsCount, sameCardsTaken);
 
@@ -255,12 +256,22 @@ function calculate(opts: {
                             )
                         );
 
-                // если карта с мастью и некозырная, побеждаем только если первый игрок сыграл эту масть
+                // если карта с мастью и некозырная, побеждаем только если первый игрок сыграл эту масть (или первый после белых флагов)
                 if (isSuitAndNotTrump) {
+                   
+                    // не учтено две бонусные карты в выборке (14 в двух других мастях)
+                    const currentCardSetsSuteProbability = turnOrder - 1 > numberOfEscapes
+                        ? new Fraction(0)
+                        : new Fraction(
+                            mathjs.combinations(numberOfEscapes, turnOrder - 1),
+                            mathjs.combinations(safeCardsWithoutBonus, turnOrder - 1));
+
                     notLooseBeforeCurrentTurnProbability = notLooseBeforeCurrentTurnProbability.mul(
-                        turnOrder == 1
-                            ? new Fraction(1)
-                            : new Fraction(numberOfSuitValues - 1 /*current card*/, safeCardsWithoutBonus));
+                        orProbability(
+                            currentCardSetsSuteProbability,
+                            new Fraction(numberOfSuitValues - 1 /*current card*/, safeCardsWithoutBonus)
+                        )
+                    );
                 }
 
                 const probability = notLooseBeforeCurrentTurnProbability.mul(
@@ -333,6 +344,13 @@ function groupByPoints(
             },
             {}
         )
+    );
+}
+
+function orProbability(a: Fraction, b: Fraction) {
+    return new Fraction(1).sub(
+        (new Fraction(1).sub(a))
+            .mul(new Fraction(1).sub(b))
     );
 }
 
