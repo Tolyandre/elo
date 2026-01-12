@@ -1,21 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getMatchesPromise } from "../api";
-
-/* --- Типы (можно вынести в отдельный файл, если понадобится) --- */
-export type PlayerScore = {
-  eloPay: number;
-  eloEarn: number;
-  score: number;
-};
-
-export type Match = {
-  id: number;
-  game: string;
-  date: string | null;
-  score: Record<string, PlayerScore>;
-};
+import { getMatchesPromise, Match } from "../api";
 
 type MatchesState = {
   matches: Match[] | null; // `null` – данные ещё не загружены

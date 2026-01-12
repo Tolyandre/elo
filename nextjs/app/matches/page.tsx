@@ -3,12 +3,13 @@
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useMatches, Match } from "./MatchesContext";
+import { useMatches } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { Match } from "../api";
 
 export default function MatchesPage() {
   return (
@@ -110,10 +111,14 @@ function MatchesPageWrapped() {
 
     return (
       <div className="border border-gray-200 rounded p-4">
-        <h2 className="text-xl font-medium mb-2">
+        <h2 className="text-xl font-medium mb-2 flex justify-between">
           <Link href={`/game?id=${match.game}`} className="underline">
             {match.game}
           </Link>
+          {match.date && (<span className="text-muted-foreground text-sm">{`${match.date.toLocaleString(undefined, {
+            dateStyle: 'medium',
+            timeStyle: 'short'
+          })}`}</span>)}
         </h2>
 
         <ul className="space-y-2">

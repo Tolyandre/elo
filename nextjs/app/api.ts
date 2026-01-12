@@ -53,6 +53,19 @@ export type Game = {
     }[];
 };
 
+export type Match = {
+    id: number;
+    game: string;
+    date: Date | null;
+    score: Record<string, PlayerScore>;
+};
+
+export type PlayerScore = {
+    eloPay: number;
+    eloEarn: number;
+    score: number;
+};
+
 export async function getPingPromise() {
     var res = await fetch(`${EloWebServiceBaseUrl}/ping`);
     return await handleJsonErrorResponse(res);
@@ -69,9 +82,23 @@ export async function getPlayersPromise(): Promise<Player[]> {
     }
 }
 
-export async function getMatchesPromise() {
-    const res = await fetch(`${EloWebServiceBaseUrl}/matches`);
-    return await handleJsonErrorResponse(res);
+export async function getMatchesPromise(): Promise<Match[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches`);
+        const matches: any[] = await handleJsonErrorResponse(res);
+        return matches.map(m => {
+            return {
+                id: m.id,
+                game: m.game,
+                score: m.score,
+                date: m.date ? new Date(m.date) : null
+            }
+        });
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
 }
 
 export async function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
