@@ -1,22 +1,25 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMatches } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
+import { Button } from "@/components/ui/button";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Match } from "../api";
+import { RHFField } from "@/components/rhf-field";
 
 export default function MatchesPage() {
   return (
     <Suspense>
       <MatchesPageWrapped />
     </Suspense>
-  )
+  );
 }
 
 function MatchesPageWrapped() {
@@ -70,30 +73,49 @@ function MatchesPageWrapped() {
 
     let filtered = selectedPlayerId
       ? matches.filter((m) => Object.prototype.hasOwnProperty.call(m.score, selectedPlayerId))
-      : matches
+      : matches;
 
     if (selectedGameId) {
       filtered = filtered.filter((m) => m.game === selectedGameId);
     }
 
     return (
-      <>
-        <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
-        <GameCombobox value={selectedGameId} onChange={handleGameChange} />
+      <div className="space-y-4">
+        <Card >
+          <CardContent >
 
-        <div className="flex items-center space-x-2">
-          <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
-          <Label htmlFor="round-to-integer">Округлять до целого</Label>
-        </div>
+            <FieldGroup>
+              <Field>
+                <FieldLabel className="sr-only">Игрок</FieldLabel>
+                <FieldContent>
+                  <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
+                </FieldContent>
+              </Field>
+
+              <Field >
+                <FieldLabel className="sr-only">Игра</FieldLabel>
+                <FieldContent>
+                  <GameCombobox value={selectedGameId} onChange={handleGameChange} />
+                </FieldContent>
+              </Field>
+
+              <Field orientation="horizontal">
+                <FieldTitle>Округлять до целого</FieldTitle>
+                <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+              </Field>
+            </FieldGroup>
+
+          </CardContent>
+        </Card>
 
         {filtered.map((m) => (
-          <MatchCard key={m.id} match={m} />
+          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} />
         ))}
-      </>
+      </div>
     );
   }
 
-  function MatchCard({ match }: { match: Match }) {
+  function MatchCard({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
     const players = Object.entries(match.score)
       .map(([name, data]) => ({
         name,
@@ -106,89 +128,80 @@ function MatchesPageWrapped() {
 
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
 
-    const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0);
-    const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0);
+    const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0) || 1;
+    const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0) || 1;
 
     return (
-      <div className="border border-gray-200 rounded p-4">
-        <h2 className="text-xl font-medium mb-2 flex justify-between">
-          <Link href={`/game?id=${match.game}`} className="underline">
-            {match.game}
-          </Link>
-          {match.date && (<span className="text-muted-foreground text-sm">{`${match.date.toLocaleString(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short'
-          })}`}</span>)}
-        </h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between w-full">
+            <Link href={`/game?id=${match.game}`} className="underline">
+              {match.game}
+            </Link>
+            {match.date && (
+              <span className="text-muted-foreground text-sm">
+                {`${match.date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
 
-        <ul className="space-y-2">
-          {players.map((p, idx) => (
-            <li
-              key={p.name}
-              className="flex items-center gap-1 py-1 rounded transition-colors"
-            >
-              {/* Игрок */}
-              <div className="gap-2 min-w-40">
-                <span className="font-semibold">{ranks[idx]}. </span>
-                <span>{p.name}</span>
+        <CardContent>
+          <ul className="space-y-2">
+            {players.map((p, idx) => (
+              <li key={p.name} className="flex items-center gap-4">
 
-                <div className="relative h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+                <div className="gap-2 w-30">
+                  <span className="font-semibold">{ranks[idx]}. </span>
+                  <span>{p.name}</span>
 
-                  {/* Индикатор победных очков */}
-                  <div
-                    className="absolute top-0 h-1 bg-green-400"
-                    style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
-                  />
+                  <div className="relative h-2 bg-gray-200 rounded mt-1 overflow-hidden">
 
-                  {/* Индикатор вероятности победы (сколько очко вычитаем) */}
-                  <div
-                    className="absolute bottom-0 h-1 bg-red-400"
-                    style={{ width: `${(p.eloPay / totalPay) * 100}%` }}
-                  />
+                    {/* Индикатор победных очков */}
+                    <div
+                      className="absolute top-0 h-1 bg-green-400"
+                      style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
+                    />
 
+                    {/* Индикатор вероятности победы (сколько очко вычитаем) */}
+                    <div
+                      className="absolute bottom-0 h-1 bg-red-400"
+                      style={{ width: `${(p.eloPay / totalPay) * 100}%` }}
+                    />
+                  </div>
                 </div>
 
-              </div>
+                <div className="text-center w-15 text-3xl">{p.score}</div>
 
-              {/* Итоговый score */}
-              <div className="text-center w-20 text-3xl">{p.score}</div>
-
-              {/* Изменение Elo */}
-              <div className="text-right w-21">
-                <span
-                  className={`font-semibold ${p.eloChange > 0
-                    ? "text-green-600"
-                    : p.eloChange < 0
-                      ? "text-red-600"
-                      : "text-gray-600"
-                    }`}
-                >
-                  {p.eloChange >= 0 ? "+" : ""}
-                  {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
-                </span>
-                <br />
-                <span className="text-xs text-gray-500">
-                  ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
+                <div className="text-right w-15">
+                  <div
+                    className={`font-semibold ${p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"}`}
+                  >
+                    {p.eloChange >= 0 ? "+" : ""}
+                    {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
+                  </div>
+                  <div className="text-xs text-muted-foreground text-nowrap">
+                    ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <main className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold mb-4 mx-auto">Партии</h1>
+    <main>
+      <div className="flex  justify-center">
+        <Button asChild>
+          <Link href="/add-match">Добавить партию</Link>
+        </Button>
       </div>
-      <Link
-        href="/add-match"
-        className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
-      >
-        Добавить партию
-      </Link>
+      <div className="flex items-center justify-center mt-8">
+        <h1 className="text-2xl font-semibold">Партии</h1>
+      </div>
 
       <LoadingOrError />
       <MatchesList />

@@ -37,7 +37,7 @@ function GameWrapped() {
   }, [id]);
 
   return (
-    <main className="space-y-8">
+    <main>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold mb-4 mx-auto">{game?.id}</h1>
       </div>
