@@ -58,9 +58,9 @@ const computeProbabilitiesPlaceholder = (
     //         )
     // );
 
-    const opponentsMustWin = forcedTrickProbability(
+    const opponentsMustWin = forcedEatingProbability(
         numberOfPlayers,
-        opponentsCardsInHand,
+        cardsInHand,
         opponentsRemainingLowerCardsCount,
         opponentsRemainingHigherCardsCount
     );
@@ -87,68 +87,85 @@ const computeProbabilitiesPlaceholder = (
 // }
 
 /**
- * Точная вероятность того, что хотя бы один соперник
- * будет обязан взять взятку
+ * Вероятность того, что хотя бы один из соперников будет вынужден «съесть» карту.
+ *
+ * @param NumberOfPlayers  количество игроков (2, 3 или 4)
+ * @param CardsInHand      сколько карт осталось у каждого игрока
+ * @param OpponentsLowerBlackCards  суммарное число «нижних» карт у всех соперников
+ * @param OpponentsHigherBlackCards суммарное число «выше» карт у всех соперников
+ * @returns 0 ≤ probability ≤ 1
  */
-export function forcedTrickProbability(
-    numberOfPlayers: number,
-    remainsCardsTotal: number,
-    remainingLowerCardsCount: number,
-    remainingHigherCardsCount: number
+export function forcedEatingProbability(
+    NumberOfPlayers: number,
+    CardsInHand: number,
+    OpponentsLowerBlackCards: number,
+    OpponentsHigherBlackCards: number
 ): number {
-    const N = numberOfPlayers - 1;
-    const T = remainsCardsTotal; // - 1;
-    const L = remainingLowerCardsCount;
-    const H = remainingHigherCardsCount;
-    const O = T - L - H;
 
-    if (T % N !== 0) {
-        throw new Error("Карты распределены не поровну");
-    }
+    // ------------------------------------------------------------------
+    // 1. Подготовительные величины
+    // ------------------------------------------------------------------
+    const m = NumberOfPlayers - 1;          // число соперников
+    const n = CardsInHand;                  // карт у одного игрока
+    const N = m * n;                        // общее число слотов у соперников
+    const L = OpponentsLowerBlackCards;     // число нижних карт
+    const H = OpponentsHigherBlackCards;    // число верхних карт
+    const M = N - L;                        // слоты, в которые можно поставить верхние карты
 
-    if (remainingLowerCardsCount === 0 && remainingHigherCardsCount > 0) {
-        return 1;
-    }
+    // ------------------------------------------------------------------
+    // 2. Функция биномиальных коэффициентов (с использованием BigInt для
+    //    надёжности, но в наших диапазонах можно безопасно перейти к Number)
+    // ------------------------------------------------------------------
+    const comb = (a: number, b: number): bigint => {
+        if (b < 0 || b > a) return 0n;
+        if (b === 0 || b === a) return 1n;
+        const k = Math.min(b, a - b);
+        let res = 1n;
+        for (let i = 1; i <= k; ++i) {
+            res = res * BigInt(a - k + i) / BigInt(i);
+        }
+        return res;
+    };
 
+    // ------------------------------------------------------------------
+    // 3. Полный «факториал» всех возможных размещений карт
+    // ------------------------------------------------------------------
+    const totalWays = comb(N, L) * comb(N - L, H);
 
-    const k = T / N;
+    // ------------------------------------------------------------------
+    // 4. Перебираем k = 1 … m (наибольший m = 3, т.к. NumberOfPlayers ≤ 4)
+    // ------------------------------------------------------------------
+    let probability = 0; // конечный ответ
+    for (let k = 1; k <= m; ++k) {
 
-    let probabilityNoForced = 0;
+        // 4.1. Число размещений нижних карт, которые «выкладываются» в слоты,
+        //      оставшиеся от k игроков (они все без нижних карт)
+        const lowerComb = L == 0 ? 0n : comb(N - k * n, L);
+        // const lowerComb = BigInt(mathjs.combinations(N - k * n, L));
 
-    for (let m = 0; m <= N; m++) {
-        const sign = m % 2 === 0 ? 1 : -1;
-        let term = 0;
-
-        const hMin = m;
-        const hMax = Math.min(H, m * k);
-
-        for (let h = hMin; h <= hMax; h++) {
-            const other = m * k - h;
-            if (other > O) continue;
-
-            // вероятность, что выбранные m игроков получили именно эти карты
-            const p =
-                comb(H, h) *
-                comb(O, other) /
-                comb(T, m * k);
-
-            term += p;
+        // 4.2. Число размещений верхних карт, при которых каждый из k игроков
+        //      получает хотя бы одну верхнюю карту (включённое‑исключение)
+        let innerSum = 0n;
+        for (let j = 0; j <= k; ++j) {
+            const sign = (j % 2 === 0) ? 1n : -1n;
+            const slots = M - j * n;      // сколько слотов остаётся, если j групп исключить
+            if (slots < H) continue;      // нельзя разместить H верхних
+            const term = sign * comb(k, j) * comb(slots, H);
+            innerSum += term;
         }
 
-        probabilityNoForced += sign * comb(N, m) * term;
+        // 4.3. Число размещений, при которых конкретный набор из k игроков
+        //      является «обязательными» (формула (5))
+        const countFk = lowerComb * innerSum;
+
+        // 4.4. Вероятность пересечения (формула (6))
+        const pk = Number(countFk) / Number(totalWays);
+
+        // 4.5. Инклюзи‑эксклюзи‑свойство (формула (7))
+        probability += ((k % 2 === 1) ? pk : -pk);
     }
 
-    return 1 - probabilityNoForced;
-}
-
-function comb(n: number, k: number): number {
-    if (k < 0 || k > n) return 0;
-    k = Math.min(k, n - k);
-    let r = 1;
-    for (let i = 1; i <= k; i++) {
-        r *= (n - k + i) / i;
-    }
-    return r;
+    return probability;
 }
 
 
@@ -200,20 +217,31 @@ export function StPatrickCalculator() {
     /* validation for black cards */
     useEffect(() => {
         if (!blackCards || !numberOfPlayers || !roundNumber) return
-        const maxMyCards = (36 / numberOfPlayers) + roundNumber - 1
-        const myCount = blackCards.filter((v) => v === "me").length
 
-        if (myCount > maxMyCards) {
-            form.setError("blackCards" as any, {
+        const maxCardInHand = (totalCards / numberOfPlayers) - roundNumber + 1
+        const myCount = blackCards.filter((v) => v === "me").length
+        const opponentsCardsCount = blackCards.filter((v) => v === "opponents").length
+
+        if (myCount > maxCardInHand) {
+            form.setError("blackCards", {
                 type: "manual",
-                message: `Количество карт 'карта у меня' не должно превышать ${maxMyCards}`,
+                message: `Количество карт 'у меня' не должно превышать ${maxCardInHand}`,
+            })
+        } else if (opponentsCardsCount > maxCardInHand * (numberOfPlayers - 1)) {
+            form.setError("blackCards", {
+                type: "manual",
+                message: `Количество карт 'у соперников' не должно превышать ${maxCardInHand * (numberOfPlayers - 1)}`,
+            })
+        } else if (myCount + opponentsCardsCount > maxCardInHand * (numberOfPlayers)) {
+            form.setError("blackCards", {
+                type: "manual",
+                message: `Общее количество карт 'у меня' и 'у соперников' не должно превышать ${maxCardInHand * (numberOfPlayers)}`,
             })
         } else {
             form.clearErrors("blackCards" as any)
         }
+
     }, [blackCards, numberOfPlayers, roundNumber])
-
-
 
 
     const probabilitiesPerMyCard = useMemo(() => {
