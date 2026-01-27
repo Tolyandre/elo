@@ -58,14 +58,52 @@ const computeProbabilitiesPlaceholder = (
     //         )
     // );
 
-    const opponentsMustWin = forcedEatingProbability(
-        numberOfPlayers,
-        cardsInHand,
-        opponentsRemainingLowerCardsCount,
-        opponentsRemainingHigherCardsCount
-    );
+    // const opponentsMustWin = forcedEatingProbability(
+    //     numberOfPlayers,
+    //     cardsInHand,
+    //     opponentsRemainingLowerCardsCount,
+    //     opponentsRemainingHigherCardsCount
+    // );
+
+    const opponentsMustWin = opponentMustWinProbability(numberOfPlayers, cardsInHand,
+         opponentsRemainingLowerCardsCount, opponentsRemainingHigherCardsCount);
 
     return { opponentsMustWin };
+}
+
+export function opponentMustWinProbability(
+    NumberOfPlayers: number,
+    CardsInHand: number,
+    OpponentsLowerBlackCards: number,
+    OpponentsHigherBlackCards: number
+): number {
+
+    let winWays = 0;
+    const totalWays = mathjs.combinations(CardsInHand * (NumberOfPlayers - 1), CardsInHand);
+
+    for (let l = 0; l <= mathjs.min(OpponentsLowerBlackCards, CardsInHand); l++) {
+        for (let h = 0; h <= mathjs.min(OpponentsHigherBlackCards, CardsInHand - l); h++) {
+            const nonBlackCards = CardsInHand - l - h;
+            const ways = mathjs.combinations(OpponentsLowerBlackCards, l) *
+                mathjs.combinations(OpponentsHigherBlackCards, h) *
+                mathjs.combinations(
+                    CardsInHand * (NumberOfPlayers - 1) - OpponentsLowerBlackCards - OpponentsHigherBlackCards,
+                    nonBlackCards
+                );
+
+            if (l > 0 && h === 0) {
+               // winWays -= ways;
+            }
+            else {
+                winWays += ways;
+            }
+        }
+    }
+    if (winWays <= NumberOfPlayers-1){
+        return 1;
+    }
+
+    return mathjs.combinations(winWays, NumberOfPlayers-1) / mathjs.combinations(totalWays, NumberOfPlayers-1);
 }
 
 // function otherPlayerOnlyHigerCardsProbability(opponentsRemainingHigherCardsCount: number, opponentsRemainingLowerCardsCount: number,

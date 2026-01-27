@@ -64,7 +64,7 @@ function GameWrapped() {
       </table>
 
       {game?.id === "Skull King" && <SkullKingCalculator />}
-      {game?.id === "Охота на змей" && <StPatrickCalculator />}
+      {/* {game?.id === "Охота на змей" && <StPatrickCalculator />} */}
     </main>
   );
 }
