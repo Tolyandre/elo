@@ -81,6 +81,8 @@ Then update vendorHash with a new value from error message.
 
 Run following queries in context of a test database.
 
+## Prepare database
+
 Creating a user for testing:
 
 ```sql
@@ -89,8 +91,18 @@ GRANT ALL PRIVILEGES ON DATABASE "elo-web-service-test" to "elo-web-service-test
 GRANT ALL ON SCHEMA public TO "elo-web-service-test";
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "elo-web-service-test";
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "elo-web-service-test";
-
 ```
+
+## Apply migrations
+
+```bash
+cd elo-web-service
+set -a && source .env && set +a && go run . --config-path ./config/config.dev.yaml --migrate-db
+```
+
+Or apply migrations using vscode, see [.vscode/launch.json](.vscode/launch.json).
+
+
 
 
 

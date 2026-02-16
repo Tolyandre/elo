@@ -13,5 +13,6 @@ pkgs.mkShell {
     pkgs.glibc.static
     pkgs.go
     pkgs.gcc
+    pkgs.sqlc
   ];
 }

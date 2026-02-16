@@ -9,6 +9,19 @@ import (
 	"github.com/tolyandre/elo-web-service/migrations"
 )
 
+// MigrateUp runs migrations from ./migrations directory against the provided DSN
+func MigrateUp() error {
+	final, err := buildDSN()
+	if err != nil {
+		return err
+	}
+	// Use embedded migrations compiled into the binary.
+	if err := runMigrationsEmbedded(final); err != nil {
+		return err
+	}
+	return nil
+}
+
 // runMigrationsEmbedded runs migrations embedded into the binary using the iofs source driver.
 func runMigrationsEmbedded(dsn string) error {
 	src, err := sourceiofs.New(migrations.MigrationsFS, ".")
