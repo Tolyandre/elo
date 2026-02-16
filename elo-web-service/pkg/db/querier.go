@@ -13,7 +13,7 @@ type Querier interface {
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	GetPlayer(ctx context.Context, id int32) (Player, error)
-	ListClubs(ctx context.Context) ([]Club, error)
+	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)

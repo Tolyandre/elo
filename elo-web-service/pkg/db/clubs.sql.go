@@ -7,22 +7,35 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const listClubs = `-- name: ListClubs :many
-SELECT id, name FROM clubs
+SELECT
+    c.id AS club_id,
+    c.name AS club_name,
+    pcm.player_id AS player_id
+FROM clubs c
+LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
 `
 
-func (q *Queries) ListClubs(ctx context.Context) ([]Club, error) {
+type ListClubsRow struct {
+	ClubID   int32       `json:"club_id"`
+	ClubName string      `json:"club_name"`
+	PlayerID pgtype.Int4 `json:"player_id"`
+}
+
+func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 	rows, err := q.db.Query(ctx, listClubs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Club{}
+	items := []ListClubsRow{}
 	for rows.Next() {
-		var i Club
-		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+		var i ListClubsRow
+		if err := rows.Scan(&i.ClubID, &i.ClubName, &i.PlayerID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
