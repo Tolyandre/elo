@@ -24,7 +24,7 @@ type playerEloRankJson struct {
 	MatchesLeftForRanked int     `json:"matches_left_for_ranked"`
 }
 
-func ListPlayers(c *gin.Context) {
+func (a *API) ListPlayers(c *gin.Context) {
 
 	actualPlayers, err := elo.GetPlayersWithRank(nil)
 	if err != nil {

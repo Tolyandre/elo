@@ -7,7 +7,7 @@ import (
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
-func DeleteCache(c *gin.Context) {
+func (a *API) DeleteCache(c *gin.Context) {
 	err := googlesheet.InvalidateCache()
 
 	if err != nil {

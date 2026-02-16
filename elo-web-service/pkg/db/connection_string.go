@@ -9,8 +9,8 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
-// buildDSN returns a DSN string with password taken from ELO_WEB_SERVICE_POSTGRES_PASSWORD
-func buildDSN() (string, error) {
+// BuildDSN returns a DSN string with password taken from ELO_WEB_SERVICE_POSTGRES_PASSWORD
+func BuildDSN() (string, error) {
 	u, err := url.Parse(configuration.Config.PostgresDSN)
 	if err != nil {
 		return "", fmt.Errorf("invalid postgres DSN: %w", err)

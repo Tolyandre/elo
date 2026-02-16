@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tolyandre/elo-web-service/pkg/api"
 	oauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
@@ -26,6 +28,11 @@ func main() {
 		log.Println("migrations applied; exiting as --migrate-db was provided")
 		return
 	}
+
+	pool := initDbConnectionPool()
+	defer pool.Close()
+	api := api.New(pool)
+
 	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
 	oauth2.InitOauth()
 
@@ -42,7 +49,7 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 
-	router.GET("/ping", getPing)
+	router.GET("/ping", api.GetPing)
 	router.GET("/players", api.ListPlayers)
 	router.GET("/matches", api.ListMatches)
 	router.POST("/matches", oauth2.DeserializeUser(), api.AddMatch)
@@ -50,6 +57,7 @@ func main() {
 	router.GET("/games", api.ListGames)
 	router.GET("/games/:id", api.GetGame)
 	router.DELETE("/cache", api.DeleteCache)
+	router.GET("/clubs", api.ListClubs)
 
 	auth_router := router.Group("/auth")
 	auth_router.POST("/logout", oauth2.LogoutUser)
@@ -60,6 +68,20 @@ func main() {
 	log.Fatal(router.Run(cfg.Config.Address))
 }
 
+func initDbConnectionPool() *pgxpool.Pool {
+	ctx := context.Background()
+	dsn, err := db.BuildDSN()
+	if err != nil {
+		log.Fatal(err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return pool
+}
+
 func getDomainWithScheme(uri string) string {
 	u, err := url.Parse(uri)
 	origin := uri
@@ -67,8 +89,4 @@ func getDomainWithScheme(uri string) string {
 		origin = u.Scheme + "://" + u.Host
 	}
 	return origin
-}
-
-func getPing(c *gin.Context) {
-	api.SuccessMessageResponse(c, http.StatusOK, "pong")
 }

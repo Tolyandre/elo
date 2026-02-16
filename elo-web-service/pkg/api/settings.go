@@ -15,7 +15,7 @@ type settingsJson struct {
 	GoogleSheetLink string  `json:"google_sheet_link"`
 }
 
-func ListSettings(c *gin.Context) {
+func (a *API) ListSettings(c *gin.Context) {
 	parsedData, err := googlesheet.GetParsedData()
 
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-func ListGames(c *gin.Context) {
+func (a *API) ListGames(c *gin.Context) {
 	type gameJson struct {
 		Id              string `json:"id"`
 		LastPlayedOrder int    `json:"last_played_order"`
@@ -38,7 +38,7 @@ func ListGames(c *gin.Context) {
 	})
 }
 
-func GetGame(c *gin.Context) {
+func (a *API) GetGame(c *gin.Context) {
 	type playerJson struct {
 		Id   string  `json:"id"`
 		Elo  float64 `json:"elo"`

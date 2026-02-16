@@ -28,7 +28,7 @@ type matchJson struct {
 	Players map[string]matchPlayerJson `json:"score"`
 }
 
-func AddMatch(c *gin.Context) {
+func (a *API) AddMatch(c *gin.Context) {
 	var payload addMatchJson
 
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -65,7 +65,7 @@ func AddMatch(c *gin.Context) {
 	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
 }
 
-func ListMatches(c *gin.Context) {
+func (a *API) ListMatches(c *gin.Context) {
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)

@@ -11,7 +11,7 @@ import (
 
 // MigrateUp runs migrations from ./migrations directory against the provided DSN
 func MigrateUp() error {
-	final, err := buildDSN()
+	final, err := BuildDSN()
 	if err != nil {
 		return err
 	}
