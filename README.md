@@ -5,6 +5,20 @@ This project is a convinent form for this Google Sheet document https://docs.goo
 
 Demo https://tolyandre.github.io/elo/
 
+# How to build and run
+
+Use [direnv](https://direnv.net/) and [shell.nix](./shell.nix) to install development tools.
+
+I am using NixOS to develop and host this project. Mac and other Linux users can install Nix package manager. 
+
+I suggest you read documentation first https://nix.dev/manual/nix/2.28/quick-start.html
+
+```bash
+curl -L https://nixos.org/nix/install | sh
+```
+
+Run `direnv allow` in the root of the project. 
+
 ## Google OAuth2 and service account
 
 To setup credentials use [Google Cloud Console](https://console.developers.google.com/). Create a new project or use existing one.
