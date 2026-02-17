@@ -3,19 +3,19 @@ package api
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
-	elo "github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-type API struct {
-	UserService elo.IUserService
+type OAUTH2 struct {
 	Queries     *db.Queries
 	Pool        *pgxpool.Pool
+	UserService elo.IUserService
 }
 
-func New(pool *pgxpool.Pool, userService elo.IUserService) *API {
-	return &API{
-		UserService: userService,
+func New(pool *pgxpool.Pool, userService elo.IUserService) *OAUTH2 {
+	return &OAUTH2{
 		Queries:     db.New(pool),
 		Pool:        pool,
+		UserService: userService,
 	}
 }

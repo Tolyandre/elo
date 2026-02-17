@@ -2,10 +2,10 @@ package api
 
 import (
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
@@ -30,30 +30,19 @@ type matchJson struct {
 
 func (a *API) AddMatch(c *gin.Context) {
 	var payload addMatchJson
-
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	userID := c.MustGet(CurrentUserKey)
-	parsedData, err := googlesheet.GetParsedData()
+	user, err := MustGetCurrentUser(c, a.UserService)
+
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	userRowIndex := slices.IndexFunc(parsedData.Users,
-		func(row googlesheet.UserRow) bool { return row.ID == userID })
-
-	if userRowIndex < 0 {
-		ErrorResponse(c, http.StatusInternalServerError, "User not found")
-		return
-	}
-
-	userRow := parsedData.Users[userRowIndex]
-
-	if !userRow.CanEdit {
+	if !user.AllowEditing {
 		ErrorResponse(c, http.StatusForbidden, "You are not authorized to add matches")
 		return
 	}

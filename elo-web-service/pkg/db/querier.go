@@ -11,12 +11,19 @@ import (
 type Querier interface {
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
 	DeletePlayer(ctx context.Context, id int32) error
+	DeleteUser(ctx context.Context, id int32) error
 	GetPlayer(ctx context.Context, id int32) (Player, error)
+	GetUser(ctx context.Context, id int32) (User, error)
+	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
+	ListUsers(ctx context.Context) ([]User, error)
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
+	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
+	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
 	UpsertRating(ctx context.Context, arg UpsertRatingParams) error
 }

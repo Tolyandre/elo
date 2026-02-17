@@ -9,7 +9,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type UserResponse struct {
@@ -17,17 +16,14 @@ type UserResponse struct {
 	Name string `json:"name,omitempty"`
 }
 
-func LogoutUser(ctx *gin.Context) {
+func (a *OAUTH2) LogoutUser(ctx *gin.Context) {
 	setTokenCookie(ctx, "", -1)
 	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged out successfully")
 }
 
-func InitOauth() {
-}
-
 const TokenCookieName = "elo-web-service-token"
 
-func GoogleOAuth(ctx *gin.Context) {
+func (a *OAUTH2) GoogleOAuth(ctx *gin.Context) {
 	code := ctx.Query("code")
 
 	if code == "" {
@@ -49,19 +45,23 @@ func GoogleOAuth(ctx *gin.Context) {
 		return
 	}
 
-	token, err := CreateJwt(time.Duration(cfg.Config.CookieTtlSeconds)*time.Second, google_user.Id, cfg.Config.CookieJwtSecret)
+	userId, err := a.UserService.CreateOrUpdateGoogleUser(ctx, google_user.Id, google_user.Name)
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return
 	}
 
-	googlesheet.AddOrUpdate(google_user.Id, google_user.Name)
+	token, err := CreateJwt(time.Duration(cfg.Config.CookieTtlSeconds)*time.Second, userId, cfg.Config.CookieJwtSecret)
+	if err != nil {
+		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
+		return
+	}
 
 	setTokenCookie(ctx, token, cfg.Config.CookieTtlSeconds)
 	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged in successfully")
 }
 
-func Login(ctx *gin.Context) {
+func (a *OAUTH2) Login(ctx *gin.Context) {
 
 	var from string = cfg.Config.FrontendUri
 

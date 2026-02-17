@@ -9,7 +9,7 @@ import (
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
-func DeserializeUser() gin.HandlerFunc {
+func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var token string
 		cookie, err := ctx.Cookie(TokenCookieName)

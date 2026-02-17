@@ -15,6 +15,7 @@ import (
 	oauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
@@ -31,10 +32,11 @@ func main() {
 
 	pool := initDbConnectionPool()
 	defer pool.Close()
-	api := api.New(pool)
+	userService := elo.NewUserService(pool)
+	api := api.New(pool, userService)
+	oauth2 := oauth2.New(pool, userService)
 
 	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
-	oauth2.InitOauth()
 
 	router := gin.Default()
 

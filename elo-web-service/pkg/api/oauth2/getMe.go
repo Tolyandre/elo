@@ -1,12 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
-	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type userJson struct {
@@ -15,28 +14,17 @@ type userJson struct {
 	CanEdit bool   `json:"can_edit"`
 }
 
-func GetMe(ctx *gin.Context) {
-	userID := ctx.MustGet(api.CurrentUserKey)
-
-	parsedData, err := googlesheet.GetParsedData()
+func (a *OAUTH2) GetMe(ctx *gin.Context) {
+	user, err := api.MustGetCurrentUser(ctx, a.UserService)
 
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return
 	}
 
-	userRowIndex := slices.IndexFunc(parsedData.Users,
-		func(row googlesheet.UserRow) bool { return row.ID == userID })
-
-	if userRowIndex < 0 {
-		api.ErrorResponse(ctx, http.StatusInternalServerError, "User not found")
-		return
-	}
-
-	userRow := parsedData.Users[userRowIndex]
 	api.SuccessDataResponse(ctx, userJson{
-		Id:      userRow.ID,
-		Name:    userRow.Name,
-		CanEdit: userRow.CanEdit,
+		Id:      fmt.Sprintf("%d", user.ID),
+		Name:    user.GoogleOauthUserName,
+		CanEdit: user.AllowEditing,
 	})
 }
