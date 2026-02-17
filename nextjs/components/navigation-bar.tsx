@@ -69,6 +69,15 @@ export function NavigationBar() {
                 </>
               }>
               </ListItem>
+              <ListItem href="/admin" title={
+                <>
+                  <svg viewBox="0 0 24 24" className="inline-block mr-2 h-6 w-6 align-middle" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2-1.343-2-3-2zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82l.02.06a2 2 0 01-1.82 1.33h-.08a2 2 0 01-1.82-1.33l-.02-.06a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82l-.02-.06A2 2 0 0116.66 12h.08a2 2 0 011.82 1.33l.02.06z" />
+                  </svg>
+                  Админка
+                </>
+              }>
+              </ListItem>
 
               {(() => {
                 if (me.id) {

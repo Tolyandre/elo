@@ -53,6 +53,8 @@ func main() {
 
 	router.GET("/ping", api.GetPing)
 	router.GET("/players", api.ListPlayers)
+	router.GET("/users", api.ListUsers)
+	router.PATCH("/users/:userId", oauth2.DeserializeUser(), api.PatchUser)
 	router.GET("/matches", api.ListMatches)
 	router.POST("/matches", oauth2.DeserializeUser(), api.AddMatch)
 	router.GET("/settings", api.ListSettings)

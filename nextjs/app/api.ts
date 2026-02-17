@@ -218,6 +218,33 @@ export async function logout(): Promise<Status> {
     }
 }
 
+export async function listUsersPromise(): Promise<User[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/users`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function patchUserPromise(userId: string, payload: { can_edit: boolean }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 async function handleJsonErrorResponse(response: Response) {
     let body: any;
     try {
