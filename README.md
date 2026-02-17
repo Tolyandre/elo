@@ -7,17 +7,26 @@ Demo https://tolyandre.github.io/elo/
 
 # How to build and run
 
-Use [direnv](https://direnv.net/) and [shell.nix](./shell.nix) to install development tools.
+Use [direnv](https://direnv.net/) with [nix-direnv](https://github.com/nix-community/nix-direnv) and [shell.nix](./shell.nix) to install development tools.
 
-I am using NixOS to develop and host this project. Mac and other Linux users can install Nix package manager. 
-
-I suggest you read documentation first https://nix.dev/manual/nix/2.28/quick-start.html
+I am using NixOS to develop and host this project. Mac and other Linux users can install Nix package manager. If you not familiar with Nix, I suggest you read documentation first https://nix.dev/manual/nix/2.28/quick-start.html
 
 ```bash
+# Install Nix package manager
 curl -L https://nixos.org/nix/install | sh
+
+# Install direnv in nix profile (you may want install it with nix configuration instead)
+nix profile add nixpkgs#direnv --extra-experimental-features flakes --extra-experimental-features nix-command
+
+# You also neeed to register direnv shell hook and restart the shell
+# e.g. in case of zsh add to ~/.zshrc 
+# eval "$(direnv hook zsh)"
+
+# Run the root of the project
+direnv allow
 ```
 
-Run `direnv allow` in the root of the project. 
+
 
 ## Google OAuth2 and service account
 
