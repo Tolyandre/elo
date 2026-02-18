@@ -96,20 +96,20 @@ export default function GamesAdminPage() {
 
     return (
         <main className="p-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold mb-4">Управление играми</h1>
-                <div className="flex items-center">
-                    <Link href="/admin" className="text-sm text-blue-600">
-                        Назад
-                    </Link>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+                    <h1 className="text-2xl font-semibold mb-4">Управление играми</h1>
+                    <div className="mt-2 sm:mt-0">
+                        <Link href="/admin" className="text-sm text-blue-600">
+                            Назад
+                        </Link>
+                    </div>
                 </div>
-            </div>
 
             {me === null && <p>Для редактирования необходимо авторизоваться.</p>}
             {me && !me.can_edit && <p>У вас нет прав для редактирования игр.</p>}
             <p>Удаление возможно для игр без партий.</p>
 
-            <div className="mb-4 mt-4 flex gap-2 items-center">
+            <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <input
                     className="border rounded p-2 flex-1"
                     placeholder="Название новой игры"
@@ -117,6 +117,7 @@ export default function GamesAdminPage() {
                     onChange={(e) => setNewName(e.target.value)}
                     disabled={!me || !me.can_edit}
                 />
+                <div className="w-full sm:w-auto">
                 <Button
                     onClick={async () => {
                         if (!newName || newName.trim() === "") return;
@@ -137,6 +138,7 @@ export default function GamesAdminPage() {
                 >
                     Добавить
                 </Button>
+                </div>
             </div>
 
             <section className="mt-6">
@@ -144,23 +146,17 @@ export default function GamesAdminPage() {
                 {!games ? (
                     <p>Loading games...</p>
                 ) : (
-                    <table className="w-full table-auto border-collapse mb-6">
-                        <thead>
-                            <tr>
-                                <th className="text-left px-4 py-2">Название</th>
-                                <th className="text-left px-4 py-2">Партий</th>
-                                <th className="text-left px-4 py-2">Действия</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <>
+                        {/* Mobile list */}
+                        <div className="sm:hidden space-y-2 mb-4">
                             {games.games.map((game) => (
-                                <tr key={game.id} className="align-top">
-                                    <td className="px-4 py-2">
-                                        <Link className="underline" href={`/matches?game=${game.id}`}>{game.name}</Link>
-                                    </td>
-                                    <td className="px-4 py-2">{game.total_matches}</td>
-                                    <td className="px-4 py-2">
-                                        <div className="flex gap-2">
+                                <div key={game.id} className="border rounded p-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <Link className="underline font-medium" href={`/matches?game=${game.id}`}>{game.name}</Link>
+                                            <div className="text-sm text-muted-foreground">Партий: {game.total_matches}</div>
+                                        </div>
+                                        <div className="flex gap-2 ml-4">
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
@@ -178,11 +174,54 @@ export default function GamesAdminPage() {
                                                 Delete
                                             </Button>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             ))}
-                        </tbody>
-                    </table>
+                        </div>
+
+                        {/* Desktop / larger screens: table with horizontal scroll if needed */}
+                        <div className="hidden sm:block overflow-x-auto">
+                            <table className="min-w-full table-auto border-collapse mb-6">
+                                <thead>
+                                    <tr>
+                                        <th className="text-left px-4 py-2">Название</th>
+                                        <th className="text-left px-4 py-2">Партий</th>
+                                        <th className="text-left px-4 py-2">Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {games.games.map((game) => (
+                                        <tr key={game.id} className="align-top">
+                                            <td className="px-4 py-2">
+                                                <Link className="underline" href={`/matches?game=${game.id}`}>{game.name}</Link>
+                                            </td>
+                                            <td className="px-4 py-2">{game.total_matches}</td>
+                                            <td className="px-4 py-2">
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={() => openRename(game.id, game.name)}
+                                                        disabled={!me || !me.can_edit}
+                                                    >
+                                                        Rename
+                                                    </Button>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="sm"
+                                                        onClick={() => openDelete(game.id, game.name)}
+                                                        disabled={!me || !me.can_edit}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
             </section>
             {/* Rename dialog */}
