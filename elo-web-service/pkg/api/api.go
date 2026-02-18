@@ -8,13 +8,15 @@ import (
 
 type API struct {
 	UserService elo.IUserService
+	GameService elo.IGameService
 	Queries     *db.Queries
 	Pool        *pgxpool.Pool
 }
 
-func New(pool *pgxpool.Pool, userService elo.IUserService) *API {
+func New(pool *pgxpool.Pool) *API {
 	return &API{
-		UserService: userService,
+		UserService: elo.NewUserService(pool),
+		GameService: elo.NewGameService(pool),
 		Queries:     db.New(pool),
 		Pool:        pool,
 	}

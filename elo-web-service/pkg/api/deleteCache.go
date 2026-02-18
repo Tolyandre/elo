@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,5 +16,26 @@ func (a *API) DeleteCache(c *gin.Context) {
 		return
 	}
 
+	err = a.sync(c)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
 	SuccessMessageResponse(c, http.StatusOK, "Cache invalidated successfully")
+}
+
+func (a *API) sync(ctx context.Context) error {
+	parsedData, err := googlesheet.GetParsedData()
+	if err != nil {
+		return err
+	}
+
+	var games []string
+	for _, match := range parsedData.Matches {
+		games = append(games, match.Game)
+	}
+
+	_, err = a.Queries.AddGamesIfNotExists(ctx, games)
+	return err
 }

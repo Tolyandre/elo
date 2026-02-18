@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Match } from "../api";
 import { RHFField } from "@/components/rhf-field";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Terminal } from "lucide-react";
 
 export default function MatchesPage() {
   return (
@@ -98,6 +100,14 @@ function MatchesPageWrapped() {
                   <GameCombobox value={selectedGameId} onChange={handleGameChange} />
                 </FieldContent>
               </Field>
+
+              <Alert variant="default" className="max-w-100">
+                <Terminal />
+                <AlertTitle>Фильтр временно не работает</AlertTitle>
+                <AlertDescription>
+                  Фильтр по играм заработает, когда партии будут перенесены в базу данных. Я работаю над этим. Спасибо за понимание!
+                </AlertDescription>
+              </Alert>
 
               <Field orientation="horizontal">
                 <FieldTitle>Округлять до целого</FieldTitle>

@@ -12,10 +12,10 @@ type OAUTH2 struct {
 	UserService elo.IUserService
 }
 
-func New(pool *pgxpool.Pool, userService elo.IUserService) *OAUTH2 {
+func New(pool *pgxpool.Pool) *OAUTH2 {
 	return &OAUTH2{
 		Queries:     db.New(pool),
 		Pool:        pool,
-		UserService: userService,
+		UserService: elo.NewUserService(pool),
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
 func (a *API) ListGames(c *gin.Context) {
@@ -19,13 +18,13 @@ func (a *API) ListGames(c *gin.Context) {
 		Games []gameJson `json:"games"`
 	}
 
-	games, err := elo.GetGameTitlesOrderedByLastPlayed()
+	games, err := a.GameService.GetGameTitlesOrderedByLastPlayed(c.Request.Context())
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	var gameList []gameJson
+	var gameList = make([]gameJson, 0)
 	for i, g := range games {
 		gameList = append(gameList, gameJson{
 			Id:              g.Id,
@@ -49,12 +48,13 @@ func (a *API) GetGame(c *gin.Context) {
 
 	type gameJson struct {
 		Id           string       `json:"id"`
+		Name         string       `json:"name"`
 		TotalMatches int          `json:"total_matches"`
 		Players      []playerJson `json:"players"`
 	}
 
 	id := c.Param("id")
-	gameStatistics, err := elo.GetGameStatistics(id)
+	gameStatistics, err := a.GameService.GetGameStatistics(c, id)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
@@ -71,6 +71,7 @@ func (a *API) GetGame(c *gin.Context) {
 
 	SuccessDataResponse(c, gameJson{
 		Id:           id,
+		Name:         gameStatistics.Name,
 		TotalMatches: gameStatistics.TotalMatches,
 		Players:      playerList,
 	})

@@ -48,6 +48,7 @@ export type GameListItem = {
 
 export type Game = {
     id: string;
+    name: string;
     total_matches: number;
     players: {
         id: string;

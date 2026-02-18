@@ -40,7 +40,7 @@ function GameWrapped() {
   return (
     <main>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold mb-4 mx-auto">{game?.id}</h1>
+        <h1 className="text-2xl font-semibold mb-4 mx-auto">{game?.name}</h1>
       </div>
 
       <p className="text-gray-600">Партий: {game?.total_matches}</p>
@@ -63,8 +63,8 @@ function GameWrapped() {
         </tbody>
       </table>
 
-      {game?.id === "Skull King" && <SkullKingCalculator />}
-      {/* {game?.id === "Охота на змей" && <StPatrickCalculator />} */}
+      {game?.name === "Skull King" && <SkullKingCalculator />}
+      {/* {game?.name === "Охота на змей" && <StPatrickCalculator />} */}
     </main>
   );
 }
