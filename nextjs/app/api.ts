@@ -160,6 +160,53 @@ export async function getGamePromise(id: string): Promise<Game> {
     }
 }
 
+export async function patchGamePromise(id: string, payload: { name: string }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function deleteGamePromise(id: string) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function createGamePromise(payload: { name: string }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 export async function deleteCache(): Promise<any> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/cache`, {

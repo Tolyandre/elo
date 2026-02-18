@@ -9,10 +9,12 @@ import (
 )
 
 type Querier interface {
+	AddGame(ctx context.Context, name string) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]Game, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
+	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetPlayer(ctx context.Context, id int32) (Player, error)
@@ -24,6 +26,7 @@ type Querier interface {
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
+	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error

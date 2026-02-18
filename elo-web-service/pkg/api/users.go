@@ -34,7 +34,7 @@ func MustGetCurrentUser(ctx *gin.Context, userService elo.IUserService) (*db.Use
 
 	user, err := userService.GetUserByID(ctx, int32(userIdInt))
 
-	if db.NotFound(err) {
+	if db.IsNoRows(err) {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 
@@ -104,7 +104,7 @@ func (a *API) PatchUser(c *gin.Context) {
 	}
 
 	user, err := a.UserService.GetUserByID(c, int32(userIdInt))
-	if db.NotFound(err) {
+	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("user not found: %w", err))
 		return
 	}

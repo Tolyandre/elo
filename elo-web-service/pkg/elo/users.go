@@ -55,7 +55,7 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 
 	user, err := q.GetUserByGoogleOAuthUserID(ctx, googleOauthUserId)
 
-	if db.NotFound(err) {
+	if db.IsNoRows(err) {
 		userId, err := q.CreateUser(ctx, db.CreateUserParams{
 			AllowEditing:        false,
 			GoogleOauthUserID:   googleOauthUserId,

@@ -31,6 +31,9 @@ type GameTitles struct {
 type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
 	GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error)
+	DeleteGame(ctx context.Context, id int32) (*db.Game, error)
+	UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error)
+	AddGame(ctx context.Context, name string) (*db.Game, error)
 }
 
 type GameService struct {
@@ -196,6 +199,33 @@ func GetGameStatistics(id string) (*GameStatistics, error) {
 		TotalMatches: totalMatches,
 		Players:      players,
 	}, nil
+}
+
+func (s *GameService) DeleteGame(ctx context.Context, id int32) (*db.Game, error) {
+	g, err := s.Queries.DeleteGame(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+func (s *GameService) UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error) {
+	g, err := s.Queries.UpdateGameName(ctx, db.UpdateGameNameParams{
+		ID:   id,
+		Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+func (s *GameService) AddGame(ctx context.Context, name string) (*db.Game, error) {
+	g, err := s.Queries.AddGame(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
 }
 
 func reduce[T, M any](s []T, f func(M, *T) M, initValue M) M {

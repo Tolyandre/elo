@@ -13,3 +13,19 @@ FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
 GROUP BY g.id, g.name
 ORDER BY MAX(m.date) DESC;
+
+-- name: DeleteGame :one
+DELETE FROM games
+WHERE id = $1
+RETURNING id, name;
+
+-- name: UpdateGameName :one
+UPDATE games
+SET name = $2
+WHERE id = $1
+RETURNING id, name;
+
+-- name: AddGame :one
+INSERT INTO games (name)
+VALUES ($1)
+RETURNING id, name;

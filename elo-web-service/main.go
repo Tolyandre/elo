@@ -58,6 +58,9 @@ func main() {
 	router.GET("/settings", api.ListSettings)
 	router.GET("/games", api.ListGames)
 	router.GET("/games/:id", api.GetGame)
+	router.DELETE("/games/:id", oauth2.DeserializeUser(), api.DeleteGame)
+	router.PATCH("/games/:id", oauth2.DeserializeUser(), api.PatchGame)
+	router.POST("/games", oauth2.DeserializeUser(), api.CreateGame)
 	router.DELETE("/cache", api.DeleteCache)
 	router.GET("/clubs", api.ListClubs)
 

@@ -9,6 +9,19 @@ import (
 	"context"
 )
 
+const addGame = `-- name: AddGame :one
+INSERT INTO games (name)
+VALUES ($1)
+RETURNING id, name
+`
+
+func (q *Queries) AddGame(ctx context.Context, name string) (Game, error) {
+	row := q.db.QueryRow(ctx, addGame, name)
+	var i Game
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
 const addGamesIfNotExists = `-- name: AddGamesIfNotExists :many
 INSERT INTO games (name)
 SELECT unnest($1::text[]) AS name
@@ -34,6 +47,19 @@ func (q *Queries) AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const deleteGame = `-- name: DeleteGame :one
+DELETE FROM games
+WHERE id = $1
+RETURNING id, name
+`
+
+func (q *Queries) DeleteGame(ctx context.Context, id int32) (Game, error) {
+	row := q.db.QueryRow(ctx, deleteGame, id)
+	var i Game
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
 }
 
 const listGamesOrderedByLastPlayed = `-- name: ListGamesOrderedByLastPlayed :many
@@ -71,4 +97,23 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateGameName = `-- name: UpdateGameName :one
+UPDATE games
+SET name = $2
+WHERE id = $1
+RETURNING id, name
+`
+
+type UpdateGameNameParams struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error) {
+	row := q.db.QueryRow(ctx, updateGameName, arg.ID, arg.Name)
+	var i Game
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
 }
