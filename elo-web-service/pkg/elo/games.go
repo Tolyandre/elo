@@ -20,6 +20,7 @@ type GameStatistics struct {
 
 type GameTitles struct {
 	Id           string
+	Name         string
 	TotalMatches int
 }
 
@@ -53,6 +54,7 @@ func GetGameTitlesOrderedByLastPlayed() ([]GameTitles, error) {
 
 			gameList = append(gameList, GameTitles{
 				Id:           name,
+				Name:         name,
 				TotalMatches: totalMatches,
 			})
 		}

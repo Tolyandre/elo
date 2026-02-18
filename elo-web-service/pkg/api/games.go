@@ -10,6 +10,7 @@ import (
 func (a *API) ListGames(c *gin.Context) {
 	type gameJson struct {
 		Id              string `json:"id"`
+		Name            string `json:"name"`
 		LastPlayedOrder int    `json:"last_played_order"`
 		TotalMatches    int    `json:"total_matches"`
 	}
@@ -28,6 +29,7 @@ func (a *API) ListGames(c *gin.Context) {
 	for i, g := range games {
 		gameList = append(gameList, gameJson{
 			Id:              g.Id,
+			Name:            g.Name,
 			LastPlayedOrder: i,
 			TotalMatches:    g.TotalMatches,
 		})

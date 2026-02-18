@@ -32,7 +32,7 @@ export default function AllGamesList() {
             return (
               <tr key={game.id}>
                 <td className="px-4 py-2">
-                  <Link className="underline" href={`/game?id=${game.id}`}>{game.id}</Link>
+                  <Link className="underline" href={`/game?id=${game.id}`}>{game.name}</Link>
                 </td>
                 <td className="px-4 py-2">{game.total_matches}</td>
               </tr>

@@ -22,10 +22,11 @@ type matchPlayerJson struct {
 }
 
 type matchJson struct {
-	Id      int                        `json:"id"`
-	Game    string                     `json:"game"`
-	Date    *time.Time                 `json:"date"`
-	Players map[string]matchPlayerJson `json:"score"`
+	Id       int                        `json:"id"`
+	GameId   string                     `json:"game_id"`
+	GameName string                     `json:"game_name"`
+	Date     *time.Time                 `json:"date"`
+	Players  map[string]matchPlayerJson `json:"score"`
 }
 
 func (a *API) AddMatch(c *gin.Context) {
@@ -67,10 +68,11 @@ func (a *API) ListMatches(c *gin.Context) {
 	// skip first row as it contains start elo value (fake match)
 	for _, pm := range parsedData.Matches[1:] {
 		m := matchJson{
-			Id:      pm.RowNum,
-			Game:    pm.Game,
-			Date:    pm.Date,
-			Players: make(map[string]matchPlayerJson, len(pm.PlayersScore)),
+			Id:       pm.RowNum,
+			GameId:   pm.Game,
+			GameName: pm.Game,
+			Date:     pm.Date,
+			Players:  make(map[string]matchPlayerJson, len(pm.PlayersScore)),
 		}
 
 		absoluteLoserScore := elo.GetAsboluteLoserScore(pm.PlayersScore)

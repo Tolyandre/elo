@@ -44,7 +44,7 @@ export function GameCombobox({
           aria-expanded={open}
           className="w-[200px] justify-between"
         >
-          {value ? games.find((game) => game.id === value)?.id : "Игра..."}
+          {value ? games.find((game) => game.id === value)?.name : "Игра..."}
           <ChevronsUpDown className="opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -55,7 +55,7 @@ export function GameCombobox({
             <CommandEmpty>Игра не найдена.</CommandEmpty>
             <CommandGroup>
               {games
-               .sort((a, b) => a.id > b.id ? 1 : -1)
+               .sort((a, b) => a.name > b.name ? 1 : -1)
                .map((game) => (
                 <CommandItem
                   key={game.id}
@@ -71,7 +71,7 @@ export function GameCombobox({
                     setOpen(false)
                   }}
                 >
-                  {game.id}
+                  {game.name}
                   <Check
                     className={cn(
                       "ml-auto",

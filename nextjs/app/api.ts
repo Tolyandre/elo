@@ -36,11 +36,14 @@ export type Status = {
 }
 
 export type GameList = {
-    games: {
-        id: string;
-        total_matches: number;
-        last_played_order: number;
-    }[];
+    games: GameListItem[];
+};
+
+export type GameListItem = {
+    id: string;
+    name: string;
+    total_matches: number;
+    last_played_order: number;
 };
 
 export type Game = {
@@ -55,7 +58,8 @@ export type Game = {
 
 export type Match = {
     id: number;
-    game: string;
+    game_id: string;
+    game_name: string;
     date: Date | null;
     score: Record<string, PlayerScore>;
 };
@@ -89,7 +93,8 @@ export async function getMatchesPromise(): Promise<Match[]> {
         return matches.map(m => {
             return {
                 id: m.id,
-                game: m.game,
+                game_id: m.game_id,
+                game_name: m.game_name,
                 score: m.score,
                 date: m.date ? new Date(m.date) : null
             }

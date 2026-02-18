@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
-import { addMatchPromise } from "../api";
+import { addMatchPromise, Game, GameListItem } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useSettings } from "../settingsContext";
 import { useMe } from "../meContext";
@@ -42,7 +42,7 @@ function AddGameForm() {
     const settings = useSettings();
 
     const { games } = useGames();
-    const [filteredGames, setFilteredGames] = useState<string[]>([]);
+    const [filteredGames, setFilteredGames] = useState<GameListItem[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -57,9 +57,9 @@ function AddGameForm() {
 
     useEffect(() => {
         setFilteredGames(
-            games.filter((game) => game.id.toLowerCase().includes(gameName.toLowerCase()))
+            games.filter((game) => game.name.toLowerCase().includes(gameName.toLowerCase()))
                 .sort((a, b) => a.last_played_order - b.last_played_order)
-                .map((g) => g.id)
+                .map((g) => g)
         );
     }, [gameName, games]);
 
@@ -199,11 +199,11 @@ function AddGameForm() {
                                     key={index}
                                     className="p-2 hover:bg-gray-500 cursor-pointer"
                                     onClick={() => {
-                                        setGameName(game);
+                                        setGameName(game.name);
                                         setShowDropdown(false);
                                     }}
                                 >
-                                    {game}
+                                    {game.name}
                                 </div>
                             ))}
                         </div>

@@ -76,7 +76,7 @@ function MatchesPageWrapped() {
       : matches;
 
     if (selectedGameId) {
-      filtered = filtered.filter((m) => m.game === selectedGameId);
+      filtered = filtered.filter((m) => m.game_id === selectedGameId);
     }
 
     return (
@@ -135,8 +135,8 @@ function MatchesPageWrapped() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between w-full">
-            <Link href={`/game?id=${match.game}`} className="underline">
-              {match.game}
+            <Link href={`/game?id=${match.game_id}`} className="underline">
+              {match.game_name}
             </Link>
             {match.date && (
               <span className="text-muted-foreground text-sm">
