@@ -15,6 +15,7 @@ export type EloRank = {
 
 export type Player = {
     id: string;
+    name: string;
     rank: {
         now: EloRank;
         day_ago: EloRank;

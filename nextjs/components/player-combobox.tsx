@@ -53,7 +53,7 @@ export function PlayerCombobox({
       className="w-[200px] justify-between"
     >
       {value
-        ? players.find((player) => player.id === value)?.id
+        ? players.find((player) => player.id === value)?.name ?? value
         : "Игрок..."}
       <ChevronsUpDown className="opacity-50" />
     </Button>
@@ -97,7 +97,7 @@ export function PlayerCombobox({
 
 type PlayerCommandProps = {
   value: string
-  players: { id: string }[]
+  players: { id: string; name: string }[]
   onSelect: (value: string) => void
 }
 
@@ -120,7 +120,7 @@ function PlayerCommand({
               value={player.id}
               onSelect={onSelect}
             >
-              {player.id}
+              {player.name}
               <Check
                 className={cn(
                   "ml-auto",

@@ -39,9 +39,9 @@ export function PlayerMultiSelect({
     setOptions([
       {
         heading: "Недавние",
-        options: recentPlayers.map(p => ({
-          value: p,
-          label: p
+        options: recentPlayers.map(id => ({
+          value: id,
+          label: players.find((pl) => pl.id === id)?.name ?? id
         }))
       },
       {
@@ -51,7 +51,7 @@ export function PlayerMultiSelect({
             .filter(p => !recentPlayers.includes(p.id))
             .map(p => ({
               value: p.id,
-              label: p.id
+              label: p.name
             }))
             .sort((a, b) => a.label.localeCompare(b.label))
       }

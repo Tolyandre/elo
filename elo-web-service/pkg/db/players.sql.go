@@ -11,6 +11,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addPlayersIfNotExists = `-- name: AddPlayersIfNotExists :many
+INSERT INTO players (name)
+SELECT unnest($1::text[]) AS name
+ON CONFLICT (name) DO NOTHING
+RETURNING id, name
+`
+
+type AddPlayersIfNotExistsRow struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error) {
+	rows, err := q.db.Query(ctx, addPlayersIfNotExists, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AddPlayersIfNotExistsRow{}
+	for rows.Next() {
+		var i AddPlayersIfNotExistsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createPlayer = `-- name: CreatePlayer :one
 INSERT INTO players (name, geologist_name, google_sheet_column)
 VALUES ($1, $2, $3)

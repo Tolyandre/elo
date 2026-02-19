@@ -37,5 +37,14 @@ func (a *API) sync(ctx context.Context) error {
 	}
 
 	_, err = a.Queries.AddGamesIfNotExists(ctx, games)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = a.Queries.AddPlayersIfNotExists(ctx, parsedData.PlayerIds)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -13,3 +13,9 @@ ORDER BY name;
 
 -- name: DeletePlayer :exec
 DELETE FROM players WHERE id = $1;
+
+-- name: AddPlayersIfNotExists :many
+INSERT INTO players (name)
+SELECT unnest($1::text[]) AS name
+ON CONFLICT (name) DO NOTHING
+RETURNING id, name;
