@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -67,23 +68,49 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 }
 
 func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error) {
+	// retrieve settings (Elo constants) from google-sheet (keeps existing behavior for settings)
 	parsedData, err := googlesheet.GetParsedData()
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
+		return nil, fmt.Errorf("unable to retrieve settings: %v", err)
 	}
 
-	var totalMatches int = 0
-	playersElo := map[string]float64{}
+	gid, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid game id: %v", err)
+	}
 
-	for _, match := range parsedData.Matches {
-		if match.Game == id {
+	// fetch matches and player scores for the given game in a single query
+	rows, err := s.Queries.ListMatchesWithPlayersByGame(ctx, int32(gid))
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve matches from db: %v", err)
+	}
+
+	playersElo := map[string]float64{}
+	totalMatches := 0
+
+	var currentMatchID int32 = -1
+	playersScore := make(map[string]float64)
+
+	for _, r := range rows {
+		if r.MatchID != currentMatchID {
+			if currentMatchID != -1 {
+				playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
+					parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
+			}
+			// start new match
+			currentMatchID = r.MatchID
 			totalMatches++
-		} else {
-			continue
+			playersScore = make(map[string]float64)
 		}
 
-		playersElo = CalculateNewElo(playersElo, StartingElo,
-			match.PlayersScore, parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
+		pid := fmt.Sprintf("%d", r.PlayerID)
+		playersScore[pid] = r.Score
+	}
+
+	// apply last match
+	if len(playersScore) > 0 {
+		playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
+			parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
 	}
 
 	players := make([]struct {
@@ -92,13 +119,13 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		Rank int
 	}, 0, len(playersElo))
 
-	for id, elo := range playersElo {
+	for pid, elo := range playersElo {
 		players = append(players, struct {
 			Id   string
 			Elo  float64
 			Rank int
 		}{
-			Id:   id,
+			Id:   pid,
 			Elo:  elo,
 			Rank: 0,
 		})
@@ -126,9 +153,14 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 	}
 
+	gameName := id
+	if len(rows) > 0 {
+		gameName = rows[0].GameName
+	}
+
 	return &GameStatistics{
 		Id:           id,
-		Name:         id, // TODO: change to name
+		Name:         gameName,
 		TotalMatches: totalMatches,
 		Players:      players,
 	}, nil

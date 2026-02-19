@@ -17,17 +17,23 @@ type Querier interface {
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
+	DeleteAllMatchScores(ctx context.Context) error
+	DeleteAllMatches(ctx context.Context) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
+	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
 	GetPlayerLatestRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestRatingBeforeMatchParams) (float64, error)
 	GetPlayerRatingAtMatch(ctx context.Context, arg GetPlayerRatingAtMatchParams) (float64, error)
+	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
+	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)
+	ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)

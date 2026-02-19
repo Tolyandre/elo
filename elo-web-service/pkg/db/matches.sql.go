@@ -35,6 +35,24 @@ func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match
 	return i, err
 }
 
+const deleteAllMatchScores = `-- name: DeleteAllMatchScores :exec
+DELETE FROM match_scores
+`
+
+func (q *Queries) DeleteAllMatchScores(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteAllMatchScores)
+	return err
+}
+
+const deleteAllMatches = `-- name: DeleteAllMatches :exec
+DELETE FROM matches
+`
+
+func (q *Queries) DeleteAllMatches(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteAllMatches)
+	return err
+}
+
 const listMatchResults = `-- name: ListMatchResults :many
 SELECT
     m.id AS match_id,
@@ -76,6 +94,139 @@ func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchRe
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchesWithPlayers = `-- name: ListMatchesWithPlayers :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    CASE WHEN prev_rating.rating IS NULL THEN NULL
+    ELSE prev_rating.rating END AS prev_rating
+
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT rating
+    FROM player_ratings pr
+    WHERE pr.player_id = p.id AND pr.date < m.date
+    ORDER BY pr.date DESC
+    LIMIT 1
+) prev_rating ON true
+ORDER BY m.date DESC, s.score DESC
+`
+
+type ListMatchesWithPlayersRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	PrevRating interface{}        `json:"prev_rating"`
+}
+
+func (q *Queries) ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesWithPlayers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesWithPlayersRow{}
+	for rows.Next() {
+		var i ListMatchesWithPlayersRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.PrevRating,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchesWithPlayersByGame = `-- name: ListMatchesWithPlayersByGame :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    CASE WHEN prev_rating.rating IS NULL THEN NULL
+    ELSE prev_rating.rating END AS prev_rating
+
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT rating
+    FROM player_ratings pr
+    WHERE pr.player_id = p.id AND pr.date < m.date
+    ORDER BY pr.date DESC
+    LIMIT 1
+) prev_rating ON true
+WHERE g.id = $1
+ORDER BY m.date ASC, m.id ASC, s.score DESC
+`
+
+type ListMatchesWithPlayersByGameRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	PrevRating interface{}        `json:"prev_rating"`
+}
+
+func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGame, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesWithPlayersByGameRow{}
+	for rows.Next() {
+		var i ListMatchesWithPlayersByGameRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.PrevRating,
 		); err != nil {
 			return nil, err
 		}
