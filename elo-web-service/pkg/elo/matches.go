@@ -24,13 +24,13 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error)
-	ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow, settings googlesheet.Settings) ([]db.Match, error)
+	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int) (db.Match, error)
+	ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow) ([]db.Match, error)
 }
 
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error) {
+func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int) (db.Match, error) {
 	// start a transaction
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -44,11 +44,24 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 	// prepare date parameter
 	var dt pgtype.Timestamptz
+	var effectiveDate time.Time
 	if date == nil {
 		dt = pgtype.Timestamptz{Valid: false}
+		// Use current time for settings lookup if match date is not specified
+		effectiveDate = time.Now()
 	} else {
 		dt = pgtype.Timestamptz{Time: *date, Valid: true}
+		effectiveDate = *date
 	}
+
+	// Get Elo settings for the match date
+	settings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
+	if err != nil {
+		return db.Match{}, fmt.Errorf("unable to get Elo settings for date %v: %v", effectiveDate, err)
+	}
+
+	eloConstK := settings.EloConstK
+	eloConstD := settings.EloConstD
 
 	// prepare google sheet row parameter
 	var gsRow pgtype.Int4
@@ -115,7 +128,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 		playerScoresStr[key] = score
 	}
 
-	newElos := CalculateNewElo(previousEloStr, StartingElo, playerScoresStr, settings.EloConstK, settings.EloConstD)
+	newElos := CalculateNewElo(previousEloStr, StartingElo, playerScoresStr, eloConstK, eloConstD)
 
 	// Calculate individual components
 	absoluteLoserScore := GetAsboluteLoserScore(playerScoresStr)
@@ -127,10 +140,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 		newElo := newElos[playerIDStr]
 
 		// elo_pay = -K * WinExpectation
-		eloPay := -settings.EloConstK * WinExpectation(prevElo, playerScoresStr, StartingElo, previousEloStr, settings.EloConstD)
+		eloPay := -eloConstK * WinExpectation(prevElo, playerScoresStr, StartingElo, previousEloStr, eloConstD)
 
 		// elo_earn = K * NormalizedScore
-		eloEarn := settings.EloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore)
+		eloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore)
 
 		if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
 			MatchID:  createdMatch.ID,
@@ -164,7 +177,7 @@ func sortPlayerIDs(ids []int32) {
 }
 
 
-func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow, settings googlesheet.Settings) ([]db.Match, error) {
+func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow) ([]db.Match, error) {
 	// start a transaction so replace is atomic
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -208,6 +221,23 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 
 		q := s.Queries.WithTx(tx)
 
+		// Get Elo settings for this match date
+		var effectiveDate time.Time
+		if mr.Date == nil {
+			effectiveDate = time.Now()
+		} else {
+			effectiveDate = *mr.Date
+		}
+
+		dbSettings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return nil, fmt.Errorf("unable to get Elo settings for date %v: %v", effectiveDate, err)
+		}
+
+		eloConstK := dbSettings.EloConstK
+		eloConstD := dbSettings.EloConstD
+
 		// find or create game
 		game, err := q.GetGameByName(ctx, mr.Game)
 		if err != nil {
@@ -249,7 +279,7 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 		}
 
 		// Calculate new Elos
-		newElos := CalculateNewElo(previousElo, StartingElo, mr.PlayersScore, settings.EloConstK, settings.EloConstD)
+		newElos := CalculateNewElo(previousElo, StartingElo, mr.PlayersScore, eloConstK, eloConstD)
 
 		absoluteLoserScore := GetAsboluteLoserScore(mr.PlayersScore)
 
@@ -272,8 +302,8 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 			prevElo := previousElo[playerName]
 			newElo := newElos[playerName]
 
-			eloPay := -settings.EloConstK * WinExpectation(prevElo, mr.PlayersScore, StartingElo, previousElo, settings.EloConstD)
-			eloEarn := settings.EloConstK * NormalizedScore(score, mr.PlayersScore, absoluteLoserScore)
+			eloPay := -eloConstK * WinExpectation(prevElo, mr.PlayersScore, StartingElo, previousElo, eloConstD)
+			eloEarn := eloConstK * NormalizedScore(score, mr.PlayersScore, absoluteLoserScore)
 
 			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
 				MatchID:  createdMatch.ID,

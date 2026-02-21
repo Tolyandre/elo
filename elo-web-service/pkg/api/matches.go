@@ -47,13 +47,6 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
-	// Get settings for Elo calculation
-	parsedData, err := googlesheet.GetParsedData()
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
 	// Parse game_id from string to int32
 	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
 	if err != nil {
@@ -74,7 +67,7 @@ func (a *API) AddMatch(c *gin.Context) {
 
 	// Add match to database with current timestamp
 	now := time.Now()
-	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil, parsedData.Settings)
+	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
 	if err != nil {
 		// Check if error is due to foreign key constraint violation
 		if contains(err.Error(), "foreign key constraint") || contains(err.Error(), "violates foreign key") {

@@ -14,6 +14,7 @@ type Querier interface {
 	AddGame(ctx context.Context, name string) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]Game, error)
 	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
+	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
@@ -22,13 +23,16 @@ type Querier interface {
 	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
+	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
+	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
+	ListEloSettings(ctx context.Context) ([]EloSetting, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
 	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)

@@ -46,7 +46,7 @@ func (a *API) sync(ctx context.Context) error {
 		return err
 	}
 
-	_, err = a.MatchService.ReplaceMatches(ctx, parsedData.Matches, parsedData.Settings)
+	_, err = a.MatchService.ReplaceMatches(ctx, parsedData.Matches)
 	if err != nil {
 		return err
 	}

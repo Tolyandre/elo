@@ -13,6 +13,12 @@ type Club struct {
 	Name string `json:"name"`
 }
 
+type EloSetting struct {
+	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
+	EloConstK     float64            `json:"elo_const_k"`
+	EloConstD     float64            `json:"elo_const_d"`
+}
+
 type Game struct {
 	ID   int32  `json:"id"`
 	Name string `json:"name"`
