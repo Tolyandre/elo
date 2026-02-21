@@ -24,12 +24,13 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameName string, playerScores map[string]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error)
+	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error)
 	ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow, settings googlesheet.Settings) ([]db.Match, error)
 }
 
 // AddMatch adds a single match with Elo calculations
-func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScores map[string]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error) {
+// Validates that game_id and all player_ids exist via foreign key constraints
+func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int, settings googlesheet.Settings) (db.Match, error) {
 	// start a transaction
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -40,16 +41,6 @@ func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScor
 	}()
 
 	q := s.Queries.WithTx(tx)
-
-	// find or create game
-	game, err := q.GetGameByName(ctx, gameName)
-	if err != nil {
-		// try to create the game if it doesn't exist
-		game, err = q.AddGame(ctx, gameName)
-		if err != nil {
-			return db.Match{}, fmt.Errorf("unable to find or create game '%s': %v", gameName, err)
-		}
-	}
 
 	// prepare date parameter
 	var dt pgtype.Timestamptz
@@ -67,10 +58,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScor
 		gsRow = pgtype.Int4{Int32: int32(*googleSheetRow), Valid: true}
 	}
 
-	// create match
+	// create match (foreign key will validate game_id exists)
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
 		Date:           dt,
-		GameID:         game.ID,
+		GameID:         gameID,
 		GoogleSheetRow: gsRow,
 	})
 	if err != nil {
@@ -78,74 +69,68 @@ func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScor
 	}
 
 	// Get latest Elo for each player
-	// IMPORTANT: Lock players in a consistent order (sorted by name) to prevent deadlocks
-	previousElo := make(map[string]float64)
-	playerIDMap := make(map[string]int32) // track player IDs
+	// IMPORTANT: Lock players in a consistent order (sorted by ID) to prevent deadlocks
+	previousElo := make(map[int32]float64)
 
-	// Sort player names to lock in consistent order
-	playerNames := make([]string, 0, len(playerScores))
-	for playerName := range playerScores {
-		playerNames = append(playerNames, playerName)
+	// Sort player IDs to lock in consistent order
+	playerIDs := make([]int32, 0, len(playerScores))
+	for playerID := range playerScores {
+		playerIDs = append(playerIDs, playerID)
 	}
-	// Sort alphabetically to ensure consistent locking order
-	sortPlayerNames(playerNames)
+	// Sort numerically to ensure consistent locking order
+	sortPlayerIDs(playerIDs)
 
-	for _, playerName := range playerNames {
-		// find or create player
-		player, err := q.GetPlayerByName(ctx, playerName)
-		if err != nil {
-			p, err2 := q.CreatePlayer(ctx, db.CreatePlayerParams{
-				Name:              playerName,
-				GeologistName:     pgtype.Text{Valid: false},
-				GoogleSheetColumn: pgtype.Int4{Valid: false},
-			})
-			if err2 != nil {
-				return db.Match{}, fmt.Errorf("unable to find or create player '%s': %v", playerName, err2)
-			}
-			player = p
-		}
-
-		playerIDMap[playerName] = player.ID
-
+	for _, playerID := range playerIDs {
 		// Lock the player row to prevent concurrent Elo calculations
 		// This ensures that if two matches are added concurrently for the same player,
 		// they will be processed sequentially
-		_, err = q.LockPlayerForEloCalculation(ctx, player.ID)
+		_, err = q.LockPlayerForEloCalculation(ctx, playerID)
 		if err != nil {
-			return db.Match{}, fmt.Errorf("unable to lock player '%s' for Elo calculation: %v", playerName, err)
+			return db.Match{}, fmt.Errorf("unable to lock player %d for Elo calculation (player may not exist): %v", playerID, err)
 		}
 
 		// Get latest Elo for this player (now safe from concurrent updates)
-		latestElo, err := q.GetPlayerLatestElo(ctx, player.ID)
+		latestElo, err := q.GetPlayerLatestElo(ctx, playerID)
 		if err != nil {
 			// No previous matches, use starting Elo
-			previousElo[playerName] = StartingElo
+			previousElo[playerID] = StartingElo
 		} else {
 			if latestElo.Valid {
-				previousElo[playerName] = latestElo.Float64
+				previousElo[playerID] = latestElo.Float64
 			} else {
-				previousElo[playerName] = StartingElo
+				previousElo[playerID] = StartingElo
 			}
 		}
 	}
 
-	// Calculate new Elos
-	newElos := CalculateNewElo(previousElo, StartingElo, playerScores, settings.EloConstK, settings.EloConstD)
+	// Calculate new Elos (convert to string keys for elo package)
+	previousEloStr := make(map[string]float64)
+	playerScoresStr := make(map[string]float64)
+	for playerID, elo := range previousElo {
+		key := fmt.Sprintf("%d", playerID)
+		previousEloStr[key] = elo
+	}
+	for playerID, score := range playerScores {
+		key := fmt.Sprintf("%d", playerID)
+		playerScoresStr[key] = score
+	}
+
+	newElos := CalculateNewElo(previousEloStr, StartingElo, playerScoresStr, settings.EloConstK, settings.EloConstD)
 
 	// Calculate individual components
-	absoluteLoserScore := GetAsboluteLoserScore(playerScores)
+	absoluteLoserScore := GetAsboluteLoserScore(playerScoresStr)
 
-	// Create match scores with Elo values
-	for playerName, score := range playerScores {
-		playerID := playerIDMap[playerName]
-		prevElo := previousElo[playerName]
-		newElo := newElos[playerName]
+	// Create match scores with Elo values (foreign key will validate player_id exists)
+	for playerID, score := range playerScores {
+		playerIDStr := fmt.Sprintf("%d", playerID)
+		prevElo := previousElo[playerID]
+		newElo := newElos[playerIDStr]
 
 		// elo_pay = -K * WinExpectation
-		eloPay := -settings.EloConstK * WinExpectation(prevElo, playerScores, StartingElo, previousElo, settings.EloConstD)
+		eloPay := -settings.EloConstK * WinExpectation(prevElo, playerScoresStr, StartingElo, previousEloStr, settings.EloConstD)
 
 		// elo_earn = K * NormalizedScore
-		eloEarn := settings.EloConstK * NormalizedScore(score, playerScores, absoluteLoserScore)
+		eloEarn := settings.EloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore)
 
 		if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
 			MatchID:  createdMatch.ID,
@@ -155,7 +140,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScor
 			EloEarn:  pgtype.Float8{Float64: eloEarn, Valid: true},
 			NewElo:   pgtype.Float8{Float64: newElo, Valid: true},
 		}); err != nil {
-			return db.Match{}, fmt.Errorf("unable to upsert match score for player %s: %v", playerName, err)
+			return db.Match{}, fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
 		}
 	}
 
@@ -166,13 +151,13 @@ func (s *MatchService) AddMatch(ctx context.Context, gameName string, playerScor
 	return createdMatch, nil
 }
 
-// sortPlayerNames sorts player names alphabetically (for consistent locking order)
-func sortPlayerNames(names []string) {
+// sortPlayerIDs sorts player IDs numerically (for consistent locking order)
+func sortPlayerIDs(ids []int32) {
 	// Simple bubble sort is fine for small slices
-	for i := 0; i < len(names); i++ {
-		for j := i + 1; j < len(names); j++ {
-			if names[i] > names[j] {
-				names[i], names[j] = names[j], names[i]
+	for i := 0; i < len(ids); i++ {
+		for j := i + 1; j < len(ids); j++ {
+			if ids[i] > ids[j] {
+				ids[i], ids[j] = ids[j], ids[i]
 			}
 		}
 	}

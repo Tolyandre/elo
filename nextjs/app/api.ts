@@ -108,7 +108,7 @@ export async function getMatchesPromise(): Promise<Match[]> {
     }
 }
 
-export async function addMatchPromise(payload: { game: string, score: Record<string, number> }) {
+export async function addMatchPromise(payload: { game_id: string, score: Record<string, number> }) {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/matches`, {
             method: 'POST',

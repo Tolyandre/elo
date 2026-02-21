@@ -11,8 +11,8 @@ import (
 )
 
 type addMatchJson struct {
-	Game  string             `json:"game" binding:"required"`
-	Score map[string]float64 `json:"score" binding:"required"`
+	GameId string             `json:"game_id" binding:"required"`
+	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
 }
 
 type matchPlayerJson struct {
@@ -54,21 +54,48 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
+	// Parse game_id from string to int32
+	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "Invalid game_id: "+payload.GameId)
+		return
+	}
+
+	// Convert player IDs from string to int32
+	playerScores := make(map[int32]float64)
+	for playerIDStr, score := range payload.Score {
+		playerID, err := strconv.ParseInt(playerIDStr, 10, 32)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id: "+playerIDStr)
+			return
+		}
+		playerScores[int32(playerID)] = score
+	}
+
 	// Add match to database with current timestamp
 	now := time.Now()
-	_, err = a.MatchService.AddMatch(c.Request.Context(), payload.Game, payload.Score, &now, nil, parsedData.Settings)
+	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil, parsedData.Settings)
 	if err != nil {
+		// Check if error is due to foreign key constraint violation
+		if contains(err.Error(), "foreign key constraint") || contains(err.Error(), "violates foreign key") {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
+			return
+		}
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	// Also add to Google Sheets for backwards compatibility
-	if err := googlesheet.AddMatch(payload.Game, payload.Score); err != nil {
-		// Log error but don't fail the request since DB already has it
-		c.Error(err)
-	}
-
 	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
+}
+
+// contains checks if a string contains a substring (helper for error checking)
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *API) ListMatches(c *gin.Context) {

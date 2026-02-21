@@ -15,6 +15,7 @@ import { PlayerMultiSelect } from "@/components/player-multi-select";
 
 type Participant = {
     id: string;
+    name: string;
     points: string;
 };
 
@@ -50,7 +51,7 @@ function AddGameForm() {
         setParticipants(
             selectedPlayerIds.map((id) => {
                 const existing = participants.find((p) => p.id === id);
-                return existing ? existing : { id, points: "" };
+                return existing ? existing : { id, points: "", name: players.find((pl) => pl.id === id)?.name || "Unknown" };
             })
         );
     }, [selectedPlayerIds]);
@@ -139,6 +140,13 @@ function AddGameForm() {
         // Проверка ошибок
         if (Object.values(errors).some(Boolean)) return;
 
+        // Find game by name to get its ID
+        const game = games.find(g => g.name === gameName);
+        if (!game) {
+            setBottomErrorMessage("Игра не найдена. Добавьте игру с помощью админки.");
+            return;
+        }
+
         const score: Record<string, number> = {};
         participants.forEach(p => {
             score[p.id] = Number(p.points);
@@ -147,7 +155,7 @@ function AddGameForm() {
         setSubmitting(true);
         try {
             await addMatchPromise({
-                game: gameName,
+                game_id: game.id,
                 score,
             });
             setSuccess(true);
@@ -223,7 +231,7 @@ function AddGameForm() {
                             <div key={p.id} className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
                                     <span className="w-40">
-                                        <div>{p.id}</div>
+                                        <div>{p.name}</div>
                                         <div className="text-sm text-gray-500"> {round(eloChange.find(v => v.id == p.id)?.delta || 0, 0)} (
                                             <span className="text-red-600"> {round(eloChange.find(v => v.id == p.id)?.minus || 0, 0)} </span>
                                             <span className="text-green-600">+{round(eloChange.find(v => v.id == p.id)?.plus || 0, 0)}</span>)
