@@ -219,7 +219,9 @@ SELECT
     s.elo_earn,
     s.new_elo,
     CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
-    ELSE prev_match_score.new_elo END AS prev_rating
+    ELSE prev_match_score.new_elo END AS prev_rating,
+    elo_settings.elo_const_k,
+    elo_settings.elo_const_d
 
 FROM matches m
 JOIN games g ON g.id = m.game_id
@@ -233,8 +235,15 @@ LEFT JOIN LATERAL (
     ORDER BY prev_m.date DESC, prev_m.id DESC
     LIMIT 1
 ) prev_match_score ON true
+LEFT JOIN LATERAL (
+    SELECT elo_const_k, elo_const_d
+    FROM elo_settings
+    WHERE effective_date <= COALESCE(m.date, '-infinity'::timestamp)
+    ORDER BY effective_date DESC
+    LIMIT 1
+) elo_settings ON true
 WHERE g.id = $1
-ORDER BY m.date ASC, m.id ASC, s.score DESC
+ORDER BY m.date ASC NULLS FIRST, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameRow struct {
@@ -249,6 +258,8 @@ type ListMatchesWithPlayersByGameRow struct {
 	EloEarn    pgtype.Float8      `json:"elo_earn"`
 	NewElo     pgtype.Float8      `json:"new_elo"`
 	PrevRating interface{}        `json:"prev_rating"`
+	EloConstK  float64            `json:"elo_const_k"`
+	EloConstD  float64            `json:"elo_const_d"`
 }
 
 func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
@@ -272,6 +283,8 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 			&i.EloEarn,
 			&i.NewElo,
 			&i.PrevRating,
+			&i.EloConstK,
+			&i.EloConstD,
 		); err != nil {
 			return nil, err
 		}
