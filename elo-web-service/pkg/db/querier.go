@@ -24,8 +24,6 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id int32) error
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
-	GetPlayerLatestRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestRatingBeforeMatchParams) (float64, error)
-	GetPlayerRatingAtMatch(ctx context.Context, arg GetPlayerRatingAtMatchParams) (float64, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)

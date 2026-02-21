@@ -44,9 +44,9 @@ type PlayerClubMembership struct {
 }
 
 type PlayerRating struct {
-	PlayerID int32   `json:"player_id"`
-	Rating   float64 `json:"rating"`
-	MatchID  int32   `json:"match_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+	PlayerID int32              `json:"player_id"`
+	Rating   float64            `json:"rating"`
 }
 
 type User struct {

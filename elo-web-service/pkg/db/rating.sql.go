@@ -11,57 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getPlayerLatestRatingBeforeMatch = `-- name: GetPlayerLatestRatingBeforeMatch :one
-SELECT pr.rating
-FROM player_ratings pr
-JOIN matches m ON m.id = pr.match_id
-WHERE pr.player_id = $1 AND pr.match_id < $2
-ORDER BY pr.match_id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestRatingBeforeMatchParams struct {
-	PlayerID int32 `json:"player_id"`
-	MatchID  int32 `json:"match_id"`
-}
-
-func (q *Queries) GetPlayerLatestRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestRatingBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestRatingBeforeMatch, arg.PlayerID, arg.MatchID)
-	var rating float64
-	err := row.Scan(&rating)
-	return rating, err
-}
-
-const getPlayerRatingAtMatch = `-- name: GetPlayerRatingAtMatch :one
-SELECT rating
-FROM player_ratings
-WHERE player_id = $1 AND match_id = $2
-`
-
-type GetPlayerRatingAtMatchParams struct {
-	PlayerID int32 `json:"player_id"`
-	MatchID  int32 `json:"match_id"`
-}
-
-func (q *Queries) GetPlayerRatingAtMatch(ctx context.Context, arg GetPlayerRatingAtMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerRatingAtMatch, arg.PlayerID, arg.MatchID)
-	var rating float64
-	err := row.Scan(&rating)
-	return rating, err
-}
-
 const ratingHistory = `-- name: RatingHistory :many
-SELECT pr.match_id, m.date, pr.rating
-FROM player_ratings pr
-JOIN matches m ON m.id = pr.match_id
-WHERE pr.player_id = $1
-ORDER BY m.date
+SELECT date, rating
+FROM player_ratings
+WHERE player_id = $1
+ORDER BY date
 `
 
 type RatingHistoryRow struct {
-	MatchID int32              `json:"match_id"`
-	Date    pgtype.Timestamptz `json:"date"`
-	Rating  float64            `json:"rating"`
+	Date   pgtype.Timestamptz `json:"date"`
+	Rating float64            `json:"rating"`
 }
 
 func (q *Queries) RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error) {
@@ -73,7 +32,7 @@ func (q *Queries) RatingHistory(ctx context.Context, playerID int32) ([]RatingHi
 	items := []RatingHistoryRow{}
 	for rows.Next() {
 		var i RatingHistoryRow
-		if err := rows.Scan(&i.MatchID, &i.Date, &i.Rating); err != nil {
+		if err := rows.Scan(&i.Date, &i.Rating); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -85,19 +44,19 @@ func (q *Queries) RatingHistory(ctx context.Context, playerID int32) ([]RatingHi
 }
 
 const upsertRating = `-- name: UpsertRating :exec
-INSERT INTO player_ratings (match_id, player_id, rating)
+INSERT INTO player_ratings (date, player_id, rating)
 VALUES ($1, $2, $3)
-ON CONFLICT (match_id, player_id)
+ON CONFLICT (date, player_id)
 DO UPDATE SET rating = EXCLUDED.rating
 `
 
 type UpsertRatingParams struct {
-	MatchID  int32   `json:"match_id"`
-	PlayerID int32   `json:"player_id"`
-	Rating   float64 `json:"rating"`
+	Date     pgtype.Timestamptz `json:"date"`
+	PlayerID int32              `json:"player_id"`
+	Rating   float64            `json:"rating"`
 }
 
 func (q *Queries) UpsertRating(ctx context.Context, arg UpsertRatingParams) error {
-	_, err := q.db.Exec(ctx, upsertRating, arg.MatchID, arg.PlayerID, arg.Rating)
+	_, err := q.db.Exec(ctx, upsertRating, arg.Date, arg.PlayerID, arg.Rating)
 	return err
 }
