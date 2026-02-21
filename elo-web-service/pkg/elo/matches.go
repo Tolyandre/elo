@@ -52,7 +52,7 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 	inserted := make([]db.Match, 0, len(matchRows))
 
 	// skip first row as it contains start elo value (fake match)
-	for idx, mr := range matchRows[1:] {
+	for /*idx*/ _, mr := range matchRows[1:] {
 		// find or create game
 		game, err := q.GetGameByName(ctx, mr.Game)
 		if err != nil {
@@ -63,26 +63,31 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 			}
 		}
 
-		// prepare date and row values
-		// ensure date is not nil: use current row date, else next row's date, else now
-		var effectiveDate *time.Time
-		if mr.Date != nil {
-			effectiveDate = mr.Date
+		// // prepare date and row values
+		// // ensure date is not nil: use current row date, else next row's date, else now
+		// var effectiveDate *time.Time
+		// if mr.Date != nil {
+		// 	effectiveDate = mr.Date
+		// } else {
+		// 	// look for next row with date
+		// 	for j := idx + 1; j < len(matchRows); j++ {
+		// 		if matchRows[j].Date != nil {
+		// 			effectiveDate = matchRows[j].Date
+		// 			break
+		// 		}
+		// 	}
+		// 	if effectiveDate == nil {
+		// 		now := time.Now()
+		// 		effectiveDate = &now
+		// 	}
+		// }
+		var effectiveDate *time.Time = mr.Date
+		var dt pgtype.Timestamptz
+		if effectiveDate == nil {
+			dt = pgtype.Timestamptz{Valid: false}
 		} else {
-			// look for next row with date
-			for j := idx + 1; j < len(matchRows); j++ {
-				if matchRows[j].Date != nil {
-					effectiveDate = matchRows[j].Date
-					break
-				}
-			}
-			if effectiveDate == nil {
-				now := time.Now()
-				effectiveDate = &now
-			}
+			dt = pgtype.Timestamptz{Time: *effectiveDate, Valid: true}
 		}
-
-		dt := pgtype.Timestamptz{Time: *effectiveDate, Valid: true}
 
 		gsRow := pgtype.Int4{Int32: int32(mr.RowNum), Valid: true}
 

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS games (
 
 CREATE TABLE IF NOT EXISTS matches (
     id SERIAL PRIMARY KEY,
-    date TIMESTAMP WITH TIME ZONE NOT NULL,
+    date TIMESTAMP WITH TIME ZONE NULL,
     game_id INT NOT NULL,
     google_sheet_row INT NULL,
     FOREIGN KEY (game_id) REFERENCES games(id)
