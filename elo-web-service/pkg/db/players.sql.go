@@ -11,6 +11,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addPlayersIfNotExists = `-- name: AddPlayersIfNotExists :many
+INSERT INTO players (name)
+SELECT unnest($1::text[]) AS name
+ON CONFLICT (name) DO NOTHING
+RETURNING id, name
+`
+
+type AddPlayersIfNotExistsRow struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error) {
+	rows, err := q.db.Query(ctx, addPlayersIfNotExists, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AddPlayersIfNotExistsRow{}
+	for rows.Next() {
+		var i AddPlayersIfNotExistsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createPlayer = `-- name: CreatePlayer :one
 INSERT INTO players (name, geologist_name, google_sheet_column)
 VALUES ($1, $2, $3)
@@ -61,6 +93,23 @@ func (q *Queries) GetPlayer(ctx context.Context, id int32) (Player, error) {
 	return i, err
 }
 
+const getPlayerByName = `-- name: GetPlayerByName :one
+SELECT id, name, geologist_name, google_sheet_column FROM players
+WHERE name = $1
+`
+
+func (q *Queries) GetPlayerByName(ctx context.Context, name string) (Player, error) {
+	row := q.db.QueryRow(ctx, getPlayerByName, name)
+	var i Player
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.GoogleSheetColumn,
+	)
+	return i, err
+}
+
 const listPlayers = `-- name: ListPlayers :many
 SELECT id, name, geologist_name, google_sheet_column FROM players
 ORDER BY name
@@ -89,4 +138,14 @@ func (q *Queries) ListPlayers(ctx context.Context) ([]Player, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockPlayerForEloCalculation = `-- name: LockPlayerForEloCalculation :one
+SELECT id FROM players WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error) {
+	row := q.db.QueryRow(ctx, lockPlayerForEloCalculation, id)
+	err := row.Scan(&id)
+	return id, err
 }

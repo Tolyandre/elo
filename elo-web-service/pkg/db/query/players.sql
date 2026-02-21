@@ -13,3 +13,16 @@ ORDER BY name;
 
 -- name: DeletePlayer :exec
 DELETE FROM players WHERE id = $1;
+
+-- name: AddPlayersIfNotExists :many
+INSERT INTO players (name)
+SELECT unnest($1::text[]) AS name
+ON CONFLICT (name) DO NOTHING
+RETURNING id, name;
+
+-- name: GetPlayerByName :one
+SELECT * FROM players
+WHERE name = $1;
+
+-- name: LockPlayerForEloCalculation :one
+SELECT id FROM players WHERE id = $1 FOR UPDATE;

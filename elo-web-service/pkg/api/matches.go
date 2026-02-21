@@ -2,17 +2,17 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type addMatchJson struct {
-	Game  string             `json:"game" binding:"required"`
-	Score map[string]float64 `json:"score" binding:"required"`
+	GameId string             `json:"game_id" binding:"required"`
+	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
 }
 
 type matchPlayerJson struct {
@@ -37,7 +37,6 @@ func (a *API) AddMatch(c *gin.Context) {
 	}
 
 	user, err := MustGetCurrentUser(c, a.UserService)
-
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -48,42 +47,121 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
-	if err := googlesheet.AddMatch(payload.Game, payload.Score); err != nil {
+	// Parse game_id from string to int32
+	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "Invalid game_id: "+payload.GameId)
+		return
+	}
+
+	// Convert player IDs from string to int32
+	playerScores := make(map[int32]float64)
+	for playerIDStr, score := range payload.Score {
+		playerID, err := strconv.ParseInt(playerIDStr, 10, 32)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id: "+playerIDStr)
+			return
+		}
+		playerScores[int32(playerID)] = score
+	}
+
+	// Add match to database with current timestamp
+	now := time.Now()
+	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
+	if err != nil {
+		// Check if error is due to foreign key constraint violation
+		if contains(err.Error(), "foreign key constraint") || contains(err.Error(), "violates foreign key") {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
+			return
+		}
 		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
 	}
 
 	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
 }
 
+// contains checks if a string contains a substring (helper for error checking)
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *API) ListMatches(c *gin.Context) {
-	parsedData, err := googlesheet.GetParsedData()
+	// fetch matches and players from DB in a single query
+	rows, err := a.Queries.ListMatchesWithPlayers(c.Request.Context())
 	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	settings := parsedData.Settings
+	// Group rows by match id
+	type tempMatch struct {
+		Id       int
+		GameId   string
+		GameName string
+		Date     *time.Time
+		Players  map[int32]matchPlayerJson
+	}
 
-	matchesJson := make([]matchJson, 0, len(parsedData.Matches))
-	// skip first row as it contains start elo value (fake match)
-	for _, pm := range parsedData.Matches[1:] {
-		m := matchJson{
-			Id:       pm.RowNum,
-			GameId:   pm.Game,
-			GameName: pm.Game,
-			Date:     pm.Date,
-			Players:  make(map[string]matchPlayerJson, len(pm.PlayersScore)),
+	matchesMap := make(map[int32]*tempMatch)
+	order := make([]int32, 0)
+
+	for _, r := range rows {
+		if _, ok := matchesMap[r.MatchID]; !ok {
+			var date *time.Time
+			if r.Date.Valid {
+				t := r.Date.Time
+				date = &t
+			}
+			matchesMap[r.MatchID] = &tempMatch{
+				Id:       int(r.MatchID),
+				GameId:   strconv.Itoa(int(r.GameID)),
+				GameName: r.GameName,
+				Date:     date,
+				Players:  make(map[int32]matchPlayerJson),
+			}
+			order = append(order, r.MatchID)
 		}
 
-		absoluteLoserScore := elo.GetAsboluteLoserScore(pm.PlayersScore)
+		m := matchesMap[r.MatchID]
 
-		for pid, score := range pm.PlayersScore {
-			prevElo := getByRowNum(parsedData.Elo, pm.RowNum-1)
-			m.Players[pid] = matchPlayerJson{
-				Score:   score,
-				EloPay:  -settings.EloConstK * elo.WinExpectation(prevElo.PlayersElo[pid], pm.PlayersScore, elo.StartingElo, prevElo.PlayersElo, settings.EloConstD),
-				EloEarn: settings.EloConstK * elo.NormalizedScore(pm.PlayersScore[pid], pm.PlayersScore, absoluteLoserScore),
-			}
+		// Read Elo values from database
+		var eloPay, eloEarn float64
+		if r.EloPay.Valid {
+			eloPay = r.EloPay.Float64
+		}
+		if r.EloEarn.Valid {
+			eloEarn = r.EloEarn.Float64
+		}
+
+		m.Players[r.PlayerID] = matchPlayerJson{
+			Score:   r.Score,
+			EloPay:  eloPay,
+			EloEarn: eloEarn,
+		}
+	}
+
+	// Build response
+	matchesJson := make([]matchJson, 0, len(order))
+	for _, mid := range order {
+		tm := matchesMap[mid]
+		m := matchJson{
+			Id:       tm.Id,
+			GameId:   tm.GameId,
+			GameName: tm.GameName,
+			Date:     tm.Date,
+			Players:  make(map[string]matchPlayerJson, len(tm.Players)),
+		}
+
+		// Convert int32 keys to string keys
+		for pid, playerData := range tm.Players {
+			pidStr := strconv.Itoa(int(pid))
+			m.Players[pidStr] = playerData
 		}
 
 		matchesJson = append(matchesJson, m)

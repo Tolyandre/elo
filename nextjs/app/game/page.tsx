@@ -2,6 +2,7 @@
 import { Game, getGamePromise } from "@/app/api";
 import { useSearchParams } from "next/navigation";
 import React, { Suspense, useEffect, useState } from "react";
+import { usePlayers } from "@/app/players/PlayersContext";
 import { SkullKingCalculator } from "./skull-king-calculator";
 import { StPatrickCalculator } from "./st-patrick-calculator";
 
@@ -29,6 +30,7 @@ function GameWrapped() {
   }
 
   const [game, setGame] = useState<Game | null>(null);
+  const { players: allPlayers } = usePlayers();
 
   useEffect(() => {
     getGamePromise(id)
@@ -55,7 +57,7 @@ function GameWrapped() {
                     <span>{player.rank}</span>
                   </div>
                 </td>
-                <td className="px-4 py-2">{player.id}</td>
+                <td className="px-4 py-2">{allPlayers.find(p => p.id === player.id)?.name }</td>
                 <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
               </tr>
             );

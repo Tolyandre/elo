@@ -10,6 +10,7 @@ import (
 
 type playerJson struct {
 	ID   string          `json:"id"`
+	Name string          `json:"name"`
 	Rank historyRankJson `json:"rank"`
 }
 
@@ -25,21 +26,22 @@ type playerEloRankJson struct {
 }
 
 func (a *API) ListPlayers(c *gin.Context) {
+	ctx := c.Request.Context()
 
-	actualPlayers, err := elo.GetPlayersWithRank(nil)
+	actualPlayers, err := a.PlayerService.GetPlayersWithRank(ctx, nil)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	tDay := time.Now().Add(-time.Hour * 12)
-	dayAgoPlayers, err := elo.GetPlayersWithRank(&tDay)
+	dayAgoPlayers, err := a.PlayerService.GetPlayersWithRank(ctx, &tDay)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
 	tWeek := time.Now().Add(-time.Hour * (24*7 - 12))
-	weekAgoPlayers, err := elo.GetPlayersWithRank(&tWeek)
+	weekAgoPlayers, err := a.PlayerService.GetPlayersWithRank(ctx, &tWeek)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
@@ -50,7 +52,8 @@ func (a *API) ListPlayers(c *gin.Context) {
 		dayAgo := findPlayer(dayAgoPlayers, p.ID)
 		weekAgo := findPlayer(weekAgoPlayers, p.ID)
 		jsonPlayers = append(jsonPlayers, playerJson{
-			ID: p.ID,
+			ID:   p.ID,
+			Name: p.Name,
 			Rank: historyRankJson{
 				Now: playerEloRankJson{
 					Elo:                  p.Elo,

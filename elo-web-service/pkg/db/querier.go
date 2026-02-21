@@ -6,33 +6,53 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	AddGame(ctx context.Context, name string) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]Game, error)
+	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
+	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
+	DeleteAllMatchScores(ctx context.Context) error
+	DeleteAllMatches(ctx context.Context) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
+	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
+	GetGameByName(ctx context.Context, name string) (Game, error)
+	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
-	GetPlayerLatestRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestRatingBeforeMatchParams) (float64, error)
-	GetPlayerRatingAtMatch(ctx context.Context, arg GetPlayerRatingAtMatchParams) (float64, error)
+	GetPlayerByName(ctx context.Context, name string) (Player, error)
+	GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
+	ListEloSettings(ctx context.Context) ([]EloSetting, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
+	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)
+	ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
+	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
+	// NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
+	// Kept for backwards compatibility but not actively used
+	// -- name: UpsertRating :exec
+	// INSERT INTO player_ratings (date, player_id, rating)
+	// VALUES ($1, $2, $3)
+	// ON CONFLICT (date, player_id)
+	// DO UPDATE SET rating = EXCLUDED.rating;
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
-	UpsertRating(ctx context.Context, arg UpsertRatingParams) error
 }
 
 var _ Querier = (*Queries)(nil)

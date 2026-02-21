@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type GameStatistics struct {
@@ -67,23 +67,50 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 }
 
 func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error) {
-	parsedData, err := googlesheet.GetParsedData()
+	gid, err := strconv.Atoi(id)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
+		return nil, fmt.Errorf("invalid game id: %v", err)
 	}
 
-	var totalMatches int = 0
-	playersElo := map[string]float64{}
+	// fetch matches and player scores for the given game in a single query
+	// includes elo settings for each match
+	rows, err := s.Queries.ListMatchesWithPlayersByGame(ctx, int32(gid))
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve matches from db: %v", err)
+	}
 
-	for _, match := range parsedData.Matches {
-		if match.Game == id {
+	playersElo := map[string]float64{}
+	totalMatches := 0
+
+	var currentMatchID int32 = -1
+	playersScore := make(map[string]float64)
+	var currentEloConstK, currentEloConstD float64
+
+	for _, r := range rows {
+		if r.MatchID != currentMatchID {
+			if currentMatchID != -1 {
+				// Use the elo settings from the previous match
+				playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
+					currentEloConstK, currentEloConstD)
+			}
+			// start new match
+			currentMatchID = r.MatchID
 			totalMatches++
-		} else {
-			continue
+			playersScore = make(map[string]float64)
+
+			// Get elo settings for this match (from query result)
+			currentEloConstK = r.EloConstK
+			currentEloConstD = r.EloConstD
 		}
 
-		playersElo = CalculateNewElo(playersElo, StartingElo,
-			match.PlayersScore, parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
+		pid := fmt.Sprintf("%d", r.PlayerID)
+		playersScore[pid] = r.Score
+	}
+
+	// apply last match
+	if len(playersScore) > 0 {
+		playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
+			currentEloConstK, currentEloConstD)
 	}
 
 	players := make([]struct {
@@ -92,13 +119,13 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		Rank int
 	}, 0, len(playersElo))
 
-	for id, elo := range playersElo {
+	for pid, elo := range playersElo {
 		players = append(players, struct {
 			Id   string
 			Elo  float64
 			Rank int
 		}{
-			Id:   id,
+			Id:   pid,
 			Elo:  elo,
 			Rank: 0,
 		})
@@ -126,76 +153,14 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 	}
 
-	return &GameStatistics{
-		Id:           id,
-		Name:         id, // TODO: change to name
-		TotalMatches: totalMatches,
-		Players:      players,
-	}, nil
-}
-
-func GetGameStatistics(id string) (*GameStatistics, error) {
-	parsedData, err := googlesheet.GetParsedData()
-	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve parsed data: %v", err)
-	}
-
-	var totalMatches int = 0
-	playersElo := map[string]float64{}
-
-	for _, match := range parsedData.Matches {
-		if match.Game == id {
-			totalMatches++
-		} else {
-			continue
-		}
-
-		playersElo = CalculateNewElo(playersElo, StartingElo,
-			match.PlayersScore, parsedData.Settings.EloConstK, parsedData.Settings.EloConstD)
-	}
-
-	players := make([]struct {
-		Id   string
-		Elo  float64
-		Rank int
-	}, 0, len(playersElo))
-
-	for id, elo := range playersElo {
-		players = append(players, struct {
-			Id   string
-			Elo  float64
-			Rank int
-		}{
-			Id:   id,
-			Elo:  elo,
-			Rank: 0,
-		})
-	}
-
-	slices.SortFunc(players, func(a, b struct {
-		Id   string
-		Elo  float64
-		Rank int
-	}) int {
-		if b.Elo-a.Elo > 0 {
-			return 1
-		}
-		if b.Elo-a.Elo < 0 {
-			return -1
-		}
-		return 0
-	})
-
-	for i := range players {
-		if i > 0 && math.Round(players[i].Elo) == math.Round(players[i-1].Elo) {
-			players[i].Rank = players[i-1].Rank
-		} else {
-			players[i].Rank = i + 1
-		}
+	gameName := id
+	if len(rows) > 0 {
+		gameName = rows[0].GameName
 	}
 
 	return &GameStatistics{
 		Id:           id,
+		Name:         gameName,
 		TotalMatches: totalMatches,
 		Players:      players,
 	}, nil

@@ -29,3 +29,7 @@ RETURNING id, name;
 INSERT INTO games (name)
 VALUES ($1)
 RETURNING id, name;
+
+-- name: GetGameByName :one
+SELECT id, name FROM games
+WHERE name = $1;

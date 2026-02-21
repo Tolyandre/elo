@@ -28,21 +28,13 @@ export default function AllGamesList() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold mb-4 mx-auto">Игры</h1>
       </div>
-      <Alert variant="default" className="max-w-100">
-        <Terminal />
-        <AlertTitle>Временно не работает</AlertTitle>
-        <AlertDescription>
-          Количество партий не отображается, так как я не перенёс их в базу данных. Я работаю над этим. Спасибо за понимание!
-        </AlertDescription>
-      </Alert>
-
       <table className="w-full table-auto border-collapse mb-6">
         <tbody>
           {games.games.map((game) => {
             return (
               <tr key={game.id}>
                 <td className="px-4 py-2">
-                  <Link className="underline" href={`/game?id=${game.name}`}>{game.name}</Link>
+                  <Link className="underline" href={`/game?id=${game.id}`}>{game.name}</Link>
                 </td>
                 <td className="px-4 py-2">{game.total_matches}</td>
               </tr>

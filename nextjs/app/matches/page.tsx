@@ -12,9 +12,9 @@ import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/compo
 import { Button } from "@/components/ui/button";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Match } from "../api";
-import { RHFField } from "@/components/rhf-field";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
+import { usePlayers } from "../players/PlayersContext";
 
 export default function MatchesPage() {
   return (
@@ -126,14 +126,21 @@ function MatchesPageWrapped() {
   }
 
   function MatchCard({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
+    const { players: playersFromContext = [] } = usePlayers();
+
     const players = Object.entries(match.score)
-      .map(([name, data]) => ({
+      .map(([playerId, data]) => {
+      const ctxPlayer = playersFromContext.find(p => p.id === playerId);
+      const name = ctxPlayer?.name;
+      return {
         name,
+        playerId,
         eloPay: data.eloPay,
         eloEarn: data.eloEarn,
         score: data.score,
         eloChange: data.eloPay + data.eloEarn,
-      }))
+      };
+      })
       .sort((a, b) => b.score - a.score);
 
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);

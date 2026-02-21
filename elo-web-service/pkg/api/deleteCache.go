@@ -32,10 +32,24 @@ func (a *API) sync(ctx context.Context) error {
 	}
 
 	var games []string
-	for _, match := range parsedData.Matches {
+	for _, match := range parsedData.Matches[1:] {
 		games = append(games, match.Game)
 	}
 
 	_, err = a.Queries.AddGamesIfNotExists(ctx, games)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = a.Queries.AddPlayersIfNotExists(ctx, parsedData.PlayerIds)
+	if err != nil {
+		return err
+	}
+
+	_, err = a.MatchService.ReplaceMatches(ctx, parsedData.Matches)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

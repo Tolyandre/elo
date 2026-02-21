@@ -7,17 +7,21 @@ import (
 )
 
 type API struct {
-	UserService elo.IUserService
-	GameService elo.IGameService
-	Queries     *db.Queries
-	Pool        *pgxpool.Pool
+	UserService   elo.IUserService
+	GameService   elo.IGameService
+	PlayerService elo.IPlayerService
+	MatchService  elo.IMatchService
+	Queries       *db.Queries
+	Pool          *pgxpool.Pool
 }
 
 func New(pool *pgxpool.Pool) *API {
 	return &API{
-		UserService: elo.NewUserService(pool),
-		GameService: elo.NewGameService(pool),
-		Queries:     db.New(pool),
-		Pool:        pool,
+		UserService:   elo.NewUserService(pool),
+		GameService:   elo.NewGameService(pool),
+		PlayerService: elo.NewPlayerService(pool),
+		MatchService:  elo.NewMatchService(pool),
+		Queries:       db.New(pool),
+		Pool:          pool,
 	}
 }

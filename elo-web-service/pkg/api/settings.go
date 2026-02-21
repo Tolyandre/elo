@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type settingsJson struct {
@@ -16,16 +15,16 @@ type settingsJson struct {
 }
 
 func (a *API) ListSettings(c *gin.Context) {
-	parsedData, err := googlesheet.GetParsedData()
-
+	// Get latest Elo settings from database
+	settings, err := a.Queries.GetLatestEloSettings(c.Request.Context())
 	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
+		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	SuccessDataResponse(c, settingsJson{
-		EloConstK:       parsedData.Settings.EloConstK,
-		EloConstD:       parsedData.Settings.EloConstD,
+		EloConstK:       settings.EloConstK,
+		EloConstD:       settings.EloConstD,
 		GoogleSheetLink: fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s", cfg.Config.DocID),
 	})
 }

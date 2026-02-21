@@ -35,6 +35,40 @@ func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match
 	return i, err
 }
 
+const deleteAllMatchScores = `-- name: DeleteAllMatchScores :exec
+DELETE FROM match_scores
+`
+
+func (q *Queries) DeleteAllMatchScores(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteAllMatchScores)
+	return err
+}
+
+const deleteAllMatches = `-- name: DeleteAllMatches :exec
+DELETE FROM matches
+`
+
+func (q *Queries) DeleteAllMatches(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteAllMatches)
+	return err
+}
+
+const getPlayerLatestElo = `-- name: GetPlayerLatestElo :one
+SELECT ms.new_elo
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.player_id = $1
+ORDER BY m.date DESC NULLS LAST, m.id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestElo, playerID)
+	var new_elo pgtype.Float8
+	err := row.Scan(&new_elo)
+	return new_elo, err
+}
+
 const listMatchResults = `-- name: ListMatchResults :many
 SELECT
     m.id AS match_id,
@@ -42,7 +76,10 @@ SELECT
     g.name AS game_name,
     p.id AS player_id,
     p.name AS player_name,
-    s.score
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
 JOIN matches m ON m.id = s.match_id
@@ -58,6 +95,9 @@ type ListMatchResultsRow struct {
 	PlayerID   int32              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
 	Score      float64            `json:"score"`
+	EloPay     pgtype.Float8      `json:"elo_pay"`
+	EloEarn    pgtype.Float8      `json:"elo_earn"`
+	NewElo     pgtype.Float8      `json:"new_elo"`
 }
 
 func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error) {
@@ -76,6 +116,175 @@ func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchRe
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
+			&i.EloPay,
+			&i.EloEarn,
+			&i.NewElo,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchesWithPlayers = `-- name: ListMatchesWithPlayers :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating
+
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < m.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+ORDER BY m.date DESC, s.score DESC
+`
+
+type ListMatchesWithPlayersRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	EloPay     pgtype.Float8      `json:"elo_pay"`
+	EloEarn    pgtype.Float8      `json:"elo_earn"`
+	NewElo     pgtype.Float8      `json:"new_elo"`
+	PrevRating interface{}        `json:"prev_rating"`
+}
+
+func (q *Queries) ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesWithPlayers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesWithPlayersRow{}
+	for rows.Next() {
+		var i ListMatchesWithPlayersRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.EloPay,
+			&i.EloEarn,
+			&i.NewElo,
+			&i.PrevRating,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchesWithPlayersByGame = `-- name: ListMatchesWithPlayersByGame :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating,
+    elo_settings.elo_const_k,
+    elo_settings.elo_const_d
+
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < m.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+LEFT JOIN LATERAL (
+    SELECT elo_const_k, elo_const_d
+    FROM elo_settings
+    WHERE effective_date <= COALESCE(m.date, '-infinity'::timestamp)
+    ORDER BY effective_date DESC
+    LIMIT 1
+) elo_settings ON true
+WHERE g.id = $1
+ORDER BY m.date ASC NULLS FIRST, m.id ASC, s.score DESC
+`
+
+type ListMatchesWithPlayersByGameRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	EloPay     pgtype.Float8      `json:"elo_pay"`
+	EloEarn    pgtype.Float8      `json:"elo_earn"`
+	NewElo     pgtype.Float8      `json:"new_elo"`
+	PrevRating interface{}        `json:"prev_rating"`
+	EloConstK  float64            `json:"elo_const_k"`
+	EloConstD  float64            `json:"elo_const_d"`
+}
+
+func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGame, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesWithPlayersByGameRow{}
+	for rows.Next() {
+		var i ListMatchesWithPlayersByGameRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.EloPay,
+			&i.EloEarn,
+			&i.NewElo,
+			&i.PrevRating,
+			&i.EloConstK,
+			&i.EloConstD,
 		); err != nil {
 			return nil, err
 		}
@@ -88,19 +297,33 @@ func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchRe
 }
 
 const upsertMatchScore = `-- name: UpsertMatchScore :exec
-INSERT INTO match_scores (match_id, player_id, score)
-VALUES ($1, $2, $3)
+INSERT INTO match_scores (match_id, player_id, score, elo_pay, elo_earn, new_elo)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (match_id, player_id)
-DO UPDATE SET score = EXCLUDED.score
+DO UPDATE SET
+    score = EXCLUDED.score,
+    elo_pay = EXCLUDED.elo_pay,
+    elo_earn = EXCLUDED.elo_earn,
+    new_elo = EXCLUDED.new_elo
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID  int32   `json:"match_id"`
-	PlayerID int32   `json:"player_id"`
-	Score    float64 `json:"score"`
+	MatchID  int32         `json:"match_id"`
+	PlayerID int32         `json:"player_id"`
+	Score    float64       `json:"score"`
+	EloPay   pgtype.Float8 `json:"elo_pay"`
+	EloEarn  pgtype.Float8 `json:"elo_earn"`
+	NewElo   pgtype.Float8 `json:"new_elo"`
 }
 
 func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error {
-	_, err := q.db.Exec(ctx, upsertMatchScore, arg.MatchID, arg.PlayerID, arg.Score)
+	_, err := q.db.Exec(ctx, upsertMatchScore,
+		arg.MatchID,
+		arg.PlayerID,
+		arg.Score,
+		arg.EloPay,
+		arg.EloEarn,
+		arg.NewElo,
+	)
 	return err
 }

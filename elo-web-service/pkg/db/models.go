@@ -13,6 +13,12 @@ type Club struct {
 	Name string `json:"name"`
 }
 
+type EloSetting struct {
+	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
+	EloConstK     float64            `json:"elo_const_k"`
+	EloConstD     float64            `json:"elo_const_d"`
+}
+
 type Game struct {
 	ID   int32  `json:"id"`
 	Name string `json:"name"`
@@ -26,9 +32,12 @@ type Match struct {
 }
 
 type MatchScore struct {
-	MatchID  int32   `json:"match_id"`
-	PlayerID int32   `json:"player_id"`
-	Score    float64 `json:"score"`
+	MatchID  int32         `json:"match_id"`
+	PlayerID int32         `json:"player_id"`
+	Score    float64       `json:"score"`
+	EloPay   pgtype.Float8 `json:"elo_pay"`
+	EloEarn  pgtype.Float8 `json:"elo_earn"`
+	NewElo   pgtype.Float8 `json:"new_elo"`
 }
 
 type Player struct {
@@ -44,9 +53,9 @@ type PlayerClubMembership struct {
 }
 
 type PlayerRating struct {
-	PlayerID int32   `json:"player_id"`
-	Rating   float64 `json:"rating"`
-	MatchID  int32   `json:"match_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+	PlayerID int32              `json:"player_id"`
+	Rating   float64            `json:"rating"`
 }
 
 type User struct {
