@@ -24,10 +24,10 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 }
 
 type IMatchService interface {
-	ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow) ([]db.Match, error)
+	ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow, settings googlesheet.Settings) ([]db.Match, error)
 }
 
-func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow) ([]db.Match, error) {
+func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow, settings googlesheet.Settings) ([]db.Match, error) {
 
 	// start a transaction so replace is atomic
 	tx, err := s.Pool.Begin(ctx)
@@ -50,6 +50,10 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 	}
 
 	inserted := make([]db.Match, 0, len(matchRows))
+
+	// Track current Elo for each player across matches
+	// Use player name as key since that's what matchRows use
+	currentElo := make(map[string]float64)
 
 	// skip first row as it contains start elo value (fake match)
 	for /*idx*/ _, mr := range matchRows[1:] {
@@ -96,7 +100,24 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 			return nil, fmt.Errorf("unable to create match for row %d: %v", mr.RowNum, err)
 		}
 
-		// create or upsert scores
+		// Calculate Elo changes for this match
+		// Build previousElo map for players in this match
+		previousElo := make(map[string]float64)
+		for playerName := range mr.PlayersScore {
+			if elo, exists := currentElo[playerName]; exists {
+				previousElo[playerName] = elo
+			} else {
+				previousElo[playerName] = StartingElo
+			}
+		}
+
+		// Calculate new Elos using the elo package
+		newElos := CalculateNewElo(previousElo, StartingElo, mr.PlayersScore, settings.EloConstK, settings.EloConstD)
+
+		// Calculate individual components for each player
+		absoluteLoserScore := GetAsboluteLoserScore(mr.PlayersScore)
+
+		// create or upsert scores with Elo values
 		for playerName, score := range mr.PlayersScore {
 			player, err := q.GetPlayerByName(ctx, playerName)
 			if err != nil {
@@ -108,9 +129,29 @@ func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googleshe
 				player = p
 			}
 
-			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{MatchID: createdMatch.ID, PlayerID: player.ID, Score: score}); err != nil {
+			// Calculate elo_pay and elo_earn
+			prevElo := previousElo[playerName]
+			newElo := newElos[playerName]
+
+			// elo_pay = -K * WinExpectation
+			eloPay := -settings.EloConstK * WinExpectation(prevElo, mr.PlayersScore, StartingElo, previousElo, settings.EloConstD)
+
+			// elo_earn = K * NormalizedScore
+			eloEarn := settings.EloConstK * NormalizedScore(score, mr.PlayersScore, absoluteLoserScore)
+
+			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+				MatchID:  createdMatch.ID,
+				PlayerID: player.ID,
+				Score:    score,
+				EloPay:   pgtype.Float8{Float64: eloPay, Valid: true},
+				EloEarn:  pgtype.Float8{Float64: eloEarn, Valid: true},
+				NewElo:   pgtype.Float8{Float64: newElo, Valid: true},
+			}); err != nil {
 				return nil, fmt.Errorf("unable to upsert match score for match %d player %s: %v", createdMatch.ID, playerName, err)
 			}
+
+			// Update current Elo for this player
+			currentElo[playerName] = newElo
 		}
 
 		inserted = append(inserted, createdMatch)

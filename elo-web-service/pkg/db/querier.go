@@ -35,12 +35,18 @@ type Querier interface {
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	// NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
+	// Kept for backwards compatibility but not actively used
+	// -- name: UpsertRating :exec
+	// INSERT INTO player_ratings (date, player_id, rating)
+	// VALUES ($1, $2, $3)
+	// ON CONFLICT (date, player_id)
+	// DO UPDATE SET rating = EXCLUDED.rating;
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
-	UpsertRating(ctx context.Context, arg UpsertRatingParams) error
 }
 
 var _ Querier = (*Queries)(nil)

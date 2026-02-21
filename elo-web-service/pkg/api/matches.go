@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
@@ -57,14 +56,6 @@ func (a *API) AddMatch(c *gin.Context) {
 }
 
 func (a *API) ListMatches(c *gin.Context) {
-	parsedData, err := googlesheet.GetParsedData()
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
-
-	settings := parsedData.Settings
-
 	// fetch matches and players from DB in a single query
 	rows, err := a.Queries.ListMatchesWithPlayers(c.Request.Context())
 	if err != nil {
@@ -74,12 +65,11 @@ func (a *API) ListMatches(c *gin.Context) {
 
 	// Group rows by match id
 	type tempMatch struct {
-		Id           int
-		GameId       string
-		GameName     string
-		Date         *time.Time
-		PlayersScore map[int32]float64
-		PrevElo      map[int32]float64
+		Id       int
+		GameId   string
+		GameName string
+		Date     *time.Time
+		Players  map[int32]matchPlayerJson
 	}
 
 	matchesMap := make(map[int32]*tempMatch)
@@ -93,38 +83,30 @@ func (a *API) ListMatches(c *gin.Context) {
 				date = &t
 			}
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:           int(r.MatchID),
-				GameId:       strconv.Itoa(int(r.GameID)),
-				GameName:     r.GameName,
-				Date:         date,
-				PlayersScore: make(map[int32]float64),
-				PrevElo:      make(map[int32]float64),
+				Id:       int(r.MatchID),
+				GameId:   strconv.Itoa(int(r.GameID)),
+				GameName: r.GameName,
+				Date:     date,
+				Players:  make(map[int32]matchPlayerJson),
 			}
 			order = append(order, r.MatchID)
 		}
 
 		m := matchesMap[r.MatchID]
-		m.PlayersScore[r.PlayerID] = r.Score
-		// PrevRating may be NULL; sqlc maps it to interface{} when nullable.
-		switch v := r.PrevRating.(type) {
-		case nil:
-			m.PrevElo[r.PlayerID] = elo.StartingElo
-		case float64:
-			m.PrevElo[r.PlayerID] = v
-		case int64:
-			m.PrevElo[r.PlayerID] = float64(v)
-		case []byte:
-			if s := string(v); s != "" {
-				if f, err := strconv.ParseFloat(s, 64); err == nil {
-					m.PrevElo[r.PlayerID] = f
-				} else {
-					m.PrevElo[r.PlayerID] = elo.StartingElo
-				}
-			} else {
-				m.PrevElo[r.PlayerID] = elo.StartingElo
-			}
-		default:
-			m.PrevElo[r.PlayerID] = elo.StartingElo
+
+		// Read Elo values from database
+		var eloPay, eloEarn float64
+		if r.EloPay.Valid {
+			eloPay = r.EloPay.Float64
+		}
+		if r.EloEarn.Valid {
+			eloEarn = r.EloEarn.Float64
+		}
+
+		m.Players[r.PlayerID] = matchPlayerJson{
+			Score:   r.Score,
+			EloPay:  eloPay,
+			EloEarn: eloEarn,
 		}
 	}
 
@@ -137,30 +119,13 @@ func (a *API) ListMatches(c *gin.Context) {
 			GameId:   tm.GameId,
 			GameName: tm.GameName,
 			Date:     tm.Date,
-			Players:  make(map[string]matchPlayerJson, len(tm.PlayersScore)),
+			Players:  make(map[string]matchPlayerJson, len(tm.Players)),
 		}
 
-		// convert maps to string-keyed maps for elo package
-		playersScoreStr := make(map[string]float64, len(tm.PlayersScore))
-		prevEloStr := make(map[string]float64, len(tm.PrevElo))
-		for pid, sc := range tm.PlayersScore {
-			key := strconv.Itoa(int(pid))
-			playersScoreStr[key] = sc
-		}
-		for pid, pr := range tm.PrevElo {
-			key := strconv.Itoa(int(pid))
-			prevEloStr[key] = pr
-		}
-
-		absoluteLoserScore := elo.GetAsboluteLoserScore(playersScoreStr)
-
-		for pid, score := range tm.PlayersScore {
+		// Convert int32 keys to string keys
+		for pid, playerData := range tm.Players {
 			pidStr := strconv.Itoa(int(pid))
-			m.Players[pidStr] = matchPlayerJson{
-				Score:   score,
-				EloPay:  -settings.EloConstK * elo.WinExpectation(prevEloStr[pidStr], playersScoreStr, elo.StartingElo, prevEloStr, settings.EloConstD),
-				EloEarn: settings.EloConstK * elo.NormalizedScore(playersScoreStr[pidStr], playersScoreStr, absoluteLoserScore),
-			}
+			m.Players[pidStr] = playerData
 		}
 
 		matchesJson = append(matchesJson, m)

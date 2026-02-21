@@ -14,16 +14,21 @@ import (
 const listPlayersWithStats = `-- name: ListPlayersWithStats :many
 SELECT p.id, p.name,
   CASE
-    WHEN pr.rating IS NULL THEN NULL
-    ELSE pr.rating
+    WHEN latest_elo.new_elo IS NULL THEN NULL
+    ELSE latest_elo.new_elo
   END AS rating,
   COALESCE(cnt_30.cnt, 0) AS cnt_30,
   COALESCE(cnt_90.cnt, 0) AS cnt_90,
   COALESCE(cnt_180.cnt, 0) AS cnt_180
 FROM players p
 LEFT JOIN LATERAL (
-  SELECT rating FROM player_ratings WHERE player_id = p.id AND player_ratings.date <= $1 ORDER BY player_ratings.date DESC LIMIT 1
-) pr ON true
+  SELECT ms.new_elo
+  FROM match_scores ms
+  JOIN matches m ON m.id = ms.match_id
+  WHERE ms.player_id = p.id AND (m.date <= $1 OR m.date IS NULL)
+  ORDER BY m.date DESC NULLS LAST, m.id DESC
+  LIMIT 1
+) latest_elo ON true
 LEFT JOIN LATERAL (
   SELECT count(*) AS cnt FROM matches m
   JOIN match_scores ms ON ms.match_id = m.id
@@ -39,7 +44,7 @@ LEFT JOIN LATERAL (
   JOIN match_scores ms ON ms.match_id = m.id
   WHERE ms.player_id = p.id AND m.date >= ($1 - interval '180 days') AND m.date <= $1
 ) cnt_180 ON true
-ORDER BY pr.rating DESC NULLS LAST, p.name
+ORDER BY latest_elo.new_elo DESC NULLS LAST, p.name
 `
 
 type ListPlayersWithStatsRow struct {
