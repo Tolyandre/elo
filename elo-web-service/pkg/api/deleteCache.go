@@ -32,7 +32,7 @@ func (a *API) sync(ctx context.Context) error {
 	}
 
 	var games []string
-	for _, match := range parsedData.Matches {
+	for _, match := range parsedData.Matches[1:] {
 		games = append(games, match.Game)
 	}
 
