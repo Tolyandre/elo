@@ -101,14 +101,6 @@ function MatchesPageWrapped() {
                 </FieldContent>
               </Field>
 
-              <Alert variant="default" className="max-w-100">
-                <Terminal />
-                <AlertTitle>Фильтр временно не работает</AlertTitle>
-                <AlertDescription>
-                  Фильтр по играм заработает, когда партии будут перенесены в базу данных. Я работаю над этим. Спасибо за понимание!
-                </AlertDescription>
-              </Alert>
-
               <Field orientation="horizontal">
                 <FieldTitle>Округлять до целого</FieldTitle>
                 <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />

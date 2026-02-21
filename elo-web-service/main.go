@@ -15,7 +15,6 @@ import (
 	oauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 func main() {
@@ -33,8 +32,6 @@ func main() {
 	defer pool.Close()
 	api := api.New(pool)
 	oauth2 := oauth2.New(pool)
-
-	googlesheet.Init(cfg.Config.GoogleServiceAccountKey, cfg.Config.DocID)
 
 	router := gin.Default()
 
@@ -61,7 +58,6 @@ func main() {
 	router.DELETE("/games/:id", oauth2.DeserializeUser(), api.DeleteGame)
 	router.PATCH("/games/:id", oauth2.DeserializeUser(), api.PatchGame)
 	router.POST("/games", oauth2.DeserializeUser(), api.CreateGame)
-	router.DELETE("/cache", api.DeleteCache)
 	router.GET("/clubs", api.ListClubs)
 
 	auth_router := router.Group("/auth")

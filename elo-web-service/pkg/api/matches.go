@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	googlesheet "github.com/tolyandre/elo-web-service/pkg/google-sheet"
 )
 
 type addMatchJson struct {
@@ -171,6 +169,6 @@ func (a *API) ListMatches(c *gin.Context) {
 }
 
 // eloRows must be ordered; first row number 2 has index 0 (first row is header)
-func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
-	return &eloRows[rowNum-2]
-}
+// func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
+// 	return &eloRows[rowNum-2]
+// }

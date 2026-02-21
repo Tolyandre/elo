@@ -39,14 +39,6 @@ export function NavigationBar() {
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
 
               <ModeToggleSubMenu />
-              <ListItem href={settings.googleSheetLink}
-                title={
-                  <>
-                    <img src="https://www.gstatic.com/images/branding/product/1x/sheets_2020q4_48dp.png" className="inline-block mr-2 h-6 w-6 align-middle" />
-                    Таблица
-                  </>
-                }>
-              </ListItem>
               <ListItem href="https://github.com/Tolyandre/elo" title={
                 <>
                   <img src="https://github.githubassets.com/assets/GitHub-Mark-ea2971cee799.png" className="inline-block mr-2 h-6 w-6 align-middle" />
@@ -55,20 +47,6 @@ export function NavigationBar() {
               }>
               </ListItem>
 
-              <ListItem onClick={async () => {
-                await deleteCache();
-                invalidatePlayers();
-                invalidateMatches();
-                me.invalidate();
-              }} title={
-                <>
-                  <svg viewBox="0 0 24 24" className="inline-block mr-2 h-6 w-6 align-middle" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M21 3V8M21 8H16M21 8L18 5.29168C16.4077 3.86656 14.3051 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.2832 21 19.8675 18.008 20.777 14" />
-                  </svg>
-                  Обновить из таблицы
-                </>
-              }>
-              </ListItem>
               <ListItem href="/admin" title={
                 <>
                   <svg viewBox="0 0 24 24" className="inline-block mr-2 h-6 w-6 align-middle" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
