@@ -37,7 +37,6 @@ func (a *API) AddMatch(c *gin.Context) {
 	}
 
 	user, err := MustGetCurrentUser(c, a.UserService)
-
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -48,8 +47,25 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
-	if err := googlesheet.AddMatch(payload.Game, payload.Score); err != nil {
+	// Get settings for Elo calculation
+	parsedData, err := googlesheet.GetParsedData()
+	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Add match to database with current timestamp
+	now := time.Now()
+	_, err = a.MatchService.AddMatch(c.Request.Context(), payload.Game, payload.Score, &now, nil, parsedData.Settings)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Also add to Google Sheets for backwards compatibility
+	if err := googlesheet.AddMatch(payload.Game, payload.Score); err != nil {
+		// Log error but don't fail the request since DB already has it
+		c.Error(err)
 	}
 
 	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")

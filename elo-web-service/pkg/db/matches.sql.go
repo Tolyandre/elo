@@ -53,6 +53,22 @@ func (q *Queries) DeleteAllMatches(ctx context.Context) error {
 	return err
 }
 
+const getPlayerLatestElo = `-- name: GetPlayerLatestElo :one
+SELECT ms.new_elo
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.player_id = $1
+ORDER BY m.date DESC NULLS LAST, m.id DESC
+LIMIT 1
+`
+
+func (q *Queries) GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestElo, playerID)
+	var new_elo pgtype.Float8
+	err := row.Scan(&new_elo)
+	return new_elo, err
+}
+
 const listMatchResults = `-- name: ListMatchResults :many
 SELECT
     m.id AS match_id,

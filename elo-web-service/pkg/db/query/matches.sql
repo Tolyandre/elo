@@ -95,3 +95,11 @@ LEFT JOIN LATERAL (
 ) prev_match_score ON true
 WHERE g.id = $1
 ORDER BY m.date ASC, m.id ASC, s.score DESC;
+
+-- name: GetPlayerLatestElo :one
+SELECT ms.new_elo
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.player_id = $1
+ORDER BY m.date DESC NULLS LAST, m.id DESC
+LIMIT 1;

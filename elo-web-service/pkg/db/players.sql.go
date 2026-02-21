@@ -139,3 +139,13 @@ func (q *Queries) ListPlayers(ctx context.Context) ([]Player, error) {
 	}
 	return items, nil
 }
+
+const lockPlayerForEloCalculation = `-- name: LockPlayerForEloCalculation :one
+SELECT id FROM players WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error) {
+	row := q.db.QueryRow(ctx, lockPlayerForEloCalculation, id)
+	err := row.Scan(&id)
+	return id, err
+}

@@ -25,6 +25,7 @@ type Querier interface {
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
+	GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
@@ -35,6 +36,7 @@ type Querier interface {
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
 	// NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
 	// Kept for backwards compatibility but not actively used
 	// -- name: UpsertRating :exec

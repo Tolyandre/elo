@@ -23,3 +23,6 @@ RETURNING id, name;
 -- name: GetPlayerByName :one
 SELECT * FROM players
 WHERE name = $1;
+
+-- name: LockPlayerForEloCalculation :one
+SELECT id FROM players WHERE id = $1 FOR UPDATE;
