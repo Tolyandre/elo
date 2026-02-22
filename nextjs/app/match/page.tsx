@@ -10,10 +10,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Edit2, ArrowLeft } from "lucide-react";
+import { AlertCircle, Edit2, ArrowLeft, X, Plus } from "lucide-react";
 import Link from "next/link";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { toast } from "sonner";
+import { PlayerCombobox } from "@/components/player-combobox";
 
 export default function MatchPage() {
   return (
@@ -188,6 +189,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
   const [playerScores, setPlayerScores] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [selectedPlayerToAdd, setSelectedPlayerToAdd] = useState<string | undefined>(undefined);
   const { players: allPlayers } = usePlayers();
 
   useEffect(() => {
@@ -212,8 +214,38 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
       });
       setPlayerScores(scores);
       setError("");
+      setSelectedPlayerToAdd(undefined);
     }
   }, [open, match]);
+
+  const handleAddPlayer = () => {
+    if (!selectedPlayerToAdd) return;
+
+    if (playerScores[selectedPlayerToAdd]) {
+      setError("Игрок уже добавлен в партию");
+      return;
+    }
+
+    setPlayerScores((prev) => ({
+      ...prev,
+      [selectedPlayerToAdd]: "0",
+    }));
+    setSelectedPlayerToAdd(undefined);
+    setError("");
+  };
+
+  const handleRemovePlayer = (playerId: string) => {
+    const currentPlayers = Object.keys(playerScores);
+    if (currentPlayers.length <= 2) {
+      setError("В партии должно быть минимум 2 игрока");
+      return;
+    }
+
+    const newScores = { ...playerScores };
+    delete newScores[playerId];
+    setPlayerScores(newScores);
+    setError("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,6 +253,11 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
     if (!date) {
       setError("Дата обязательна");
+      return;
+    }
+
+    if (Object.keys(playerScores).length < 2) {
+      setError("В партии должно быть минимум 2 игрока");
       return;
     }
 
@@ -251,6 +288,11 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
     }
   };
 
+  // Get available players to add (not already in the match)
+  const availablePlayersToAdd = allPlayers.filter(
+    (p) => !playerScores[p.id]
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -259,7 +301,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
           Редактировать
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Редактировать партию</DialogTitle>
         </DialogHeader>
@@ -287,30 +329,76 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
             </Field>
 
             <div className="space-y-3">
-              <h3 className="text-sm font-medium">Счета игроков</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Счета игроков</h3>
+                <span className="text-xs text-muted-foreground">
+                  {Object.keys(playerScores).length} игроков
+                </span>
+              </div>
+
               {Object.entries(playerScores).map(([playerId, score]) => {
                 const player = allPlayers.find((p) => p.id === playerId);
                 return (
-                  <Field key={playerId}>
-                    <FieldLabel htmlFor={`score-${playerId}`}>
-                      {player?.name || `Игрок ${playerId}`}
-                    </FieldLabel>
-                    <FieldContent>
-                      <input
-                        id={`score-${playerId}`}
-                        type="number"
-                        step="0.1"
-                        value={score}
-                        onChange={(e) =>
-                          setPlayerScores((prev) => ({ ...prev, [playerId]: e.target.value }))
-                        }
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        required
-                      />
-                    </FieldContent>
-                  </Field>
+                  <div key={playerId} className="flex items-end gap-2">
+                    <Field className="flex-1">
+                      <FieldLabel htmlFor={`score-${playerId}`}>
+                        {player?.name || `Игрок ${playerId}`}
+                      </FieldLabel>
+                      <FieldContent>
+                        <input
+                          id={`score-${playerId}`}
+                          type="number"
+                          step="0.1"
+                          value={score}
+                          onChange={(e) =>
+                            setPlayerScores((prev) => ({ ...prev, [playerId]: e.target.value }))
+                          }
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          required
+                        />
+                      </FieldContent>
+                    </Field>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemovePlayer(playerId)}
+                      disabled={Object.keys(playerScores).length <= 2}
+                      className="h-10 w-10 mb-0"
+                      title="Удалить игрока"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 );
               })}
+
+              {availablePlayersToAdd.length > 0 && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-end gap-2">
+                    <Field className="flex-1">
+                      <FieldLabel>Добавить игрока</FieldLabel>
+                      <FieldContent>
+                        <PlayerCombobox
+                          value={selectedPlayerToAdd}
+                          onChange={setSelectedPlayerToAdd}
+                        />
+                      </FieldContent>
+                    </Field>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleAddPlayer}
+                      disabled={!selectedPlayerToAdd}
+                      className="h-10 w-10 mb-0"
+                      title="Добавить"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
