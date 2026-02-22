@@ -15,6 +15,7 @@ import { Match } from "../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
 import { usePlayers } from "../players/PlayersContext";
+import { MatchCard } from "@/components/match-card";
 
 export default function MatchesPage() {
   return (
@@ -111,97 +112,9 @@ function MatchesPageWrapped() {
         </Card>
 
         {filtered.map((m) => (
-          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} />
+          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable compact />
         ))}
       </div>
-    );
-  }
-
-  function MatchCard({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
-    const { players: playersFromContext = [] } = usePlayers();
-    const router = useRouter();
-
-    const players = Object.entries(match.score)
-      .map(([playerId, data]) => {
-      const ctxPlayer = playersFromContext.find(p => p.id === playerId);
-      const name = ctxPlayer?.name;
-      return {
-        name,
-        playerId,
-        eloPay: data.eloPay,
-        eloEarn: data.eloEarn,
-        score: data.score,
-        eloChange: data.eloPay + data.eloEarn,
-      };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
-
-    const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0) || 1;
-    const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0) || 1;
-
-    return (
-      <Card
-        className="cursor-pointer hover:bg-accent/50 transition-colors"
-        onClick={() => router.push(`/match?match_id=${match.id}`)}
-      >
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between w-full">
-            <Link href={`/game?id=${match.game_id}`} className="underline">
-              {match.game_name}
-            </Link>
-            {match.date && (
-              <span className="text-muted-foreground text-sm">
-                {`${match.date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`}
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent>
-          <ul className="space-y-2">
-            {players.map((p, idx) => (
-              <li key={p.name} className="flex items-center gap-4">
-
-                <div className="gap-2 w-30">
-                  <span className="font-semibold">{ranks[idx]}. </span>
-                  <span>{p.name}</span>
-
-                  <div className="relative h-2 bg-gray-200 rounded mt-1 overflow-hidden">
-
-                    {/* Индикатор победных очков */}
-                    <div
-                      className="absolute top-0 h-1 bg-green-400"
-                      style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
-                    />
-
-                    {/* Индикатор вероятности победы (сколько очко вычитаем) */}
-                    <div
-                      className="absolute bottom-0 h-1 bg-red-400"
-                      style={{ width: `${(p.eloPay / totalPay) * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="text-center w-15 text-3xl">{p.score}</div>
-
-                <div className="text-right w-15">
-                  <div
-                    className={`font-semibold ${p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"}`}
-                  >
-                    {p.eloChange >= 0 ? "+" : ""}
-                    {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
-                  </div>
-                  <div className="text-xs text-muted-foreground text-nowrap">
-                    ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
     );
   }
 

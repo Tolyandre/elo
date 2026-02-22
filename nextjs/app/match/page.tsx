@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { toast } from "sonner";
 import { PlayerCombobox } from "@/components/player-combobox";
+import { MatchCard } from "@/components/match-card";
 
 export default function MatchPage() {
   return (
@@ -93,93 +94,8 @@ function MatchPageWrapped() {
         )}
       </div>
 
-      <MatchDetails match={match} />
+      <MatchCard match={match} />
     </main>
-  );
-}
-
-function MatchDetails({ match }: { match: Match }) {
-  const { players: playersFromContext = [] } = usePlayers();
-
-  const players = Object.entries(match.score)
-    .map(([playerId, data]) => {
-      const ctxPlayer = playersFromContext.find((p) => p.id === playerId);
-      const name = ctxPlayer?.name || "Unknown";
-      return {
-        name,
-        playerId,
-        eloPay: data.eloPay,
-        eloEarn: data.eloEarn,
-        score: data.score,
-        eloChange: data.eloPay + data.eloEarn,
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
-
-  const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0) || 1;
-  const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0) || 1;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between w-full">
-          <Link href={`/game?id=${match.game_id}`} className="underline">
-            {match.game_name}
-          </Link>
-          {match.date && (
-            <span className="text-muted-foreground text-sm">
-              {match.date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent>
-        <ul className="space-y-4">
-          {players.map((p, idx) => (
-            <li key={p.playerId} className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-semibold">{ranks[idx]}.</span>
-                  <span>{p.name}</span>
-                </div>
-
-                <div className="relative h-2 bg-gray-200 rounded overflow-hidden">
-                  {/* Earned Elo indicator */}
-                  <div
-                    className="absolute top-0 h-1 bg-green-400"
-                    style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
-                  />
-                  {/* Paid Elo indicator */}
-                  <div
-                    className="absolute bottom-0 h-1 bg-red-400"
-                    style={{ width: `${(Math.abs(p.eloPay) / Math.abs(totalPay)) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="text-center w-20 text-3xl font-semibold">{p.score}</div>
-
-              <div className="text-right w-24">
-                <div
-                  className={`font-semibold text-lg ${
-                    p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"
-                  }`}
-                >
-                  {p.eloChange >= 0 ? "+" : ""}
-                  {p.eloChange.toFixed(1)}
-                </div>
-                <div className="text-xs text-muted-foreground text-nowrap">
-                  ({p.eloPay.toFixed(1)} + {p.eloEarn.toFixed(1)})
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
   );
 }
 
