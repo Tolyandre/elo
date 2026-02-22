@@ -118,6 +118,7 @@ function PlayerCommand({
             <CommandItem
               key={player.id}
               value={player.id}
+              keywords={[player.name]}
               onSelect={onSelect}
             >
               {player.name}

@@ -60,6 +60,7 @@ export function GameCombobox({
                 <CommandItem
                   key={game.id}
                   value={game.id}
+                  keywords={[game.name]}
                   onSelect={(currentValue) => {
                     const next = currentValue === value ? "" : currentValue
                     if (controlledValue === undefined) {

@@ -16,7 +16,7 @@ import {
 import { ModeToggle } from "./mode-toggle"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
-import { deleteCache, EloWebServiceBaseUrl, User } from "@/app/api"
+import { EloWebServiceBaseUrl } from "@/app/api"
 import { useSettings } from "@/app/settingsContext"
 import { useMe } from "@/app/meContext"
 import { NavigationMenuSub } from "@radix-ui/react-navigation-menu"

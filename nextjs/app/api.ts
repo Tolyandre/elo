@@ -208,20 +208,6 @@ export async function createGamePromise(payload: { name: string }) {
     }
 }
 
-export async function deleteCache(): Promise<any> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/cache`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
-}
-
 export async function getMePromise(): Promise<User | undefined> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
