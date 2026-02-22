@@ -18,6 +18,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [stamp, setStamp] = useState<number>(0);
 
   const loadMatches = async () => {
     try {
@@ -31,15 +32,12 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  /* Загружаем данные только один раз (при первом монтировании) */
   useEffect(() => {
-    if (matches !== null) return; // уже загружено → не повторяем запрос
-
     loadMatches();
-  }, [matches]);
+  }, [stamp]);
 
   const invalidate = () => {
-    setMatches(null);
+    setStamp((s) => s + 1);
   };
   return (
     <MatchesContext.Provider value={{ matches, loading, error, invalidate }}>

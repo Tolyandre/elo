@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -13,35 +13,38 @@ type MatchCardProps = {
   clickable?: boolean;
 };
 
-export function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
-  const { players: playersFromContext = [] } = usePlayers();
+export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
+  const { playerMap } = usePlayers();
   const router = useRouter();
 
-  const players = Object.entries(match.score)
-    .map(([playerId, data]) => {
-      const ctxPlayer = playersFromContext.find((p) => p.id === playerId);
-      const name = ctxPlayer?.name || "Unknown";
-      return {
-        name,
-        playerId,
-        eloPay: data.eloPay,
-        eloEarn: data.eloEarn,
-        score: data.score,
-        eloChange: data.eloPay + data.eloEarn,
-      };
-    })
-    .sort((a, b) => b.score - a.score);
+  const { players, ranks, totalEarn, totalPay } = useMemo(() => {
+    const players = Object.entries(match.score)
+      .map(([playerId, data]) => {
+        const ctxPlayer = playerMap.get(playerId);
+        const name = ctxPlayer?.name || "Unknown";
+        return {
+          name,
+          playerId,
+          eloPay: data.eloPay,
+          eloEarn: data.eloEarn,
+          score: data.score,
+          eloChange: data.eloPay + data.eloEarn,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
 
-  const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
+    const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
+    const totalEarn = players.reduce((sum, p) => sum + p.eloEarn, 0) || 1;
+    const totalPay = players.reduce((sum, p) => sum + Math.abs(p.eloPay), 0) || 1;
 
-  const totalEarn = players.map((p) => p.eloEarn).reduce((a, b) => a + b, 0) || 1;
-  const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0) || 1;
+    return { players, ranks, totalEarn, totalPay };
+  }, [match.score, playerMap]);
 
-  const handleClick = () => {
+  const handleClick = useCallback(() => {
     if (clickable) {
       router.push(`/match?match_id=${match.id}`);
     }
-  };
+  }, [clickable, match.id, router]);
 
   return (
     <Card
@@ -112,4 +115,8 @@ export function MatchCard({ match, roundToInteger = false, clickable = false }: 
       </CardContent>
     </Card>
   );
-}
+}, (prevProps, nextProps) => (
+  prevProps.match.id === nextProps.match.id &&
+  prevProps.roundToInteger === nextProps.roundToInteger &&
+  prevProps.clickable === nextProps.clickable
+));

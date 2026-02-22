@@ -74,13 +74,19 @@ function MatchesPageWrapped() {
     const { matches } = useMatches();
     if (!matches) return null; // ещё нет данных
 
-    let filtered = selectedPlayerId
-      ? matches.filter((m) => Object.prototype.hasOwnProperty.call(m.score, selectedPlayerId))
-      : matches;
+    const filtered = React.useMemo(() => {
+      let result = matches;
 
-    if (selectedGameId) {
-      filtered = filtered.filter((m) => m.game_id === selectedGameId);
-    }
+      if (selectedPlayerId) {
+        result = result.filter((m) => selectedPlayerId in m.score);
+      }
+
+      if (selectedGameId) {
+        result = result.filter((m) => m.game_id === selectedGameId);
+      }
+
+      return result;
+    }, [matches, selectedPlayerId, selectedGameId]);
 
     return (
       <div className="space-y-4">

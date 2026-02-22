@@ -5,6 +5,7 @@ import { getPlayersPromise, Player } from "../api";
 
 type PlayersContextType = {
     players: Player[];
+    playerMap: Map<string, Player>;
 
     // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
@@ -19,6 +20,7 @@ export function PlayersProvider({ children
     children: ReactNode
 }) {
     const [players, setPlayers] = useState<Player[]>([]);
+    const [playerMap, setPlayerMap] = useState<Map<string, Player>>(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [stamp, setStamp] = useState<number>(0);
@@ -29,6 +31,8 @@ export function PlayersProvider({ children
             .then((data) => {
                 const sorted = [...data].sort((a, b) => (a.rank.now.rank ?? Number.MAX_VALUE) - (b.rank.now.rank ?? Number.MAX_VALUE));
                 setPlayers(sorted);
+                const map = new Map(sorted.map(p => [p.id, p]));
+                setPlayerMap(map);
                 setLoading(false);
                 return sorted;
             })
@@ -43,7 +47,7 @@ export function PlayersProvider({ children
     };
 
     return (
-        <PlayersContext.Provider value={{ players, loading, error, invalidate }}>
+        <PlayersContext.Provider value={{ players, playerMap, loading, error, invalidate }}>
             {children}
         </PlayersContext.Provider>
     );
