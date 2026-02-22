@@ -10,7 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Edit2, ArrowLeft, X, Plus } from "lucide-react";
+import { AlertCircle, Edit2, ArrowLeft, X } from "lucide-react";
 import Link from "next/link";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { toast } from "sonner";
@@ -138,11 +138,13 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
     }
   }, [open, match]);
 
-  const handleAddPlayer = () => {
+  // Automatically add player when selected
+  useEffect(() => {
     if (!selectedPlayerToAdd) return;
 
     if (playerScores[selectedPlayerToAdd]) {
       setError("Игрок уже добавлен в партию");
+      setSelectedPlayerToAdd(undefined);
       return;
     }
 
@@ -152,7 +154,8 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
     }));
     setSelectedPlayerToAdd(undefined);
     setError("");
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlayerToAdd]);
 
   const handleRemovePlayer = (playerId: string) => {
     const currentPlayers = Object.keys(playerScores);
@@ -305,7 +308,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
               {availablePlayersToAdd.length > 0 && (
                 <div className="pt-2 border-t">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4">
                     <label className="text-sm font-medium w-32 flex-shrink-0">
                       Добавить игрока
                     </label>
@@ -315,17 +318,6 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
                         onChange={setSelectedPlayerToAdd}
                       />
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={handleAddPlayer}
-                      disabled={!selectedPlayerToAdd}
-                      className="h-10 w-10"
-                      title="Добавить"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
               )}
