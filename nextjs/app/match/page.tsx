@@ -4,6 +4,7 @@ import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useMatches } from "../matches/MatchesContext";
 import { usePlayers } from "../players/PlayersContext";
+import { useMe } from "../meContext";
 import { Match, updateMatchPromise } from "../api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -103,6 +104,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
   const [error, setError] = useState("");
   const [selectedPlayerToAdd, setSelectedPlayerToAdd] = useState<string | undefined>(undefined);
   const { players: allPlayers } = usePlayers();
+  const { isAuthenticated, canEdit } = useMe();
 
   useEffect(() => {
     if (open) {
@@ -239,6 +241,19 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
               </Alert>
             )}
 
+            {!isAuthenticated && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Для редактирования необходимо авторизоваться.</AlertDescription>
+              </Alert>
+            )}
+            {isAuthenticated && !canEdit && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>У вас нет прав для редактирования партий.</AlertDescription>
+              </Alert>
+            )}
+
             <div className="flex items-center gap-4">
               <label htmlFor="date" className="text-sm font-medium w-24 flex-shrink-0">
                 Дата и время
@@ -324,7 +339,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
               Отмена
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={!canEdit || submitting}>
               {submitting ? "Сохранение..." : "Сохранить"}
             </Button>
           </DialogFooter>

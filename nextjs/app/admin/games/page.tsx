@@ -1,9 +1,10 @@
 "use client"
 import React from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { patchGamePromise, deleteGamePromise, createGamePromise, getMePromise, User } from "@/app/api";
+import { useState } from "react";
+import { patchGamePromise, deleteGamePromise, createGamePromise } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
+import { useMe } from "@/app/meContext";
 import {
     Dialog,
     DialogContent,
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
-    const [me, setMe] = useState<User | undefined | null>(null);
+    const { isAuthenticated, canEdit } = useMe();
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -33,20 +34,6 @@ export default function GamesAdminPage() {
     const games = newName.trim() !== ""
         ? sortedGames.filter(g => g.name.toLowerCase().includes(newName.toLowerCase()))
         : sortedGames;
-
-    useEffect(() => {
-        let mounted = true;
-
-        (async () => {
-            const meRes = await getMePromise();
-            if (!mounted) return;
-            setMe(meRes === undefined ? null : meRes);
-        })();
-
-        return () => {
-            mounted = false;
-        };
-    }, []);
 
     function openRename(id: string, name: string) {
         setSelectedId(id);
@@ -105,8 +92,8 @@ export default function GamesAdminPage() {
                     </div>
                 </div>
 
-            {me === null && <p>Для редактирования необходимо авторизоваться.</p>}
-            {me && !me.can_edit && <p>У вас нет прав для редактирования игр.</p>}
+            {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}
+            {isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игр.</p>}
             <p>Удаление возможно для игр без партий.</p>
 
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
@@ -115,7 +102,7 @@ export default function GamesAdminPage() {
                     placeholder="Название новой игры"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    disabled={!me || !me.can_edit}
+                    disabled={!canEdit}
                 />
                 <div className="w-full sm:w-auto">
                 <Button
@@ -129,7 +116,7 @@ export default function GamesAdminPage() {
                             // toast already shown
                         }
                     }}
-                    disabled={!me || !me.can_edit}
+                    disabled={!canEdit}
                 >
                     Добавить
                 </Button>
@@ -163,7 +150,7 @@ export default function GamesAdminPage() {
                                                 variant="secondary"
                                                 size="sm"
                                                 onClick={() => openRename(game.id, game.name)}
-                                                disabled={!me || !me.can_edit}
+                                                disabled={!canEdit}
                                             >
                                                 Rename
                                             </Button>
@@ -171,7 +158,7 @@ export default function GamesAdminPage() {
                                                 variant="destructive"
                                                 size="sm"
                                                 onClick={() => openDelete(game.id, game.name)}
-                                                disabled={!me || !me.can_edit}
+                                                disabled={!canEdit}
                                             >
                                                 Delete
                                             </Button>
@@ -204,7 +191,7 @@ export default function GamesAdminPage() {
                                                         variant="secondary"
                                                         size="sm"
                                                         onClick={() => openRename(game.id, game.name)}
-                                                        disabled={!me || !me.can_edit}
+                                                        disabled={!canEdit}
                                                     >
                                                         Rename
                                                     </Button>
@@ -212,7 +199,7 @@ export default function GamesAdminPage() {
                                                         variant="destructive"
                                                         size="sm"
                                                         onClick={() => openDelete(game.id, game.name)}
-                                                        disabled={!me || !me.can_edit}
+                                                        disabled={!canEdit}
                                                     >
                                                         Delete
                                                     </Button>

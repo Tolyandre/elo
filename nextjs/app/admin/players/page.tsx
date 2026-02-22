@@ -1,9 +1,10 @@
 "use client"
 import React from "react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, getMePromise, User } from "@/app/api";
+import { useState } from "react";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
+import { useMe } from "@/app/meContext";
 import {
     Dialog,
     DialogContent,
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button";
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, invalidate: invalidatePlayers } = usePlayers();
-    const [me, setMe] = useState<User | undefined | null>(null);
+    const { isAuthenticated, canEdit } = useMe();
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -32,20 +33,6 @@ export default function PlayersAdminPage() {
     const players = newName.trim() === ""
         ? sortedPlayers
         : sortedPlayers.filter(p => p.name.toLowerCase().includes(newName.toLowerCase()));
-
-    useEffect(() => {
-        let mounted = true;
-
-        (async () => {
-            const meRes = await getMePromise();
-            if (!mounted) return;
-            setMe(meRes === undefined ? null : meRes);
-        })();
-
-        return () => {
-            mounted = false;
-        };
-    }, []);
 
     function openRename(id: string, name: string) {
         setSelectedId(id);
@@ -104,8 +91,8 @@ export default function PlayersAdminPage() {
                 </div>
             </div>
 
-            {me === null && <p>Для редактирования необходимо авторизоваться.</p>}
-            {me && !me.can_edit && <p>У вас нет прав для редактирования игроков.</p>}
+            {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}
+            {isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игроков.</p>}
             <p>Удаление возможно для игроков без партий.</p>
 
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
@@ -114,7 +101,7 @@ export default function PlayersAdminPage() {
                     placeholder="Имя нового игрока"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    disabled={!me || !me.can_edit}
+                    disabled={!canEdit}
                 />
                 <div className="w-full sm:w-auto">
                     <Button
@@ -128,7 +115,7 @@ export default function PlayersAdminPage() {
                                 // toast already shown
                             }
                         }}
-                        disabled={!me || !me.can_edit}
+                        disabled={!canEdit}
                     >
                         Добавить
                     </Button>
@@ -165,7 +152,7 @@ export default function PlayersAdminPage() {
                                                 variant="secondary"
                                                 size="sm"
                                                 onClick={() => openRename(player.id, player.name)}
-                                                disabled={!me || !me.can_edit}
+                                                disabled={!canEdit}
                                             >
                                                 Rename
                                             </Button>
@@ -173,7 +160,7 @@ export default function PlayersAdminPage() {
                                                 variant="destructive"
                                                 size="sm"
                                                 onClick={() => openDelete(player.id, player.name)}
-                                                disabled={!me || !me.can_edit}
+                                                disabled={!canEdit}
                                             >
                                                 Delete
                                             </Button>
@@ -208,7 +195,7 @@ export default function PlayersAdminPage() {
                                                         variant="secondary"
                                                         size="sm"
                                                         onClick={() => openRename(player.id, player.name)}
-                                                        disabled={!me || !me.can_edit}
+                                                        disabled={!canEdit}
                                                     >
                                                         Rename
                                                     </Button>
@@ -216,7 +203,7 @@ export default function PlayersAdminPage() {
                                                         variant="destructive"
                                                         size="sm"
                                                         onClick={() => openDelete(player.id, player.name)}
-                                                        disabled={!me || !me.can_edit}
+                                                        disabled={!canEdit}
                                                     >
                                                         Delete
                                                     </Button>

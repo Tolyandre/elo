@@ -4,9 +4,10 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { getMePromise, logout } from "./api";
 
 export type MeState = {
-  id: string;
-  name: string;
+  id: string | undefined;
+  name: string | undefined;
   canEdit: boolean;
+  isAuthenticated: boolean;
   logout: () => void;
   invalidate: () => void;
 };
@@ -25,9 +26,9 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
 
   const loadMe = async () => {
     const user = await getMePromise();
-    setId(user ? user.id : "");
-    setName(user ? user.name : "");
-    setCanEdit(user ? user.can_edit : false);
+    setId(user?.id);
+    setName(user?.name);
+    setCanEdit(user?.can_edit ?? false);
   };
 
   const doLogout = () => {
@@ -44,7 +45,14 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <MeContext.Provider value={{ id: id ?? "", name: name ?? "", logout: doLogout, invalidate, canEdit }}>
+    <MeContext.Provider value={{
+      id,
+      name,
+      canEdit,
+      isAuthenticated: !!id,
+      logout: doLogout,
+      invalidate
+    }}>
       {children}
     </MeContext.Provider>
   );
