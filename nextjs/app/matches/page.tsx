@@ -29,6 +29,7 @@ function MatchesPageWrapped() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
   const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
+  const { matches, loading, error } = useMatches();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -39,6 +40,22 @@ function MatchesPageWrapped() {
     setSelectedPlayerId(p);
     setSelectedGameId(g);
   }, [searchParams]);
+
+  const filteredMatches = React.useMemo(() => {
+    if (!matches) return null;
+
+    let result = matches;
+
+    if (selectedPlayerId) {
+      result = result.filter((m) => selectedPlayerId in m.score);
+    }
+
+    if (selectedGameId) {
+      result = result.filter((m) => m.game_id === selectedGameId);
+    }
+
+    return result;
+  }, [matches, selectedPlayerId, selectedGameId]);
 
   function updateQueryParam(key: string, value: string | undefined) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
@@ -63,67 +80,6 @@ function MatchesPageWrapped() {
     updateQueryParam("game", id);
   }
 
-  function LoadingOrError() {
-    const { loading, error } = useMatches();
-    if (loading) return <p className="text-center">Загрузка партий…</p>;
-    if (error) return <p className="text-red-500 text-center">Ошибка: {error}</p>;
-    return null;
-  }
-
-  function MatchesList() {
-    const { matches } = useMatches();
-    if (!matches) return null; // ещё нет данных
-
-    const filtered = React.useMemo(() => {
-      let result = matches;
-
-      if (selectedPlayerId) {
-        result = result.filter((m) => selectedPlayerId in m.score);
-      }
-
-      if (selectedGameId) {
-        result = result.filter((m) => m.game_id === selectedGameId);
-      }
-
-      return result;
-    }, [matches, selectedPlayerId, selectedGameId]);
-
-    return (
-      <div className="space-y-4">
-        <Card >
-          <CardContent >
-
-            <FieldGroup>
-              <Field>
-                <FieldLabel className="sr-only">Игрок</FieldLabel>
-                <FieldContent>
-                  <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
-                </FieldContent>
-              </Field>
-
-              <Field >
-                <FieldLabel className="sr-only">Игра</FieldLabel>
-                <FieldContent>
-                  <GameCombobox value={selectedGameId} onChange={handleGameChange} />
-                </FieldContent>
-              </Field>
-
-              <Field orientation="horizontal">
-                <FieldTitle>Округлять до целого</FieldTitle>
-                <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
-              </Field>
-            </FieldGroup>
-
-          </CardContent>
-        </Card>
-
-        {filtered.map((m) => (
-          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
-        ))}
-      </div>
-    );
-  }
-
   return (
     <main>
       <div className="flex  justify-center">
@@ -135,8 +91,43 @@ function MatchesPageWrapped() {
         <h1 className="text-2xl font-semibold">Партии</h1>
       </div>
 
-      <LoadingOrError />
-      <MatchesList />
+      {loading && <p className="text-center">Загрузка партий…</p>}
+      {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
+
+      {filteredMatches && (
+        <div className="space-y-4">
+          <Card >
+            <CardContent >
+
+              <FieldGroup>
+                <Field>
+                  <FieldLabel className="sr-only">Игрок</FieldLabel>
+                  <FieldContent>
+                    <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
+                  </FieldContent>
+                </Field>
+
+                <Field >
+                  <FieldLabel className="sr-only">Игра</FieldLabel>
+                  <FieldContent>
+                    <GameCombobox value={selectedGameId} onChange={handleGameChange} />
+                  </FieldContent>
+                </Field>
+
+                <Field orientation="horizontal">
+                  <FieldTitle>Округлять до целого</FieldTitle>
+                  <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+                </Field>
+              </FieldGroup>
+
+            </CardContent>
+          </Card>
+
+          {filteredMatches.map((m) => (
+            <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
+          ))}
+        </div>
+      )}
     </main>
   );
 }
