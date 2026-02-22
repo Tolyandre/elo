@@ -229,7 +229,11 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
           Редактировать
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto"
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Редактировать партию</DialogTitle>
         </DialogHeader>
