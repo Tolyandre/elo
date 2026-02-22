@@ -4,15 +4,12 @@ import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useMatches } from "../matches/MatchesContext";
 import { usePlayers } from "../players/PlayersContext";
-import { useMe } from "../meContext";
 import { Match, updateMatchPromise } from "../api";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Edit2, ArrowLeft, X } from "lucide-react";
 import Link from "next/link";
-import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { toast } from "sonner";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
@@ -30,9 +27,6 @@ function MatchPageWrapped() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get("id");
   const { matches, loading, error, invalidate } = useMatches();
-  const { players } = usePlayers();
-  const { canEdit } = useMe();
-  const router = useRouter();
 
   const match = matches?.find((m) => m.id.toString() === matchId);
 
@@ -87,7 +81,7 @@ function MatchPageWrapped() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold">Просмотр партии</h1>
-        {canEdit && (
+        {(
           <EditMatchDialog match={match} onSuccess={() => {
             invalidate();
             toast.success("Партия обновлена");
@@ -226,7 +220,6 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
       <DialogTrigger asChild>
         <Button variant="outline">
           <Edit2 className="mr-2 h-4 w-4" />
-          Редактировать
         </Button>
       </DialogTrigger>
       <DialogContent
@@ -271,7 +264,6 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">Счета игроков</h3>
                 <span className="text-xs text-muted-foreground">
                   {Object.keys(playerScores).length} игроков
                 </span>

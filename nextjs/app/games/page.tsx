@@ -1,7 +1,5 @@
 "use client"
 import { GameList, getGamesPromise } from "@/app/api";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 

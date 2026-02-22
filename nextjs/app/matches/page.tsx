@@ -7,14 +7,10 @@ import { useMatches } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { Match } from "../api";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
-import { usePlayers } from "../players/PlayersContext";
 import { MatchCard } from "@/components/match-card";
 
 export default function MatchesPage() {
