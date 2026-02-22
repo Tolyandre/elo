@@ -120,16 +120,14 @@ function AddGameForm() {
 
         setSubmitting(true);
         try {
-            await addMatchPromise({
+            const result = await addMatchPromise({
                 game_id: selectedGameId,
                 score,
             });
             setSuccess(true);
             invalidateMatches();
             invalidatePlayers();
-            setTimeout(() => {
-                router.push("/matches");
-            }, 1200);
+            router.push(`/match?id=${result.id}`);
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {

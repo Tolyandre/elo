@@ -72,7 +72,7 @@ func (a *API) AddMatch(c *gin.Context) {
 
 	// Add match to database with current timestamp
 	now := time.Now()
-	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
+	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
 	if err != nil {
 		// Check if error is due to foreign key constraint violation
 		if db.IsForeignKeyViolation(err) {
@@ -83,7 +83,13 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
-	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
+	resp := struct {
+		Id int32 `json:"id"`
+	}{
+		Id: match.ID,
+	}
+
+	SuccessDataResponse(c, resp)
 }
 
 func (a *API) UpdateMatch(c *gin.Context) {

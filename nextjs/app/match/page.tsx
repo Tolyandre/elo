@@ -28,7 +28,7 @@ export default function MatchPage() {
 
 function MatchPageWrapped() {
   const searchParams = useSearchParams();
-  const matchId = searchParams.get("match_id");
+  const matchId = searchParams.get("id");
   const { matches, loading, error, invalidate } = useMatches();
   const { players } = usePlayers();
   const { canEdit } = useMe();
