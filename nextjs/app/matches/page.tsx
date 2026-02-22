@@ -119,6 +119,7 @@ function MatchesPageWrapped() {
 
   function MatchCard({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
     const { players: playersFromContext = [] } = usePlayers();
+    const router = useRouter();
 
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
@@ -141,7 +142,10 @@ function MatchesPageWrapped() {
     const totalPay = players.map((p) => p.eloPay).reduce((a, b) => a + b, 0) || 1;
 
     return (
-      <Card>
+      <Card
+        className="cursor-pointer hover:bg-accent/50 transition-colors"
+        onClick={() => router.push(`/match?match_id=${match.id}`)}
+      >
         <CardHeader>
           <CardTitle className="flex items-center justify-between w-full">
             <Link href={`/game?id=${match.game_id}`} className="underline">

@@ -124,6 +124,22 @@ export async function addMatchPromise(payload: { game_id: string, score: Record<
     }
 }
 
+export async function updateMatchPromise(matchId: number, payload: { game_id: string, score: Record<string, number>, date: string }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${matchId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 export async function getSettingsPromise(): Promise<{
     elo_const_k: string,
     elo_const_d: string,
