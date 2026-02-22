@@ -11,10 +11,9 @@ type MatchCardProps = {
   match: Match;
   roundToInteger?: boolean;
   clickable?: boolean;
-  compact?: boolean;
 };
 
-export function MatchCard({ match, roundToInteger = false, clickable = false, compact = false }: MatchCardProps) {
+export function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
   const { players: playersFromContext = [] } = usePlayers();
   const router = useRouter();
 
@@ -50,7 +49,7 @@ export function MatchCard({ match, roundToInteger = false, clickable = false, co
       onClick={handleClick}
     >
       <CardHeader>
-        <CardTitle className="flex items-center justify-between w-full">
+        <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
           <Link
             href={`/game?id=${match.game_id}`}
             className="underline"
@@ -67,16 +66,16 @@ export function MatchCard({ match, roundToInteger = false, clickable = false, co
       </CardHeader>
 
       <CardContent>
-        <ul className={compact ? "space-y-2" : "space-y-4"}>
+        <ul className="space-y-3">
           {players.map((p, idx) => (
-            <li key={p.playerId} className="flex items-center gap-4">
-              <div className={compact ? "gap-2 w-30" : "flex-1"}>
-                <div className={compact ? "" : "flex items-center gap-2 mb-1"}>
-                  <span className="font-semibold">{ranks[idx]}. </span>
-                  <span>{p.name}</span>
+            <li key={p.playerId} className="flex items-center gap-2 sm:gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                  <span className="font-semibold text-sm sm:text-base">{ranks[idx]}.</span>
+                  <span className="truncate text-sm sm:text-base">{p.name}</span>
                 </div>
 
-                <div className="relative h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+                <div className="relative h-2 bg-gray-200 rounded overflow-hidden">
                   {/* Earned Elo indicator */}
                   <div
                     className="absolute top-0 h-1 bg-green-400"
@@ -90,20 +89,20 @@ export function MatchCard({ match, roundToInteger = false, clickable = false, co
                 </div>
               </div>
 
-              <div className={`text-center ${compact ? "w-15 text-3xl" : "w-20 text-3xl font-semibold"}`}>
+              <div className="text-center text-2xl sm:text-3xl font-semibold w-12 sm:w-16 flex-shrink-0">
                 {p.score}
               </div>
 
-              <div className={`text-right ${compact ? "w-15" : "w-24"}`}>
+              <div className="text-right w-16 sm:w-20 flex-shrink-0">
                 <div
-                  className={`font-semibold ${compact ? "" : "text-lg"} ${
+                  className={`font-semibold text-sm sm:text-base ${
                     p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"
                   }`}
                 >
                   {p.eloChange >= 0 ? "+" : ""}
                   {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
                 </div>
-                <div className="text-xs text-muted-foreground text-nowrap">
+                <div className="text-xs text-muted-foreground whitespace-nowrap">
                   ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
                 </div>
               </div>

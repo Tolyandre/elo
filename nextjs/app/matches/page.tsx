@@ -112,7 +112,7 @@ function MatchesPageWrapped() {
         </Card>
 
         {filtered.map((m) => (
-          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable compact />
+          <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
         ))}
       </div>
     );
