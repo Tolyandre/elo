@@ -26,7 +26,12 @@ export default function PlayersAdminPage() {
     const [actionLoading, setActionLoading] = useState(false);
 
     // Sort players alphabetically for admin view
-    const players = [...playersFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    const sortedPlayers = [...playersFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+    // Filter players by search term
+    const players = newName.trim() === ""
+        ? sortedPlayers
+        : sortedPlayers.filter(p => p.name.toLowerCase().includes(newName.toLowerCase()));
 
     useEffect(() => {
         let mounted = true;
@@ -131,7 +136,14 @@ export default function PlayersAdminPage() {
             </div>
 
             <section className="mt-6">
-                <h2 className="text-lg font-medium mb-3">Список игроков</h2>
+                <h2 className="text-lg font-medium mb-3">
+                    Список игроков
+                    {newName.trim() !== "" && (
+                        <span className="text-sm font-normal text-muted-foreground ml-2">
+                            (найдено: {players.length} из {sortedPlayers.length})
+                        </span>
+                    )}
+                </h2>
                 {players.length === 0 ? (
                     <p>Нет игроков</p>
                 ) : (
@@ -145,7 +157,7 @@ export default function PlayersAdminPage() {
                                             <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{player.name}</Link>
                                             <div className="text-sm text-muted-foreground">
                                                 Рейтинг: {player.rank.now.elo.toFixed(0)}
-                                                {player.rank.now.rank && ` (#{player.rank.now.rank})`}
+                                                {player.rank.now.rank && ` (#${player.rank.now.rank})`}
                                             </div>
                                         </div>
                                         <div className="flex gap-2 ml-4">

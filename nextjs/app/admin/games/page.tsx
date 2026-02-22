@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function GamesAdminPage() {
-    const [games, setGames] = useState<GameList | null>(null);
+    const [allGames, setAllGames] = useState<GameList | null>(null);
     const [me, setMe] = useState<User | undefined | null>(null);
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
@@ -25,6 +25,11 @@ export default function GamesAdminPage() {
     const [renameValue, setRenameValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Filter games by search term
+    const games = allGames && newName.trim() !== ""
+        ? { games: allGames.games.filter(g => g.name.toLowerCase().includes(newName.toLowerCase())) }
+        : allGames;
+
     useEffect(() => {
         let mounted = true;
 
@@ -32,7 +37,7 @@ export default function GamesAdminPage() {
             const [meRes, gamesRes] = await Promise.all([getMePromise(), getGamesPromise()]);
             if (!mounted) return;
             setMe(meRes === undefined ? null : meRes);
-            setGames({ games: (gamesRes.games || []).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })) });
+            setAllGames({ games: (gamesRes.games || []).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })) });
         })();
 
         return () => {
@@ -57,7 +62,7 @@ export default function GamesAdminPage() {
         try {
             setActionLoading(true);
             const updated = await patchGamePromise(selectedId, { name: newName });
-            setGames((g) => {
+            setAllGames((g) => {
                 if (!g) return g;
                 const newList = g.games.map((it) => (it.id === selectedId ? { ...it, name: updated.name } : it));
                 newList.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
@@ -82,7 +87,7 @@ export default function GamesAdminPage() {
         try {
             setActionLoading(true);
             await deleteGamePromise(selectedId);
-            setGames((g) => {
+            setAllGames((g) => {
                 if (!g) return g;
                 return { games: g.games.filter((it) => it.id !== selectedId) };
             });
@@ -123,7 +128,7 @@ export default function GamesAdminPage() {
                         if (!newName || newName.trim() === "") return;
                         try {
                             const created: any = await createGamePromise({ name: newName.trim() });
-                            setGames((g) => {
+                            setAllGames((g) => {
                                 if (!g) return g;
                                 const next = [ ...g.games, { id: created.id, name: created.name, total_matches: 0, last_played_order: g.games.length } ];
                                 next.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
@@ -142,7 +147,14 @@ export default function GamesAdminPage() {
             </div>
 
             <section className="mt-6">
-                <h2 className="text-lg font-medium mb-3">Список игр</h2>
+                <h2 className="text-lg font-medium mb-3">
+                    Список игр
+                    {newName.trim() !== "" && allGames && (
+                        <span className="text-sm font-normal text-muted-foreground ml-2">
+                            (найдено: {games?.games.length || 0} из {allGames.games.length})
+                        </span>
+                    )}
+                </h2>
                 {!games ? (
                     <p>Loading games...</p>
                 ) : (
