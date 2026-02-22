@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
-import { addMatchPromise, Game, GameListItem } from "../api";
+import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useSettings } from "../settingsContext";
 import { useMe } from "../meContext";
@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { useGames } from "../gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
+import { GameCombobox } from "@/components/game-combobox";
 
 type Participant = {
     id: string;
@@ -31,7 +32,7 @@ function AddGameForm() {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
     const [eloChange, setEloChange] = useState<EloChange[]>([]);
-    const [gameName, setGameName] = useState("");
+    const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
@@ -43,9 +44,6 @@ function AddGameForm() {
     const settings = useSettings();
 
     const { games } = useGames();
-    const [filteredGames, setFilteredGames] = useState<GameListItem[]>([]);
-    const [showDropdown, setShowDropdown] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setParticipants(
@@ -55,31 +53,6 @@ function AddGameForm() {
             })
         );
     }, [selectedPlayerIds]);
-
-    useEffect(() => {
-        setFilteredGames(
-            games.filter((game) => game.name.toLowerCase().includes(gameName.toLowerCase()))
-                .sort((a, b) => a.last_played_order - b.last_played_order)
-                .map((g) => g)
-        );
-    }, [gameName, games]);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (
-                dropdownRef.current &&
-                !dropdownRef.current.contains(event.target as Node)
-            ) {
-                setShowDropdown(false);
-            }
-        };
-
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, []);
-
 
     const handlePointsChange = (id: string, value: string) => {
         setParticipants(
@@ -135,17 +108,10 @@ function AddGameForm() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submitting) return;
-        if (!gameName.trim()) return;
+        if (!selectedGameId) return;
         if (participants.length === 0) return;
         // Проверка ошибок
         if (Object.values(errors).some(Boolean)) return;
-
-        // Find game by name to get its ID
-        const game = games.find(g => g.name === gameName);
-        if (!game) {
-            setBottomErrorMessage("Игра не найдена. Добавьте игру с помощью админки.");
-            return;
-        }
 
         const score: Record<string, number> = {};
         participants.forEach(p => {
@@ -155,7 +121,7 @@ function AddGameForm() {
         setSubmitting(true);
         try {
             await addMatchPromise({
-                game_id: game.id,
+                game_id: selectedGameId,
                 score,
             });
             setSuccess(true);
@@ -184,39 +150,7 @@ function AddGameForm() {
                 <label className="block font-semibold mb-2" htmlFor="gameName">
                     Название игры:
                 </label>
-                <div className="relative">
-                    <input
-                        id="gameName"
-                        type="text"
-                        value={gameName}
-                        onChange={(e) => {
-                            setGameName(e.target.value);
-                            setShowDropdown(true);
-                        }}
-                        className="border rounded px-2 py-1 w-full"
-                        onFocus={() => setShowDropdown(true)}
-                        required
-                        autoComplete="off"
-                    />
-                    {showDropdown && filteredGames.length > 0 && (
-                        <div
-                            ref={dropdownRef}
-                            className="absolute z-10 mt-1 w-full my-background border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
-                            {filteredGames.map((game, index) => (
-                                <div
-                                    key={index}
-                                    className="p-2 hover:bg-gray-500 cursor-pointer"
-                                    onClick={() => {
-                                        setGameName(game.name);
-                                        setShowDropdown(false);
-                                    }}
-                                >
-                                    {game.name}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
             </div>
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
@@ -263,7 +197,7 @@ function AddGameForm() {
             <button
                 type="submit"
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors flex items-center justify-center"
-                disabled={participants.length === 0 || !gameName.trim() || submitting}
+                disabled={participants.length === 0 || !selectedGameId || submitting}
                 aria-busy={submitting}
             >
                 {submitting ? (

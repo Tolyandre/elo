@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, Plus } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -18,8 +18,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { usePlayers } from "@/app/players/PlayersContext"
 import { useGames } from "@/app/gamesContext"
+import { createGamePromise } from "@/app/api"
 
 export function GameCombobox({
   value: controlledValue,
@@ -30,10 +30,37 @@ export function GameCombobox({
 }) {
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
+  const [searchQuery, setSearchQuery] = React.useState("")
+  const [creating, setCreating] = React.useState(false)
 
   const value = controlledValue !== undefined ? controlledValue : internalValue
 
-  const { games } = useGames();
+  const { games, invalidate } = useGames();
+
+  const handleCreateGame = async () => {
+    if (!searchQuery.trim() || creating) return;
+
+    setCreating(true);
+    try {
+      const newGame = await createGamePromise({ name: searchQuery.trim() });
+      invalidate();
+
+      // Wait a bit for context to update
+      setTimeout(() => {
+        if (controlledValue === undefined) {
+          setInternalValue(newGame.id);
+        }
+        if (onChange) {
+          onChange(newGame.id);
+        }
+        setOpen(false);
+        setSearchQuery("");
+        setCreating(false);
+      }, 100);
+    } catch (err) {
+      setCreating(false);
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -49,10 +76,27 @@ export function GameCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[200px] p-0">
-        <Command>
-          <CommandInput placeholder="Искать игру..." className="h-9" />
+        <Command shouldFilter={true}>
+          <CommandInput
+            placeholder="Искать игру..."
+            className="h-9"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+          />
           <CommandList>
-            <CommandEmpty>Игра не найдена.</CommandEmpty>
+            <CommandEmpty>
+              <div className="py-2 px-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-sm"
+                  onClick={handleCreateGame}
+                  disabled={creating || !searchQuery.trim()}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {creating ? "Создание..." : `Создать "${searchQuery}"`}
+                </Button>
+              </div>
+            </CommandEmpty>
             <CommandGroup>
               {games
                .sort((a, b) => a.name > b.name ? 1 : -1)
