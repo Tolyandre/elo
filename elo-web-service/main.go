@@ -52,6 +52,7 @@ func main() {
 	router.PATCH("/users/:userId", oauth2.DeserializeUser(), api.PatchUser)
 	router.GET("/matches", api.ListMatches)
 	router.POST("/matches", oauth2.DeserializeUser(), api.AddMatch)
+	router.PUT("/matches/:id", oauth2.DeserializeUser(), api.UpdateMatch)
 	router.GET("/settings", api.ListSettings)
 	router.GET("/games", api.ListGames)
 	router.GET("/games/:id", api.GetGame)

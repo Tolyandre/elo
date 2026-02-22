@@ -112,3 +112,42 @@ JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
 ORDER BY m.date DESC NULLS LAST, m.id DESC
 LIMIT 1;
+
+-- name: GetMatch :one
+SELECT * FROM matches
+WHERE id = $1
+FOR UPDATE;
+
+-- name: UpdateMatch :exec
+UPDATE matches
+SET date = $2, game_id = $3
+WHERE id = $1;
+
+-- name: GetMatchesFromDate :many
+SELECT m.*
+FROM matches m
+WHERE m.date >= $1 OR (m.date IS NULL AND $1 IS NOT NULL)
+ORDER BY m.date ASC NULLS FIRST, m.id ASC;
+
+-- name: GetMatchScoresForMatch :many
+SELECT player_id, score
+FROM match_scores
+WHERE match_id = $1;
+
+-- name: DeleteMatchScores :exec
+DELETE FROM match_scores
+WHERE match_id = $1;
+
+-- name: UpdateMatchScoreElo :exec
+UPDATE match_scores
+SET elo_pay = $3, elo_earn = $4, new_elo = $5
+WHERE match_id = $1 AND player_id = $2;
+
+-- name: GetPlayerLatestEloBeforeMatch :one
+SELECT ms.new_elo
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.player_id = $1
+  AND (m.date < $2 OR (m.date = $2 AND m.id < $3))
+ORDER BY m.date DESC NULLS LAST, m.id DESC
+LIMIT 1;

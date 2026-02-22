@@ -21,14 +21,19 @@ type Querier interface {
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
+	DeleteMatchScores(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
+	GetMatch(ctx context.Context, id int32) (Match, error)
+	GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]GetMatchScoresForMatchRow, error)
+	GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error)
+	GetPlayerLatestEloBeforeMatch(ctx context.Context, arg GetPlayerLatestEloBeforeMatchParams) (pgtype.Float8, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
@@ -50,6 +55,8 @@ type Querier interface {
 	// DO UPDATE SET rating = EXCLUDED.rating;
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
+	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
+	UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
