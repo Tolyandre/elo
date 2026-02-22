@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { toast } from "sonner";
 import { PlayerCombobox } from "@/components/player-combobox";
+import { GameCombobox } from "@/components/game-combobox";
 import { MatchCard } from "@/components/match-card";
 
 export default function MatchPage() {
@@ -102,6 +103,7 @@ function MatchPageWrapped() {
 function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => void }) {
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState("");
+  const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
   const [playerScores, setPlayerScores] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -123,6 +125,8 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
       } else {
         setDate("");
       }
+
+      setSelectedGameId(match.game_id);
 
       const scores: Record<string, string> = {};
       Object.entries(match.score).forEach(([playerId, data]) => {
@@ -172,6 +176,11 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
       return;
     }
 
+    if (!selectedGameId) {
+      setError("Игра обязательна");
+      return;
+    }
+
     if (Object.keys(playerScores).length < 2) {
       setError("В партии должно быть минимум 2 игрока");
       return;
@@ -191,7 +200,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
     setSubmitting(true);
     try {
       await updateMatchPromise(match.id, {
-        game_id: match.game_id,
+        game_id: selectedGameId,
         score: scores,
         date: new Date(date).toISOString(),
       });
@@ -230,19 +239,28 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
               </Alert>
             )}
 
-            <Field>
-              <FieldLabel htmlFor="date">Дата и время</FieldLabel>
-              <FieldContent>
-                <input
-                  id="date"
-                  type="datetime-local"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  required
-                />
-              </FieldContent>
-            </Field>
+            <div className="flex items-center gap-4">
+              <label htmlFor="date" className="text-sm font-medium w-24 flex-shrink-0">
+                Дата и время
+              </label>
+              <input
+                id="date"
+                type="datetime-local"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="flex h-10 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                required
+              />
+            </div>
+
+            <div className="flex items-center gap-4">
+              <label htmlFor="game" className="text-sm font-medium w-24 flex-shrink-0">
+                Игра
+              </label>
+              <div className="flex-1">
+                <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
+              </div>
+            </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -255,32 +273,28 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
               {Object.entries(playerScores).map(([playerId, score]) => {
                 const player = allPlayers.find((p) => p.id === playerId);
                 return (
-                  <div key={playerId} className="flex items-end gap-2">
-                    <Field className="flex-1">
-                      <FieldLabel htmlFor={`score-${playerId}`}>
-                        {player?.name || `Игрок ${playerId}`}
-                      </FieldLabel>
-                      <FieldContent>
-                        <input
-                          id={`score-${playerId}`}
-                          type="number"
-                          step="0.1"
-                          value={score}
-                          onChange={(e) =>
-                            setPlayerScores((prev) => ({ ...prev, [playerId]: e.target.value }))
-                          }
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          required
-                        />
-                      </FieldContent>
-                    </Field>
+                  <div key={playerId} className="flex items-center gap-2">
+                    <label htmlFor={`score-${playerId}`} className="flex-1 text-sm font-medium min-w-0">
+                      <span className="truncate block">{player?.name || `Игрок ${playerId}`}</span>
+                    </label>
+                    <input
+                      id={`score-${playerId}`}
+                      type="number"
+                      step="0.1"
+                      value={score}
+                      onChange={(e) =>
+                        setPlayerScores((prev) => ({ ...prev, [playerId]: e.target.value }))
+                      }
+                      className="flex h-10 w-28 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      required
+                    />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       onClick={() => handleRemovePlayer(playerId)}
                       disabled={Object.keys(playerScores).length <= 2}
-                      className="h-10 w-10 mb-0"
+                      className="h-10 w-10"
                       title="Удалить игрока"
                     >
                       <X className="h-4 w-4" />
@@ -291,23 +305,23 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
               {availablePlayersToAdd.length > 0 && (
                 <div className="pt-2 border-t">
-                  <div className="flex items-end gap-2">
-                    <Field className="flex-1">
-                      <FieldLabel>Добавить игрока</FieldLabel>
-                      <FieldContent>
-                        <PlayerCombobox
-                          value={selectedPlayerToAdd}
-                          onChange={setSelectedPlayerToAdd}
-                        />
-                      </FieldContent>
-                    </Field>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium w-32 flex-shrink-0">
+                      Добавить игрока
+                    </label>
+                    <div className="flex-1">
+                      <PlayerCombobox
+                        value={selectedPlayerToAdd}
+                        onChange={setSelectedPlayerToAdd}
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
                       onClick={handleAddPlayer}
                       disabled={!selectedPlayerToAdd}
-                      className="h-10 w-10 mb-0"
+                      className="h-10 w-10"
                       title="Добавить"
                     >
                       <Plus className="h-4 w-4" />
