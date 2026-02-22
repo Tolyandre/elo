@@ -2,7 +2,8 @@
 import React from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { GameList, getGamesPromise, patchGamePromise, deleteGamePromise, createGamePromise, getMePromise, User } from "@/app/api";
+import { patchGamePromise, deleteGamePromise, createGamePromise, getMePromise, User } from "@/app/api";
+import { useGames } from "@/app/gamesContext";
 import {
     Dialog,
     DialogContent,
@@ -15,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function GamesAdminPage() {
-    const [allGames, setAllGames] = useState<GameList | null>(null);
+    const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
     const [me, setMe] = useState<User | undefined | null>(null);
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
@@ -25,19 +26,21 @@ export default function GamesAdminPage() {
     const [renameValue, setRenameValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Sort games alphabetically for admin view
+    const sortedGames = [...gamesFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
     // Filter games by search term
-    const games = allGames && newName.trim() !== ""
-        ? { games: allGames.games.filter(g => g.name.toLowerCase().includes(newName.toLowerCase())) }
-        : allGames;
+    const games = newName.trim() !== ""
+        ? sortedGames.filter(g => g.name.toLowerCase().includes(newName.toLowerCase()))
+        : sortedGames;
 
     useEffect(() => {
         let mounted = true;
 
         (async () => {
-            const [meRes, gamesRes] = await Promise.all([getMePromise(), getGamesPromise()]);
+            const meRes = await getMePromise();
             if (!mounted) return;
             setMe(meRes === undefined ? null : meRes);
-            setAllGames({ games: (gamesRes.games || []).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })) });
         })();
 
         return () => {
@@ -61,13 +64,8 @@ export default function GamesAdminPage() {
         }
         try {
             setActionLoading(true);
-            const updated = await patchGamePromise(selectedId, { name: newName });
-            setAllGames((g) => {
-                if (!g) return g;
-                const newList = g.games.map((it) => (it.id === selectedId ? { ...it, name: updated.name } : it));
-                newList.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-                return { games: newList };
-            });
+            await patchGamePromise(selectedId, { name: newName });
+            invalidateGames();
             setRenameOpen(false);
         } catch (err) {
             // toast shown by API helper
@@ -87,10 +85,7 @@ export default function GamesAdminPage() {
         try {
             setActionLoading(true);
             await deleteGamePromise(selectedId);
-            setAllGames((g) => {
-                if (!g) return g;
-                return { games: g.games.filter((it) => it.id !== selectedId) };
-            });
+            invalidateGames();
             setDeleteOpen(false);
         } catch (err) {
             // toast shown by API helper
@@ -127,13 +122,8 @@ export default function GamesAdminPage() {
                     onClick={async () => {
                         if (!newName || newName.trim() === "") return;
                         try {
-                            const created: any = await createGamePromise({ name: newName.trim() });
-                            setAllGames((g) => {
-                                if (!g) return g;
-                                const next = [ ...g.games, { id: created.id, name: created.name, total_matches: 0, last_played_order: g.games.length } ];
-                                next.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-                                return { games: next };
-                            });
+                            await createGamePromise({ name: newName.trim() });
+                            invalidateGames();
                             setNewName("");
                         } catch (err) {
                             // toast already shown
@@ -149,19 +139,19 @@ export default function GamesAdminPage() {
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">
                     Список игр
-                    {newName.trim() !== "" && allGames && (
+                    {newName.trim() !== "" && (
                         <span className="text-sm font-normal text-muted-foreground ml-2">
-                            (найдено: {games?.games.length || 0} из {allGames.games.length})
+                            (найдено: {games.length} из {sortedGames.length})
                         </span>
                     )}
                 </h2>
-                {!games ? (
-                    <p>Loading games...</p>
+                {games.length === 0 ? (
+                    <p>Нет игр</p>
                 ) : (
                     <>
                         {/* Mobile list */}
                         <div className="sm:hidden space-y-2 mb-4">
-                            {games.games.map((game) => (
+                            {games.map((game) => (
                                 <div key={game.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
@@ -202,7 +192,7 @@ export default function GamesAdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {games.games.map((game) => (
+                                    {games.map((game) => (
                                         <tr key={game.id} className="align-top">
                                             <td className="px-4 py-2">
                                                 <Link className="underline" href={`/matches?game=${game.id}`}>{game.name}</Link>
