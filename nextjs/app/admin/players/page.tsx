@@ -2,7 +2,8 @@
 import React from "react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getPlayersPromise, patchPlayerPromise, deletePlayerPromise, createPlayerPromise, getMePromise, User, Player } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, getMePromise, User } from "@/app/api";
+import { usePlayers } from "@/app/players/PlayersContext";
 import {
     Dialog,
     DialogContent,
@@ -14,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function PlayersAdminPage() {
-    const [players, setPlayers] = useState<Player[] | null>(null);
+    const { players: playersFromContext, invalidate: invalidatePlayers } = usePlayers();
     const [me, setMe] = useState<User | undefined | null>(null);
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
@@ -24,14 +25,16 @@ export default function PlayersAdminPage() {
     const [renameValue, setRenameValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
 
+    // Sort players alphabetically for admin view
+    const players = [...playersFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
     useEffect(() => {
         let mounted = true;
 
         (async () => {
-            const [meRes, playersRes] = await Promise.all([getMePromise(), getPlayersPromise()]);
+            const meRes = await getMePromise();
             if (!mounted) return;
             setMe(meRes === undefined ? null : meRes);
-            setPlayers((playersRes || []).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })));
         })();
 
         return () => {
@@ -55,13 +58,8 @@ export default function PlayersAdminPage() {
         }
         try {
             setActionLoading(true);
-            const updated = await patchPlayerPromise(selectedId, { name: newName });
-            setPlayers((p) => {
-                if (!p) return p;
-                const newList = p.map((it) => (it.id === selectedId ? { ...it, name: updated.name } : it));
-                newList.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-                return newList;
-            });
+            await patchPlayerPromise(selectedId, { name: newName });
+            invalidatePlayers();
             setRenameOpen(false);
         } catch (err) {
             // toast shown by API helper
@@ -81,10 +79,7 @@ export default function PlayersAdminPage() {
         try {
             setActionLoading(true);
             await deletePlayerPromise(selectedId);
-            setPlayers((p) => {
-                if (!p) return p;
-                return p.filter((it) => it.id !== selectedId);
-            });
+            invalidatePlayers();
             setDeleteOpen(false);
         } catch (err) {
             // toast shown by API helper
@@ -121,21 +116,8 @@ export default function PlayersAdminPage() {
                         onClick={async () => {
                             if (!newName || newName.trim() === "") return;
                             try {
-                                const created: any = await createPlayerPromise({ name: newName.trim() });
-                                setPlayers((p) => {
-                                    if (!p) return p;
-                                    const next = [...p, {
-                                        id: created.id,
-                                        name: created.name,
-                                        rank: {
-                                            now: { elo: 1000, rank: null, matches_left_for_ranked: 5 },
-                                            day_ago: { elo: 1000, rank: null, matches_left_for_ranked: 5 },
-                                            week_ago: { elo: 1000, rank: null, matches_left_for_ranked: 5 }
-                                        }
-                                    }];
-                                    next.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
-                                    return next;
-                                });
+                                await createPlayerPromise({ name: newName.trim() });
+                                invalidatePlayers();
                                 setNewName("");
                             } catch (err) {
                                 // toast already shown
@@ -150,8 +132,8 @@ export default function PlayersAdminPage() {
 
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">Список игроков</h2>
-                {!players ? (
-                    <p>Загрузка игроков...</p>
+                {players.length === 0 ? (
+                    <p>Нет игроков</p>
                 ) : (
                     <>
                         {/* Mobile list */}
