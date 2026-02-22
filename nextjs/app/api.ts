@@ -301,6 +301,53 @@ export async function patchUserPromise(userId: string, payload: { can_edit: bool
     }
 }
 
+export async function createPlayerPromise(payload: { name: string }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/players`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function patchPlayerPromise(playerId: string, payload: { name: string }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/players/${playerId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function deletePlayerPromise(playerId: string) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/players/${playerId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 async function handleJsonErrorResponse(response: Response) {
     let body: any;
     try {

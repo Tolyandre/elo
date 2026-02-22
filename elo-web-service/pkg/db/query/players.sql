@@ -26,3 +26,9 @@ WHERE name = $1;
 
 -- name: LockPlayerForEloCalculation :one
 SELECT id FROM players WHERE id = $1 FOR UPDATE;
+
+-- name: UpdatePlayer :one
+UPDATE players
+SET name = $2
+WHERE id = $1
+RETURNING *;

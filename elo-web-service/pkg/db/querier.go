@@ -57,6 +57,7 @@ type Querier interface {
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
 	UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error
+	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error

@@ -15,6 +15,12 @@ export default function AdminPage() {
             Управление пользователями
           </Link>
           <Link
+            href="/admin/players"
+            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 text-center"
+          >
+            Управление игроками
+          </Link>
+          <Link
             href="/admin/games"
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 text-center"
           >

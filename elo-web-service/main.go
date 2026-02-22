@@ -48,6 +48,9 @@ func main() {
 
 	router.GET("/ping", api.GetPing)
 	router.GET("/players", api.ListPlayers)
+	router.POST("/players", oauth2.DeserializeUser(), api.CreatePlayer)
+	router.PATCH("/players/:id", oauth2.DeserializeUser(), api.PatchPlayer)
+	router.DELETE("/players/:id", oauth2.DeserializeUser(), api.DeletePlayer)
 	router.GET("/users", api.ListUsers)
 	router.PATCH("/users/:userId", oauth2.DeserializeUser(), api.PatchUser)
 	router.GET("/matches", api.ListMatches)
