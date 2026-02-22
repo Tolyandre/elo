@@ -149,3 +149,27 @@ func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id int32) (in
 	err := row.Scan(&id)
 	return id, err
 }
+
+const updatePlayer = `-- name: UpdatePlayer :one
+UPDATE players
+SET name = $2
+WHERE id = $1
+RETURNING id, name, geologist_name, google_sheet_column
+`
+
+type UpdatePlayerParams struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error) {
+	row := q.db.QueryRow(ctx, updatePlayer, arg.ID, arg.Name)
+	var i Player
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.GoogleSheetColumn,
+	)
+	return i, err
+}

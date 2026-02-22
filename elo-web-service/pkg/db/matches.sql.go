@@ -53,6 +53,97 @@ func (q *Queries) DeleteAllMatches(ctx context.Context) error {
 	return err
 }
 
+const deleteMatchScores = `-- name: DeleteMatchScores :exec
+DELETE FROM match_scores
+WHERE match_id = $1
+`
+
+func (q *Queries) DeleteMatchScores(ctx context.Context, matchID int32) error {
+	_, err := q.db.Exec(ctx, deleteMatchScores, matchID)
+	return err
+}
+
+const getMatch = `-- name: GetMatch :one
+SELECT id, date, game_id, google_sheet_row FROM matches
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetMatch(ctx context.Context, id int32) (Match, error) {
+	row := q.db.QueryRow(ctx, getMatch, id)
+	var i Match
+	err := row.Scan(
+		&i.ID,
+		&i.Date,
+		&i.GameID,
+		&i.GoogleSheetRow,
+	)
+	return i, err
+}
+
+const getMatchScoresForMatch = `-- name: GetMatchScoresForMatch :many
+SELECT player_id, score
+FROM match_scores
+WHERE match_id = $1
+`
+
+type GetMatchScoresForMatchRow struct {
+	PlayerID int32   `json:"player_id"`
+	Score    float64 `json:"score"`
+}
+
+func (q *Queries) GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]GetMatchScoresForMatchRow, error) {
+	rows, err := q.db.Query(ctx, getMatchScoresForMatch, matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMatchScoresForMatchRow{}
+	for rows.Next() {
+		var i GetMatchScoresForMatchRow
+		if err := rows.Scan(&i.PlayerID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMatchesFromDate = `-- name: GetMatchesFromDate :many
+SELECT m.id, m.date, m.game_id, m.google_sheet_row
+FROM matches m
+WHERE m.date >= $1 OR (m.date IS NULL AND $1 IS NOT NULL)
+ORDER BY m.date ASC NULLS FIRST, m.id ASC
+`
+
+func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error) {
+	rows, err := q.db.Query(ctx, getMatchesFromDate, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Match{}
+	for rows.Next() {
+		var i Match
+		if err := rows.Scan(
+			&i.ID,
+			&i.Date,
+			&i.GameID,
+			&i.GoogleSheetRow,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPlayerLatestElo = `-- name: GetPlayerLatestElo :one
 SELECT ms.new_elo
 FROM match_scores ms
@@ -64,6 +155,29 @@ LIMIT 1
 
 func (q *Queries) GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestElo, playerID)
+	var new_elo pgtype.Float8
+	err := row.Scan(&new_elo)
+	return new_elo, err
+}
+
+const getPlayerLatestEloBeforeMatch = `-- name: GetPlayerLatestEloBeforeMatch :one
+SELECT ms.new_elo
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.player_id = $1
+  AND (m.date < $2 OR (m.date = $2 AND m.id < $3))
+ORDER BY m.date DESC NULLS LAST, m.id DESC
+LIMIT 1
+`
+
+type GetPlayerLatestEloBeforeMatchParams struct {
+	PlayerID int32              `json:"player_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+	ID       int32              `json:"id"`
+}
+
+func (q *Queries) GetPlayerLatestEloBeforeMatch(ctx context.Context, arg GetPlayerLatestEloBeforeMatchParams) (pgtype.Float8, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestEloBeforeMatch, arg.PlayerID, arg.Date, arg.ID)
 	var new_elo pgtype.Float8
 	err := row.Scan(&new_elo)
 	return new_elo, err
@@ -294,6 +408,48 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateMatch = `-- name: UpdateMatch :exec
+UPDATE matches
+SET date = $2, game_id = $3
+WHERE id = $1
+`
+
+type UpdateMatchParams struct {
+	ID     int32              `json:"id"`
+	Date   pgtype.Timestamptz `json:"date"`
+	GameID int32              `json:"game_id"`
+}
+
+func (q *Queries) UpdateMatch(ctx context.Context, arg UpdateMatchParams) error {
+	_, err := q.db.Exec(ctx, updateMatch, arg.ID, arg.Date, arg.GameID)
+	return err
+}
+
+const updateMatchScoreElo = `-- name: UpdateMatchScoreElo :exec
+UPDATE match_scores
+SET elo_pay = $3, elo_earn = $4, new_elo = $5
+WHERE match_id = $1 AND player_id = $2
+`
+
+type UpdateMatchScoreEloParams struct {
+	MatchID  int32         `json:"match_id"`
+	PlayerID int32         `json:"player_id"`
+	EloPay   pgtype.Float8 `json:"elo_pay"`
+	EloEarn  pgtype.Float8 `json:"elo_earn"`
+	NewElo   pgtype.Float8 `json:"new_elo"`
+}
+
+func (q *Queries) UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error {
+	_, err := q.db.Exec(ctx, updateMatchScoreElo,
+		arg.MatchID,
+		arg.PlayerID,
+		arg.EloPay,
+		arg.EloEarn,
+		arg.NewElo,
+	)
+	return err
 }
 
 const upsertMatchScore = `-- name: UpsertMatchScore :exec

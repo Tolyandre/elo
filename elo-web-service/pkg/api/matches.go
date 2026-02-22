@@ -6,11 +6,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 type addMatchJson struct {
 	GameId string             `json:"game_id" binding:"required"`
 	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
+}
+
+type updateMatchJson struct {
+	GameId string             `json:"game_id" binding:"required"`
+	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
+	Date   time.Time          `json:"date" binding:"required"`   // Date is required and cannot be null
 }
 
 type matchPlayerJson struct {
@@ -68,7 +75,7 @@ func (a *API) AddMatch(c *gin.Context) {
 	_, err = a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
 	if err != nil {
 		// Check if error is due to foreign key constraint violation
-		if contains(err.Error(), "foreign key constraint") || contains(err.Error(), "violates foreign key") {
+		if db.IsForeignKeyViolation(err) {
 			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
 			return
 		}
@@ -77,6 +84,73 @@ func (a *API) AddMatch(c *gin.Context) {
 	}
 
 	SuccessMessageResponse(c, http.StatusCreated, "Match is saved")
+}
+
+func (a *API) UpdateMatch(c *gin.Context) {
+	// Get match ID from URL parameter
+	matchIDStr := c.Param("id")
+	matchID, err := strconv.ParseInt(matchIDStr, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "Invalid match id: "+matchIDStr)
+		return
+	}
+
+	var payload updateMatchJson
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	user, err := MustGetCurrentUser(c, a.UserService)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	if !user.AllowEditing {
+		ErrorResponse(c, http.StatusForbidden, "You are not authorized to update matches")
+		return
+	}
+
+	// Parse game_id from string to int32
+	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "Invalid game_id: "+payload.GameId)
+		return
+	}
+
+	// Convert player IDs from string to int32
+	playerScores := make(map[int32]float64)
+	for playerIDStr, score := range payload.Score {
+		playerID, err := strconv.ParseInt(playerIDStr, 10, 32)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id: "+playerIDStr)
+			return
+		}
+		playerScores[int32(playerID)] = score
+	}
+
+	// Update match in database
+	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), int32(gameID), playerScores, payload.Date)
+	if err != nil {
+		// Check for specific error cases
+		if db.IsForeignKeyViolation(err) {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
+			return
+		}
+		if contains(err.Error(), "date change exceeds") {
+			ErrorResponse(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		if contains(err.Error(), "unable to get match") {
+			ErrorResponse(c, http.StatusNotFound, "Match not found")
+			return
+		}
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	SuccessMessageResponse(c, http.StatusOK, "Match is updated")
 }
 
 // contains checks if a string contains a substring (helper for error checking)
