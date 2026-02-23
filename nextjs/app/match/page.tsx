@@ -225,7 +225,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
         </Button>
       </DialogTrigger>
       <DialogContent
-        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto"
+        className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto w-[calc(100vw-2rem)] max-w-[500px]"
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
@@ -254,8 +254,8 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
               </Alert>
             )}
 
-            <div className="flex items-center gap-4">
-              <label htmlFor="date" className="text-sm font-medium w-24 flex-shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label htmlFor="date" className="text-sm font-medium sm:w-24 sm:flex-shrink-0">
                 Дата и время
               </label>
               <input
@@ -263,16 +263,16 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
                 type="datetime-local"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="flex h-10 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-10 w-full sm:flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 required
               />
             </div>
 
-            <div className="flex items-center gap-4">
-              <label htmlFor="game" className="text-sm font-medium w-24 flex-shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label htmlFor="game" className="text-sm font-medium sm:w-24 sm:flex-shrink-0">
                 Игра
               </label>
-              <div className="flex-1">
+              <div className="w-full sm:flex-1">
                 <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
               </div>
             </div>
@@ -319,11 +319,11 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
               {availablePlayersToAdd.length > 0 && (
                 <div className="pt-2 border-t">
-                  <div className="flex items-center gap-4">
-                    <label className="text-sm font-medium w-32 flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                    <label className="text-sm font-medium sm:w-32 sm:flex-shrink-0">
                       Добавить игрока
                     </label>
-                    <div className="flex-1">
+                    <div className="w-full sm:flex-1">
                       <PlayerCombobox
                         value={selectedPlayerToAdd}
                         onChange={setSelectedPlayerToAdd}

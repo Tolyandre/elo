@@ -69,13 +69,13 @@ export function GameCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-[200px] justify-between"
+          className="w-full justify-between"
         >
           {value ? games.find((game) => game.id === value)?.name : "Игра..."}
           <ChevronsUpDown className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0">
+      <PopoverContent className="w-full p-0">
         <Command shouldFilter={true}>
           <CommandInput
             placeholder="Искать игру..."

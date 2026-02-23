@@ -50,7 +50,7 @@ export function PlayerCombobox({
       variant="outline"
       role="combobox"
       aria-expanded={open}
-      className="w-[200px] justify-between"
+      className="w-full justify-between"
     >
       {value
         ? players.find((player) => player.id === value)?.name ?? value
@@ -84,7 +84,7 @@ export function PlayerCombobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        className="w-[200px] p-0"
+        className="w-full p-0"
         side="bottom"
         align="start"
         avoidCollisions={false}
