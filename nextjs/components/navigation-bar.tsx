@@ -21,7 +21,8 @@ import { useSettings } from "@/app/settingsContext"
 import { useMe } from "@/app/meContext"
 import { NavigationMenuSub } from "@radix-ui/react-navigation-menu"
 import { useTheme } from "next-themes"
-import { Moon, Sun, Code2, Settings, LogIn } from "lucide-react"
+import { Moon, Sun, Settings } from "lucide-react"
+import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
@@ -41,7 +42,7 @@ export function NavigationBar() {
               <ModeToggleSubMenu />
               <ListItem href="https://github.com/Tolyandre/elo" title={
                 <>
-                  <Code2 className="inline-block mr-2 h-6 w-6 align-middle" />
+                  <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
                   Исходный код
                 </>
               }>
@@ -68,7 +69,7 @@ export function NavigationBar() {
                   <ListItem href={`${EloWebServiceBaseUrl}/auth/login`} title=
                     {
                       <>
-                        <LogIn className="inline-block mr-2 h-6 w-6 align-middle" />
+                        <SiGoogle className="inline-block mr-2 h-6 w-6 align-middle" />
                         Войти
                       </>
                     }>
