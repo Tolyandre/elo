@@ -21,7 +21,7 @@ import { useSettings } from "@/app/settingsContext"
 import { useMe } from "@/app/meContext"
 import { NavigationMenuSub } from "@radix-ui/react-navigation-menu"
 import { useTheme } from "next-themes"
-import { Moon, Sun, Settings } from "lucide-react"
+import { Moon, Sun, Settings, LogOut } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -59,7 +59,12 @@ export function NavigationBar() {
               {(() => {
                 if (me.id) {
                   return (
-                    <ListItem onClick={me.logout} title="Выйти" >
+                    <ListItem onClick={me.logout} title={
+                      <>
+                        <LogOut className="inline-block mr-2 h-6 w-6 align-middle" />
+                        Выйти
+                      </>
+                    } >
                       {me.name}
                     </ListItem>
                   );
