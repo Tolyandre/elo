@@ -10,8 +10,8 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { MatchCard } from "@/components/match-card";
+import { useMe } from "../meContext";
 
 export default function MatchesPage() {
   return (
@@ -24,7 +24,7 @@ export default function MatchesPage() {
 function MatchesPageWrapped() {
   const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
   const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
-  const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
+  const { roundToInteger, setRoundToInteger } = useMe();
   const { matches, loading, error } = useMatches();
   const searchParams = useSearchParams();
   const router = useRouter();

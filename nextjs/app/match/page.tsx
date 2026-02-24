@@ -15,6 +15,9 @@ import { toast } from "sonner";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { MatchCard } from "@/components/match-card";
+import { Field, FieldGroup, FieldTitle } from "@/components/ui/field";
+import { Card, CardContent } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 
 export default function MatchPage() {
   return (
@@ -28,6 +31,7 @@ function MatchPageWrapped() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get("id");
   const { matches, loading, error, invalidate } = useMatches();
+  const { roundToInteger, setRoundToInteger } = useMe();
 
   const match = matches?.find((m) => m.id.toString() === matchId);
 
@@ -70,7 +74,7 @@ function MatchPageWrapped() {
   }
 
   return (
-    <main className="container mx-auto p-4 max-w-2xl">
+    <main className="container mx-auto p-4 max-w-2xl space-y-4">
       <div className="mb-4">
         <Button asChild variant="outline">
           <Link href="/matches">
@@ -90,7 +94,18 @@ function MatchPageWrapped() {
         )}
       </div>
 
-      <MatchCard match={match} />
+      <Card>
+        <CardContent>
+          <FieldGroup>
+            <Field orientation="horizontal">
+              <FieldTitle>Округлять до целого</FieldTitle>
+              <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+            </Field>
+          </FieldGroup>
+        </CardContent>
+      </Card>
+
+      <MatchCard match={match} roundToInteger={roundToInteger} />
     </main>
   );
 }
