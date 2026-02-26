@@ -22,6 +22,13 @@ func MigrateUp() error {
 	return nil
 }
 
+// MigrateUpWithDSN applies migrations to an arbitrary DSN.
+// Intended for local dev (--migrate-db-dsn flag) and integration tests.
+// Does not require the global config to be loaded.
+func MigrateUpWithDSN(dsn string) error {
+	return runMigrationsEmbedded(dsn)
+}
+
 // runMigrationsEmbedded runs migrations embedded into the binary using the iofs source driver.
 func runMigrationsEmbedded(dsn string) error {
 	src, err := sourceiofs.New(migrations.MigrationsFS, ".")

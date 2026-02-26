@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: docker.io/postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: elo
+      POSTGRES_USER: elo
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"   # non-default host port — avoids conflict with a local postgres on 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elo -d elo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  seed:
+    image: docker.io/postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: devpassword
+    volumes:
+      - ./elo-web-service/testdata/seed.sql:/seed.sql:ro
+    command: ["psql", "-h", "postgres", "-U", "elo", "-d", "elo", "-f", "/seed.sql"]
+
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    container_name: dex
+    restart: unless-stopped
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex/config.docker.yaml:/etc/dex/config.yaml:ro
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+
+volumes:
+  postgres_data:

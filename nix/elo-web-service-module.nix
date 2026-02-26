@@ -51,6 +51,11 @@ in
             description = "Oauth2 url to get ID and access token";
           };
 
+          oauth2_userinfo_uri = lib.mkOption {
+            type = lib.types.str;
+            description = "OAuth2 userinfo endpoint URI";
+          };
+
           frontend_uri = lib.mkOption {
             type = lib.types.str;
             description = "Frontend URI (used for CORS and redirects)";

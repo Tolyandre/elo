@@ -59,9 +59,11 @@ func GetOauthToken(code string) (*OauthToken, error) {
 		return nil, err
 	}
 
+	accessToken, _ := GoogleOauthTokenRes["access_token"].(string)
+	idToken, _     := GoogleOauthTokenRes["id_token"].(string)
 	tokenBody := &OauthToken{
-		Access_token: GoogleOauthTokenRes["access_token"].(string),
-		Id_token:     GoogleOauthTokenRes["id_token"].(string),
+		Access_token: accessToken,
+		Id_token:     idToken,
 	}
 
 	return tokenBody, nil

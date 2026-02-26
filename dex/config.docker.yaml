@@ -1,0 +1,28 @@
+issuer: http://localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+  responseTypes: [code]
+
+staticClients:
+  - id: elo-local
+    secret: elo-local-secret
+    name: "Elo (local docker)"
+    redirectURIs:
+      - http://localhost:3000/oauth2-callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: dev@example.com
+    # bcrypt hash of "devpassword" (cost 14).
+    # To regenerate: htpasswd -bnBC 14 "" devpassword | tr -d ':\n'
+    hash: "$2y$14$TznmJ.69f9htjVjp4m2BRe0bfJG.nlg95nB2EqgitaStMDjJKm6ES"
+    username: "Dev User"
+    userID: "dev-user-001"

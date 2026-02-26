@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
 type GoogleUserResult struct {
@@ -21,8 +23,7 @@ type GoogleUserResult struct {
 }
 
 func GetGoogleUser(access_token string, id_token string) (*GoogleUserResult, error) {
-	// TODO: configure url
-	rootUrl := fmt.Sprintf("https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=%s", access_token)
+	rootUrl := fmt.Sprintf("%s?alt=json&access_token=%s", cfg.Config.Oauth2UserinfoUri, access_token)
 
 	req, err := http.NewRequest("GET", rootUrl, nil)
 	if err != nil {
@@ -56,15 +57,25 @@ func GetGoogleUser(access_token string, id_token string) (*GoogleUserResult, err
 		return nil, err
 	}
 
-	userBody := &GoogleUserResult{
-		Id: GoogleUserRes["id"].(string),
-		//Email:          GoogleUserRes["email"].(string),
-		//Verified_email: GoogleUserRes["verified_email"].(bool),
-		Name:        GoogleUserRes["name"].(string),
-		Given_name:  GoogleUserRes["given_name"].(string),
-		Picture:     GoogleUserRes["picture"].(string),
-		Family_name: GoogleUserRes["family_name"].(string),
+	// Support both OIDC standard ("sub") and Google v1 API ("id").
+	id, _ := GoogleUserRes["sub"].(string)
+	if id == "" {
+		id, _ = GoogleUserRes["id"].(string)
+	}
+	if id == "" {
+		return nil, errors.New("could not extract user id from userinfo response")
 	}
 
-	return userBody, nil
+	name, _       := GoogleUserRes["name"].(string)
+	givenName, _  := GoogleUserRes["given_name"].(string)
+	familyName, _ := GoogleUserRes["family_name"].(string)
+	picture, _    := GoogleUserRes["picture"].(string)
+
+	return &GoogleUserResult{
+		Id:          id,
+		Name:        name,
+		Given_name:  givenName,
+		Family_name: familyName,
+		Picture:     picture,
+	}, nil
 }

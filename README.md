@@ -7,7 +7,9 @@ Demo https://tolyandre.github.io/elo/
 
 # How to build and run
 
-Use [direnv](https://direnv.net/) with [nix-direnv](https://github.com/nix-community/nix-direnv) and [shell.nix](./shell.nix) to install development tools.
+Use [direnv](https://direnv.net/) with [nix-direnv](https://github.com/nix-community/nix-direnv) and [shell.nix](./shell.nix) to install development tools. 
+
+For vscode direnv works with [Nix Extension Pack](https://marketplace.visualstudio.com/items?itemName=pinage404.nix-extension-pack).
 
 I am using NixOS to develop and host this project. Mac and other Linux users can install Nix package manager. If you not familiar with Nix, I suggest you read documentation first https://nix.dev/manual/nix/2.28/quick-start.html
 
