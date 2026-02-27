@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	mainapi "github.com/tolyandre/elo-web-service/pkg/api"
@@ -32,7 +33,7 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 		tcpostgres.WithDatabase("elo_test"),
 		tcpostgres.WithUsername("elo_test"),
 		tcpostgres.WithPassword("test_secret"),
-		tcpostgres.WithWaitStrategy(
+		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
 				WithStartupTimeout(30*time.Second),

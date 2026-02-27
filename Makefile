@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test
 
 ## Start all dev dependencies (postgres, dex, migrations, seed)
 # dev-up:
@@ -30,3 +30,9 @@ backend-run:
 ## Run the frontend dev server
 frontend-run:
 	pnpm --dir ./nextjs dev
+
+## Run integration tests (requires colima or Docker with socket at ~/.colima/default/docker.sock)
+integration-test:
+	DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock" \
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	go test -C elo-web-service -tags integration ./integration_test/ -v
