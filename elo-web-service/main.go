@@ -19,6 +19,17 @@ import (
 
 func main() {
 	cfg.ReadConfiguration()
+
+	// --migrate-db-dsn: run migrations against an explicit DSN, no full config required.
+	if cfg.MigrateDBDSN != "" {
+		if err := db.MigrateUpWithDSN(cfg.MigrateDBDSN); err != nil {
+			log.Fatalf("migrations failed: %v", err)
+			os.Exit(1)
+		}
+		log.Println("migrations applied; exiting as --migrate-db-dsn was provided")
+		return
+	}
+
 	if cfg.MigrateDB {
 		if err := db.MigrateUp(); err != nil {
 			log.Fatalf("migrations failed: %v", err)

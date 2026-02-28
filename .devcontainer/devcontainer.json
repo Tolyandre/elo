@@ -1,0 +1,13 @@
+{
+  "name": "Elo Dev",
+  "dockerComposeFile": ["../docker-compose.yml", "../docker-compose.devcontainer.yml"],
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [3000, 8080, 5433, 5556],
+  "postCreateCommand": "pnpm --dir ./nextjs install",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "dbaeumer.vscode-eslint"]
+    }
+  }
+}

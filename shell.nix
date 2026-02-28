@@ -13,5 +13,6 @@ pkgs.mkShell {
     pkgs.go
     pkgs.gcc
     pkgs.sqlc
+    pkgs.delve # go debugger (dlv), required by VS Code launch configurations
   ];
 }

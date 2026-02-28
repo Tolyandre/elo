@@ -23,6 +23,8 @@ oauth2_redirect_uri: http://localhost:3000/oauth2-callback
 # Oauth2 url to get ID and access token
 oauth2_token_uri: https://oauth2.googleapis.com/token
 
+oauth2_userinfo_uri: https://www.googleapis.com/oauth2/v1/userinfo
+
 # Frontend domain and scheme
 frontend_uri: http://localhost:3000
 

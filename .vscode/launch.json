@@ -17,6 +17,18 @@
             "envFile": "${workspaceFolder}/elo-web-service/.env"
         },
         {
+            "name": "Launch Elo web service (docker)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./elo-web-service",
+            "args": [
+                "--config-path",
+                "./config/config.docker.yaml"
+            ],
+            "envFile": "${workspaceFolder}/elo-web-service/.env.docker"
+        },
+{
             "name": "Run migrations",
             "type": "go",
             "request": "launch",
@@ -28,6 +40,17 @@
                 "--migrate-db"
             ],
             "envFile": "${workspaceFolder}/elo-web-service/.env"
+        },
+        {
+            "name": "Run migrations (docker)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "./elo-web-service",
+            "args": [
+                "--migrate-db-dsn",
+                "postgres://elo:devpassword@localhost:5433/elo?sslmode=disable"
+            ]
         },
         {
             "name": "Next.js: debug full stack",
@@ -54,7 +77,16 @@
         {
             "name": "Run both",
             "configurations": [
+                "Run migrations",
                 "Launch Elo web service",
+                "Next.js: debug full stack"
+            ]
+        },
+        {
+            "name": "Run both (docker)",
+            "configurations": [
+                "Run migrations (docker)",
+                "Launch Elo web service (docker)",
                 "Next.js: debug full stack"
             ]
         }

@@ -32,3 +32,21 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+  integration-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./elo-web-service
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.5'
+
+    - name: Integration Tests
+      # Docker is available on ubuntu-latest; testcontainers-go uses the Docker socket directly.
+      # No `services:` block needed — each test spins up its own isolated container.
+      run: go test -v -tags integration ./...

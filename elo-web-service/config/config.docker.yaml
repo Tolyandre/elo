@@ -1,0 +1,28 @@
+## Docker environment configuration for elo-web-service
+#
+# Secrets are loaded from .env.docker (committed) — see make backend-run.
+# You can also override any value with ELO_WEB_SERVICE_<UPPER_SNAKE_CASE> env vars.
+
+# Google Sheets is not implemented; the field is only validated to be non-empty.
+google_service_account_key: "/dev/null"
+doc_id: "dev-placeholder"
+
+# Interface and port to listen to
+address: "localhost:8080"
+
+# Dex OIDC mock (started by docker compose / make dev-up)
+oauth2_auth_uri:     "http://localhost:5556/dex/auth"
+oauth2_redirect_uri: "http://localhost:3000/oauth2-callback"
+oauth2_token_uri:    "http://localhost:5556/dex/token"
+oauth2_userinfo_uri: "http://localhost:5556/dex/userinfo"
+
+# oauth2_client_id and oauth2_client_secret are set via .env.dev
+
+# Frontend domain and scheme
+frontend_uri: http://localhost:3000
+
+# Cookie expiration time in seconds
+cookie_ttl_seconds: 86400
+
+# Postgres on port 5433 (docker compose) — password set via .env.dev
+postgres_dsn: "postgres://elo@localhost:5433/elo?sslmode=disable"

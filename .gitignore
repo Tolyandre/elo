@@ -35,6 +35,7 @@
 !.envrc
 !/nextjs/.env.local
 !/elo-web-service/.env.sample
+!/elo-web-service/.env.docker
 
 # vercel
 /nextjs/.vercel

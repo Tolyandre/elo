@@ -18,6 +18,7 @@ type Configuration struct {
 	Oauth2TokenUri          string `mapstructure:"oauth2_token_uri"`
 	Oauth2AuthUri           string `mapstructure:"oauth2_auth_uri"`
 	Oauth2RedirectUri       string `mapstructure:"oauth2_redirect_uri"`
+	Oauth2UserinfoUri       string `mapstructure:"oauth2_userinfo_uri"`
 	CookieJwtSecret         string `mapstructure:"cookie_jwt_secret"`
 	CookieTtlSeconds        int    `mapstructure:"cookie_ttl_seconds"`
 	FrontendUri             string `mapstructure:"frontend_uri"`
@@ -27,15 +28,27 @@ type Configuration struct {
 
 var Config Configuration
 
-// MigrateDB indicates whether the process should run database migrations and exit.
+// MigrateDB indicates whether the process should run database migrations using the full config and exit.
 var MigrateDB bool
 
+// MigrateDBDSN, when non-empty, causes the process to run migrations against
+// the given DSN and exit without loading the rest of the configuration.
+// Intended for local dev (make dev-migrate) and integration tests.
+var MigrateDBDSN string
+
 func ReadConfiguration() {
-	var configPath = flag.String("config-path", "config.yaml", "Path to the configuration file")
-	var migrateFlag = flag.Bool("migrate-db", false, "Run DB migrations and exit")
+	var configPath    = flag.String("config-path", "config.yaml", "Path to the configuration file")
+	var migrateFlag   = flag.Bool("migrate-db", false, "Run DB migrations (using full config) and exit")
+	var migrateDSNFlag = flag.String("migrate-db-dsn", "", "Run DB migrations against the given DSN and exit (no config file required)")
 
 	flag.Parse()
-	MigrateDB = *migrateFlag
+	MigrateDB    = *migrateFlag
+	MigrateDBDSN = *migrateDSNFlag
+
+	// --migrate-db-dsn does not require a config file — return early.
+	if MigrateDBDSN != "" {
+		return
+	}
 
 	viper.SetConfigFile(*configPath)
 	viper.SetDefault("address", "localhost:8080")
@@ -66,6 +79,9 @@ func ReadConfiguration() {
 	}
 	if err := viper.BindEnv("oauth2_redirect_uri", "ELO_WEB_SERVICE_OAUTH2_REDIRECT_URI"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_REDIRECT_URI: %v", err)
+	}
+	if err := viper.BindEnv("oauth2_userinfo_uri", "ELO_WEB_SERVICE_OAUTH2_USERINFO_URI"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_USERINFO_URI: %v", err)
 	}
 	if err := viper.BindEnv("cookie_jwt_secret", "ELO_WEB_SERVICE_COOKIE_JWT_SECRET"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_JWT_SECRET: %v", err)
@@ -122,6 +138,9 @@ func ReadConfiguration() {
 	}
 	if Config.Oauth2RedirectUri == "" {
 		missing = append(missing, "oauth2_redirect_uri")
+	}
+	if Config.Oauth2UserinfoUri == "" {
+		missing = append(missing, "oauth2_userinfo_uri")
 	}
 	if Config.CookieJwtSecret == "" {
 		missing = append(missing, "cookie_jwt_secret")
