@@ -5,6 +5,8 @@ import { useEffect } from "react"
 import { useState } from "react"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption } from "./multi-select"
 import { useMatches } from "@/app/matches/MatchesContext"
+import { useClubs } from "@/app/clubsContext"
+import { buildPlayerGroups } from "@/lib/player-groups"
 
 
 
@@ -17,46 +19,28 @@ export function PlayerMultiSelect({
 }) {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(controlledValue || [])
   const [options, setOptions] = useState<MultiSelectOption[] | MultiSelectGroup[]>([])
-  const [recentPlayers, setRecentPlayers] = useState<string[]>([])
+  const [recentPlayerIds, setRecentPlayerIds] = useState<string[]>([])
   const { players } = usePlayers()
   const { matches } = useMatches()
+  const { clubs } = useClubs()
 
   useEffect(() => {
-    setRecentPlayers(
+    setRecentPlayerIds(
       Array.from(
         new Set(
           matches
             ?.toSorted((a, b) => a.date == b.date ? 0 : (new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()))
-            ?.slice(0, 5) // не более последних 5 игр
-            .flatMap(m => Object.keys(m.score)) // id игроков
+            ?.slice(0, 5)
+            .flatMap(m => Object.keys(m.score))
         )
-      ).slice(0, 8) // максимум 8 игроков
+      ).slice(0, 8)
         .sort((a, b) => a.localeCompare(b))
     )
   }, [matches])
 
   useEffect(() => {
-    setOptions([
-      {
-        heading: "Недавние",
-        options: recentPlayers.map(id => ({
-          value: id,
-          label: players.find((pl) => pl.id === id)?.name ?? id
-        }))
-      },
-      {
-        heading: "Остальные",
-        options:
-          players
-            .filter(p => !recentPlayers.includes(p.id))
-            .map(p => ({
-              value: p.id,
-              label: p.name
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label))
-      }
-    ])
-  }, [players, recentPlayers]);
+    setOptions(buildPlayerGroups(players, clubs, recentPlayerIds))
+  }, [players, clubs, recentPlayerIds]);
 
   const handleSelect = (currentValue: string[]) => {
     setSelectedPlayerIds(currentValue);

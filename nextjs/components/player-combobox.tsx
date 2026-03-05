@@ -16,8 +16,11 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer"
 import { usePlayers } from "@/app/players/PlayersContext"
+import { useMatches } from "@/app/matches/MatchesContext"
+import { useClubs } from "@/app/clubsContext"
 import useIsMobile from "@/hooks/use-is-mobile"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command"
+import { buildPlayerGroups } from "@/lib/player-groups"
 
 export function PlayerCombobox({
   value: controlledValue,
@@ -33,6 +36,24 @@ export function PlayerCombobox({
   const { isMobile } = useIsMobile()
 
   const { players } = usePlayers()
+  const { matches } = useMatches()
+  const { clubs } = useClubs()
+
+  const recentPlayerIds = React.useMemo(() => (
+    Array.from(
+      new Set(
+        matches
+          ?.toSorted((a, b) => a.date == b.date ? 0 : (new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()))
+          ?.slice(0, 5)
+          .flatMap(m => Object.keys(m.score))
+      )
+    ).slice(0, 8)
+  ), [matches])
+
+  const groups = React.useMemo(
+    () => buildPlayerGroups(players, clubs, recentPlayerIds),
+    [players, clubs, recentPlayerIds]
+  )
 
   const handleSelect = (currentValue: string) => {
     const next = currentValue === value ? "" : currentValue
@@ -62,7 +83,7 @@ export function PlayerCombobox({
   const content = (
     <PlayerCommand
       value={value}
-      players={players}
+      groups={groups}
       onSelect={handleSelect}
     />
   )
@@ -97,15 +118,11 @@ export function PlayerCombobox({
 
 type PlayerCommandProps = {
   value: string
-  players: { id: string; name: string }[]
+  groups: { heading: string; options: { value: string; label: string }[] }[]
   onSelect: (value: string) => void
 }
 
-function PlayerCommand({
-  value,
-  players,
-  onSelect,
-}: PlayerCommandProps) {
+function PlayerCommand({ value, groups, onSelect }: PlayerCommandProps) {
   return (
     <Command>
       <CommandInput placeholder="Искать игрока..." className="h-9" />
@@ -113,24 +130,29 @@ function PlayerCommand({
       <CommandList className="max-h-[40dvh] overflow-y-auto">
         <CommandEmpty>Игрок не найден.</CommandEmpty>
 
-        <CommandGroup>
-          {players.map((player) => (
-            <CommandItem
-              key={player.id}
-              value={player.id}
-              keywords={[player.name]}
-              onSelect={onSelect}
-            >
-              {player.name}
-              <Check
-                className={cn(
-                  "ml-auto",
-                  value === player.id ? "opacity-100" : "opacity-0"
-                )}
-              />
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {groups.map((group, i) => (
+          <React.Fragment key={group.heading}>
+            {i > 0 && <CommandSeparator />}
+            <CommandGroup heading={group.heading}>
+              {group.options.map((player) => (
+                <CommandItem
+                  key={`${group.heading}-${player.value}`}
+                  value={player.value}
+                  keywords={[player.label]}
+                  onSelect={onSelect}
+                >
+                  {player.label}
+                  <Check
+                    className={cn(
+                      "ml-auto",
+                      value === player.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </React.Fragment>
+        ))}
       </CommandList>
     </Command>
   )
