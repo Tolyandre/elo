@@ -149,7 +149,6 @@ export async function updateMatchPromise(matchId: number, payload: { game_id: st
 export async function getSettingsPromise(): Promise<{
     elo_const_k: string,
     elo_const_d: string,
-    google_sheet_link: string,
 }> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/settings`);

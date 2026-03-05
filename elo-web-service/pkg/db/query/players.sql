@@ -1,6 +1,6 @@
 -- name: CreatePlayer :one
-INSERT INTO players (name, geologist_name, google_sheet_column)
-VALUES ($1, $2, $3)
+INSERT INTO players (name, geologist_name)
+VALUES ($1, $2)
 RETURNING *;
 
 -- name: GetPlayer :one

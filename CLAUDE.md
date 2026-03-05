@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Elo rating tracker for board games with a Go backend, Next.js frontend, and PostgreSQL database. The app tracks players across different games and clubs, calculating Elo ratings for match results. Google Sheets is used for legacy data access, and Google OAuth2 handles authentication.
+Elo rating tracker for board games with a Go backend, Next.js frontend, and PostgreSQL database. The app tracks players across different games and clubs, calculating Elo ratings for match results. Google OAuth2 handles authentication.
 
 **Monorepo Structure:**
 - `elo-web-service/`: Go backend (REST API)
@@ -68,7 +68,6 @@ nix-build test-integration.nix
   - `pkg/db/query/*.sql`: SQL queries for sqlc
   - `pkg/db/*.sql.go`: Generated Go code (do not edit manually)
 - **pkg/elo/**: Core Elo rating calculation logic
-- **pkg/google-sheet/**: Google Sheets integration for legacy data access
 - **pkg/configuration/**: Configuration parsing from YAML and environment variables
 - **migrations/**: Database migrations (numbered, up/down pairs)
 
@@ -88,7 +87,7 @@ Database code is generated from SQL queries using sqlc. Edit `.sql` files in `pk
 - **components/**: Reusable React components (mostly shadcn/ui)
 
 Frontend uses React Context for state management. Key contexts:
-- `SettingsProvider`: Elo constants (K, D) and Google Sheet link
+- `SettingsProvider`: Elo constants (K, D)
 - `PlayersProvider`: Player data and rankings
 - `MatchesProvider`: Match history
 - `GamesProvider`: Available games
@@ -97,7 +96,7 @@ Frontend uses React Context for state management. Key contexts:
 ### Database Schema
 Key tables:
 - **clubs**: Game clubs/groups
-- **players**: Players with optional Google Sheet mapping
+- **players**: Players
 - **player_club_membership**: Many-to-many club membership
 - **games**: Available board games
 - **matches**: Match records with date and game
@@ -118,7 +117,6 @@ Backend configuration is in `elo-web-service/config/config.dev.yaml` and can be 
 - `ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET`: Google OAuth2 client secret
 - `ELO_WEB_SERVICE_COOKIE_JWT_SECRET`: JWT secret for session cookies
 - `ELO_WEB_SERVICE_POSTGRES_PASSWORD`: Database password
-- Service account key file path for Google Sheets access
 
 Frontend requires `NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL` in `nextjs/.env.local` to point to the backend API.
 

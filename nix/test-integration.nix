@@ -15,7 +15,6 @@ pkgs.testers.nixosTest {
 
         config = {
           address = "localhost:4949";
-          doc_id = "dummy-document-id";
           oauth2_auth_uri = "https://fake/oauth2_auth_uri";
           oauth2_redirect_uri = "https://fake/oauth2_redirect_uri";
           oauth2_token_uri = "https://fake/oauth2_token_uri";

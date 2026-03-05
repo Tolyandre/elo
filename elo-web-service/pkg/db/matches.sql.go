@@ -12,26 +12,20 @@ import (
 )
 
 const createMatch = `-- name: CreateMatch :one
-INSERT INTO matches (date, game_id, google_sheet_row)
-VALUES ($1, $2, $3)
-RETURNING id, date, game_id, google_sheet_row
+INSERT INTO matches (date, game_id)
+VALUES ($1, $2)
+RETURNING id, date, game_id
 `
 
 type CreateMatchParams struct {
-	Date           pgtype.Timestamptz `json:"date"`
-	GameID         int32              `json:"game_id"`
-	GoogleSheetRow pgtype.Int4        `json:"google_sheet_row"`
+	Date   pgtype.Timestamptz `json:"date"`
+	GameID int32              `json:"game_id"`
 }
 
 func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error) {
-	row := q.db.QueryRow(ctx, createMatch, arg.Date, arg.GameID, arg.GoogleSheetRow)
+	row := q.db.QueryRow(ctx, createMatch, arg.Date, arg.GameID)
 	var i Match
-	err := row.Scan(
-		&i.ID,
-		&i.Date,
-		&i.GameID,
-		&i.GoogleSheetRow,
-	)
+	err := row.Scan(&i.ID, &i.Date, &i.GameID)
 	return i, err
 }
 
@@ -64,7 +58,7 @@ func (q *Queries) DeleteMatchScores(ctx context.Context, matchID int32) error {
 }
 
 const getMatch = `-- name: GetMatch :one
-SELECT id, date, game_id, google_sheet_row FROM matches
+SELECT id, date, game_id FROM matches
 WHERE id = $1
 FOR UPDATE
 `
@@ -72,12 +66,7 @@ FOR UPDATE
 func (q *Queries) GetMatch(ctx context.Context, id int32) (Match, error) {
 	row := q.db.QueryRow(ctx, getMatch, id)
 	var i Match
-	err := row.Scan(
-		&i.ID,
-		&i.Date,
-		&i.GameID,
-		&i.GoogleSheetRow,
-	)
+	err := row.Scan(&i.ID, &i.Date, &i.GameID)
 	return i, err
 }
 
@@ -113,7 +102,7 @@ func (q *Queries) GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]
 }
 
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
-SELECT m.id, m.date, m.game_id, m.google_sheet_row
+SELECT m.id, m.date, m.game_id
 FROM matches m
 WHERE m.date >= $1 OR (m.date IS NULL AND $1 IS NOT NULL)
 ORDER BY m.date ASC NULLS FIRST, m.id ASC
@@ -128,12 +117,7 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 	items := []Match{}
 	for rows.Next() {
 		var i Match
-		if err := rows.Scan(
-			&i.ID,
-			&i.Date,
-			&i.GameID,
-			&i.GoogleSheetRow,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.Date, &i.GameID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

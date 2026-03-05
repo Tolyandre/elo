@@ -117,9 +117,8 @@ func (a *API) CreatePlayer(c *gin.Context) {
 	}
 
 	player, err := a.Queries.CreatePlayer(c.Request.Context(), db.CreatePlayerParams{
-		Name:              body.Name,
-		GeologistName:     pgtype.Text{Valid: false},
-		GoogleSheetColumn: pgtype.Int4{Valid: false},
+		Name:          body.Name,
+		GeologistName: pgtype.Text{Valid: false},
 	})
 	if err != nil {
 		if db.IsUniqueViolation(err) {

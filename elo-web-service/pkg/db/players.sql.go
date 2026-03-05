@@ -44,26 +44,20 @@ func (q *Queries) AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) 
 }
 
 const createPlayer = `-- name: CreatePlayer :one
-INSERT INTO players (name, geologist_name, google_sheet_column)
-VALUES ($1, $2, $3)
-RETURNING id, name, geologist_name, google_sheet_column
+INSERT INTO players (name, geologist_name)
+VALUES ($1, $2)
+RETURNING id, name, geologist_name
 `
 
 type CreatePlayerParams struct {
-	Name              string      `json:"name"`
-	GeologistName     pgtype.Text `json:"geologist_name"`
-	GoogleSheetColumn pgtype.Int4 `json:"google_sheet_column"`
+	Name          string      `json:"name"`
+	GeologistName pgtype.Text `json:"geologist_name"`
 }
 
 func (q *Queries) CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error) {
-	row := q.db.QueryRow(ctx, createPlayer, arg.Name, arg.GeologistName, arg.GoogleSheetColumn)
+	row := q.db.QueryRow(ctx, createPlayer, arg.Name, arg.GeologistName)
 	var i Player
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.GoogleSheetColumn,
-	)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }
 
@@ -77,41 +71,31 @@ func (q *Queries) DeletePlayer(ctx context.Context, id int32) error {
 }
 
 const getPlayer = `-- name: GetPlayer :one
-SELECT id, name, geologist_name, google_sheet_column FROM players
+SELECT id, name, geologist_name FROM players
 WHERE id = $1
 `
 
 func (q *Queries) GetPlayer(ctx context.Context, id int32) (Player, error) {
 	row := q.db.QueryRow(ctx, getPlayer, id)
 	var i Player
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.GoogleSheetColumn,
-	)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }
 
 const getPlayerByName = `-- name: GetPlayerByName :one
-SELECT id, name, geologist_name, google_sheet_column FROM players
+SELECT id, name, geologist_name FROM players
 WHERE name = $1
 `
 
 func (q *Queries) GetPlayerByName(ctx context.Context, name string) (Player, error) {
 	row := q.db.QueryRow(ctx, getPlayerByName, name)
 	var i Player
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.GoogleSheetColumn,
-	)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }
 
 const listPlayers = `-- name: ListPlayers :many
-SELECT id, name, geologist_name, google_sheet_column FROM players
+SELECT id, name, geologist_name FROM players
 ORDER BY name
 `
 
@@ -124,12 +108,7 @@ func (q *Queries) ListPlayers(ctx context.Context) ([]Player, error) {
 	items := []Player{}
 	for rows.Next() {
 		var i Player
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.GeologistName,
-			&i.GoogleSheetColumn,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.Name, &i.GeologistName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -154,7 +133,7 @@ const updatePlayer = `-- name: UpdatePlayer :one
 UPDATE players
 SET name = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, google_sheet_column
+RETURNING id, name, geologist_name
 `
 
 type UpdatePlayerParams struct {
@@ -165,11 +144,6 @@ type UpdatePlayerParams struct {
 func (q *Queries) UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error) {
 	row := q.db.QueryRow(ctx, updatePlayer, arg.ID, arg.Name)
 	var i Player
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.GoogleSheetColumn,
-	)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }

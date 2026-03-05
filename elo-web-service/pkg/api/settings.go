@@ -1,17 +1,14 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
 type settingsJson struct {
-	EloConstK       float64 `json:"elo_const_k"`
-	EloConstD       float64 `json:"elo_const_d"`
-	GoogleSheetLink string  `json:"google_sheet_link"`
+	EloConstK float64 `json:"elo_const_k"`
+	EloConstD float64 `json:"elo_const_d"`
 }
 
 func (a *API) ListSettings(c *gin.Context) {
@@ -23,8 +20,7 @@ func (a *API) ListSettings(c *gin.Context) {
 	}
 
 	SuccessDataResponse(c, settingsJson{
-		EloConstK:       settings.EloConstK,
-		EloConstD:       settings.EloConstD,
-		GoogleSheetLink: fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s", cfg.Config.DocID),
+		EloConstK: settings.EloConstK,
+		EloConstD: settings.EloConstD,
 	})
 }

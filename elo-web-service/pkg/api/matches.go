@@ -17,7 +17,7 @@ type addMatchJson struct {
 type updateMatchJson struct {
 	GameId string             `json:"game_id" binding:"required"`
 	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
-	Date   time.Time          `json:"date" binding:"required"`   // Date is required and cannot be null
+	Date   time.Time          `json:"date" binding:"required"`  // Date is required and cannot be null
 }
 
 type matchPlayerJson struct {
@@ -72,7 +72,7 @@ func (a *API) AddMatch(c *gin.Context) {
 
 	// Add match to database with current timestamp
 	now := time.Now()
-	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now, nil)
+	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now)
 	if err != nil {
 		// Check if error is due to foreign key constraint violation
 		if db.IsForeignKeyViolation(err) {
@@ -247,8 +247,3 @@ func (a *API) ListMatches(c *gin.Context) {
 
 	SuccessDataResponse(c, matchesJson)
 }
-
-// eloRows must be ordered; first row number 2 has index 0 (first row is header)
-// func getByRowNum(eloRows []googlesheet.EloRow, rowNum int) *googlesheet.EloRow {
-// 	return &eloRows[rowNum-2]
-// }

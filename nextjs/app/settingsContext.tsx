@@ -6,7 +6,6 @@ import { getSettingsPromise } from "./api";
 export type SettingsState = {
   eloConstK: number,
   eloConstD: number,
-  googleSheetLink: string,
 };
 
 const SettingsContext = createContext<SettingsState | undefined>(undefined);
@@ -23,7 +22,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     setSettings({
       eloConstK: Number(data.elo_const_k),
       eloConstD: Number(data.elo_const_d),
-      googleSheetLink: data.google_sheet_link,
     });
   };
 
@@ -31,7 +29,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     <SettingsContext.Provider value={{
       eloConstD: settings === undefined ? 0 : settings.eloConstD,
       eloConstK: settings === undefined ? 0 : settings.eloConstK,
-      googleSheetLink: settings === undefined ? "" : settings.googleSheetLink
     }}>
       {children}
     </SettingsContext.Provider>

@@ -1,6 +1,6 @@
 -- name: CreateMatch :one
-INSERT INTO matches (date, game_id, google_sheet_row)
-VALUES ($1, $2, $3)
+INSERT INTO matches (date, game_id)
+VALUES ($1, $2)
 RETURNING *;
 
 -- name: UpsertMatchScore :exec

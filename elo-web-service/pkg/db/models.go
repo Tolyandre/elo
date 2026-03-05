@@ -25,10 +25,9 @@ type Game struct {
 }
 
 type Match struct {
-	ID             int32              `json:"id"`
-	Date           pgtype.Timestamptz `json:"date"`
-	GameID         int32              `json:"game_id"`
-	GoogleSheetRow pgtype.Int4        `json:"google_sheet_row"`
+	ID     int32              `json:"id"`
+	Date   pgtype.Timestamptz `json:"date"`
+	GameID int32              `json:"game_id"`
 }
 
 type MatchScore struct {
@@ -41,10 +40,9 @@ type MatchScore struct {
 }
 
 type Player struct {
-	ID                int32       `json:"id"`
-	Name              string      `json:"name"`
-	GeologistName     pgtype.Text `json:"geologist_name"`
-	GoogleSheetColumn pgtype.Int4 `json:"google_sheet_column"`
+	ID            int32       `json:"id"`
+	Name          string      `json:"name"`
+	GeologistName pgtype.Text `json:"geologist_name"`
 }
 
 type PlayerClubMembership struct {

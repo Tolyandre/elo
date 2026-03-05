@@ -25,11 +25,6 @@ in
     config = lib.mkOption {
       type = lib.types.submodule {
         options = {
-          doc_id = lib.mkOption {
-            type = lib.types.str;
-            description = "Google sheets document ID (identifier after /d/ in the document url)";
-          };
-
           address = lib.mkOption {
             type = lib.types.str;
             default = "localhost:8080";

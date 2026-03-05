@@ -23,13 +23,13 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int) (db.Match, error)
+	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 }
 
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time, googleSheetRow *int) (db.Match, error) {
+func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time) (db.Match, error) {
 	// start a transaction
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -62,19 +62,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 	eloConstK := settings.EloConstK
 	eloConstD := settings.EloConstD
 
-	// prepare google sheet row parameter
-	var gsRow pgtype.Int4
-	if googleSheetRow == nil {
-		gsRow = pgtype.Int4{Valid: false}
-	} else {
-		gsRow = pgtype.Int4{Int32: int32(*googleSheetRow), Valid: true}
-	}
-
 	// create match (foreign key will validate game_id exists)
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		Date:           dt,
-		GameID:         gameID,
-		GoogleSheetRow: gsRow,
+		Date:   dt,
+		GameID: gameID,
 	})
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to create match: %v", err)
@@ -412,157 +403,3 @@ func sortPlayerIDs(ids []int32) {
 		}
 	}
 }
-
-// func (s *MatchService) ReplaceMatches(ctx context.Context, matchRows []googlesheet.MatchRow) ([]db.Match, error) {
-// 	// start a transaction so replace is atomic
-// 	tx, err := s.Pool.Begin(ctx)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("unable to begin tx: %v", err)
-// 	}
-// 	defer func() {
-// 		_ = tx.Rollback(ctx)
-// 	}()
-
-// 	q := s.Queries.WithTx(tx)
-
-// 	// delete existing data
-// 	if err := q.DeleteAllMatchScores(ctx); err != nil {
-// 		return nil, fmt.Errorf("unable to delete match_scores: %v", err)
-// 	}
-// 	if err := q.DeleteAllMatches(ctx); err != nil {
-// 		return nil, fmt.Errorf("unable to delete matches: %v", err)
-// 	}
-
-// 	if err := tx.Commit(ctx); err != nil {
-// 		return nil, fmt.Errorf("unable to commit delete tx: %v", err)
-// 	}
-
-// 	// Track current Elo for each player across matches
-// 	// Use player name as key since that's what matchRows use
-// 	currentElo := make(map[string]float64)
-
-// 	inserted := make([]db.Match, 0, len(matchRows))
-
-// 	// skip first row as it contains start elo value (fake match)
-// 	for _, mr := range matchRows[1:] {
-// 		// Use the tracked Elo from previous matches in the batch
-// 		// instead of querying the database (which would be empty after deletion)
-
-// 		// Override AddMatch to use our tracked Elo
-// 		// Start a new transaction for each match
-// 		tx, err := s.Pool.Begin(ctx)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("unable to begin tx: %v", err)
-// 		}
-
-// 		q := s.Queries.WithTx(tx)
-
-// 		// Get Elo settings for this match date
-// 		var effectiveDate time.Time
-// 		if mr.Date == nil {
-// 			effectiveDate = time.Now()
-// 		} else {
-// 			effectiveDate = *mr.Date
-// 		}
-
-// 		dbSettings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
-// 		if err != nil {
-// 			_ = tx.Rollback(ctx)
-// 			return nil, fmt.Errorf("unable to get Elo settings for date %v: %v", effectiveDate, err)
-// 		}
-
-// 		eloConstK := dbSettings.EloConstK
-// 		eloConstD := dbSettings.EloConstD
-
-// 		// find or create game
-// 		game, err := q.GetGameByName(ctx, mr.Game)
-// 		if err != nil {
-// 			game, err = q.AddGame(ctx, mr.Game)
-// 			if err != nil {
-// 				_ = tx.Rollback(ctx)
-// 				return nil, fmt.Errorf("unable to find or create game '%s': %v", mr.Game, err)
-// 			}
-// 		}
-
-// 		// prepare date
-// 		var dt pgtype.Timestamptz
-// 		if mr.Date == nil {
-// 			dt = pgtype.Timestamptz{Valid: false}
-// 		} else {
-// 			dt = pgtype.Timestamptz{Time: *mr.Date, Valid: true}
-// 		}
-
-// 		gsRow := pgtype.Int4{Int32: int32(mr.RowNum), Valid: true}
-
-// 		createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-// 			Date:           dt,
-// 			GameID:         game.ID,
-// 			GoogleSheetRow: gsRow,
-// 		})
-// 		if err != nil {
-// 			_ = tx.Rollback(ctx)
-// 			return nil, fmt.Errorf("unable to create match for row %d: %v", mr.RowNum, err)
-// 		}
-
-// 		// Build previousElo map using tracked Elo from previous matches
-// 		previousElo := make(map[string]float64)
-// 		for playerName := range mr.PlayersScore {
-// 			if elo, exists := currentElo[playerName]; exists {
-// 				previousElo[playerName] = elo
-// 			} else {
-// 				previousElo[playerName] = StartingElo
-// 			}
-// 		}
-
-// 		// Calculate new Elos
-// 		newElos := CalculateNewElo(previousElo, StartingElo, mr.PlayersScore, eloConstK, eloConstD)
-
-// 		absoluteLoserScore := GetAsboluteLoserScore(mr.PlayersScore)
-
-// 		// create scores with Elo values
-// 		for playerName, score := range mr.PlayersScore {
-// 			player, err := q.GetPlayerByName(ctx, playerName)
-// 			if err != nil {
-// 				p, err2 := q.CreatePlayer(ctx, db.CreatePlayerParams{
-// 					Name:              playerName,
-// 					GeologistName:     pgtype.Text{Valid: false},
-// 					GoogleSheetColumn: pgtype.Int4{Valid: false},
-// 				})
-// 				if err2 != nil {
-// 					_ = tx.Rollback(ctx)
-// 					return nil, fmt.Errorf("unable to find or create player '%s': %v", playerName, err2)
-// 				}
-// 				player = p
-// 			}
-
-// 			prevElo := previousElo[playerName]
-// 			newElo := newElos[playerName]
-
-// 			eloPay := -eloConstK * WinExpectation(prevElo, mr.PlayersScore, StartingElo, previousElo, eloConstD)
-// 			eloEarn := eloConstK * NormalizedScore(score, mr.PlayersScore, absoluteLoserScore)
-
-// 			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-// 				MatchID:  createdMatch.ID,
-// 				PlayerID: player.ID,
-// 				Score:    score,
-// 				EloPay:   pgtype.Float8{Float64: eloPay, Valid: true},
-// 				EloEarn:  pgtype.Float8{Float64: eloEarn, Valid: true},
-// 				NewElo:   pgtype.Float8{Float64: newElo, Valid: true},
-// 			}); err != nil {
-// 				_ = tx.Rollback(ctx)
-// 				return nil, fmt.Errorf("unable to upsert match score for match %d player %s: %v", createdMatch.ID, playerName, err)
-// 			}
-
-// 			// Update tracked Elo for next match
-// 			currentElo[playerName] = newElo
-// 		}
-
-// 		if err := tx.Commit(ctx); err != nil {
-// 			return nil, fmt.Errorf("unable to commit tx: %v", err)
-// 		}
-
-// 		inserted = append(inserted, createdMatch)
-// 	}
-
-// 	return inserted, nil
-// }

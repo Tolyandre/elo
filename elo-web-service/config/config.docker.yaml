@@ -3,10 +3,6 @@
 # Secrets are loaded from .env.docker (committed) — see make backend-run.
 # You can also override any value with ELO_WEB_SERVICE_<UPPER_SNAKE_CASE> env vars.
 
-# Google Sheets is not implemented; the field is only validated to be non-empty.
-google_service_account_key: "/dev/null"
-doc_id: "dev-placeholder"
-
 # Interface and port to listen to
 address: "localhost:8080"
 

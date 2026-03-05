@@ -11,7 +11,6 @@ import (
 
 type Configuration struct {
 	GoogleServiceAccountKey string `mapstructure:"google_service_account_key"`
-	DocID                   string `mapstructure:"doc_id"`
 	Address                 string `mapstructure:"address"`
 	Oauth2ClientId          string `mapstructure:"oauth2_client_id"`
 	Oauth2ClientSecret      string `mapstructure:"oauth2_client_secret"`
@@ -37,12 +36,12 @@ var MigrateDB bool
 var MigrateDBDSN string
 
 func ReadConfiguration() {
-	var configPath    = flag.String("config-path", "config.yaml", "Path to the configuration file")
-	var migrateFlag   = flag.Bool("migrate-db", false, "Run DB migrations (using full config) and exit")
+	var configPath = flag.String("config-path", "config.yaml", "Path to the configuration file")
+	var migrateFlag = flag.Bool("migrate-db", false, "Run DB migrations (using full config) and exit")
 	var migrateDSNFlag = flag.String("migrate-db-dsn", "", "Run DB migrations against the given DSN and exit (no config file required)")
 
 	flag.Parse()
-	MigrateDB    = *migrateFlag
+	MigrateDB = *migrateFlag
 	MigrateDBDSN = *migrateDSNFlag
 
 	// --migrate-db-dsn does not require a config file — return early.
@@ -58,9 +57,6 @@ func ReadConfiguration() {
 	// for some reason AutomaticEnv does not bind to the environment variables. We need to do it manually
 	if err := viper.BindEnv("google_service_account_key", "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY: %v", err)
-	}
-	if err := viper.BindEnv("doc_id", "ELO_WEB_SERVICE_DOC_ID"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_DOC_ID: %v", err)
 	}
 	if err := viper.BindEnv("address", "ELO_WEB_SERVICE_ADDRESS"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_ADDRESS: %v", err)
@@ -117,9 +113,6 @@ func ReadConfiguration() {
 	var missing []string
 	if Config.GoogleServiceAccountKey == "" {
 		missing = append(missing, "google_service_account_key")
-	}
-	if Config.DocID == "" {
-		missing = append(missing, "doc_id")
 	}
 	if Config.Address == "" {
 		missing = append(missing, "address")
