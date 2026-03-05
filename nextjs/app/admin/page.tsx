@@ -26,6 +26,12 @@ export default function AdminPage() {
           >
             Управление играми
           </Link>
+          <Link
+            href="/admin/clubs"
+            className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-500 text-center"
+          >
+            Управление клубами
+          </Link>
         </div>
       </div>
     </main>

@@ -11,6 +11,84 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const addClubMember = `-- name: AddClubMember :exec
+INSERT INTO player_club_membership (club_id, player_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddClubMemberParams struct {
+	ClubID   int32 `json:"club_id"`
+	PlayerID int32 `json:"player_id"`
+}
+
+func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
+	_, err := q.db.Exec(ctx, addClubMember, arg.ClubID, arg.PlayerID)
+	return err
+}
+
+const createClub = `-- name: CreateClub :one
+INSERT INTO clubs (name)
+VALUES ($1)
+RETURNING id, name
+`
+
+func (q *Queries) CreateClub(ctx context.Context, name string) (Club, error) {
+	row := q.db.QueryRow(ctx, createClub, name)
+	var i Club
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const deleteClub = `-- name: DeleteClub :one
+DELETE FROM clubs
+WHERE id = $1
+RETURNING id, name
+`
+
+func (q *Queries) DeleteClub(ctx context.Context, id int32) (Club, error) {
+	row := q.db.QueryRow(ctx, deleteClub, id)
+	var i Club
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const getClub = `-- name: GetClub :many
+SELECT
+    c.id AS club_id,
+    c.name AS club_name,
+    pcm.player_id AS player_id
+FROM clubs c
+LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
+WHERE c.id = $1
+`
+
+type GetClubRow struct {
+	ClubID   int32       `json:"club_id"`
+	ClubName string      `json:"club_name"`
+	PlayerID pgtype.Int4 `json:"player_id"`
+}
+
+func (q *Queries) GetClub(ctx context.Context, id int32) ([]GetClubRow, error) {
+	rows, err := q.db.Query(ctx, getClub, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetClubRow{}
+	for rows.Next() {
+		var i GetClubRow
+		if err := rows.Scan(&i.ClubID, &i.ClubName, &i.PlayerID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listClubs = `-- name: ListClubs :many
 SELECT
     c.id AS club_id,
@@ -44,4 +122,38 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const removeClubMember = `-- name: RemoveClubMember :exec
+DELETE FROM player_club_membership
+WHERE club_id = $1 AND player_id = $2
+`
+
+type RemoveClubMemberParams struct {
+	ClubID   int32 `json:"club_id"`
+	PlayerID int32 `json:"player_id"`
+}
+
+func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error {
+	_, err := q.db.Exec(ctx, removeClubMember, arg.ClubID, arg.PlayerID)
+	return err
+}
+
+const updateClubName = `-- name: UpdateClubName :one
+UPDATE clubs
+SET name = $2
+WHERE id = $1
+RETURNING id, name
+`
+
+type UpdateClubNameParams struct {
+	ID   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error) {
+	row := q.db.QueryRow(ctx, updateClubName, arg.ID, arg.Name)
+	var i Club
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
 }

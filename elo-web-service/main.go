@@ -74,6 +74,12 @@ func main() {
 	router.PATCH("/games/:id", oauth2.DeserializeUser(), api.PatchGame)
 	router.POST("/games", oauth2.DeserializeUser(), api.CreateGame)
 	router.GET("/clubs", api.ListClubs)
+	router.GET("/clubs/:id", api.GetClub)
+	router.POST("/clubs", oauth2.DeserializeUser(), api.CreateClub)
+	router.PATCH("/clubs/:id", oauth2.DeserializeUser(), api.PatchClub)
+	router.DELETE("/clubs/:id", oauth2.DeserializeUser(), api.DeleteClub)
+	router.POST("/clubs/:id/members", oauth2.DeserializeUser(), api.AddClubMember)
+	router.DELETE("/clubs/:id/members/:playerId", oauth2.DeserializeUser(), api.RemoveClubMember)
 
 	auth_router := router.Group("/auth")
 	auth_router.POST("/logout", oauth2.LogoutUser)

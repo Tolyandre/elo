@@ -1,0 +1,98 @@
+"use client"
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { listClubsPromise, createClubPromise, Club } from "@/app/api";
+import { useMe } from "@/app/meContext";
+import { Button } from "@/components/ui/button";
+
+export default function ClubsAdminPage() {
+    const { canEdit } = useMe();
+    const [clubs, setClubs] = useState<Club[] | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [newName, setNewName] = useState("");
+    const [creating, setCreating] = useState(false);
+
+    function loadClubs() {
+        setLoading(true);
+        listClubsPromise()
+            .then((data) => setClubs(data))
+            .finally(() => setLoading(false));
+    }
+
+    useEffect(() => {
+        loadClubs();
+    }, []);
+
+    const sortedClubs = clubs
+        ? [...clubs].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+        : [];
+
+    async function handleCreate() {
+        if (!newName.trim()) return;
+        try {
+            setCreating(true);
+            await createClubPromise({ name: newName.trim() });
+            setNewName("");
+            loadClubs();
+        } catch {
+            // toast shown by API helper
+        } finally {
+            setCreating(false);
+        }
+    }
+
+    return (
+        <main className="p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+                <h1 className="text-2xl font-semibold mb-4">Управление клубами</h1>
+                <div className="mt-2 sm:mt-0">
+                    <Link href="/admin" className="text-sm text-blue-600">
+                        Назад
+                    </Link>
+                </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+                Удаление клуба возможно только если в нём нет игроков.
+            </p>
+
+            <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                <input
+                    className="border rounded p-2 flex-1"
+                    placeholder="Название нового клуба"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+                    disabled={!canEdit || creating}
+                />
+                <div className="w-full sm:w-auto">
+                    <Button onClick={handleCreate} disabled={!canEdit || creating || !newName.trim()}>
+                        {creating ? "Создание..." : "Добавить"}
+                    </Button>
+                </div>
+            </div>
+
+            {loading && <p>Загрузка...</p>}
+
+            {!loading && sortedClubs.length === 0 && <p>Нет клубов</p>}
+
+            {!loading && sortedClubs.length > 0 && (
+                <section>
+                    <h2 className="text-lg font-medium mb-3">Список клубов</h2>
+                    <div className="space-y-2">
+                        {sortedClubs.map((club) => (
+                            <div key={club.id} className="border rounded p-3 flex items-center gap-2">
+                                <Link href={`/admin/club?id=${club.id}`} className="font-medium underline">
+                                    {club.name}
+                                </Link>
+                                <span className="text-sm text-muted-foreground">
+                                    ({club.players.length} {club.players.length === 1 ? "игрок" : "игроков"})
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+        </main>
+    );
+}
