@@ -11,19 +11,23 @@ import (
 )
 
 type Querier interface {
+	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, name string) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]Game, error)
 	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
+	CreateClub(ctx context.Context, name string) (Club, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
+	DeleteClub(ctx context.Context, id int32) (Club, error)
 	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeleteMatchScores(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
+	GetClub(ctx context.Context, id int32) ([]GetClubRow, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
@@ -54,6 +58,8 @@ type Querier interface {
 	// ON CONFLICT (date, player_id)
 	// DO UPDATE SET rating = EXCLUDED.rating;
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
+	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
+	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
 	UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error

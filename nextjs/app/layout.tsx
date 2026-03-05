@@ -10,6 +10,7 @@ import { ThemeProvider } from "./theme-provider";
 import { MeProvider } from "./meContext";
 import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
+import { ClubsProvider } from "./clubsContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,6 +41,7 @@ export default function RootLayout({
       <SettingsProvider>
         <MeProvider>
           <GamesProvider>
+            <ClubsProvider>
             <MatchesProvider>
               <PlayersProvider>
                 <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
@@ -59,6 +61,7 @@ export default function RootLayout({
                 </body>
               </PlayersProvider>
             </MatchesProvider>
+            </ClubsProvider>
           </GamesProvider>
         </MeProvider>
       </SettingsProvider>

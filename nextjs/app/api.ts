@@ -36,6 +36,12 @@ export type Status = {
     error?: string;
 }
 
+export type Club = {
+    id: string;
+    name: string;
+    players: number[];
+};
+
 export type GameList = {
     games: GameListItem[];
 };
@@ -336,6 +342,106 @@ export async function patchPlayerPromise(playerId: string, payload: { name: stri
 export async function deletePlayerPromise(playerId: string) {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/players/${playerId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function listClubsPromise(): Promise<Club[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getClubPromise(id: string): Promise<Club> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function createClubPromise(payload: { name: string }): Promise<Club> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function patchClubPromise(id: string, payload: { name: string }): Promise<Club> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function deleteClubPromise(id: string) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function addClubMemberPromise(clubId: string, playerId: number) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${clubId}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ player_id: playerId }),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function removeClubMemberPromise(clubId: string, playerId: number) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${clubId}/members/${playerId}`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
