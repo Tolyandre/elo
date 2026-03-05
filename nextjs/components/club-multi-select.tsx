@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer"
-import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
+import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command"
 import { useClubs } from "@/app/clubsContext"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { NO_CLUB_ID, NO_CLUB_LABEL } from "@/lib/player-groups"
@@ -55,6 +55,13 @@ export function ClubMultiSelect({
   const content = (
     <Command>
       <CommandList>
+        <CommandGroup>
+          <CommandItem value="__all__" keywords={["Все"]} onSelect={() => onChange(null)}>
+            <Check className={cn("mr-2 h-4 w-4 shrink-0", value === null || selectedSet.size === options.length ? "opacity-100" : "opacity-0")} />
+            Все
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
         <CommandGroup>
           {options.map(option => (
             <CommandItem
