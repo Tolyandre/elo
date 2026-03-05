@@ -98,10 +98,9 @@ export default function PlayersAdminPage() {
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <input
                     className="border rounded p-2 flex-1"
-                    placeholder="Имя нового игрока"
+                    placeholder="Имя игрока"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    disabled={!canEdit}
                 />
                 <div className="w-full sm:w-auto">
                     <Button

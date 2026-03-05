@@ -59,11 +59,11 @@ export default function ClubsAdminPage() {
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <input
                     className="border rounded p-2 flex-1"
-                    placeholder="Название нового клуба"
+                    placeholder="Название клуба"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
-                    disabled={!canEdit || creating}
+                    disabled={creating}
                 />
                 <div className="w-full sm:w-auto">
                     <Button onClick={handleCreate} disabled={!canEdit || creating || !newName.trim()}>
