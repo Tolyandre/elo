@@ -1,5 +1,9 @@
 import { Club, Player } from "@/app/api";
 
+/** Synthetic ID representing players not in any club. Never sent to the backend. */
+export const NO_CLUB_ID = "__no_club__";
+export const NO_CLUB_LABEL = "Без клуба";
+
 type Group = {
   heading: string;
   options: { value: string; label: string }[];
@@ -9,7 +13,7 @@ type Group = {
  * Builds ordered player groups for comboboxes and multi-selects:
  * 1. "Недавние" — recent player IDs (if any)
  * 2. One group per club, sorted alphabetically
- * 3. "Без клуба" — players not in any club
+ * 3. NO_CLUB_LABEL — players not in any club
  */
 export function buildPlayerGroups(
   players: Pick<Player, "id" | "name">[],
@@ -55,7 +59,7 @@ export function buildPlayerGroups(
     .map((p) => ({ value: p.id, label: p.name }));
 
   if (noClub.length > 0) {
-    groups.push({ heading: "Без клуба", options: noClub });
+    groups.push({ heading: NO_CLUB_LABEL, options: noClub });
   }
 
   return groups;
