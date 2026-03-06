@@ -1,7 +1,7 @@
 # https://github.com/nix-community/nix-direnv?tab=readme-ov-file#usage-example
 # don't foget to run `direnv allow`
 
-{ pkgs ? import <nixpkgs> { } }:
+{ pkgs ? import <nixpkgs> { }, gomod2nix ? null }:
 let
   lib = pkgs.lib;
 in
@@ -14,5 +14,5 @@ pkgs.mkShell {
     pkgs.gcc
     pkgs.sqlc
     pkgs.delve # go debugger (dlv), required by VS Code launch configurations
-  ];
+  ] ++ lib.optional (gomod2nix != null) gomod2nix;
 }

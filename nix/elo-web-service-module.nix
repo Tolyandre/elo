@@ -2,11 +2,15 @@
   config,
   pkgs,
   lib,
+  # Provided by the flake's nixosModules.default via _module.args.
+  # When using the module standalone (e.g. nix-instantiate tests), pass a
+  # dummy derivation or override this argument.
+  elo-web-service-pkg,
   ...
 }:
 
 let
-  elo-web-service = pkgs.callPackage ./default.nix { };
+  elo-web-service = elo-web-service-pkg;
 in
 {
   options.services.elo-web-service = {

@@ -1,5 +1,6 @@
 {
   pkgs ? import <nixpkgs> { },
+  elo-web-service-pkg,
 }:
 
 pkgs.testers.nixosTest {
@@ -9,6 +10,8 @@ pkgs.testers.nixosTest {
     { config, pkgs, ... }:
     {
       imports = [ ./elo-web-service-module.nix ];
+
+      _module.args.elo-web-service-pkg = elo-web-service-pkg;
 
       services.elo-web-service = {
         enable = true;

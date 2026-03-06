@@ -49,6 +49,7 @@
 
 # nix
 /nix/result
+/result
 .direnv/
 
 # golang

@@ -80,22 +80,126 @@ go run . --config-path ./config/config.docker.yaml
 
 ## Hosting (NixOS)
 
+### Flake (recommended)
+
+```bash
+nix build                # build elo-web-service binary
+nix develop              # enter dev shell (includes gomod2nix, go, sqlc, dlv)
+nix flake check          # evaluate all outputs + run NixOS integration test in VM
+nix flake show           # list all flake outputs
+
+nix flake lock           # pin dependencies (commit flake.lock afterwards)
+nix flake update         # update all inputs to latest
+```
+
+### Updating Go dependencies
+
+After any `go get` / `go mod tidy`, regenerate the dependency lock for Nix:
+
+```bash
+cd elo-web-service
+go mod tidy
+gomod2nix generate        # updates gomod2nix.toml
+```
+
+Commit `go.mod`, `go.sum`, and `gomod2nix.toml` together. The Nix build will fail
+if `gomod2nix.toml` is out of sync with `go.mod`.
+
+**First-time setup** (if `gomod2nix.toml` doesn't exist yet):
+```bash
+nix develop               # enter shell — gomod2nix is available here
+cd elo-web-service && gomod2nix generate
+```
+
+### Legacy (without flake)
+
 Check syntax of nix module:
 ```bash
 cd nix
 nix-instantiate --strict test-syntax.nix
 ```
 
-Run integration test in virtual machine:
+Run integration test in virtual machine (requires a pre-built package):
 ```bash
-nix-build test-integration.nix
+cd nix
+nix-build test-integration.nix --arg elo-web-service-pkg "$(nix build --print-out-paths)"
 ```
 
-In case of error `go: inconsistent vendoring in /build/elo-web-service` remove vendorHash value in `default.nix`, then run:
-```bash
-nix-build
+### NixOS module deployment
+
+The flake exposes a NixOS module as `nixosModules.default`. Add it to your system flake:
+
+```nix
+# flake.nix on the target host
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    elo.url     = "github:tolyandre/elo";
+  };
+
+  outputs = { nixpkgs, elo, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        elo.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
 ```
-Then update vendorHash with a new value from error message.
+
+Configure the service in `configuration.nix`:
+
+```nix
+services.elo-web-service = {
+  enable = true;
+
+  # File with secrets — must NOT be in the Nix store
+  secrets-env-file = "/run/secrets/elo-web-service.env";
+
+  config = {
+    address = "localhost:8080";
+
+    oauth2_auth_uri     = "https://accounts.google.com/o/oauth2/v2/auth";
+    oauth2_token_uri    = "https://oauth2.googleapis.com/token";
+    oauth2_userinfo_uri = "https://www.googleapis.com/oauth2/v3/userinfo";
+    oauth2_redirect_uri = "https://example.com/sessions/oauth/google";
+
+    frontend_uri       = "https://example.com";
+    cookie_ttl_seconds = 86400;
+
+    postgres.enableLocalDatabase = true;  # provisions a local PostgreSQL instance
+  };
+};
+```
+
+The `secrets-env-file` must contain:
+
+```env
+ELO_WEB_SERVICE_OAUTH2_CLIENT_ID=<Google OAuth2 client ID>
+ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET=<Google OAuth2 client secret>
+ELO_WEB_SERVICE_COOKIE_JWT_SECRET=<random secret for JWT signing>
+```
+
+Store it outside the Nix store (e.g. via [sops-nix](https://github.com/Mic92/sops-nix), [agenix](https://github.com/ryantm/agenix), or a manually provisioned file with restricted permissions).
+
+#### Module options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `config.address` | `"localhost:8080"` | Bind address |
+| `config.oauth2_auth_uri` | — | Google OAuth2 auth endpoint |
+| `config.oauth2_token_uri` | — | Google OAuth2 token endpoint |
+| `config.oauth2_userinfo_uri` | — | Google OAuth2 userinfo endpoint |
+| `config.oauth2_redirect_uri` | — | OAuth2 callback URL |
+| `config.frontend_uri` | — | Frontend origin (CORS + redirects) |
+| `config.cookie_ttl_seconds` | `86400` | Session cookie lifetime |
+| `config.postgres.enableLocalDatabase` | `false` | Provision local PostgreSQL |
+| `config.postgres.host` | `"/run/postgresql"` | DB host or Unix socket path |
+| `config.postgres.port` | `5432` | DB port |
+| `config.postgres.user` | `null` (= service name) | DB user |
+| `config.postgres.database` | `null` (= service name) | DB name |
 
 ## Database (Postgres)
 
