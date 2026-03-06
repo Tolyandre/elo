@@ -17,7 +17,7 @@ import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { Settings, LogOut, SlidersHorizontal } from "lucide-react"
+import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -40,6 +40,22 @@ export function NavigationBar() {
                   Мои настройки
                 </>
               } />
+
+              <ListItem href="/calculators/skull-king" title={
+                <>
+                  <Skull className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Skull King
+                </>
+              } />
+
+              {process.env.NODE_ENV !== "production" && (
+                <ListItem href="/calculators/st-patrick" title={
+                  <>
+                    <Crosshair className="inline-block mr-2 h-6 w-6 align-middle" />
+                    Охота на змей
+                  </>
+                } />
+              )}
 
               <ListItem href="https://github.com/Tolyandre/elo" title={
                 <>

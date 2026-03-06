@@ -3,8 +3,6 @@ import { Game, getGamePromise } from "@/app/api";
 import { useSearchParams } from "next/navigation";
 import React, { Suspense, useEffect, useState } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { SkullKingCalculator } from "./skull-king-calculator";
-import { StPatrickCalculator } from "./st-patrick-calculator";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /game?id=<GAME_ID>
@@ -64,9 +62,6 @@ function GameWrapped() {
           })}
         </tbody>
       </table>
-
-      {game?.name === "Skull King" && <SkullKingCalculator />}
-      {/* {game?.name === "Охота на змей" && <StPatrickCalculator />} */}
     </main>
   );
 }
