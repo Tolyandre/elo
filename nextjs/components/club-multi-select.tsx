@@ -56,7 +56,7 @@ export function ClubMultiSelect({
     <Command>
       <CommandList>
         <CommandGroup>
-          <CommandItem value="__all__" keywords={["Все"]} onSelect={() => onChange(null)}>
+          <CommandItem value="__all__" keywords={["Все"]} onSelect={() => onChange(value === null || selectedSet.size === options.length ? [] : null)}>
             <Check className={cn("mr-2 h-4 w-4 shrink-0", value === null || selectedSet.size === options.length ? "opacity-100" : "opacity-0")} />
             Все
           </CommandItem>

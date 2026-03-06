@@ -10,6 +10,7 @@ import {
     removeClubMemberPromise,
     Club,
 } from "@/app/api";
+import { useClubs } from "@/app/clubsContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import {
@@ -36,6 +37,7 @@ function ClubAdminContent() {
     const clubId = searchParams.get("id") ?? "";
     const { canEdit } = useMe();
     const { players } = usePlayers();
+    const { invalidate: invalidateClubs } = useClubs();
 
     const [club, setClub] = useState<Club | null>(null);
     const [loading, setLoading] = useState(true);
@@ -70,6 +72,7 @@ function ClubAdminContent() {
             setRenameLoading(true);
             const updated = await patchClubPromise(clubId, { name: renameValue.trim() });
             setClub((prev) => prev ? { ...prev, name: updated.name } : prev);
+            invalidateClubs();
             setRenameOpen(false);
         } catch {
             // toast shown by API helper
@@ -82,6 +85,7 @@ function ClubAdminContent() {
         try {
             setDeleteLoading(true);
             await deleteClubPromise(clubId);
+            invalidateClubs();
             router.push("/admin/clubs");
         } catch {
             setDeleteLoading(false);
@@ -100,6 +104,7 @@ function ClubAdminContent() {
                 await addClubMemberPromise(clubId, playerId);
                 setClub((prev) => prev ? { ...prev, players: [...prev.players, playerId] } : prev);
             }
+            invalidateClubs();
         } catch {
             // toast shown by API helper
         } finally {
