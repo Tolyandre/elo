@@ -10,19 +10,18 @@ import (
 )
 
 type Configuration struct {
-	GoogleServiceAccountKey string `mapstructure:"google_service_account_key"`
-	Address                 string `mapstructure:"address"`
-	Oauth2ClientId          string `mapstructure:"oauth2_client_id"`
-	Oauth2ClientSecret      string `mapstructure:"oauth2_client_secret"`
-	Oauth2TokenUri          string `mapstructure:"oauth2_token_uri"`
-	Oauth2AuthUri           string `mapstructure:"oauth2_auth_uri"`
-	Oauth2RedirectUri       string `mapstructure:"oauth2_redirect_uri"`
-	Oauth2UserinfoUri       string `mapstructure:"oauth2_userinfo_uri"`
-	CookieJwtSecret         string `mapstructure:"cookie_jwt_secret"`
-	CookieTtlSeconds        int    `mapstructure:"cookie_ttl_seconds"`
-	FrontendUri             string `mapstructure:"frontend_uri"`
-	PostgresDSN             string `mapstructure:"postgres_dsn"`
-	PostgresPassword        string `mapstructure:"postgres_password"`
+	Address            string `mapstructure:"address"`
+	Oauth2ClientId     string `mapstructure:"oauth2_client_id"`
+	Oauth2ClientSecret string `mapstructure:"oauth2_client_secret"`
+	Oauth2TokenUri     string `mapstructure:"oauth2_token_uri"`
+	Oauth2AuthUri      string `mapstructure:"oauth2_auth_uri"`
+	Oauth2RedirectUri  string `mapstructure:"oauth2_redirect_uri"`
+	Oauth2UserinfoUri  string `mapstructure:"oauth2_userinfo_uri"`
+	CookieJwtSecret    string `mapstructure:"cookie_jwt_secret"`
+	CookieTtlSeconds   int    `mapstructure:"cookie_ttl_seconds"`
+	FrontendUri        string `mapstructure:"frontend_uri"`
+	PostgresDSN        string `mapstructure:"postgres_dsn"`
+	PostgresPassword   string `mapstructure:"postgres_password"`
 }
 
 var Config Configuration
@@ -55,9 +54,6 @@ func ReadConfiguration() {
 	viper.AutomaticEnv()
 
 	// for some reason AutomaticEnv does not bind to the environment variables. We need to do it manually
-	if err := viper.BindEnv("google_service_account_key", "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY: %v", err)
-	}
 	if err := viper.BindEnv("address", "ELO_WEB_SERVICE_ADDRESS"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_ADDRESS: %v", err)
 	}
@@ -111,9 +107,6 @@ func ReadConfiguration() {
 
 	// Validate that all config fields are non-empty (at least a non-empty string)
 	var missing []string
-	if Config.GoogleServiceAccountKey == "" {
-		missing = append(missing, "google_service_account_key")
-	}
 	if Config.Address == "" {
 		missing = append(missing, "address")
 	}

@@ -1,7 +1,7 @@
 ## Sample configuration for elo-web-service
 #
 # You can override these with environment variables, e.g.
-# ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=/path/to/key.json
+# ELO_WEB_SERVICE_ADDRESS=localhost:8080
 
 # Interface and port to listen to
 address: "localhost:8080"

@@ -26,22 +26,6 @@ pkgs.testers.nixosTest {
           };
         };
 
-        google-service-account-key = pkgs.writeText "google-service-account-key.json" ''
-          {
-            "type": "service_account",
-            "project_id": "elo-project-466111",
-            "private_key_id": "1111111",
-            "private_key": "1111111",
-            "client_email": "elo-web-service@elo-project-111111.iam.gserviceaccount.com",
-            "client_id": "1111111111111111111111111",
-            "auth_uri": "https://fake",
-            "token_uri": "https://fake",
-            "auth_provider_x509_cert_url": "fake",
-            "client_x509_cert_url": "https://www.googleapis.com/",
-            "universe_domain": "googleapis.com"
-          }
-        '';
-
         secrets-env-file = pkgs.writeText "secrets.env" ''
           ELO_WEB_SERVICE_OAUTH2_CLIENT_ID=1111111111111111111111111
           ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET=2222

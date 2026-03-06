@@ -12,11 +12,6 @@ in
   options.services.elo-web-service = {
     enable = lib.mkEnableOption "Elo web service";
 
-    google-service-account-key = lib.mkOption {
-      type = lib.types.path;
-      description = "Path to the Google service account key file. This file is sensitive";
-    };
-
     secrets-env-file = lib.mkOption {
       type = lib.types.path;
       description = "Path to the secrets.env file containing sensitive environment variables like ELO_WEB_SERVICE_OAUTH2_CLIENT_ID, ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET, and ELO_WEB_SERVICE_COOKIE_JWT_SECRET";
@@ -145,7 +140,6 @@ in
         serviceConfig = {
           Environment = (
             [
-              "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
               "GIN_MODE=release"
               "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
             ]
@@ -158,9 +152,6 @@ in
           User = eloWebServiceInstanceName;
           Group = eloWebServiceInstanceName;
           StateDirectory = eloWebServiceInstanceName;
-          LoadCredential = [
-            "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
-          ];
         };
 
         requires = (
@@ -206,14 +197,10 @@ in
               EnvironmentFile = config.services.elo-web-service.secrets-env-file;
               Environment = (
                 [
-                  "ELO_WEB_SERVICE_GOOGLE_SERVICE_ACCOUNT_KEY=%d/google-service-account-key.json"
                   "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
                 ]
                 ++ lib.optional (pgPassword != null) [ "ELO_WEB_SERVICE_POSTGRES_PASSWORD=${pgPassword}" ]
               );
-              LoadCredential = [
-                "google-service-account-key.json:${config.services.elo-web-service.google-service-account-key}"
-              ];
               ExecStart = "${elo-web-service}/bin/elo-web-service --config-path /etc/elo-web-service/config.yaml --migrate-db";
             };
           };

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { Match } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { RankIcon } from "@/components/rank-icon";
 
 type MatchCardProps = {
   match: Match;
@@ -74,7 +75,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
             <li key={p.playerId} className="flex items-center gap-2 sm:gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 sm:gap-2 mb-1">
-                  <span className="font-semibold text-sm sm:text-base">{ranks[idx]}.</span>
+                  <RankIcon rank={ranks[idx]} />
                   <span className="truncate text-sm sm:text-base">{p.name}</span>
                 </div>
 
