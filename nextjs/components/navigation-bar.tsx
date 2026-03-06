@@ -13,22 +13,17 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
-import { ModeToggle } from "./mode-toggle"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { EloWebServiceBaseUrl } from "@/app/api"
-import { useSettings } from "@/app/settingsContext"
 import { useMe } from "@/app/meContext"
-import { NavigationMenuSub } from "@radix-ui/react-navigation-menu"
-import { useTheme } from "next-themes"
-import { Moon, Sun, Settings, LogOut } from "lucide-react"
+import { Settings, LogOut, SlidersHorizontal } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
   const { invalidate: invalidatePlayers } = usePlayers();
   const { invalidate: invalidateMatches } = useMatches();
-  const settings = useSettings();
   const me = useMe();
 
   return (
@@ -39,22 +34,26 @@ export function NavigationBar() {
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
 
-              <ModeToggleSubMenu />
+              <ListItem href="/settings" title={
+                <>
+                  <SlidersHorizontal className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Мои настройки
+                </>
+              } />
+
               <ListItem href="https://github.com/Tolyandre/elo" title={
                 <>
                   <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
                   Исходный код
                 </>
-              }>
-              </ListItem>
+              } />
 
               <ListItem href="/admin" title={
                 <>
                   <Settings className="inline-block mr-2 h-6 w-6 align-middle" />
                   Админка
                 </>
-              }>
-              </ListItem>
+              } />
 
               {(() => {
                 if (me.id) {
@@ -71,14 +70,12 @@ export function NavigationBar() {
                 }
 
                 return (
-                  <ListItem href={`${EloWebServiceBaseUrl}/auth/login`} title=
-                    {
-                      <>
-                        <SiGoogle className="inline-block mr-2 h-6 w-6 align-middle" />
-                        Войти
-                      </>
-                    }>
-                  </ListItem>
+                  <ListItem href={`${EloWebServiceBaseUrl}/auth/login`} title={
+                    <>
+                      <SiGoogle className="inline-block mr-2 h-6 w-6 align-middle" />
+                      Войти
+                    </>
+                  } />
                 );
               })()}
 
@@ -142,29 +139,3 @@ function ListItem({
     </li>
   )
 }
-
-function ModeToggleSubMenu() {
-  const { setTheme } = useTheme()
-
-  return (
-    <NavigationMenuSub defaultValue="">
-      <NavigationMenuList>
-        <NavigationMenuItem value="sub1">
-          <NavigationMenuTrigger>
-            <Sun className="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
-            <Moon className="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
-            <span className="sr-only">Тема</span>
-          </NavigationMenuTrigger>
-          <NavigationMenuContent>
-            <ul>
-              <ListItem title="Светлая" onClick={() => setTheme("light")} />
-              <ListItem title="Темная" onClick={() => setTheme("dark")} />
-              <ListItem title="Системная" onClick={() => setTheme("system")} />
-            </ul>
-          </NavigationMenuContent>
-        </NavigationMenuItem>
-      </NavigationMenuList>
-    </NavigationMenuSub>
-  )
-}
-
