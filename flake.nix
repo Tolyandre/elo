@@ -43,11 +43,26 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          lib = pkgs.lib;
         in
         {
-          default = import ./shell.nix {
-            inherit pkgs;
-            gomod2nix = gomod2nix.packages.${system}.default;
+          default = pkgs.mkShell {
+            hardeningDisable = [ "fortify" ];
+
+            buildInputs =
+              lib.optionals pkgs.stdenv.isLinux [
+                pkgs.libcap
+                pkgs.glibc.static
+              ]
+              ++ [
+                pkgs.git
+                pkgs.go
+                pkgs.gcc
+                pkgs.sqlc
+                pkgs.delve
+                pkgs.python3
+                gomod2nix.packages.${system}.default
+              ];
           };
         }
       );
