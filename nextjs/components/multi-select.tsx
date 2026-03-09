@@ -272,6 +272,13 @@ interface MultiSelectProps
 	deduplicateOptions?: boolean;
 
 	/**
+	 * If true, suppresses the duplicate-values warning in dev mode.
+	 * Use when duplicate values across groups are intentional (e.g. same player in multiple clubs).
+	 * Optional, defaults to false.
+	 */
+	allowDuplicateValues?: boolean;
+
+	/**
 	 * If true, the component will reset its internal state when defaultValue changes.
 	 * Useful for React Hook Form integration and form reset functionality.
 	 * Optional, defaults to true.
@@ -338,6 +345,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			minWidth,
 			maxWidth,
 			deduplicateOptions = false,
+			allowDuplicateValues = false,
 			resetOnDefaultValueChange = true,
 			closeOnSelect = false,
 			...props
@@ -558,7 +566,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 					uniqueOptions.push(option);
 				}
 			});
-			if (process.env.NODE_ENV === "development" && duplicates.length > 0) {
+			if (process.env.NODE_ENV === "development" && duplicates.length > 0 && !allowDuplicateValues) {
 				const action = deduplicateOptions
 					? "automatically removed"
 					: "detected";
@@ -573,7 +581,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 				);
 			}
 			return deduplicateOptions ? uniqueOptions : allOptions;
-		}, [options, deduplicateOptions, isGroupedOptions]);
+		}, [options, deduplicateOptions, allowDuplicateValues, isGroupedOptions]);
 
 		const getOptionByValue = React.useCallback(
 			(value: string): MultiSelectOption | undefined => {

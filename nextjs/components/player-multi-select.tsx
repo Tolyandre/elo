@@ -48,6 +48,7 @@ export function PlayerMultiSelect({
   }
 
   return <MultiSelect options={options}
+    allowDuplicateValues={true}
     responsive={{
       mobile: { maxCount: 10, hideIcons: false, compactMode: true },
       tablet: { maxCount: 10, hideIcons: false, compactMode: false },
