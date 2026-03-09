@@ -2,6 +2,8 @@
 
 import { BlockMath, InlineMath } from "react-katex"
 import "katex/dist/katex.min.css"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { useState } from "react"
 
 import {
     Accordion,
@@ -17,6 +19,25 @@ import { EloCalculator } from "./EloCalculator"
 
 export default function HelpPage() {
     const settings = useSettings()
+    const searchParams = useSearchParams()
+    const router = useRouter()
+    const pathname = usePathname()
+
+    const [openItems, setOpenItems] = useState<string[]>(() => {
+        const param = searchParams.get("open")
+        return param ? param.split(",") : []
+    })
+
+    function handleValueChange(values: string[]) {
+        setOpenItems(values)
+        const params = new URLSearchParams(searchParams.toString())
+        if (values.length > 0) {
+            params.set("open", values.join(","))
+        } else {
+            params.delete("open")
+        }
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    }
 
     return (
         <div className="space-y-6 py-6">
@@ -27,7 +48,7 @@ export default function HelpPage() {
                 </p>
             </div>
 
-            <Accordion type="multiple" defaultValue={[]} className="w-full border rounded-lg px-4">
+            <Accordion type="multiple" value={openItems} onValueChange={handleValueChange} className="w-full border rounded-lg px-4">
 
                 {/* ── Section 1: What is Elo ── */}
                 <AccordionItem value="what-is-elo">
