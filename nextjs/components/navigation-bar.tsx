@@ -34,10 +34,24 @@ export function NavigationBar() {
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
 
+              <ListItem href="/admin" title={
+                <>
+                  <Settings className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Админка
+                </>
+              } />
+
               <ListItem href="/settings" title={
                 <>
                   <SlidersHorizontal className="inline-block mr-2 h-6 w-6 align-middle" />
                   Мои настройки
+                </>
+              } />
+
+              <ListItem href="https://github.com/Tolyandre/elo" title={
+                <>
+                  <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Исходный код
                 </>
               } />
 
@@ -56,20 +70,6 @@ export function NavigationBar() {
                   </>
                 } />
               )}
-
-              <ListItem href="https://github.com/Tolyandre/elo" title={
-                <>
-                  <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Исходный код
-                </>
-              } />
-
-              <ListItem href="/admin" title={
-                <>
-                  <Settings className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Админка
-                </>
-              } />
 
               {(() => {
                 if (me.id) {
