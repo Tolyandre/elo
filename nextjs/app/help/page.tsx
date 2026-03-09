@@ -3,7 +3,7 @@
 import { BlockMath, InlineMath } from "react-katex"
 import "katex/dist/katex.min.css"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
-import { useState } from "react"
+import { Suspense, useState } from "react"
 
 import {
     Accordion,
@@ -17,7 +17,7 @@ import { EloCalculator } from "./EloCalculator"
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function HelpPage() {
+function HelpPageContent() {
     const settings = useSettings()
     const searchParams = useSearchParams()
     const router = useRouter()
@@ -458,5 +458,13 @@ export default function HelpPage() {
 
             </Accordion>
         </div>
+    )
+}
+
+export default function HelpPage() {
+    return (
+        <Suspense>
+            <HelpPageContent />
+        </Suspense>
     )
 }
