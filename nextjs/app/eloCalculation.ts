@@ -9,9 +9,11 @@ export function calculateEloChanges(
     participants: { id: string; points: number }[],
     playerElos: Map<string, number>,
     k: number,
-    d: number
+    d: number,
+    startingElo: number,
+    winReward: number
 ): EloChange[] {
-    const getPlayerElo = (id: string) => playerElos.get(id) ?? 0;
+    const getPlayerElo = (id: string) => playerElos.get(id) ?? startingElo;
     const playersCount = participants.length;
 
     const absoluteLoserScore = participants
@@ -26,8 +28,10 @@ export function calculateEloChanges(
             (playersCount * (playersCount - 1) / 2);
 
         const normalizedScore =
-            (p.points - absoluteLoserScore) /
-            (participants.map(inner_p => inner_p.points).reduce((prev, cur) => prev + cur) - playersCount * absoluteLoserScore);
+            Math.pow(p.points - absoluteLoserScore, winReward) /
+            participants
+                .map(inner_p => Math.pow(inner_p.points - absoluteLoserScore, winReward))
+                .reduce((prev, cur) => prev + cur, 0);
 
         const minus = -k * (isNaN(winExpectation) ? 1 : winExpectation);
         const plus = k * (isNaN(normalizedScore) ? 1 / playersCount : normalizedScore);

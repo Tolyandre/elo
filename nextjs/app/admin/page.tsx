@@ -32,6 +32,12 @@ export default function AdminPage() {
           >
             Управление клубами
           </Link>
+          <Link
+            href="/admin/formula"
+            className="px-4 py-2 bg-teal-600 text-white rounded hover:bg-teal-500 text-center"
+          >
+            Настройка формулы Elo
+          </Link>
         </div>
       </div>
     </main>

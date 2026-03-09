@@ -17,6 +17,8 @@ type EloSetting struct {
 	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
 	EloConstK     float64            `json:"elo_const_k"`
 	EloConstD     float64            `json:"elo_const_d"`
+	StartingElo   float64            `json:"starting_elo"`
+	WinReward     float64            `json:"win_reward"`
 }
 
 type Game struct {

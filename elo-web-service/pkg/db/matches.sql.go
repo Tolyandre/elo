@@ -319,7 +319,9 @@ SELECT
     CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
     ELSE prev_match_score.new_elo END AS prev_rating,
     elo_settings.elo_const_k,
-    elo_settings.elo_const_d
+    elo_settings.elo_const_d,
+    elo_settings.starting_elo,
+    elo_settings.win_reward
 
 FROM matches m
 JOIN games g ON g.id = m.game_id
@@ -334,7 +336,7 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) prev_match_score ON true
 LEFT JOIN LATERAL (
-    SELECT elo_const_k, elo_const_d
+    SELECT elo_const_k, elo_const_d, starting_elo, win_reward
     FROM elo_settings
     WHERE effective_date <= COALESCE(m.date, '-infinity'::timestamp)
     ORDER BY effective_date DESC
@@ -345,19 +347,21 @@ ORDER BY m.date ASC NULLS FIRST, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameRow struct {
-	MatchID    int32              `json:"match_id"`
-	Date       pgtype.Timestamptz `json:"date"`
-	GameID     int32              `json:"game_id"`
-	GameName   string             `json:"game_name"`
-	PlayerID   int32              `json:"player_id"`
-	PlayerName string             `json:"player_name"`
-	Score      float64            `json:"score"`
-	EloPay     pgtype.Float8      `json:"elo_pay"`
-	EloEarn    pgtype.Float8      `json:"elo_earn"`
-	NewElo     pgtype.Float8      `json:"new_elo"`
-	PrevRating interface{}        `json:"prev_rating"`
-	EloConstK  float64            `json:"elo_const_k"`
-	EloConstD  float64            `json:"elo_const_d"`
+	MatchID     int32              `json:"match_id"`
+	Date        pgtype.Timestamptz `json:"date"`
+	GameID      int32              `json:"game_id"`
+	GameName    string             `json:"game_name"`
+	PlayerID    int32              `json:"player_id"`
+	PlayerName  string             `json:"player_name"`
+	Score       float64            `json:"score"`
+	EloPay      pgtype.Float8      `json:"elo_pay"`
+	EloEarn     pgtype.Float8      `json:"elo_earn"`
+	NewElo      pgtype.Float8      `json:"new_elo"`
+	PrevRating  interface{}        `json:"prev_rating"`
+	EloConstK   float64            `json:"elo_const_k"`
+	EloConstD   float64            `json:"elo_const_d"`
+	StartingElo float64            `json:"starting_elo"`
+	WinReward   float64            `json:"win_reward"`
 }
 
 func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
@@ -383,6 +387,8 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 			&i.PrevRating,
 			&i.EloConstK,
 			&i.EloConstD,
+			&i.StartingElo,
+			&i.WinReward,
 		); err != nil {
 			return nil, err
 		}

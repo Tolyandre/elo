@@ -5,8 +5,6 @@ import (
 	"math"
 )
 
-const StartingElo = 1000
-
 func WinExpectation(currentElo float64, playersScore map[string]float64, startingElo float64,
 	prevElo map[string]float64, elo_const_d float64) float64 {
 
@@ -27,18 +25,15 @@ func WinExpectation(currentElo float64, playersScore map[string]float64, startin
 	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
 }
 
-func NormalizedScore(currentScore float64, playersScore map[string]float64, absoluteLoserScore float64) float64 {
-	var playersCount float64 = float64(len(playersScore))
-	var sum float64 = 0
+func NormalizedScore(currentScore float64, playersScore map[string]float64, absoluteLoserScore float64, winReward float64) float64 {
+	var sumPow float64 = 0
 	for _, s := range playersScore {
-		sum += s
+		sumPow += math.Pow(s-absoluteLoserScore, winReward)
 	}
-
-	var score = (currentScore - absoluteLoserScore) / (sum - absoluteLoserScore*playersCount)
+	score := math.Pow(currentScore-absoluteLoserScore, winReward) / sumPow
 	if math.IsNaN(score) {
-		score = 1 / playersCount
+		score = 1 / float64(len(playersScore))
 	}
-
 	return score
 }
 
@@ -57,7 +52,7 @@ func GetAsboluteLoserScore(playersScore map[string]float64) float64 {
 }
 
 func CalculateNewElo(previousElo map[string]float64, startingElo float64, score map[string]float64,
-	eloConstK float64, eloConstD float64) map[string]float64 {
+	eloConstK float64, eloConstD float64, winReward float64) map[string]float64 {
 
 	newElo := make(map[string]float64)
 	maps.Copy(newElo, previousElo)
@@ -72,7 +67,7 @@ func CalculateNewElo(previousElo map[string]float64, startingElo float64, score 
 			prev = v
 		}
 
-		norm := NormalizedScore(sc, score, absoluteLoserScore)
+		norm := NormalizedScore(sc, score, absoluteLoserScore, winReward)
 		expect := WinExpectation(prev, score, startingElo, previousElo, eloConstD)
 
 		delta := eloConstK * (norm - expect)

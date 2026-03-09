@@ -111,9 +111,14 @@ export default function HelpPage() {
                         </p>
                         <Card className="bg-muted/50">
                             <CardContent className="py-3 overflow-x-auto">
-                                <BlockMath math={String.raw`S_i = \frac{\text{score}_i - \text{score}_{\min}}{\displaystyle\sum_j \text{score}_j \;-\; N \cdot \text{score}_{\min}}`} />
+                                <BlockMath math={String.raw`S_i = \frac{(\text{score}_i - \text{score}_{\min})^W}{\displaystyle\sum_j (\text{score}_j - \text{score}_{\min})^W}`} />
                             </CardContent>
                         </Card>
+                        <p>
+                            Нормализация происходит пропорционально степени <InlineMath math="W" /> (WinReward) победных очков.
+                            При <InlineMath math="W = 1" /> нормализация линейна (поведение как в классическом Elo).
+                            При <InlineMath math="W &gt; 1" /> победители получают непропорционально бо́льшую долю рейтинга.
+                        </p>
                         <p>
                             Если все игроки набрали одинаковое количество очков, каждый получает{" "}
                             <InlineMath math="S_i = 1/N" /> (ничья).
@@ -133,8 +138,10 @@ export default function HelpPage() {
                         </p>
                         <p>
                             В данном приложении настроены{" "}
-                            <InlineMath math={`K = ${settings.eloConstK}`} /> и{" "}
-                            <InlineMath math={`D = ${settings.eloConstD}`} />.
+                            <InlineMath math={`K = ${settings.eloConstK}`} />,{" "}
+                            <InlineMath math={`D = ${settings.eloConstD}`} />,{" "}
+                            <InlineMath math={`W = ${settings.winReward}`} />{" "}
+                            и начальный рейтинг <InlineMath math={`R_0 = ${settings.startingElo}`} />.
                         </p>
                         <p>
                             Удобно раскрыть формулу через два слагаемых в единицах рейтинга:
@@ -418,7 +425,7 @@ export default function HelpPage() {
                                         5. Больше партий — точнее рейтинг
                                     </p>
                                     <p className="text-muted-foreground">
-                                        Игроки начинают с 1000 рейтинга.
+                                        Игроки начинают с {settings.startingElo} рейтинга.
                                         Чем больше сыграно игр, тем точнее рейтинг отражает уровень игрока.
                                         Игроки, которые сыграли достаточно партий, попадают в ранжированный список.
                                     </p>

@@ -18,6 +18,7 @@ type PlayerRow = {
 type CalcForm = {
     k: number
     d: number
+    winReward: number
     playerCount: number
     players: PlayerRow[]
 }
@@ -31,6 +32,7 @@ export function EloCalculator() {
         defaultValues: {
             k: 32,
             d: 400,
+            winReward: 1,
             playerCount: 3,
             players: Array.from({ length: 3 }, (_, i) => ({
                 elo: 1000,
@@ -39,17 +41,23 @@ export function EloCalculator() {
         },
     })
 
-    // Initialize K and D from app settings when they load
+    // Initialize K, D, WinReward, and starting elo from app settings when they load
     useEffect(() => {
         if (!initialized && settings.eloConstK > 0 && settings.eloConstD > 0) {
             setValue("k", settings.eloConstK)
             setValue("d", settings.eloConstD)
+            setValue("winReward", settings.winReward)
+            setValue("players", Array.from({ length: 3 }, (_, i) => ({
+                elo: settings.startingElo,
+                score: 3 - i,
+            })))
             setInitialized(true)
         }
-    }, [settings.eloConstK, settings.eloConstD, initialized, setValue])
+    }, [settings.eloConstK, settings.eloConstD, settings.winReward, settings.startingElo, initialized, setValue])
 
     const k = useWatch({ control, name: "k" })
     const d = useWatch({ control, name: "d" })
+    const winReward = useWatch({ control, name: "winReward" })
     const playerCount = useWatch({ control, name: "playerCount" })
     const players = useWatch({ control, name: "players" })
 
@@ -58,7 +66,7 @@ export function EloCalculator() {
         const current = players?.length ?? 0
         if (current < playerCount) {
             const extra = Array.from({ length: playerCount - current }, (_, i) => ({
-                elo: 1000,
+                elo: initialized ? settings.startingElo : 1000,
                 score: Math.max(1, current - i),
             }))
             setValue("players", [...(players ?? []), ...extra])
@@ -81,11 +89,14 @@ export function EloCalculator() {
             playerElos,
             Number(k) || 1,
             Number(d) || 1,
+            initialized ? settings.startingElo : 1000,
+            Number(winReward) || 1,
         )
-    }, [players, k, d])
+    }, [players, k, d, winReward, initialized, settings.startingElo])
 
     const kVal = Number(k) || 1
     const dVal = Number(d) || 1
+    const winRewardVal = Number(winReward) || 1
 
     return (
         <div className="space-y-6">
@@ -115,11 +126,24 @@ export function EloCalculator() {
                 </div>
             </div>
 
+            {/* WinReward slider */}
+            <div className="space-y-2">
+                <Label>WinReward = {winRewardVal.toFixed(1)}</Label>
+                <Slider
+                    min={0.1} max={5} step={0.1}
+                    value={[winRewardVal]}
+                    onValueChange={([v]) => setValue("winReward", v)}
+                />
+                <p className="text-xs text-muted-foreground">
+                    Степень нормализации очков — при значении 1 нормализация линейна, при значении &gt;1 победа вознаграждается больше
+                </p>
+            </div>
+
             {/* Number of players */}
             <div className="space-y-2">
                 <Label>Количество игроков = {playerCount}</Label>
                 <Slider
-                    min={2} max={8} step={1}
+                    min={2} max={12} step={1}
                     value={[playerCount]}
                     onValueChange={([v]) => setValue("playerCount", v)}
                 />
@@ -207,7 +231,7 @@ export function EloCalculator() {
                                         <input
                                             type="number"
                                             inputMode="numeric"
-                                            className="w-16 rounded border border-input bg-background px-2 py-1 text-sm"
+                                            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                             {...register(`players.${i}.elo`)}
                                         />
                                     </td>
@@ -215,7 +239,7 @@ export function EloCalculator() {
                                         <input
                                             type="number"
                                             inputMode="numeric"
-                                            className="w-14 rounded border border-input bg-background px-2 py-1 text-sm"
+                                            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                             {...register(`players.${i}.score`)}
                                         />
                                     </td>

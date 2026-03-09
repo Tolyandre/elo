@@ -84,14 +84,14 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 
 	var currentMatchID int32 = -1
 	playersScore := make(map[string]float64)
-	var currentEloConstK, currentEloConstD float64
+	var currentEloConstK, currentEloConstD, currentStartingElo, currentWinReward float64
 
 	for _, r := range rows {
 		if r.MatchID != currentMatchID {
 			if currentMatchID != -1 {
 				// Use the elo settings from the previous match
-				playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
-					currentEloConstK, currentEloConstD)
+				playersElo = CalculateNewElo(playersElo, currentStartingElo, playersScore,
+					currentEloConstK, currentEloConstD, currentWinReward)
 			}
 			// start new match
 			currentMatchID = r.MatchID
@@ -101,6 +101,8 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 			// Get elo settings for this match (from query result)
 			currentEloConstK = r.EloConstK
 			currentEloConstD = r.EloConstD
+			currentStartingElo = r.StartingElo
+			currentWinReward = r.WinReward
 		}
 
 		pid := fmt.Sprintf("%d", r.PlayerID)
@@ -109,8 +111,8 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 
 	// apply last match
 	if len(playersScore) > 0 {
-		playersElo = CalculateNewElo(playersElo, StartingElo, playersScore,
-			currentEloConstK, currentEloConstD)
+		playersElo = CalculateNewElo(playersElo, currentStartingElo, playersScore,
+			currentEloConstK, currentEloConstD, currentWinReward)
 	}
 
 	players := make([]struct {

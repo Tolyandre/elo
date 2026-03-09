@@ -146,9 +146,19 @@ export async function updateMatchPromise(matchId: number, payload: { game_id: st
     }
 }
 
+export type EloSettingEntry = {
+    effective_date: string;
+    elo_const_k: number;
+    elo_const_d: number;
+    starting_elo: number;
+    win_reward: number;
+}
+
 export async function getSettingsPromise(): Promise<{
-    elo_const_k: string,
-    elo_const_d: string,
+    elo_const_k: number,
+    elo_const_d: number,
+    starting_elo: number,
+    win_reward: number,
 }> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
@@ -444,6 +454,55 @@ export async function removeClubMemberPromise(clubId: string, playerId: number) 
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/settings/all`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function createSettingsPromise(payload: {
+    effective_date: string;
+    elo_const_k: number;
+    elo_const_d: number;
+    starting_elo: number;
+    win_reward: number;
+}): Promise<void> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function deleteSettingsPromise(effectiveDate: string): Promise<void> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/settings`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ effective_date: effectiveDate }),
         });
         return await handleJsonErrorResponse(res);
     }

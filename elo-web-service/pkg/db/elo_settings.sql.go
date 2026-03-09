@@ -12,23 +12,40 @@ import (
 )
 
 const createEloSettings = `-- name: CreateEloSettings :exec
-INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d)
-VALUES ($1, $2, $3)
+INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateEloSettingsParams struct {
 	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
 	EloConstK     float64            `json:"elo_const_k"`
 	EloConstD     float64            `json:"elo_const_d"`
+	StartingElo   float64            `json:"starting_elo"`
+	WinReward     float64            `json:"win_reward"`
 }
 
 func (q *Queries) CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error {
-	_, err := q.db.Exec(ctx, createEloSettings, arg.EffectiveDate, arg.EloConstK, arg.EloConstD)
+	_, err := q.db.Exec(ctx, createEloSettings,
+		arg.EffectiveDate,
+		arg.EloConstK,
+		arg.EloConstD,
+		arg.StartingElo,
+		arg.WinReward,
+	)
+	return err
+}
+
+const deleteEloSettings = `-- name: DeleteEloSettings :exec
+DELETE FROM elo_settings WHERE effective_date = $1
+`
+
+func (q *Queries) DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteEloSettings, effectiveDate)
 	return err
 }
 
 const getEloSettingsForDate = `-- name: GetEloSettingsForDate :one
-SELECT elo_const_k, elo_const_d
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward
 FROM elo_settings
 WHERE effective_date <= $1
 ORDER BY effective_date DESC
@@ -36,19 +53,26 @@ LIMIT 1
 `
 
 type GetEloSettingsForDateRow struct {
-	EloConstK float64 `json:"elo_const_k"`
-	EloConstD float64 `json:"elo_const_d"`
+	EloConstK   float64 `json:"elo_const_k"`
+	EloConstD   float64 `json:"elo_const_d"`
+	StartingElo float64 `json:"starting_elo"`
+	WinReward   float64 `json:"win_reward"`
 }
 
 func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error) {
 	row := q.db.QueryRow(ctx, getEloSettingsForDate, effectiveDate)
 	var i GetEloSettingsForDateRow
-	err := row.Scan(&i.EloConstK, &i.EloConstD)
+	err := row.Scan(
+		&i.EloConstK,
+		&i.EloConstD,
+		&i.StartingElo,
+		&i.WinReward,
+	)
 	return i, err
 }
 
 const getLatestEloSettings = `-- name: GetLatestEloSettings :one
-SELECT elo_const_k, elo_const_d, effective_date
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date
 FROM elo_settings
 ORDER BY effective_date DESC
 LIMIT 1
@@ -57,18 +81,26 @@ LIMIT 1
 type GetLatestEloSettingsRow struct {
 	EloConstK     float64            `json:"elo_const_k"`
 	EloConstD     float64            `json:"elo_const_d"`
+	StartingElo   float64            `json:"starting_elo"`
+	WinReward     float64            `json:"win_reward"`
 	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
 }
 
 func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error) {
 	row := q.db.QueryRow(ctx, getLatestEloSettings)
 	var i GetLatestEloSettingsRow
-	err := row.Scan(&i.EloConstK, &i.EloConstD, &i.EffectiveDate)
+	err := row.Scan(
+		&i.EloConstK,
+		&i.EloConstD,
+		&i.StartingElo,
+		&i.WinReward,
+		&i.EffectiveDate,
+	)
 	return i, err
 }
 
 const listEloSettings = `-- name: ListEloSettings :many
-SELECT effective_date, elo_const_k, elo_const_d
+SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward
 FROM elo_settings
 ORDER BY effective_date DESC
 `
@@ -82,7 +114,13 @@ func (q *Queries) ListEloSettings(ctx context.Context) ([]EloSetting, error) {
 	items := []EloSetting{}
 	for rows.Next() {
 		var i EloSetting
-		if err := rows.Scan(&i.EffectiveDate, &i.EloConstK, &i.EloConstD); err != nil {
+		if err := rows.Scan(
+			&i.EffectiveDate,
+			&i.EloConstK,
+			&i.EloConstD,
+			&i.StartingElo,
+			&i.WinReward,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

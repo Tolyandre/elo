@@ -63,7 +63,9 @@ function AddGameForm() {
             participants.map(p => ({ id: p.id, points: Number(p.points) })),
             playerElos,
             settings.eloConstK,
-            settings.eloConstD
+            settings.eloConstD,
+            settings.startingElo,
+            settings.winReward
         );
     }, [participants, players, settings]);
 

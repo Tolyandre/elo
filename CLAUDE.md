@@ -86,6 +86,10 @@ Database code is generated from SQL queries using sqlc. Edit `.sql` files in `pk
 - **app/api.ts**: Centralized API client with typed functions for all backend endpoints
 - **components/**: Reusable React components (mostly shadcn/ui)
 
+### Frontend Conventions
+- **Use shadcn/ui components** for UI elements: `Button`, `Badge`, `Card`/`CardHeader`/`CardTitle`/`CardContent`, `Label`, `Slider`, `Dialog`, etc. (available in `nextjs/components/ui/`). Prefer these over raw HTML elements like `<button>` or `<label>`.
+- **Mobile-first responsive design**: All pages must work on small screens without horizontal scrollbars. For wide tables, use `hidden sm:block` for the desktop table and `sm:hidden` for a mobile card/list layout. Use `flex-col sm:flex-row` and `grid-cols-1 sm:grid-cols-2` patterns.
+
 Frontend uses React Context for state management. Key contexts:
 - `SettingsProvider`: Elo constants (K, D)
 - `PlayersProvider`: Player data and rankings

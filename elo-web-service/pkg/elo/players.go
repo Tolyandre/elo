@@ -43,6 +43,12 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	}
 
 	dt := pgtype.Timestamptz{Time: ref, Valid: true}
+
+	settings, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: ref, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get elo settings: %v", err)
+	}
+
 	rows, err := s.Queries.ListPlayersWithStats(ctx, dt)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve players from db: %v", err)
@@ -51,7 +57,7 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	// Map required windows to counts returned by query
 	players := make([]Player, 0, len(rows))
 	for _, r := range rows {
-		eloVal := float64(StartingElo)
+		eloVal := settings.StartingElo
 		if r.Rating != nil {
 			eloVal = r.Rating.(float64)
 		}
