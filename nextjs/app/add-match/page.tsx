@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
@@ -13,6 +13,8 @@ import { AlertCircleIcon } from "lucide-react";
 import { useGames } from "../gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
+import { calculateEloChanges } from "../eloCalculation";
+import { useSessionStorage } from "@/hooks/useSessionStorage";
 
 type Participant = {
     id: string;
@@ -20,19 +22,10 @@ type Participant = {
     points: string;
 };
 
-type EloChange = {
-    id: string;
-    minus: number;
-    plus: number;
-    delta: number;
-};
-
 function AddGameForm() {
     const { players, loading } = usePlayers();
-    const [participants, setParticipants] = useState<Participant[]>([]);
-    const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
-    const [eloChange, setEloChange] = useState<EloChange[]>([]);
-    const [selectedGameId, setSelectedGameId] = useState<string | undefined>(undefined);
+    const [participants, setParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
+    const [selectedGameId, setSelectedGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
@@ -45,14 +38,14 @@ function AddGameForm() {
 
     const { games } = useGames();
 
-    useEffect(() => {
+    const handlePlayersChange = (newIds: string[]) => {
         setParticipants(
-            selectedPlayerIds.map((id) => {
+            newIds.map((id) => {
                 const existing = participants.find((p) => p.id === id);
-                return existing ? existing : { id, points: "", name: players.find((pl) => pl.id === id)?.name || "Unknown" };
+                return existing ?? { id, points: "", name: players.find((pl) => pl.id === id)?.name ?? "Unknown" };
             })
         );
-    }, [selectedPlayerIds]);
+    };
 
     const handlePointsChange = (id: string, value: string) => {
         setParticipants(
@@ -64,45 +57,14 @@ function AddGameForm() {
         setErrors((prev) => ({ ...prev, [id]: !isNumber(value) }));
     };
 
-    function getPlayerElo(playerId: string): number {
-        const elo = players.find(player => player.id == playerId)?.rank.now.elo;
-        if (typeof (elo) == "undefined")
-            throw "Cannot find player"
-        return elo;
-    }
-
-    useEffect(() => {
-        const d = settings.eloConstD;
-        const k = settings.eloConstK;
-
-        const newElo: EloChange[] = [];
-        const playersCount = participants.length;
-
-        const absoluteLoserScore = participants
-            .map(p => Number(p.points))
-            .reduce((prev, cur) => Math.min(prev, cur), Number.MAX_VALUE);
-
-        participants.forEach((p) => {
-
-            const winExpectation = (participants.map(inner_p =>
-                1 / (1 + Math.pow(10, (getPlayerElo(inner_p.id) - getPlayerElo(p.id)) / d))
-            ).reduce((prev, curr) => prev + curr) - 0.5) / (playersCount * (playersCount - 1) / 2);
-
-
-            const normalizedScore = (Number(p.points) - absoluteLoserScore) /
-                (participants.map(inner_p => Number(inner_p.points)).reduce((prev, cur) => prev + cur) - playersCount * absoluteLoserScore);
-            const minus = -k * (isNaN(winExpectation) ? 1 : winExpectation);
-            const plus = k * (isNaN(normalizedScore) ? 1 / playersCount : normalizedScore);
-
-            newElo.push({
-                id: p.id,
-                minus: minus,
-                plus: plus,
-                delta: plus + minus,
-            });
-        });
-
-        setEloChange(newElo);
+    const eloChange = useMemo(() => {
+        const playerElos = new Map(players.map(pl => [pl.id, pl.rank.now.elo]));
+        return calculateEloChanges(
+            participants.map(p => ({ id: p.id, points: Number(p.points) })),
+            playerElos,
+            settings.eloConstK,
+            settings.eloConstD
+        );
     }, [participants, players, settings]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -127,6 +89,8 @@ function AddGameForm() {
             setSuccess(true);
             invalidateMatches();
             invalidatePlayers();
+            sessionStorage.removeItem("add-match/participants");
+            sessionStorage.removeItem("add-match/selectedGameId");
             router.push(`/match?id=${result.id}`);
         } catch (err) {
             setSuccess(false);
@@ -152,7 +116,7 @@ function AddGameForm() {
             </div>
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                <PlayerMultiSelect value={selectedPlayerIds} onChange={setSelectedPlayerIds} />
+                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} />
 
             </div>
             {participants.length > 0 && (
