@@ -114,7 +114,7 @@ export function NavigationBar() {
 
         <NavigationMenuItem>
           <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
-            <Link href="/games">Игры</Link>
+            <Link href="/help">Справка</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
       </NavigationMenuList>
