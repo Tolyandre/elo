@@ -139,6 +139,10 @@ function ClubAdminContent() {
                     </Link>
                 </div>
             </div>
+            <p className="text-sm text-muted-foreground mb-4">
+                Удаление клуба возможно только если в нём нет игроков.
+            </p>
+
 
             <div className="flex gap-2 mb-8">
                 <Button
@@ -222,7 +226,6 @@ function ClubAdminContent() {
                         <DialogTitle>Удалить клуб</DialogTitle>
                         <DialogDescription>
                             Вы уверены, что хотите удалить клуб &quot;{club.name}&quot;?
-                            Удаление возможно только если в клубе нет игроков.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

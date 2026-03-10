@@ -1,31 +1,18 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { listClubsPromise, createClubPromise, Club } from "@/app/api";
+import { createClubPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { useClubs } from "@/app/clubsContext";
 import { Button } from "@/components/ui/button";
 
 export default function ClubsAdminPage() {
     const { canEdit } = useMe();
-    const [clubs, setClubs] = useState<Club[] | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { clubs, invalidate } = useClubs();
     const [newName, setNewName] = useState("");
     const [creating, setCreating] = useState(false);
 
-    function loadClubs() {
-        setLoading(true);
-        listClubsPromise()
-            .then((data) => setClubs(data))
-            .finally(() => setLoading(false));
-    }
-
-    useEffect(() => {
-        loadClubs();
-    }, []);
-
-    const sortedClubs = clubs
-        ? [...clubs].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-        : [];
+    const sortedClubs = [...clubs].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
     async function handleCreate() {
         if (!newName.trim()) return;
@@ -33,7 +20,7 @@ export default function ClubsAdminPage() {
             setCreating(true);
             await createClubPromise({ name: newName.trim() });
             setNewName("");
-            loadClubs();
+            invalidate();
         } catch {
             // toast shown by API helper
         } finally {
@@ -52,10 +39,6 @@ export default function ClubsAdminPage() {
                 </div>
             </div>
 
-            <p className="text-sm text-muted-foreground mb-4">
-                Удаление клуба возможно только если в нём нет игроков.
-            </p>
-
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <input
                     className="border rounded p-2 flex-1"
@@ -72,11 +55,9 @@ export default function ClubsAdminPage() {
                 </div>
             </div>
 
-            {loading && <p>Загрузка...</p>}
+            {sortedClubs.length === 0 && <p>Нет клубов</p>}
 
-            {!loading && sortedClubs.length === 0 && <p>Нет клубов</p>}
-
-            {!loading && sortedClubs.length > 0 && (
+            {sortedClubs.length > 0 && (
                 <section>
                     <h2 className="text-lg font-medium mb-3">Список клубов</h2>
                     <div className="space-y-2">
