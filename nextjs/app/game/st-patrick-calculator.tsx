@@ -27,6 +27,14 @@ type FormValues = {
     blackCards: CardState[]
 }
 
+function formatProbability(p: number): string {
+    const pct = p * 100;
+    if (pct.toFixed(2) === "100.00" && p < 1) {
+        return pct.toFixed(4) + "%";
+    }
+    return pct.toFixed(2) + "%";
+}
+
 function computeProbabilities(
     numberOfPlayers: number,
     roundNumber: number,
@@ -87,9 +95,9 @@ function BlackCardsInput({
     return (
         <div className="space-y-3">
             <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
-                <span>У меня: <span className={cn("font-medium", myCount > cardsInHand && "text-destructive")}>{myCount}</span> / {cardsInHand}</span>
-                <span>У соперников: <span className={cn("font-medium", opponentsCount > opponentsCardsInHand && "text-destructive")}>{opponentsCount}</span> / {opponentsCardsInHand}</span>
-                <span>Вышли: <span className={cn("font-medium", playedCount > maxPlayedCount && "text-destructive")}>{playedCount}</span> / {maxPlayedCount}</span>
+                <span>У меня: <span className={cn("font-medium", myCount > cardsInHand && "text-destructive")}>{myCount}</span></span>
+                <span>У соперников: <span className={cn("font-medium", opponentsCount > opponentsCardsInHand && "text-destructive")}>{opponentsCount}</span></span>
+                <span>Вышли: <span className={cn("font-medium", playedCount > maxPlayedCount && "text-destructive")}>{playedCount}</span></span>
             </div>
 
             <div className="grid grid-cols-9 gap-1">
@@ -109,7 +117,7 @@ function BlackCardsInput({
                         >
                             <span className={cn(state === "played" && "line-through")}>{idx + 1}</span>
                             <span className="text-[9px] font-normal leading-tight mt-0.5">
-                                {state === "me" ? "я" : state === "played" ? "вышла" : ""}
+                                {state === "me" ? "у меня" : state === "played" ? "вышла" : ""}
                             </span>
                         </button>
                     );
@@ -294,8 +302,8 @@ export function StPatrickCalculator() {
                                 <div className="space-y-3">
                                     {probabilitiesPerMyCard.map((p) => (
                                         <div key={p.index} className="text-sm text-muted-foreground">
-                                            <div className="font-medium">Карта {p.index + 1}</div>
-                                            <div>Один из соперников обязан забрать взятку: {(p.opponentsMustWin * 100).toFixed(2)}%</div>
+                                            <div className="font-medium">Чёрная {p.index + 1}</div>
+                                            <div>Один из соперников обязан забрать: {formatProbability(p.opponentsMustWin)}</div>
                                         </div>
                                     ))}
                                 </div>
