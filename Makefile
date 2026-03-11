@@ -1,12 +1,12 @@
 .PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test
 
-## Start all dev dependencies (postgres, dex, migrations, seed)
+## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
 # dev-up:
-# 	docker compose up -d --wait postgres dex
+# 	docker compose up -d --wait postgres mock-oauth2
 # 	cd elo-web-service && go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 # 	docker compose run --rm seed
 dev-up:
-	docker compose up -d postgres dex && podman wait --condition=healthy postgres
+	docker compose up -d postgres mock-oauth2 && podman wait --condition=healthy postgres
 	cd elo-web-service && go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 	docker compose run --rm seed
 

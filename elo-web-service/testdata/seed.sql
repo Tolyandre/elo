@@ -4,7 +4,7 @@
 INSERT INTO clubs (id, name) VALUES (1, 'Default Club')
 ON CONFLICT (id) DO NOTHING;
 
--- User for Dex login (userID matches dex/config.dev.yaml staticPasswords[0].userID)
+-- User for mock-oauth2 login (sub matches mock-oauth2/main.go handleUserinfo)
 INSERT INTO users (allow_editing, google_oauth_user_id, google_oauth_user_name)
 VALUES (true, 'dev-user-001', 'Dev User')
 ON CONFLICT (google_oauth_user_id) DO UPDATE

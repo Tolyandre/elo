@@ -28,15 +28,13 @@ services:
       - ./elo-web-service/testdata/seed.sql:/seed.sql:ro
     command: ["psql", "-h", "postgres", "-U", "elo", "-d", "elo", "-f", "/seed.sql"]
 
-  dex:
-    image: ghcr.io/dexidp/dex:v2.41.1
-    container_name: dex
+  mock-oauth2:
+    build:
+      context: ./mock-oauth2
+    container_name: mock-oauth2
     restart: unless-stopped
     ports:
-      - "5556:5556"
-    volumes:
-      - ./dex/config.docker.yaml:/etc/dex/config.yaml:ro
-    command: ["dex", "serve", "/etc/dex/config.yaml"]
+      - "5556:8080"
 
 volumes:
   postgres_data:

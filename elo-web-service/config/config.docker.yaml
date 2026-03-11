@@ -6,14 +6,15 @@
 # Interface and port to listen to
 address: "localhost:8080"
 
-# Dex OIDC mock (started by docker compose / make dev-up)
-oauth2_auth_uri:     "http://localhost:5556/dex/auth"
+# mock-oauth2 (started by docker compose / make dev-up)
+oauth2_auth_uri:     "http://localhost:5556/auth"
 oauth2_redirect_uri: "http://localhost:3000/oauth2-callback"
-oauth2_token_uri:    "http://localhost:5556/dex/token"
-oauth2_userinfo_uri: "http://localhost:5556/dex/userinfo"
+oauth2_token_uri:    "http://localhost:5556/token"
+oauth2_userinfo_uri: "http://localhost:5556/userinfo"
 oauth2_scopes: "openid profile"
 
-# oauth2_client_id and oauth2_client_secret are set via .env.dev
+# oauth2_client_id and oauth2_client_secret are required by config validation but unused by the mock
+# set them via .env.docker or use placeholder values
 
 # Frontend domain and scheme
 frontend_uri: http://localhost:3000
