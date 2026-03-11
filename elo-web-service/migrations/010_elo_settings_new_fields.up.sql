@@ -1,5 +1,0 @@
-ALTER TABLE elo_settings ADD COLUMN starting_elo FLOAT NOT NULL DEFAULT 1000;
-ALTER TABLE elo_settings ALTER COLUMN starting_elo DROP DEFAULT;
-
-ALTER TABLE elo_settings ADD COLUMN win_reward FLOAT NOT NULL DEFAULT 1;
-ALTER TABLE elo_settings ALTER COLUMN win_reward DROP DEFAULT;
