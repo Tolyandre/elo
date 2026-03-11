@@ -62,14 +62,12 @@ export function NavigationBar() {
                 </>
               } />
 
-              {process.env.NODE_ENV !== "production" && (
-                <ListItem href="/calculators/st-patrick" title={
-                  <>
-                    <Crosshair className="inline-block mr-2 h-6 w-6 align-middle" />
-                    Охота на змей
-                  </>
-                } />
-              )}
+              <ListItem href="/calculators/st-patrick" title={
+                <>
+                  <Crosshair className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Охота на змей
+                </>
+              } />
 
               {(() => {
                 if (me.id) {
