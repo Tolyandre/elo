@@ -16,6 +16,7 @@ oauth2_redirect_uri: http://localhost:3000/oauth2-callback
 oauth2_token_uri: https://oauth2.googleapis.com/token
 
 oauth2_userinfo_uri: https://www.googleapis.com/oauth2/v1/userinfo
+oauth2_scopes: "openid https://www.googleapis.com/auth/userinfo.profile"
 
 # Frontend domain and scheme
 frontend_uri: http://localhost:3000

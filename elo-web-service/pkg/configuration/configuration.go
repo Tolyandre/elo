@@ -17,6 +17,7 @@ type Configuration struct {
 	Oauth2AuthUri      string `mapstructure:"oauth2_auth_uri"`
 	Oauth2RedirectUri  string `mapstructure:"oauth2_redirect_uri"`
 	Oauth2UserinfoUri  string `mapstructure:"oauth2_userinfo_uri"`
+	Oauth2Scopes       string `mapstructure:"oauth2_scopes"`
 	CookieJwtSecret    string `mapstructure:"cookie_jwt_secret"`
 	CookieTtlSeconds   int    `mapstructure:"cookie_ttl_seconds"`
 	FrontendUri        string `mapstructure:"frontend_uri"`
@@ -74,6 +75,9 @@ func ReadConfiguration() {
 	}
 	if err := viper.BindEnv("oauth2_userinfo_uri", "ELO_WEB_SERVICE_OAUTH2_USERINFO_URI"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_USERINFO_URI: %v", err)
+	}
+	if err := viper.BindEnv("oauth2_scopes", "ELO_WEB_SERVICE_OAUTH2_SCOPES"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_SCOPES: %v", err)
 	}
 	if err := viper.BindEnv("cookie_jwt_secret", "ELO_WEB_SERVICE_COOKIE_JWT_SECRET"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_JWT_SECRET: %v", err)

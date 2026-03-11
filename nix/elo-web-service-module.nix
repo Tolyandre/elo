@@ -50,6 +50,12 @@ in
             description = "OAuth2 userinfo endpoint URI";
           };
 
+          oauth2_scopes = lib.mkOption {
+            type = lib.types.str;
+            default = "openid profile";
+            description = "Space-separated OAuth2 scopes to request during login";
+          };
+
           frontend_uri = lib.mkOption {
             type = lib.types.str;
             description = "Frontend URI (used for CORS and redirects)";

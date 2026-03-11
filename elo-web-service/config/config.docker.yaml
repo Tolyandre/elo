@@ -11,6 +11,7 @@ oauth2_auth_uri:     "http://localhost:5556/dex/auth"
 oauth2_redirect_uri: "http://localhost:3000/oauth2-callback"
 oauth2_token_uri:    "http://localhost:5556/dex/token"
 oauth2_userinfo_uri: "http://localhost:5556/dex/userinfo"
+oauth2_scopes: "openid profile"
 
 # oauth2_client_id and oauth2_client_secret are set via .env.dev
 

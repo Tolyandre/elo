@@ -24,6 +24,15 @@ func (a *OAUTH2) LogoutUser(ctx *gin.Context) {
 const TokenCookieName = "elo-web-service-token"
 
 func (a *OAUTH2) GoogleOAuth(ctx *gin.Context) {
+	if errParam := ctx.Query("error"); errParam != "" {
+		desc := ctx.Query("error_description")
+		if desc == "" {
+			desc = errParam
+		}
+		api.ErrorResponse(ctx, http.StatusBadRequest, fmt.Errorf("oauth2 error: %s", desc))
+		return
+	}
+
 	code := ctx.Query("code")
 
 	if code == "" {
@@ -83,10 +92,7 @@ func (a *OAUTH2) Login(ctx *gin.Context) {
 		}
 	}
 
-	scope := fmt.Sprintf("%s %s",
-		"https://www.googleapis.com/auth/userinfo.profile",
-		"",
-		/*"https://www.googleapis.com/auth/userinfo.email"*/)
+	scope := cfg.Config.Oauth2Scopes
 	values := url.Values{
 		"redirect_uri":  []string{cfg.Config.Oauth2RedirectUri},
 		"client_id":     []string{cfg.Config.Oauth2ClientId},
