@@ -1,11 +1,14 @@
 package api
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
@@ -169,21 +172,125 @@ func contains(s, substr string) bool {
 	return false
 }
 
+// matchCursor is the continuation token encoded as base64 JSON.
+type matchCursor struct {
+	ID   int32   `json:"id"`
+	Date *string `json:"date"` // RFC3339Nano, nil means match has no date
+}
+
+func encodeMatchCursor(id int32, date *time.Time) string {
+	c := matchCursor{ID: id}
+	if date != nil {
+		s := date.UTC().Format(time.RFC3339Nano)
+		c.Date = &s
+	}
+	b, _ := json.Marshal(c)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Timestamptz, error) {
+	b, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return pgtype.Int4{}, pgtype.Timestamptz{}, err
+	}
+	var c matchCursor
+	if err := json.Unmarshal(b, &c); err != nil {
+		return pgtype.Int4{}, pgtype.Timestamptz{}, err
+	}
+	cursorID := pgtype.Int4{Int32: c.ID, Valid: true}
+	var cursorDate pgtype.Timestamptz
+	if c.Date != nil {
+		t, err := time.Parse(time.RFC3339Nano, *c.Date)
+		if err != nil {
+			return pgtype.Int4{}, pgtype.Timestamptz{}, err
+		}
+		cursorDate = pgtype.Timestamptz{Time: t, Valid: true}
+	}
+	return cursorID, cursorDate, nil
+}
+
+// groupMatchRows converts a slice of rows (each row = one player in a match) into
+// ordered match groups. Returns the matches map and ID-ordered slice.
+type tempMatch struct {
+	Id       int
+	GameId   string
+	GameName string
+	Date     *time.Time
+	Players  map[int32]matchPlayerJson
+}
+
+func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matchJson {
+	matchesJson := make([]matchJson, 0, len(order))
+	for _, mid := range order {
+		tm := matchesMap[mid]
+		m := matchJson{
+			Id:       tm.Id,
+			GameId:   tm.GameId,
+			GameName: tm.GameName,
+			Date:     tm.Date,
+			Players:  make(map[string]matchPlayerJson, len(tm.Players)),
+		}
+		for pid, playerData := range tm.Players {
+			m.Players[strconv.Itoa(int(pid))] = playerData
+		}
+		matchesJson = append(matchesJson, m)
+	}
+	return matchesJson
+}
+
 func (a *API) ListMatches(c *gin.Context) {
-	// fetch matches and players from DB in a single query
-	rows, err := a.Queries.ListMatchesWithPlayers(c.Request.Context())
+	// Parse optional filter params
+	var gameID pgtype.Int4
+	if gStr := c.Query("game_id"); gStr != "" {
+		g, err := strconv.ParseInt(gStr, 10, 32)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id")
+			return
+		}
+		gameID = pgtype.Int4{Int32: int32(g), Valid: true}
+	}
+
+	var playerID pgtype.Int4
+	if pStr := c.Query("player_id"); pStr != "" {
+		p, err := strconv.ParseInt(pStr, 10, 32)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id")
+			return
+		}
+		playerID = pgtype.Int4{Int32: int32(p), Valid: true}
+	}
+
+	// Parse continuation token
+	var cursorID pgtype.Int4
+	var cursorDate pgtype.Timestamptz
+	if beforeToken := c.Query("before"); beforeToken != "" {
+		var err error
+		cursorID, cursorDate, err = decodeMatchCursor(beforeToken)
+		if err != nil {
+			ErrorResponse(c, http.StatusBadRequest, "Invalid cursor")
+			return
+		}
+	}
+
+	// Parse page size
+	limit := int32(30)
+	if lStr := c.Query("limit"); lStr != "" {
+		l, err := strconv.ParseInt(lStr, 10, 32)
+		if err == nil && l > 0 && l <= 100 {
+			limit = int32(l)
+		}
+	}
+
+	rows, err := a.Queries.ListMatchesWithPlayersPaginated(c.Request.Context(), db.ListMatchesWithPlayersPaginatedParams{
+		GameID:     gameID,
+		PlayerID:   playerID,
+		CursorID:   cursorID,
+		CursorDate: cursorDate,
+		Limit:      limit,
+	})
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
-	}
-
-	// Group rows by match id
-	type tempMatch struct {
-		Id       int
-		GameId   string
-		GameName string
-		Date     *time.Time
-		Players  map[int32]matchPlayerJson
 	}
 
 	matchesMap := make(map[int32]*tempMatch)
@@ -207,8 +314,6 @@ func (a *API) ListMatches(c *gin.Context) {
 		}
 
 		m := matchesMap[r.MatchID]
-
-		// Read Elo values from database
 		var eloPay, eloEarn float64
 		if r.EloPay.Valid {
 			eloPay = r.EloPay.Float64
@@ -216,7 +321,6 @@ func (a *API) ListMatches(c *gin.Context) {
 		if r.EloEarn.Valid {
 			eloEarn = r.EloEarn.Float64
 		}
-
 		m.Players[r.PlayerID] = matchPlayerJson{
 			Score:   r.Score,
 			EloPay:  eloPay,
@@ -224,26 +328,74 @@ func (a *API) ListMatches(c *gin.Context) {
 		}
 	}
 
-	// Build response
-	matchesJson := make([]matchJson, 0, len(order))
-	for _, mid := range order {
-		tm := matchesMap[mid]
-		m := matchJson{
-			Id:       tm.Id,
-			GameId:   tm.GameId,
-			GameName: tm.GameName,
-			Date:     tm.Date,
-			Players:  make(map[string]matchPlayerJson, len(tm.Players)),
-		}
+	matchesJson := buildMatchesResponse(matchesMap, order)
 
-		// Convert int32 keys to string keys
-		for pid, playerData := range tm.Players {
-			pidStr := strconv.Itoa(int(pid))
-			m.Players[pidStr] = playerData
-		}
-
-		matchesJson = append(matchesJson, m)
+	// Build next_cursor if there may be more results
+	var nextCursor *string
+	if int32(len(order)) == limit {
+		lastID := order[len(order)-1]
+		token := encodeMatchCursor(int32(matchesMap[lastID].Id), matchesMap[lastID].Date)
+		nextCursor = &token
 	}
 
-	SuccessDataResponse(c, matchesJson)
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "success",
+		"data":        matchesJson,
+		"next_cursor": nextCursor,
+	})
+}
+
+func (a *API) GetMatchById(c *gin.Context) {
+	matchIDStr := c.Param("id")
+	matchID, err := strconv.ParseInt(matchIDStr, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "Invalid match id: "+matchIDStr)
+		return
+	}
+
+	rows, err := a.Queries.GetMatchWithPlayers(c.Request.Context(), int32(matchID))
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+	if len(rows) == 0 {
+		ErrorResponse(c, http.StatusNotFound, "Match not found")
+		return
+	}
+
+	matchesMap := make(map[int32]*tempMatch)
+	order := make([]int32, 0)
+	for _, r := range rows {
+		if _, ok := matchesMap[r.MatchID]; !ok {
+			var date *time.Time
+			if r.Date.Valid {
+				t := r.Date.Time
+				date = &t
+			}
+			matchesMap[r.MatchID] = &tempMatch{
+				Id:       int(r.MatchID),
+				GameId:   strconv.Itoa(int(r.GameID)),
+				GameName: r.GameName,
+				Date:     date,
+				Players:  make(map[int32]matchPlayerJson),
+			}
+			order = append(order, r.MatchID)
+		}
+		m := matchesMap[r.MatchID]
+		var eloPay, eloEarn float64
+		if r.EloPay.Valid {
+			eloPay = r.EloPay.Float64
+		}
+		if r.EloEarn.Valid {
+			eloEarn = r.EloEarn.Float64
+		}
+		m.Players[r.PlayerID] = matchPlayerJson{
+			Score:   r.Score,
+			EloPay:  eloPay,
+			EloEarn: eloEarn,
+		}
+	}
+
+	result := buildMatchesResponse(matchesMap, order)
+	SuccessDataResponse(c, result[0])
 }

@@ -11,6 +11,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { MatchCard } from "@/components/match-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "../meContext";
 
 export default function MatchesPage() {
@@ -22,36 +24,38 @@ export default function MatchesPage() {
 }
 
 function MatchesPageWrapped() {
-  const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | undefined>(undefined);
-  const [selectedGameId, setSelectedGameId] = React.useState<string | undefined>(undefined);
   const { roundToInteger, setRoundToInteger } = useMe();
-  const { matches, loading, error } = useMatches();
+  const { matches, loading, loadingMore, error, hasMore, filters, setFilters, loadMore } = useMatches();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
 
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
+
+  // Sync filters from URL on mount
   React.useEffect(() => {
     const p = searchParams.get("player") ?? undefined;
     const g = searchParams.get("game") ?? undefined;
-    setSelectedPlayerId(p);
-    setSelectedGameId(g);
-  }, [searchParams]);
+    setFilters({ playerId: p, gameId: g });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only on mount — subsequent changes go through handlers
 
-  const filteredMatches = React.useMemo(() => {
-    if (!matches) return null;
+  // Infinite scroll: observe sentinel
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
 
-    let result = matches;
-
-    if (selectedPlayerId) {
-      result = result.filter((m) => selectedPlayerId in m.score);
-    }
-
-    if (selectedGameId) {
-      result = result.filter((m) => m.game_id === selectedGameId);
-    }
-
-    return result;
-  }, [matches, selectedPlayerId, selectedGameId]);
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          loadMore();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loadMore]);
 
   function updateQueryParam(key: string, value: string | undefined) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
@@ -60,19 +64,18 @@ function MatchesPageWrapped() {
     } else {
       params.set(key, value);
     }
-
     const query = params.toString();
     const url = query ? `${pathname}?${query}` : pathname;
     router.replace(url);
   }
 
   function handlePlayerChange(id?: string) {
-    setSelectedPlayerId(id);
+    setFilters({ ...filters, playerId: id });
     updateQueryParam("player", id);
   }
 
   function handleGameChange(id?: string) {
-    setSelectedGameId(id);
+    setFilters({ ...filters, gameId: id });
     updateQueryParam("game", id);
   }
 
@@ -87,43 +90,53 @@ function MatchesPageWrapped() {
         <h1 className="text-2xl font-semibold">Партии</h1>
       </div>
 
-      {loading && <p className="text-center">Загрузка партий…</p>}
       {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
 
-      {filteredMatches && (
-        <div className="space-y-4">
-          <Card >
-            <CardContent >
+      <div className="space-y-4">
+        <Card>
+          <CardContent>
+            <FieldGroup>
+              <Field>
+                <FieldLabel className="sr-only">Игрок</FieldLabel>
+                <FieldContent>
+                  <PlayerCombobox value={filters.playerId} onChange={handlePlayerChange} />
+                </FieldContent>
+              </Field>
 
-              <FieldGroup>
-                <Field>
-                  <FieldLabel className="sr-only">Игрок</FieldLabel>
-                  <FieldContent>
-                    <PlayerCombobox value={selectedPlayerId} onChange={handlePlayerChange} />
-                  </FieldContent>
-                </Field>
+              <Field>
+                <FieldLabel className="sr-only">Игра</FieldLabel>
+                <FieldContent>
+                  <GameCombobox value={filters.gameId} onChange={handleGameChange} />
+                </FieldContent>
+              </Field>
 
-                <Field >
-                  <FieldLabel className="sr-only">Игра</FieldLabel>
-                  <FieldContent>
-                    <GameCombobox value={selectedGameId} onChange={handleGameChange} />
-                  </FieldContent>
-                </Field>
+              <Field orientation="horizontal">
+                <FieldTitle>Округлять до целого</FieldTitle>
+                <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
+              </Field>
+            </FieldGroup>
+          </CardContent>
+        </Card>
 
-                <Field orientation="horizontal">
-                  <FieldTitle>Округлять до целого</FieldTitle>
-                  <Switch id="round-to-integer" checked={roundToInteger} onCheckedChange={setRoundToInteger} />
-                </Field>
-              </FieldGroup>
+        {loading ? (
+          <>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+            ))}
+          </>
+        ) : (
+          <>
+            {matches.map((m) => (
+              <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
+            ))}
+          </>
+        )}
 
-            </CardContent>
-          </Card>
-
-          {filteredMatches.map((m) => (
-            <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
-          ))}
+        {/* Infinite scroll sentinel */}
+        <div ref={sentinelRef} className="flex justify-center py-4">
+          {loadingMore && <Spinner className="size-6" />}
         </div>
-      )}
+      </div>
     </main>
   );
 }

@@ -94,19 +94,55 @@ export async function getPlayersPromise(): Promise<Player[]> {
     }
 }
 
-export async function getMatchesPromise(): Promise<Match[]> {
+export type MatchesPage = {
+    items: Match[];
+    next_cursor: string | null;
+};
+
+export async function getMatchesPagePromise(params?: {
+    player_id?: string;
+    game_id?: string;
+    before?: string;
+    limit?: number;
+}): Promise<MatchesPage> {
     try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches`);
-        const matches: any[] = await handleJsonErrorResponse(res);
-        return matches.map(m => {
-            return {
-                id: m.id,
-                game_id: m.game_id,
-                game_name: m.game_name,
-                score: m.score,
-                date: m.date ? new Date(m.date) : null
-            }
-        });
+        const query = new URLSearchParams();
+        if (params?.player_id) query.set("player_id", params.player_id);
+        if (params?.game_id) query.set("game_id", params.game_id);
+        if (params?.before) query.set("before", params.before);
+        if (params?.limit) query.set("limit", String(params.limit));
+        const qs = query.toString();
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches${qs ? `?${qs}` : ""}`);
+        let body: any;
+        try { body = await res.json(); } catch { throw new Error(`Ошибка ${res.status}`); }
+        if (body.status === "fail") throw new Error(body.message);
+        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+        const items: Match[] = (body.data as any[]).map(m => ({
+            id: m.id,
+            game_id: m.game_id,
+            game_name: m.game_name,
+            score: m.score,
+            date: m.date ? new Date(m.date) : null,
+        }));
+        return { items, next_cursor: body.next_cursor ?? null };
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getMatchByIdPromise(id: number): Promise<Match> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${id}`);
+        const m: any = await handleJsonErrorResponse(res);
+        return {
+            id: m.id,
+            game_id: m.game_id,
+            game_name: m.game_name,
+            score: m.score,
+            date: m.date ? new Date(m.date) : null,
+        };
     }
     catch (error) {
         showToast(error);

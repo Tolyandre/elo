@@ -1,52 +1,117 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getMatchesPromise, Match } from "../api";
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from "react";
+import { getMatchesPagePromise, Match } from "../api";
+
+type Filters = {
+  playerId?: string;
+  gameId?: string;
+};
 
 type MatchesState = {
-  matches: Match[] | null; // `null` – данные ещё не загружены
-  loading: boolean;
+  matches: Match[];
+  loading: boolean;       // true during initial/reset load
+  loadingMore: boolean;   // true while fetching additional pages
   error: string | null;
+  hasMore: boolean;
+  filters: Filters;
+  setFilters: (f: Filters) => void;
+  loadMore: () => void;
   invalidate: () => void;
 };
 
-/* --- Контекст --- */
 const MatchesContext = createContext<MatchesState | undefined>(undefined);
 
-/* --- Провайдер --- */
 export const MatchesProvider = ({ children }: { children: ReactNode }) => {
-  const [matches, setMatches] = useState<Match[] | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stamp, setStamp] = useState<number>(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [filters, setFiltersState] = useState<Filters>({});
 
-  const loadMatches = async () => {
-    try {
-      setLoading(true);
-      const data = await getMatchesPromise();
-      setMatches(data.sort((a: { id: number; }, b: { id: number; }) => b.id - a.id));
-    } catch (e: any) {
-      setError(e.message ?? "Неизвестная ошибка");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Internal cursor state — not exposed to consumers
+  const nextCursorRef = useRef<string | null>(null);
+  // Stamp triggers re-fetch from page 1
+  const [stamp, setStamp] = useState(0);
 
+  // Load page 1 whenever filters or stamp change
   useEffect(() => {
-    loadMatches();
-  }, [stamp]);
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    nextCursorRef.current = null;
 
-  const invalidate = () => {
-    setStamp((s) => s + 1);
-  };
+    getMatchesPagePromise({
+      player_id: filters.playerId,
+      game_id: filters.gameId,
+    })
+      .then(page => {
+        if (cancelled) return;
+        nextCursorRef.current = page.next_cursor;
+        setMatches(page.items);
+        setHasMore(page.next_cursor !== null);
+      })
+      .catch(e => {
+        if (cancelled) return;
+        setError(e.message ?? "Неизвестная ошибка");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, stamp]);
+
+  const loadMore = useCallback(() => {
+    if (!nextCursorRef.current || loadingMore) return;
+    const cursor = nextCursorRef.current;
+    setLoadingMore(true);
+
+    getMatchesPagePromise({
+      player_id: filters.playerId,
+      game_id: filters.gameId,
+      before: cursor,
+    })
+      .then(page => {
+        nextCursorRef.current = page.next_cursor;
+        setMatches(prev => [...prev, ...page.items]);
+        setHasMore(page.next_cursor !== null);
+      })
+      .catch(e => {
+        setError(e.message ?? "Неизвестная ошибка");
+      })
+      .finally(() => {
+        setLoadingMore(false);
+      });
+  }, [filters, loadingMore]);
+
+  const setFilters = useCallback((f: Filters) => {
+    setFiltersState(f);
+  }, []);
+
+  const invalidate = useCallback(() => {
+    setStamp(s => s + 1);
+  }, []);
+
   return (
-    <MatchesContext.Provider value={{ matches, loading, error, invalidate }}>
+    <MatchesContext.Provider value={{
+      matches,
+      loading,
+      loadingMore,
+      error,
+      hasMore,
+      filters,
+      setFilters,
+      loadMore,
+      invalidate,
+    }}>
       {children}
     </MatchesContext.Provider>
   );
 };
 
-/* --- Хук для удобного доступа к контексту --- */
 export const useMatches = () => {
   const ctx = useContext(MatchesContext);
   if (!ctx) {

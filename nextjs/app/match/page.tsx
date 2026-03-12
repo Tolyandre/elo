@@ -1,11 +1,11 @@
 "use client";
 
 import React, { Suspense, useState, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMatches } from "../matches/MatchesContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useMe } from "../meContext";
-import { Match, updateMatchPromise } from "../api";
+import { Match, updateMatchPromise, getMatchByIdPromise } from "../api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,10 +30,30 @@ export default function MatchPage() {
 function MatchPageWrapped() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get("id");
-  const { matches, loading, error, invalidate } = useMatches();
+  const { matches, loading: contextLoading, invalidate } = useMatches();
   const { roundToInteger, setRoundToInteger } = useMe();
+  const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
+  const [fetchLoading, setFetchLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fetchedRef = React.useRef(false);
 
-  const match = matches?.find((m) => m.id.toString() === matchId);
+  const matchFromContext = matchId
+    ? matches.find((m) => m.id.toString() === matchId) ?? null
+    : null;
+
+  // Fetch from API only once context is done loading and match still not found
+  useEffect(() => {
+    if (!matchId || matchFromContext || fetchedRef.current || contextLoading) return;
+    fetchedRef.current = true;
+    setFetchLoading(true);
+    getMatchByIdPromise(Number(matchId))
+      .then(setMatchFromApi)
+      .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
+      .finally(() => setFetchLoading(false));
+  }, [matchId, matchFromContext, contextLoading]);
+
+  const match = matchFromContext ?? matchFromApi;
+  const loading = (contextLoading && !matchFromContext) || fetchLoading;
 
   if (loading) {
     return (

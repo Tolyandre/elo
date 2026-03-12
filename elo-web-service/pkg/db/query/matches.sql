@@ -145,6 +145,90 @@ UPDATE match_scores
 SET elo_pay = $3, elo_earn = $4, new_elo = $5
 WHERE match_id = $1 AND player_id = $2;
 
+-- name: ListMatchesWithPlayersPaginated :many
+WITH paginated_matches AS (
+    SELECT DISTINCT m.id, m.date, m.game_id
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    WHERE
+        (sqlc.narg('game_id')::int4 IS NULL OR m.game_id = sqlc.narg('game_id')::int4)
+        AND (sqlc.narg('player_id')::int4 IS NULL OR ms.player_id = sqlc.narg('player_id')::int4)
+        AND (
+            sqlc.narg('cursor_id')::int4 IS NULL
+            OR (
+                -- cursor has null date: only remaining null-dated matches (they are at the end)
+                sqlc.narg('cursor_date')::timestamptz IS NULL AND (
+                    m.date IS NULL AND m.id < sqlc.narg('cursor_id')::int4
+                )
+            )
+            OR (
+                -- cursor has non-null date: earlier non-null dates, same date lower id, or any null date
+                sqlc.narg('cursor_date')::timestamptz IS NOT NULL AND (
+                    m.date < sqlc.narg('cursor_date')::timestamptz
+                    OR (m.date = sqlc.narg('cursor_date')::timestamptz AND m.id < sqlc.narg('cursor_id')::int4)
+                    OR m.date IS NULL
+                )
+            )
+        )
+    ORDER BY m.date DESC NULLS LAST, m.id DESC
+    LIMIT sqlc.arg('limit')::int4
+)
+SELECT
+    pm.id AS match_id,
+    pm.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating
+FROM paginated_matches pm
+JOIN games g ON g.id = pm.game_id
+JOIN match_scores s ON s.match_id = pm.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < pm.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+ORDER BY pm.date DESC NULLS LAST, pm.id DESC, s.score DESC;
+
+-- name: GetMatchWithPlayers :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < m.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+WHERE m.id = $1
+ORDER BY s.score DESC;
+
 -- name: GetPlayerLatestEloBeforeMatch :one
 SELECT ms.new_elo
 FROM match_scores ms

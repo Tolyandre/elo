@@ -101,6 +101,82 @@ func (q *Queries) GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]
 	return items, nil
 }
 
+const getMatchWithPlayers = `-- name: GetMatchWithPlayers :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < m.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+WHERE m.id = $1
+ORDER BY s.score DESC
+`
+
+type GetMatchWithPlayersRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	EloPay     pgtype.Float8      `json:"elo_pay"`
+	EloEarn    pgtype.Float8      `json:"elo_earn"`
+	NewElo     pgtype.Float8      `json:"new_elo"`
+	PrevRating interface{}        `json:"prev_rating"`
+}
+
+func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatchWithPlayersRow, error) {
+	rows, err := q.db.Query(ctx, getMatchWithPlayers, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMatchWithPlayersRow{}
+	for rows.Next() {
+		var i GetMatchWithPlayersRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.EloPay,
+			&i.EloEarn,
+			&i.NewElo,
+			&i.PrevRating,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
 SELECT m.id, m.date, m.game_id
 FROM matches m
@@ -389,6 +465,122 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 			&i.EloConstD,
 			&i.StartingElo,
 			&i.WinReward,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchesWithPlayersPaginated = `-- name: ListMatchesWithPlayersPaginated :many
+WITH paginated_matches AS (
+    SELECT DISTINCT m.id, m.date, m.game_id
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    WHERE
+        ($1::int4 IS NULL OR m.game_id = $1::int4)
+        AND ($2::int4 IS NULL OR ms.player_id = $2::int4)
+        AND (
+            $3::int4 IS NULL
+            OR (
+                -- cursor has null date: only remaining null-dated matches (they are at the end)
+                $4::timestamptz IS NULL AND (
+                    m.date IS NULL AND m.id < $3::int4
+                )
+            )
+            OR (
+                -- cursor has non-null date: earlier non-null dates, same date lower id, or any null date
+                $4::timestamptz IS NOT NULL AND (
+                    m.date < $4::timestamptz
+                    OR (m.date = $4::timestamptz AND m.id < $3::int4)
+                    OR m.date IS NULL
+                )
+            )
+        )
+    ORDER BY m.date DESC NULLS LAST, m.id DESC
+    LIMIT $5::int4
+)
+SELECT
+    pm.id AS match_id,
+    pm.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    s.elo_pay,
+    s.elo_earn,
+    s.new_elo,
+    CASE WHEN prev_match_score.new_elo IS NULL THEN NULL
+    ELSE prev_match_score.new_elo END AS prev_rating
+FROM paginated_matches pm
+JOIN games g ON g.id = pm.game_id
+JOIN match_scores s ON s.match_id = pm.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT ms.new_elo
+    FROM match_scores ms
+    JOIN matches prev_m ON prev_m.id = ms.match_id
+    WHERE ms.player_id = p.id AND prev_m.date < pm.date
+    ORDER BY prev_m.date DESC, prev_m.id DESC
+    LIMIT 1
+) prev_match_score ON true
+ORDER BY pm.date DESC NULLS LAST, pm.id DESC, s.score DESC
+`
+
+type ListMatchesWithPlayersPaginatedParams struct {
+	GameID     pgtype.Int4        `json:"game_id"`
+	PlayerID   pgtype.Int4        `json:"player_id"`
+	CursorID   pgtype.Int4        `json:"cursor_id"`
+	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	Limit      int32              `json:"limit"`
+}
+
+type ListMatchesWithPlayersPaginatedRow struct {
+	MatchID    int32              `json:"match_id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	GameID     int32              `json:"game_id"`
+	GameName   string             `json:"game_name"`
+	PlayerID   int32              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	Score      float64            `json:"score"`
+	EloPay     pgtype.Float8      `json:"elo_pay"`
+	EloEarn    pgtype.Float8      `json:"elo_earn"`
+	NewElo     pgtype.Float8      `json:"new_elo"`
+	PrevRating interface{}        `json:"prev_rating"`
+}
+
+func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesWithPlayersPaginated,
+		arg.GameID,
+		arg.PlayerID,
+		arg.CursorID,
+		arg.CursorDate,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesWithPlayersPaginatedRow{}
+	for rows.Next() {
+		var i ListMatchesWithPlayersPaginatedRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.EloPay,
+			&i.EloEarn,
+			&i.NewElo,
+			&i.PrevRating,
 		); err != nil {
 			return nil, err
 		}
