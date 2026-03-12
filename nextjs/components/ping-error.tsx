@@ -14,14 +14,22 @@ export function PingError() {
     const pathname = usePathname();
 
     useEffect(() => {
+        let cancelled = false;
+
         setPingError(null);
         setLongWait(false);
-        setTimeout(() => setLongWait(true), 3000);
+        const timer = setTimeout(() => {
+            if (!cancelled) setLongWait(true);
+        }, 5000);
 
         getPingPromise()
-            .then(() => setPingError(false))
-            .catch(() => setPingError(true));
+            .then(() => { if (!cancelled) setPingError(false); })
+            .catch(() => { if (!cancelled) setPingError(true); });
 
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
     }, [pathname]);
 
     useEffect(() => {
