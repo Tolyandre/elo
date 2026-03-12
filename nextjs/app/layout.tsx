@@ -44,6 +44,9 @@ export const metadata: Metadata = {
   icons: {
     icon: "favicon-st-patrick.ico",
   },
+  verification: {
+    google: "WXW-hO-W47nHNwMROtsuNMdRKlQbIs4w4x8Jbutfw7Y",
+  },
 };
 
 export default function RootLayout({
