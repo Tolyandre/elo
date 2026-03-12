@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { SkullKingCalculator } from "@/app/game/skull-king-calculator"
+
+export const metadata: Metadata = {
+  title: "Skull King",
+  description: "Калькулятор очков для карточной игры Skull King.",
+};
 
 export default function SkullKingCalculatorPage() {
     return (

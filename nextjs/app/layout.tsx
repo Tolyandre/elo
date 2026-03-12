@@ -23,8 +23,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Board games elo",
-  description: "Calculate elo rating for board game players",
+  metadataBase: new URL("https://tolyandre.github.io/elo"),
+  title: {
+    default: "Board Games Elo",
+    template: "%s | Board Games Elo",
+  },
+  description: "Отслеживайте Elo-рейтинг игроков в настольных играх.",
+  openGraph: {
+    type: "website",
+    siteName: "Board Games Elo",
+    title: "Board Games Elo",
+    description: "Отслеживайте Elo-рейтинг игроков в настольных играх.",
+    images: [{ url: "og-image.png", width: 1200, height: 630, alt: "Board Games Elo" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Board Games Elo",
+    description: "Отслеживайте Elo-рейтинг игроков в настольных играх.",
+  },
   icons: {
     icon: "favicon-st-patrick.ico",
   },
@@ -46,6 +62,20 @@ export default function RootLayout({
               <PlayersProvider>
                 <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
                   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+                    <script
+                      type="application/ld+json"
+                      dangerouslySetInnerHTML={{
+                        __html: JSON.stringify({
+                          "@context": "https://schema.org",
+                          "@type": "WebApplication",
+                          name: "Board Games Elo",
+                          url: "https://tolyandre.github.io/elo",
+                          description: "Отслеживайте Elo-рейтинг игроков в настольных играх.",
+                          applicationCategory: "GameApplication",
+                          inLanguage: "ru",
+                        }),
+                      }}
+                    />
                     <Toaster />
                     <div className="font-sans items-center justify-items-center min-h-screen">
                       <div className="flex flex-col mx-auto rounded-lg shadow-md max-w-lg">
