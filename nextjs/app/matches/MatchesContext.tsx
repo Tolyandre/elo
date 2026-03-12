@@ -88,7 +88,9 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   }, [filters, loadingMore]);
 
   const setFilters = useCallback((f: Filters) => {
-    setFiltersState(f);
+    setFiltersState(prev =>
+      prev.playerId === f.playerId && prev.gameId === f.gameId ? prev : f
+    );
   }, []);
 
   const invalidate = useCallback(() => {
