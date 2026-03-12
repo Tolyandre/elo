@@ -58,22 +58,31 @@ function computeProbabilities(
     });
 }
 
+function CardTile({ idx, onClick }: { idx: number; state: CardState; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                "flex items-center justify-center rounded border w-9 h-9 text-sm font-semibold select-none transition-colors shrink-0",
+                "bg-background text-foreground border-input hover:bg-accent",
+            )}
+        >
+            {idx + 1}
+        </button>
+    );
+}
+
 function BlackCardsInput({
     name,
-    cardsInHand,
-    opponentsCardsInHand,
     maxPlayedCount,
 }: {
     name: string
-    cardsInHand: number
-    opponentsCardsInHand: number
     maxPlayedCount: number
 }) {
     const { field } = useController({ name: name as any });
     const cards: CardState[] = field.value ?? [];
 
-    const myCount = cards.filter((v) => v === "me").length;
-    const opponentsCount = cards.filter((v) => v === "opponents").length;
     const playedCount = cards.filter((v) => v === "played").length;
 
     function getNextState(current: CardState): CardState {
@@ -92,43 +101,44 @@ function BlackCardsInput({
         field.onChange(next_cards);
     }
 
+    const byState = (state: CardState) =>
+        cards.map((s, i) => i).filter((i) => (cards[i] ?? "opponents") === state);
+
+    const meCards = byState("me");
+    const opponentsCards = byState("opponents");
+    const playedCards = byState("played");
+    const showPlayedSection = maxPlayedCount > 0 || playedCards.length > 0;
+
     return (
-        <div className="space-y-3">
-            <div className="flex gap-4 text-sm text-muted-foreground flex-wrap">
-                <span>У меня: <span className={cn("font-medium", myCount > cardsInHand && "text-destructive")}>{myCount}</span></span>
-                <span>У соперников: <span className={cn("font-medium", opponentsCount > opponentsCardsInHand && "text-destructive")}>{opponentsCount}</span></span>
-                <span>Вышли: <span className={cn("font-medium", playedCount > maxPlayedCount && "text-destructive")}>{playedCount}</span></span>
+        <div className="space-y-3 text-sm">
+            <div className="space-y-1">
+                <div className="font-medium">У соперников на руках</div>
+                <div className="flex flex-wrap gap-1 min-h-[2.5rem] items-start content-start">
+                    {opponentsCards.length > 0
+                        ? opponentsCards.map((i) => <CardTile key={i} idx={i} state="opponents" onClick={() => toggle(i)} />)
+                        : <span className="text-muted-foreground self-center">—</span>}
+                </div>
             </div>
 
-            <div className="grid grid-cols-9 gap-1">
-                {Array.from({ length: 9 }).map((_, idx) => {
-                    const state: CardState = cards[idx] ?? "opponents";
-                    return (
-                        <button
-                            key={idx}
-                            type="button"
-                            onClick={() => toggle(idx)}
-                            className={cn(
-                                "flex flex-col items-center justify-center rounded border text-xs font-semibold h-12 select-none transition-colors",
-                                state === "me" && "bg-primary text-primary-foreground border-primary",
-                                state === "opponents" && "bg-background text-foreground border-input hover:bg-accent",
-                                state === "played" && "bg-muted text-muted-foreground border-muted",
-                            )}
-                        >
-                            <span className={cn(state === "played" && "line-through")}>{idx + 1}</span>
-                            <span className="text-[9px] font-normal leading-tight mt-0.5">
-                                {state === "me" ? "у меня" : state === "played" ? "вышла" : ""}
-                            </span>
-                        </button>
-                    );
-                })}
+            <div className="space-y-1">
+                <div className="font-medium">У меня в руке</div>
+                <div className="flex flex-wrap gap-1 min-h-[2.5rem] items-start content-start">
+                    {meCards.length > 0
+                        ? meCards.map((i) => <CardTile key={i} idx={i} state="me" onClick={() => toggle(i)} />)
+                        : <span className="text-muted-foreground self-center">—</span>}
+                </div>
             </div>
 
-            <div className="flex gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded border border-primary bg-primary" /> у меня</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded border border-input" /> у соперников</span>
-                <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded bg-muted border border-muted" /> вышла</span>
-            </div>
+            {showPlayedSection && (
+                <div className="space-y-1">
+                    <div className="font-medium">Вышли</div>
+                    <div className="flex flex-wrap gap-1 min-h-[2.5rem] items-start content-start">
+                        {playedCards.length > 0
+                            ? playedCards.map((i) => <CardTile key={i} idx={i} state="played" onClick={() => toggle(i)} />)
+                            : <span className="text-muted-foreground self-center">—</span>}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -275,8 +285,6 @@ export function StPatrickCalculator() {
 
                             <BlackCardsInput
                                 name="blackCards"
-                                cardsInHand={cardsInHand}
-                                opponentsCardsInHand={opponentsCardsInHand}
                                 maxPlayedCount={maxPlayedCount}
                             />
 
@@ -296,24 +304,41 @@ export function StPatrickCalculator() {
                         </CardTitle>
                     </CardHeader>
 
-                    <CardContent>
+                    <CardContent className="space-y-3">
+                        <p className="text-sm">
+                            Вероятность что хотя бы один из соперников
+                            будет вынужден взять взятку, если вы заходите с карты:
+                        </p>
                         {!((form.formState.errors as any).blackCards) ? (
                             probabilitiesPerMyCard && probabilitiesPerMyCard.length > 0 ? (
-                                <div className="space-y-3">
-                                    {probabilitiesPerMyCard.map((p) => (
-                                        <div key={p.index} className="text-sm text-muted-foreground">
-                                            <div className="font-medium">Чёрная {p.index + 1}</div>
-                                            <div>Один из соперников обязан забрать: {formatProbability(p.opponentsMustWin)}</div>
-                                        </div>
-                                    ))}
-                                </div>
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b text-muted-foreground">
+                                            <th className="text-left font-medium pb-2 pr-4 w-16">Карта</th>
+                                            <th className="text-left font-medium pb-2">Один из соперников обязан забрать</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {probabilitiesPerMyCard.map((p) => (
+                                            <tr key={p.index} className="border-b last:border-0">
+                                                <td className="py-2 pr-4">
+                                                    <div className="flex items-center justify-center rounded border w-9 h-9 text-sm font-semibold bg-background text-foreground border-input select-none">
+                                                        {p.index + 1}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2 font-medium">
+                                                    {formatProbability(p.opponentsMustWin)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             ) : (
                                 <div className="text-sm text-muted-foreground">Отметьте карты «у меня» чтобы увидеть результаты.</div>
                             )
                         ) : (
                             <div className="text-sm text-muted-foreground">Исправьте ошибки валидации чтобы увидеть результаты.</div>
                         )}
-
                     </CardContent>
                 </Card>
             </div>
