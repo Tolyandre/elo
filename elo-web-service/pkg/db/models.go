@@ -33,12 +33,12 @@ type Match struct {
 }
 
 type MatchScore struct {
-	MatchID  int32         `json:"match_id"`
-	PlayerID int32         `json:"player_id"`
-	Score    float64       `json:"score"`
-	EloPay   pgtype.Float8 `json:"elo_pay"`
-	EloEarn  pgtype.Float8 `json:"elo_earn"`
-	NewElo   pgtype.Float8 `json:"new_elo"`
+	MatchID  int32   `json:"match_id"`
+	PlayerID int32   `json:"player_id"`
+	Score    float64 `json:"score"`
+	EloPay   float64 `json:"elo_pay"`
+	EloEarn  float64 `json:"elo_earn"`
+	NewElo   float64 `json:"new_elo"`
 }
 
 type Player struct {

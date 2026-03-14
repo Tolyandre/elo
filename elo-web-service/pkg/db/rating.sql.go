@@ -22,7 +22,7 @@ ORDER BY m.date
 
 type RatingHistoryRow struct {
 	Date   pgtype.Timestamptz `json:"date"`
-	Rating pgtype.Float8      `json:"rating"`
+	Rating float64            `json:"rating"`
 }
 
 // NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table

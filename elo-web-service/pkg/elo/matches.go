@@ -100,11 +100,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 			// No previous matches, use starting Elo
 			previousElo[playerID] = startingElo
 		} else {
-			if latestElo.Valid {
-				previousElo[playerID] = latestElo.Float64
-			} else {
-				previousElo[playerID] = startingElo
-			}
+			previousElo[playerID] = latestElo
 		}
 	}
 
@@ -187,9 +183,9 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 			MatchID:  matchID,
 			PlayerID: playerID,
 			Score:    score,
-			EloPay:   pgtype.Float8{Valid: false}, // Will be recalculated
-			EloEarn:  pgtype.Float8{Valid: false}, // Will be recalculated
-			NewElo:   pgtype.Float8{Valid: false}, // Will be recalculated
+			EloPay:   0, // Will be recalculated
+			EloEarn:  0, // Will be recalculated
+			NewElo:   0, // Will be recalculated
 		})
 		if err != nil {
 			return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
@@ -273,7 +269,7 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 			}
 
 			// Get previous Elo (before this match)
-			var prevElo pgtype.Float8
+			var prevElo float64
 			if match.Date.Valid {
 				prevElo, err = q.GetPlayerLatestEloBeforeMatch(ctx, db.GetPlayerLatestEloBeforeMatchParams{
 					PlayerID: playerID,
@@ -289,11 +285,11 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 				})
 			}
 
-			if err != nil || !prevElo.Valid {
+			if err != nil {
 				// No previous matches, use starting Elo
 				previousElo[playerID] = startingElo
 			} else {
-				previousElo[playerID] = prevElo.Float64
+				previousElo[playerID] = prevElo
 			}
 		}
 
@@ -340,9 +336,9 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			MatchID:  matchID,
 			PlayerID: playerID,
 			Score:    score,
-			EloPay:   pgtype.Float8{Float64: eloPay, Valid: true},
-			EloEarn:  pgtype.Float8{Float64: eloEarn, Valid: true},
-			NewElo:   pgtype.Float8{Float64: newElo, Valid: true},
+			EloPay:   eloPay,
+			EloEarn:  eloEarn,
+			NewElo:   newElo,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
@@ -384,9 +380,9 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 		err := q.UpdateMatchScoreElo(ctx, db.UpdateMatchScoreEloParams{
 			MatchID:  matchID,
 			PlayerID: playerID,
-			EloPay:   pgtype.Float8{Float64: eloPay, Valid: true},
-			EloEarn:  pgtype.Float8{Float64: eloEarn, Valid: true},
-			NewElo:   pgtype.Float8{Float64: newElo, Valid: true},
+			EloPay:   eloPay,
+			EloEarn:  eloEarn,
+			NewElo:   newElo,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to update Elo for player %d: %v", playerID, err)

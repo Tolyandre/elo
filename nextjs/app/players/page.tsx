@@ -152,7 +152,10 @@ function PlayersTable() {
                                             previousRank={prev.rank}
                                         />
                                     </td>
-                                    <td className="py-2 px-1 w-50">{player.name}</td>
+                                    <td className="py-2 px-1 w-50">
+                                        {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
+                                        {player.name}
+                                    </td>
                                     <td className="py-2 px-1 align-top min-w-25">
                                         <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
                                     </td>
@@ -178,7 +181,9 @@ function PlayersTable() {
                                             <RankIcon rank={player.rank.now.rank} />
                                         </td>
                                         <td className="py-2 text-center align-top min-w-7"></td>
-                                        <td className="py-2 px-1 w-50">{player.name}
+                                        <td className="py-2 px-1 w-50">
+                                            {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
+                                            {player.name}
                                             <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
                                         </td>
                                         <td className="py-2 px-1 align-top min-w-25">

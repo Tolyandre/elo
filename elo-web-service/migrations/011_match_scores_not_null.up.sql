@@ -1,0 +1,4 @@
+ALTER TABLE match_scores
+  ALTER COLUMN elo_pay SET NOT NULL,
+  ALTER COLUMN elo_earn SET NOT NULL,
+  ALTER COLUMN new_elo  SET NOT NULL;

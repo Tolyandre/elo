@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Elo rating tracker for board games with a Go backend, Next.js frontend, and PostgreSQL database. The app tracks players across different games and clubs, calculating Elo ratings for match results. Google OAuth2 handles authentication.
+Elo rating tracker for board games with a Go backend, Next.js frontend, and PostgreSQL database. The app tracks players across different games, calculating Elo ratings for match results. Google OAuth2 handles authentication.
 
 **Monorepo Structure:**
 - `elo-web-service/`: Go backend (REST API)

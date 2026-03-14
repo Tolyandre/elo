@@ -548,6 +548,28 @@ export async function deleteSettingsPromise(effectiveDate: string): Promise<void
     }
 }
 
+export type RatingPoint = { date: string; rating: number };
+export type GameMatchStat = { game_id: string; game_name: string; matches_count: number; wins: number };
+export type GameEloStat = { game_id: string; game_name: string; elo_earned: number };
+export type PlayerStats = {
+    player_name: string;
+    rating_history: RatingPoint[];
+    top_games_by_matches: GameMatchStat[];
+    top_games_by_elo_earned: GameEloStat[];
+    worst_games_by_elo_earned: GameEloStat[];
+};
+
+export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/players/${id}/stats`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 async function handleJsonErrorResponse(response: Response) {
     let body: any;
     try {

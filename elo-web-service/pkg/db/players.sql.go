@@ -94,6 +94,97 @@ func (q *Queries) GetPlayerByName(ctx context.Context, name string) (Player, err
 	return i, err
 }
 
+const getPlayerGameEloStats = `-- name: GetPlayerGameEloStats :many
+SELECT
+  g.id::text AS game_id,
+  g.name     AS game_name,
+  SUM(ms.elo_earn + ms.elo_pay)::float8 AS elo_earned
+FROM match_scores ms
+JOIN matches m ON ms.match_id = m.id
+JOIN games g ON m.game_id = g.id
+WHERE ms.player_id = $1
+GROUP BY g.id, g.name
+ORDER BY elo_earned DESC
+`
+
+type GetPlayerGameEloStatsRow struct {
+	GameID    string  `json:"game_id"`
+	GameName  string  `json:"game_name"`
+	EloEarned float64 `json:"elo_earned"`
+}
+
+func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]GetPlayerGameEloStatsRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerGameEloStats, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPlayerGameEloStatsRow{}
+	for rows.Next() {
+		var i GetPlayerGameEloStatsRow
+		if err := rows.Scan(&i.GameID, &i.GameName, &i.EloEarned); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPlayerGameStats = `-- name: GetPlayerGameStats :many
+SELECT
+  g.id::text AS game_id,
+  g.name     AS game_name,
+  COUNT(ms.match_id)::int AS matches_count,
+  COUNT(CASE WHEN ms.score = max_scores.max_score THEN 1 END)::int AS wins
+FROM match_scores ms
+JOIN matches m ON ms.match_id = m.id
+JOIN games g ON m.game_id = g.id
+JOIN (
+  SELECT match_id, MAX(score) AS max_score
+  FROM match_scores
+  GROUP BY match_id
+) max_scores ON max_scores.match_id = ms.match_id
+WHERE ms.player_id = $1
+GROUP BY g.id, g.name
+ORDER BY matches_count DESC
+LIMIT 10
+`
+
+type GetPlayerGameStatsRow struct {
+	GameID       string `json:"game_id"`
+	GameName     string `json:"game_name"`
+	MatchesCount int32  `json:"matches_count"`
+	Wins         int32  `json:"wins"`
+}
+
+func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID int32) ([]GetPlayerGameStatsRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPlayerGameStatsRow{}
+	for rows.Next() {
+		var i GetPlayerGameStatsRow
+		if err := rows.Scan(
+			&i.GameID,
+			&i.GameName,
+			&i.MatchesCount,
+			&i.Wins,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlayers = `-- name: ListPlayers :many
 SELECT id, name, geologist_name FROM players
 ORDER BY name

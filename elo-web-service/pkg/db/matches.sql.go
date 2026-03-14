@@ -139,9 +139,9 @@ type GetMatchWithPlayersRow struct {
 	PlayerID   int32              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
 	Score      float64            `json:"score"`
-	EloPay     pgtype.Float8      `json:"elo_pay"`
-	EloEarn    pgtype.Float8      `json:"elo_earn"`
-	NewElo     pgtype.Float8      `json:"new_elo"`
+	EloPay     float64            `json:"elo_pay"`
+	EloEarn    float64            `json:"elo_earn"`
+	NewElo     float64            `json:"new_elo"`
 	PrevRating interface{}        `json:"prev_rating"`
 }
 
@@ -213,9 +213,9 @@ ORDER BY m.date DESC NULLS LAST, m.id DESC
 LIMIT 1
 `
 
-func (q *Queries) GetPlayerLatestElo(ctx context.Context, playerID int32) (pgtype.Float8, error) {
+func (q *Queries) GetPlayerLatestElo(ctx context.Context, playerID int32) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestElo, playerID)
-	var new_elo pgtype.Float8
+	var new_elo float64
 	err := row.Scan(&new_elo)
 	return new_elo, err
 }
@@ -236,9 +236,9 @@ type GetPlayerLatestEloBeforeMatchParams struct {
 	ID       int32              `json:"id"`
 }
 
-func (q *Queries) GetPlayerLatestEloBeforeMatch(ctx context.Context, arg GetPlayerLatestEloBeforeMatchParams) (pgtype.Float8, error) {
+func (q *Queries) GetPlayerLatestEloBeforeMatch(ctx context.Context, arg GetPlayerLatestEloBeforeMatchParams) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestEloBeforeMatch, arg.PlayerID, arg.Date, arg.ID)
-	var new_elo pgtype.Float8
+	var new_elo float64
 	err := row.Scan(&new_elo)
 	return new_elo, err
 }
@@ -269,9 +269,9 @@ type ListMatchResultsRow struct {
 	PlayerID   int32              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
 	Score      float64            `json:"score"`
-	EloPay     pgtype.Float8      `json:"elo_pay"`
-	EloEarn    pgtype.Float8      `json:"elo_earn"`
-	NewElo     pgtype.Float8      `json:"new_elo"`
+	EloPay     float64            `json:"elo_pay"`
+	EloEarn    float64            `json:"elo_earn"`
+	NewElo     float64            `json:"new_elo"`
 }
 
 func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error) {
@@ -342,9 +342,9 @@ type ListMatchesWithPlayersRow struct {
 	PlayerID   int32              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
 	Score      float64            `json:"score"`
-	EloPay     pgtype.Float8      `json:"elo_pay"`
-	EloEarn    pgtype.Float8      `json:"elo_earn"`
-	NewElo     pgtype.Float8      `json:"new_elo"`
+	EloPay     float64            `json:"elo_pay"`
+	EloEarn    float64            `json:"elo_earn"`
+	NewElo     float64            `json:"new_elo"`
 	PrevRating interface{}        `json:"prev_rating"`
 }
 
@@ -430,9 +430,9 @@ type ListMatchesWithPlayersByGameRow struct {
 	PlayerID    int32              `json:"player_id"`
 	PlayerName  string             `json:"player_name"`
 	Score       float64            `json:"score"`
-	EloPay      pgtype.Float8      `json:"elo_pay"`
-	EloEarn     pgtype.Float8      `json:"elo_earn"`
-	NewElo      pgtype.Float8      `json:"new_elo"`
+	EloPay      float64            `json:"elo_pay"`
+	EloEarn     float64            `json:"elo_earn"`
+	NewElo      float64            `json:"new_elo"`
 	PrevRating  interface{}        `json:"prev_rating"`
 	EloConstK   float64            `json:"elo_const_k"`
 	EloConstD   float64            `json:"elo_const_d"`
@@ -548,9 +548,9 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	PlayerID   int32              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
 	Score      float64            `json:"score"`
-	EloPay     pgtype.Float8      `json:"elo_pay"`
-	EloEarn    pgtype.Float8      `json:"elo_earn"`
-	NewElo     pgtype.Float8      `json:"new_elo"`
+	EloPay     float64            `json:"elo_pay"`
+	EloEarn    float64            `json:"elo_earn"`
+	NewElo     float64            `json:"new_elo"`
 	PrevRating interface{}        `json:"prev_rating"`
 }
 
@@ -616,11 +616,11 @@ WHERE match_id = $1 AND player_id = $2
 `
 
 type UpdateMatchScoreEloParams struct {
-	MatchID  int32         `json:"match_id"`
-	PlayerID int32         `json:"player_id"`
-	EloPay   pgtype.Float8 `json:"elo_pay"`
-	EloEarn  pgtype.Float8 `json:"elo_earn"`
-	NewElo   pgtype.Float8 `json:"new_elo"`
+	MatchID  int32   `json:"match_id"`
+	PlayerID int32   `json:"player_id"`
+	EloPay   float64 `json:"elo_pay"`
+	EloEarn  float64 `json:"elo_earn"`
+	NewElo   float64 `json:"new_elo"`
 }
 
 func (q *Queries) UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error {
@@ -646,12 +646,12 @@ DO UPDATE SET
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID  int32         `json:"match_id"`
-	PlayerID int32         `json:"player_id"`
-	Score    float64       `json:"score"`
-	EloPay   pgtype.Float8 `json:"elo_pay"`
-	EloEarn  pgtype.Float8 `json:"elo_earn"`
-	NewElo   pgtype.Float8 `json:"new_elo"`
+	MatchID  int32   `json:"match_id"`
+	PlayerID int32   `json:"player_id"`
+	Score    float64 `json:"score"`
+	EloPay   float64 `json:"elo_pay"`
+	EloEarn  float64 `json:"elo_earn"`
+	NewElo   float64 `json:"new_elo"`
 }
 
 func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error {

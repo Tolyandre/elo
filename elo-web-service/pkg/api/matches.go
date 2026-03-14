@@ -314,17 +314,10 @@ func (a *API) ListMatches(c *gin.Context) {
 		}
 
 		m := matchesMap[r.MatchID]
-		var eloPay, eloEarn float64
-		if r.EloPay.Valid {
-			eloPay = r.EloPay.Float64
-		}
-		if r.EloEarn.Valid {
-			eloEarn = r.EloEarn.Float64
-		}
 		m.Players[r.PlayerID] = matchPlayerJson{
 			Score:   r.Score,
-			EloPay:  eloPay,
-			EloEarn: eloEarn,
+			EloPay:  r.EloPay,
+			EloEarn: r.EloEarn,
 		}
 	}
 
@@ -382,17 +375,10 @@ func (a *API) GetMatchById(c *gin.Context) {
 			order = append(order, r.MatchID)
 		}
 		m := matchesMap[r.MatchID]
-		var eloPay, eloEarn float64
-		if r.EloPay.Valid {
-			eloPay = r.EloPay.Float64
-		}
-		if r.EloEarn.Valid {
-			eloEarn = r.EloEarn.Float64
-		}
 		m.Players[r.PlayerID] = matchPlayerJson{
 			Score:   r.Score,
-			EloPay:  eloPay,
-			EloEarn: eloEarn,
+			EloPay:  r.EloPay,
+			EloEarn: r.EloEarn,
 		}
 	}
 
