@@ -96,20 +96,25 @@ export async function getPlayersPromise(): Promise<Player[]> {
 
 export type MatchesPage = {
     items: Match[];
-    next_cursor: string | null;
+    next: string | null;
 };
 
 export async function getMatchesPagePromise(params?: {
     player_id?: string;
     game_id?: string;
-    before?: string;
+    next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
     try {
         const query = new URLSearchParams();
-        if (params?.player_id) query.set("player_id", params.player_id);
-        if (params?.game_id) query.set("game_id", params.game_id);
-        if (params?.before) query.set("before", params.before);
+        if (params?.next) {
+            // Continuation mode: search params are encoded in the cursor.
+            query.set("next", params.next);
+        } else {
+            // Initial mode: pass search params explicitly.
+            if (params?.player_id) query.set("player_id", params.player_id);
+            if (params?.game_id) query.set("game_id", params.game_id);
+        }
         if (params?.limit) query.set("limit", String(params.limit));
         const qs = query.toString();
         const res = await fetch(`${EloWebServiceBaseUrl}/matches${qs ? `?${qs}` : ""}`);
@@ -124,7 +129,7 @@ export async function getMatchesPagePromise(params?: {
             score: m.score,
             date: m.date ? new Date(m.date) : null,
         }));
-        return { items, next_cursor: body.next_cursor ?? null };
+        return { items, next: body.next ?? null };
     }
     catch (error) {
         showToast(error);

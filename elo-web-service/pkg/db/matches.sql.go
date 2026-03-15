@@ -485,12 +485,11 @@ WITH paginated_matches AS (
         ($1::int4 IS NULL OR m.game_id = $1::int4)
         AND ($2::int4 IS NULL OR ms.player_id = $2::int4)
         AND (
-            $3::int4 IS NULL
-            OR m.date < $4::timestamptz
-            OR (m.date = $4::timestamptz AND m.id < $3::int4)
+            $3::timestamptz IS NULL
+            OR m.date < $3::timestamptz
         )
     ORDER BY m.date DESC, m.id DESC
-    LIMIT $5::int4
+    LIMIT $4::int4
 )
 SELECT
     pm.id AS match_id,
@@ -523,7 +522,6 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 type ListMatchesWithPlayersPaginatedParams struct {
 	GameID     pgtype.Int4        `json:"game_id"`
 	PlayerID   pgtype.Int4        `json:"player_id"`
-	CursorID   pgtype.Int4        `json:"cursor_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
 	Limit      int32              `json:"limit"`
 }
@@ -546,7 +544,6 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 	rows, err := q.db.Query(ctx, listMatchesWithPlayersPaginated,
 		arg.GameID,
 		arg.PlayerID,
-		arg.CursorID,
 		arg.CursorDate,
 		arg.Limit,
 	)

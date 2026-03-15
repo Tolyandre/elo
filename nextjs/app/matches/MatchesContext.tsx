@@ -48,9 +48,9 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
     })
       .then(page => {
         if (cancelled) return;
-        nextCursorRef.current = page.next_cursor;
+        nextCursorRef.current = page.next;
         setMatches(page.items);
-        setHasMore(page.next_cursor !== null);
+        setHasMore(page.next !== null);
       })
       .catch(e => {
         if (cancelled) return;
@@ -69,15 +69,11 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
     const cursor = nextCursorRef.current;
     setLoadingMore(true);
 
-    getMatchesPagePromise({
-      player_id: filters.playerId,
-      game_id: filters.gameId,
-      before: cursor,
-    })
+    getMatchesPagePromise({ next: cursor })
       .then(page => {
-        nextCursorRef.current = page.next_cursor;
+        nextCursorRef.current = page.next;
         setMatches(prev => [...prev, ...page.items]);
-        setHasMore(page.next_cursor !== null);
+        setHasMore(page.next !== null);
       })
       .catch(e => {
         setError(e.message ?? "Неизвестная ошибка");
@@ -85,7 +81,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
       .finally(() => {
         setLoadingMore(false);
       });
-  }, [filters, loadingMore]);
+  }, [loadingMore]);
 
   const setFilters = useCallback((f: Filters) => {
     setFiltersState(prev =>

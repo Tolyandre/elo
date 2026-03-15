@@ -154,9 +154,8 @@ WITH paginated_matches AS (
         (sqlc.narg('game_id')::int4 IS NULL OR m.game_id = sqlc.narg('game_id')::int4)
         AND (sqlc.narg('player_id')::int4 IS NULL OR ms.player_id = sqlc.narg('player_id')::int4)
         AND (
-            sqlc.narg('cursor_id')::int4 IS NULL
+            sqlc.narg('cursor_date')::timestamptz IS NULL
             OR m.date < sqlc.narg('cursor_date')::timestamptz
-            OR (m.date = sqlc.narg('cursor_date')::timestamptz AND m.id < sqlc.narg('cursor_id')::int4)
         )
     ORDER BY m.date DESC, m.id DESC
     LIMIT sqlc.arg('limit')::int4

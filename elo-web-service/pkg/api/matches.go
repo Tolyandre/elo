@@ -172,31 +172,48 @@ func contains(s, substr string) bool {
 }
 
 // matchCursor is the continuation token encoded as base64 JSON.
+// It embeds all search parameters so the client doesn't need to repeat them.
 type matchCursor struct {
-	ID   int32  `json:"id"`
-	Date string `json:"date"` // RFC3339Nano
+	GameID   *int32 `json:"game_id,omitempty"`
+	PlayerID *int32 `json:"player_id,omitempty"`
+	Date     string `json:"date"` // RFC3339Nano — date of the last returned match
 }
 
-func encodeMatchCursor(id int32, date time.Time) string {
-	c := matchCursor{ID: id, Date: date.UTC().Format(time.RFC3339Nano)}
+func encodeMatchCursor(gameID pgtype.Int4, playerID pgtype.Int4, date time.Time) string {
+	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano)}
+	if gameID.Valid {
+		c.GameID = &gameID.Int32
+	}
+	if playerID.Valid {
+		c.PlayerID = &playerID.Int32
+	}
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Timestamptz, error) {
+// decodeMatchCursor returns gameID, playerID, cursorDate decoded from the token.
+func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Timestamptz, error) {
 	b, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
 	}
 	var c matchCursor
 	if err := json.Unmarshal(b, &c); err != nil {
-		return pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
 	}
 	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
 	}
-	return pgtype.Int4{Int32: c.ID, Valid: true}, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	var gameID pgtype.Int4
+	if c.GameID != nil {
+		gameID = pgtype.Int4{Int32: *c.GameID, Valid: true}
+	}
+	var playerID pgtype.Int4
+	if c.PlayerID != nil {
+		playerID = pgtype.Int4{Int32: *c.PlayerID, Valid: true}
+	}
+	return gameID, playerID, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
@@ -229,40 +246,39 @@ func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matc
 }
 
 func (a *API) ListMatches(c *gin.Context) {
-	// Parse optional filter params
 	var gameID pgtype.Int4
-	if gStr := c.Query("game_id"); gStr != "" {
-		g, err := strconv.ParseInt(gStr, 10, 32)
-		if err != nil {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id")
-			return
-		}
-		gameID = pgtype.Int4{Int32: int32(g), Valid: true}
-	}
-
 	var playerID pgtype.Int4
-	if pStr := c.Query("player_id"); pStr != "" {
-		p, err := strconv.ParseInt(pStr, 10, 32)
-		if err != nil {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id")
-			return
-		}
-		playerID = pgtype.Int4{Int32: int32(p), Valid: true}
-	}
-
-	// Parse continuation token
-	var cursorID pgtype.Int4
 	var cursorDate pgtype.Timestamptz
-	if beforeToken := c.Query("before"); beforeToken != "" {
+
+	if nextToken := c.Query("next"); nextToken != "" {
+		// Continuation mode: all search params come from the cursor token.
 		var err error
-		cursorID, cursorDate, err = decodeMatchCursor(beforeToken)
+		gameID, playerID, cursorDate, err = decodeMatchCursor(nextToken)
 		if err != nil {
 			ErrorResponse(c, http.StatusBadRequest, "Invalid cursor")
 			return
 		}
+	} else {
+		// Initial mode: read search params from query string.
+		if gStr := c.Query("game_id"); gStr != "" {
+			g, err := strconv.ParseInt(gStr, 10, 32)
+			if err != nil {
+				ErrorResponse(c, http.StatusBadRequest, "Invalid game_id")
+				return
+			}
+			gameID = pgtype.Int4{Int32: int32(g), Valid: true}
+		}
+		if pStr := c.Query("player_id"); pStr != "" {
+			p, err := strconv.ParseInt(pStr, 10, 32)
+			if err != nil {
+				ErrorResponse(c, http.StatusBadRequest, "Invalid player_id")
+				return
+			}
+			playerID = pgtype.Int4{Int32: int32(p), Valid: true}
+		}
 	}
 
-	// Parse page size
+	// Parse page size (always from query string).
 	limit := int32(30)
 	if lStr := c.Query("limit"); lStr != "" {
 		l, err := strconv.ParseInt(lStr, 10, 32)
@@ -274,7 +290,6 @@ func (a *API) ListMatches(c *gin.Context) {
 	rows, err := a.Queries.ListMatchesWithPlayersPaginated(c.Request.Context(), db.ListMatchesWithPlayersPaginatedParams{
 		GameID:     gameID,
 		PlayerID:   playerID,
-		CursorID:   cursorID,
 		CursorDate: cursorDate,
 		Limit:      limit,
 	})
@@ -308,18 +323,18 @@ func (a *API) ListMatches(c *gin.Context) {
 
 	matchesJson := buildMatchesResponse(matchesMap, order)
 
-	// Build next_cursor if there may be more results
-	var nextCursor *string
+	// Build next cursor if there may be more results.
+	var next *string
 	if int32(len(order)) == limit {
 		lastID := order[len(order)-1]
-		token := encodeMatchCursor(int32(matchesMap[lastID].Id), matchesMap[lastID].Date)
-		nextCursor = &token
+		token := encodeMatchCursor(gameID, playerID, matchesMap[lastID].Date)
+		next = &token
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":      "success",
-		"data":        matchesJson,
-		"next_cursor": nextCursor,
+		"status": "success",
+		"data":   matchesJson,
+		"next":   next,
 	})
 }
 
