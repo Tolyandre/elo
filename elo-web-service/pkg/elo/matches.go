@@ -23,13 +23,13 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time) (db.Match, error)
+	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 }
 
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date *time.Time) (db.Match, error) {
+func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error) {
 	// start a transaction
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -41,22 +41,12 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 	q := s.Queries.WithTx(tx)
 
-	// prepare date parameter
-	var dt pgtype.Timestamptz
-	var effectiveDate time.Time
-	if date == nil {
-		dt = pgtype.Timestamptz{Valid: false}
-		// Use current time for settings lookup if match date is not specified
-		effectiveDate = time.Now()
-	} else {
-		dt = pgtype.Timestamptz{Time: *date, Valid: true}
-		effectiveDate = *date
-	}
+	dt := pgtype.Timestamptz{Time: date, Valid: true}
 
 	// Get Elo settings for the match date
-	settings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
+	settings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: date, Valid: true})
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to get Elo settings for date %v: %v", effectiveDate, err)
+		return db.Match{}, fmt.Errorf("unable to get Elo settings for date %v: %v", date, err)
 	}
 
 	eloConstK := settings.EloConstK
@@ -138,13 +128,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	}
 
 	// Validate date change
-	var oldDate time.Time
-	if existingMatch.Date.Valid {
-		oldDate = existingMatch.Date.Time
-	} else {
-		// If old date was null, use a very early date for comparison
-		oldDate = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
-	}
+	oldDate := existingMatch.Date.Time
 
 	// Check date change constraint (max 3 days)
 	dateDiff := date.Sub(oldDate)
@@ -236,16 +220,9 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 		}
 
 		// Get Elo settings for this match date
-		var effectiveDate time.Time
-		if match.Date.Valid {
-			effectiveDate = match.Date.Time
-		} else {
-			effectiveDate = time.Now()
-		}
-
-		settings, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
+		settings, err := q.GetEloSettingsForDate(ctx, match.Date)
 		if err != nil {
-			return fmt.Errorf("unable to get Elo settings for match %d date %v: %v", match.ID, effectiveDate, err)
+			return fmt.Errorf("unable to get Elo settings for match %d date %v: %v", match.ID, match.Date.Time, err)
 		}
 
 		eloConstK := settings.EloConstK
@@ -269,21 +246,11 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 			}
 
 			// Get previous Elo (before this match)
-			var prevElo float64
-			if match.Date.Valid {
-				prevElo, err = q.GetPlayerLatestEloBeforeMatch(ctx, db.GetPlayerLatestEloBeforeMatchParams{
-					PlayerID: playerID,
-					Date:     match.Date,
-					ID:       match.ID,
-				})
-			} else {
-				// For null dates, just get the latest Elo excluding this match
-				prevElo, err = q.GetPlayerLatestEloBeforeMatch(ctx, db.GetPlayerLatestEloBeforeMatchParams{
-					PlayerID: playerID,
-					Date:     pgtype.Timestamptz{Time: time.Now(), Valid: true},
-					ID:       match.ID,
-				})
-			}
+			prevElo, err := q.GetPlayerLatestEloBeforeMatch(ctx, db.GetPlayerLatestEloBeforeMatchParams{
+				PlayerID: playerID,
+				Date:     match.Date,
+				ID:       match.ID,
+			})
 
 			if err != nil {
 				// No previous matches, use starting Elo

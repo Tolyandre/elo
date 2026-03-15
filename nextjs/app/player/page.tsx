@@ -75,7 +75,7 @@ function MatchesTable({ rows }: { rows: GameMatchStat[] }) {
                             <thead>
                                 <tr className="border-b">
                                     <th className="text-left py-2 pr-4 font-medium">Игра</th>
-                                    <th className="text-right py-2 pr-4 font-medium">Матчи</th>
+                                    <th className="text-right py-2 pr-4 font-medium">Партии</th>
                                     <th className="text-right py-2 font-medium">Победы</th>
                                 </tr>
                             </thead>

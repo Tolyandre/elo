@@ -180,8 +180,8 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatch
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
 SELECT m.id, m.date, m.game_id
 FROM matches m
-WHERE m.date >= $1 OR (m.date IS NULL AND $1 IS NOT NULL)
-ORDER BY m.date ASC NULLS FIRST, m.id ASC
+WHERE m.date >= $1
+ORDER BY m.date ASC, m.id ASC
 `
 
 func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error) {
@@ -209,7 +209,7 @@ SELECT ms.new_elo
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
-ORDER BY m.date DESC NULLS LAST, m.id DESC
+ORDER BY m.date DESC, m.id DESC
 LIMIT 1
 `
 
@@ -226,7 +226,7 @@ FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
   AND (m.date < $2 OR (m.date = $2 AND m.id < $3))
-ORDER BY m.date DESC NULLS LAST, m.id DESC
+ORDER BY m.date DESC, m.id DESC
 LIMIT 1
 `
 
@@ -414,12 +414,12 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT elo_const_k, elo_const_d, starting_elo, win_reward
     FROM elo_settings
-    WHERE effective_date <= COALESCE(m.date, '-infinity'::timestamp)
+    WHERE effective_date <= m.date
     ORDER BY effective_date DESC
     LIMIT 1
 ) elo_settings ON true
 WHERE g.id = $1
-ORDER BY m.date ASC NULLS FIRST, m.id ASC, s.score DESC
+ORDER BY m.date ASC, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameRow struct {
@@ -486,22 +486,10 @@ WITH paginated_matches AS (
         AND ($2::int4 IS NULL OR ms.player_id = $2::int4)
         AND (
             $3::int4 IS NULL
-            OR (
-                -- cursor has null date: only remaining null-dated matches (they are at the end)
-                $4::timestamptz IS NULL AND (
-                    m.date IS NULL AND m.id < $3::int4
-                )
-            )
-            OR (
-                -- cursor has non-null date: earlier non-null dates, same date lower id, or any null date
-                $4::timestamptz IS NOT NULL AND (
-                    m.date < $4::timestamptz
-                    OR (m.date = $4::timestamptz AND m.id < $3::int4)
-                    OR m.date IS NULL
-                )
-            )
+            OR m.date < $4::timestamptz
+            OR (m.date = $4::timestamptz AND m.id < $3::int4)
         )
-    ORDER BY m.date DESC NULLS LAST, m.id DESC
+    ORDER BY m.date DESC, m.id DESC
     LIMIT $5::int4
 )
 SELECT
@@ -529,7 +517,7 @@ LEFT JOIN LATERAL (
     ORDER BY prev_m.date DESC, prev_m.id DESC
     LIMIT 1
 ) prev_match_score ON true
-ORDER BY pm.date DESC NULLS LAST, pm.id DESC, s.score DESC
+ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersPaginatedParams struct {

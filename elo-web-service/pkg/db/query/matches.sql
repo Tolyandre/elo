@@ -100,19 +100,19 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
     SELECT elo_const_k, elo_const_d, starting_elo, win_reward
     FROM elo_settings
-    WHERE effective_date <= COALESCE(m.date, '-infinity'::timestamp)
+    WHERE effective_date <= m.date
     ORDER BY effective_date DESC
     LIMIT 1
 ) elo_settings ON true
 WHERE g.id = $1
-ORDER BY m.date ASC NULLS FIRST, m.id ASC, s.score DESC;
+ORDER BY m.date ASC, m.id ASC, s.score DESC;
 
 -- name: GetPlayerLatestElo :one
 SELECT ms.new_elo
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
-ORDER BY m.date DESC NULLS LAST, m.id DESC
+ORDER BY m.date DESC, m.id DESC
 LIMIT 1;
 
 -- name: GetMatch :one
@@ -128,8 +128,8 @@ WHERE id = $1;
 -- name: GetMatchesFromDate :many
 SELECT m.*
 FROM matches m
-WHERE m.date >= $1 OR (m.date IS NULL AND $1 IS NOT NULL)
-ORDER BY m.date ASC NULLS FIRST, m.id ASC;
+WHERE m.date >= $1
+ORDER BY m.date ASC, m.id ASC;
 
 -- name: GetMatchScoresForMatch :many
 SELECT player_id, score
@@ -155,22 +155,10 @@ WITH paginated_matches AS (
         AND (sqlc.narg('player_id')::int4 IS NULL OR ms.player_id = sqlc.narg('player_id')::int4)
         AND (
             sqlc.narg('cursor_id')::int4 IS NULL
-            OR (
-                -- cursor has null date: only remaining null-dated matches (they are at the end)
-                sqlc.narg('cursor_date')::timestamptz IS NULL AND (
-                    m.date IS NULL AND m.id < sqlc.narg('cursor_id')::int4
-                )
-            )
-            OR (
-                -- cursor has non-null date: earlier non-null dates, same date lower id, or any null date
-                sqlc.narg('cursor_date')::timestamptz IS NOT NULL AND (
-                    m.date < sqlc.narg('cursor_date')::timestamptz
-                    OR (m.date = sqlc.narg('cursor_date')::timestamptz AND m.id < sqlc.narg('cursor_id')::int4)
-                    OR m.date IS NULL
-                )
-            )
+            OR m.date < sqlc.narg('cursor_date')::timestamptz
+            OR (m.date = sqlc.narg('cursor_date')::timestamptz AND m.id < sqlc.narg('cursor_id')::int4)
         )
-    ORDER BY m.date DESC NULLS LAST, m.id DESC
+    ORDER BY m.date DESC, m.id DESC
     LIMIT sqlc.arg('limit')::int4
 )
 SELECT
@@ -198,7 +186,7 @@ LEFT JOIN LATERAL (
     ORDER BY prev_m.date DESC, prev_m.id DESC
     LIMIT 1
 ) prev_match_score ON true
-ORDER BY pm.date DESC NULLS LAST, pm.id DESC, s.score DESC;
+ORDER BY pm.date DESC, pm.id DESC, s.score DESC;
 
 -- name: GetMatchWithPlayers :many
 SELECT
@@ -235,5 +223,5 @@ FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
   AND (m.date < $2 OR (m.date = $2 AND m.id < $3))
-ORDER BY m.date DESC NULLS LAST, m.id DESC
+ORDER BY m.date DESC, m.id DESC
 LIMIT 1;

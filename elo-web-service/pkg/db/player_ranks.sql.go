@@ -25,8 +25,8 @@ LEFT JOIN LATERAL (
   SELECT ms.new_elo
   FROM match_scores ms
   JOIN matches m ON m.id = ms.match_id
-  WHERE ms.player_id = p.id AND (m.date <= $1 OR m.date IS NULL)
-  ORDER BY m.date DESC NULLS LAST, m.id DESC
+  WHERE ms.player_id = p.id AND m.date <= $1
+  ORDER BY m.date DESC, m.id DESC
   LIMIT 1
 ) latest_elo ON true
 LEFT JOIN LATERAL (

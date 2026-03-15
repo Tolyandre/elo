@@ -1,0 +1,2 @@
+ALTER TABLE matches
+    ALTER COLUMN date SET NOT NULL;

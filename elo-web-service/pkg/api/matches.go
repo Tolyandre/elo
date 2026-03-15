@@ -33,7 +33,7 @@ type matchJson struct {
 	Id       int                        `json:"id"`
 	GameId   string                     `json:"game_id"`
 	GameName string                     `json:"game_name"`
-	Date     *time.Time                 `json:"date"`
+	Date     time.Time                  `json:"date"`
 	Players  map[string]matchPlayerJson `json:"score"`
 }
 
@@ -74,8 +74,7 @@ func (a *API) AddMatch(c *gin.Context) {
 	}
 
 	// Add match to database with current timestamp
-	now := time.Now()
-	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, &now)
+	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, time.Now())
 	if err != nil {
 		// Check if error is due to foreign key constraint violation
 		if db.IsForeignKeyViolation(err) {
@@ -174,16 +173,12 @@ func contains(s, substr string) bool {
 
 // matchCursor is the continuation token encoded as base64 JSON.
 type matchCursor struct {
-	ID   int32   `json:"id"`
-	Date *string `json:"date"` // RFC3339Nano, nil means match has no date
+	ID   int32  `json:"id"`
+	Date string `json:"date"` // RFC3339Nano
 }
 
-func encodeMatchCursor(id int32, date *time.Time) string {
-	c := matchCursor{ID: id}
-	if date != nil {
-		s := date.UTC().Format(time.RFC3339Nano)
-		c.Date = &s
-	}
+func encodeMatchCursor(id int32, date time.Time) string {
+	c := matchCursor{ID: id, Date: date.UTC().Format(time.RFC3339Nano)}
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
@@ -197,16 +192,11 @@ func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Timestamptz, error) {
 	if err := json.Unmarshal(b, &c); err != nil {
 		return pgtype.Int4{}, pgtype.Timestamptz{}, err
 	}
-	cursorID := pgtype.Int4{Int32: c.ID, Valid: true}
-	var cursorDate pgtype.Timestamptz
-	if c.Date != nil {
-		t, err := time.Parse(time.RFC3339Nano, *c.Date)
-		if err != nil {
-			return pgtype.Int4{}, pgtype.Timestamptz{}, err
-		}
-		cursorDate = pgtype.Timestamptz{Time: t, Valid: true}
+	t, err := time.Parse(time.RFC3339Nano, c.Date)
+	if err != nil {
+		return pgtype.Int4{}, pgtype.Timestamptz{}, err
 	}
-	return cursorID, cursorDate, nil
+	return pgtype.Int4{Int32: c.ID, Valid: true}, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
@@ -215,7 +205,7 @@ type tempMatch struct {
 	Id       int
 	GameId   string
 	GameName string
-	Date     *time.Time
+	Date     time.Time
 	Players  map[int32]matchPlayerJson
 }
 
@@ -298,16 +288,11 @@ func (a *API) ListMatches(c *gin.Context) {
 
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
-			var date *time.Time
-			if r.Date.Valid {
-				t := r.Date.Time
-				date = &t
-			}
 			matchesMap[r.MatchID] = &tempMatch{
 				Id:       int(r.MatchID),
 				GameId:   strconv.Itoa(int(r.GameID)),
 				GameName: r.GameName,
-				Date:     date,
+				Date:     r.Date.Time,
 				Players:  make(map[int32]matchPlayerJson),
 			}
 			order = append(order, r.MatchID)
@@ -360,16 +345,11 @@ func (a *API) GetMatchById(c *gin.Context) {
 	order := make([]int32, 0)
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
-			var date *time.Time
-			if r.Date.Valid {
-				t := r.Date.Time
-				date = &t
-			}
 			matchesMap[r.MatchID] = &tempMatch{
 				Id:       int(r.MatchID),
 				GameId:   strconv.Itoa(int(r.GameID)),
 				GameName: r.GameName,
-				Date:     date,
+				Date:     r.Date.Time,
 				Players:  make(map[int32]matchPlayerJson),
 			}
 			order = append(order, r.MatchID)
