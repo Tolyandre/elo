@@ -9,6 +9,7 @@ import { Player, Club, Period } from "../api";
 import { ClubMultiSelect } from "@/components/club-multi-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
+import { Button } from "@/components/ui/button";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
@@ -203,17 +204,16 @@ function PlayersTable() {
 export default function PlayersPage() {
     return (
         <main>
-            <div className="flex items-center justify-between">
+            <div className="flex justify-center">
+                <Button asChild>
+                    <Link href="/add-match">Добавить партию</Link>
+                </Button>
+            </div>
+            <div className="flex items-center justify-between mt-8">
                 <h1 className="text-2xl font-semibold mb-4 mx-auto">Игроки</h1>
             </div>
             <LoadingOrError />
             <PlayersTable />
-            <Link
-                href="/add-match"
-                className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-center w-full"
-            >
-                Добавить партию
-            </Link>
         </main>
     );
 }

@@ -41,12 +41,12 @@ function HelpPageContent() {
 
     return (
         <div className="space-y-6 py-6">
-            <div>
-                <h1 className="text-2xl font-bold">Справка</h1>
-                <p className="text-muted-foreground mt-1">
-                    Elo-рейтинг для настольных игр
-                </p>
+            <div className="flex items-center justify-between mt-8">
+                <h1 className="text-2xl font-semibold mb-4 mx-auto">Справка</h1>
             </div>
+            <p>
+                Elo-рейтинг для настольных игр
+            </p>
 
             <Accordion type="multiple" value={openItems} onValueChange={handleValueChange} className="w-full border rounded-lg px-4">
 
@@ -331,7 +331,7 @@ function HelpPageContent() {
                                 </p>
                                 <p className="text-muted-foreground">
                                     Удаление игроков, которые сыграли хотя бы одну партию, не предусмотрено, т.к. это повлияло бы на расчёт.
-                                    Однако, можно изменить имя игрока на что-то нейтральное ("данные удалены"), 
+                                    Однако, можно изменить имя игрока на что-то нейтральное ("данные удалены"),
                                     если он не хочет, чтобы его имя было в таблице.
                                 </p>
                             </CardContent>

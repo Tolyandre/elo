@@ -37,7 +37,7 @@ function MatchesPageWrapped() {
     const p = searchParams.get("player") ?? undefined;
     const g = searchParams.get("game") ?? undefined;
     setFilters({ playerId: p, gameId: g });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // only on mount — subsequent changes go through handlers
 
   // Infinite scroll: observe sentinel
@@ -81,13 +81,13 @@ function MatchesPageWrapped() {
 
   return (
     <main>
-      <div className="flex  justify-center">
+      <div className="flex justify-center">
         <Button asChild>
           <Link href="/add-match">Добавить партию</Link>
         </Button>
       </div>
-      <div className="flex items-center justify-center mt-8">
-        <h1 className="text-2xl font-semibold">Партии</h1>
+      <div className="flex items-center justify-between mt-8">
+        <h1 className="text-2xl font-semibold mb-4 mx-auto">Партии</h1>
       </div>
 
       {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
