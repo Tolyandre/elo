@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 
 function formatDate(dateStr: string): string {
-    if (dateStr === "-infinity") return "По умолчанию (начальная)";
+    if (dateStr === "-infinity") return "Начальная";
     try {
         return new Date(dateStr).toLocaleDateString("ru-RU", {
             year: "numeric", month: "long", day: "numeric",
@@ -66,7 +66,7 @@ export default function FormulaAdminPage() {
         setLoading(true);
         listAllSettingsPromise()
             .then(setEntries)
-            .catch(() => {})
+            .catch(() => { })
             .finally(() => setLoading(false));
     }
 
@@ -126,10 +126,132 @@ export default function FormulaAdminPage() {
 
             {loading && <p>Загрузка...</p>}
 
+            {!loading && entries && (() => {
+                const current = entries.find((e) => isCurrentEntry(e, entries)) ?? null;
+                return (
+                    <Card className="mb-6">
+                        <CardHeader>
+                            <CardTitle>Действующая формула</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {current ? (
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <p className="font-medium">K = {current.elo_const_k}</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">Волатильность — насколько сильно одна партия меняет рейтинг</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">D = {current.elo_const_d}</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">Масштаб — при разнице в D пунктов более сильный побеждает в 91% случаев</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">Нач. Elo = {current.starting_elo}</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">Стартовый рейтинг новых игроков</p>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">Win Reward = {current.win_reward}</p>
+                                        <p className="text-muted-foreground text-xs mt-0.5">Степень нормализации очков — при W&gt;1 победители получают непропорционально большую долю рейтинга</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">Нет активной настройки</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                );
+            })()}
+
+            {canEdit && (
+                <Card className="mb-6">
+                    <CardHeader>
+                        <CardTitle>Изменить формулу</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Новые настройки вступят в силу с указанной даты
+                        </p>
+                        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="sm:col-span-2">
+                                <Label htmlFor="formDate">Дата</Label>
+                                <input
+                                    id="formDate"
+                                    type="datetime-local"
+                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    value={formDate}
+                                    min={minDateStr}
+                                    onChange={(e) => setFormDate(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="formK">K — волатильность</Label>
+                                <input
+                                    id="formK"
+                                    type="number"
+                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    value={formK}
+                                    step="1"
+                                    min="1"
+                                    max="100"
+                                    onChange={(e) => setFormK(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="formD">D — масштаб</Label>
+                                <input
+                                    id="formD"
+                                    type="number"
+                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    value={formD}
+                                    step="1"
+                                    min="100"
+                                    max="800"
+                                    onChange={(e) => setFormD(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="formStartingElo">Начальный Elo</Label>
+                                <input
+                                    id="formStartingElo"
+                                    type="number"
+                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    value={formStartingElo}
+                                    step="1"
+                                    min="0"
+                                    onChange={(e) => setFormStartingElo(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="formWinReward">W — Win Reward</Label>
+                                <input
+                                    id="formWinReward"
+                                    type="number"
+                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    value={formWinReward}
+                                    step="0.1"
+                                    min="0.1"
+                                    max="5"
+                                    onChange={(e) => setFormWinReward(e.target.value)}
+                                    required
+                                />
+                            </div>
+                            <div className="sm:col-span-2">
+                                <Button type="submit" disabled={creating}>
+                                    {creating ? "Сохранение..." : "Запланировать"}
+                                </Button>
+                            </div>
+                        </form>
+                    </CardContent>
+                </Card>
+            )}
+
             {!loading && entries && (
                 <Card className="mb-6">
                     <CardHeader>
-                        <CardTitle>История настроек</CardTitle>
+                        <CardTitle>История</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {/* Desktop table */}
@@ -240,95 +362,8 @@ export default function FormulaAdminPage() {
                                         </div>
                                     </div>
                                 );
-            })}
+                            })}
                         </div>
-                    </CardContent>
-                </Card>
-            )}
-
-            {canEdit && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Добавить настройку</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4">
-                            Новые настройки вступят в силу с указанной даты
-                        </p>
-                        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="sm:col-span-2">
-                                <Label htmlFor="formDate">Дата</Label>
-                                <input
-                                    id="formDate"
-                                    type="datetime-local"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
-                                    value={formDate}
-                                    min={minDateStr}
-                                    onChange={(e) => setFormDate(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <Label htmlFor="formK">K (волатильность)</Label>
-                                <input
-                                    id="formK"
-                                    type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
-                                    value={formK}
-                                    step="1"
-                                    min="1"
-                                    max="100"
-                                    onChange={(e) => setFormK(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <Label htmlFor="formD">D (масштаб)</Label>
-                                <input
-                                    id="formD"
-                                    type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
-                                    value={formD}
-                                    step="1"
-                                    min="100"
-                                    max="800"
-                                    onChange={(e) => setFormD(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <Label htmlFor="formStartingElo">Начальный Elo</Label>
-                                <input
-                                    id="formStartingElo"
-                                    type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
-                                    value={formStartingElo}
-                                    step="1"
-                                    min="0"
-                                    onChange={(e) => setFormStartingElo(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <Label htmlFor="formWinReward">WinReward (степень нормализации)</Label>
-                                <input
-                                    id="formWinReward"
-                                    type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
-                                    value={formWinReward}
-                                    step="0.1"
-                                    min="0.1"
-                                    max="5"
-                                    onChange={(e) => setFormWinReward(e.target.value)}
-                                    required
-                                />
-                            </div>
-                            <div className="sm:col-span-2">
-                                <Button type="submit" disabled={creating}>
-                                    {creating ? "Сохранение..." : "Добавить"}
-                                </Button>
-                            </div>
-                        </form>
                     </CardContent>
                 </Card>
             )}
