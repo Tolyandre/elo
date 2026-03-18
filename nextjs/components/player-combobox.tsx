@@ -85,6 +85,7 @@ export function PlayerCombobox({
       value={value}
       groups={groups}
       onSelect={handleSelect}
+      listClassName={isMobile ? "max-h-[70dvh]" : undefined}
     />
   )
 
@@ -120,14 +121,15 @@ type PlayerCommandProps = {
   value: string
   groups: { heading: string; options: { value: string; label: string }[] }[]
   onSelect: (value: string) => void
+  listClassName?: string
 }
 
-function PlayerCommand({ value, groups, onSelect }: PlayerCommandProps) {
+function PlayerCommand({ value, groups, onSelect, listClassName }: PlayerCommandProps) {
   return (
     <Command>
       <CommandInput placeholder="Искать игрока..." className="h-9" />
 
-      <CommandList className="max-h-[40dvh] overflow-y-auto">
+      <CommandList className={listClassName}>
         <CommandEmpty>Игрок не найден.</CommandEmpty>
 
         {groups.map((group, i) => (

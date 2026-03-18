@@ -997,7 +997,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			<CommandList
 				className={cn(
 					"max-h-[40vh] overflow-y-auto multiselect-scrollbar",
-					screenSize === "mobile" && "max-h-[50vh]",
+					screenSize === "mobile" && "max-h-[70dvh]",
 					"overscroll-behavior-y-contain"
 				)}>
 				<CommandEmpty>
@@ -1170,7 +1170,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 								<DrawerTitle>{placeholder}</DrawerTitle>
 							</DrawerHeader>
 
-							<div className="px-2 pb-4 overflow-y-auto">
+							<div className="px-2 pb-4">
 								{content}
 							</div>
 
