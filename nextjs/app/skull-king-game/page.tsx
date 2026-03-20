@@ -69,26 +69,28 @@ const initialState: GameState = {
 
 // ─── Scoring ─────────────────────────────────────────────────────────────────
 
-function calcRoundScore(entry: RoundEntry, roundNumber: number): number {
+function calcRoundScore(entry: RoundEntry, roundNumber: number, playerCount: number): number {
     if (entry.actual === null) return 0;
     const { bid, actual, bonus } = entry;
+    const zeroBase = (playerCount >= 8 && roundNumber >= 9) ? 8 : roundNumber;
     if (actual === bid) {
-        return (bid === 0 ? roundNumber * 10 : actual * 20) + bonus;
+        return (bid === 0 ? zeroBase * 10 : actual * 20) + bonus;
     }
     if (bid === 0) {
-        return roundNumber * -10;
+        return zeroBase * -10;
     }
     return Math.abs(bid - actual) * -10;
 }
 
 function playerTotal(
     rounds: RoundEntry[][],
-    playerIndex: number
+    playerIndex: number,
+    playerCount: number
 ): number {
     return rounds.reduce((sum, round) => {
         const entry = round[playerIndex];
         if (!entry) return sum;
-        return sum + calcRoundScore(entry, rounds.indexOf(round) + 1);
+        return sum + calcRoundScore(entry, rounds.indexOf(round) + 1, playerCount);
     }, 0);
 }
 
@@ -136,7 +138,7 @@ function GameTable({
         rounds.reduce((sum, round, ri) => {
             const entry = round[pi];
             if (!entry || entry.actual === null) return sum;
-            return sum + calcRoundScore(entry, ri + 1);
+            return sum + calcRoundScore(entry, ri + 1, players.length);
         }, 0)
     );
 
@@ -165,7 +167,7 @@ function GameTable({
                                 const entry = round[pi];
                                 if (!entry) return <td key={pi} className="border border-border px-2 py-1" />;
                                 const score = entry.actual !== null
-                                    ? calcRoundScore(entry, ri + 1)
+                                    ? calcRoundScore(entry, ri + 1, players.length)
                                     : null;
                                 const scoreDisplay = score !== null
                                     ? entry.bonus > 0
@@ -466,7 +468,7 @@ export default function SkullKingGamePage() {
         try {
             const score: Record<string, number> = {};
             gameState.players.forEach((p, pi) => {
-                score[p.id] = playerTotal(gameState.rounds, pi);
+                score[p.id] = playerTotal(gameState.rounds, pi, gameState.players.length);
             });
             const result = await addMatchPromise({ game_id: gameId, score });
             invalidateMatches();
@@ -609,6 +611,13 @@ export default function SkullKingGamePage() {
                             />
                             <p className="text-xs text-muted-foreground mt-2">
                                 Нажмите на ячейку для редактирования
+                            </p>
+                            <p className="text-sm font-medium mt-3">
+                                Сумма планов:{" "}
+                                <span className="font-bold">
+                                    {(rounds[currentRound - 1] ?? []).reduce((s, e) => s + e.bid, 0)}
+                                </span>
+                                {". Раздано карт: "}{(players.length >= 8 && currentRound >= 9) ? 8 : currentRound}
                             </p>
                         </CardContent>
                     </Card>
