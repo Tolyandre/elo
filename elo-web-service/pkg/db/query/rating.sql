@@ -7,7 +7,7 @@
 -- DO UPDATE SET rating = EXCLUDED.rating;
 
 -- name: RatingHistory :many
-SELECT m.date, ms.new_elo as rating
+SELECT m.date, ms.global_new_elo as rating
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1

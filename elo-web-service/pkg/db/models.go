@@ -33,12 +33,15 @@ type Match struct {
 }
 
 type MatchScore struct {
-	MatchID  int32   `json:"match_id"`
-	PlayerID int32   `json:"player_id"`
-	Score    float64 `json:"score"`
-	EloPay   float64 `json:"elo_pay"`
-	EloEarn  float64 `json:"elo_earn"`
-	NewElo   float64 `json:"new_elo"`
+	MatchID       int32         `json:"match_id"`
+	PlayerID      int32         `json:"player_id"`
+	Score         float64       `json:"score"`
+	GlobalEloPay  float64       `json:"global_elo_pay"`
+	GlobalEloEarn float64       `json:"global_elo_earn"`
+	GlobalNewElo  float64       `json:"global_new_elo"`
+	GameEloPay    pgtype.Float8 `json:"game_elo_pay"`
+	GameEloEarn   pgtype.Float8 `json:"game_elo_earn"`
+	GameNewElo    pgtype.Float8 `json:"game_new_elo"`
 }
 
 type Player struct {

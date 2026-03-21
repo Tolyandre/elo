@@ -26,10 +26,10 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
         return {
           name,
           playerId,
-          eloPay: data.eloPay,
-          eloEarn: data.eloEarn,
+          eloPay: data.globalEloPay,
+          eloEarn: data.globalEloEarn,
           score: data.score,
-          eloChange: data.eloPay + data.eloEarn,
+          eloChange: data.globalEloPay + data.globalEloEarn,
         };
       })
       .sort((a, b) => b.score - a.score);

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
@@ -174,6 +176,66 @@ func (a *API) CreateGame(c *gin.Context) {
 	}
 
 	SuccessDataResponse(c, resp)
+}
+
+func (a *API) GetGameMatches(c *gin.Context) {
+	type gameMatchPlayerJson struct {
+		Id          string  `json:"id"`
+		Name        string  `json:"name"`
+		Score       float64 `json:"score"`
+		GameEloPay  float64 `json:"game_elo_pay"`
+		GameEloEarn float64 `json:"game_elo_earn"`
+		GameNewElo  float64 `json:"game_new_elo"`
+	}
+
+	type gameMatchJson struct {
+		Id      int32                 `json:"id"`
+		Date    *time.Time            `json:"date"`
+		Players []gameMatchPlayerJson `json:"players"`
+	}
+
+	id := c.Param("id")
+	matches, err := a.GameService.GetGameMatches(c.Request.Context(), id)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	result := make([]gameMatchJson, 0, len(matches))
+	for _, m := range matches {
+		players := make([]gameMatchPlayerJson, 0, len(m.Players))
+		for _, p := range m.Players {
+			players = append(players, gameMatchPlayerJson{
+				Id:          p.Id,
+				Name:        p.Name,
+				Score:       p.Score,
+				GameEloPay:  p.GameEloPay,
+				GameEloEarn: p.GameEloEarn,
+				GameNewElo:  p.GameNewElo,
+			})
+		}
+		var datePtr *time.Time
+		if ts, ok := m.Date.(pgtype.Timestamptz); ok && ts.Valid {
+			t := ts.Time
+			datePtr = &t
+		}
+		result = append(result, gameMatchJson{
+			Id:      m.Id,
+			Date:    datePtr,
+			Players: players,
+		})
+	}
+
+	SuccessDataResponse(c, result)
+}
+
+func (a *API) RecalculateGameElo(c *gin.Context) {
+	if err := a.MatchService.RecalculateAllGameElo(c.Request.Context()); err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	SuccessMessageResponse(c, http.StatusOK, "Game Elo recalculated successfully")
 }
 
 func (a *API) DeleteGame(c *gin.Context) {

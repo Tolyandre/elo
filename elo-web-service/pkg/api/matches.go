@@ -24,9 +24,9 @@ type updateMatchJson struct {
 }
 
 type matchPlayerJson struct {
-	EloPay  float64 `json:"eloPay"`
-	EloEarn float64 `json:"eloEarn"`
-	Score   float64 `json:"score"`
+	GlobalEloPay  float64 `json:"global_elo_pay"`
+	GlobalEloEarn float64 `json:"global_elo_earn"`
+	Score         float64 `json:"score"`
 }
 
 type matchJson struct {
@@ -315,9 +315,9 @@ func (a *API) ListMatches(c *gin.Context) {
 
 		m := matchesMap[r.MatchID]
 		m.Players[r.PlayerID] = matchPlayerJson{
-			Score:   r.Score,
-			EloPay:  r.EloPay,
-			EloEarn: r.EloEarn,
+			Score:         r.Score,
+			GlobalEloPay:  r.GlobalEloPay,
+			GlobalEloEarn: r.GlobalEloEarn,
 		}
 	}
 
@@ -371,9 +371,9 @@ func (a *API) GetMatchById(c *gin.Context) {
 		}
 		m := matchesMap[r.MatchID]
 		m.Players[r.PlayerID] = matchPlayerJson{
-			Score:   r.Score,
-			EloPay:  r.EloPay,
-			EloEarn: r.EloEarn,
+			Score:         r.Score,
+			GlobalEloPay:  r.GlobalEloPay,
+			GlobalEloEarn: r.GlobalEloEarn,
 		}
 	}
 

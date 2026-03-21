@@ -28,9 +28,25 @@ type GameTitles struct {
 	TotalMatches int
 }
 
+type GameMatchPlayer struct {
+	Id          string
+	Name        string
+	Score       float64
+	GameEloPay  float64
+	GameEloEarn float64
+	GameNewElo  float64
+}
+
+type GameMatch struct {
+	Id      int32
+	Date    interface{} // pgtype.Timestamptz
+	Players []GameMatchPlayer
+}
+
 type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
 	GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error)
+	GetGameMatches(ctx context.Context, id string) ([]GameMatch, error)
 	DeleteGame(ctx context.Context, id int32) (*db.Game, error)
 	UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error)
 	AddGame(ctx context.Context, name string) (*db.Game, error)
@@ -72,63 +88,48 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		return nil, fmt.Errorf("invalid game id: %v", err)
 	}
 
-	// fetch matches and player scores for the given game in a single query
-	// includes elo settings for each match
-	rows, err := s.Queries.ListMatchesWithPlayersByGame(ctx, int32(gid))
+	// Read latest game Elo per player from DB
+	eloRows, err := s.Queries.ListLatestGameEloPerPlayer(ctx, int32(gid))
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve matches from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve game elo from db: %v", err)
 	}
 
-	playersElo := map[string]float64{}
-	totalMatches := 0
+	// Get total match count for the game
+	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, int32(gid))
+	if err != nil {
+		return nil, fmt.Errorf("unable to get match count: %v", err)
+	}
 
-	var currentMatchID int32 = -1
-	playersScore := make(map[string]float64)
-	var currentEloConstK, currentEloConstD, currentStartingElo, currentWinReward float64
-
-	for _, r := range rows {
-		if r.MatchID != currentMatchID {
-			if currentMatchID != -1 {
-				// Use the elo settings from the previous match
-				playersElo = CalculateNewElo(playersElo, currentStartingElo, playersScore,
-					currentEloConstK, currentEloConstD, currentWinReward)
-			}
-			// start new match
-			currentMatchID = r.MatchID
-			totalMatches++
-			playersScore = make(map[string]float64)
-
-			// Get elo settings for this match (from query result)
-			currentEloConstK = r.EloConstK
-			currentEloConstD = r.EloConstD
-			currentStartingElo = r.StartingElo
-			currentWinReward = r.WinReward
+	// Get game name from the games list (reuse existing query)
+	gameRows, err := s.Queries.ListGamesOrderedByLastPlayed(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get game name: %v", err)
+	}
+	gameName := id
+	for _, g := range gameRows {
+		if int32(g.ID) == int32(gid) {
+			gameName = g.Name
+			break
 		}
-
-		pid := fmt.Sprintf("%d", r.PlayerID)
-		playersScore[pid] = r.Score
-	}
-
-	// apply last match
-	if len(playersScore) > 0 {
-		playersElo = CalculateNewElo(playersElo, currentStartingElo, playersScore,
-			currentEloConstK, currentEloConstD, currentWinReward)
 	}
 
 	players := make([]struct {
 		Id   string
 		Elo  float64
 		Rank int
-	}, 0, len(playersElo))
+	}, 0, len(eloRows))
 
-	for pid, elo := range playersElo {
+	for _, r := range eloRows {
+		if !r.GameNewElo.Valid {
+			continue
+		}
 		players = append(players, struct {
 			Id   string
 			Elo  float64
 			Rank int
 		}{
-			Id:   pid,
-			Elo:  elo,
+			Id:   fmt.Sprintf("%d", r.PlayerID),
+			Elo:  r.GameNewElo.Float64,
 			Rank: 0,
 		})
 	}
@@ -155,17 +156,67 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 	}
 
-	gameName := id
-	if len(rows) > 0 {
-		gameName = rows[0].GameName
-	}
-
 	return &GameStatistics{
 		Id:           id,
 		Name:         gameName,
-		TotalMatches: totalMatches,
+		TotalMatches: int(totalMatches),
 		Players:      players,
 	}, nil
+}
+
+func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatch, error) {
+	gid, err := strconv.Atoi(id)
+	if err != nil {
+		return nil, fmt.Errorf("invalid game id: %v", err)
+	}
+
+	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, int32(gid))
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve game matches from db: %v", err)
+	}
+
+	// Group rows by match (already ordered ASC by date/id)
+	matchMap := make(map[int32]*GameMatch)
+	order := make([]int32, 0)
+
+	for _, r := range rows {
+		if _, ok := matchMap[r.MatchID]; !ok {
+			m := &GameMatch{
+				Id:      r.MatchID,
+				Date:    r.Date,
+				Players: make([]GameMatchPlayer, 0),
+			}
+			matchMap[r.MatchID] = m
+			order = append(order, r.MatchID)
+		}
+
+		var gameEloPay, gameEloEarn, gameNewElo float64
+		if r.GameEloPay.Valid {
+			gameEloPay = r.GameEloPay.Float64
+		}
+		if r.GameEloEarn.Valid {
+			gameEloEarn = r.GameEloEarn.Float64
+		}
+		if r.GameNewElo.Valid {
+			gameNewElo = r.GameNewElo.Float64
+		}
+
+		matchMap[r.MatchID].Players = append(matchMap[r.MatchID].Players, GameMatchPlayer{
+			Id:          fmt.Sprintf("%d", r.PlayerID),
+			Name:        r.PlayerName,
+			Score:       r.Score,
+			GameEloPay:  gameEloPay,
+			GameEloEarn: gameEloEarn,
+			GameNewElo:  gameNewElo,
+		})
+	}
+
+	result := make([]GameMatch, 0, len(order))
+	for _, mid := range order {
+		result = append(result, *matchMap[mid])
+	}
+
+	return result, nil
 }
 
 func (s *GameService) DeleteGame(ctx context.Context, id int32) (*db.Game, error) {

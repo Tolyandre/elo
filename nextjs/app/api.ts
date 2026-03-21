@@ -73,9 +73,24 @@ export type Match = {
 };
 
 export type PlayerScore = {
-    eloPay: number;
-    eloEarn: number;
+    globalEloPay: number;
+    globalEloEarn: number;
     score: number;
+};
+
+export type GameMatchPlayer = {
+    id: string;
+    name: string;
+    score: number;
+    game_elo_pay: number;
+    game_elo_earn: number;
+    game_new_elo: number;
+};
+
+export type GameMatch = {
+    id: number;
+    date: Date | null;
+    players: GameMatchPlayer[];
 };
 
 export async function getPingPromise() {
@@ -126,7 +141,12 @@ export async function getMatchesPagePromise(params?: {
             id: m.id,
             game_id: m.game_id,
             game_name: m.game_name,
-            score: m.score,
+            score: Object.fromEntries(
+                Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
+                    pid,
+                    { globalEloPay: s.global_elo_pay, globalEloEarn: s.global_elo_earn, score: s.score },
+                ])
+            ),
             date: m.date ? new Date(m.date) : null,
         }));
         return { items, next: body.next ?? null };
@@ -145,7 +165,12 @@ export async function getMatchByIdPromise(id: number): Promise<Match> {
             id: m.id,
             game_id: m.game_id,
             game_name: m.game_name,
-            score: m.score,
+            score: Object.fromEntries(
+                Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
+                    pid,
+                    { globalEloPay: s.global_elo_pay, globalEloEarn: s.global_elo_earn, score: s.score },
+                ])
+            ),
             date: m.date ? new Date(m.date) : null,
         };
     }
@@ -226,6 +251,22 @@ export async function getGamePromise(id: string): Promise<Game> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
         return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/games/${gameId}/matches`);
+        const data: any[] = await handleJsonErrorResponse(res);
+        return data.map(m => ({
+            id: m.id,
+            date: m.date ? new Date(m.date) : null,
+            players: m.players as GameMatchPlayer[],
+        }));
     }
     catch (error) {
         showToast(error);

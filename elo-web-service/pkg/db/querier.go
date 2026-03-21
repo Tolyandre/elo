@@ -29,6 +29,7 @@ type Querier interface {
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetClub(ctx context.Context, id int32) ([]GetClubRow, error)
+	GetCountMatchesByGame(ctx context.Context, gameID int32) (int64, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
@@ -40,16 +41,20 @@ type Querier interface {
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]GetPlayerGameEloStatsRow, error)
 	GetPlayerGameStats(ctx context.Context, playerID int32) ([]GetPlayerGameStatsRow, error)
-	GetPlayerLatestElo(ctx context.Context, playerID int32) (float64, error)
-	GetPlayerLatestEloBeforeMatch(ctx context.Context, arg GetPlayerLatestEloBeforeMatchParams) (float64, error)
+	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (pgtype.Float8, error)
+	GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (pgtype.Float8, error)
+	GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error)
+	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListEloSettings(ctx context.Context) ([]EloSetting, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
+	ListLatestGameEloPerPlayer(ctx context.Context, gameID int32) ([]ListLatestGameEloPerPlayerRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
 	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)
 	ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error)
+	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID int32) ([]ListMatchesWithPlayersByGameFromDBRow, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
@@ -67,7 +72,8 @@ type Querier interface {
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
-	UpdateMatchScoreElo(ctx context.Context, arg UpdateMatchScoreEloParams) error
+	UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchScoreGameEloParams) error
+	UpdateMatchScoreGlobalElo(ctx context.Context, arg UpdateMatchScoreGlobalEloParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error

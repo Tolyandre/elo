@@ -25,6 +25,7 @@ func NewMatchService(pool *pgxpool.Pool) IMatchService {
 type IMatchService interface {
 	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
+	RecalculateAllGameElo(ctx context.Context) error
 }
 
 // AddMatch adds a single match with Elo calculations
@@ -66,6 +67,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 	// Get latest Elo for each player
 	// IMPORTANT: Lock players in a consistent order (sorted by ID) to prevent deadlocks
 	previousElo := make(map[int32]float64)
+	previousGameElo := make(map[int32]float64)
 
 	// Sort player IDs to lock in consistent order
 	playerIDs := make([]int32, 0, len(playerScores))
@@ -77,25 +79,33 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 	for _, playerID := range playerIDs {
 		// Lock the player row to prevent concurrent Elo calculations
-		// This ensures that if two matches are added concurrently for the same player,
-		// they will be processed sequentially
 		_, err = q.LockPlayerForEloCalculation(ctx, playerID)
 		if err != nil {
 			return db.Match{}, fmt.Errorf("unable to lock player %d for Elo calculation (player may not exist): %v", playerID, err)
 		}
 
-		// Get latest Elo for this player (now safe from concurrent updates)
-		latestElo, err := q.GetPlayerLatestElo(ctx, playerID)
+		// Get latest global Elo for this player
+		latestGlobalElo, err := q.GetPlayerLatestGlobalElo(ctx, playerID)
 		if err != nil {
-			// No previous matches, use starting Elo
 			previousElo[playerID] = startingElo
 		} else {
-			previousElo[playerID] = latestElo
+			previousElo[playerID] = latestGlobalElo
+		}
+
+		// Get latest game Elo for this player
+		latestGameElo, err := q.GetPlayerLatestGameElo(ctx, db.GetPlayerLatestGameEloParams{
+			PlayerID: playerID,
+			GameID:   gameID,
+		})
+		if err != nil || !latestGameElo.Valid {
+			previousGameElo[playerID] = startingElo
+		} else {
+			previousGameElo[playerID] = latestGameElo.Float64
 		}
 	}
 
 	// Calculate and store Elo using shared logic (inserts scores + Elo)
-	err = s.calculateAndStoreEloWithScores(ctx, q, createdMatch.ID, playerScores, previousElo, eloConstK, eloConstD, startingElo, winReward)
+	err = s.calculateAndStoreEloWithScores(ctx, q, createdMatch.ID, gameID, playerScores, previousElo, previousGameElo, eloConstK, eloConstD, startingElo, winReward)
 	if err != nil {
 		return db.Match{}, err
 	}
@@ -164,12 +174,13 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	// Insert new match scores (Elo will be calculated in recalculation step)
 	for playerID, score := range playerScores {
 		err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:  matchID,
-			PlayerID: playerID,
-			Score:    score,
-			EloPay:   0, // Will be recalculated
-			EloEarn:  0, // Will be recalculated
-			NewElo:   0, // Will be recalculated
+			MatchID:       matchID,
+			PlayerID:      playerID,
+			Score:         score,
+			GlobalEloPay:  0, // Will be recalculated
+			GlobalEloEarn: 0, // Will be recalculated
+			GlobalNewElo:  0, // Will be recalculated
+			// game Elo left as NULL until recalculation
 		})
 		if err != nil {
 			return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
@@ -194,6 +205,26 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	}
 
 	return updatedMatch, nil
+}
+
+// RecalculateAllGameElo recalculates game Elo for all matches from the beginning of time.
+// Used as a one-time backfill after the game Elo columns were added.
+func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to begin tx: %v", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	q := s.Queries.WithTx(tx)
+
+	if err := s.recalculateEloFromDate(ctx, q, time.Time{}); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 // recalculateEloFromDate recalculates Elo ratings for all matches from the given date onwards
@@ -232,6 +263,7 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 
 		// Lock players in consistent order and get their previous Elo
 		previousElo := make(map[int32]float64)
+		previousGameElo := make(map[int32]float64)
 		playerIDs := make([]int32, 0, len(playerScores))
 		for playerID := range playerScores {
 			playerIDs = append(playerIDs, playerID)
@@ -245,23 +277,34 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 				return fmt.Errorf("unable to lock player %d: %v", playerID, err)
 			}
 
-			// Get previous Elo (before this match)
-			prevElo, err := q.GetPlayerLatestEloBeforeMatch(ctx, db.GetPlayerLatestEloBeforeMatchParams{
+			// Get previous global Elo (before this match)
+			prevGlobalElo, err := q.GetPlayerLatestGlobalEloBeforeMatch(ctx, db.GetPlayerLatestGlobalEloBeforeMatchParams{
 				PlayerID: playerID,
 				Date:     match.Date,
 				ID:       match.ID,
 			})
-
 			if err != nil {
-				// No previous matches, use starting Elo
 				previousElo[playerID] = startingElo
 			} else {
-				previousElo[playerID] = prevElo
+				previousElo[playerID] = prevGlobalElo
+			}
+
+			// Get previous game Elo (before this match)
+			prevGameElo, err := q.GetPlayerLatestGameEloBeforeMatch(ctx, db.GetPlayerLatestGameEloBeforeMatchParams{
+				PlayerID: playerID,
+				GameID:   match.GameID,
+				Date:     match.Date,
+				ID:       match.ID,
+			})
+			if err != nil || !prevGameElo.Valid {
+				previousGameElo[playerID] = startingElo
+			} else {
+				previousGameElo[playerID] = prevGameElo.Float64
 			}
 		}
 
 		// Calculate new Elos using the shared calculation logic
-		err = s.calculateAndUpdateElo(ctx, q, match.ID, playerScores, previousElo, eloConstK, eloConstD, startingElo, winReward)
+		err = s.calculateAndUpdateElo(ctx, q, match.ID, match.GameID, playerScores, previousElo, previousGameElo, eloConstK, eloConstD, startingElo, winReward)
 		if err != nil {
 			return fmt.Errorf("unable to calculate Elo for match %d: %v", match.ID, err)
 		}
@@ -272,40 +315,50 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 
 // calculateAndStoreEloWithScores calculates Elo and inserts/updates match_scores with scores and Elo
 // Used by AddMatch to insert new match scores
-func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db.Queries, matchID int32, playerScores map[int32]float64, previousElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error {
+func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error {
 	// Convert to string keys for elo calculation functions
 	previousEloStr := make(map[string]float64)
+	previousGameEloStr := make(map[string]float64)
 	playerScoresStr := make(map[string]float64)
 	for playerID, elo := range previousElo {
 		key := fmt.Sprintf("%d", playerID)
 		previousEloStr[key] = elo
+	}
+	for playerID, elo := range previousGameElo {
+		key := fmt.Sprintf("%d", playerID)
+		previousGameEloStr[key] = elo
 	}
 	for playerID, score := range playerScores {
 		key := fmt.Sprintf("%d", playerID)
 		playerScoresStr[key] = score
 	}
 
-	// Calculate new Elos
-	newElos := CalculateNewElo(previousEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
+	// Calculate new global and game Elos
+	newGlobalElos := CalculateNewElo(previousEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
+	newGameElos := CalculateNewElo(previousGameEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
 	absoluteLoserScore := GetAsboluteLoserScore(playerScoresStr)
 
 	// Upsert match scores with scores and Elo values
 	for playerID, score := range playerScores {
 		playerIDStr := fmt.Sprintf("%d", playerID)
-		prevElo := previousElo[playerID]
-		newElo := newElos[playerIDStr]
+		prevGlobalElo := previousElo[playerID]
+		prevGameElo := previousGameElo[playerID]
 
-		// Calculate components
-		eloPay := -eloConstK * WinExpectation(prevElo, playerScoresStr, startingElo, previousEloStr, eloConstD)
-		eloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
+		globalEloPay := -eloConstK * WinExpectation(prevGlobalElo, playerScoresStr, startingElo, previousEloStr, eloConstD)
+		globalEloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
+		gameEloPay := -eloConstK * WinExpectation(prevGameElo, playerScoresStr, startingElo, previousGameEloStr, eloConstD)
+		gameEloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
 
 		err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:  matchID,
-			PlayerID: playerID,
-			Score:    score,
-			EloPay:   eloPay,
-			EloEarn:  eloEarn,
-			NewElo:   newElo,
+			MatchID:       matchID,
+			PlayerID:      playerID,
+			Score:         score,
+			GlobalEloPay:  globalEloPay,
+			GlobalEloEarn: globalEloEarn,
+			GlobalNewElo:  newGlobalElos[playerIDStr],
+			GameEloPay:    pgtype.Float8{Float64: gameEloPay, Valid: true},
+			GameEloEarn:   pgtype.Float8{Float64: gameEloEarn, Valid: true},
+			GameNewElo:    pgtype.Float8{Float64: newGameElos[playerIDStr], Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
@@ -317,42 +370,60 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 
 // calculateAndUpdateElo calculates Elo and updates only the Elo fields in match_scores
 // Used by UpdateMatch to recalculate Elo without changing scores
-func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries, matchID int32, playerScores map[int32]float64, previousElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error {
+func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error {
 	// Convert to string keys for elo calculation functions
 	previousEloStr := make(map[string]float64)
+	previousGameEloStr := make(map[string]float64)
 	playerScoresStr := make(map[string]float64)
 	for playerID, elo := range previousElo {
 		key := fmt.Sprintf("%d", playerID)
 		previousEloStr[key] = elo
+	}
+	for playerID, elo := range previousGameElo {
+		key := fmt.Sprintf("%d", playerID)
+		previousGameEloStr[key] = elo
 	}
 	for playerID, score := range playerScores {
 		key := fmt.Sprintf("%d", playerID)
 		playerScoresStr[key] = score
 	}
 
-	// Calculate new Elos
-	newElos := CalculateNewElo(previousEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
+	// Calculate new global and game Elos
+	newGlobalElos := CalculateNewElo(previousEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
+	newGameElos := CalculateNewElo(previousGameEloStr, startingElo, playerScoresStr, eloConstK, eloConstD, winReward)
 	absoluteLoserScore := GetAsboluteLoserScore(playerScoresStr)
 
 	// Update only the Elo fields
 	for playerID, score := range playerScores {
 		playerIDStr := fmt.Sprintf("%d", playerID)
-		prevElo := previousElo[playerID]
-		newElo := newElos[playerIDStr]
+		prevGlobalElo := previousElo[playerID]
+		prevGameElo := previousGameElo[playerID]
 
-		// Calculate components
-		eloPay := -eloConstK * WinExpectation(prevElo, playerScoresStr, startingElo, previousEloStr, eloConstD)
-		eloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
+		globalEloPay := -eloConstK * WinExpectation(prevGlobalElo, playerScoresStr, startingElo, previousEloStr, eloConstD)
+		globalEloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
+		gameEloPay := -eloConstK * WinExpectation(prevGameElo, playerScoresStr, startingElo, previousGameEloStr, eloConstD)
+		gameEloEarn := eloConstK * NormalizedScore(score, playerScoresStr, absoluteLoserScore, winReward)
 
-		err := q.UpdateMatchScoreElo(ctx, db.UpdateMatchScoreEloParams{
-			MatchID:  matchID,
-			PlayerID: playerID,
-			EloPay:   eloPay,
-			EloEarn:  eloEarn,
-			NewElo:   newElo,
+		err := q.UpdateMatchScoreGlobalElo(ctx, db.UpdateMatchScoreGlobalEloParams{
+			MatchID:       matchID,
+			PlayerID:      playerID,
+			GlobalEloPay:  globalEloPay,
+			GlobalEloEarn: globalEloEarn,
+			GlobalNewElo:  newGlobalElos[playerIDStr],
 		})
 		if err != nil {
-			return fmt.Errorf("unable to update Elo for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to update global Elo for player %d: %v", playerID, err)
+		}
+
+		err = q.UpdateMatchScoreGameElo(ctx, db.UpdateMatchScoreGameEloParams{
+			MatchID:     matchID,
+			PlayerID:    playerID,
+			GameEloPay:  pgtype.Float8{Float64: gameEloPay, Valid: true},
+			GameEloEarn: pgtype.Float8{Float64: gameEloEarn, Valid: true},
+			GameNewElo:  pgtype.Float8{Float64: newGameElos[playerIDStr], Valid: true},
+		})
+		if err != nil {
+			return fmt.Errorf("unable to update game Elo for player %d: %v", playerID, err)
 		}
 	}
 
