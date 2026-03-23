@@ -29,7 +29,8 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { AlertCircleIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertCircleIcon, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { useMe } from "@/app/meContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ type GameState = {
     players: { id: string; name: string }[];
     currentRound: number; // 1–10
     currentPlayerIndex: number;
-    rounds: RoundEntry[][]; // rounds[roundIndex][playerIndex], 0-based
+    rounds: (RoundEntry | null)[][]; // rounds[roundIndex][playerIndex], 0-based, null = not yet entered
     fallbackGameId?: string;
 };
 
@@ -83,15 +84,24 @@ function calcRoundScore(entry: RoundEntry, roundNumber: number, playerCount: num
 }
 
 function playerTotal(
-    rounds: RoundEntry[][],
+    rounds: (RoundEntry | null)[][],
     playerIndex: number,
     playerCount: number
 ): number {
-    return rounds.reduce((sum, round) => {
+    return rounds.reduce((sum, round, ri) => {
         const entry = round[playerIndex];
         if (!entry) return sum;
-        return sum + calcRoundScore(entry, rounds.indexOf(round) + 1, playerCount);
+        return sum + calcRoundScore(entry, ri + 1, playerCount);
     }, 0);
+}
+
+// Returns the next index (wrapping) where isFilled(index) is false, or null if all filled.
+function findNextUnfilled(from: number, count: number, isFilled: (i: number) => boolean): number | null {
+    for (let i = 1; i < count; i++) {
+        const idx = (from + i) % count;
+        if (!isFilled(idx)) return idx;
+    }
+    return null;
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -100,19 +110,24 @@ function BidButtons({
     roundNumber,
     selected,
     onSelect,
+    compact = false,
 }: {
     roundNumber: number;
     selected: number | null;
     onSelect: (n: number) => void;
+    compact?: boolean;
 }) {
     return (
-        <div className="flex flex-wrap gap-2">
+        <div className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2 md:gap-3"}`}>
             {Array.from({ length: roundNumber + 1 }, (_, i) => (
                 <Button
                     key={i}
                     variant={selected === i ? "default" : "outline"}
-                    size="lg"
-                    className="w-14 h-14 text-xl"
+                    size={compact ? "default" : "lg"}
+                    className={compact
+                        ? "h-10 min-w-10 md:h-12 md:min-w-12 md:text-lg"
+                        : "w-14 h-14 text-xl md:w-16 md:h-16 md:text-2xl"
+                    }
                     onClick={() => onSelect(i)}
                 >
                     {i}
@@ -144,12 +159,12 @@ function GameTable({
 
     return (
         <div className="overflow-x-auto max-w-full">
-            <table className="border-collapse text-sm">
+            <table className="border-collapse text-sm md:text-base">
                 <thead>
                     <tr>
-                        <th className="border border-border px-2 py-1 text-left bg-muted min-w-12">№</th>
+                        <th className="border border-border px-2 py-1 md:px-3 md:py-2 text-left bg-muted min-w-12 md:min-w-16">№</th>
                         {players.map((p) => (
-                            <th key={p.id} className="border border-border px-1 py-1 text-center bg-muted min-w-[2.5rem] sm:min-w-20">
+                            <th key={p.id} className="border border-border px-1 py-1 md:px-2 md:py-2 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
                                 <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
                                     {p.name}
                                 </span>
@@ -160,7 +175,7 @@ function GameTable({
                 <tbody>
                     {rounds.map((round, ri) => (
                         <tr key={ri}>
-                            <td className="border border-border px-2 py-1 text-center font-medium bg-muted/50">
+                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center font-medium bg-muted/50">
                                 {ri + 1}
                             </td>
                             {players.map((_, pi) => {
@@ -177,14 +192,14 @@ function GameTable({
                                 return (
                                     <td
                                         key={pi}
-                                        className={`border border-border px-2 py-1 text-center whitespace-nowrap ${clickable ? "cursor-pointer hover:bg-accent" : ""}`}
+                                        className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center whitespace-nowrap ${clickable ? "cursor-pointer hover:bg-accent" : ""}`}
                                         onClick={() => clickable && onCellClick!(ri, pi)}
                                     >
-                                        <div className="text-xs text-muted-foreground">
+                                        <div className="text-xs md:text-sm text-muted-foreground">
                                             {entry.actual !== null ? entry.actual : "—"} / {entry.bid}
                                         </div>
                                         {scoreDisplay !== null && (
-                                            <div className={`font-semibold ${score! < 0 ? "text-red-600" : "text-green-700"}`}>
+                                            <div className={`font-semibold md:text-lg ${score! < 0 ? "text-red-600" : "text-green-700"}`}>
                                                 {scoreDisplay}
                                             </div>
                                         )}
@@ -196,9 +211,9 @@ function GameTable({
                     {/* Totals row */}
                     {rounds.length > 0 && (
                         <tr className="bg-muted/50 font-bold">
-                            <td className="border border-border px-2 py-1 text-center">Σ</td>
+                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center">Σ</td>
                             {totals.map((total, pi) => (
-                                <td key={pi} className={`border border-border px-2 py-1 text-center ${total < 0 ? "text-red-600" : "text-green-700"}`}>
+                                <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center font-semibold ${total < 0 ? "text-red-600" : "text-green-700"}`}>
                                     {total}
                                 </td>
                             ))}
@@ -265,50 +280,33 @@ function EditCellDialog({
                 <div className="space-y-4">
                     <div>
                         <p className="text-sm font-medium mb-2">План (взяток):</p>
-                        <div className="flex flex-wrap gap-2">
-                            {Array.from({ length: roundNumber + 1 }, (_, i) => (
-                                <Button
-                                    key={i}
-                                    size="sm"
-                                    variant={bid === i ? "default" : "outline"}
-                                    onClick={() => setBid(i)}
-                                >
-                                    {i}
-                                </Button>
-                            ))}
-                        </div>
+                        <BidButtons roundNumber={roundNumber} selected={bid} onSelect={setBid} compact />
                     </div>
                     <div>
                         <p className="text-sm font-medium mb-2">Факт (взяток):</p>
-                        <div className="flex flex-wrap gap-2">
-                            {Array.from({ length: roundNumber + 1 }, (_, i) => (
-                                <Button
-                                    key={i}
-                                    size="sm"
-                                    variant={actual === i ? "default" : "outline"}
-                                    onClick={() => { setActual(i); if (i !== bid) setBonus(0); }}
-                                >
-                                    {i}
-                                </Button>
-                            ))}
-                        </div>
+                        <BidButtons
+                            roundNumber={roundNumber}
+                            selected={actual}
+                            onSelect={(i) => { setActual(i); if (i !== bid) setBonus(0); }}
+                            compact
+                        />
                     </div>
                     {bonusApplicable && (
                         <div>
                             <p className="text-sm font-medium mb-2">Бонус: {bonus}</p>
                             <div className="flex flex-wrap gap-2">
                                 {[10, 20, 30, 40].map((b) => (
-                                    <Button key={b} size="sm" variant="outline" onClick={() => setBonus((v) => v + b)}>
+                                    <Button key={b} variant="outline" className="md:h-12 md:min-w-[3.5rem] md:text-base" onClick={() => setBonus((v) => v + b)}>
                                         +{b}
                                     </Button>
                                 ))}
-                                <Button size="sm" variant="ghost" onClick={() => setBonus(0)}>
+                                <Button variant="ghost" className="md:h-12 md:text-base" onClick={() => setBonus(0)}>
                                     Сбросить
                                 </Button>
                             </div>
                         </div>
                     )}
-                    <Button className="w-full" onClick={handleSave}>Сохранить</Button>
+                    <Button className="w-full md:h-12 md:text-base" onClick={handleSave}>Сохранить</Button>
                 </div>
             </DialogContent>
         </Dialog>
@@ -377,38 +375,27 @@ export default function SkullKingGamePage() {
         setSetupPlayerIds(newIds);
     }
 
-    function handleBidSelect(bid: number) {
-        const { currentRound, currentPlayerIndex, players, rounds } = gameState;
+    function handleBidSelect(bid: number, playerIndex: number) {
+        const { currentRound, players, rounds } = gameState;
         const roundIndex = currentRound - 1;
 
-        // Ensure round array exists
         const newRounds = [...rounds];
         if (!newRounds[roundIndex]) {
-            newRounds[roundIndex] = players.map(() => ({ bid: 0, actual: null, bonus: 0 }));
+            newRounds[roundIndex] = new Array(players.length).fill(null);
         } else {
             newRounds[roundIndex] = [...newRounds[roundIndex]];
         }
-        newRounds[roundIndex][currentPlayerIndex] = {
-            bid,
-            actual: null,
-            bonus: 0,
-        };
+        newRounds[roundIndex][playerIndex] = { bid, actual: null, bonus: 0 };
 
-        const nextPlayerIndex = currentPlayerIndex + 1;
-        if (nextPlayerIndex >= players.length) {
-            // All bids entered → bid-review
-            setGameState({
-                ...gameState,
-                rounds: newRounds,
-                currentPlayerIndex: 0,
-                phase: "bid-review",
-            });
+        const allBid =
+            newRounds[roundIndex].length >= players.length &&
+            newRounds[roundIndex].slice(0, players.length).every((e) => e !== null);
+
+        if (allBid) {
+            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "bid-review" });
         } else {
-            setGameState({
-                ...gameState,
-                rounds: newRounds,
-                currentPlayerIndex: nextPlayerIndex,
-            });
+            const next = findNextUnfilled(playerIndex, players.length, (i) => !!newRounds[roundIndex][i]);
+            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
         }
     }
 
@@ -416,31 +403,29 @@ export default function SkullKingGamePage() {
         setGameState({ ...gameState, phase: "result-entry", currentPlayerIndex: 0 });
     }
 
-    function handleResultSubmit(actual: number, bonus: number) {
-        const { currentRound, currentPlayerIndex, players, rounds } = gameState;
+    function handleResultSubmit(actual: number, bonus: number, playerIndex: number) {
+        const { currentRound, players, rounds } = gameState;
         const roundIndex = currentRound - 1;
         const newRounds = rounds.map((r) => [...r]);
-        newRounds[roundIndex][currentPlayerIndex] = {
-            ...newRounds[roundIndex][currentPlayerIndex],
+        newRounds[roundIndex][playerIndex] = {
+            ...newRounds[roundIndex][playerIndex]!,
             actual,
             bonus,
         };
 
-        const nextPlayerIndex = currentPlayerIndex + 1;
-        if (nextPlayerIndex >= players.length) {
-            // Round complete
-            setGameState({
-                ...gameState,
-                rounds: newRounds,
-                currentPlayerIndex: 0,
-                phase: "round-complete",
-            });
+        const allDone = newRounds[roundIndex]
+            .slice(0, players.length)
+            .every((e) => e !== null && e.actual !== null);
+
+        if (allDone) {
+            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" });
         } else {
-            setGameState({
-                ...gameState,
-                rounds: newRounds,
-                currentPlayerIndex: nextPlayerIndex,
-            });
+            const next = findNextUnfilled(
+                playerIndex,
+                players.length,
+                (i) => (newRounds[roundIndex][i]?.actual ?? null) !== null
+            );
+            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
         }
     }
 
@@ -485,7 +470,6 @@ export default function SkullKingGamePage() {
     // ── Render ───────────────────────────────────────────────────────────────
 
     const { phase, players, currentRound, currentPlayerIndex, rounds } = gameState;
-    const currentPlayer = players[currentPlayerIndex];
 
     return (
         <main className="max-w-5xl mx-auto p-4 space-y-4 overflow-x-hidden">
@@ -564,7 +548,7 @@ export default function SkullKingGamePage() {
                         )}
 
                         <Button
-                            className="w-full"
+                            className="w-full md:h-12 md:text-base"
                             disabled={setupPlayerIds.length < 2}
                             onClick={startGame}
                         >
@@ -575,24 +559,40 @@ export default function SkullKingGamePage() {
             )}
 
             {/* ── BIDDING ────────────────────────────────────── */}
-            {phase === "bidding" && currentPlayer && (
+            {phase === "bidding" && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Раунд {currentRound} — план взяток</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div>
-                            <p className="text-lg font-semibold">{currentPlayer.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                                Игрок {currentPlayerIndex + 1} из {players.length}
-                            </p>
-                        </div>
-                        <p className="text-sm">Сколько взяток планируете взять?</p>
-                        <BidButtons
-                            roundNumber={currentRound}
-                            selected={null}
-                            onSelect={handleBidSelect}
-                        />
+                        <Tabs
+                            value={String(currentPlayerIndex)}
+                            onValueChange={(v) =>
+                                setGameState({ ...gameState, currentPlayerIndex: Number(v) })
+                            }
+                        >
+                            <TabsList className="flex flex-wrap h-auto gap-1">
+                                {players.map((p, pi) => {
+                                    const hasBid = !!rounds[currentRound - 1]?.[pi];
+                                    return (
+                                        <TabsTrigger key={pi} value={String(pi)} className="gap-1">
+                                            {p.name}
+                                            {hasBid && <Check className="h-3 w-3" />}
+                                        </TabsTrigger>
+                                    );
+                                })}
+                            </TabsList>
+                            {players.map((_, pi) => (
+                                <TabsContent key={pi} value={String(pi)} className="mt-4 space-y-2">
+                                    <p className="text-sm md:text-base">Сколько взяток планируете взять?</p>
+                                    <BidButtons
+                                        roundNumber={currentRound}
+                                        selected={rounds[currentRound - 1]?.[pi]?.bid ?? null}
+                                        onSelect={(bid) => handleBidSelect(bid, pi)}
+                                    />
+                                </TabsContent>
+                            ))}
+                        </Tabs>
                     </CardContent>
                 </Card>
             )}
@@ -612,32 +612,70 @@ export default function SkullKingGamePage() {
                             <p className="text-xs text-muted-foreground mt-2">
                                 Нажмите на ячейку для редактирования
                             </p>
-                            <p className="text-sm font-medium mt-3">
-                                Сумма планов:{" "}
-                                <span className="font-bold">
-                                    {(rounds[currentRound - 1] ?? []).reduce((s, e) => s + e.bid, 0)}
-                                </span>
-                                {". Раздано карт: "}{(players.length >= 8 && currentRound >= 9) ? 8 : currentRound}
-                            </p>
+                            <div className="text-base md:text-lg font-medium mt-3 space-y-1">
+                                <p>
+                                    Сумма планов:{" "}
+                                    <span className="font-bold">
+                                        {(rounds[currentRound - 1] ?? []).reduce((s, e) => s + (e?.bid ?? 0), 0)}
+                                    </span>
+                                </p>
+                                <p>
+                                    Раздано карт:{" "}
+                                    <span className="font-bold">
+                                        {(players.length >= 8 && currentRound >= 9) ? 8 : currentRound}
+                                    </span>
+                                </p>
+                            </div>
                         </CardContent>
                     </Card>
-                    <Button className="w-full" onClick={startResultEntry}>
+                    <Button className="w-full md:h-12 md:text-base" onClick={startResultEntry}>
                         Ввести результаты
                     </Button>
                 </div>
             )}
 
             {/* ── RESULT ENTRY ───────────────────────────────── */}
-            {phase === "result-entry" && currentPlayer && (
-                <ResultEntryCard
-                    key={currentPlayerIndex}
-                    player={currentPlayer}
-                    playerIndex={currentPlayerIndex}
-                    totalPlayers={players.length}
-                    roundNumber={currentRound}
-                    bid={rounds[currentRound - 1]?.[currentPlayerIndex]?.bid ?? 0}
-                    onSubmit={handleResultSubmit}
-                />
+            {phase === "result-entry" && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Раунд {currentRound} — результаты</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <Tabs
+                            value={String(currentPlayerIndex)}
+                            onValueChange={(v) =>
+                                setGameState({ ...gameState, currentPlayerIndex: Number(v) })
+                            }
+                        >
+                            <TabsList className="flex flex-wrap h-auto gap-1">
+                                {players.map((p, pi) => {
+                                    const hasResult = (rounds[currentRound - 1]?.[pi]?.actual ?? null) !== null;
+                                    return (
+                                        <TabsTrigger key={pi} value={String(pi)} className="gap-1">
+                                            {p.name}
+                                            {hasResult && <Check className="h-3 w-3" />}
+                                        </TabsTrigger>
+                                    );
+                                })}
+                            </TabsList>
+                            {players.map((p, pi) => {
+                                const entry = rounds[currentRound - 1]?.[pi];
+                                return (
+                                    <TabsContent key={pi} value={String(pi)} className="mt-4">
+                                        <ResultEntryCard
+                                            player={p}
+                                            roundNumber={currentRound}
+                                            bid={entry?.bid ?? 0}
+                                            initialActual={entry?.actual ?? null}
+                                            initialBonus={entry?.bonus ?? 0}
+                                            onSubmit={(actual, bonus) => handleResultSubmit(actual, bonus, pi)}
+                                        />
+                                    </TabsContent>
+                                );
+                            })}
+                        </Tabs>
+                    </CardContent>
+                </Card>
             )}
 
             {/* ── ROUND COMPLETE ─────────────────────────────── */}
@@ -663,7 +701,7 @@ export default function SkullKingGamePage() {
                     </Card>
 
                     {currentRound < TOTAL_ROUNDS ? (
-                        <Button className="w-full" onClick={startNextRound}>
+                        <Button className="w-full md:h-12 md:text-base" onClick={startNextRound}>
                             Следующий раунд ({currentRound + 1} / {TOTAL_ROUNDS})
                         </Button>
                     ) : (
@@ -685,7 +723,7 @@ export default function SkullKingGamePage() {
                                 <p className="text-red-600 text-sm">{saveError}</p>
                             )}
                             <Button
-                                className="w-full"
+                                className="w-full md:h-12 md:text-base"
                                 disabled={
                                     saving ||
                                     (!skullKingGame && !gameState.fallbackGameId) ||
@@ -724,21 +762,21 @@ export default function SkullKingGamePage() {
 
 function ResultEntryCard({
     player,
-    playerIndex,
-    totalPlayers,
     roundNumber,
     bid,
+    initialActual = null,
+    initialBonus = 0,
     onSubmit,
 }: {
     player: { id: string; name: string };
-    playerIndex: number;
-    totalPlayers: number;
     roundNumber: number;
     bid: number;
+    initialActual?: number | null;
+    initialBonus?: number;
     onSubmit: (actual: number, bonus: number) => void;
 }) {
-    const [actual, setActual] = useState<number | null>(null);
-    const [bonus, setBonus] = useState(0);
+    const [actual, setActual] = useState<number | null>(initialActual);
+    const [bonus, setBonus] = useState(initialBonus);
 
     // Bonus is applicable whenever plan is exactly met
     const bonusApplicable = actual !== null && actual === bid;
@@ -759,55 +797,51 @@ function ResultEntryCard({
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Раунд {roundNumber} — результаты</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div>
-                    <p className="text-lg font-semibold">{player.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                        Игрок {playerIndex + 1} из {totalPlayers} · план: {bid}
-                    </p>
-                </div>
+        <div className="space-y-4">
+            <div>
+                <p className="text-xl md:text-2xl font-semibold">{player.name}</p>
+                <p className="text-sm md:text-base text-muted-foreground">
+                    план: {bid}
+                </p>
+            </div>
 
-                <div>
-                    <p className="text-sm font-medium mb-2">Взято взяток:</p>
-                    <BidButtons
-                        roundNumber={roundNumber}
-                        selected={actual}
-                        onSelect={handleActualSelect}
-                    />
-                </div>
+            <div>
+                <p className="text-sm md:text-base font-medium mb-2">Взято взяток:</p>
+                <BidButtons
+                    roundNumber={roundNumber}
+                    selected={actual}
+                    onSelect={handleActualSelect}
+                />
+            </div>
 
-                {bonusApplicable && (
-                    <>
-                        <div>
-                            <p className="text-sm font-medium mb-2">
-                                Бонус: {bonus}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                {[10, 20, 30, 40].map((b) => (
-                                    <Button
-                                        key={b}
-                                        variant="outline"
-                                        onClick={() => setBonus((v) => v + b)}
-                                    >
-                                        +{b}
-                                    </Button>
-                                ))}
-                                <Button variant="ghost" onClick={() => setBonus(0)}>
-                                    Сбросить
+            {bonusApplicable && (
+                <>
+                    <div>
+                        <p className="text-sm md:text-base font-medium mb-2">
+                            Бонус: {bonus}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            {[10, 20, 30, 40].map((b) => (
+                                <Button
+                                    key={b}
+                                    variant="outline"
+                                    className="md:h-12 md:min-w-[3.5rem] md:text-base"
+                                    onClick={() => setBonus((v) => v + b)}
+                                >
+                                    +{b}
                                 </Button>
-                            </div>
+                            ))}
+                            <Button variant="ghost" className="md:h-12 md:text-base" onClick={() => setBonus(0)}>
+                                Сбросить
+                            </Button>
                         </div>
+                    </div>
 
-                        <Button className="w-full" onClick={handleNext}>
-                            Дальше
-                        </Button>
-                    </>
-                )}
-            </CardContent>
-        </Card>
+                    <Button className="w-full md:h-12 md:text-base" onClick={handleNext}>
+                        Дальше
+                    </Button>
+                </>
+            )}
+        </div>
     );
 }
