@@ -216,7 +216,7 @@ export default function AddGamePage() {
     }
 
     return (
-        <main className="max-w-xl mx-auto p-4">
+        <main className="max-w-sm mx-auto p-4">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold mb-4 mx-auto">Результат партии</h1>
             </div>

@@ -15,14 +15,14 @@ export default function AllGamesList() {
 
   if (!games) {
     return (
-      <main className="space-y-8">
+      <main className="space-y-8 max-w-sm mx-auto">
         <h1 className="text-2xl font-semibold mb-4">Loading games...</h1>
       </main>
     );
   }
 
   return (
-    <main className="space-y-8">
+    <main className="space-y-8 max-w-sm mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold mb-4 mx-auto">Игры</h1>
       </div>

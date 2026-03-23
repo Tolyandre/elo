@@ -27,7 +27,7 @@ export function NavigationBar() {
   const me = useMe();
 
   return (
-    <NavigationMenu viewport={isMobile.isMobile} delayDuration={0}>
+    <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
       <NavigationMenuList className="flex-wrap">
         <NavigationMenuItem>
           <NavigationMenuTrigger>Меню</NavigationMenuTrigger>

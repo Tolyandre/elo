@@ -80,8 +80,8 @@ export default function RootLayout({
                       }}
                     />
                     <Toaster />
-                    <div className="font-sans items-center justify-items-center min-h-screen">
-                      <div className="flex flex-col mx-auto rounded-lg shadow-md max-w-5xl">
+                    <div className="font-sans flex flex-col items-center min-h-screen">
+                      <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
                         <NavigationBar />
                         <div className="p-3 pt-6">
                           <PingError />

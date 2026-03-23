@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function AdminPage() {
   return (
-    <main className="p-4">
+    <main className="p-4 max-w-sm mx-auto">
       <div className="flex items-center justify-between mt-8">
         <h1 className="text-2xl font-semibold mb-4 mx-auto">Админка</h1>
       </div>

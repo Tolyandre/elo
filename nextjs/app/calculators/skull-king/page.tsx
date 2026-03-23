@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function SkullKingCalculatorPage() {
     return (
-        <main>
+        <main className="max-w-sm mx-auto">
             <h1 className="text-2xl font-semibold mb-6">Skull King</h1>
             <SkullKingCalculator />
         </main>

@@ -57,7 +57,7 @@ function MatchPageWrapped() {
 
   if (loading) {
     return (
-      <main className="container mx-auto p-4">
+      <main className="max-w-sm mx-auto p-4">
         <p className="text-center">Загрузка...</p>
       </main>
     );
@@ -65,7 +65,7 @@ function MatchPageWrapped() {
 
   if (error) {
     return (
-      <main className="container mx-auto p-4">
+      <main className="max-w-sm mx-auto p-4">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>Ошибка: {error}</AlertDescription>
@@ -76,7 +76,7 @@ function MatchPageWrapped() {
 
   if (!matchId || !match) {
     return (
-      <main className="container mx-auto p-4">
+      <main className="max-w-sm mx-auto p-4">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>Партия не найдена</AlertDescription>
@@ -94,7 +94,7 @@ function MatchPageWrapped() {
   }
 
   return (
-    <main className="container mx-auto p-4 max-w-2xl space-y-4">
+    <main className="max-w-sm mx-auto p-4 space-y-4">
       <div className="mb-4">
         <Button asChild variant="outline">
           <Link href="/matches">

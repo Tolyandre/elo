@@ -203,7 +203,7 @@ function PlayersTable() {
 
 export default function PlayersPage() {
     return (
-        <main>
+        <main className="max-w-sm mx-auto">
             <div className="flex justify-center">
                 <Button asChild>
                     <Link href="/add-match">Добавить партию</Link>

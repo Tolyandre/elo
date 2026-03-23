@@ -23,7 +23,7 @@ function GameWrapped() {
 
   if (!id) {
     return (
-      <main className="space-y-8">
+      <main className="space-y-8 max-w-sm mx-auto">
         <h1 className="text-2xl font-semibold mb-4">Missing game id</h1>
         <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
       </main>
@@ -73,7 +73,7 @@ function GameWrapped() {
   }
 
   return (
-    <main>
+    <main className="max-w-sm mx-auto">
       <div className="space-y-4">
         <div className=" max-w-sm">
           <div className="flex items-center justify-between">

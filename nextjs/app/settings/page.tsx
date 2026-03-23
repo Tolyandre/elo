@@ -9,7 +9,7 @@ export default function SettingsPage() {
     const { roundToInteger, setRoundToInteger } = useMe()
 
     return (
-        <main>
+        <main className="max-w-sm mx-auto">
             <h1 className="text-2xl font-semibold mb-6">Мои настройки</h1>
 
             <div className="space-y-6">

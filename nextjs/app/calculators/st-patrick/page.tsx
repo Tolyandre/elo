@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function StPatrickCalculatorPage() {
     return (
-        <main>
+        <main className="max-w-sm mx-auto">
             <h1 className="text-2xl font-semibold mb-6">Охота на змей</h1>
             <StPatrickCalculator />
         </main>
