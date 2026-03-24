@@ -72,11 +72,11 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
       <CardContent>
         <ul className="space-y-3">
           {players.map((p, idx) => (
-            <li key={p.playerId} className="flex items-center gap-2 sm:gap-4">
+            <li key={p.playerId} className="flex items-center gap-2">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 sm:gap-2 mb-1">
+                <div className="flex items-center gap-1 mb-1">
                   <RankIcon rank={ranks[idx]} />
-                  <span className="truncate text-sm sm:text-base">{p.name}</span>
+                  <span className="truncate text-sm">{p.name}</span>
                 </div>
 
                 <div className="relative h-2 bg-gray-200 rounded overflow-hidden">
@@ -93,13 +93,13 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                 </div>
               </div>
 
-              <div className="text-center text-2xl sm:text-3xl font-semibold w-12 sm:w-16 flex-shrink-0">
+              <div className="text-center text-2xl font-semibold w-12 flex-shrink-0">
                 {p.score}
               </div>
 
-              <div className="text-right w-16 sm:w-20 flex-shrink-0">
+              <div className="text-right w-16 flex-shrink-0">
                 <div
-                  className={`font-semibold text-sm sm:text-base ${
+                  className={`font-semibold text-sm ${
                     p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"
                   }`}
                 >
