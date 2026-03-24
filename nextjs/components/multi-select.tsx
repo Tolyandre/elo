@@ -82,6 +82,8 @@ interface MultiSelectOption {
 	label: string;
 	/** The unique value associated with the option. */
 	value: string;
+	/** Optional custom renderer that replaces the label in the dropdown list. */
+	render?: React.ReactNode;
 	/** Optional icon component to display alongside the option. */
 	icon?: React.ComponentType<{ className?: string }>;
 	/** Whether this option is disabled */
@@ -1075,7 +1077,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 												aria-hidden="true"
 											/>
 										)}
-										<span>{option.label}</span>
+										<span>{option.render ?? option.label}</span>
 									</CommandItem>
 								);
 							})}

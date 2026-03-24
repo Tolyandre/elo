@@ -185,6 +185,35 @@ func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID int32) ([]Get
 	return items, nil
 }
 
+const listPlayerUserLinks = `-- name: ListPlayerUserLinks :many
+SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL
+`
+
+type ListPlayerUserLinksRow struct {
+	PlayerID pgtype.Int4 `json:"player_id"`
+	UserID   int32       `json:"user_id"`
+}
+
+func (q *Queries) ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error) {
+	rows, err := q.db.Query(ctx, listPlayerUserLinks)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlayerUserLinksRow{}
+	for rows.Next() {
+		var i ListPlayerUserLinksRow
+		if err := rows.Scan(&i.PlayerID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlayers = `-- name: ListPlayers :many
 SELECT id, name, geologist_name FROM players
 ORDER BY name

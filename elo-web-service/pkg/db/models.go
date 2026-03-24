@@ -64,8 +64,9 @@ type PlayerRating struct {
 }
 
 type User struct {
-	ID                  int32  `json:"id"`
-	AllowEditing        bool   `json:"allow_editing"`
-	GoogleOauthUserID   string `json:"google_oauth_user_id"`
-	GoogleOauthUserName string `json:"google_oauth_user_name"`
+	ID                  int32       `json:"id"`
+	AllowEditing        bool        `json:"allow_editing"`
+	GoogleOauthUserID   string      `json:"google_oauth_user_id"`
+	GoogleOauthUserName string      `json:"google_oauth_user_name"`
+	PlayerID            pgtype.Int4 `json:"player_id"`
 }

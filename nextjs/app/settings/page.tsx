@@ -4,9 +4,20 @@ import { useMe } from "@/app/meContext"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { PlayerCombobox } from "@/components/player-combobox"
+import { patchMePromise } from "@/app/api"
 
 export default function SettingsPage() {
-    const { roundToInteger, setRoundToInteger } = useMe()
+    const { roundToInteger, setRoundToInteger, isAuthenticated, playerId, invalidate } = useMe()
+
+    async function handlePlayerChange(id?: string) {
+        try {
+            await patchMePromise({ player_id: id ?? null })
+            invalidate()
+        } catch {
+            // toast shown by API helper
+        }
+    }
 
     return (
         <main className="max-w-sm mx-auto">
@@ -26,6 +37,15 @@ export default function SettingsPage() {
                         onCheckedChange={setRoundToInteger}
                     />
                 </div>
+
+                {isAuthenticated ? (
+                    <div className="flex flex-col gap-2">
+                        <Label>Мой игрок</Label>
+                        <PlayerCombobox value={playerId} onChange={handlePlayerChange} allowClear />
+                    </div>
+                ) : (
+                    <p className="text-sm text-muted-foreground">После входа будут доступны дополнительные настройки.</p>
+                )}
             </div>
         </main>
     )

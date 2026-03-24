@@ -52,6 +52,9 @@ GROUP BY g.id, g.name
 ORDER BY matches_count DESC
 LIMIT 10;
 
+-- name: ListPlayerUserLinks :many
+SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL;
+
 -- name: GetPlayerGameEloStats :many
 SELECT
   g.id::text AS game_id,

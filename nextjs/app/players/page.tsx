@@ -6,6 +6,7 @@ import { usePlayers } from "./PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Player, Club, Period } from "../api";
+import { useMe } from "@/app/meContext";
 import { ClubMultiSelect } from "@/components/club-multi-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
@@ -86,6 +87,7 @@ function filterByClubs(players: Player[], selectedClubIds: string[] | null, club
 function PlayersTable() {
     const { players, loading, error } = usePlayers();
     const { clubs } = useClubs();
+    const { playerId: myPlayerId } = useMe();
     const [period, setPeriod] = useLocalStorage<Period>("players-period", "day_ago");
     const [selectedClubIds, setSelectedClubIds] = useLocalStorage<string[] | null>("players-club-filter", null);
 
@@ -155,7 +157,9 @@ function PlayersTable() {
                                     </td>
                                     <td className="py-2 px-1 w-50">
                                         {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
-                                        {player.name}
+                                        {player.id === myPlayerId
+                                            ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.name}</span>
+                                            : player.name}
                                     </td>
                                     <td className="py-2 px-1 align-top min-w-25">
                                         <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
@@ -184,7 +188,9 @@ function PlayersTable() {
                                         <td className="py-2 text-center align-top min-w-7"></td>
                                         <td className="py-2 px-1 w-50">
                                             {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
-                                            {player.name}
+                                            {player.id === myPlayerId
+                                                ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.name}</span>
+                                                : player.name}
                                             <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
                                         </td>
                                         <td className="py-2 px-1 align-top min-w-25">

@@ -16,6 +16,7 @@ export type EloRank = {
 export type Player = {
     id: string;
     name: string;
+    user_id?: string | null;
     rank: {
         now: EloRank;
         day_ago: EloRank;
@@ -29,6 +30,7 @@ export type User = {
     id: string;
     name: string;
     can_edit: boolean;
+    player_id?: string | null;
 }
 
 export type Status = {
@@ -374,6 +376,23 @@ export async function logout(): Promise<Status> {
 export async function listUsersPromise(): Promise<User[]> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/users`);
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function patchMePromise(payload: { player_id: string | null }) {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        if (res.status === 204) return;
         return await handleJsonErrorResponse(res);
     }
     catch (error) {

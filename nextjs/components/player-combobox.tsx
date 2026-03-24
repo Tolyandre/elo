@@ -18,6 +18,7 @@ import {
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
+import { useMe } from "@/app/meContext"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command"
 import { buildPlayerGroups } from "@/lib/player-groups"
@@ -25,9 +26,11 @@ import { buildPlayerGroups } from "@/lib/player-groups"
 export function PlayerCombobox({
   value: controlledValue,
   onChange,
+  allowClear = false,
 }: {
   value?: string
   onChange?: (id?: string) => void
+  allowClear?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
@@ -86,6 +89,8 @@ export function PlayerCombobox({
       groups={groups}
       onSelect={handleSelect}
       listClassName={isMobile ? "max-h-[70dvh]" : undefined}
+      allowClear={allowClear}
+      onClear={allowClear ? () => { onChange?.(undefined); if (controlledValue === undefined) setInternalValue(""); setOpen(false); } : undefined}
     />
   )
 
@@ -122,9 +127,12 @@ type PlayerCommandProps = {
   groups: { heading: string; options: { value: string; label: string }[] }[]
   onSelect: (value: string) => void
   listClassName?: string
+  allowClear?: boolean
+  onClear?: () => void
 }
 
-function PlayerCommand({ value, groups, onSelect, listClassName }: PlayerCommandProps) {
+function PlayerCommand({ value, groups, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
+  const { playerId } = useMe()
   return (
     <Command>
       <CommandInput placeholder="Искать игрока..." className="h-9" />
@@ -132,9 +140,17 @@ function PlayerCommand({ value, groups, onSelect, listClassName }: PlayerCommand
       <CommandList className={listClassName}>
         <CommandEmpty>Игрок не найден.</CommandEmpty>
 
+        {allowClear && value && (
+          <CommandGroup>
+            <CommandItem value="__clear__" onSelect={onClear}>
+              Убрать привязку
+            </CommandItem>
+          </CommandGroup>
+        )}
+
         {groups.map((group, i) => (
           <React.Fragment key={group.heading}>
-            {i > 0 && <CommandSeparator />}
+            {(i > 0 || (allowClear && value)) && <CommandSeparator />}
             <CommandGroup heading={group.heading}>
               {group.options.map((player) => (
                 <CommandItem
@@ -143,7 +159,9 @@ function PlayerCommand({ value, groups, onSelect, listClassName }: PlayerCommand
                   keywords={[player.label]}
                   onSelect={onSelect}
                 >
-                  {player.label}
+                  {player.value === playerId
+                    ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.label}</span>
+                    : player.label}
                   <Check
                     className={cn(
                       "ml-auto",

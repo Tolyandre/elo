@@ -8,6 +8,7 @@ export type MeState = {
   id: string | undefined;
   name: string | undefined;
   canEdit: boolean;
+  playerId: string | undefined;
   isAuthenticated: boolean;
   logout: () => void;
   invalidate: () => void;
@@ -21,6 +22,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [id, setId] = useState<string | undefined>(undefined);
   const [name, setName] = useState<string | undefined>(undefined);
   const [canEdit, setCanEdit] = useState<boolean>(false);
+  const [playerId, setPlayerId] = useState<string | undefined>(undefined);
   const [stamp, setStamp] = useState<number>(0);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
 
@@ -33,6 +35,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
     setId(user?.id);
     setName(user?.name);
     setCanEdit(user?.can_edit ?? false);
+    setPlayerId(user?.player_id ?? undefined);
   };
 
   const doLogout = () => {
@@ -41,6 +44,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
         setId(undefined);
         setName(undefined);
         setCanEdit(false);
+        setPlayerId(undefined);
       });
   };
 
@@ -53,6 +57,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
       id,
       name,
       canEdit,
+      playerId,
       isAuthenticated: !!id,
       logout: doLogout,
       invalidate,

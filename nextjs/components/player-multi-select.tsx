@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption } from "./multi-select"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
+import { useMe } from "@/app/meContext"
 import { buildPlayerGroups } from "@/lib/player-groups"
 
 
@@ -19,6 +20,7 @@ export function PlayerMultiSelect({
   const { players } = usePlayers()
   const { matches } = useMatches()
   const { clubs } = useClubs()
+  const { playerId: myPlayerId } = useMe()
 
   const recentPlayerIds = useMemo(() => (
     Array.from(
@@ -32,8 +34,14 @@ export function PlayerMultiSelect({
   ), [matches])
 
   const options: MultiSelectOption[] | MultiSelectGroup[] = useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds),
-    [players, clubs, recentPlayerIds]
+    () => buildPlayerGroups(players, clubs, recentPlayerIds).map(group => ({
+      ...group,
+      options: group.options.map(opt => opt.value === myPlayerId
+        ? { ...opt, render: <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{opt.label}</span> }
+        : opt
+      ),
+    })),
+    [players, clubs, recentPlayerIds, myPlayerId]
   )
 
   const handleSelect = (currentValue: string[]) => {

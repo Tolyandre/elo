@@ -13,9 +13,10 @@ import (
 )
 
 type playerJson struct {
-	ID   string          `json:"id"`
-	Name string          `json:"name"`
-	Rank historyRankJson `json:"rank"`
+	ID     string          `json:"id"`
+	Name   string          `json:"name"`
+	Rank   historyRankJson `json:"rank"`
+	UserID *string         `json:"user_id"`
 }
 
 type historyRankJson struct {
@@ -51,13 +52,34 @@ func (a *API) ListPlayers(c *gin.Context) {
 		return
 	}
 
+	userLinks, err := a.Queries.ListPlayerUserLinks(ctx)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+	playerUserMap := make(map[int32]string, len(userLinks))
+	for _, link := range userLinks {
+		if link.PlayerID.Valid {
+			playerUserMap[link.PlayerID.Int32] = fmt.Sprintf("%d", link.UserID)
+		}
+	}
+
 	jsonPlayers := make([]playerJson, 0, len(actualPlayers))
 	for _, p := range actualPlayers {
 		dayAgo := findPlayer(dayAgoPlayers, p.ID)
 		weekAgo := findPlayer(weekAgoPlayers, p.ID)
+
+		var userID *string
+		if idInt, err := strconv.Atoi(p.ID); err == nil {
+			if uid, ok := playerUserMap[int32(idInt)]; ok {
+				userID = &uid
+			}
+		}
+
 		jsonPlayers = append(jsonPlayers, playerJson{
-			ID:   p.ID,
-			Name: p.Name,
+			ID:     p.ID,
+			Name:   p.Name,
+			UserID: userID,
 			Rank: historyRankJson{
 				Now: playerEloRankJson{
 					Elo:                  p.Elo,

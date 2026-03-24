@@ -93,6 +93,7 @@ func main() {
 	auth_router.GET("/login", oauth2.Login)
 	auth_router.GET("/oauth2-callback", oauth2.GoogleOAuth)
 	auth_router.GET("/me", oauth2.DeserializeUser(), oauth2.GetMe)
+	auth_router.PATCH("/me", oauth2.DeserializeUser(), oauth2.PatchMe)
 
 	log.Fatal(router.Run(cfg.Config.Address))
 }

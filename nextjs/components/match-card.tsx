@@ -4,6 +4,7 @@ import React, { useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
+import { useMe } from "@/app/meContext";
 import { Match } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { RankIcon } from "@/components/rank-icon";
@@ -16,6 +17,7 @@ type MatchCardProps = {
 
 export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
   const { playerMap } = usePlayers();
+  const { playerId: myPlayerId } = useMe();
   const router = useRouter();
 
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
@@ -76,7 +78,9 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 mb-1">
                   <RankIcon rank={ranks[idx]} />
-                  <span className="truncate text-sm">{p.name}</span>
+                  {p.playerId === myPlayerId
+                    ? <span className="truncate text-sm bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
+                    : <span className="truncate text-sm">{p.name}</span>}
                 </div>
 
                 <div className="relative h-2 bg-gray-200 rounded overflow-hidden">

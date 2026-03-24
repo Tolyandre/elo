@@ -1,8 +1,7 @@
 "use client"
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useState } from "react";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, listUsersPromise, User } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import {
@@ -25,6 +24,13 @@ export default function PlayersAdminPage() {
     const [selectedName, setSelectedName] = useState<string>("");
     const [renameValue, setRenameValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
+    const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+
+    useEffect(() => {
+        listUsersPromise().then((users: User[]) => {
+            setUserMap(new Map(users.map(u => [u.id, u.name])));
+        }).catch(() => {});
+    }, []);
 
     // Sort players alphabetically for admin view
     const sortedPlayers = [...playersFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
@@ -145,6 +151,9 @@ export default function PlayersAdminPage() {
                                                 Рейтинг: {player.rank.now.elo.toFixed(0)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
                                             </div>
+                                            {player.user_id && (
+                                                <div className="text-xs text-muted-foreground">{userMap.get(player.user_id)}</div>
+                                            )}
                                         </div>
                                         <div className="flex gap-2 ml-4">
                                             <Button
@@ -175,6 +184,7 @@ export default function PlayersAdminPage() {
                                 <thead>
                                     <tr>
                                         <th className="text-left px-4 py-2">Имя</th>
+                                        <th className="text-left px-4 py-2">Пользователь</th>
                                         <th className="text-left px-4 py-2">Рейтинг</th>
                                         <th className="text-left px-4 py-2">Ранг</th>
                                         <th className="text-left px-4 py-2">Действия</th>
@@ -185,6 +195,9 @@ export default function PlayersAdminPage() {
                                         <tr key={player.id} className="align-top">
                                             <td className="px-4 py-2">
                                                 <Link className="underline" href={`/matches?player=${player.id}`}>{player.name}</Link>
+                                            </td>
+                                            <td className="px-4 py-2 text-sm text-muted-foreground">
+                                                {player.user_id ? userMap.get(player.user_id) : ""}
                                             </td>
                                             <td className="px-4 py-2">{player.rank.now.elo.toFixed(0)}</td>
                                             <td className="px-4 py-2">{player.rank.now.rank ? `#${player.rank.now.rank}` : "—"}</td>

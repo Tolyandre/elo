@@ -2,16 +2,20 @@ package elo
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
+
 
 type IUserService interface {
 	GetUserByID(ctx context.Context, id int32) (*db.User, error)
 	CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (int32, error)
 	ListUsers(ctx context.Context) ([]db.User, error)
 	AllowEditing(ctx context.Context, userID int32, allow bool) error
+	SetUserPlayer(ctx context.Context, userID int32, playerID *int32) error
 }
 
 type UserService struct {
@@ -101,4 +105,22 @@ func (s *UserService) AllowEditing(ctx context.Context, userID int32, allow bool
 		ID:           userID,
 		AllowEditing: allow,
 	})
+}
+
+func (s *UserService) SetUserPlayer(ctx context.Context, userID int32, playerID *int32) error {
+	var pid pgtype.Int4
+	if playerID != nil {
+		pid = pgtype.Int4{Int32: *playerID, Valid: true}
+	}
+	err := s.Queries.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{
+		ID:       userID,
+		PlayerID: pid,
+	})
+	if err != nil {
+		if db.IsUniqueViolation(err) {
+			return fmt.Errorf("player already linked to another user")
+		}
+		return err
+	}
+	return nil
 }

@@ -125,6 +125,8 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
+    -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
+    -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
     CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 FROM matches m
@@ -411,6 +413,8 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
+    -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
+    -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
     CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 
@@ -486,6 +490,8 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
+    -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
+    -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
     CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating,
     elo_settings.elo_const_k,
@@ -652,6 +658,8 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
+    -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
+    -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
     CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 FROM paginated_matches pm

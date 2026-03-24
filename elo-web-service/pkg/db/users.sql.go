@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -43,7 +45,8 @@ SELECT
     id,
     allow_editing,
     google_oauth_user_id,
-    google_oauth_user_name
+    google_oauth_user_name,
+    player_id
 FROM users
 WHERE id = $1
 `
@@ -56,6 +59,7 @@ func (q *Queries) GetUser(ctx context.Context, id int32) (User, error) {
 		&i.AllowEditing,
 		&i.GoogleOauthUserID,
 		&i.GoogleOauthUserName,
+		&i.PlayerID,
 	)
 	return i, err
 }
@@ -65,7 +69,8 @@ SELECT
     id,
     allow_editing,
     google_oauth_user_id,
-    google_oauth_user_name
+    google_oauth_user_name,
+    player_id
 FROM users
 WHERE google_oauth_user_id = $1
 `
@@ -78,6 +83,7 @@ func (q *Queries) GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUse
 		&i.AllowEditing,
 		&i.GoogleOauthUserID,
 		&i.GoogleOauthUserName,
+		&i.PlayerID,
 	)
 	return i, err
 }
@@ -87,7 +93,8 @@ SELECT
     id,
     allow_editing,
     google_oauth_user_id,
-    google_oauth_user_name
+    google_oauth_user_name,
+    player_id
 FROM users
 `
 
@@ -105,6 +112,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.AllowEditing,
 			&i.GoogleOauthUserID,
 			&i.GoogleOauthUserName,
+			&i.PlayerID,
 		); err != nil {
 			return nil, err
 		}
@@ -145,5 +153,19 @@ type UpdateUserNameParams struct {
 
 func (q *Queries) UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error {
 	_, err := q.db.Exec(ctx, updateUserName, arg.ID, arg.GoogleOauthUserName)
+	return err
+}
+
+const updateUserPlayerID = `-- name: UpdateUserPlayerID :exec
+UPDATE users SET player_id = $2 WHERE id = $1
+`
+
+type UpdateUserPlayerIDParams struct {
+	ID       int32       `json:"id"`
+	PlayerID pgtype.Int4 `json:"player_id"`
+}
+
+func (q *Queries) UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error {
+	_, err := q.db.Exec(ctx, updateUserPlayerID, arg.ID, arg.PlayerID)
 	return err
 }
