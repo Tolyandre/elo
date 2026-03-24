@@ -97,10 +97,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 			PlayerID: playerID,
 			GameID:   gameID,
 		})
-		if err != nil || !latestGameElo.Valid {
+		if err != nil {
 			previousGameElo[playerID] = startingElo
 		} else {
-			previousGameElo[playerID] = latestGameElo.Float64
+			previousGameElo[playerID] = latestGameElo
 		}
 	}
 
@@ -179,8 +179,9 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 			Score:         score,
 			GlobalEloPay:  0, // Will be recalculated
 			GlobalEloEarn: 0, // Will be recalculated
-			GlobalNewElo:  0, // Will be recalculated
-			// game Elo left as NULL until recalculation
+			GameEloPay:    0, // Will be recalculated
+			GameEloEarn:   0, // Will be recalculated
+			GameNewElo:    0, // Will be recalculated
 		})
 		if err != nil {
 			return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
@@ -281,7 +282,7 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 			prevGlobalElo, err := q.GetPlayerLatestGlobalEloBeforeMatch(ctx, db.GetPlayerLatestGlobalEloBeforeMatchParams{
 				PlayerID: playerID,
 				Date:     match.Date,
-				ID:       match.ID,
+				MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
 			})
 			if err != nil {
 				previousElo[playerID] = startingElo
@@ -296,10 +297,10 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 				Date:     match.Date,
 				ID:       match.ID,
 			})
-			if err != nil || !prevGameElo.Valid {
+			if err != nil {
 				previousGameElo[playerID] = startingElo
 			} else {
-				previousGameElo[playerID] = prevGameElo.Float64
+				previousGameElo[playerID] = prevGameElo
 			}
 		}
 
@@ -355,13 +356,20 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			Score:         score,
 			GlobalEloPay:  globalEloPay,
 			GlobalEloEarn: globalEloEarn,
-			GlobalNewElo:  newGlobalElos[playerIDStr],
-			GameEloPay:    pgtype.Float8{Float64: gameEloPay, Valid: true},
-			GameEloEarn:   pgtype.Float8{Float64: gameEloEarn, Valid: true},
-			GameNewElo:    pgtype.Float8{Float64: newGameElos[playerIDStr], Valid: true},
+			GameEloPay:    gameEloPay,
+			GameEloEarn:   gameEloEarn,
+			GameNewElo:    newGameElos[playerIDStr],
 		})
 		if err != nil {
 			return fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
+		}
+		err = q.UpsertPlayerRatingByMatch(ctx, db.UpsertPlayerRatingByMatchParams{
+			MatchID:  pgtype.Int4{Int32: matchID, Valid: true},
+			PlayerID: playerID,
+			Rating:   newGlobalElos[playerIDStr],
+		})
+		if err != nil {
+			return fmt.Errorf("unable to upsert player rating for player %d: %v", playerID, err)
 		}
 	}
 
@@ -409,7 +417,6 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			PlayerID:      playerID,
 			GlobalEloPay:  globalEloPay,
 			GlobalEloEarn: globalEloEarn,
-			GlobalNewElo:  newGlobalElos[playerIDStr],
 		})
 		if err != nil {
 			return fmt.Errorf("unable to update global Elo for player %d: %v", playerID, err)
@@ -418,12 +425,21 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 		err = q.UpdateMatchScoreGameElo(ctx, db.UpdateMatchScoreGameEloParams{
 			MatchID:     matchID,
 			PlayerID:    playerID,
-			GameEloPay:  pgtype.Float8{Float64: gameEloPay, Valid: true},
-			GameEloEarn: pgtype.Float8{Float64: gameEloEarn, Valid: true},
-			GameNewElo:  pgtype.Float8{Float64: newGameElos[playerIDStr], Valid: true},
+			GameEloPay:  gameEloPay,
+			GameEloEarn: gameEloEarn,
+			GameNewElo:  newGameElos[playerIDStr],
 		})
 		if err != nil {
 			return fmt.Errorf("unable to update game Elo for player %d: %v", playerID, err)
+		}
+
+		err = q.UpsertPlayerRatingByMatch(ctx, db.UpsertPlayerRatingByMatchParams{
+			MatchID:  pgtype.Int4{Int32: matchID, Valid: true},
+			PlayerID: playerID,
+			Rating:   newGlobalElos[playerIDStr],
+		})
+		if err != nil {
+			return fmt.Errorf("unable to upsert player rating for player %d: %v", playerID, err)
 		}
 	}
 

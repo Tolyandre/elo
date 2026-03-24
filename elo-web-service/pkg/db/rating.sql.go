@@ -12,12 +12,10 @@ import (
 )
 
 const ratingHistory = `-- name: RatingHistory :many
-
-SELECT m.date, ms.global_new_elo as rating
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-ORDER BY m.date
+SELECT pr.date, pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+ORDER BY pr.date
 `
 
 type RatingHistoryRow struct {
@@ -25,13 +23,6 @@ type RatingHistoryRow struct {
 	Rating float64            `json:"rating"`
 }
 
-// NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
-// Kept for backwards compatibility but not actively used
-// -- name: UpsertRating :exec
-// INSERT INTO player_ratings (date, player_id, rating)
-// VALUES ($1, $2, $3)
-// ON CONFLICT (date, player_id)
-// DO UPDATE SET rating = EXCLUDED.rating;
 func (q *Queries) RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error) {
 	rows, err := q.db.Query(ctx, ratingHistory, playerID)
 	if err != nil {
@@ -50,4 +41,23 @@ func (q *Queries) RatingHistory(ctx context.Context, playerID int32) ([]RatingHi
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertPlayerRatingByMatch = `-- name: UpsertPlayerRatingByMatch :exec
+INSERT INTO player_ratings (date, player_id, rating, source_type, match_id)
+SELECT m.date, $2, $3, 'match', $1
+FROM matches m WHERE m.id = $1
+ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
+DO UPDATE SET rating = EXCLUDED.rating, date = EXCLUDED.date
+`
+
+type UpsertPlayerRatingByMatchParams struct {
+	MatchID  pgtype.Int4 `json:"match_id"`
+	PlayerID int32       `json:"player_id"`
+	Rating   float64     `json:"rating"`
+}
+
+func (q *Queries) UpsertPlayerRatingByMatch(ctx context.Context, arg UpsertPlayerRatingByMatchParams) error {
+	_, err := q.db.Exec(ctx, upsertPlayerRatingByMatch, arg.MatchID, arg.PlayerID, arg.Rating)
+	return err
 }

@@ -33,15 +33,14 @@ type Match struct {
 }
 
 type MatchScore struct {
-	MatchID       int32         `json:"match_id"`
-	PlayerID      int32         `json:"player_id"`
-	Score         float64       `json:"score"`
-	GlobalEloPay  float64       `json:"global_elo_pay"`
-	GlobalEloEarn float64       `json:"global_elo_earn"`
-	GlobalNewElo  float64       `json:"global_new_elo"`
-	GameEloPay    pgtype.Float8 `json:"game_elo_pay"`
-	GameEloEarn   pgtype.Float8 `json:"game_elo_earn"`
-	GameNewElo    pgtype.Float8 `json:"game_new_elo"`
+	MatchID       int32   `json:"match_id"`
+	PlayerID      int32   `json:"player_id"`
+	Score         float64 `json:"score"`
+	GlobalEloPay  float64 `json:"global_elo_pay"`
+	GlobalEloEarn float64 `json:"global_elo_earn"`
+	GameEloPay    float64 `json:"game_elo_pay"`
+	GameEloEarn   float64 `json:"game_elo_earn"`
+	GameNewElo    float64 `json:"game_new_elo"`
 }
 
 type Player struct {
@@ -56,9 +55,12 @@ type PlayerClubMembership struct {
 }
 
 type PlayerRating struct {
-	Date     pgtype.Timestamptz `json:"date"`
-	PlayerID int32              `json:"player_id"`
-	Rating   float64            `json:"rating"`
+	ID         int32              `json:"id"`
+	Date       pgtype.Timestamptz `json:"date"`
+	PlayerID   int32              `json:"player_id"`
+	Rating     float64            `json:"rating"`
+	SourceType string             `json:"source_type"`
+	MatchID    pgtype.Int4        `json:"match_id"`
 }
 
 type User struct {

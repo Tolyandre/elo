@@ -120,16 +120,13 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	}, 0, len(eloRows))
 
 	for _, r := range eloRows {
-		if !r.GameNewElo.Valid {
-			continue
-		}
 		players = append(players, struct {
 			Id   string
 			Elo  float64
 			Rank int
 		}{
 			Id:   fmt.Sprintf("%d", r.PlayerID),
-			Elo:  r.GameNewElo.Float64,
+			Elo:  r.GameNewElo,
 			Rank: 0,
 		})
 	}
@@ -190,24 +187,13 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 			order = append(order, r.MatchID)
 		}
 
-		var gameEloPay, gameEloEarn, gameNewElo float64
-		if r.GameEloPay.Valid {
-			gameEloPay = r.GameEloPay.Float64
-		}
-		if r.GameEloEarn.Valid {
-			gameEloEarn = r.GameEloEarn.Float64
-		}
-		if r.GameNewElo.Valid {
-			gameNewElo = r.GameNewElo.Float64
-		}
-
 		matchMap[r.MatchID].Players = append(matchMap[r.MatchID].Players, GameMatchPlayer{
 			Id:          fmt.Sprintf("%d", r.PlayerID),
 			Name:        r.PlayerName,
 			Score:       r.Score,
-			GameEloPay:  gameEloPay,
-			GameEloEarn: gameEloEarn,
-			GameNewElo:  gameNewElo,
+			GameEloPay:  r.GameEloPay,
+			GameEloEarn: r.GameEloEarn,
+			GameNewElo:  r.GameNewElo,
 		})
 	}
 

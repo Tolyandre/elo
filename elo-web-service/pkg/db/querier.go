@@ -41,8 +41,8 @@ type Querier interface {
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]GetPlayerGameEloStatsRow, error)
 	GetPlayerGameStats(ctx context.Context, playerID int32) ([]GetPlayerGameStatsRow, error)
-	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (pgtype.Float8, error)
-	GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (pgtype.Float8, error)
+	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error)
+	GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error)
 	GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
 	GetUser(ctx context.Context, id int32) (User, error)
@@ -60,13 +60,6 @@ type Querier interface {
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
-	// NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
-	// Kept for backwards compatibility but not actively used
-	// -- name: UpsertRating :exec
-	// INSERT INTO player_ratings (date, player_id, rating)
-	// VALUES ($1, $2, $3)
-	// ON CONFLICT (date, player_id)
-	// DO UPDATE SET rating = EXCLUDED.rating;
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
@@ -78,6 +71,7 @@ type Querier interface {
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
+	UpsertPlayerRatingByMatch(ctx context.Context, arg UpsertPlayerRatingByMatchParams) error
 }
 
 var _ Querier = (*Queries)(nil)

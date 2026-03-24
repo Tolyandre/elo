@@ -1,14 +1,12 @@
--- NOTE: UpsertRating is deprecated - Elo ratings are now stored in match_scores table
--- Kept for backwards compatibility but not actively used
--- -- name: UpsertRating :exec
--- INSERT INTO player_ratings (date, player_id, rating)
--- VALUES ($1, $2, $3)
--- ON CONFLICT (date, player_id)
--- DO UPDATE SET rating = EXCLUDED.rating;
-
 -- name: RatingHistory :many
-SELECT m.date, ms.global_new_elo as rating
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-ORDER BY m.date;
+SELECT pr.date, pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+ORDER BY pr.date;
+
+-- name: UpsertPlayerRatingByMatch :exec
+INSERT INTO player_ratings (date, player_id, rating, source_type, match_id)
+SELECT m.date, $2, $3, 'match', $1
+FROM matches m WHERE m.id = $1
+ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
+DO UPDATE SET rating = EXCLUDED.rating, date = EXCLUDED.date;

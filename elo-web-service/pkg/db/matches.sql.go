@@ -125,21 +125,20 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
-    s.global_new_elo,
-    CASE WHEN prev_match_score.global_new_elo IS NULL THEN NULL
-    ELSE prev_match_score.global_new_elo END AS prev_rating
+    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
+LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
 LEFT JOIN LATERAL (
-    SELECT ms.global_new_elo
-    FROM match_scores ms
-    JOIN matches prev_m ON prev_m.id = ms.match_id
-    WHERE ms.player_id = p.id AND prev_m.date < m.date
-    ORDER BY prev_m.date DESC, prev_m.id DESC
+    SELECT pr2.rating
+    FROM player_ratings pr2
+    WHERE pr2.player_id = p.id AND pr2.date < m.date
+    ORDER BY pr2.date DESC, pr2.id DESC
     LIMIT 1
-) prev_match_score ON true
+) prev_player_rating ON true
 WHERE m.id = $1
 ORDER BY s.score DESC
 `
@@ -154,7 +153,7 @@ type GetMatchWithPlayersRow struct {
 	Score         float64            `json:"score"`
 	GlobalEloPay  float64            `json:"global_elo_pay"`
 	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  float64            `json:"global_new_elo"`
+	GlobalNewElo  interface{}        `json:"global_new_elo"`
 	PrevRating    interface{}        `json:"prev_rating"`
 }
 
@@ -223,7 +222,6 @@ FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
   AND m.game_id = $2
-  AND ms.game_new_elo IS NOT NULL
 ORDER BY m.date DESC, m.id DESC
 LIMIT 1
 `
@@ -233,9 +231,9 @@ type GetPlayerLatestGameEloParams struct {
 	GameID   int32 `json:"game_id"`
 }
 
-func (q *Queries) GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (pgtype.Float8, error) {
+func (q *Queries) GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestGameElo, arg.PlayerID, arg.GameID)
-	var game_new_elo pgtype.Float8
+	var game_new_elo float64
 	err := row.Scan(&game_new_elo)
 	return game_new_elo, err
 }
@@ -247,7 +245,6 @@ JOIN matches m ON m.id = ms.match_id
 WHERE ms.player_id = $1
   AND m.game_id = $2
   AND (m.date < $3 OR (m.date = $3 AND m.id < $4))
-  AND ms.game_new_elo IS NOT NULL
 ORDER BY m.date DESC, m.id DESC
 LIMIT 1
 `
@@ -259,55 +256,53 @@ type GetPlayerLatestGameEloBeforeMatchParams struct {
 	ID       int32              `json:"id"`
 }
 
-func (q *Queries) GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (pgtype.Float8, error) {
+func (q *Queries) GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestGameEloBeforeMatch,
 		arg.PlayerID,
 		arg.GameID,
 		arg.Date,
 		arg.ID,
 	)
-	var game_new_elo pgtype.Float8
+	var game_new_elo float64
 	err := row.Scan(&game_new_elo)
 	return game_new_elo, err
 }
 
 const getPlayerLatestGlobalElo = `-- name: GetPlayerLatestGlobalElo :one
-SELECT ms.global_new_elo
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-ORDER BY m.date DESC, m.id DESC
+SELECT pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+ORDER BY pr.date DESC, pr.id DESC
 LIMIT 1
 `
 
 func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestGlobalElo, playerID)
-	var global_new_elo float64
-	err := row.Scan(&global_new_elo)
-	return global_new_elo, err
+	var rating float64
+	err := row.Scan(&rating)
+	return rating, err
 }
 
 const getPlayerLatestGlobalEloBeforeMatch = `-- name: GetPlayerLatestGlobalEloBeforeMatch :one
-SELECT ms.global_new_elo
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-  AND (m.date < $2 OR (m.date = $2 AND m.id < $3))
-ORDER BY m.date DESC, m.id DESC
+SELECT pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+  AND (pr.date < $2 OR (pr.date = $2 AND pr.match_id IS NOT NULL AND pr.match_id < $3))
+ORDER BY pr.date DESC, pr.id DESC
 LIMIT 1
 `
 
 type GetPlayerLatestGlobalEloBeforeMatchParams struct {
 	PlayerID int32              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
-	ID       int32              `json:"id"`
+	MatchID  pgtype.Int4        `json:"match_id"`
 }
 
 func (q *Queries) GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloBeforeMatch, arg.PlayerID, arg.Date, arg.ID)
-	var global_new_elo float64
-	err := row.Scan(&global_new_elo)
-	return global_new_elo, err
+	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloBeforeMatch, arg.PlayerID, arg.Date, arg.MatchID)
+	var rating float64
+	err := row.Scan(&rating)
+	return rating, err
 }
 
 const listLatestGameEloPerPlayer = `-- name: ListLatestGameEloPerPlayer :many
@@ -315,13 +310,12 @@ SELECT DISTINCT ON (ms.player_id) ms.player_id, ms.game_new_elo
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE m.game_id = $1
-  AND ms.game_new_elo IS NOT NULL
 ORDER BY ms.player_id, m.date DESC, m.id DESC
 `
 
 type ListLatestGameEloPerPlayerRow struct {
-	PlayerID   int32         `json:"player_id"`
-	GameNewElo pgtype.Float8 `json:"game_new_elo"`
+	PlayerID   int32   `json:"player_id"`
+	GameNewElo float64 `json:"game_new_elo"`
 }
 
 func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID int32) ([]ListLatestGameEloPerPlayerRow, error) {
@@ -354,11 +348,12 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
-    s.global_new_elo
+    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
 JOIN matches m ON m.id = s.match_id
 JOIN games g ON g.id = m.game_id
+LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
 WHERE m.id = $1
 ORDER BY s.score DESC
 `
@@ -372,7 +367,7 @@ type ListMatchResultsRow struct {
 	Score         float64            `json:"score"`
 	GlobalEloPay  float64            `json:"global_elo_pay"`
 	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  float64            `json:"global_new_elo"`
+	GlobalNewElo  interface{}        `json:"global_new_elo"`
 }
 
 func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error) {
@@ -416,22 +411,21 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
-    s.global_new_elo,
-    CASE WHEN prev_match_score.global_new_elo IS NULL THEN NULL
-    ELSE prev_match_score.global_new_elo END AS prev_rating
+    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 
 FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
+LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
 LEFT JOIN LATERAL (
-    SELECT ms.global_new_elo
-    FROM match_scores ms
-    JOIN matches prev_m ON prev_m.id = ms.match_id
-    WHERE ms.player_id = p.id AND prev_m.date < m.date
-    ORDER BY prev_m.date DESC, prev_m.id DESC
+    SELECT pr2.rating
+    FROM player_ratings pr2
+    WHERE pr2.player_id = p.id AND pr2.date < m.date
+    ORDER BY pr2.date DESC, pr2.id DESC
     LIMIT 1
-) prev_match_score ON true
+) prev_player_rating ON true
 ORDER BY m.date DESC, s.score DESC
 `
 
@@ -445,7 +439,7 @@ type ListMatchesWithPlayersRow struct {
 	Score         float64            `json:"score"`
 	GlobalEloPay  float64            `json:"global_elo_pay"`
 	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  float64            `json:"global_new_elo"`
+	GlobalNewElo  interface{}        `json:"global_new_elo"`
 	PrevRating    interface{}        `json:"prev_rating"`
 }
 
@@ -492,9 +486,8 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
-    s.global_new_elo,
-    CASE WHEN prev_match_score.global_new_elo IS NULL THEN NULL
-    ELSE prev_match_score.global_new_elo END AS prev_rating,
+    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating,
     elo_settings.elo_const_k,
     elo_settings.elo_const_d,
     elo_settings.starting_elo,
@@ -504,14 +497,14 @@ FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
+LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
 LEFT JOIN LATERAL (
-    SELECT ms.global_new_elo
-    FROM match_scores ms
-    JOIN matches prev_m ON prev_m.id = ms.match_id
-    WHERE ms.player_id = p.id AND prev_m.date < m.date
-    ORDER BY prev_m.date DESC, prev_m.id DESC
+    SELECT pr2.rating
+    FROM player_ratings pr2
+    WHERE pr2.player_id = p.id AND pr2.date < m.date
+    ORDER BY pr2.date DESC, pr2.id DESC
     LIMIT 1
-) prev_match_score ON true
+) prev_player_rating ON true
 LEFT JOIN LATERAL (
     SELECT elo_const_k, elo_const_d, starting_elo, win_reward
     FROM elo_settings
@@ -533,7 +526,7 @@ type ListMatchesWithPlayersByGameRow struct {
 	Score         float64            `json:"score"`
 	GlobalEloPay  float64            `json:"global_elo_pay"`
 	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  float64            `json:"global_new_elo"`
+	GlobalNewElo  interface{}        `json:"global_new_elo"`
 	PrevRating    interface{}        `json:"prev_rating"`
 	EloConstK     float64            `json:"elo_const_k"`
 	EloConstD     float64            `json:"elo_const_d"`
@@ -591,7 +584,6 @@ FROM matches m
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
 WHERE m.game_id = $1
-  AND s.game_new_elo IS NOT NULL
 ORDER BY m.date ASC, m.id ASC, s.score DESC
 `
 
@@ -601,9 +593,9 @@ type ListMatchesWithPlayersByGameFromDBRow struct {
 	PlayerID    int32              `json:"player_id"`
 	PlayerName  string             `json:"player_name"`
 	Score       float64            `json:"score"`
-	GameEloPay  pgtype.Float8      `json:"game_elo_pay"`
-	GameEloEarn pgtype.Float8      `json:"game_elo_earn"`
-	GameNewElo  pgtype.Float8      `json:"game_new_elo"`
+	GameEloPay  float64            `json:"game_elo_pay"`
+	GameEloEarn float64            `json:"game_elo_earn"`
+	GameNewElo  float64            `json:"game_new_elo"`
 }
 
 func (q *Queries) ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID int32) ([]ListMatchesWithPlayersByGameFromDBRow, error) {
@@ -660,21 +652,20 @@ SELECT
     s.score,
     s.global_elo_pay,
     s.global_elo_earn,
-    s.global_new_elo,
-    CASE WHEN prev_match_score.global_new_elo IS NULL THEN NULL
-    ELSE prev_match_score.global_new_elo END AS prev_rating
+    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
 FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
+LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
 LEFT JOIN LATERAL (
-    SELECT ms.global_new_elo
-    FROM match_scores ms
-    JOIN matches prev_m ON prev_m.id = ms.match_id
-    WHERE ms.player_id = p.id AND prev_m.date < pm.date
-    ORDER BY prev_m.date DESC, prev_m.id DESC
+    SELECT pr2.rating
+    FROM player_ratings pr2
+    WHERE pr2.player_id = p.id AND pr2.date < pm.date
+    ORDER BY pr2.date DESC, pr2.id DESC
     LIMIT 1
-) prev_match_score ON true
+) prev_player_rating ON true
 ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 `
 
@@ -695,7 +686,7 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	Score         float64            `json:"score"`
 	GlobalEloPay  float64            `json:"global_elo_pay"`
 	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  float64            `json:"global_new_elo"`
+	GlobalNewElo  interface{}        `json:"global_new_elo"`
 	PrevRating    interface{}        `json:"prev_rating"`
 }
 
@@ -760,11 +751,11 @@ WHERE match_id = $1 AND player_id = $2
 `
 
 type UpdateMatchScoreGameEloParams struct {
-	MatchID     int32         `json:"match_id"`
-	PlayerID    int32         `json:"player_id"`
-	GameEloPay  pgtype.Float8 `json:"game_elo_pay"`
-	GameEloEarn pgtype.Float8 `json:"game_elo_earn"`
-	GameNewElo  pgtype.Float8 `json:"game_new_elo"`
+	MatchID     int32   `json:"match_id"`
+	PlayerID    int32   `json:"player_id"`
+	GameEloPay  float64 `json:"game_elo_pay"`
+	GameEloEarn float64 `json:"game_elo_earn"`
+	GameNewElo  float64 `json:"game_new_elo"`
 }
 
 func (q *Queries) UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchScoreGameEloParams) error {
@@ -780,7 +771,7 @@ func (q *Queries) UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchSc
 
 const updateMatchScoreGlobalElo = `-- name: UpdateMatchScoreGlobalElo :exec
 UPDATE match_scores
-SET global_elo_pay = $3, global_elo_earn = $4, global_new_elo = $5
+SET global_elo_pay = $3, global_elo_earn = $4
 WHERE match_id = $1 AND player_id = $2
 `
 
@@ -789,7 +780,6 @@ type UpdateMatchScoreGlobalEloParams struct {
 	PlayerID      int32   `json:"player_id"`
 	GlobalEloPay  float64 `json:"global_elo_pay"`
 	GlobalEloEarn float64 `json:"global_elo_earn"`
-	GlobalNewElo  float64 `json:"global_new_elo"`
 }
 
 func (q *Queries) UpdateMatchScoreGlobalElo(ctx context.Context, arg UpdateMatchScoreGlobalEloParams) error {
@@ -798,35 +788,32 @@ func (q *Queries) UpdateMatchScoreGlobalElo(ctx context.Context, arg UpdateMatch
 		arg.PlayerID,
 		arg.GlobalEloPay,
 		arg.GlobalEloEarn,
-		arg.GlobalNewElo,
 	)
 	return err
 }
 
 const upsertMatchScore = `-- name: UpsertMatchScore :exec
-INSERT INTO match_scores (match_id, player_id, score, global_elo_pay, global_elo_earn, global_new_elo, game_elo_pay, game_elo_earn, game_new_elo)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+INSERT INTO match_scores (match_id, player_id, score, global_elo_pay, global_elo_earn, game_elo_pay, game_elo_earn, game_new_elo)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (match_id, player_id)
 DO UPDATE SET
     score = EXCLUDED.score,
     global_elo_pay = EXCLUDED.global_elo_pay,
     global_elo_earn = EXCLUDED.global_elo_earn,
-    global_new_elo = EXCLUDED.global_new_elo,
     game_elo_pay = EXCLUDED.game_elo_pay,
     game_elo_earn = EXCLUDED.game_elo_earn,
     game_new_elo = EXCLUDED.game_new_elo
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID       int32         `json:"match_id"`
-	PlayerID      int32         `json:"player_id"`
-	Score         float64       `json:"score"`
-	GlobalEloPay  float64       `json:"global_elo_pay"`
-	GlobalEloEarn float64       `json:"global_elo_earn"`
-	GlobalNewElo  float64       `json:"global_new_elo"`
-	GameEloPay    pgtype.Float8 `json:"game_elo_pay"`
-	GameEloEarn   pgtype.Float8 `json:"game_elo_earn"`
-	GameNewElo    pgtype.Float8 `json:"game_new_elo"`
+	MatchID       int32   `json:"match_id"`
+	PlayerID      int32   `json:"player_id"`
+	Score         float64 `json:"score"`
+	GlobalEloPay  float64 `json:"global_elo_pay"`
+	GlobalEloEarn float64 `json:"global_elo_earn"`
+	GameEloPay    float64 `json:"game_elo_pay"`
+	GameEloEarn   float64 `json:"game_elo_earn"`
+	GameNewElo    float64 `json:"game_new_elo"`
 }
 
 func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error {
@@ -836,7 +823,6 @@ func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScorePara
 		arg.Score,
 		arg.GlobalEloPay,
 		arg.GlobalEloEarn,
-		arg.GlobalNewElo,
 		arg.GameEloPay,
 		arg.GameEloEarn,
 		arg.GameNewElo,
