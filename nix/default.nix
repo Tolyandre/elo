@@ -1,8 +1,8 @@
-{ buildGoApplication }:
+{ buildGoApplication, version }:
 
 buildGoApplication {
   pname = "elo-web-service";
-  version = "0.1.0";
+  inherit version;
 
   src = ../elo-web-service;
 

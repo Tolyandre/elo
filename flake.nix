@@ -28,7 +28,10 @@
           inherit (gomod2nix.legacyPackages.${system}) buildGoApplication;
         in
         {
-          default = pkgs.callPackage ./nix/default.nix { inherit buildGoApplication; };
+          default = pkgs.callPackage ./nix/default.nix {
+              inherit buildGoApplication;
+              version = self.rev or self.dirtyRev;
+            };
         }
       );
 
