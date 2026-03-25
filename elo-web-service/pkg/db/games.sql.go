@@ -62,6 +62,18 @@ func (q *Queries) DeleteGame(ctx context.Context, id int32) (Game, error) {
 	return i, err
 }
 
+const getGameByID = `-- name: GetGameByID :one
+SELECT id, name FROM games
+WHERE id = $1
+`
+
+func (q *Queries) GetGameByID(ctx context.Context, id int32) (Game, error) {
+	row := q.db.QueryRow(ctx, getGameByID, id)
+	var i Game
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
 const getGameByName = `-- name: GetGameByName :one
 SELECT id, name FROM games
 WHERE name = $1

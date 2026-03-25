@@ -40,3 +40,30 @@ func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 		ctx.Next()
 	}
 }
+
+// OptionalDeserializeUser attempts to authenticate the user but does not abort on failure.
+// If authenticated, sets CurrentUserKey in context. Otherwise continues without it.
+func (a *OAUTH2) OptionalDeserializeUser() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var token string
+		cookie, err := ctx.Cookie(TokenCookieName)
+
+		authorizationHeader := ctx.Request.Header.Get("Authorization")
+		fields := strings.Fields(authorizationHeader)
+
+		if len(fields) != 0 && fields[0] == "Bearer" {
+			token = fields[1]
+		} else if err == nil {
+			token = cookie
+		}
+
+		if token != "" {
+			userID, err := ValidateToken(token, cfg.Config.CookieJwtSecret)
+			if err == nil {
+				ctx.Set(api.CurrentUserKey, userID)
+			}
+		}
+
+		ctx.Next()
+	}
+}

@@ -44,6 +44,9 @@ func main() {
 	api := api.New(pool)
 	oauth2 := oauth2.New(pool)
 
+	// Start timer for time-based market expiry
+	api.MarketService.ScheduleNextExpiry(context.Background())
+
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -68,6 +71,7 @@ func main() {
 	router.GET("/matches", api.ListMatches)
 	router.POST("/matches", oauth2.DeserializeUser(), api.AddMatch)
 	router.GET("/matches/:id", api.GetMatchById)
+	router.GET("/matches/:id/markets", api.GetMarketsByMatchID)
 	router.PUT("/matches/:id", oauth2.DeserializeUser(), api.UpdateMatch)
 	router.GET("/settings", api.ListSettings)
 	router.GET("/settings/all", api.ListAllSettings)
@@ -87,6 +91,12 @@ func main() {
 	router.DELETE("/clubs/:id", oauth2.DeserializeUser(), api.DeleteClub)
 	router.POST("/clubs/:id/members", oauth2.DeserializeUser(), api.AddClubMember)
 	router.DELETE("/clubs/:id/members/:playerId", oauth2.DeserializeUser(), api.RemoveClubMember)
+
+	router.GET("/markets", oauth2.OptionalDeserializeUser(), api.ListMarkets)
+	router.POST("/markets", oauth2.DeserializeUser(), api.CreateMarket)
+	router.GET("/markets/:id", oauth2.OptionalDeserializeUser(), api.GetMarket)
+	router.PATCH("/markets/:id/cancel", oauth2.DeserializeUser(), api.CancelMarket)
+	router.POST("/markets/:id/bets", oauth2.DeserializeUser(), api.PlaceBet)
 
 	auth_router := router.Group("/auth")
 	auth_router.POST("/logout", oauth2.LogoutUser)

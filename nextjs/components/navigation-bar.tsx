@@ -17,7 +17,7 @@ import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair } from "lucide-react"
+import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair, TrendingUp } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -52,6 +52,13 @@ export function NavigationBar() {
                 <>
                   <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
                   Исходный код
+                </>
+              } />
+
+              <ListItem href="/markets" title={
+                <>
+                  <TrendingUp className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Ставки
                 </>
               } />
 

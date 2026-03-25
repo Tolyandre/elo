@@ -33,3 +33,7 @@ RETURNING id, name;
 -- name: GetGameByName :one
 SELECT id, name FROM games
 WHERE name = $1;
+
+-- name: GetGameByID :one
+SELECT id, name FROM games
+WHERE id = $1;

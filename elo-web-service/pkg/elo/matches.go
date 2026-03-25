@@ -11,14 +11,16 @@ import (
 )
 
 type MatchService struct {
-	Queries *db.Queries
-	Pool    *pgxpool.Pool
+	Queries       *db.Queries
+	Pool          *pgxpool.Pool
+	MarketService IMarketService
 }
 
-func NewMatchService(pool *pgxpool.Pool) IMatchService {
+func NewMatchService(pool *pgxpool.Pool, marketService IMarketService) IMatchService {
 	return &MatchService{
-		Queries: db.New(pool),
-		Pool:    pool,
+		Queries:       db.New(pool),
+		Pool:          pool,
+		MarketService: marketService,
 	}
 }
 
@@ -108,6 +110,16 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 	err = s.calculateAndStoreEloWithScores(ctx, q, createdMatch.ID, gameID, playerScores, previousElo, previousGameElo, eloConstK, eloConstD, startingElo, winReward)
 	if err != nil {
 		return db.Match{}, err
+	}
+
+	// Resolve any markets triggered by this match (within the same transaction for atomicity)
+	if err := s.MarketService.TriggerResolutionForMatch(ctx, q, createdMatch.ID); err != nil {
+		return db.Match{}, fmt.Errorf("market resolution: %v", err)
+	}
+
+	// Update bet limits for match participants
+	if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
+		return db.Match{}, fmt.Errorf("recalculate bet limits: %v", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -231,11 +243,19 @@ func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
 // recalculateEloFromDate recalculates Elo ratings for all matches from the given date onwards
 // Must be called within a transaction
 func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries, startDate time.Time) error {
+	// Unsettle markets resolved by matches on/after startDate so they can be re-evaluated
+	if err := s.MarketService.UnsettleMarketsFromDate(ctx, q, startDate); err != nil {
+		return fmt.Errorf("unsettle markets: %v", err)
+	}
+
 	// Get all matches from the start date onwards (chronologically ordered)
 	matches, err := q.GetMatchesFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true})
 	if err != nil {
 		return fmt.Errorf("unable to get matches from date %v: %v", startDate, err)
 	}
+
+	// Collect all affected player IDs for final bet limit recalculation
+	allAffectedPlayers := make(map[int32]bool)
 
 	// Process each match in chronological order
 	for _, match := range matches {
@@ -272,6 +292,8 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 		sortPlayerIDs(playerIDs)
 
 		for _, playerID := range playerIDs {
+			allAffectedPlayers[playerID] = true
+
 			// Lock the player
 			_, err = q.LockPlayerForEloCalculation(ctx, playerID)
 			if err != nil {
@@ -309,6 +331,20 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 		if err != nil {
 			return fmt.Errorf("unable to calculate Elo for match %d: %v", match.ID, err)
 		}
+
+		// Re-evaluate markets triggered by this match
+		if err := s.MarketService.TriggerResolutionForMatch(ctx, q, match.ID); err != nil {
+			return fmt.Errorf("market resolution for match %d: %v", match.ID, err)
+		}
+	}
+
+	// Recalculate bet limits for all affected players
+	affectedIDs := make([]int32, 0, len(allAffectedPlayers))
+	for pid := range allAffectedPlayers {
+		affectedIDs = append(affectedIDs, pid)
+	}
+	if err := RecalculateBetLimits(ctx, q, affectedIDs); err != nil {
+		return fmt.Errorf("recalculate bet limits: %v", err)
 	}
 
 	return nil

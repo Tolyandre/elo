@@ -613,6 +613,145 @@ export async function deleteSettingsPromise(effectiveDate: string): Promise<void
     }
 }
 
+export type SettlementDetail = {
+    player_id: string;
+    player_name: string;
+    staked: number;
+    earned: number;
+};
+
+export type OutcomeMarket = {
+    id: string;
+    title: string;
+    market_type: 'match_winner' | 'win_streak';
+    status: 'open' | 'resolved_yes' | 'resolved_no' | 'cancelled';
+    starts_at: string | null;
+    closes_at: string | null;
+    created_at: string | null;
+    resolved_at: string | null;
+    yes_pool: number;
+    no_pool: number;
+    yes_coefficient: number;
+    no_coefficient: number;
+    settlement?: SettlementDetail[];
+};
+
+export type MatchWinnerParams = {
+    required_player_ids: string[];
+    game_id: string | null;
+};
+
+export type WinStreakParams = {
+    game_id: string;
+    wins_required: number;
+    max_losses: number | null;
+};
+
+export type MarketDetail = OutcomeMarket & {
+    target_player_id: string;
+    target_player_name: string;
+    params: MatchWinnerParams | WinStreakParams | null;
+    my_yes_staked?: number;
+    my_no_staked?: number;
+    projected_yes_reward?: number;
+    projected_no_reward?: number;
+    reserved?: number;
+    bet_limit?: number;
+};
+
+export async function getMarketsPromise(): Promise<{ active: OutcomeMarket[]; closed: OutcomeMarket[] }> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets`, { credentials: 'include' });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, { credentials: 'include' });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function createMarketPromise(payload: {
+    market_type: string;
+    starts_at: string | null; // null = start immediately
+    closes_at: string;
+    target_player_id: string;
+    required_player_ids?: string[];
+    game_id?: string | null;
+    streak_game_id?: string | null;
+    wins_required?: number | null;
+    max_losses?: number | null;
+}): Promise<{ id: string }> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(payload),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function cancelMarketPromise(id: string): Promise<void> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}/cancel`, {
+            method: 'PATCH',
+            credentials: 'include',
+        });
+        if (res.status === 204) return;
+        await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function getMarketsByMatchIdPromise(matchId: number): Promise<OutcomeMarket[]> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${matchId}/markets`, {
+            credentials: 'include',
+        });
+        const data = await handleJsonErrorResponse(res);
+        return (data ?? []) as OutcomeMarket[];
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', amount: number): Promise<void> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${marketId}/bets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ outcome, amount }),
+        });
+        await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 export type RatingPoint = { date: string; rating: number };
 export type GameMatchStat = { game_id: string; game_name: string; matches_count: number; wins: number };
 export type GameEloStat = { game_id: string; game_name: string; elo_earned: number };

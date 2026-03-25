@@ -8,6 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type BetSettlementDetail struct {
+	MarketID int32   `json:"market_id"`
+	PlayerID int32   `json:"player_id"`
+	Staked   float64 `json:"staked"`
+	Earned   float64 `json:"earned"`
+}
+
 type Club struct {
 	ID   int32  `json:"id"`
 	Name string `json:"name"`
@@ -43,10 +50,48 @@ type MatchScore struct {
 	GameNewElo    float64 `json:"game_new_elo"`
 }
 
+type OutcomeBet struct {
+	ID       int32              `json:"id"`
+	MarketID int32              `json:"market_id"`
+	PlayerID int32              `json:"player_id"`
+	Outcome  string             `json:"outcome"`
+	Amount   float64            `json:"amount"`
+	PlacedAt pgtype.Timestamptz `json:"placed_at"`
+}
+
+type OutcomeMarket struct {
+	ID                int32              `json:"id"`
+	Title             string             `json:"title"`
+	MarketType        string             `json:"market_type"`
+	Status            string             `json:"status"`
+	StartsAt          pgtype.Timestamptz `json:"starts_at"`
+	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
+	CreatedBy         int32              `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+}
+
+type OutcomeMarketMatchWinnerParam struct {
+	MarketID          int32       `json:"market_id"`
+	TargetPlayerID    int32       `json:"target_player_id"`
+	RequiredPlayerIds []int32     `json:"required_player_ids"`
+	GameID            pgtype.Int4 `json:"game_id"`
+}
+
+type OutcomeMarketWinStreakParam struct {
+	MarketID       int32       `json:"market_id"`
+	TargetPlayerID int32       `json:"target_player_id"`
+	GameID         int32       `json:"game_id"`
+	WinsRequired   int32       `json:"wins_required"`
+	MaxLosses      pgtype.Int4 `json:"max_losses"`
+}
+
 type Player struct {
 	ID            int32       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
+	BetLimit      float64     `json:"bet_limit"`
 }
 
 type PlayerClubMembership struct {
@@ -61,6 +106,7 @@ type PlayerRating struct {
 	Rating     float64            `json:"rating"`
 	SourceType string             `json:"source_type"`
 	MatchID    pgtype.Int4        `json:"match_id"`
+	MarketID   pgtype.Int4        `json:"market_id"`
 }
 
 type User struct {

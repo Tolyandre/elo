@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useMatches } from "../matches/MatchesContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useMe } from "../meContext";
-import { Match, updateMatchPromise, getMatchByIdPromise } from "../api";
+import { Match, OutcomeMarket, updateMatchPromise, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../api";
+import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -36,6 +37,7 @@ function MatchPageWrapped() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = React.useRef(false);
+  const [relatedMarkets, setRelatedMarkets] = useState<OutcomeMarket[]>([]);
 
   const matchFromContext = matchId
     ? matches.find((m) => m.id.toString() === matchId) ?? null
@@ -54,6 +56,13 @@ function MatchPageWrapped() {
 
   const match = matchFromContext ?? matchFromApi;
   const loading = (contextLoading && !matchFromContext) || fetchLoading;
+
+  useEffect(() => {
+    if (!matchId) return;
+    getMarketsByMatchIdPromise(Number(matchId))
+      .then((data) => setRelatedMarkets(data ?? []))
+      .catch(() => {});
+  }, [matchId]);
 
   if (loading) {
     return (
@@ -126,6 +135,17 @@ function MatchPageWrapped() {
       </Card>
 
       <MatchCard match={match} roundToInteger={roundToInteger} />
+
+      {relatedMarkets.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold text-muted-foreground">Связанные ставки</h2>
+          {relatedMarkets.map((market) => (
+            <Link key={market.id} href={`/market?id=${market.id}`}>
+              <MarketCard market={market} className="hover:bg-accent transition-colors cursor-pointer" />
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
