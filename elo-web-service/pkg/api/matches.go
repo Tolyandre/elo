@@ -176,34 +176,39 @@ func contains(s, substr string) bool {
 type matchCursor struct {
 	GameID   *int32 `json:"game_id,omitempty"`
 	PlayerID *int32 `json:"player_id,omitempty"`
+	ClubID   *int32 `json:"club_id,omitempty"`
+	NoClub   bool   `json:"no_club,omitempty"`
 	Date     string `json:"date"` // RFC3339Nano — date of the last returned match
 }
 
-func encodeMatchCursor(gameID pgtype.Int4, playerID pgtype.Int4, date time.Time) string {
-	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano)}
+func encodeMatchCursor(gameID pgtype.Int4, playerID pgtype.Int4, clubID pgtype.Int4, noClub bool, date time.Time) string {
+	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano), NoClub: noClub}
 	if gameID.Valid {
 		c.GameID = &gameID.Int32
 	}
 	if playerID.Valid {
 		c.PlayerID = &playerID.Int32
 	}
+	if clubID.Valid {
+		c.ClubID = &clubID.Int32
+	}
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// decodeMatchCursor returns gameID, playerID, cursorDate decoded from the token.
-func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Timestamptz, error) {
+// decodeMatchCursor returns gameID, playerID, clubID, noClub, cursorDate decoded from the token.
+func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Int4, bool, pgtype.Timestamptz, error) {
 	b, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
 	}
 	var c matchCursor
 	if err := json.Unmarshal(b, &c); err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
 	}
 	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Timestamptz{}, err
+		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
 	}
 	var gameID pgtype.Int4
 	if c.GameID != nil {
@@ -213,7 +218,11 @@ func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Timestamp
 	if c.PlayerID != nil {
 		playerID = pgtype.Int4{Int32: *c.PlayerID, Valid: true}
 	}
-	return gameID, playerID, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	var clubID pgtype.Int4
+	if c.ClubID != nil {
+		clubID = pgtype.Int4{Int32: *c.ClubID, Valid: true}
+	}
+	return gameID, playerID, clubID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
@@ -248,12 +257,14 @@ func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matc
 func (a *API) ListMatches(c *gin.Context) {
 	var gameID pgtype.Int4
 	var playerID pgtype.Int4
+	var clubID pgtype.Int4
+	var noClub bool
 	var cursorDate pgtype.Timestamptz
 
 	if nextToken := c.Query("next"); nextToken != "" {
 		// Continuation mode: all search params come from the cursor token.
 		var err error
-		gameID, playerID, cursorDate, err = decodeMatchCursor(nextToken)
+		gameID, playerID, clubID, noClub, cursorDate, err = decodeMatchCursor(nextToken)
 		if err != nil {
 			ErrorResponse(c, http.StatusBadRequest, "Invalid cursor")
 			return
@@ -276,6 +287,16 @@ func (a *API) ListMatches(c *gin.Context) {
 			}
 			playerID = pgtype.Int4{Int32: int32(p), Valid: true}
 		}
+		if cStr := c.Query("club_id"); cStr == "__no_club__" {
+			noClub = true
+		} else if cStr != "" {
+			cl, err := strconv.ParseInt(cStr, 10, 32)
+			if err != nil {
+				ErrorResponse(c, http.StatusBadRequest, "Invalid club_id")
+				return
+			}
+			clubID = pgtype.Int4{Int32: int32(cl), Valid: true}
+		}
 	}
 
 	// Parse page size (always from query string).
@@ -290,6 +311,8 @@ func (a *API) ListMatches(c *gin.Context) {
 	rows, err := a.Queries.ListMatchesWithPlayersPaginated(c.Request.Context(), db.ListMatchesWithPlayersPaginatedParams{
 		GameID:     gameID,
 		PlayerID:   playerID,
+		ClubID:     clubID,
+		NoClub:     pgtype.Bool{Bool: noClub, Valid: noClub},
 		CursorDate: cursorDate,
 		Limit:      limit,
 	})
@@ -327,7 +350,7 @@ func (a *API) ListMatches(c *gin.Context) {
 	var next *string
 	if int32(len(order)) == limit {
 		lastID := order[len(order)-1]
-		token := encodeMatchCursor(gameID, playerID, matchesMap[lastID].Date)
+		token := encodeMatchCursor(gameID, playerID, clubID, noClub, matchesMap[lastID].Date)
 		next = &token
 	}
 

@@ -645,6 +645,21 @@ WITH paginated_matches AS (
             $3::timestamptz IS NULL
             OR m.date < $3::timestamptz
         )
+        AND (
+            $5::int4 IS NULL
+            OR EXISTS (
+                SELECT 1 FROM player_club_membership pcm
+                WHERE pcm.club_id = $5::int4
+                AND pcm.player_id = ms.player_id
+            )
+        )
+        AND (
+            $6::bool IS NOT TRUE
+            OR NOT EXISTS (
+                SELECT 1 FROM player_club_membership pcm2
+                WHERE pcm2.player_id = ms.player_id
+            )
+        )
     ORDER BY m.date DESC, m.id DESC
     LIMIT $4::int4
 )
@@ -682,6 +697,8 @@ type ListMatchesWithPlayersPaginatedParams struct {
 	PlayerID   pgtype.Int4        `json:"player_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
 	Limit      int32              `json:"limit"`
+	ClubID     pgtype.Int4        `json:"club_id"`
+	NoClub     pgtype.Bool        `json:"no_club"`
 }
 
 type ListMatchesWithPlayersPaginatedRow struct {
@@ -704,6 +721,8 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 		arg.PlayerID,
 		arg.CursorDate,
 		arg.Limit,
+		arg.ClubID,
+		arg.NoClub,
 	)
 	if err != nil {
 		return nil, err

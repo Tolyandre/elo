@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { Suspense, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { usePlayers } from "./PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Player, Club, Period } from "../api";
 import { useMe } from "@/app/meContext";
-import { ClubMultiSelect } from "@/components/club-multi-select";
+import { ClubSelect } from "@/components/club-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { Button } from "@/components/ui/button";
@@ -66,51 +67,65 @@ function EloValueAndDiff({ currentElo, previousElo }: { currentElo: number; prev
     );
 }
 
-function filterByClubs(players: Player[], selectedClubIds: string[] | null, clubs: Club[]): Player[] {
-    if (selectedClubIds === null) return players;
-    if (selectedClubIds.length === 0) return [];
-
-    const included = new Set<string>();
-    const allClubPlayerIds = new Set(clubs.flatMap(c => c.players.map(String)));
-
-    for (const id of selectedClubIds) {
-        if (id === NO_CLUB_ID) {
-            players.filter(p => !allClubPlayerIds.has(p.id)).forEach(p => included.add(p.id));
-        } else {
-            clubs.find(c => c.id === id)?.players.forEach(pid => included.add(String(pid)));
-        }
+function filterByClub(players: Player[], selectedClubId: string | null, clubs: Club[]): Player[] {
+    if (selectedClubId === null) return players;
+    if (selectedClubId === NO_CLUB_ID) {
+        const allClubPlayerIds = new Set(clubs.flatMap(c => c.players.map(String)));
+        return players.filter(p => !allClubPlayerIds.has(p.id));
     }
-
-    return players.filter(p => included.has(p.id));
+    const clubPlayerIds = new Set(clubs.find(c => c.id === selectedClubId)?.players.map(String) ?? []);
+    return players.filter(p => clubPlayerIds.has(p.id));
 }
 
 function PlayersTable() {
     const { players, loading, error } = usePlayers();
     const { clubs } = useClubs();
-    const { playerId: myPlayerId } = useMe();
+    const { playerId: myPlayerId, selectedClubId, setSelectedClubId } = useMe();
     const [period, setPeriod] = useLocalStorage<Period>("players-period", "day_ago");
-    const [selectedClubIds, setSelectedClubIds] = useLocalStorage<string[] | null>("players-club-filter", null);
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+
+    React.useEffect(() => {
+        const clubParam = searchParams.get("club");
+        if (clubParam !== null) {
+            setSelectedClubId(clubParam === "" ? null : clubParam);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // only on mount
+
+    function handleClubChange(id: string | null) {
+        setSelectedClubId(id);
+        const params = new URLSearchParams(Array.from(searchParams.entries()));
+        if (id === null) {
+            params.delete("club");
+        } else {
+            params.set("club", id);
+        }
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname);
+    }
 
     const filtered = useMemo(
-        () => filterByClubs(players, selectedClubIds, clubs),
-        [players, selectedClubIds, clubs]
+        () => filterByClub(players, selectedClubId, clubs),
+        [players, selectedClubId, clubs]
     );
 
     const rankedPlayers = useMemo<Player[]>(() => filtered
-        .filter(p => p.rank.now.rank !== null)
-        .sort((a, b) => b.rank.now.elo - a.rank.now.elo),
+        .filter((p: Player) => p.rank.now.rank !== null)
+        .sort((a: Player, b: Player) => b.rank.now.elo - a.rank.now.elo),
         [filtered]);
 
     const unRankedPlayers = useMemo<Player[]>(() => filtered
-        .filter(p => p.rank.now.rank === null)
-        .sort((a, b) => a.rank.now.matches_left_for_ranked - b.rank.now.matches_left_for_ranked),
+        .filter((p: Player) => p.rank.now.rank === null)
+        .sort((a: Player, b: Player) => a.rank.now.matches_left_for_ranked - b.rank.now.matches_left_for_ranked),
         [filtered]);
 
     if (loading || error) return null;
     return (
         <>
             <div className="mb-4">
-                <ClubMultiSelect value={selectedClubIds} onChange={setSelectedClubIds} />
+                <ClubSelect value={selectedClubId} onChange={handleClubChange} />
             </div>
 
             <div className="flex gap-2 items-center mb-3">
@@ -130,10 +145,10 @@ function PlayersTable() {
                 </a>
             </div>
 
-            {rankedPlayers.length === 0 && unRankedPlayers.length === 0 && selectedClubIds !== null && (
+            {rankedPlayers.length === 0 && unRankedPlayers.length === 0 && selectedClubId !== null && (
                 <p className="text-muted-foreground mb-4">
                     Нет игроков.{" "}
-                    <a href="#" className="text-blue-600 underline decoration-dashed" onClick={(e) => { e.preventDefault(); setSelectedClubIds(null); }}>
+                    <a href="#" className="text-blue-600 underline decoration-dashed" onClick={(e) => { e.preventDefault(); setSelectedClubId(null); }}>
                         Показать все клубы
                     </a>
                 </p>
@@ -209,17 +224,17 @@ function PlayersTable() {
 
 export default function PlayersPage() {
     return (
-        <main className="max-w-sm mx-auto">
-            <div className="flex justify-center">
-                <Button asChild>
+        <main className="max-w-sm mx-auto space-y-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Игроки</h1>
+                <Button asChild size="sm">
                     <Link href="/add-match">Добавить партию</Link>
                 </Button>
             </div>
-            <div className="flex items-center justify-between mt-8">
-                <h1 className="text-2xl font-semibold mb-4 mx-auto">Игроки</h1>
-            </div>
             <LoadingOrError />
-            <PlayersTable />
+            <Suspense>
+                <PlayersTable />
+            </Suspense>
         </main>
     );
 }

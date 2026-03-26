@@ -30,10 +30,10 @@ export default function MarketsPage() {
             </div>
 
             {data.active.length > 0 && (
-                <section className="space-y-3">
+                <section className="space-y-4">
                     <h2 className="text-lg font-medium">Активные рынки</h2>
                     {data.active.map(m => (
-                        <Link key={m.id} href={`/market?id=${m.id}`}>
+                        <Link key={m.id} href={`/market?id=${m.id}`} className="block">
                             <MarketCard market={m} className="hover:bg-accent transition-colors cursor-pointer" />
                         </Link>
                     ))}
@@ -45,10 +45,10 @@ export default function MarketsPage() {
             )}
 
             {data.closed.length > 0 && (
-                <section className="space-y-3">
+                <section className="space-y-4">
                     <h2 className="text-lg font-medium">Завершённые рынки</h2>
                     {data.closed.map(m => (
-                        <Link key={m.id} href={`/market?id=${m.id}`}>
+                        <Link key={m.id} href={`/market?id=${m.id}`} className="block">
                             <MarketCard market={m} className="hover:bg-accent transition-colors cursor-pointer" />
                         </Link>
                     ))}

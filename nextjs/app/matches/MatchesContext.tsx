@@ -6,6 +6,7 @@ import { getMatchesPagePromise, Match } from "../api";
 type Filters = {
   playerId?: string;
   gameId?: string;
+  clubId?: string | null;
 };
 
 type MatchesState = {
@@ -45,6 +46,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
     getMatchesPagePromise({
       player_id: filters.playerId,
       game_id: filters.gameId,
+      club_id: filters.clubId ?? undefined,
     })
       .then(page => {
         if (cancelled) return;
@@ -85,7 +87,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
 
   const setFilters = useCallback((f: Filters) => {
     setFiltersState(prev =>
-      prev.playerId === f.playerId && prev.gameId === f.gameId ? prev : f
+      prev.playerId === f.playerId && prev.gameId === f.gameId && prev.clubId === f.clubId ? prev : f
     );
   }, []);
 

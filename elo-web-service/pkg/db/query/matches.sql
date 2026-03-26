@@ -196,6 +196,21 @@ WITH paginated_matches AS (
             sqlc.narg('cursor_date')::timestamptz IS NULL
             OR m.date < sqlc.narg('cursor_date')::timestamptz
         )
+        AND (
+            sqlc.narg('club_id')::int4 IS NULL
+            OR EXISTS (
+                SELECT 1 FROM player_club_membership pcm
+                WHERE pcm.club_id = sqlc.narg('club_id')::int4
+                AND pcm.player_id = ms.player_id
+            )
+        )
+        AND (
+            sqlc.narg('no_club')::bool IS NOT TRUE
+            OR NOT EXISTS (
+                SELECT 1 FROM player_club_membership pcm2
+                WHERE pcm2.player_id = ms.player_id
+            )
+        )
     ORDER BY m.date DESC, m.id DESC
     LIMIT sqlc.arg('limit')::int4
 )

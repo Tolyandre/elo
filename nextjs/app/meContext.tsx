@@ -14,6 +14,8 @@ export type MeState = {
   invalidate: () => void;
   roundToInteger: boolean;
   setRoundToInteger: (value: boolean) => void;
+  selectedClubId: string | null;
+  setSelectedClubId: (value: string | null) => void;
 };
 
 const MeContext = createContext<MeState | undefined>(undefined);
@@ -25,6 +27,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [playerId, setPlayerId] = useState<string | undefined>(undefined);
   const [stamp, setStamp] = useState<number>(0);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
+  const [selectedClubId, setSelectedClubId] = useLocalStorage<string | null>("selected-club-id", null);
 
   useEffect(() => {
     loadMe();
@@ -63,6 +66,8 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
       invalidate,
       roundToInteger,
       setRoundToInteger,
+      selectedClubId,
+      setSelectedClubId,
     }}>
       {children}
     </MeContext.Provider>

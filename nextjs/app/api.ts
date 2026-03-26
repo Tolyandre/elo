@@ -119,6 +119,7 @@ export type MatchesPage = {
 export async function getMatchesPagePromise(params?: {
     player_id?: string;
     game_id?: string;
+    club_id?: string;
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
@@ -131,6 +132,7 @@ export async function getMatchesPagePromise(params?: {
             // Initial mode: pass search params explicitly.
             if (params?.player_id) query.set("player_id", params.player_id);
             if (params?.game_id) query.set("game_id", params.game_id);
+            if (params?.club_id) query.set("club_id", params.club_id);
         }
         if (params?.limit) query.set("limit", String(params.limit));
         const qs = query.toString();

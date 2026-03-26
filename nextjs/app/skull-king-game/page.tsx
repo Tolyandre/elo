@@ -125,8 +125,8 @@ function BidButtons({
                     variant={selected === i ? "default" : "outline"}
                     size={compact ? "default" : "lg"}
                     className={compact
-                        ? "h-10 min-w-10 md:h-12 md:min-w-12 md:text-lg"
-                        : "w-14 h-14 text-xl md:w-16 md:h-16 md:text-2xl"
+                        ? "h-10 min-w-10 md:h-12 md:min-w-12 md:text-lg lg:h-14 lg:min-w-14 lg:text-xl"
+                        : "w-14 h-14 text-xl md:w-16 md:h-16 md:text-2xl lg:w-20 lg:h-20 lg:text-3xl"
                     }
                     onClick={() => onSelect(i)}
                 >
@@ -162,7 +162,7 @@ function GameTable({
             <table className="border-collapse text-sm md:text-base">
                 <thead>
                     <tr>
-                        <th className="border border-border px-2 py-1 md:px-3 md:py-2 text-left bg-muted min-w-12 md:min-w-16">№</th>
+                        <th className="border border-border px-2 py-1 md:px-3 md:py-2 text-center bg-muted min-w-12 md:min-w-16"></th>
                         {players.map((p) => (
                             <th key={p.id} className="border border-border px-1 py-1 md:px-2 md:py-2 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
                                 <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
@@ -186,8 +186,8 @@ function GameTable({
                                     : null;
                                 const scoreDisplay = score !== null
                                     ? entry.bonus > 0
-                                        ? `${score - entry.bonus}+${entry.bonus}`
-                                        : `${score}`
+                                        ? `${score - entry.bonus > 0 ? "+" : ""}${score - entry.bonus}+${entry.bonus}`
+                                        : `${score > 0 ? "+" : ""}${score}`
                                     : null;
                                 return (
                                     <td
@@ -195,14 +195,14 @@ function GameTable({
                                         className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center whitespace-nowrap ${clickable ? "cursor-pointer hover:bg-accent" : ""}`}
                                         onClick={() => clickable && onCellClick!(ri, pi)}
                                     >
-                                        <div className="text-xs md:text-sm text-muted-foreground">
-                                            {entry.actual !== null ? entry.actual : "—"} / {entry.bid}
+                                        <div className="grid grid-cols-2 items-center gap-x-1">
+                                            <span className="text-xs md:text-sm text-muted-foreground text-center">
+                                                {entry.actual !== null ? entry.actual : "—"}/{entry.bid}
+                                            </span>
+                                            <span className={`font-semibold text-sm md:text-base text-center ${score! < 0 ? "text-red-600" : "text-green-700"}`}>
+                                                {scoreDisplay ?? ""}
+                                            </span>
                                         </div>
-                                        {scoreDisplay !== null && (
-                                            <div className={`font-semibold md:text-lg ${score! < 0 ? "text-red-600" : "text-green-700"}`}>
-                                                {scoreDisplay}
-                                            </div>
-                                        )}
                                     </td>
                                 );
                             })}
@@ -296,17 +296,17 @@ function EditCellDialog({
                             <p className="text-sm font-medium mb-2">Бонус: {bonus}</p>
                             <div className="flex flex-wrap gap-2">
                                 {[10, 20, 30, 40].map((b) => (
-                                    <Button key={b} variant="outline" className="md:h-12 md:min-w-[3.5rem] md:text-base" onClick={() => setBonus((v) => v + b)}>
+                                    <Button key={b} variant="outline" className="md:h-12 md:min-w-[3.5rem] md:text-base lg:h-14 lg:min-w-[4rem] lg:text-lg" onClick={() => setBonus((v) => v + b)}>
                                         +{b}
                                     </Button>
                                 ))}
-                                <Button variant="ghost" className="md:h-12 md:text-base" onClick={() => setBonus(0)}>
+                                <Button variant="ghost" className="md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={() => setBonus(0)}>
                                     Сбросить
                                 </Button>
                             </div>
                         </div>
                     )}
-                    <Button className="w-full md:h-12 md:text-base" onClick={handleSave}>Сохранить</Button>
+                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={handleSave}>Сохранить</Button>
                 </div>
             </DialogContent>
         </Dialog>
@@ -548,7 +548,7 @@ export default function SkullKingGamePage() {
                         )}
 
                         <Button
-                            className="w-full md:h-12 md:text-base"
+                            className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg"
                             disabled={setupPlayerIds.length < 2}
                             onClick={startGame}
                         >
@@ -628,7 +628,7 @@ export default function SkullKingGamePage() {
                             </div>
                         </CardContent>
                     </Card>
-                    <Button className="w-full md:h-12 md:text-base" onClick={startResultEntry}>
+                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={startResultEntry}>
                         Ввести результаты
                     </Button>
                 </div>
@@ -701,7 +701,7 @@ export default function SkullKingGamePage() {
                     </Card>
 
                     {currentRound < TOTAL_ROUNDS ? (
-                        <Button className="w-full md:h-12 md:text-base" onClick={startNextRound}>
+                        <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={startNextRound}>
                             Следующий раунд ({currentRound + 1} / {TOTAL_ROUNDS})
                         </Button>
                     ) : (
@@ -723,7 +723,7 @@ export default function SkullKingGamePage() {
                                 <p className="text-red-600 text-sm">{saveError}</p>
                             )}
                             <Button
-                                className="w-full md:h-12 md:text-base"
+                                className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg"
                                 disabled={
                                     saving ||
                                     (!skullKingGame && !gameState.fallbackGameId) ||
@@ -825,19 +825,19 @@ function ResultEntryCard({
                                 <Button
                                     key={b}
                                     variant="outline"
-                                    className="md:h-12 md:min-w-[3.5rem] md:text-base"
+                                    className="md:h-12 md:min-w-[3.5rem] md:text-base lg:h-14 lg:min-w-[4rem] lg:text-lg"
                                     onClick={() => setBonus((v) => v + b)}
                                 >
                                     +{b}
                                 </Button>
                             ))}
-                            <Button variant="ghost" className="md:h-12 md:text-base" onClick={() => setBonus(0)}>
+                            <Button variant="ghost" className="md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={() => setBonus(0)}>
                                 Сбросить
                             </Button>
                         </div>
                     </div>
 
-                    <Button className="w-full md:h-12 md:text-base" onClick={handleNext}>
+                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={handleNext}>
                         Дальше
                     </Button>
                 </>

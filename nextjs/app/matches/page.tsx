@@ -6,6 +6,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useMatches } from "./MatchesContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
+import { ClubSelect } from "@/components/club-select";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
@@ -24,7 +25,7 @@ export default function MatchesPage() {
 }
 
 function MatchesPageWrapped() {
-  const { roundToInteger, setRoundToInteger } = useMe();
+  const { roundToInteger, setRoundToInteger, selectedClubId, setSelectedClubId } = useMe();
   const { matches, loading, loadingMore, error, hasMore, filters, setFilters, loadMore } = useMatches();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -36,7 +37,13 @@ function MatchesPageWrapped() {
   React.useEffect(() => {
     const p = searchParams.get("player") ?? undefined;
     const g = searchParams.get("game") ?? undefined;
-    setFilters({ playerId: p, gameId: g });
+    const clubParam = searchParams.get("club");
+    // URL param takes precedence and overwrites the saved setting
+    const clubId = clubParam !== null ? (clubParam === "" ? null : clubParam) : selectedClubId;
+    if (clubParam !== null) {
+      setSelectedClubId(clubParam === "" ? null : clubParam);
+    }
+    setFilters({ playerId: p, gameId: g, clubId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // only on mount — subsequent changes go through handlers
 
@@ -79,15 +86,19 @@ function MatchesPageWrapped() {
     updateQueryParam("game", id);
   }
 
+  function handleClubChange(id: string | null) {
+    setFilters({ ...filters, clubId: id });
+    setSelectedClubId(id);
+    updateQueryParam("club", id ?? undefined);
+  }
+
   return (
-    <main className="max-w-sm mx-auto">
-      <div className="flex justify-center">
-        <Button asChild>
+    <main className="max-w-sm mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Партии</h1>
+        <Button asChild size="sm">
           <Link href="/add-match">Добавить партию</Link>
         </Button>
-      </div>
-      <div className="flex items-center justify-between mt-8">
-        <h1 className="text-2xl font-semibold mb-4 mx-auto">Партии</h1>
       </div>
 
       {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
@@ -96,6 +107,14 @@ function MatchesPageWrapped() {
         <Card>
           <CardContent>
             <FieldGroup>
+
+              <Field>
+                <FieldLabel className="sr-only">Клуб</FieldLabel>
+                <FieldContent>
+                  <ClubSelect value={filters.clubId ?? null} onChange={handleClubChange} />
+                </FieldContent>
+              </Field>
+
               <Field>
                 <FieldLabel className="sr-only">Игрок</FieldLabel>
                 <FieldContent>
