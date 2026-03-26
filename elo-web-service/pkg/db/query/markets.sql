@@ -1,7 +1,7 @@
 -- name: CreateMarket :one
-INSERT INTO outcome_markets (title, market_type, starts_at, closes_at, created_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING *;
+INSERT INTO outcome_markets (market_type, starts_at, closes_at, created_by)
+VALUES ($1, $2, $3, $4)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id;
 
 -- name: CreateMatchWinnerParams :exec
 INSERT INTO outcome_market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
@@ -13,22 +13,42 @@ VALUES ($1, $2, $3, $4, $5);
 
 -- name: GetMarketWithPools :one
 SELECT
-    om.*,
+    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
+    mwp.required_player_ids,
+    mwp.game_id AS mw_game_id,
+    wsp.game_id AS ws_game_id,
+    wsp.wins_required,
+    wsp.max_losses
 FROM outcome_markets om
+LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN outcome_bets ob ON ob.market_id = om.id
 WHERE om.id = $1
-GROUP BY om.id;
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
+         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses;
 
 -- name: ListMarketsWithPools :many
 SELECT
-    om.*,
+    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
+    mwp.required_player_ids,
+    mwp.game_id AS mw_game_id,
+    wsp.game_id AS ws_game_id,
+    wsp.wins_required,
+    wsp.max_losses
 FROM outcome_markets om
+LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN outcome_bets ob ON ob.market_id = om.id
-GROUP BY om.id
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
+         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 ORDER BY om.created_at DESC;
 
 -- name: GetMatchWinnerParams :one
@@ -128,13 +148,23 @@ DELETE FROM player_ratings WHERE market_id = $1;
 
 -- name: ListMarketsByResolutionMatch :many
 SELECT
-    om.*,
+    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
+    mwp.required_player_ids,
+    mwp.game_id AS mw_game_id,
+    wsp.game_id AS ws_game_id,
+    wsp.wins_required,
+    wsp.max_losses
 FROM outcome_markets om
+LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN outcome_bets ob ON ob.market_id = om.id
 WHERE om.resolution_match_id = $1
-GROUP BY om.id;
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
+         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses;
 
 -- name: GetSettlementDetails :many
 SELECT bsd.player_id, p.name AS player_name, bsd.staked, bsd.earned

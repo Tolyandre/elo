@@ -1,8 +1,9 @@
 "use client"
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createMarketPromise } from "@/app/api";
+import { OutcomeMarket, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -68,6 +69,22 @@ export default function NewMarketPage() {
         } finally {
             setSubmitting(false);
         }
+    }
+
+    function buildPreviewMarket(): OutcomeMarket {
+        const targetID = marketType === "match_winner" ? targetPlayerID : streakTargetPlayerID;
+        const params = marketType === "match_winner"
+            ? { required_player_ids: requiredPlayerIDs, game_id: gameID ?? null }
+            : { game_id: streakGameID ?? "", wins_required: parseInt(winsRequired) || 0, max_losses: maxLosses !== "" ? parseInt(maxLosses) : null };
+        const startsAtISO = startsAtMode === "specific" && startsAt ? new Date(startsAt).toISOString() : new Date().toISOString();
+        const closesAtISO = closesAt ? new Date(closesAt).toISOString() : null;
+        return {
+            id: "", market_type: marketType, status: "open",
+            starts_at: startsAtISO, closes_at: closesAtISO,
+            created_at: null, resolved_at: null,
+            yes_pool: 0, no_pool: 0, yes_coefficient: 1, no_coefficient: 1,
+            target_player_id: targetID, params,
+        };
     }
 
     return (
@@ -188,6 +205,8 @@ export default function NewMarketPage() {
                         </div>
                     </>
                 )}
+
+                <ResolutionDescription market={buildPreviewMarket()} />
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 

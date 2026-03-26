@@ -18,22 +18,13 @@ var ErrMarketNotOpen = errors.New("рынок не открыт")
 var ErrPlayerHasNoLinkedPlayer = errors.New("у пользователя нет привязанного игрока")
 
 type CreateMarketParams struct {
-	Title      string
-	MarketType string // "match_winner" | "win_streak"
-	StartsAt    time.Time
-	ClosesAt    time.Time
-	CreatedBy   int32
+	MarketType string
+	StartsAt   time.Time
+	ClosesAt   time.Time
+	CreatedBy  int32
 
-	// match_winner params
-	TargetPlayerID     int32
-	RequiredPlayerIDs  []int32
-	GameID             *int32
-
-	// win_streak params
-	// (also uses TargetPlayerID)
-	StreakGameID  *int32
-	WinsRequired  *int32
-	MaxLosses     *int32
+	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
+	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
 }
 
 type IMarketService interface {
@@ -75,6 +66,11 @@ func NewMarketService(pool *pgxpool.Pool) IMarketService {
 }
 
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.OutcomeMarket, error) {
+	handler, ok := marketTypeHandlers[params.MarketType]
+	if !ok {
+		return db.OutcomeMarket{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
+	}
+
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.OutcomeMarket{}, fmt.Errorf("begin tx: %w", err)
@@ -84,62 +80,23 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	q := s.Queries.WithTx(tx)
 
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
-		Title:       params.Title,
-		MarketType:  params.MarketType,
-		StartsAt:    pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
-		ClosesAt:    pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
-		CreatedBy:   params.CreatedBy,
+		MarketType: params.MarketType,
+		StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
+		ClosesAt:   pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
+		CreatedBy:  params.CreatedBy,
 	})
 	if err != nil {
 		return db.OutcomeMarket{}, fmt.Errorf("insert market: %w", err)
 	}
 
-	switch params.MarketType {
-	case "match_winner":
-		gameID := pgtype.Int4{}
-		if params.GameID != nil {
-			gameID = pgtype.Int4{Int32: *params.GameID, Valid: true}
-		}
-		requiredIDs := params.RequiredPlayerIDs
-		if requiredIDs == nil {
-			requiredIDs = []int32{}
-		}
-		if err := q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
-			MarketID:          market.ID,
-			TargetPlayerID:    params.TargetPlayerID,
-			RequiredPlayerIds: requiredIDs,
-			GameID:            gameID,
-		}); err != nil {
-			return db.OutcomeMarket{}, fmt.Errorf("insert match_winner params: %w", err)
-		}
-
-	case "win_streak":
-		maxLosses := pgtype.Int4{}
-		if params.MaxLosses != nil {
-			maxLosses = pgtype.Int4{Int32: *params.MaxLosses, Valid: true}
-		}
-		if params.StreakGameID == nil || params.WinsRequired == nil {
-			return db.OutcomeMarket{}, fmt.Errorf("win_streak requires streak_game_id and wins_required")
-		}
-		if err := q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
-			MarketID:       market.ID,
-			TargetPlayerID: params.TargetPlayerID,
-			GameID:         *params.StreakGameID,
-			WinsRequired:   *params.WinsRequired,
-			MaxLosses:      maxLosses,
-		}); err != nil {
-			return db.OutcomeMarket{}, fmt.Errorf("insert win_streak params: %w", err)
-		}
-
-	default:
-		return db.OutcomeMarket{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
+	if err := handler.CreateParams(ctx, q, market.ID, params); err != nil {
+		return db.OutcomeMarket{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return db.OutcomeMarket{}, fmt.Errorf("commit tx: %w", err)
 	}
 
-	// Schedule the next expiry timer after creating a new market
 	s.ScheduleNextExpiry(context.Background())
 
 	return market, nil
@@ -178,12 +135,10 @@ func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID i
 
 	q := s.Queries.WithTx(tx)
 
-	// Lock player to prevent concurrent reservation races
 	if _, err := q.LockPlayerForEloCalculation(ctx, playerID); err != nil {
 		return fmt.Errorf("lock player: %w", err)
 	}
 
-	// Check market is open
 	market, err := q.GetMarketWithPools(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get market: %w", err)
@@ -192,7 +147,6 @@ func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID i
 		return ErrMarketNotOpen
 	}
 
-	// Check reservation limit
 	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
 	if err != nil {
 		return fmt.Errorf("get reserved amount: %w", err)
@@ -222,19 +176,16 @@ func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID i
 // TriggerResolutionForMatch checks all open markets and resolves them if the given match satisfies their conditions.
 // Must be called within an active transaction (q is transactional Queries).
 func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID int32) error {
-	// Load match details
 	match, err := q.GetMatch(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("get match %d: %w", matchID, err)
 	}
 
-	// Load match scores
 	scores, err := q.GetMatchScoresForMatch(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("get scores for match %d: %w", matchID, err)
 	}
 
-	// Build participation and winner sets
 	participantSet := make(map[int32]bool)
 	playerScoreMap := make(map[int32]float64)
 	maxScore := -1e18
@@ -246,84 +197,18 @@ func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Que
 		}
 	}
 
-	matchDate := match.Date.Time
-
-	// --- match_winner markets ---
-	mwMarkets, err := q.ListOpenMatchWinnerMarkets(ctx)
-	if err != nil {
-		return fmt.Errorf("list match_winner markets: %w", err)
-	}
-	for _, m := range mwMarkets {
-		// Check date range
-		if matchDate.Before(m.StartsAt.Time) || matchDate.After(m.ClosesAt.Time) {
-			continue
-		}
-		// Check game_id filter
-		if m.GameID.Valid && m.GameID.Int32 != match.GameID {
-			continue
-		}
-		// Check required players all participated
-		allPresent := true
-		for _, reqID := range m.RequiredPlayerIds {
-			if !participantSet[reqID] {
-				allPresent = false
-				break
-			}
-		}
-		if !allPresent {
-			continue
-		}
-		// Check target player participated
-		if !participantSet[m.TargetPlayerID] {
-			continue
-		}
-		// Target player won (has max score)?
-		resolutionMatchID := matchID
-		if playerScoreMap[m.TargetPlayerID] >= maxScore {
-			if err := s.SettleMarket(ctx, q, m.ID, "resolved_yes", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle match_winner market %d yes: %w", m.ID, err)
-			}
-		} else {
-			if err := s.SettleMarket(ctx, q, m.ID, "resolved_no", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle match_winner market %d no: %w", m.ID, err)
-			}
-		}
+	matchInfo := MatchInfo{
+		Match:          match,
+		ParticipantSet: participantSet,
+		PlayerScoreMap: playerScoreMap,
+		MaxScore:       maxScore,
 	}
 
-	// --- win_streak markets ---
-	wsMarkets, err := q.ListOpenWinStreakMarkets(ctx)
-	if err != nil {
-		return fmt.Errorf("list win_streak markets: %w", err)
-	}
-	for _, m := range wsMarkets {
-		// Only relevant if the match involves the target player in the right game
-		if !participantSet[m.TargetPlayerID] || match.GameID != m.GameID {
-			continue
-		}
-		// Tally stats from starts_at to now
-		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
-			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
-			Date:     m.StartsAt,
-			Date_2:   pgtype.Timestamptz{Time: matchDate, Valid: true},
-		})
-		if err != nil {
-			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
-		}
+	settle := s.SettleMarket
 
-		resolutionMatchID := matchID
-		// Check loss limit (no-condition)
-		if m.MaxLosses.Valid && stats.Losses > m.MaxLosses.Int32 {
-			if err := s.SettleMarket(ctx, q, m.ID, "resolved_no", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle win_streak market %d no (loss limit): %w", m.ID, err)
-			}
-			continue
-		}
-		// Check win condition
-		if stats.Wins >= m.WinsRequired {
-			if err := s.SettleMarket(ctx, q, m.ID, "resolved_yes", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle win_streak market %d yes: %w", m.ID, err)
-			}
+	for marketType, handler := range marketTypeHandlers {
+		if err := handler.TriggerResolutionForMatch(ctx, q, matchInfo, settle); err != nil {
+			return fmt.Errorf("resolve %s markets: %w", marketType, err)
 		}
 	}
 
@@ -354,22 +239,19 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 // SettleMarket applies parimutuel payout and updates the market status.
 // Must be called within an active transaction.
 func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome string, resolvedAt time.Time, resolutionMatchID *int32) error {
-	// Aggregate bets by player and outcome
 	rows, err := q.GetBetsAggregatedByOutcome(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get bets for market %d: %w", marketID, err)
 	}
 
-	// Build per-player maps
 	type playerData struct {
-		totalStaked     float64
-		winningOutcome  float64 // staked on the winning outcome
+		totalStaked    float64
+		winningOutcome float64
 	}
 	players := make(map[int32]*playerData)
 	totalPool := 0.0
 	winningPool := 0.0
 
-	// Map "resolved_yes"/"resolved_no" to the bet-side string stored in outcome_bets
 	winningSide := ""
 	switch outcome {
 	case "resolved_yes":
@@ -390,7 +272,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	// For cancellation: everyone gets staked back
 	if outcome == "cancelled" {
 		winningPool = totalPool
 		for pid := range players {
@@ -398,18 +279,15 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	// Compute earned for each player
 	earned := make(map[int32]float64)
 	for pid, pd := range players {
 		if winningPool == 0 {
-			// Edge case: nobody bet on winning side → return stakes to all
 			earned[pid] = pd.totalStaked
 		} else {
 			earned[pid] = (pd.winningOutcome / winningPool) * totalPool
 		}
 	}
 
-	// Write settlement records and update player ratings
 	allPlayerIDs := make([]int32, 0, len(players))
 	for pid := range players {
 		allPlayerIDs = append(allPlayerIDs, pid)
@@ -431,11 +309,9 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			return fmt.Errorf("insert settlement detail for player %d: %w", pid, err)
 		}
 
-		// Get current Elo (may be starting_elo if no history)
 		var currentElo float64
 		latestElo, err := q.GetPlayerLatestGlobalElo(ctx, pid)
 		if err != nil {
-			// No history - get starting elo from settings
 			settings, sErr := q.GetEloSettingsForDate(ctx, resolvedAtTz)
 			if sErr != nil {
 				return fmt.Errorf("get elo settings: %w", sErr)
@@ -456,7 +332,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	// Update market status
 	resMatchID := pgtype.Int4{}
 	if resolutionMatchID != nil {
 		resMatchID = pgtype.Int4{Int32: *resolutionMatchID, Valid: true}
@@ -470,7 +345,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		return fmt.Errorf("resolve market %d: %w", marketID, err)
 	}
 
-	// Update bet limits for all participants
 	if err := RecalculateBetLimits(ctx, q, allPlayerIDs); err != nil {
 		return fmt.Errorf("recalculate bet limits: %w", err)
 	}
@@ -481,7 +355,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 // ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 // Runs in its own transaction.
 func (s *MarketService) ExpireOverdueMarkets(ctx context.Context) error {
-	// Cancel overdue match_winner markets
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -490,40 +363,11 @@ func (s *MarketService) ExpireOverdueMarkets(ctx context.Context) error {
 
 	q := s.Queries.WithTx(tx)
 
-	overdueMatchWinner, err := q.ListOverdueMatchWinnerMarkets(ctx)
-	if err != nil {
-		return fmt.Errorf("list overdue match_winner markets: %w", err)
-	}
-	for _, m := range overdueMatchWinner {
-		closesAt := m.ClosesAt.Time
-		if err := s.SettleMarket(ctx, q, m.ID, "cancelled", closesAt, nil); err != nil {
-			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
-		}
-	}
+	settle := s.SettleMarket
 
-	// Resolve overdue win_streak markets
-	overdueWinStreak, err := q.ListOverdueWinStreakMarkets(ctx)
-	if err != nil {
-		return fmt.Errorf("list overdue win_streak markets: %w", err)
-	}
-	for _, m := range overdueWinStreak {
-		closesAt := m.ClosesAt.Time
-		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
-			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
-			Date:     m.StartsAt,
-			Date_2:   m.ClosesAt,
-		})
-		if err != nil {
-			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
-		}
-
-		finalOutcome := "resolved_no"
-		if stats.Wins >= m.WinsRequired && (!m.MaxLosses.Valid || stats.Losses <= m.MaxLosses.Int32) {
-			finalOutcome = "resolved_yes"
-		}
-		if err := s.SettleMarket(ctx, q, m.ID, finalOutcome, closesAt, nil); err != nil {
-			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)
+	for marketType, handler := range marketTypeHandlers {
+		if err := handler.ExpireResolve(ctx, q, settle); err != nil {
+			return fmt.Errorf("expire %s markets: %w", marketType, err)
 		}
 	}
 
@@ -542,7 +386,6 @@ func (s *MarketService) ScheduleNextExpiry(ctx context.Context) {
 
 	nextExpiry, err := s.Queries.GetNearestMarketExpiry(ctx)
 	if err != nil || !nextExpiry.Valid {
-		// No open markets
 		return
 	}
 

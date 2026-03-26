@@ -3,8 +3,11 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { OutcomeMarket, getMarketsPromise, cancelMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { usePlayers } from "@/app/players/PlayersContext";
+import { useGames } from "@/app/gamesContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
+import { getMarketTitle } from "@/app/market/marketTypes";
 import {
     Dialog,
     DialogContent,
@@ -16,6 +19,8 @@ import {
 
 export default function AdminMarketsPage() {
     const me = useMe();
+    const { players } = usePlayers();
+    const { games } = useGames();
     const [markets, setMarkets] = useState<OutcomeMarket[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -80,7 +85,7 @@ export default function AdminMarketsPage() {
                     <DialogHeader>
                         <DialogTitle>Отменить рынок?</DialogTitle>
                         <DialogDescription>
-                            «{cancelTarget?.title}» будет отменён. Ставки будут возвращены участникам.
+                            «{cancelTarget ? getMarketTitle(cancelTarget, players, games) : ""}» будет отменён. Ставки будут возвращены участникам.
                             Это действие необратимо.
                         </DialogDescription>
                     </DialogHeader>

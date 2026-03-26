@@ -3,6 +3,9 @@ import React from "react";
 import { OutcomeMarket, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePlayers } from "@/app/players/PlayersContext";
+import { useGames } from "@/app/gamesContext";
+import { getMarketTitle } from "@/app/market/marketTypes";
 
 export function statusLabel(status: OutcomeMarket["status"]): string {
     switch (status) {
@@ -73,6 +76,9 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
 }
 
 export function MarketCard({ market, className }: { market: OutcomeMarket; className?: string }) {
+    const { players } = usePlayers();
+    const { games } = useGames();
+    const title = getMarketTitle(market, players, games);
     const isOpen = market.status === "open";
     const date = isOpen
         ? (market.closes_at ? new Date(market.closes_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null)
@@ -83,7 +89,7 @@ export function MarketCard({ market, className }: { market: OutcomeMarket; class
         <Card className={className}>
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{market.title}</CardTitle>
+                    <CardTitle className="text-base">{title}</CardTitle>
                     <Badge variant={statusVariant(market.status)} className="shrink-0">
                         {statusLabel(market.status)}
                     </Badge>

@@ -61,7 +61,6 @@ type OutcomeBet struct {
 
 type OutcomeMarket struct {
 	ID                int32              `json:"id"`
-	Title             string             `json:"title"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`

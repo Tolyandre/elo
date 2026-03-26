@@ -620,22 +620,6 @@ export type SettlementDetail = {
     earned: number;
 };
 
-export type OutcomeMarket = {
-    id: string;
-    title: string;
-    market_type: 'match_winner' | 'win_streak';
-    status: 'open' | 'resolved_yes' | 'resolved_no' | 'cancelled';
-    starts_at: string | null;
-    closes_at: string | null;
-    created_at: string | null;
-    resolved_at: string | null;
-    yes_pool: number;
-    no_pool: number;
-    yes_coefficient: number;
-    no_coefficient: number;
-    settlement?: SettlementDetail[];
-};
-
 export type MatchWinnerParams = {
     required_player_ids: string[];
     game_id: string | null;
@@ -647,9 +631,24 @@ export type WinStreakParams = {
     max_losses: number | null;
 };
 
-export type MarketDetail = OutcomeMarket & {
+export type OutcomeMarket = {
+    id: string;
+    market_type: 'match_winner' | 'win_streak';
+    status: 'open' | 'resolved_yes' | 'resolved_no' | 'cancelled';
+    starts_at: string | null;
+    closes_at: string | null;
+    created_at: string | null;
+    resolved_at: string | null;
+    yes_pool: number;
+    no_pool: number;
+    yes_coefficient: number;
+    no_coefficient: number;
     target_player_id: string;
     params: MatchWinnerParams | WinStreakParams | null;
+    settlement?: SettlementDetail[];
+};
+
+export type MarketDetail = OutcomeMarket & {
     my_yes_staked?: number;
     my_no_staked?: number;
     projected_yes_reward?: number;

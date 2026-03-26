@@ -70,8 +70,8 @@ BEGIN
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 989.8239449167427)  / 400.0)) WHERE id = 102;
 
     -- Market 1: open match_winner (Alice beats Bob in Skull King)
-    INSERT INTO outcome_markets (id, title, market_type, status, starts_at, closes_at, created_by)
-    VALUES (1, 'Alice победит Bob в Skull King', 'match_winner', 'open',
+    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by)
+    VALUES (1, 'match_winner', 'open',
             NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
@@ -80,8 +80,8 @@ BEGIN
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
-    INSERT INTO outcome_markets (id, title, market_type, status, starts_at, closes_at, created_by)
-    VALUES (2, 'Bob победит в Skull King 3 раза, не проиграв более 1 раз', 'win_streak', 'open',
+    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by)
+    VALUES (2, 'win_streak', 'open',
             NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
@@ -90,8 +90,8 @@ BEGIN
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 3: resolved_yes match_winner
-    INSERT INTO outcome_markets (id, title, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id)
-    VALUES (3, 'Alice победит Bob, Carol в Skull King', 'match_winner', 'resolved_yes',
+    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id)
+    VALUES (3, 'match_winner', 'resolved_yes',
             NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days', 200)
     ON CONFLICT (id) DO NOTHING;
 
@@ -100,8 +100,8 @@ BEGIN
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 4: cancelled match_winner (expired without matching match)
-    INSERT INTO outcome_markets (id, title, market_type, status, starts_at, closes_at, created_by, resolved_at)
-    VALUES (4, 'Carol победит Alice', 'match_winner', 'cancelled',
+    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at)
+    VALUES (4, 'match_winner', 'cancelled',
             NOW() - INTERVAL '14 days', NOW() - INTERVAL '7 days', dev_user_id, NOW() - INTERVAL '7 days')
     ON CONFLICT (id) DO NOTHING;
 
