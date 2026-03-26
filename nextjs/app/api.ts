@@ -649,7 +649,6 @@ export type WinStreakParams = {
 
 export type MarketDetail = OutcomeMarket & {
     target_player_id: string;
-    target_player_name: string;
     params: MatchWinnerParams | WinStreakParams | null;
     my_yes_staked?: number;
     my_no_staked?: number;

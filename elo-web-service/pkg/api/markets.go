@@ -119,9 +119,8 @@ type marketPoolsJson struct {
 
 type marketDetailJson struct {
 	marketPoolsJson
-	TargetPlayerID   string      `json:"target_player_id"`
-	TargetPlayerName string      `json:"target_player_name"`
-	Params           interface{} `json:"params"`
+	TargetPlayerID string      `json:"target_player_id"`
+	Params         interface{} `json:"params"`
 	// Per-player fields (populated when authenticated with player_id)
 	MyYesStaked        *float64 `json:"my_yes_staked,omitempty"`
 	MyNoStaked         *float64 `json:"my_no_staked,omitempty"`

@@ -1,10 +1,116 @@
 "use client"
 import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { MarketDetail, getMarketByIdPromise, placeBetPromise } from "@/app/api";
+import { MarketDetail, MatchWinnerParams, WinStreakParams, getMarketByIdPromise, placeBetPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { usePlayers } from "@/app/players/PlayersContext";
+import { useGames } from "@/app/gamesContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
+
+function ResolutionDescription({ market }: { market: MarketDetail }) {
+    const { players } = usePlayers();
+    const { games } = useGames();
+
+    const targetName = players.find((p) => p.id === market.target_player_id)?.name ?? "";
+
+    const fmt = (d: string) => new Date(d).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    const startsAt = market.starts_at ? fmt(market.starts_at) : null;
+    const closesAt = market.closes_at ? fmt(market.closes_at) : null;
+    const period = startsAt && closesAt
+        ? `с ${startsAt} по ${closesAt}`
+        : closesAt ? `до ${closesAt}` : null;
+
+    let yesCondition = "";
+    let noCondition = "";
+    let cancelCondition = "";
+
+    if (market.market_type === "match_winner") {
+        const params = market.params as MatchWinnerParams;
+        const allNames = [targetName, ...(params?.required_player_ids ?? [])
+            .map((id) => players.find((p) => p.id === id)?.name ?? "?")].join(", ");
+        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const requiredNames = (params?.required_player_ids ?? [])
+            .map((id) => players.find((p) => p.id === id)?.name ?? "?")
+            .join(", ");
+        const vs = requiredNames ? ` в партии с ${requiredNames} (и возможно другими игроками)` : " в партии с любым составом";
+        const inGame = game ? ` в ${game.name}` : "";
+        const matchDesc = `Партия с участием ${allNames}${inGame}`;
+        yesCondition = `${targetName} занимает первое место${vs}${inGame}`;
+        noCondition = `${targetName} не занимает первое место${vs}${inGame}`;
+        cancelCondition = period ? `${matchDesc} не сыграна в период ${period}` : `${matchDesc} не сыграна`;
+    } else if (market.market_type === "win_streak") {
+        const params = market.params as WinStreakParams;
+        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const inGame = game ? ` в ${game.name}` : "";
+        const wins = params?.wins_required ?? "?";
+        const lossLimit = params?.max_losses;
+        const lossStr = lossLimit != null ? `, допустив не более ${lossLimit} поражений` : "";
+        const periodStr = period ? ` в период ${period}` : "";
+        yesCondition = `${targetName} одерживает ${wins} побед${inGame}${lossStr}${periodStr}`;
+        noCondition = lossLimit != null
+            ? `${targetName} не одерживает ${wins} побед${inGame}${periodStr}, либо допускает более ${lossLimit} поражений`
+            : `${targetName} не одерживает ${wins} побед${inGame}${periodStr}`;
+        cancelCondition = "Автоматических условий нет — рынок всегда разрешается в Да или Нет";
+    }
+
+    return (
+        <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
+            <div className="flex gap-2">
+                <span className="font-medium text-green-600 dark:text-green-400 shrink-0 w-15">ДА:</span>
+                <span className="text-muted-foreground">{yesCondition}</span>
+            </div>
+            <div className="flex gap-2">
+                <span className="font-medium text-red-500 dark:text-red-400 shrink-0 w-15">НЕТ:</span>
+                <span className="text-muted-foreground">{noCondition}</span>
+            </div>
+            <div className="flex gap-2">
+                <span className="font-medium text-muted-foreground shrink-0 w-15">Отмена:</span>
+                <span className="text-muted-foreground">{cancelCondition}</span>
+            </div>
+        </div>
+    );
+}
+
+function ProjectedOutcome({ market }: { market: MarketDetail }) {
+    const myYes = market.my_yes_staked ?? 0;
+    const myNo = market.my_no_staked ?? 0;
+    const projYes = market.projected_yes_reward ?? 0;
+    const projNo = market.projected_no_reward ?? 0;
+    const totalStaked = myYes + myNo;
+
+    if (totalStaked === 0) return null;
+
+    // Mirror server algorithm: if winning pool is 0, everyone gets stake back (net = 0).
+    // Otherwise winners get (staked / winningPool) * totalPool, losers get 0.
+    const earnedIfYes = market.yes_pool === 0 ? totalStaked : projYes;
+    const earnedIfNo = market.no_pool === 0 ? totalStaked : projNo;
+    const netIfYes = earnedIfYes - totalStaked;
+    const netIfNo = earnedIfNo - totalStaked;
+
+    function DeltaRow({ label, net, earned }: { label: string; net: number; earned: number }) {
+        const positive = net >= 0;
+        return (
+            <div className="flex justify-between text-sm gap-2">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="flex gap-2 shrink-0">
+                    <span className="text-muted-foreground">({totalStaked.toFixed(1)} → {earned.toFixed(1)})</span>
+                    <span className={`w-12 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                        {positive ? "+" : ""}{net.toFixed(1)}
+                    </span>
+                </span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
+            <p className="text-sm text-muted-foreground font-medium tracking-wide mb-2">Если рынок разрешится сейчас</p>
+            <DeltaRow label="ДА" net={netIfYes} earned={earnedIfYes} />
+            <DeltaRow label="НЕТ" net={netIfNo} earned={earnedIfNo} />
+        </div>
+    );
+}
 
 function OutcomeColumn({
     label,
@@ -76,8 +182,8 @@ function MarketPageContent() {
     const betDisabledReason = !isLoggedIn
         ? "Авторизуйтесь и привяжите игрока в Настройках"
         : !hasPlayer
-        ? "Привяжите игрока в Настройках"
-        : "";
+            ? "Привяжите игрока в Настройках"
+            : "";
 
     async function handleBet(outcome: "yes" | "no") {
         if (outcome === "yes") setBettingYes(true);
@@ -99,6 +205,8 @@ function MarketPageContent() {
         <main className="max-w-sm mx-auto space-y-4">
             <MarketCard market={market} />
 
+            <ResolutionDescription market={market} />
+
             <div className="flex flex-col sm:flex-row gap-3">
                 <OutcomeColumn
                     label="ДА"
@@ -116,13 +224,15 @@ function MarketPageContent() {
                 />
             </div>
 
+            {isOpen && <ProjectedOutcome market={market} />}
+
             {isOpen && !canBet && betDisabledReason && (
                 <p className="text-sm text-muted-foreground text-center">{betDisabledReason}</p>
             )}
 
             {isOpen && reserved !== undefined && betLimit !== undefined && (
                 <p className="text-sm text-muted-foreground text-center">
-                    Лимит: {reserved.toFixed(1)} забронировано / {betLimit.toFixed(1)} доступно
+                    Всего у вас активных ставок на {reserved.toFixed(1)} из лимита {betLimit.toFixed(1)}
                 </p>
             )}
         </main>

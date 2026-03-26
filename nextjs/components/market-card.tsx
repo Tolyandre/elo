@@ -36,10 +36,10 @@ function PoolBar({ yesPool, noPool, yesCoeff, noCoeff }: {
                     className="flex items-center justify-start pl-1.5 bg-green-500 text-white overflow-hidden whitespace-nowrap transition-all"
                     style={{ width: `${yesPercent}%` }}
                 >
-                    {yesPercent > 15 && `${Math.round(yesPercent)}%`}
+                    {yesPercent > 15 && `${yesPool.toFixed(1)} (${Math.round(yesPercent)}%)`}
                 </div>
                 <div className="flex items-center justify-end pr-1.5 bg-red-400 text-white overflow-hidden whitespace-nowrap flex-1 transition-all">
-                    {noPercent > 15 && `${Math.round(noPercent)}%`}
+                    {noPercent > 15 && `${noPool.toFixed(1)} (${Math.round(noPercent)}%)`}
                 </div>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
@@ -75,8 +75,8 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
 export function MarketCard({ market, className }: { market: OutcomeMarket; className?: string }) {
     const isOpen = market.status === "open";
     const date = isOpen
-        ? (market.closes_at ? new Date(market.closes_at).toLocaleString("ru-RU") : null)
-        : (market.resolved_at ? new Date(market.resolved_at).toLocaleString("ru-RU") : null);
+        ? (market.closes_at ? new Date(market.closes_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null)
+        : (market.resolved_at ? new Date(market.resolved_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null);
     const dateLabel = isOpen ? "Закрывается" : market.status === "cancelled" ? "Отменён" : "Разрешён";
 
     return (
