@@ -29,6 +29,7 @@ type Querier interface {
 	DeleteClub(ctx context.Context, id int32) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
+	DeleteMarket(ctx context.Context, id int32) error
 	DeleteMatchScores(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
 	DeletePlayerRatingsByMarket(ctx context.Context, marketID pgtype.Int4) error

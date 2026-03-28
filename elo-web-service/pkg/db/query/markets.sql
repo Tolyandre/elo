@@ -179,6 +179,9 @@ SELECT bet_limit FROM players WHERE id = $1;
 -- name: UpdatePlayerBetLimit :exec
 UPDATE players SET bet_limit = $2 WHERE id = $1;
 
+-- name: DeleteMarket :exec
+DELETE FROM outcome_markets WHERE id = $1;
+
 -- name: GetPlayerStreakStats :one
 SELECT
     COUNT(CASE WHEN ms.score = max_scores.max_score THEN 1 END)::int AS wins,

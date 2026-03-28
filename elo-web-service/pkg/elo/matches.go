@@ -28,6 +28,11 @@ type IMatchService interface {
 	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 	RecalculateAllGameElo(ctx context.Context) error
+
+	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
+	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
+	// market is already resolved or cancelled.
+	DeleteMarketAndRecalculate(ctx context.Context, marketID int32) error
 }
 
 // AddMatch adds a single match with Elo calculations
@@ -238,6 +243,47 @@ func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
 	}
 
 	return tx.Commit(ctx)
+}
+
+// DeleteMarketAndRecalculate hard-deletes an open market and recalculates Elo
+// from the market's created_at date. Everything runs in a single transaction.
+func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID int32) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := s.Queries.WithTx(tx)
+
+	market, err := q.GetMarketWithPools(ctx, marketID)
+	if err != nil {
+		return fmt.Errorf("get market: %w", err)
+	}
+	if market.Status != "open" {
+		return ErrMarketNotOpen
+	}
+
+	createdAt := market.CreatedAt.Time
+
+	if err := q.DeletePlayerRatingsByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
+		return fmt.Errorf("delete player ratings for market %d: %w", marketID, err)
+	}
+
+	if err := q.DeleteMarket(ctx, marketID); err != nil {
+		return fmt.Errorf("delete market %d: %w", marketID, err)
+	}
+
+	if err := s.recalculateEloFromDate(ctx, q, createdAt); err != nil {
+		return fmt.Errorf("recalculate elo from %v: %w", createdAt, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
+	s.MarketService.ScheduleNextExpiry(context.Background())
+	return nil
 }
 
 // recalculateEloFromDate recalculates Elo ratings for all matches from the given date onwards

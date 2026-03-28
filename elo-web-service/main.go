@@ -95,7 +95,7 @@ func main() {
 	router.GET("/markets", oauth2.OptionalDeserializeUser(), api.ListMarkets)
 	router.POST("/markets", oauth2.DeserializeUser(), api.CreateMarket)
 	router.GET("/markets/:id", oauth2.OptionalDeserializeUser(), api.GetMarket)
-	router.PATCH("/markets/:id/cancel", oauth2.DeserializeUser(), api.CancelMarket)
+	router.DELETE("/markets/:id", oauth2.DeserializeUser(), api.DeleteMarket)
 	router.POST("/markets/:id/bets", oauth2.DeserializeUser(), api.PlaceBet)
 
 	auth_router := router.Group("/auth")

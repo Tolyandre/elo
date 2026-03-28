@@ -101,6 +101,15 @@ func (q *Queries) DeleteBetSettlementDetails(ctx context.Context, marketID int32
 	return err
 }
 
+const deleteMarket = `-- name: DeleteMarket :exec
+DELETE FROM outcome_markets WHERE id = $1
+`
+
+func (q *Queries) DeleteMarket(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteMarket, id)
+	return err
+}
+
 const deletePlayerRatingsByMarket = `-- name: DeletePlayerRatingsByMarket :exec
 DELETE FROM player_ratings WHERE market_id = $1
 `

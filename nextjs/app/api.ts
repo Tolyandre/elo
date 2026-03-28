@@ -707,10 +707,10 @@ export async function createMarketPromise(payload: {
     }
 }
 
-export async function cancelMarketPromise(id: string): Promise<void> {
+export async function deleteMarketPromise(id: string): Promise<void> {
     try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}/cancel`, {
-            method: 'PATCH',
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, {
+            method: 'DELETE',
             credentials: 'include',
         });
         if (res.status === 204) return;
