@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test
 
 ## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
 # dev-up:
@@ -30,6 +30,13 @@ backend-run:
 ## Run the frontend dev server
 frontend-run:
 	pnpm --dir ./nextjs dev
+
+## Copy production DB (elo-web-service) to test DB (elo-web-service-test), preserving test DB privileges
+copy-prod-db-to-test:
+	set -a && . elo-web-service/.env && set +a && \
+	  sudo -u postgres psql -f scripts/copy-prod-db-to-test.sql \
+	    -v db_password="$$ELO_WEB_SERVICE_POSTGRES_PASSWORD"
+	@echo ">>> Done. elo-web-service-test is now a copy of elo-web-service."
 
 ## Run integration tests (requires colima or Docker with socket at ~/.colima/default/docker.sock)
 integration-test:
