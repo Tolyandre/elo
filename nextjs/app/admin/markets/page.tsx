@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { OutcomeMarket, getMarketsPromise, cancelMarketPromise } from "@/app/api";
+import { OutcomeMarket, getMarketsPromise, deleteMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
@@ -24,8 +24,8 @@ export default function AdminMarketsPage() {
     const [markets, setMarkets] = useState<OutcomeMarket[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [cancelTarget, setCancelTarget] = useState<OutcomeMarket | null>(null);
-    const [cancelling, setCancelling] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<OutcomeMarket | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -35,17 +35,17 @@ export default function AdminMarketsPage() {
             .finally(() => setLoading(false));
     }, []);
 
-    async function confirmCancel() {
-        if (!cancelTarget) return;
-        setCancelling(true);
+    async function confirmDelete() {
+        if (!deleteTarget) return;
+        setDeleting(true);
         try {
-            await cancelMarketPromise(cancelTarget.id);
-            setMarkets((prev) => prev.filter((m) => m.id !== cancelTarget.id));
-            setCancelTarget(null);
+            await deleteMarketPromise(deleteTarget.id);
+            setMarkets((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+            setDeleteTarget(null);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
-            setCancelling(false);
+            setDeleting(false);
         }
     }
 
@@ -72,29 +72,29 @@ export default function AdminMarketsPage() {
                             variant="destructive"
                             size="sm"
                             className="w-full"
-                            onClick={() => setCancelTarget(market)}
+                            onClick={() => setDeleteTarget(market)}
                         >
-                            Отменить рынок
+                            Удалить рынок
                         </Button>
                     )}
                 </div>
             ))}
 
-            <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
+            <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Отменить рынок?</DialogTitle>
+                        <DialogTitle>Удалить рынок?</DialogTitle>
                         <DialogDescription>
-                            «{cancelTarget ? getMarketTitle(cancelTarget, players, games) : ""}» будет отменён. Ставки будут возвращены участникам.
+                            «{deleteTarget ? getMarketTitle(deleteTarget, players, games) : ""}» будет удалён безвозвратно. Все ставки будут аннулированы, рейтинг будет пересчитан.
                             Это действие необратимо.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setCancelTarget(null)} disabled={cancelling}>
+                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
                             Назад
                         </Button>
-                        <Button variant="destructive" onClick={confirmCancel} disabled={cancelling}>
-                            {cancelling ? "Отмена..." : "Отменить"}
+                        <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                            {deleting ? "Удаление..." : "Удалить"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

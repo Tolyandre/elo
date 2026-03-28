@@ -29,7 +29,6 @@ type CreateMarketParams struct {
 
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.OutcomeMarket, error)
-	CancelMarket(ctx context.Context, marketID int32, adminUserID int32) error
 	PlaceBet(ctx context.Context, marketID int32, playerID int32, outcome string, amount float64) error
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
@@ -100,30 +99,6 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	s.ScheduleNextExpiry(context.Background())
 
 	return market, nil
-}
-
-func (s *MarketService) CancelMarket(ctx context.Context, marketID int32, adminUserID int32) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	q := s.Queries.WithTx(tx)
-
-	market, err := q.GetMarketWithPools(ctx, marketID)
-	if err != nil {
-		return fmt.Errorf("get market: %w", err)
-	}
-	if market.Status != "open" {
-		return ErrMarketNotOpen
-	}
-
-	if err := s.SettleMarket(ctx, q, marketID, "cancelled", time.Now(), nil); err != nil {
-		return fmt.Errorf("settle cancelled: %w", err)
-	}
-
-	return tx.Commit(ctx)
 }
 
 func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID int32, outcome string, amount float64) error {

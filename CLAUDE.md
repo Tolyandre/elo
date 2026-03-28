@@ -49,6 +49,8 @@ sqlc generate
 ### Database (PostgreSQL)
 The backend expects a PostgreSQL database. Connection details are in `elo-web-service/config/config.dev.yaml` and can be overridden with environment variables (see `.env.sample`).
 
+**Migrations are up-only.** Do not create down migration files. To roll back, write a new forward migration.
+
 ### NixOS Module Testing
 ```bash
 # Check syntax

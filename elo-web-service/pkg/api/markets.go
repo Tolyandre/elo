@@ -432,7 +432,7 @@ func (a *API) CreateMarket(c *gin.Context) {
 	})
 }
 
-func (a *API) CancelMarket(c *gin.Context) {
+func (a *API) DeleteMarket(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	user, err := MustGetCurrentUser(c, a.UserService)
@@ -441,7 +441,7 @@ func (a *API) CancelMarket(c *gin.Context) {
 		return
 	}
 	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "only admins can cancel markets")
+		ErrorResponse(c, http.StatusForbidden, "only admins can delete markets")
 		return
 	}
 
@@ -452,7 +452,7 @@ func (a *API) CancelMarket(c *gin.Context) {
 		return
 	}
 
-	if err := a.MarketService.CancelMarket(ctx, int32(id), user.ID); err != nil {
+	if err := a.MatchService.DeleteMarketAndRecalculate(ctx, int32(id)); err != nil {
 		if err == elo.ErrMarketNotOpen {
 			ErrorResponse(c, http.StatusConflict, err.Error())
 			return
