@@ -38,8 +38,8 @@ const matchWinnerStrategy: MarketTypeStrategy = {
             .join(", ");
         const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
         let title = `${targetName} победит`;
-        if (requiredNames) title += ` ${requiredNames}`;
         if (game) title += ` в ${game.name}`;
+        if (requiredNames) title += game ? ` с участием ${requiredNames}` : ` в партии с участием ${requiredNames}`;
         return title;
     },
     getResolutionDescription(market, players, games) {
