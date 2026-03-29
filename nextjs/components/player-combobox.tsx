@@ -111,7 +111,7 @@ export function PlayerCombobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        className="w-full p-0"
+        className="w-[var(--radix-popover-trigger-width)] p-0"
         side="bottom"
         align="start"
         avoidCollisions={false}

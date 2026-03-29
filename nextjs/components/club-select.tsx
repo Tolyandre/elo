@@ -87,7 +87,7 @@ export function ClubSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-56 p-0" side="bottom" align="start" avoidCollisions={false}>
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" side="bottom" align="start" avoidCollisions={false}>
         {content}
       </PopoverContent>
     </Popover>
