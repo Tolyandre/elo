@@ -3,6 +3,7 @@ package elo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -70,6 +71,19 @@ func (h *matchWinnerHandler) ExpireResolve(ctx context.Context, q *db.Queries, s
 	markets, err := q.ListOverdueMatchWinnerMarkets(ctx)
 	if err != nil {
 		return fmt.Errorf("list overdue match_winner markets: %w", err)
+	}
+	for _, m := range markets {
+		if err := settle(ctx, q, m.ID, "cancelled", m.ClosesAt.Time, nil); err != nil {
+			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
+		}
+	}
+	return nil
+}
+
+func (h *matchWinnerHandler) ExpireResolveAtDate(ctx context.Context, q *db.Queries, date time.Time, settle SettleFunc) error {
+	markets, err := q.ListOverdueMatchWinnerMarketsAtDate(ctx, pgtype.Timestamptz{Time: date, Valid: true})
+	if err != nil {
+		return fmt.Errorf("list overdue match_winner markets at date: %w", err)
 	}
 	for _, m := range markets {
 		if err := settle(ctx, q, m.ID, "cancelled", m.ClosesAt.Time, nil); err != nil {

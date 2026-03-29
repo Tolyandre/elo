@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Bet struct {
+	ID       int32              `json:"id"`
+	MarketID int32              `json:"market_id"`
+	PlayerID int32              `json:"player_id"`
+	Outcome  string             `json:"outcome"`
+	Amount   float64            `json:"amount"`
+	PlacedAt pgtype.Timestamptz `json:"placed_at"`
+}
+
 type BetSettlementDetail struct {
 	MarketID int32   `json:"market_id"`
 	PlayerID int32   `json:"player_id"`
@@ -33,33 +42,7 @@ type Game struct {
 	Name string `json:"name"`
 }
 
-type Match struct {
-	ID     int32              `json:"id"`
-	Date   pgtype.Timestamptz `json:"date"`
-	GameID int32              `json:"game_id"`
-}
-
-type MatchScore struct {
-	MatchID       int32   `json:"match_id"`
-	PlayerID      int32   `json:"player_id"`
-	Score         float64 `json:"score"`
-	GlobalEloPay  float64 `json:"global_elo_pay"`
-	GlobalEloEarn float64 `json:"global_elo_earn"`
-	GameEloPay    float64 `json:"game_elo_pay"`
-	GameEloEarn   float64 `json:"game_elo_earn"`
-	GameNewElo    float64 `json:"game_new_elo"`
-}
-
-type OutcomeBet struct {
-	ID       int32              `json:"id"`
-	MarketID int32              `json:"market_id"`
-	PlayerID int32              `json:"player_id"`
-	Outcome  string             `json:"outcome"`
-	Amount   float64            `json:"amount"`
-	PlacedAt pgtype.Timestamptz `json:"placed_at"`
-}
-
-type OutcomeMarket struct {
+type Market struct {
 	ID                int32              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
@@ -71,19 +54,36 @@ type OutcomeMarket struct {
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
 }
 
-type OutcomeMarketMatchWinnerParam struct {
+type MarketMatchWinnerParam struct {
 	MarketID          int32       `json:"market_id"`
 	TargetPlayerID    int32       `json:"target_player_id"`
 	RequiredPlayerIds []int32     `json:"required_player_ids"`
 	GameID            pgtype.Int4 `json:"game_id"`
 }
 
-type OutcomeMarketWinStreakParam struct {
+type MarketWinStreakParam struct {
 	MarketID       int32       `json:"market_id"`
 	TargetPlayerID int32       `json:"target_player_id"`
 	GameID         int32       `json:"game_id"`
 	WinsRequired   int32       `json:"wins_required"`
 	MaxLosses      pgtype.Int4 `json:"max_losses"`
+}
+
+type Match struct {
+	ID     int32              `json:"id"`
+	Date   pgtype.Timestamptz `json:"date"`
+	GameID int32              `json:"game_id"`
+}
+
+type MatchScore struct {
+	MatchID     int32   `json:"match_id"`
+	PlayerID    int32   `json:"player_id"`
+	Score       float64 `json:"score"`
+	RatingPay   float64 `json:"rating_pay"`
+	RatingEarn  float64 `json:"rating_earn"`
+	GameEloPay  float64 `json:"game_elo_pay"`
+	GameEloEarn float64 `json:"game_elo_earn"`
+	GameNewElo  float64 `json:"game_new_elo"`
 }
 
 type Player struct {

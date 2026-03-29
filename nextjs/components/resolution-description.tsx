@@ -1,11 +1,11 @@
 "use client"
 import React from "react";
-import { OutcomeMarket } from "@/app/api";
+import { Market } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketResolutionDescription } from "@/app/market/marketTypes";
 
-export function ResolutionDescription({ market }: { market: OutcomeMarket }) {
+export function ResolutionDescription({ market }: { market: Market }) {
     const { players } = usePlayers();
     const { games } = useGames();
     const { yes, no, cancel } = getMarketResolutionDescription(market, players, games);

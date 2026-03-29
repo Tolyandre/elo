@@ -1,5 +1,5 @@
 import React from "react";
-import { MatchWinnerParams, OutcomeMarket, WinStreakParams } from "@/app/api";
+import { MatchWinnerParams, Market, WinStreakParams } from "@/app/api";
 import { GameListItem } from "@/app/api";
 import { Player } from "@/app/api";
 
@@ -10,8 +10,8 @@ export type MarketResolutionDescription = {
 };
 
 interface MarketTypeStrategy {
-    getTitle(market: OutcomeMarket, players: Player[], games: GameListItem[]): string;
-    getResolutionDescription(market: OutcomeMarket, players: Player[], games: GameListItem[]): MarketResolutionDescription;
+    getTitle(market: Market, players: Player[], games: GameListItem[]): string;
+    getResolutionDescription(market: Market, players: Player[], games: GameListItem[]): MarketResolutionDescription;
 }
 
 const H = ({ children }: { children: React.ReactNode }) => (
@@ -21,7 +21,7 @@ const H = ({ children }: { children: React.ReactNode }) => (
 
 const fmt = (d: string) => new Date(d).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-function buildPeriodNode(market: OutcomeMarket): React.ReactNode | null {
+function buildPeriodNode(market: Market): React.ReactNode | null {
     const startsAt = market.starts_at ? fmt(market.starts_at) : null;
     const closesAt = market.closes_at ? fmt(market.closes_at) : null;
     if (startsAt && closesAt) return <>с <H>{startsAt}</H> по <H>{closesAt}</H></>;
@@ -115,12 +115,12 @@ const marketTypeRegistry: Record<string, MarketTypeStrategy> = {
     win_streak: winStreakStrategy,
 };
 
-export function getMarketTitle(market: OutcomeMarket, players: Player[], games: GameListItem[]): string {
+export function getMarketTitle(market: Market, players: Player[], games: GameListItem[]): string {
     return marketTypeRegistry[market.market_type]?.getTitle(market, players, games) ?? market.market_type;
 }
 
 export function getMarketResolutionDescription(
-    market: OutcomeMarket,
+    market: Market,
     players: Player[],
     games: GameListItem[],
 ): MarketResolutionDescription {

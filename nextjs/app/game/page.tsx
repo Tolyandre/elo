@@ -58,8 +58,8 @@ function GameWrapped() {
     const score: Match["score"] = {};
     for (const p of gm.players) {
       score[p.id] = {
-        globalEloPay: p.game_elo_pay,
-        globalEloEarn: p.game_elo_earn,
+        ratingPay: p.game_elo_pay,
+        ratingEarn: p.game_elo_earn,
         score: p.score,
       };
     }

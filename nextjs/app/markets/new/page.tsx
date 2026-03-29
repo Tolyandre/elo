@@ -1,7 +1,7 @@
 "use client"
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { OutcomeMarket, createMarketPromise } from "@/app/api";
+import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
@@ -71,7 +71,7 @@ export default function NewMarketPage() {
         }
     }
 
-    function buildPreviewMarket(): OutcomeMarket {
+    function buildPreviewMarket(): Market {
         const targetID = marketType === "match_winner" ? targetPlayerID : streakTargetPlayerID;
         const params = marketType === "match_winner"
             ? { required_player_ids: requiredPlayerIDs, game_id: gameID ?? null }

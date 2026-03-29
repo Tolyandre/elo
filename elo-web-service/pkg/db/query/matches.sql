@@ -4,13 +4,13 @@ VALUES ($1, $2)
 RETURNING *;
 
 -- name: UpsertMatchScore :exec
-INSERT INTO match_scores (match_id, player_id, score, global_elo_pay, global_elo_earn, game_elo_pay, game_elo_earn, game_new_elo)
+INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (match_id, player_id)
 DO UPDATE SET
     score = EXCLUDED.score,
-    global_elo_pay = EXCLUDED.global_elo_pay,
-    global_elo_earn = EXCLUDED.global_elo_earn,
+    rating_pay = EXCLUDED.rating_pay,
+    rating_earn = EXCLUDED.rating_earn,
     game_elo_pay = EXCLUDED.game_elo_pay,
     game_elo_earn = EXCLUDED.game_elo_earn,
     game_new_elo = EXCLUDED.game_new_elo;
@@ -23,8 +23,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
@@ -43,8 +43,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -79,8 +79,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -119,6 +119,14 @@ WHERE pr.player_id = $1
 ORDER BY pr.date DESC, pr.id DESC
 LIMIT 1;
 
+-- name: GetPlayerLatestGlobalEloAtDate :one
+SELECT pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+  AND pr.date <= $2
+ORDER BY pr.date DESC, pr.id DESC
+LIMIT 1;
+
 -- name: GetPlayerLatestGlobalEloBeforeMatch :one
 SELECT pr.rating
 FROM player_ratings pr
@@ -146,9 +154,9 @@ WHERE ms.player_id = $1
 ORDER BY m.date DESC, m.id DESC
 LIMIT 1;
 
--- name: UpdateMatchScoreGlobalElo :exec
+-- name: UpdateMatchScoreRating :exec
 UPDATE match_scores
-SET global_elo_pay = $3, global_elo_earn = $4
+SET rating_pay = $3, rating_earn = $4
 WHERE match_id = $1 AND player_id = $2;
 
 -- name: UpdateMatchScoreGameElo :exec
@@ -222,8 +230,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -251,8 +259,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,

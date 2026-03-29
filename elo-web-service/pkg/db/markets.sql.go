@@ -12,7 +12,7 @@ import (
 )
 
 const createMarket = `-- name: CreateMarket :one
-INSERT INTO outcome_markets (market_type, starts_at, closes_at, created_by)
+INSERT INTO markets (market_type, starts_at, closes_at, created_by)
 VALUES ($1, $2, $3, $4)
 RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id
 `
@@ -24,14 +24,14 @@ type CreateMarketParams struct {
 	CreatedBy  int32              `json:"created_by"`
 }
 
-func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (OutcomeMarket, error) {
+func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error) {
 	row := q.db.QueryRow(ctx, createMarket,
 		arg.MarketType,
 		arg.StartsAt,
 		arg.ClosesAt,
 		arg.CreatedBy,
 	)
-	var i OutcomeMarket
+	var i Market
 	err := row.Scan(
 		&i.ID,
 		&i.MarketType,
@@ -47,7 +47,7 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Out
 }
 
 const createMatchWinnerParams = `-- name: CreateMatchWinnerParams :exec
-INSERT INTO outcome_market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
 VALUES ($1, $2, $3, $4)
 `
 
@@ -69,7 +69,7 @@ func (q *Queries) CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWi
 }
 
 const createWinStreakParams = `-- name: CreateWinStreakParams :exec
-INSERT INTO outcome_market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
+INSERT INTO market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5)
 `
 
@@ -102,7 +102,7 @@ func (q *Queries) DeleteBetSettlementDetails(ctx context.Context, marketID int32
 }
 
 const deleteMarket = `-- name: DeleteMarket :exec
-DELETE FROM outcome_markets WHERE id = $1
+DELETE FROM markets WHERE id = $1
 `
 
 func (q *Queries) DeleteMarket(ctx context.Context, id int32) error {
@@ -121,7 +121,7 @@ func (q *Queries) DeletePlayerRatingsByMarket(ctx context.Context, marketID pgty
 
 const getBetsAggregatedByOutcome = `-- name: GetBetsAggregatedByOutcome :many
 SELECT player_id, outcome, SUM(amount)::float8 AS total_amount
-FROM outcome_bets
+FROM bets
 WHERE market_id = $1
 GROUP BY player_id, outcome
 ORDER BY player_id, outcome
@@ -165,10 +165,10 @@ SELECT
     wsp.game_id AS ws_game_id,
     wsp.wins_required,
     wsp.max_losses
-FROM outcome_markets om
-LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
-LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN outcome_bets ob ON ob.market_id = om.id
+FROM markets om
+LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.id = $1
 GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
          wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
@@ -221,7 +221,7 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id int32) (GetMarketWi
 
 const getMarketsForUnsettle = `-- name: GetMarketsForUnsettle :many
 SELECT DISTINCT om.id
-FROM outcome_markets om
+FROM markets om
 WHERE om.status != 'open'
   AND om.resolved_at >= $1
 `
@@ -247,12 +247,12 @@ func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.T
 }
 
 const getMatchWinnerParams = `-- name: GetMatchWinnerParams :one
-SELECT market_id, target_player_id, required_player_ids, game_id FROM outcome_market_match_winner_params WHERE market_id = $1
+SELECT market_id, target_player_id, required_player_ids, game_id FROM market_match_winner_params WHERE market_id = $1
 `
 
-func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (OutcomeMarketMatchWinnerParam, error) {
+func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (MarketMatchWinnerParam, error) {
 	row := q.db.QueryRow(ctx, getMatchWinnerParams, marketID)
-	var i OutcomeMarketMatchWinnerParam
+	var i MarketMatchWinnerParam
 	err := row.Scan(
 		&i.MarketID,
 		&i.TargetPlayerID,
@@ -263,7 +263,7 @@ func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (Out
 }
 
 const getNearestMarketExpiry = `-- name: GetNearestMarketExpiry :one
-SELECT closes_at FROM outcome_markets
+SELECT closes_at FROM markets
 WHERE status = 'open'
 ORDER BY closes_at ASC
 LIMIT 1
@@ -289,7 +289,7 @@ func (q *Queries) GetPlayerBetLimit(ctx context.Context, id int32) (float64, err
 
 const getPlayerBetsAggregatedForMarket = `-- name: GetPlayerBetsAggregatedForMarket :many
 SELECT outcome, SUM(amount)::float8 AS total_amount
-FROM outcome_bets
+FROM bets
 WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome
 `
@@ -326,8 +326,8 @@ func (q *Queries) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetP
 
 const getPlayerReservedAmount = `-- name: GetPlayerReservedAmount :one
 SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
-FROM outcome_bets ob
-JOIN outcome_markets om ON om.id = ob.market_id
+FROM bets ob
+JOIN markets om ON om.id = ob.market_id
 WHERE ob.player_id = $1 AND om.status = 'open'
 `
 
@@ -420,12 +420,12 @@ func (q *Queries) GetSettlementDetails(ctx context.Context, marketID int32) ([]G
 }
 
 const getWinStreakParams = `-- name: GetWinStreakParams :one
-SELECT market_id, target_player_id, game_id, wins_required, max_losses FROM outcome_market_win_streak_params WHERE market_id = $1
+SELECT market_id, target_player_id, game_id, wins_required, max_losses FROM market_win_streak_params WHERE market_id = $1
 `
 
-func (q *Queries) GetWinStreakParams(ctx context.Context, marketID int32) (OutcomeMarketWinStreakParam, error) {
+func (q *Queries) GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error) {
 	row := q.db.QueryRow(ctx, getWinStreakParams, marketID)
-	var i OutcomeMarketWinStreakParam
+	var i MarketWinStreakParam
 	err := row.Scan(
 		&i.MarketID,
 		&i.TargetPlayerID,
@@ -437,7 +437,7 @@ func (q *Queries) GetWinStreakParams(ctx context.Context, marketID int32) (Outco
 }
 
 const insertBet = `-- name: InsertBet :one
-INSERT INTO outcome_bets (market_id, player_id, outcome, amount)
+INSERT INTO bets (market_id, player_id, outcome, amount)
 VALUES ($1, $2, $3, $4)
 RETURNING id, placed_at
 `
@@ -500,10 +500,10 @@ SELECT
     wsp.game_id AS ws_game_id,
     wsp.wins_required,
     wsp.max_losses
-FROM outcome_markets om
-LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
-LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN outcome_bets ob ON ob.market_id = om.id
+FROM markets om
+LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.resolution_match_id = $1
 GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
          wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
@@ -579,10 +579,10 @@ SELECT
     wsp.game_id AS ws_game_id,
     wsp.wins_required,
     wsp.max_losses
-FROM outcome_markets om
-LEFT JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
-LEFT JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN outcome_bets ob ON ob.market_id = om.id
+FROM markets om
+LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN bets ob ON ob.market_id = om.id
 GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
          wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 ORDER BY om.created_at DESC
@@ -649,8 +649,8 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 const listOpenMatchWinnerMarkets = `-- name: ListOpenMatchWinnerMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
     mwp.target_player_id, mwp.required_player_ids, mwp.game_id
-FROM outcome_markets om
-JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
+FROM markets om
+JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 WHERE om.status = 'open'
 `
 
@@ -693,8 +693,8 @@ func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMat
 const listOpenWinStreakMarkets = `-- name: ListOpenWinStreakMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
-FROM outcome_markets om
-JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
+FROM markets om
+JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status = 'open'
 `
 
@@ -738,8 +738,8 @@ func (q *Queries) ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinSt
 
 const listOverdueMatchWinnerMarkets = `-- name: ListOverdueMatchWinnerMarkets :many
 SELECT om.id, om.closes_at
-FROM outcome_markets om
-JOIN outcome_market_match_winner_params mwp ON mwp.market_id = om.id
+FROM markets om
+JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 WHERE om.status = 'open' AND om.closes_at <= NOW()
 `
 
@@ -768,11 +768,43 @@ func (q *Queries) ListOverdueMatchWinnerMarkets(ctx context.Context) ([]ListOver
 	return items, nil
 }
 
+const listOverdueMatchWinnerMarketsAtDate = `-- name: ListOverdueMatchWinnerMarketsAtDate :many
+SELECT om.id, om.closes_at
+FROM markets om
+JOIN market_match_winner_params mwp ON mwp.market_id = om.id
+WHERE om.status = 'open' AND om.closes_at <= $1
+`
+
+type ListOverdueMatchWinnerMarketsAtDateRow struct {
+	ID       int32              `json:"id"`
+	ClosesAt pgtype.Timestamptz `json:"closes_at"`
+}
+
+func (q *Queries) ListOverdueMatchWinnerMarketsAtDate(ctx context.Context, closesAt pgtype.Timestamptz) ([]ListOverdueMatchWinnerMarketsAtDateRow, error) {
+	rows, err := q.db.Query(ctx, listOverdueMatchWinnerMarketsAtDate, closesAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverdueMatchWinnerMarketsAtDateRow{}
+	for rows.Next() {
+		var i ListOverdueMatchWinnerMarketsAtDateRow
+		if err := rows.Scan(&i.ID, &i.ClosesAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOverdueWinStreakMarkets = `-- name: ListOverdueWinStreakMarkets :many
 SELECT om.id, om.closes_at, om.starts_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
-FROM outcome_markets om
-JOIN outcome_market_win_streak_params wsp ON wsp.market_id = om.id
+FROM markets om
+JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status = 'open' AND om.closes_at <= NOW()
 `
 
@@ -814,8 +846,54 @@ func (q *Queries) ListOverdueWinStreakMarkets(ctx context.Context) ([]ListOverdu
 	return items, nil
 }
 
+const listOverdueWinStreakMarketsAtDate = `-- name: ListOverdueWinStreakMarketsAtDate :many
+SELECT om.id, om.closes_at, om.starts_at,
+    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+FROM markets om
+JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+WHERE om.status = 'open' AND om.closes_at <= $1
+`
+
+type ListOverdueWinStreakMarketsAtDateRow struct {
+	ID             int32              `json:"id"`
+	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
+	StartsAt       pgtype.Timestamptz `json:"starts_at"`
+	TargetPlayerID int32              `json:"target_player_id"`
+	GameID         int32              `json:"game_id"`
+	WinsRequired   int32              `json:"wins_required"`
+	MaxLosses      pgtype.Int4        `json:"max_losses"`
+}
+
+func (q *Queries) ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesAt pgtype.Timestamptz) ([]ListOverdueWinStreakMarketsAtDateRow, error) {
+	rows, err := q.db.Query(ctx, listOverdueWinStreakMarketsAtDate, closesAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverdueWinStreakMarketsAtDateRow{}
+	for rows.Next() {
+		var i ListOverdueWinStreakMarketsAtDateRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClosesAt,
+			&i.StartsAt,
+			&i.TargetPlayerID,
+			&i.GameID,
+			&i.WinsRequired,
+			&i.MaxLosses,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveMarket = `-- name: ResolveMarket :exec
-UPDATE outcome_markets
+UPDATE markets
 SET status = $2, resolved_at = $3, resolution_match_id = $4
 WHERE id = $1
 `
@@ -838,7 +916,7 @@ func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) er
 }
 
 const unsettleMarket = `-- name: UnsettleMarket :exec
-UPDATE outcome_markets
+UPDATE markets
 SET status = 'open', resolved_at = NULL, resolution_match_id = NULL
 WHERE id = $1
 `
@@ -864,7 +942,7 @@ func (q *Queries) UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetL
 
 const upsertPlayerRatingByMarket = `-- name: UpsertPlayerRatingByMarket :exec
 INSERT INTO player_ratings (date, player_id, rating, source_type, market_id)
-VALUES ($1, $2, $3, 'bet_settlement', $4)
+VALUES ($1, $2, $3, 'market_settlement', $4)
 ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
 DO UPDATE SET rating = EXCLUDED.rating, date = EXCLUDED.date
 `

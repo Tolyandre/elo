@@ -75,8 +75,8 @@ export type Match = {
 };
 
 export type PlayerScore = {
-    globalEloPay: number;
-    globalEloEarn: number;
+    ratingPay: number;
+    ratingEarn: number;
     score: number;
 };
 
@@ -148,7 +148,7 @@ export async function getMatchesPagePromise(params?: {
             score: Object.fromEntries(
                 Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
                     pid,
-                    { globalEloPay: s.global_elo_pay, globalEloEarn: s.global_elo_earn, score: s.score },
+                    { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
                 ])
             ),
             date: m.date ? new Date(m.date) : null,
@@ -172,7 +172,7 @@ export async function getMatchByIdPromise(id: number): Promise<Match> {
             score: Object.fromEntries(
                 Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
                     pid,
-                    { globalEloPay: s.global_elo_pay, globalEloEarn: s.global_elo_earn, score: s.score },
+                    { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
                 ])
             ),
             date: m.date ? new Date(m.date) : null,
@@ -633,7 +633,7 @@ export type WinStreakParams = {
     max_losses: number | null;
 };
 
-export type OutcomeMarket = {
+export type Market = {
     id: string;
     market_type: 'match_winner' | 'win_streak';
     status: 'open' | 'resolved_yes' | 'resolved_no' | 'cancelled';
@@ -650,7 +650,7 @@ export type OutcomeMarket = {
     settlement?: SettlementDetail[];
 };
 
-export type MarketDetail = OutcomeMarket & {
+export type MarketDetail = Market & {
     my_yes_staked?: number;
     my_no_staked?: number;
     projected_yes_reward?: number;
@@ -659,7 +659,7 @@ export type MarketDetail = OutcomeMarket & {
     bet_limit?: number;
 };
 
-export async function getMarketsPromise(): Promise<{ active: OutcomeMarket[]; closed: OutcomeMarket[] }> {
+export async function getMarketsPromise(): Promise<{ active: Market[]; closed: Market[] }> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/markets`, { credentials: 'include' });
         return await handleJsonErrorResponse(res);
@@ -722,13 +722,13 @@ export async function deleteMarketPromise(id: string): Promise<void> {
     }
 }
 
-export async function getMarketsByMatchIdPromise(matchId: number): Promise<OutcomeMarket[]> {
+export async function getMarketsByMatchIdPromise(matchId: number): Promise<Market[]> {
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/matches/${matchId}/markets`, {
             credentials: 'include',
         });
         const data = await handleJsonErrorResponse(res);
-        return (data ?? []) as OutcomeMarket[];
+        return (data ?? []) as Market[];
     }
     catch (error) {
         showToast(error);

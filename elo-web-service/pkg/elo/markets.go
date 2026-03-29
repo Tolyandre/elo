@@ -28,7 +28,7 @@ type CreateMarketParams struct {
 }
 
 type IMarketService interface {
-	CreateMarket(ctx context.Context, params CreateMarketParams) (db.OutcomeMarket, error)
+	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
 	PlaceBet(ctx context.Context, marketID int32, playerID int32, outcome string, amount float64) error
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
@@ -45,6 +45,11 @@ type IMarketService interface {
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 	ExpireOverdueMarkets(ctx context.Context) error
+
+	// ExpireMarketsAtDate settles markets whose closes_at <= date.
+	// Used by the sequential event processor to integrate time-based expiry into
+	// the settlement order. Must be called within an active transaction.
+	ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error
 
 	// ScheduleNextExpiry sets a timer for the next market expiry.
 	ScheduleNextExpiry(ctx context.Context)
@@ -64,15 +69,15 @@ func NewMarketService(pool *pgxpool.Pool) IMarketService {
 	}
 }
 
-func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.OutcomeMarket, error) {
+func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
 	handler, ok := marketTypeHandlers[params.MarketType]
 	if !ok {
-		return db.OutcomeMarket{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
+		return db.Market{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
 	}
 
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return db.OutcomeMarket{}, fmt.Errorf("begin tx: %w", err)
+		return db.Market{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -85,15 +90,15 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		CreatedBy:  params.CreatedBy,
 	})
 	if err != nil {
-		return db.OutcomeMarket{}, fmt.Errorf("insert market: %w", err)
+		return db.Market{}, fmt.Errorf("insert market: %w", err)
 	}
 
 	if err := handler.CreateParams(ctx, q, market.ID, params); err != nil {
-		return db.OutcomeMarket{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
+		return db.Market{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return db.OutcomeMarket{}, fmt.Errorf("commit tx: %w", err)
+		return db.Market{}, fmt.Errorf("commit tx: %w", err)
 	}
 
 	s.ScheduleNextExpiry(context.Background())
@@ -285,7 +290,10 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 
 		var currentElo float64
-		latestElo, err := q.GetPlayerLatestGlobalElo(ctx, pid)
+		latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
+			PlayerID: pid,
+			Date:     resolvedAtTz,
+		})
 		if err != nil {
 			settings, sErr := q.GetEloSettingsForDate(ctx, resolvedAtTz)
 			if sErr != nil {
@@ -324,6 +332,17 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		return fmt.Errorf("recalculate bet limits: %w", err)
 	}
 
+	return nil
+}
+
+// ExpireMarketsAtDate settles markets whose closes_at <= date.
+// Must be called within an active transaction.
+func (s *MarketService) ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error {
+	for marketType, handler := range marketTypeHandlers {
+		if err := handler.ExpireResolveAtDate(ctx, q, date, s.SettleMarket); err != nil {
+			return fmt.Errorf("expire %s markets at date: %w", marketType, err)
+		}
+	}
 	return nil
 }
 

@@ -1,12 +1,12 @@
 "use client"
-import { OutcomeMarket, getMarketsPromise } from "@/app/api";
+import { Market, getMarketsPromise } from "@/app/api";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 
 export default function MarketsPage() {
-    const [data, setData] = useState<{ active: OutcomeMarket[]; closed: OutcomeMarket[] } | null>(null);
+    const [data, setData] = useState<{ active: Market[]; closed: Market[] } | null>(null);
 
     useEffect(() => {
         getMarketsPromise().then(setData);
