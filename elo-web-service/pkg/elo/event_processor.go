@@ -39,8 +39,6 @@ type EventProcessor struct {
 }
 
 // processMatchSettlements applies all settlements for a single match event.
-// isRecalc=false uses UpsertMatchScore (AddMatch path).
-// isRecalc=true  uses UpdateMatchScore* (recalculation path).
 func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
@@ -51,7 +49,6 @@ func (p *EventProcessor) processMatchSettlements(
 	previousGameElo map[int32]float64,
 	settings db.GetEloSettingsForDateRow,
 	matchDate time.Time,
-	isRecalc bool,
 	eloCalcFn func(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error,
 ) error {
 	// Steps 1 & 2: Calculate and store/update rating + game_elo
@@ -112,7 +109,7 @@ func (p *EventProcessor) RecalculateFrom(
 		}
 
 		if err := p.processMatchSettlements(ctx, q, match.ID, match.GameID, playerScores,
-			previousElo, previousGameElo, settings, match.Date.Time, true, calcAndUpdateElo); err != nil {
+			previousElo, previousGameElo, settings, match.Date.Time, calcAndUpdateElo); err != nil {
 			return err
 		}
 	}

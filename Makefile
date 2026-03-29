@@ -39,7 +39,12 @@ copy-prod-db-to-test:
 	@echo ">>> Done. elo-web-service-test is now a copy of elo-web-service."
 
 ## Run integration tests (requires colima or Docker with socket at ~/.colima/default/docker.sock)
-integration-test:
+integration-test-colima:
 	DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock" \
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	go test -C elo-web-service -tags integration ./integration_test/ -v
+
+integration-test-podman:
+	DOCKER_HOST=unix:///run/user/1000/podman/podman.sock \
 	TESTCONTAINERS_RYUK_DISABLED=true \
 	go test -C elo-web-service -tags integration ./integration_test/ -v
