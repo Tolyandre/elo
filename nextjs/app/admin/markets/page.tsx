@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { OutcomeMarket, getMarketsPromise, deleteMarketPromise } from "@/app/api";
+import { Market, getMarketsPromise, deleteMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
@@ -21,10 +21,10 @@ export default function AdminMarketsPage() {
     const me = useMe();
     const { players } = usePlayers();
     const { games } = useGames();
-    const [markets, setMarkets] = useState<OutcomeMarket[]>([]);
+    const [markets, setMarkets] = useState<Market[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [deleteTarget, setDeleteTarget] = useState<OutcomeMarket | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<Market | null>(null);
     const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {

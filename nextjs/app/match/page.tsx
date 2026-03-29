@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useMatches } from "../matches/MatchesContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useMe } from "../meContext";
-import { Match, OutcomeMarket, updateMatchPromise, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../api";
+import { Match, Market, updateMatchPromise, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../api";
 import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -37,7 +37,7 @@ function MatchPageWrapped() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = React.useRef(false);
-  const [relatedMarkets, setRelatedMarkets] = useState<OutcomeMarket[]>([]);
+  const [relatedMarkets, setRelatedMarkets] = useState<Market[]>([]);
 
   const matchFromContext = matchId
     ? matches.find((m) => m.id.toString() === matchId) ?? null

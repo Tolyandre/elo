@@ -30,6 +30,11 @@ type MarketTypeHandler interface {
 	// ExpireResolve settles all overdue markets of this type.
 	// Must be called within an active transaction.
 	ExpireResolve(ctx context.Context, q *db.Queries, settle SettleFunc) error
+
+	// ExpireResolveAtDate settles markets of this type whose closes_at <= date.
+	// Used by the sequential event processor to integrate time-based expiry into
+	// the settlement order. Must be called within an active transaction.
+	ExpireResolveAtDate(ctx context.Context, q *db.Queries, date time.Time, settle SettleFunc) error
 }
 
 // marketTypeHandlers is the registry of all known market type handlers.

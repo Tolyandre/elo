@@ -1,13 +1,13 @@
 "use client"
 import React from "react";
-import { OutcomeMarket, SettlementDetail } from "@/app/api";
+import { Market, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
 
-export function statusLabel(status: OutcomeMarket["status"]): string {
+export function statusLabel(status: Market["status"]): string {
     switch (status) {
         case "open": return "Открыт";
         case "resolved_yes": return "Да";
@@ -16,7 +16,7 @@ export function statusLabel(status: OutcomeMarket["status"]): string {
     }
 }
 
-export function statusVariant(status: OutcomeMarket["status"]): "default" | "secondary" | "destructive" | "outline" {
+export function statusVariant(status: Market["status"]): "default" | "secondary" | "destructive" | "outline" {
     switch (status) {
         case "open": return "default";
         case "resolved_yes": return "default";
@@ -75,7 +75,7 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
     );
 }
 
-export function MarketCard({ market, className }: { market: OutcomeMarket; className?: string }) {
+export function MarketCard({ market, className }: { market: Market; className?: string }) {
     const { players } = usePlayers();
     const { games } = useGames();
     const title = getMarketTitle(market, players, games);

@@ -123,8 +123,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -146,17 +146,17 @@ ORDER BY s.score DESC
 `
 
 type GetMatchWithPlayersRow struct {
-	MatchID       int32              `json:"match_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	GameID        int32              `json:"game_id"`
-	GameName      string             `json:"game_name"`
-	PlayerID      int32              `json:"player_id"`
-	PlayerName    string             `json:"player_name"`
-	Score         float64            `json:"score"`
-	GlobalEloPay  float64            `json:"global_elo_pay"`
-	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  interface{}        `json:"global_new_elo"`
-	PrevRating    interface{}        `json:"prev_rating"`
+	MatchID      int32              `json:"match_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	GameID       int32              `json:"game_id"`
+	GameName     string             `json:"game_name"`
+	PlayerID     int32              `json:"player_id"`
+	PlayerName   string             `json:"player_name"`
+	Score        float64            `json:"score"`
+	RatingPay    float64            `json:"rating_pay"`
+	RatingEarn   float64            `json:"rating_earn"`
+	GlobalNewElo interface{}        `json:"global_new_elo"`
+	PrevRating   interface{}        `json:"prev_rating"`
 }
 
 func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatchWithPlayersRow, error) {
@@ -176,8 +176,8 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatch
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
-			&i.GlobalEloPay,
-			&i.GlobalEloEarn,
+			&i.RatingPay,
+			&i.RatingEarn,
 			&i.GlobalNewElo,
 			&i.PrevRating,
 		); err != nil {
@@ -285,6 +285,27 @@ func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) 
 	return rating, err
 }
 
+const getPlayerLatestGlobalEloAtDate = `-- name: GetPlayerLatestGlobalEloAtDate :one
+SELECT pr.rating
+FROM player_ratings pr
+WHERE pr.player_id = $1
+  AND pr.date <= $2
+ORDER BY pr.date DESC, pr.id DESC
+LIMIT 1
+`
+
+type GetPlayerLatestGlobalEloAtDateParams struct {
+	PlayerID int32              `json:"player_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+}
+
+func (q *Queries) GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloAtDate, arg.PlayerID, arg.Date)
+	var rating float64
+	err := row.Scan(&rating)
+	return rating, err
+}
+
 const getPlayerLatestGlobalEloBeforeMatch = `-- name: GetPlayerLatestGlobalEloBeforeMatch :one
 SELECT pr.rating
 FROM player_ratings pr
@@ -348,8 +369,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
@@ -361,15 +382,15 @@ ORDER BY s.score DESC
 `
 
 type ListMatchResultsRow struct {
-	MatchID       int32              `json:"match_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	GameName      string             `json:"game_name"`
-	PlayerID      int32              `json:"player_id"`
-	PlayerName    string             `json:"player_name"`
-	Score         float64            `json:"score"`
-	GlobalEloPay  float64            `json:"global_elo_pay"`
-	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  interface{}        `json:"global_new_elo"`
+	MatchID      int32              `json:"match_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	GameName     string             `json:"game_name"`
+	PlayerID     int32              `json:"player_id"`
+	PlayerName   string             `json:"player_name"`
+	Score        float64            `json:"score"`
+	RatingPay    float64            `json:"rating_pay"`
+	RatingEarn   float64            `json:"rating_earn"`
+	GlobalNewElo interface{}        `json:"global_new_elo"`
 }
 
 func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error) {
@@ -388,8 +409,8 @@ func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchRe
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
-			&i.GlobalEloPay,
-			&i.GlobalEloEarn,
+			&i.RatingPay,
+			&i.RatingEarn,
 			&i.GlobalNewElo,
 		); err != nil {
 			return nil, err
@@ -411,8 +432,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -434,17 +455,17 @@ ORDER BY m.date DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersRow struct {
-	MatchID       int32              `json:"match_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	GameID        int32              `json:"game_id"`
-	GameName      string             `json:"game_name"`
-	PlayerID      int32              `json:"player_id"`
-	PlayerName    string             `json:"player_name"`
-	Score         float64            `json:"score"`
-	GlobalEloPay  float64            `json:"global_elo_pay"`
-	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  interface{}        `json:"global_new_elo"`
-	PrevRating    interface{}        `json:"prev_rating"`
+	MatchID      int32              `json:"match_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	GameID       int32              `json:"game_id"`
+	GameName     string             `json:"game_name"`
+	PlayerID     int32              `json:"player_id"`
+	PlayerName   string             `json:"player_name"`
+	Score        float64            `json:"score"`
+	RatingPay    float64            `json:"rating_pay"`
+	RatingEarn   float64            `json:"rating_earn"`
+	GlobalNewElo interface{}        `json:"global_new_elo"`
+	PrevRating   interface{}        `json:"prev_rating"`
 }
 
 func (q *Queries) ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error) {
@@ -464,8 +485,8 @@ func (q *Queries) ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWith
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
-			&i.GlobalEloPay,
-			&i.GlobalEloEarn,
+			&i.RatingPay,
+			&i.RatingEarn,
 			&i.GlobalNewElo,
 			&i.PrevRating,
 		); err != nil {
@@ -488,8 +509,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -523,21 +544,21 @@ ORDER BY m.date ASC, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameRow struct {
-	MatchID       int32              `json:"match_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	GameID        int32              `json:"game_id"`
-	GameName      string             `json:"game_name"`
-	PlayerID      int32              `json:"player_id"`
-	PlayerName    string             `json:"player_name"`
-	Score         float64            `json:"score"`
-	GlobalEloPay  float64            `json:"global_elo_pay"`
-	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  interface{}        `json:"global_new_elo"`
-	PrevRating    interface{}        `json:"prev_rating"`
-	EloConstK     float64            `json:"elo_const_k"`
-	EloConstD     float64            `json:"elo_const_d"`
-	StartingElo   float64            `json:"starting_elo"`
-	WinReward     float64            `json:"win_reward"`
+	MatchID      int32              `json:"match_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	GameID       int32              `json:"game_id"`
+	GameName     string             `json:"game_name"`
+	PlayerID     int32              `json:"player_id"`
+	PlayerName   string             `json:"player_name"`
+	Score        float64            `json:"score"`
+	RatingPay    float64            `json:"rating_pay"`
+	RatingEarn   float64            `json:"rating_earn"`
+	GlobalNewElo interface{}        `json:"global_new_elo"`
+	PrevRating   interface{}        `json:"prev_rating"`
+	EloConstK    float64            `json:"elo_const_k"`
+	EloConstD    float64            `json:"elo_const_d"`
+	StartingElo  float64            `json:"starting_elo"`
+	WinReward    float64            `json:"win_reward"`
 }
 
 func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
@@ -557,8 +578,8 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
-			&i.GlobalEloPay,
-			&i.GlobalEloEarn,
+			&i.RatingPay,
+			&i.RatingEarn,
 			&i.GlobalNewElo,
 			&i.PrevRating,
 			&i.EloConstK,
@@ -671,8 +692,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.global_elo_pay,
-    s.global_elo_earn,
+    s.rating_pay,
+    s.rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
@@ -702,17 +723,17 @@ type ListMatchesWithPlayersPaginatedParams struct {
 }
 
 type ListMatchesWithPlayersPaginatedRow struct {
-	MatchID       int32              `json:"match_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	GameID        int32              `json:"game_id"`
-	GameName      string             `json:"game_name"`
-	PlayerID      int32              `json:"player_id"`
-	PlayerName    string             `json:"player_name"`
-	Score         float64            `json:"score"`
-	GlobalEloPay  float64            `json:"global_elo_pay"`
-	GlobalEloEarn float64            `json:"global_elo_earn"`
-	GlobalNewElo  interface{}        `json:"global_new_elo"`
-	PrevRating    interface{}        `json:"prev_rating"`
+	MatchID      int32              `json:"match_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	GameID       int32              `json:"game_id"`
+	GameName     string             `json:"game_name"`
+	PlayerID     int32              `json:"player_id"`
+	PlayerName   string             `json:"player_name"`
+	Score        float64            `json:"score"`
+	RatingPay    float64            `json:"rating_pay"`
+	RatingEarn   float64            `json:"rating_earn"`
+	GlobalNewElo interface{}        `json:"global_new_elo"`
+	PrevRating   interface{}        `json:"prev_rating"`
 }
 
 func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error) {
@@ -739,8 +760,8 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
-			&i.GlobalEloPay,
-			&i.GlobalEloEarn,
+			&i.RatingPay,
+			&i.RatingEarn,
 			&i.GlobalNewElo,
 			&i.PrevRating,
 		); err != nil {
@@ -796,51 +817,51 @@ func (q *Queries) UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchSc
 	return err
 }
 
-const updateMatchScoreGlobalElo = `-- name: UpdateMatchScoreGlobalElo :exec
+const updateMatchScoreRating = `-- name: UpdateMatchScoreRating :exec
 UPDATE match_scores
-SET global_elo_pay = $3, global_elo_earn = $4
+SET rating_pay = $3, rating_earn = $4
 WHERE match_id = $1 AND player_id = $2
 `
 
-type UpdateMatchScoreGlobalEloParams struct {
-	MatchID       int32   `json:"match_id"`
-	PlayerID      int32   `json:"player_id"`
-	GlobalEloPay  float64 `json:"global_elo_pay"`
-	GlobalEloEarn float64 `json:"global_elo_earn"`
+type UpdateMatchScoreRatingParams struct {
+	MatchID    int32   `json:"match_id"`
+	PlayerID   int32   `json:"player_id"`
+	RatingPay  float64 `json:"rating_pay"`
+	RatingEarn float64 `json:"rating_earn"`
 }
 
-func (q *Queries) UpdateMatchScoreGlobalElo(ctx context.Context, arg UpdateMatchScoreGlobalEloParams) error {
-	_, err := q.db.Exec(ctx, updateMatchScoreGlobalElo,
+func (q *Queries) UpdateMatchScoreRating(ctx context.Context, arg UpdateMatchScoreRatingParams) error {
+	_, err := q.db.Exec(ctx, updateMatchScoreRating,
 		arg.MatchID,
 		arg.PlayerID,
-		arg.GlobalEloPay,
-		arg.GlobalEloEarn,
+		arg.RatingPay,
+		arg.RatingEarn,
 	)
 	return err
 }
 
 const upsertMatchScore = `-- name: UpsertMatchScore :exec
-INSERT INTO match_scores (match_id, player_id, score, global_elo_pay, global_elo_earn, game_elo_pay, game_elo_earn, game_new_elo)
+INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (match_id, player_id)
 DO UPDATE SET
     score = EXCLUDED.score,
-    global_elo_pay = EXCLUDED.global_elo_pay,
-    global_elo_earn = EXCLUDED.global_elo_earn,
+    rating_pay = EXCLUDED.rating_pay,
+    rating_earn = EXCLUDED.rating_earn,
     game_elo_pay = EXCLUDED.game_elo_pay,
     game_elo_earn = EXCLUDED.game_elo_earn,
     game_new_elo = EXCLUDED.game_new_elo
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID       int32   `json:"match_id"`
-	PlayerID      int32   `json:"player_id"`
-	Score         float64 `json:"score"`
-	GlobalEloPay  float64 `json:"global_elo_pay"`
-	GlobalEloEarn float64 `json:"global_elo_earn"`
-	GameEloPay    float64 `json:"game_elo_pay"`
-	GameEloEarn   float64 `json:"game_elo_earn"`
-	GameNewElo    float64 `json:"game_new_elo"`
+	MatchID     int32   `json:"match_id"`
+	PlayerID    int32   `json:"player_id"`
+	Score       float64 `json:"score"`
+	RatingPay   float64 `json:"rating_pay"`
+	RatingEarn  float64 `json:"rating_earn"`
+	GameEloPay  float64 `json:"game_elo_pay"`
+	GameEloEarn float64 `json:"game_elo_earn"`
+	GameNewElo  float64 `json:"game_new_elo"`
 }
 
 func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error {
@@ -848,8 +869,8 @@ func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScorePara
 		arg.MatchID,
 		arg.PlayerID,
 		arg.Score,
-		arg.GlobalEloPay,
-		arg.GlobalEloEarn,
+		arg.RatingPay,
+		arg.RatingEarn,
 		arg.GameEloPay,
 		arg.GameEloEarn,
 		arg.GameNewElo,
