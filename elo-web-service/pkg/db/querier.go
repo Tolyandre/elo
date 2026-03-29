@@ -35,14 +35,17 @@ type Querier interface {
 	DeletePlayerRatingsByMarket(ctx context.Context, marketID pgtype.Int4) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID int32) ([]GetBetsAggregatedByOutcomeRow, error)
+	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
 	GetClub(ctx context.Context, id int32) ([]GetClubRow, error)
 	GetCountMatchesByGame(ctx context.Context, gameID int32) (int64, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByID(ctx context.Context, id int32) (Game, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
+	GetMarketResolvedAt(ctx context.Context, id int32) (pgtype.Timestamptz, error)
 	GetMarketWithPools(ctx context.Context, id int32) (GetMarketWithPoolsRow, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]int32, error)
+	GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error)
 	GetMatch(ctx context.Context, id int32) (Match, error)
 	GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]GetMatchScoresForMatchRow, error)
 	GetMatchWinnerParams(ctx context.Context, marketID int32) (MarketMatchWinnerParam, error)

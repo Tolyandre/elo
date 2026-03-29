@@ -153,6 +153,56 @@ func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID int32
 	return items, nil
 }
 
+const getBetsOnMarketPlacedBetween = `-- name: GetBetsOnMarketPlacedBetween :many
+SELECT id, player_id, placed_at FROM bets
+WHERE market_id = $1
+  AND placed_at >= $2
+  AND placed_at < $3
+`
+
+type GetBetsOnMarketPlacedBetweenParams struct {
+	MarketID   int32              `json:"market_id"`
+	PlacedAt   pgtype.Timestamptz `json:"placed_at"`
+	PlacedAt_2 pgtype.Timestamptz `json:"placed_at_2"`
+}
+
+type GetBetsOnMarketPlacedBetweenRow struct {
+	ID       int32              `json:"id"`
+	PlayerID int32              `json:"player_id"`
+	PlacedAt pgtype.Timestamptz `json:"placed_at"`
+}
+
+func (q *Queries) GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error) {
+	rows, err := q.db.Query(ctx, getBetsOnMarketPlacedBetween, arg.MarketID, arg.PlacedAt, arg.PlacedAt_2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBetsOnMarketPlacedBetweenRow{}
+	for rows.Next() {
+		var i GetBetsOnMarketPlacedBetweenRow
+		if err := rows.Scan(&i.ID, &i.PlayerID, &i.PlacedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMarketResolvedAt = `-- name: GetMarketResolvedAt :one
+SELECT resolved_at FROM markets WHERE id = $1
+`
+
+func (q *Queries) GetMarketResolvedAt(ctx context.Context, id int32) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getMarketResolvedAt, id)
+	var resolved_at pgtype.Timestamptz
+	err := row.Scan(&resolved_at)
+	return resolved_at, err
+}
+
 const getMarketWithPools = `-- name: GetMarketWithPools :one
 SELECT
     om.id, om.market_type, om.status, om.starts_at, om.closes_at,
@@ -239,6 +289,38 @@ func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.T
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMarketsForUnsettleWithResolvedAt = `-- name: GetMarketsForUnsettleWithResolvedAt :many
+SELECT id, resolved_at
+FROM markets
+WHERE status != 'open'
+  AND resolved_at >= $1
+`
+
+type GetMarketsForUnsettleWithResolvedAtRow struct {
+	ID         int32              `json:"id"`
+	ResolvedAt pgtype.Timestamptz `json:"resolved_at"`
+}
+
+func (q *Queries) GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error) {
+	rows, err := q.db.Query(ctx, getMarketsForUnsettleWithResolvedAt, resolvedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMarketsForUnsettleWithResolvedAtRow{}
+	for rows.Next() {
+		var i GetMarketsForUnsettleWithResolvedAtRow
+		if err := rows.Scan(&i.ID, &i.ResolvedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

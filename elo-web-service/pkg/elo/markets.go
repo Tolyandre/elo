@@ -16,6 +16,7 @@ import (
 var ErrBetLimitExceeded = errors.New("ставка превысит лимит бронирования")
 var ErrMarketNotOpen = errors.New("рынок не открыт")
 var ErrPlayerHasNoLinkedPlayer = errors.New("у пользователя нет привязанного игрока")
+var ErrHistoryChangeConflict = errors.New("изменение истории невозможно: ставка была сделана до того, как рынок был разрешён в результате новой даты партии")
 
 type CreateMarketParams struct {
 	MarketType string

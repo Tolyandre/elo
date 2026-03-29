@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -327,6 +328,82 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	}
 	if diff := afterB - snapshotB; diff < -epsilon || diff > epsilon {
 		t.Errorf("playerB: after recalc rating=%.6f, want %.6f (diff=%.6f)", afterB, snapshotB, diff)
+	}
+}
+
+// TestUpdateMatch_RejectsDateChangeWhenBetPrecedes verifies that moving a match to an earlier
+// date is rejected when doing so would make the market resolve before some bets were placed.
+//
+// The key invariant: bet.placed_at must be < market.resolved_at (the match's domain date).
+// If moving the match makes resolved_at earlier than some bet's placed_at, reject.
+//
+// Sequence:
+//  1. Warm-up match (past) to give bet limits.
+//  2. Create market (starts_at in past, closes_at far future).
+//  3. Players place bets at server-now (placed_at ≈ now).
+//  4. M2 at T_future (now+2h) triggers market resolution; resolved_at = now+2h > placed_at ✓.
+//  5. Attempt to move M2 to T_past (now-30min) < placed_at → ErrHistoryChangeConflict.
+func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	playerA := createTestPlayer(t, pool, "ConflictA")
+	playerB := createTestPlayer(t, pool, "ConflictB")
+	gameID := createTestGame(t, pool, "Checkers")
+	adminID := createTestAdmin(t, pool)
+
+	now := time.Now().Truncate(time.Second)
+	tWarmup := now.Add(-2 * time.Hour)  // warm-up match to give bet limits
+	tFuture := now.Add(2 * time.Hour)   // M2 original date (future game)
+	tPast := now.Add(-30 * time.Minute) // target date for M2 (before bets placed at ~now)
+
+	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	marketSvc := elo.NewMarketService(pool)
+
+	// 1. Warm-up match: gives players a bet limit of K/(1+1) ≈ 16.
+	_, err := matchSvc.AddMatch(ctx, gameID, map[int32]float64{playerA: 5, playerB: 5}, tWarmup)
+	if err != nil {
+		t.Fatalf("warm-up AddMatch: %v", err)
+	}
+
+	// 2. Market covering the upcoming game (starts in past, covers tFuture).
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		MarketType: "match_winner",
+		StartsAt:   now.Add(-time.Hour),
+		ClosesAt:   now.Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerID:    playerA,
+			RequiredPlayerIDs: []int32{playerB},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+
+	// 3. Bets placed NOW (placed_at ≈ now, before tFuture = now+2h).
+	if err := marketSvc.PlaceBet(ctx, market.ID, playerA, "yes", 10); err != nil {
+		t.Fatalf("PlaceBet playerA: %v", err)
+	}
+	if err := marketSvc.PlaceBet(ctx, market.ID, playerB, "no", 10); err != nil {
+		t.Fatalf("PlaceBet playerB: %v", err)
+	}
+
+	// 4. M2 with a future domain date triggers resolution; resolved_at = tFuture > placed_at ✓.
+	m2, err := matchSvc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 2}, tFuture)
+	if err != nil {
+		t.Fatalf("M2 AddMatch: %v", err)
+	}
+
+	// 5. Move M2 to tPast (now-30min). This makes resolved_at = now-30min < placed_at (≈now).
+	// Bets fall in [now-30min, now+2h) → conflict must be returned.
+	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[int32]float64{playerA: 10, playerB: 2}, tPast)
+	if err == nil {
+		t.Fatal("UpdateMatch: expected error, got nil")
+	}
+	if !errors.Is(err, elo.ErrHistoryChangeConflict) {
+		t.Errorf("UpdateMatch: expected ErrHistoryChangeConflict, got: %v", err)
 	}
 }
 

@@ -79,6 +79,13 @@ func (p *EventProcessor) RecalculateFrom(
 	calcAndUpdateElo func(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error,
 	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (map[int32]float64, map[int32]float64, db.GetEloSettingsForDateRow, error),
 ) error {
+	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
+	// whether recalculation moves any market's resolution to an earlier time.
+	oldResolutions, err := q.GetMarketsForUnsettleWithResolvedAt(ctx, pgtype.Timestamptz{Time: startDate, Valid: true})
+	if err != nil {
+		return fmt.Errorf("snapshot market resolutions: %w", err)
+	}
+
 	// Unsettle markets resolved by matches on/after startDate
 	if err := p.MarketService.UnsettleMarketsFromDate(ctx, q, startDate); err != nil {
 		return fmt.Errorf("unsettle markets: %w", err)
@@ -120,6 +127,41 @@ func (p *EventProcessor) RecalculateFrom(
 	}
 	if err := RecalculateBetLimits(ctx, q, affectedIDs); err != nil {
 		return fmt.Errorf("recalculate bet limits: %w", err)
+	}
+
+	// Validate history consistency: if any market's resolved_at moved EARLIER due to
+	// recalculation, reject if bets exist in the shifted window [new, old).
+	// Those bets were placed while the market was open, but in the new timeline the
+	// market would already have been resolved when they were placed.
+	for _, old := range oldResolutions {
+		if !old.ResolvedAt.Valid {
+			continue
+		}
+		newResolvedAt, err := q.GetMarketResolvedAt(ctx, old.ID)
+		if err != nil {
+			return fmt.Errorf("get new resolved_at for market %d: %w", old.ID, err)
+		}
+		if !newResolvedAt.Valid {
+			// Market was not re-settled (no qualifying match in replayed range).
+			continue
+		}
+		if !newResolvedAt.Time.Before(old.ResolvedAt.Time) {
+			// resolved_at did not move earlier; no new conflicts possible.
+			continue
+		}
+		// resolved_at moved earlier: any bet placed in [new, old) is now invalid.
+		bets, err := q.GetBetsOnMarketPlacedBetween(ctx, db.GetBetsOnMarketPlacedBetweenParams{
+			MarketID:   old.ID,
+			PlacedAt:   newResolvedAt,
+			PlacedAt_2: pgtype.Timestamptz{Time: old.ResolvedAt.Time, Valid: true},
+		})
+		if err != nil {
+			return fmt.Errorf("check bets for market %d: %w", old.ID, err)
+		}
+		if len(bets) > 0 {
+			b := bets[0]
+			return fmt.Errorf("%w: market_id=%d player_id=%d", ErrHistoryChangeConflict, old.ID, b.PlayerID)
+		}
 	}
 
 	return nil

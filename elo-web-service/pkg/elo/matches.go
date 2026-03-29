@@ -203,7 +203,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 
 	// Recalculate all settlements from the start date
 	if err := s.recalculateEloFromDate(ctx, q, recalcStartDate); err != nil {
-		return db.Match{}, fmt.Errorf("unable to recalculate Elo: %v", err)
+		return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
 	}
 
 	// Commit the transaction

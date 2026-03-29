@@ -119,6 +119,21 @@ FROM markets om
 WHERE om.status != 'open'
   AND om.resolved_at >= $1;
 
+-- name: GetMarketsForUnsettleWithResolvedAt :many
+SELECT id, resolved_at
+FROM markets
+WHERE status != 'open'
+  AND resolved_at >= $1;
+
+-- name: GetMarketResolvedAt :one
+SELECT resolved_at FROM markets WHERE id = $1;
+
+-- name: GetBetsOnMarketPlacedBetween :many
+SELECT id, player_id, placed_at FROM bets
+WHERE market_id = $1
+  AND placed_at >= $2
+  AND placed_at < $3;
+
 -- name: InsertBet :one
 INSERT INTO bets (market_id, player_id, outcome, amount)
 VALUES ($1, $2, $3, $4)

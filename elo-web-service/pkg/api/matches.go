@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
 type addMatchJson struct {
@@ -152,6 +154,10 @@ func (a *API) UpdateMatch(c *gin.Context) {
 		}
 		if contains(err.Error(), "unable to get match") {
 			ErrorResponse(c, http.StatusNotFound, "Match not found")
+			return
+		}
+		if errors.Is(err, elo.ErrHistoryChangeConflict) {
+			ErrorResponse(c, http.StatusConflict, err.Error())
 			return
 		}
 		ErrorResponse(c, http.StatusInternalServerError, err)
