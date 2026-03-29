@@ -12,6 +12,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
 } from "@/components/ui/command"
 import {
   Popover,
@@ -25,7 +26,10 @@ import {
 } from "@/components/ui/drawer"
 import { useGames } from "@/app/gamesContext"
 import { createGamePromise } from "@/app/api"
+import { useMatches } from "@/app/matches/MatchesContext"
+import { useMe } from "@/app/meContext"
 import useIsMobile from "@/hooks/use-is-mobile"
+import { buildGameGroups } from "@/lib/game-groups"
 
 export function GameCombobox({
   value: controlledValue,
@@ -42,7 +46,23 @@ export function GameCombobox({
   const value = controlledValue !== undefined ? controlledValue : internalValue
 
   const { games, invalidate } = useGames();
+  const { matches } = useMatches();
+  const { playerId } = useMe();
   const { isMobile } = useIsMobile();
+
+  const groups = React.useMemo(
+    () => buildGameGroups(games, matches, playerId),
+    [games, matches, playerId]
+  );
+
+  const handleSelect = (currentValue: string) => {
+    const next = currentValue === value ? "" : currentValue;
+    if (controlledValue === undefined) {
+      setInternalValue(next);
+    }
+    onChange?.(next === "" ? undefined : next);
+    setOpen(false);
+  };
 
   const handleCreateGame = async () => {
     if (!searchQuery.trim() || creating) return;
@@ -103,35 +123,29 @@ export function GameCombobox({
             </Button>
           </div>
         </CommandEmpty>
-        <CommandGroup>
-          {games
-           .sort((a, b) => a.name > b.name ? 1 : -1)
-           .map((game) => (
-            <CommandItem
-              key={game.id}
-              value={game.id}
-              keywords={[game.name]}
-              onSelect={(currentValue) => {
-                const next = currentValue === value ? "" : currentValue
-                if (controlledValue === undefined) {
-                  setInternalValue(next)
-                }
-                if (onChange) {
-                  onChange(next === "" ? undefined : next)
-                }
-                setOpen(false)
-              }}
-            >
-              {game.name}
-              <Check
-                className={cn(
-                  "ml-auto",
-                  value === game.id ? "opacity-100" : "opacity-0"
-                )}
-              />
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {groups.map((group, i) => (
+          <React.Fragment key={group.heading || "__only__"}>
+            {i > 0 && <CommandSeparator />}
+            <CommandGroup heading={group.heading || undefined}>
+              {group.options.map((game) => (
+                <CommandItem
+                  key={`${group.heading}-${game.value}`}
+                  value={game.value}
+                  keywords={[game.label]}
+                  onSelect={handleSelect}
+                >
+                  {game.label}
+                  <Check
+                    className={cn(
+                      "ml-auto",
+                      value === game.value ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </React.Fragment>
+        ))}
       </CommandList>
     </Command>
   )
