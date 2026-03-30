@@ -16,25 +16,33 @@ type MatchInfo struct {
 }
 
 // SettleFunc settles a market with a given outcome within an active transaction.
-type SettleFunc func(ctx context.Context, q *db.Queries, marketID int32, outcome string, resolvedAt time.Time, resolutionMatchID *int32) error
+type SettleFunc func(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error
+
+// ResolutionTrigger describes when and how markets of a given type are resolved.
+// Implementations must be safe to call as no-ops when the trigger type does not respond
+// to a particular event (e.g. a match-based trigger should ignore time expiry calls).
+type ResolutionTrigger interface {
+	// OnMatch is called inside a transaction after every match is settled.
+	// Must settle any open markets whose condition is now met.
+	OnMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error
+
+	// OnTimeExpiry is called during sequential event replay with a cutoff date.
+	// Must settle markets whose closes_at <= cutoff.
+	OnTimeExpiry(ctx context.Context, q *db.Queries, cutoff time.Time, settle SettleFunc) error
+
+	// OnOverdue is called by the background timer outside of event replay.
+	// Must settle all currently overdue open markets.
+	OnOverdue(ctx context.Context, q *db.Queries, settle SettleFunc) error
+}
 
 // MarketTypeHandler encapsulates all type-specific behavior for a market type.
 type MarketTypeHandler interface {
 	// CreateParams stores type-specific parameters in the DB within a transaction.
 	CreateParams(ctx context.Context, q *db.Queries, marketID int32, params CreateMarketParams) error
 
-	// TriggerResolutionForMatch evaluates all open markets of this type against the match.
-	// Must be called within an active transaction.
-	TriggerResolutionForMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error
-
-	// ExpireResolve settles all overdue markets of this type.
-	// Must be called within an active transaction.
-	ExpireResolve(ctx context.Context, q *db.Queries, settle SettleFunc) error
-
-	// ExpireResolveAtDate settles markets of this type whose closes_at <= date.
-	// Used by the sequential event processor to integrate time-based expiry into
-	// the settlement order. Must be called within an active transaction.
-	ExpireResolveAtDate(ctx context.Context, q *db.Queries, date time.Time, settle SettleFunc) error
+	// ResolutionTrigger returns the strategy that decides when and how markets of
+	// this type are resolved. Called once per handler; the result may be cached.
+	ResolutionTrigger() ResolutionTrigger
 }
 
 // marketTypeHandlers is the registry of all known market type handlers.

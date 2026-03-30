@@ -1,7 +1,7 @@
 -- name: CreateMarket :one
 INSERT INTO markets (market_type, starts_at, closes_at, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id;
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome;
 
 -- name: CreateMatchWinnerParams :exec
 INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
@@ -13,7 +13,7 @@ VALUES ($1, $2, $3, $4, $5);
 
 -- name: GetMarketWithPools :one
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
@@ -33,7 +33,7 @@ GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
 
 -- name: ListMarketsWithPools :many
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
@@ -105,12 +105,12 @@ LIMIT 1;
 
 -- name: ResolveMarket :exec
 UPDATE markets
-SET status = $2, resolved_at = $3, resolution_match_id = $4
+SET status = $2, resolved_at = $3, resolution_match_id = $4, resolution_outcome = $5
 WHERE id = $1;
 
 -- name: UnsettleMarket :exec
 UPDATE markets
-SET status = 'open', resolved_at = NULL, resolution_match_id = NULL
+SET status = 'open', resolved_at = NULL, resolution_match_id = NULL, resolution_outcome = NULL
 WHERE id = $1;
 
 -- name: GetMarketsForUnsettle :many
@@ -176,7 +176,7 @@ DELETE FROM player_ratings WHERE market_id = $1;
 
 -- name: ListMarketsByResolutionMatch :many
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,

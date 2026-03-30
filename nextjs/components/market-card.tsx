@@ -7,22 +7,22 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
 
-export function statusLabel(status: Market["status"]): string {
-    switch (status) {
-        case "open": return "Открыт";
-        case "resolved_yes": return "Да";
-        case "resolved_no": return "Нет";
-        case "cancelled": return "Отменён";
+export function statusLabel(status: Market["status"], resolutionOutcome?: string | null): string {
+    if (status === "resolved") {
+        if (resolutionOutcome === "yes") return "Да";
+        if (resolutionOutcome === "no") return "Нет";
+        return resolutionOutcome ?? "Разрешён";
     }
+    if (status === "cancelled") return "Отменён";
+    return "Открыт";
 }
 
-export function statusVariant(status: Market["status"]): "default" | "secondary" | "destructive" | "outline" {
-    switch (status) {
-        case "open": return "default";
-        case "resolved_yes": return "default";
-        case "resolved_no": return "secondary";
-        case "cancelled": return "destructive";
+export function statusVariant(status: Market["status"], resolutionOutcome?: string | null): "default" | "secondary" | "destructive" | "outline" {
+    if (status === "resolved") {
+        return resolutionOutcome === "no" ? "secondary" : "default";
     }
+    if (status === "cancelled") return "destructive";
+    return "default";
 }
 
 function PoolBar({ yesPool, noPool, yesCoeff, noCoeff }: {
@@ -90,8 +90,8 @@ export function MarketCard({ market, className }: { market: Market; className?: 
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base">{title}</CardTitle>
-                    <Badge variant={statusVariant(market.status)} className="shrink-0">
-                        {statusLabel(market.status)}
+                    <Badge variant={statusVariant(market.status, market.resolution_outcome)} className="shrink-0">
+                        {statusLabel(market.status, market.resolution_outcome)}
                     </Badge>
                 </div>
                 {date && (

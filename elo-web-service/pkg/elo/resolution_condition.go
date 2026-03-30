@@ -8,9 +8,9 @@ type MatchWinnerCondition struct {
 	GameID            *int32
 }
 
-// Evaluate returns (resolved, outcome) where outcome is "resolved_yes" or "resolved_no".
+// Evaluate returns (resolved, outcome) where outcome is OutcomeYes or OutcomeNo.
 // Returns (false, "") when the match does not satisfy this condition.
-func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool, string) {
+func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool, MarketOutcome) {
 	if !window.Contains(match.Match.Date.Time) {
 		return false, ""
 	}
@@ -26,9 +26,9 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 		return false, ""
 	}
 	if match.PlayerScoreMap[c.TargetPlayerID] >= match.MaxScore {
-		return true, "resolved_yes"
+		return true, OutcomeYes
 	}
-	return true, "resolved_no"
+	return true, OutcomeNo
 }
 
 // WinStreakCondition evaluates win/loss counts against the streak thresholds.
@@ -39,13 +39,13 @@ type WinStreakCondition struct {
 }
 
 // Evaluate returns (resolved, outcome) given streak counts.
-// Loss limit is checked before win target so that hitting both on the same match resolves_no.
-func (c WinStreakCondition) Evaluate(wins, losses int32) (bool, string) {
+// Loss limit is checked before win target so that hitting both on the same match resolves OutcomeNo.
+func (c WinStreakCondition) Evaluate(wins, losses int32) (bool, MarketOutcome) {
 	if c.MaxLosses != nil && losses > *c.MaxLosses {
-		return true, "resolved_no"
+		return true, OutcomeNo
 	}
 	if wins >= c.WinsRequired {
-		return true, "resolved_yes"
+		return true, OutcomeYes
 	}
 	return false, ""
 }

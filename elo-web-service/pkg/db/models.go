@@ -52,6 +52,7 @@ type Market struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 }
 
 type MarketMatchWinnerParam struct {

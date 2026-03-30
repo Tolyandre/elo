@@ -201,14 +201,17 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 		t.Fatalf("AddMatch (trigger): %v", err)
 	}
 
-	// Market must now be resolved_yes
+	// Market must now be resolved with outcome "yes"
 	q := db.New(pool)
 	m, err := q.GetMarketWithPools(ctx, market.ID)
 	if err != nil {
 		t.Fatalf("GetMarketWithPools: %v", err)
 	}
-	if m.Status != "resolved_yes" {
-		t.Errorf("market status = %q, want %q", m.Status, "resolved_yes")
+	if m.Status != "resolved" {
+		t.Errorf("market status = %q, want %q", m.Status, "resolved")
+	}
+	if !m.ResolutionOutcome.Valid || m.ResolutionOutcome.String != "yes" {
+		t.Errorf("market resolution_outcome = %v, want \"yes\"", m.ResolutionOutcome)
 	}
 
 	// Both players must have a market_settlement rating row

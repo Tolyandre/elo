@@ -636,7 +636,8 @@ export type WinStreakParams = {
 export type Market = {
     id: string;
     market_type: 'match_winner' | 'win_streak';
-    status: 'open' | 'resolved_yes' | 'resolved_no' | 'cancelled';
+    status: 'open' | 'resolved' | 'cancelled';
+    resolution_outcome?: string | null;
     starts_at: string | null;
     closes_at: string | null;
     created_at: string | null;

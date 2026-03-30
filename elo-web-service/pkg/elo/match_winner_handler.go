@@ -9,7 +9,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
-
 type matchWinnerHandler struct{}
 
 func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID int32, params CreateMarketParams) error {
@@ -30,7 +29,14 @@ func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, ma
 	})
 }
 
-func (h *matchWinnerHandler) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error {
+func (h *matchWinnerHandler) ResolutionTrigger() ResolutionTrigger {
+	return &matchWinnerTrigger{}
+}
+
+// matchWinnerTrigger implements ResolutionTrigger for the match_winner market type.
+type matchWinnerTrigger struct{}
+
+func (t *matchWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error {
 	markets, err := q.ListOpenMatchWinnerMarkets(ctx)
 	if err != nil {
 		return fmt.Errorf("list match_winner markets: %w", err)
@@ -56,26 +62,26 @@ func (h *matchWinnerHandler) TriggerResolutionForMatch(ctx context.Context, q *d
 	return nil
 }
 
-func (h *matchWinnerHandler) ExpireResolve(ctx context.Context, q *db.Queries, settle SettleFunc) error {
-	markets, err := q.ListOverdueMatchWinnerMarkets(ctx)
+func (t *matchWinnerTrigger) OnTimeExpiry(ctx context.Context, q *db.Queries, cutoff time.Time, settle SettleFunc) error {
+	markets, err := q.ListOverdueMatchWinnerMarketsAtDate(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
 	if err != nil {
-		return fmt.Errorf("list overdue match_winner markets: %w", err)
+		return fmt.Errorf("list overdue match_winner markets at date: %w", err)
 	}
 	for _, m := range markets {
-		if err := settle(ctx, q, m.ID, "cancelled", m.ClosesAt.Time, nil); err != nil {
+		if err := settle(ctx, q, m.ID, OutcomeCancelled, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
 		}
 	}
 	return nil
 }
 
-func (h *matchWinnerHandler) ExpireResolveAtDate(ctx context.Context, q *db.Queries, date time.Time, settle SettleFunc) error {
-	markets, err := q.ListOverdueMatchWinnerMarketsAtDate(ctx, pgtype.Timestamptz{Time: date, Valid: true})
+func (t *matchWinnerTrigger) OnOverdue(ctx context.Context, q *db.Queries, settle SettleFunc) error {
+	markets, err := q.ListOverdueMatchWinnerMarkets(ctx)
 	if err != nil {
-		return fmt.Errorf("list overdue match_winner markets at date: %w", err)
+		return fmt.Errorf("list overdue match_winner markets: %w", err)
 	}
 	for _, m := range markets {
-		if err := settle(ctx, q, m.ID, "cancelled", m.ClosesAt.Time, nil); err != nil {
+		if err := settle(ctx, q, m.ID, OutcomeCancelled, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
 		}
 	}

@@ -26,7 +26,14 @@ func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, mark
 	})
 }
 
-func (h *winStreakHandler) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error {
+func (h *winStreakHandler) ResolutionTrigger() ResolutionTrigger {
+	return &winStreakTrigger{}
+}
+
+// winStreakTrigger implements ResolutionTrigger for the win_streak market type.
+type winStreakTrigger struct{}
+
+func (t *winStreakTrigger) OnMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error {
 	markets, err := q.ListOpenWinStreakMarkets(ctx)
 	if err != nil {
 		return fmt.Errorf("list win_streak markets: %w", err)
@@ -63,7 +70,35 @@ func (h *winStreakHandler) TriggerResolutionForMatch(ctx context.Context, q *db.
 	return nil
 }
 
-func (h *winStreakHandler) ExpireResolve(ctx context.Context, q *db.Queries, settle SettleFunc) error {
+func (t *winStreakTrigger) OnTimeExpiry(ctx context.Context, q *db.Queries, cutoff time.Time, settle SettleFunc) error {
+	markets, err := q.ListOverdueWinStreakMarketsAtDate(ctx, pgtype.Timestamptz{Time: cutoff, Valid: true})
+	if err != nil {
+		return fmt.Errorf("list overdue win_streak markets at date: %w", err)
+	}
+	for _, m := range markets {
+		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
+			PlayerID: m.TargetPlayerID,
+			GameID:   m.GameID,
+			Date:     m.StartsAt,
+			Date_2:   m.ClosesAt,
+		})
+		if err != nil {
+			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
+		}
+
+		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
+		_, outcome := cond.Evaluate(stats.Wins, stats.Losses)
+		if outcome == "" {
+			outcome = OutcomeNo
+		}
+		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
+			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)
+		}
+	}
+	return nil
+}
+
+func (t *winStreakTrigger) OnOverdue(ctx context.Context, q *db.Queries, settle SettleFunc) error {
 	markets, err := q.ListOverdueWinStreakMarkets(ctx)
 	if err != nil {
 		return fmt.Errorf("list overdue win_streak markets: %w", err)
@@ -82,35 +117,7 @@ func (h *winStreakHandler) ExpireResolve(ctx context.Context, q *db.Queries, set
 		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
 		_, outcome := cond.Evaluate(stats.Wins, stats.Losses)
 		if outcome == "" {
-			outcome = "resolved_no"
-		}
-		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
-			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)
-		}
-	}
-	return nil
-}
-
-func (h *winStreakHandler) ExpireResolveAtDate(ctx context.Context, q *db.Queries, date time.Time, settle SettleFunc) error {
-	markets, err := q.ListOverdueWinStreakMarketsAtDate(ctx, pgtype.Timestamptz{Time: date, Valid: true})
-	if err != nil {
-		return fmt.Errorf("list overdue win_streak markets at date: %w", err)
-	}
-	for _, m := range markets {
-		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
-			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
-			Date:     m.StartsAt,
-			Date_2:   m.ClosesAt,
-		})
-		if err != nil {
-			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
-		}
-
-		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
-		_, outcome := cond.Evaluate(stats.Wins, stats.Losses)
-		if outcome == "" {
-			outcome = "resolved_no"
+			outcome = OutcomeNo
 		}
 		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)

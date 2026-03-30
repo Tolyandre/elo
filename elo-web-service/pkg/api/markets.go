@@ -35,20 +35,21 @@ type settlementDetailJson struct {
 
 // marketPoolsJson represents the betting pools for a market.
 type marketPoolsJson struct {
-	ID             string                 `json:"id"`
-	MarketType     string                 `json:"market_type"`
-	Status         string                 `json:"status"`
-	StartsAt       *time.Time             `json:"starts_at"`
-	ClosesAt       *time.Time             `json:"closes_at"`
-	CreatedAt      *time.Time             `json:"created_at"`
-	ResolvedAt     *time.Time             `json:"resolved_at"`
-	YesPool        float64                `json:"yes_pool"`
-	NoPool         float64                `json:"no_pool"`
-	YesCoeff       float64                `json:"yes_coefficient"`
-	NoCoeff        float64                `json:"no_coefficient"`
-	TargetPlayerID string                 `json:"target_player_id"`
-	Params         interface{}            `json:"params"`
-	Settlement     []settlementDetailJson `json:"settlement,omitempty"`
+	ID                string                 `json:"id"`
+	MarketType        string                 `json:"market_type"`
+	Status            string                 `json:"status"`
+	ResolutionOutcome *string                `json:"resolution_outcome,omitempty"`
+	StartsAt          *time.Time             `json:"starts_at"`
+	ClosesAt          *time.Time             `json:"closes_at"`
+	CreatedAt         *time.Time             `json:"created_at"`
+	ResolvedAt        *time.Time             `json:"resolved_at"`
+	YesPool           float64                `json:"yes_pool"`
+	NoPool            float64                `json:"no_pool"`
+	YesCoeff          float64                `json:"yes_coefficient"`
+	NoCoeff           float64                `json:"no_coefficient"`
+	TargetPlayerID    string                 `json:"target_player_id"`
+	Params            interface{}            `json:"params"`
+	Settlement        []settlementDetailJson `json:"settlement,omitempty"`
 }
 
 type marketDetailJson struct {
@@ -157,10 +158,14 @@ func (a *API) ListMarkets(c *gin.Context) {
 			m.ResolvedAt = &t
 		}
 
+		if r.ResolutionOutcome.Valid {
+			s := r.ResolutionOutcome.String
+			m.ResolutionOutcome = &s
+		}
 		if r.Status == "open" {
 			active = append(active, m)
 		} else {
-			if r.Status == "resolved_yes" || r.Status == "resolved_no" {
+			if r.Status == "resolved" {
 				if details, err := a.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
 					m.Settlement = make([]settlementDetailJson, len(details))
 					for i, d := range details {
@@ -255,7 +260,11 @@ func (a *API) GetMarket(c *gin.Context) {
 		detail.ResolvedAt = &t
 	}
 
-	if row.Status == "resolved_yes" || row.Status == "resolved_no" {
+	if row.ResolutionOutcome.Valid {
+		s := row.ResolutionOutcome.String
+		detail.ResolutionOutcome = &s
+	}
+	if row.Status == "resolved" {
 		if details, err := a.Queries.GetSettlementDetails(ctx, marketID); err == nil {
 			detail.Settlement = make([]settlementDetailJson, len(details))
 			for i, d := range details {
@@ -511,7 +520,11 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 			t := r.ResolvedAt.Time
 			m.ResolvedAt = &t
 		}
-		if r.Status == "resolved_yes" || r.Status == "resolved_no" {
+		if r.ResolutionOutcome.Valid {
+			s := r.ResolutionOutcome.String
+			m.ResolutionOutcome = &s
+		}
+		if r.Status == "resolved" {
 			if details, err := a.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
 				m.Settlement = make([]settlementDetailJson, len(details))
 				for i, d := range details {
@@ -558,8 +571,8 @@ func (a *API) PlaceBet(c *gin.Context) {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
-	if body.Outcome != "yes" && body.Outcome != "no" {
-		ErrorResponse(c, http.StatusBadRequest, "outcome must be 'yes' or 'no'")
+	if body.Outcome == "" {
+		ErrorResponse(c, http.StatusBadRequest, "outcome must not be empty")
 		return
 	}
 	if body.Amount <= 0 {

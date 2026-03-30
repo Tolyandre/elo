@@ -14,7 +14,7 @@ import (
 const createMarket = `-- name: CreateMarket :one
 INSERT INTO markets (market_type, starts_at, closes_at, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome
 `
 
 type CreateMarketParams struct {
@@ -42,6 +42,7 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.CreatedAt,
 		&i.ResolvedAt,
 		&i.ResolutionMatchID,
+		&i.ResolutionOutcome,
 	)
 	return i, err
 }
@@ -205,7 +206,7 @@ func (q *Queries) GetMarketResolvedAt(ctx context.Context, id int32) (pgtype.Tim
 
 const getMarketWithPools = `-- name: GetMarketWithPools :one
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
@@ -228,6 +229,7 @@ type GetMarketWithPoolsRow struct {
 	ID                int32              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
+	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
 	CreatedBy         int32              `json:"created_by"`
@@ -251,6 +253,7 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id int32) (GetMarketWi
 		&i.ID,
 		&i.MarketType,
 		&i.Status,
+		&i.ResolutionOutcome,
 		&i.StartsAt,
 		&i.ClosesAt,
 		&i.CreatedBy,
@@ -572,7 +575,7 @@ func (q *Queries) InsertBetSettlementDetail(ctx context.Context, arg InsertBetSe
 
 const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :many
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
@@ -595,6 +598,7 @@ type ListMarketsByResolutionMatchRow struct {
 	ID                int32              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
+	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
 	CreatedBy         int32              `json:"created_by"`
@@ -624,6 +628,7 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.ID,
 			&i.MarketType,
 			&i.Status,
+			&i.ResolutionOutcome,
 			&i.StartsAt,
 			&i.ClosesAt,
 			&i.CreatedBy,
@@ -651,7 +656,7 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 
 const listMarketsWithPools = `-- name: ListMarketsWithPools :many
 SELECT
-    om.id, om.market_type, om.status, om.starts_at, om.closes_at,
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
@@ -674,6 +679,7 @@ type ListMarketsWithPoolsRow struct {
 	ID                int32              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
+	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
 	CreatedBy         int32              `json:"created_by"`
@@ -703,6 +709,7 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 			&i.ID,
 			&i.MarketType,
 			&i.Status,
+			&i.ResolutionOutcome,
 			&i.StartsAt,
 			&i.ClosesAt,
 			&i.CreatedBy,
@@ -976,7 +983,7 @@ func (q *Queries) ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesA
 
 const resolveMarket = `-- name: ResolveMarket :exec
 UPDATE markets
-SET status = $2, resolved_at = $3, resolution_match_id = $4
+SET status = $2, resolved_at = $3, resolution_match_id = $4, resolution_outcome = $5
 WHERE id = $1
 `
 
@@ -985,6 +992,7 @@ type ResolveMarketParams struct {
 	Status            string             `json:"status"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 }
 
 func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) error {
@@ -993,13 +1001,14 @@ func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) er
 		arg.Status,
 		arg.ResolvedAt,
 		arg.ResolutionMatchID,
+		arg.ResolutionOutcome,
 	)
 	return err
 }
 
 const unsettleMarket = `-- name: UnsettleMarket :exec
 UPDATE markets
-SET status = 'open', resolved_at = NULL, resolution_match_id = NULL
+SET status = 'open', resolved_at = NULL, resolution_match_id = NULL, resolution_outcome = NULL
 WHERE id = $1
 `
 

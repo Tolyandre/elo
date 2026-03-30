@@ -68,8 +68,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 		cond := MatchWinnerCondition{TargetPlayerID: 10}
 		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
-		if !resolved || outcome != "resolved_yes" {
-			t.Errorf("got resolved=%v outcome=%q, want true/resolved_yes", resolved, outcome)
+		if !resolved || outcome != OutcomeYes {
+			t.Errorf("got resolved=%v outcome=%q, want true/yes", resolved, outcome)
 		}
 	})
 
@@ -77,8 +77,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 		cond := MatchWinnerCondition{TargetPlayerID: 10}
 		match := makeMatch(inWindow, gameID, map[int32]float64{10: 3, 20: 5})
 		resolved, outcome := cond.Evaluate(match, testWindow)
-		if !resolved || outcome != "resolved_no" {
-			t.Errorf("got resolved=%v outcome=%q, want true/resolved_no", resolved, outcome)
+		if !resolved || outcome != OutcomeNo {
+			t.Errorf("got resolved=%v outcome=%q, want true/no", resolved, outcome)
 		}
 	})
 
@@ -104,7 +104,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 		cond := MatchWinnerCondition{TargetPlayerID: 10, GameID: &gameID}
 		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
-		if !resolved || outcome != "resolved_yes" {
+		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
 		}
 	})
@@ -131,7 +131,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 		cond := MatchWinnerCondition{TargetPlayerID: 10, RequiredPlayerIDs: []int32{20}}
 		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
-		if !resolved || outcome != "resolved_yes" {
+		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
 		}
 	})
@@ -141,7 +141,7 @@ func TestWinStreakCondition_Evaluate(t *testing.T) {
 	t.Run("resolved_yes when wins reach required", func(t *testing.T) {
 		cond := WinStreakCondition{WinsRequired: 3}
 		resolved, outcome := cond.Evaluate(3, 0)
-		if !resolved || outcome != "resolved_yes" {
+		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
 		}
 	})
@@ -158,7 +158,7 @@ func TestWinStreakCondition_Evaluate(t *testing.T) {
 		maxLosses := int32(1)
 		cond := WinStreakCondition{WinsRequired: 5, MaxLosses: &maxLosses}
 		resolved, outcome := cond.Evaluate(4, 2)
-		if !resolved || outcome != "resolved_no" {
+		if !resolved || outcome != OutcomeNo {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
 		}
 	})
@@ -167,15 +167,15 @@ func TestWinStreakCondition_Evaluate(t *testing.T) {
 		maxLosses := int32(1)
 		cond := WinStreakCondition{WinsRequired: 3, MaxLosses: &maxLosses}
 		resolved, outcome := cond.Evaluate(3, 2) // wins=3 AND losses=2 > maxLosses=1
-		if !resolved || outcome != "resolved_no" {
-			t.Errorf("got resolved=%v outcome=%q, want true/resolved_no", resolved, outcome)
+		if !resolved || outcome != OutcomeNo {
+			t.Errorf("got resolved=%v outcome=%q, want true/no", resolved, outcome)
 		}
 	})
 
 	t.Run("no max losses: only wins matter", func(t *testing.T) {
 		cond := WinStreakCondition{WinsRequired: 2}
 		resolved, outcome := cond.Evaluate(2, 100)
-		if !resolved || outcome != "resolved_yes" {
+		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
 		}
 	})

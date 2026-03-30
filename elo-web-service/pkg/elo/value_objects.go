@@ -49,6 +49,26 @@ func (w TimeWindow) Contains(t time.Time) bool {
 	return !t.Before(w.StartsAt) && !t.After(w.ClosesAt)
 }
 
+// MarketOutcome is the string identifier of the winning outcome of a market.
+// For binary markets: OutcomeYes / OutcomeNo.
+// For N-outcome markets: any free-text label (e.g. "player_42").
+// OutcomeCancelled is a special value that returns all stakes without redistribution.
+type MarketOutcome string
+
+const (
+	OutcomeCancelled MarketOutcome = "cancelled"
+	OutcomeYes       MarketOutcome = "yes"
+	OutcomeNo        MarketOutcome = "no"
+)
+
+// statusForOutcome maps a MarketOutcome to the new two-value market status.
+func statusForOutcome(o MarketOutcome) string {
+	if o == OutcomeCancelled {
+		return "cancelled"
+	}
+	return "resolved"
+}
+
 // validateMatchDateChange returns ErrDateChangeTooLarge if the date shift exceeds 3 days.
 func validateMatchDateChange(old, new time.Time) error {
 	d := new.Sub(old)

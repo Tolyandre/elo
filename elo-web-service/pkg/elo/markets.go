@@ -36,8 +36,8 @@ type IMarketService interface {
 	UnsettleMarketsFromDate(ctx context.Context, q *db.Queries, fromDate time.Time) error
 
 	// SettleMarket applies parimutuel payout for the given market and outcome.
-	// "cancelled" outcome returns all stakes. Must be called within an active transaction.
-	SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome string, resolvedAt time.Time, resolutionMatchID *int32) error
+	// OutcomeCancelled returns all stakes. Must be called within an active transaction.
+	SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 	ExpireOverdueMarkets(ctx context.Context) error
@@ -183,7 +183,7 @@ func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Que
 	settle := s.SettleMarket
 
 	for marketType, handler := range marketTypeHandlers {
-		if err := handler.TriggerResolutionForMatch(ctx, q, matchInfo, settle); err != nil {
+		if err := handler.ResolutionTrigger().OnMatch(ctx, q, matchInfo, settle); err != nil {
 			return fmt.Errorf("resolve %s markets: %w", marketType, err)
 		}
 	}
@@ -214,7 +214,7 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 
 // SettleMarket applies parimutuel payout and updates the market status.
 // Must be called within an active transaction.
-func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome string, resolvedAt time.Time, resolutionMatchID *int32) error {
+func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error {
 	rows, err := q.GetBetsAggregatedByOutcome(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get bets for market %d: %w", marketID, err)
@@ -228,13 +228,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	totalPool := 0.0
 	winningPool := 0.0
 
-	winningSide := ""
-	switch outcome {
-	case "resolved_yes":
-		winningSide = "yes"
-	case "resolved_no":
-		winningSide = "no"
-	}
+	isCancelled := outcome == OutcomeCancelled
+	winningSide := string(outcome) // "yes", "no", "player_42", etc.
 
 	for _, row := range rows {
 		if _, ok := players[row.PlayerID]; !ok {
@@ -242,13 +237,13 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 		players[row.PlayerID].totalStaked += row.TotalAmount
 		totalPool += row.TotalAmount
-		if winningSide != "" && row.Outcome == winningSide {
+		if !isCancelled && row.Outcome == winningSide {
 			players[row.PlayerID].winningOutcome += row.TotalAmount
 			winningPool += row.TotalAmount
 		}
 	}
 
-	if outcome == "cancelled" {
+	if isCancelled {
 		winningPool = totalPool
 		for pid := range players {
 			players[pid].winningOutcome = players[pid].totalStaked
@@ -315,11 +310,16 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	if resolutionMatchID != nil {
 		resMatchID = pgtype.Int4{Int32: *resolutionMatchID, Valid: true}
 	}
+	resolutionOutcome := pgtype.Text{}
+	if !isCancelled {
+		resolutionOutcome = pgtype.Text{String: winningSide, Valid: true}
+	}
 	if err := q.ResolveMarket(ctx, db.ResolveMarketParams{
 		ID:                marketID,
-		Status:            outcome,
+		Status:            statusForOutcome(outcome),
 		ResolvedAt:        resolvedAtTz,
 		ResolutionMatchID: resMatchID,
+		ResolutionOutcome: resolutionOutcome,
 	}); err != nil {
 		return fmt.Errorf("resolve market %d: %w", marketID, err)
 	}
@@ -335,7 +335,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 // Must be called within an active transaction.
 func (s *MarketService) ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error {
 	for marketType, handler := range marketTypeHandlers {
-		if err := handler.ExpireResolveAtDate(ctx, q, date, s.SettleMarket); err != nil {
+		if err := handler.ResolutionTrigger().OnTimeExpiry(ctx, q, date, s.SettleMarket); err != nil {
 			return fmt.Errorf("expire %s markets at date: %w", marketType, err)
 		}
 	}
@@ -353,10 +353,8 @@ func (s *MarketService) ExpireOverdueMarkets(ctx context.Context) error {
 
 	q := s.Queries.WithTx(tx)
 
-	settle := s.SettleMarket
-
 	for marketType, handler := range marketTypeHandlers {
-		if err := handler.ExpireResolve(ctx, q, settle); err != nil {
+		if err := handler.ResolutionTrigger().OnOverdue(ctx, q, s.SettleMarket); err != nil {
 			return fmt.Errorf("expire %s markets: %w", marketType, err)
 		}
 	}
