@@ -47,13 +47,12 @@ func (p *EventProcessor) processMatchSettlements(
 	playerScores map[int32]float64,
 	previousElo map[int32]float64,
 	previousGameElo map[int32]float64,
-	settings db.GetEloSettingsForDateRow,
+	settings EloSettings,
 	matchDate time.Time,
-	eloCalcFn func(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error,
+	eloCalcFn EloCalcFunc,
 ) error {
 	// Steps 1 & 2: Calculate and store/update rating + game_elo
-	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, previousElo, previousGameElo,
-		settings.EloConstK, settings.EloConstD, settings.StartingElo, settings.WinReward); err != nil {
+	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, previousElo, previousGameElo, settings); err != nil {
 		return fmt.Errorf("elo calc for match %d: %w", matchID, err)
 	}
 
@@ -76,8 +75,8 @@ func (p *EventProcessor) RecalculateFrom(
 	ctx context.Context,
 	q *db.Queries,
 	startDate time.Time,
-	calcAndUpdateElo func(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, eloConstK float64, eloConstD float64, startingElo float64, winReward float64) error,
-	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (map[int32]float64, map[int32]float64, db.GetEloSettingsForDateRow, error),
+	calcAndUpdateElo EloCalcFunc,
+	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (map[int32]float64, map[int32]float64, EloSettings, error),
 ) error {
 	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
 	// whether recalculation moves any market's resolution to an earlier time.

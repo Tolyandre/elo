@@ -49,17 +49,15 @@ func (h *winStreakHandler) TriggerResolutionForMatch(ctx context.Context, q *db.
 			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
 		}
 
-		resolutionMatchID := match.Match.ID
-		if m.MaxLosses.Valid && stats.Losses > m.MaxLosses.Int32 {
-			if err := settle(ctx, q, m.ID, "resolved_no", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle win_streak market %d no (loss limit): %w", m.ID, err)
-			}
+		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
+		resolved, outcome := cond.Evaluate(stats.Wins, stats.Losses)
+		if !resolved {
 			continue
 		}
-		if stats.Wins >= m.WinsRequired {
-			if err := settle(ctx, q, m.ID, "resolved_yes", matchDate, &resolutionMatchID); err != nil {
-				return fmt.Errorf("settle win_streak market %d yes: %w", m.ID, err)
-			}
+
+		resolutionMatchID := match.Match.ID
+		if err := settle(ctx, q, m.ID, outcome, matchDate, &resolutionMatchID); err != nil {
+			return fmt.Errorf("settle win_streak market %d: %w", m.ID, err)
 		}
 	}
 	return nil
@@ -81,9 +79,10 @@ func (h *winStreakHandler) ExpireResolve(ctx context.Context, q *db.Queries, set
 			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
 		}
 
-		outcome := "resolved_no"
-		if stats.Wins >= m.WinsRequired && (!m.MaxLosses.Valid || stats.Losses <= m.MaxLosses.Int32) {
-			outcome = "resolved_yes"
+		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
+		_, outcome := cond.Evaluate(stats.Wins, stats.Losses)
+		if outcome == "" {
+			outcome = "resolved_no"
 		}
 		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)
@@ -108,9 +107,10 @@ func (h *winStreakHandler) ExpireResolveAtDate(ctx context.Context, q *db.Querie
 			return fmt.Errorf("streak stats for market %d: %w", m.ID, err)
 		}
 
-		outcome := "resolved_no"
-		if stats.Wins >= m.WinsRequired && (!m.MaxLosses.Valid || stats.Losses <= m.MaxLosses.Int32) {
-			outcome = "resolved_yes"
+		cond := WinStreakCondition{WinsRequired: m.WinsRequired, MaxLosses: pgInt4ToPtr(m.MaxLosses)}
+		_, outcome := cond.Evaluate(stats.Wins, stats.Losses)
+		if outcome == "" {
+			outcome = "resolved_no"
 		}
 		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("settle overdue win_streak market %d: %w", m.ID, err)

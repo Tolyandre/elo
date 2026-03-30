@@ -78,7 +78,10 @@ func (a *API) AddMatch(c *gin.Context) {
 	// Add match to database with current timestamp
 	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, time.Now())
 	if err != nil {
-		// Check if error is due to foreign key constraint violation
+		if errors.Is(err, elo.ErrTooFewPlayers) {
+			ErrorResponse(c, http.StatusBadRequest, err.Error())
+			return
+		}
 		if db.IsForeignKeyViolation(err) {
 			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
 			return
@@ -148,7 +151,7 @@ func (a *API) UpdateMatch(c *gin.Context) {
 			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
 			return
 		}
-		if contains(err.Error(), "date change exceeds") {
+		if errors.Is(err, elo.ErrDateChangeTooLarge) {
 			ErrorResponse(c, http.StatusBadRequest, err.Error())
 			return
 		}
