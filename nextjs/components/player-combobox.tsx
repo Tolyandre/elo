@@ -38,9 +38,9 @@ export function PlayerCombobox({
   const value = controlledValue !== undefined ? controlledValue : internalValue
   const { isMobile } = useIsMobile()
 
-  const { players } = usePlayers()
+  const { players, playerDisplayName } = usePlayers()
   const { matches } = useMatches()
-  const { clubs } = useClubs()
+  const { clubs, clubDisplayName } = useClubs()
 
   const recentPlayerIds = React.useMemo(() => (
     Array.from(
@@ -54,8 +54,8 @@ export function PlayerCombobox({
   ), [matches])
 
   const groups = React.useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds),
-    [players, clubs, recentPlayerIds]
+    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName),
+    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName]
   )
 
   const handleSelect = (currentValue: string) => {
@@ -77,7 +77,7 @@ export function PlayerCombobox({
       className="w-full justify-between"
     >
       {value
-        ? players.find((player) => player.id === value)?.name ?? value
+        ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value; })()
         : "Игрок..."}
       <ChevronsUpDown className="opacity-50" />
     </Button>

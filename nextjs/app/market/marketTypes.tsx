@@ -9,9 +9,11 @@ export type MarketResolutionDescription = {
     cancel: React.ReactNode;
 };
 
+type GetPlayerName = (player: Player) => string;
+
 interface MarketTypeStrategy {
-    getTitle(market: Market, players: Player[], games: GameListItem[]): string;
-    getResolutionDescription(market: Market, players: Player[], games: GameListItem[]): MarketResolutionDescription;
+    getTitle(market: Market, players: Player[], games: GameListItem[], getPlayerName: GetPlayerName): string;
+    getResolutionDescription(market: Market, players: Player[], games: GameListItem[], getPlayerName: GetPlayerName): MarketResolutionDescription;
 }
 
 const H = ({ children }: { children: React.ReactNode }) => (
@@ -30,11 +32,12 @@ function buildPeriodNode(market: Market): React.ReactNode | null {
 }
 
 const matchWinnerStrategy: MarketTypeStrategy = {
-    getTitle(market, players, games) {
+    getTitle(market, players, games, getPlayerName) {
         const params = market.params as MatchWinnerParams | null;
-        const targetName = players.find((p) => p.id === market.target_player_id)?.name ?? "?";
+        const found = players.find((p) => p.id === market.target_player_id);
+        const targetName = found ? getPlayerName(found) : "?";
         const requiredNames = (params?.required_player_ids ?? [])
-            .map((id) => players.find((p) => p.id === id)?.name ?? "?")
+            .map((id) => { const p = players.find((p) => p.id === id); return p ? getPlayerName(p) : "?"; })
             .join(", ");
         const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
         let title = `${targetName} победит`;
@@ -42,11 +45,12 @@ const matchWinnerStrategy: MarketTypeStrategy = {
         if (requiredNames) title += game ? ` с участием ${requiredNames}` : ` в партии с участием ${requiredNames}`;
         return title;
     },
-    getResolutionDescription(market, players, games) {
+    getResolutionDescription(market, players, games, getPlayerName) {
         const params = market.params as MatchWinnerParams | null;
-        const targetName = players.find((p) => p.id === market.target_player_id)?.name ?? "?";
+        const foundTarget = players.find((p) => p.id === market.target_player_id);
+        const targetName = foundTarget ? getPlayerName(foundTarget) : "?";
         const requiredPlayerNames = (params?.required_player_ids ?? [])
-            .map((id) => players.find((p) => p.id === id)?.name ?? "?");
+            .map((id) => { const p = players.find((p) => p.id === id); return p ? getPlayerName(p) : "?"; });
         const allNames = [targetName, ...requiredPlayerNames];
         const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
         const period = buildPeriodNode(market);
@@ -67,9 +71,10 @@ const matchWinnerStrategy: MarketTypeStrategy = {
 };
 
 const winStreakStrategy: MarketTypeStrategy = {
-    getTitle(market, players, games) {
+    getTitle(market, players, games, getPlayerName) {
         const params = market.params as WinStreakParams | null;
-        const targetName = players.find((p) => p.id === market.target_player_id)?.name ?? "?";
+        const found = players.find((p) => p.id === market.target_player_id);
+        const targetName = found ? getPlayerName(found) : "?";
         const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
         const wins = params?.wins_required ?? "?";
         const inGame = game ? ` в ${game.name}` : "";
@@ -79,9 +84,10 @@ const winStreakStrategy: MarketTypeStrategy = {
         }
         return title;
     },
-    getResolutionDescription(market, players, games) {
+    getResolutionDescription(market, players, games, getPlayerName) {
         const params = market.params as WinStreakParams | null;
-        const targetName = players.find((p) => p.id === market.target_player_id)?.name ?? "?";
+        const found = players.find((p) => p.id === market.target_player_id);
+        const targetName = found ? getPlayerName(found) : "?";
         const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
         const wins = params?.wins_required ?? "?";
         const lossLimit = params?.max_losses;
@@ -115,15 +121,21 @@ const marketTypeRegistry: Record<string, MarketTypeStrategy> = {
     win_streak: winStreakStrategy,
 };
 
-export function getMarketTitle(market: Market, players: Player[], games: GameListItem[]): string {
-    return marketTypeRegistry[market.market_type]?.getTitle(market, players, games) ?? market.market_type;
+export function getMarketTitle(
+    market: Market,
+    players: Player[],
+    games: GameListItem[],
+    getPlayerName: GetPlayerName = (p) => p.name,
+): string {
+    return marketTypeRegistry[market.market_type]?.getTitle(market, players, games, getPlayerName) ?? market.market_type;
 }
 
 export function getMarketResolutionDescription(
     market: Market,
     players: Player[],
     games: GameListItem[],
+    getPlayerName: GetPlayerName = (p) => p.name,
 ): MarketResolutionDescription {
-    return marketTypeRegistry[market.market_type]?.getResolutionDescription(market, players, games)
+    return marketTypeRegistry[market.market_type]?.getResolutionDescription(market, players, games, getPlayerName)
         ?? { yes: "", no: "", cancel: "" };
 }

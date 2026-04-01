@@ -6,9 +6,9 @@ import { useGames } from "@/app/gamesContext";
 import { getMarketResolutionDescription } from "@/app/market/marketTypes";
 
 export function ResolutionDescription({ market }: { market: Market }) {
-    const { players } = usePlayers();
+    const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const { yes, no, cancel } = getMarketResolutionDescription(market, players, games);
+    const { yes, no, cancel } = getMarketResolutionDescription(market, players, games, playerDisplayName);
 
     return (
         <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">

@@ -19,7 +19,7 @@ import {
 
 export default function AdminMarketsPage() {
     const me = useMe();
-    const { players } = usePlayers();
+    const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const [markets, setMarkets] = useState<Market[]>([]);
     const [loading, setLoading] = useState(true);
@@ -85,7 +85,7 @@ export default function AdminMarketsPage() {
                     <DialogHeader>
                         <DialogTitle>Удалить рынок?</DialogTitle>
                         <DialogDescription>
-                            «{deleteTarget ? getMarketTitle(deleteTarget, players, games) : ""}» будет удалён безвозвратно. Все ставки будут аннулированы, рейтинг будет пересчитан.
+                            «{deleteTarget ? getMarketTitle(deleteTarget, players, games, playerDisplayName) : ""}» будет удалён безвозвратно. Все ставки будут аннулированы, рейтинг будет пересчитан.
                             Это действие необратимо.
                         </DialogDescription>
                     </DialogHeader>

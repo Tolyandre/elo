@@ -36,8 +36,8 @@ function ClubAdminContent() {
     const router = useRouter();
     const clubId = searchParams.get("id") ?? "";
     const { canEdit } = useMe();
-    const { players } = usePlayers();
-    const { invalidate: invalidateClubs } = useClubs();
+    const { players, playerDisplayName } = usePlayers();
+    const { invalidate: invalidateClubs, clubDisplayName } = useClubs();
 
     const [club, setClub] = useState<Club | null>(null);
     const [loading, setLoading] = useState(true);
@@ -126,13 +126,13 @@ function ClubAdminContent() {
 
     const memberSet = new Set(club.players);
     const sortedPlayers = [...players].sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+        playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" })
     );
 
     return (
         <main className="p-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4">
-                <h1 className="text-2xl font-semibold">{club.name}</h1>
+                <h1 className="text-2xl font-semibold">{clubDisplayName(club)}</h1>
                 <div className="mt-2 sm:mt-0">
                     <Link href="/admin/clubs" className="text-sm text-blue-600">
                         Назад
@@ -175,7 +175,7 @@ function ClubAdminContent() {
                             return (
                                 <div key={player.id} className="flex items-center justify-between border rounded p-2">
                                     <span className={isMember ? "font-medium" : "text-muted-foreground"}>
-                                        {player.name}
+                                        {playerDisplayName(player)}
                                     </span>
                                     <Button
                                         variant={isMember ? "destructive" : "outline"}

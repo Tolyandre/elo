@@ -16,6 +16,7 @@ export type EloRank = {
 export type Player = {
     id: string;
     name: string;
+    geologist_name?: string | null;
     user_id?: string | null;
     rank: {
         now: EloRank;
@@ -41,6 +42,7 @@ export type Status = {
 export type Club = {
     id: string;
     name: string;
+    geologist_name?: string | null;
     players: number[];
 };
 

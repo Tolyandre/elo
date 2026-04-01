@@ -16,9 +16,11 @@ type Group = {
  * 3. NO_CLUB_LABEL — players not in any club
  */
 export function buildPlayerGroups(
-  players: Pick<Player, "id" | "name">[],
+  players: Pick<Player, "id" | "name" | "geologist_name">[],
   clubs: Club[],
-  recentPlayerIds: string[]
+  recentPlayerIds: string[],
+  playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
+  clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string
 ): Group[] {
   const groups: Group[] = [];
 
@@ -30,24 +32,27 @@ export function buildPlayerGroups(
       heading: "Недавние",
       options: recentPlayerIds
         .filter((id) => byId.has(id))
-        .map((id) => ({ value: id, label: byId.get(id)!.name })),
+        .map((id) => {
+          const p = byId.get(id)!;
+          return { value: id, label: playerDisplayName(p) };
+        }),
     });
   }
 
-  // 2. Per club (alphabetical)
+  // 2. Per club (alphabetical by display name)
   const sortedClubs = [...clubs].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" })
   );
 
   for (const club of sortedClubs) {
     const options = club.players
       .map((pid) => byId.get(String(pid)))
-      .filter((p): p is Pick<Player, "id" | "name"> => p !== undefined)
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-      .map((p) => ({ value: p.id, label: p.name }));
+      .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)
+      .sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }))
+      .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
 
     if (options.length > 0) {
-      groups.push({ heading: club.name, options });
+      groups.push({ heading: clubDisplayName(club), options });
     }
   }
 
@@ -55,8 +60,8 @@ export function buildPlayerGroups(
   const clubPlayerIds = new Set(clubs.flatMap((c) => c.players.map(String)));
   const noClub = players
     .filter((p) => !clubPlayerIds.has(p.id))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-    .map((p) => ({ value: p.id, label: p.name }));
+    .sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }))
+    .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
 
   if (noClub.length > 0) {
     groups.push({ heading: NO_CLUB_LABEL, options: noClub });

@@ -78,7 +78,7 @@ function filterByClub(players: Player[], selectedClubId: string | null, clubs: C
 }
 
 function PlayersTable() {
-    const { players, loading, error } = usePlayers();
+    const { players, playerDisplayName, loading, error } = usePlayers();
     const { clubs } = useClubs();
     const { playerId: myPlayerId, selectedClubId, setSelectedClubId } = useMe();
     const [period, setPeriod] = useLocalStorage<Period>("players-period", "day_ago");
@@ -173,8 +173,8 @@ function PlayersTable() {
                                     <td className="py-2 px-1 w-50">
                                         {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
                                         {player.id === myPlayerId
-                                            ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.name}</span>
-                                            : player.name}
+                                            ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{playerDisplayName(player)}</span>
+                                            : playerDisplayName(player)}
                                     </td>
                                     <td className="py-2 px-1 align-top min-w-25">
                                         <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
@@ -204,8 +204,8 @@ function PlayersTable() {
                                         <td className="py-2 px-1 w-50">
                                             {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
                                             {player.id === myPlayerId
-                                                ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.name}</span>
-                                                : player.name}
+                                                ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{playerDisplayName(player)}</span>
+                                                : playerDisplayName(player)}
                                             <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
                                         </td>
                                         <td className="py-2 px-1 align-top min-w-25">

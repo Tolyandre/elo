@@ -23,7 +23,7 @@ type Participant = {
 };
 
 function AddGameForm() {
-    const { players, loading } = usePlayers();
+    const { players, playerDisplayName, loading } = usePlayers();
     const [participants, setParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
     const [selectedGameId, setSelectedGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
     const [success, setSuccess] = useState(false);
@@ -42,7 +42,8 @@ function AddGameForm() {
         setParticipants(
             newIds.map((id) => {
                 const existing = participants.find((p) => p.id === id);
-                return existing ?? { id, points: "", name: players.find((pl) => pl.id === id)?.name ?? "Unknown" };
+                const found = players.find((pl) => pl.id === id);
+                return existing ?? { id, points: "", name: found ? playerDisplayName(found) : "Unknown" };
             })
         );
     };

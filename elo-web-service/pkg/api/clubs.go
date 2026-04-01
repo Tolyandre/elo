@@ -10,9 +10,10 @@ import (
 )
 
 type clubJson struct {
-	Id      string `json:"id"`
-	Name    string `json:"name"`
-	Players []int  `json:"players"`
+	Id            string  `json:"id"`
+	Name          string  `json:"name"`
+	GeologistName *string `json:"geologist_name,omitempty"`
+	Players       []int   `json:"players"`
 }
 
 func (a *API) ListClubs(c *gin.Context) {
@@ -31,6 +32,9 @@ func (a *API) ListClubs(c *gin.Context) {
 				Id:      strconv.FormatInt(int64(r.ClubID), 10),
 				Name:    r.ClubName,
 				Players: []int{},
+			}
+			if r.ClubGeologistName.Valid {
+				cj.GeologistName = &r.ClubGeologistName.String
 			}
 			clubsMap[r.ClubID] = cj
 		}
@@ -71,6 +75,9 @@ func (a *API) GetClub(c *gin.Context) {
 		Id:      strconv.Itoa(idInt),
 		Name:    rows[0].ClubName,
 		Players: []int{},
+	}
+	if rows[0].ClubGeologistName.Valid {
+		cj.GeologistName = &rows[0].ClubGeologistName.String
 	}
 	for _, r := range rows {
 		if r.PlayerID.Valid {
@@ -117,11 +124,15 @@ func (a *API) CreateClub(c *gin.Context) {
 		return
 	}
 
-	SuccessDataResponse(c, clubJson{
+	cj := clubJson{
 		Id:      strconv.Itoa(int(club.ID)),
 		Name:    club.Name,
 		Players: []int{},
-	})
+	}
+	if club.GeologistName.Valid {
+		cj.GeologistName = &club.GeologistName.String
+	}
+	SuccessDataResponse(c, cj)
 }
 
 func (a *API) PatchClub(c *gin.Context) {
@@ -170,11 +181,15 @@ func (a *API) PatchClub(c *gin.Context) {
 		return
 	}
 
-	SuccessDataResponse(c, clubJson{
+	pj := clubJson{
 		Id:      strconv.Itoa(int(club.ID)),
 		Name:    club.Name,
 		Players: []int{},
-	})
+	}
+	if club.GeologistName.Valid {
+		pj.GeologistName = &club.GeologistName.String
+	}
+	SuccessDataResponse(c, pj)
 }
 
 func (a *API) DeleteClub(c *gin.Context) {

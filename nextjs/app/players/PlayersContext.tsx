@@ -1,11 +1,13 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { getPlayersPromise, Player } from "../api";
+import { useMe } from "../meContext";
 
 type PlayersContextType = {
     players: Player[];
     playerMap: Map<string, Player>;
+    playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string;
 
     // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
@@ -24,6 +26,8 @@ export function PlayersProvider({ children
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [stamp, setStamp] = useState<number>(0);
+
+    const { geologistMode } = useMe();
 
     useEffect(() => {
         setLoading(true);
@@ -46,8 +50,15 @@ export function PlayersProvider({ children
         setStamp((s) => s + 1);
     };
 
+    const playerDisplayName = useCallback(
+        (player: Pick<Player, "name" | "geologist_name">): string => {
+            return (geologistMode && player.geologist_name) || player.name;
+        },
+        [geologistMode]
+    );
+
     return (
-        <PlayersContext.Provider value={{ players, playerMap, loading, error, invalidate }}>
+        <PlayersContext.Provider value={{ players, playerMap, playerDisplayName, loading, error, invalidate }}>
             {children}
         </PlayersContext.Provider>
     );

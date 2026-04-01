@@ -8,7 +8,7 @@ import { PlayerCombobox } from "@/components/player-combobox"
 import { patchMePromise } from "@/app/api"
 
 export default function SettingsPage() {
-    const { roundToInteger, setRoundToInteger, isAuthenticated, playerId, invalidate } = useMe()
+    const { roundToInteger, setRoundToInteger, geologistMode, setGeologistMode, isAuthenticated, playerId, invalidate } = useMe()
 
     async function handlePlayerChange(id?: string) {
         try {
@@ -35,6 +35,15 @@ export default function SettingsPage() {
                         id="round-to-integer"
                         checked={roundToInteger}
                         onCheckedChange={setRoundToInteger}
+                    />
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <Label htmlFor="geologist-mode">Режим Геолога</Label>
+                    <Switch
+                        id="geologist-mode"
+                        checked={geologistMode}
+                        onCheckedChange={setGeologistMode}
                     />
                 </div>
 

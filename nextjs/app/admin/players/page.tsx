@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default function PlayersAdminPage() {
-    const { players: playersFromContext, invalidate: invalidatePlayers } = usePlayers();
+    const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
     const { isAuthenticated, canEdit } = useMe();
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
@@ -33,12 +33,12 @@ export default function PlayersAdminPage() {
     }, []);
 
     // Sort players alphabetically for admin view
-    const sortedPlayers = [...playersFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    const sortedPlayers = [...playersFromContext].sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }));
 
     // Filter players by search term
     const players = newName.trim() === ""
         ? sortedPlayers
-        : sortedPlayers.filter(p => p.name.toLowerCase().includes(newName.toLowerCase()));
+        : sortedPlayers.filter(p => playerDisplayName(p).toLowerCase().includes(newName.toLowerCase()));
 
     function openRename(id: string, name: string) {
         setSelectedId(id);
@@ -146,7 +146,7 @@ export default function PlayersAdminPage() {
                                 <div key={player.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{player.name}</Link>
+                                            <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
                                             <div className="text-sm text-muted-foreground">
                                                 Рейтинг: {player.rank.now.elo.toFixed(0)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
@@ -194,7 +194,7 @@ export default function PlayersAdminPage() {
                                     {players.map((player) => (
                                         <tr key={player.id} className="align-top">
                                             <td className="px-4 py-2">
-                                                <Link className="underline" href={`/matches?player=${player.id}`}>{player.name}</Link>
+                                                <Link className="underline" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
                                             </td>
                                             <td className="px-4 py-2 text-sm text-muted-foreground">
                                                 {player.user_id ? userMap.get(player.user_id) : ""}

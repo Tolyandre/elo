@@ -16,7 +16,7 @@ type MatchCardProps = {
 };
 
 export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
-  const { playerMap } = usePlayers();
+  const { playerMap, playerDisplayName } = usePlayers();
   const { playerId: myPlayerId } = useMe();
   const router = useRouter();
 
@@ -24,7 +24,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     const players = Object.entries(match.score)
       .map(([playerId, data]) => {
         const ctxPlayer = playerMap.get(playerId);
-        const name = ctxPlayer?.name || "Unknown";
+        const name = ctxPlayer ? playerDisplayName(ctxPlayer) : "Unknown";
         return {
           name,
           playerId,
@@ -41,7 +41,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     const totalPay = players.reduce((sum, p) => sum + Math.abs(p.eloPay), 0) || 1;
 
     return { players, ranks, totalEarn, totalPay };
-  }, [match.score, playerMap]);
+  }, [match.score, playerMap, playerDisplayName]);
 
   const handleClick = useCallback(() => {
     if (clickable) {

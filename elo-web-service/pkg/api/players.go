@@ -13,10 +13,11 @@ import (
 )
 
 type playerJson struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Rank   historyRankJson `json:"rank"`
-	UserID *string         `json:"user_id"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	GeologistName *string         `json:"geologist_name,omitempty"`
+	Rank          historyRankJson `json:"rank"`
+	UserID        *string         `json:"user_id"`
 }
 
 type historyRankJson struct {
@@ -64,22 +65,39 @@ func (a *API) ListPlayers(c *gin.Context) {
 		}
 	}
 
+	dbPlayers, err := a.Queries.ListPlayers(ctx)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+	geologistNameMap := make(map[int32]string, len(dbPlayers))
+	for _, dp := range dbPlayers {
+		if dp.GeologistName.Valid {
+			geologistNameMap[dp.ID] = dp.GeologistName.String
+		}
+	}
+
 	jsonPlayers := make([]playerJson, 0, len(actualPlayers))
 	for _, p := range actualPlayers {
 		dayAgo := findPlayer(dayAgoPlayers, p.ID)
 		weekAgo := findPlayer(weekAgoPlayers, p.ID)
 
 		var userID *string
+		var geologistName *string
 		if idInt, err := strconv.Atoi(p.ID); err == nil {
 			if uid, ok := playerUserMap[int32(idInt)]; ok {
 				userID = &uid
 			}
+			if gn, ok := geologistNameMap[int32(idInt)]; ok {
+				geologistName = &gn
+			}
 		}
 
 		jsonPlayers = append(jsonPlayers, playerJson{
-			ID:     p.ID,
-			Name:   p.Name,
-			UserID: userID,
+			ID:            p.ID,
+			Name:          p.Name,
+			GeologistName: geologistName,
+			UserID:        userID,
 			Rank: historyRankJson{
 				Now: playerEloRankJson{
 					Elo:                  p.Elo,

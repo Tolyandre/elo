@@ -17,9 +17,9 @@ export function PlayerMultiSelect({
   value: string[]
   onChange?: (ids: string[]) => void
 }) {
-  const { players } = usePlayers()
+  const { players, playerDisplayName } = usePlayers()
   const { matches } = useMatches()
-  const { clubs } = useClubs()
+  const { clubs, clubDisplayName } = useClubs()
   const { playerId: myPlayerId } = useMe()
 
   const recentPlayerIds = useMemo(() => (
@@ -34,14 +34,14 @@ export function PlayerMultiSelect({
   ), [matches])
 
   const options: MultiSelectOption[] | MultiSelectGroup[] = useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds).map(group => ({
+    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName).map(group => ({
       ...group,
       options: group.options.map(opt => opt.value === myPlayerId
         ? { ...opt, render: <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{opt.label}</span> }
         : opt
       ),
     })),
-    [players, clubs, recentPlayerIds, myPlayerId]
+    [players, clubs, recentPlayerIds, myPlayerId, playerDisplayName, clubDisplayName]
   )
 
   const handleSelect = (currentValue: string[]) => {

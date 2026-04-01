@@ -317,7 +317,7 @@ function EditCellDialog({
 
 export default function SkullKingGamePage() {
     const me = useMe();
-    const { players: allPlayers } = usePlayers();
+    const { players: allPlayers, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
@@ -350,7 +350,7 @@ export default function SkullKingGamePage() {
         const players = setupPlayerIds
             .map((id) => allPlayers.find((p) => p.id === id))
             .filter(Boolean)
-            .map((p) => ({ id: p!.id, name: p!.name }));
+            .map((p) => ({ id: p!.id, name: playerDisplayName(p!) }));
         if (players.length < 2) return;
         setGameState({
             phase: "bidding",
@@ -524,7 +524,7 @@ export default function SkullKingGamePage() {
                                     const player = allPlayers.find((p) => p.id === id);
                                     return (
                                         <div key={id} className="flex items-center gap-2">
-                                            <span className="flex-1 text-sm">{index + 1}. {player?.name ?? id}</span>
+                                            <span className="flex-1 text-sm">{index + 1}. {player ? playerDisplayName(player) : id}</span>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"

@@ -25,8 +25,9 @@ type BetSettlementDetail struct {
 }
 
 type Club struct {
-	ID   int32  `json:"id"`
-	Name string `json:"name"`
+	ID            int32       `json:"id"`
+	Name          string      `json:"name"`
+	GeologistName pgtype.Text `json:"geologist_name"`
 }
 
 type EloSetting struct {

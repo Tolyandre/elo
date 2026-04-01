@@ -76,9 +76,9 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
 }
 
 export function MarketCard({ market, className }: { market: Market; className?: string }) {
-    const { players } = usePlayers();
+    const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const title = getMarketTitle(market, players, games);
+    const title = getMarketTitle(market, players, games, playerDisplayName);
     const isOpen = market.status === "open";
     const date = isOpen
         ? (market.closes_at ? new Date(market.closes_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null)

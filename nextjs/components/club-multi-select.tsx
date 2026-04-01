@@ -21,15 +21,15 @@ export function ClubMultiSelect({
   value: string[] | null
   onChange: (ids: string[] | null) => void
 }) {
-  const { clubs } = useClubs()
+  const { clubs, clubDisplayName } = useClubs()
   const { isMobile } = useIsMobile()
   const [open, setOpen] = React.useState(false)
 
   const options: ClubOption[] = React.useMemo(() => [
-    ...[...clubs].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-      .map(c => ({ id: c.id, name: c.name })),
+    ...[...clubs].sort((a, b) => clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" }))
+      .map(c => ({ id: c.id, name: clubDisplayName(c) })),
     { id: NO_CLUB_ID, name: NO_CLUB_LABEL },
-  ], [clubs])
+  ], [clubs, clubDisplayName])
 
   const selectedSet = React.useMemo(
     () => new Set(value ?? options.map(o => o.id)),

@@ -8,11 +8,11 @@ import { Button } from "@/components/ui/button";
 
 export default function ClubsAdminPage() {
     const { canEdit } = useMe();
-    const { clubs, invalidate } = useClubs();
+    const { clubs, clubDisplayName, invalidate } = useClubs();
     const [newName, setNewName] = useState("");
     const [creating, setCreating] = useState(false);
 
-    const sortedClubs = [...clubs].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    const sortedClubs = [...clubs].sort((a, b) => clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" }));
 
     async function handleCreate() {
         if (!newName.trim()) return;
@@ -64,7 +64,7 @@ export default function ClubsAdminPage() {
                         {sortedClubs.map((club) => (
                             <div key={club.id} className="border rounded p-3 flex items-center gap-2">
                                 <Link href={`/admin/club?id=${club.id}`} className="font-medium underline">
-                                    {club.name}
+                                    {clubDisplayName(club)}
                                 </Link>
                                 <span className="text-sm text-muted-foreground">
                                     ({club.players.length} {club.players.length === 1 ? "игрок" : "игроков"})

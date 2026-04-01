@@ -30,26 +30,26 @@ func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) er
 const createClub = `-- name: CreateClub :one
 INSERT INTO clubs (name)
 VALUES ($1)
-RETURNING id, name
+RETURNING id, name, geologist_name
 `
 
 func (q *Queries) CreateClub(ctx context.Context, name string) (Club, error) {
 	row := q.db.QueryRow(ctx, createClub, name)
 	var i Club
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }
 
 const deleteClub = `-- name: DeleteClub :one
 DELETE FROM clubs
 WHERE id = $1
-RETURNING id, name
+RETURNING id, name, geologist_name
 `
 
 func (q *Queries) DeleteClub(ctx context.Context, id int32) (Club, error) {
 	row := q.db.QueryRow(ctx, deleteClub, id)
 	var i Club
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }
 
@@ -57,6 +57,7 @@ const getClub = `-- name: GetClub :many
 SELECT
     c.id AS club_id,
     c.name AS club_name,
+    c.geologist_name AS club_geologist_name,
     pcm.player_id AS player_id
 FROM clubs c
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
@@ -64,9 +65,10 @@ WHERE c.id = $1
 `
 
 type GetClubRow struct {
-	ClubID   int32       `json:"club_id"`
-	ClubName string      `json:"club_name"`
-	PlayerID pgtype.Int4 `json:"player_id"`
+	ClubID            int32       `json:"club_id"`
+	ClubName          string      `json:"club_name"`
+	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
+	PlayerID          pgtype.Int4 `json:"player_id"`
 }
 
 func (q *Queries) GetClub(ctx context.Context, id int32) ([]GetClubRow, error) {
@@ -78,7 +80,12 @@ func (q *Queries) GetClub(ctx context.Context, id int32) ([]GetClubRow, error) {
 	items := []GetClubRow{}
 	for rows.Next() {
 		var i GetClubRow
-		if err := rows.Scan(&i.ClubID, &i.ClubName, &i.PlayerID); err != nil {
+		if err := rows.Scan(
+			&i.ClubID,
+			&i.ClubName,
+			&i.ClubGeologistName,
+			&i.PlayerID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -93,15 +100,17 @@ const listClubs = `-- name: ListClubs :many
 SELECT
     c.id AS club_id,
     c.name AS club_name,
+    c.geologist_name AS club_geologist_name,
     pcm.player_id AS player_id
 FROM clubs c
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
 `
 
 type ListClubsRow struct {
-	ClubID   int32       `json:"club_id"`
-	ClubName string      `json:"club_name"`
-	PlayerID pgtype.Int4 `json:"player_id"`
+	ClubID            int32       `json:"club_id"`
+	ClubName          string      `json:"club_name"`
+	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
+	PlayerID          pgtype.Int4 `json:"player_id"`
 }
 
 func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
@@ -113,7 +122,12 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 	items := []ListClubsRow{}
 	for rows.Next() {
 		var i ListClubsRow
-		if err := rows.Scan(&i.ClubID, &i.ClubName, &i.PlayerID); err != nil {
+		if err := rows.Scan(
+			&i.ClubID,
+			&i.ClubName,
+			&i.ClubGeologistName,
+			&i.PlayerID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -143,7 +157,7 @@ const updateClubName = `-- name: UpdateClubName :one
 UPDATE clubs
 SET name = $2
 WHERE id = $1
-RETURNING id, name
+RETURNING id, name, geologist_name
 `
 
 type UpdateClubNameParams struct {
@@ -154,6 +168,6 @@ type UpdateClubNameParams struct {
 func (q *Queries) UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error) {
 	row := q.db.QueryRow(ctx, updateClubName, arg.ID, arg.Name)
 	var i Club
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(&i.ID, &i.Name, &i.GeologistName)
 	return i, err
 }

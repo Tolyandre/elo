@@ -16,6 +16,8 @@ export type MeState = {
   setRoundToInteger: (value: boolean) => void;
   selectedClubId: string | null;
   setSelectedClubId: (value: string | null) => void;
+  geologistMode: boolean;
+  setGeologistMode: (value: boolean) => void;
 };
 
 const MeContext = createContext<MeState | undefined>(undefined);
@@ -28,6 +30,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [stamp, setStamp] = useState<number>(0);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
   const [selectedClubId, setSelectedClubId] = useLocalStorage<string | null>("selected-club-id", null);
+  const [geologistMode, setGeologistMode] = useLocalStorage<boolean>("geologist-mode", false);
 
   useEffect(() => {
     loadMe();
@@ -68,6 +71,8 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
       setRoundToInteger,
       selectedClubId,
       setSelectedClubId,
+      geologistMode,
+      setGeologistMode,
     }}>
       {children}
     </MeContext.Provider>
