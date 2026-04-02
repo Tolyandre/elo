@@ -38,3 +38,10 @@ func SuccessDataResponse(c *gin.Context, data interface{}) {
 		"data":    data,
 	})
 }
+
+func SuccessCreatedDataResponse(c *gin.Context, data interface{}) {
+	c.JSON(http.StatusCreated, gin.H{
+		"status": "success",
+		"data":   data,
+	})
+}

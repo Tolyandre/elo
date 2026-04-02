@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,8 +74,8 @@ func matchErrorToHTTP(c *gin.Context, err error) {
 		ErrorResponse(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, elo.ErrHistoryChangeConflict):
 		ErrorResponse(c, http.StatusConflict, err.Error())
-	case strings.Contains(err.Error(), "unable to get match"):
-		ErrorResponse(c, http.StatusNotFound, "Match not found")
+	case errors.Is(err, elo.ErrMatchNotFound):
+		ErrorResponse(c, http.StatusNotFound, err.Error())
 	case db.IsForeignKeyViolation(err):
 		ErrorResponse(c, http.StatusBadRequest, "invalid game_id or player_id: "+err.Error())
 	default:

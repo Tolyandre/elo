@@ -18,7 +18,7 @@ type clubJson struct {
 
 func (a *API) ListClubs(c *gin.Context) {
 	ctx := c.Request.Context()
-	rows, err := a.Queries.ListClubs(ctx)
+	rows, err := a.ClubService.ListClubs(ctx)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -60,7 +60,7 @@ func (a *API) GetClub(c *gin.Context) {
 		return
 	}
 
-	rows, err := a.Queries.GetClub(c.Request.Context(), int32(idInt))
+	rows, err := a.ClubService.GetClub(c.Request.Context(), int32(idInt))
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -103,7 +103,7 @@ func (a *API) CreateClub(c *gin.Context) {
 		return
 	}
 
-	club, err := a.Queries.CreateClub(c.Request.Context(), body.Name)
+	club, err := a.ClubService.CreateClub(c.Request.Context(), body.Name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			ErrorResponse(c, http.StatusConflict, fmt.Errorf("club with this name already exists"))
@@ -146,10 +146,7 @@ func (a *API) PatchClub(c *gin.Context) {
 		return
 	}
 
-	club, err := a.Queries.UpdateClubName(c.Request.Context(), db.UpdateClubNameParams{
-		ID:   int32(idInt),
-		Name: body.Name,
-	})
+	club, err := a.ClubService.UpdateClub(c.Request.Context(), int32(idInt), body.Name)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("club not found"))
 		return
@@ -178,7 +175,7 @@ func (a *API) DeleteClub(c *gin.Context) {
 		return
 	}
 
-	_, err = a.Queries.DeleteClub(c.Request.Context(), int32(idInt))
+	_, err = a.ClubService.DeleteClub(c.Request.Context(), int32(idInt))
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("club not found"))
 		return
@@ -217,10 +214,7 @@ func (a *API) AddClubMember(c *gin.Context) {
 		return
 	}
 
-	err = a.Queries.AddClubMember(c.Request.Context(), db.AddClubMemberParams{
-		ClubID:   int32(clubId),
-		PlayerID: body.PlayerId,
-	})
+	err = a.ClubService.AddMember(c.Request.Context(), int32(clubId), body.PlayerId)
 	if err != nil {
 		if db.IsForeignKeyViolation(err) {
 			ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("club or player not found"))
@@ -248,10 +242,7 @@ func (a *API) RemoveClubMember(c *gin.Context) {
 		return
 	}
 
-	err = a.Queries.RemoveClubMember(c.Request.Context(), db.RemoveClubMemberParams{
-		ClubID:   int32(clubId),
-		PlayerID: int32(playerId),
-	})
+	err = a.ClubService.RemoveMember(c.Request.Context(), int32(clubId), int32(playerId))
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return

@@ -21,6 +21,15 @@ type Player struct {
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
+	CreatePlayer(ctx context.Context, name string) (db.Player, error)
+	UpdatePlayer(ctx context.Context, id int32, name string) (db.Player, error)
+	DeletePlayer(ctx context.Context, id int32) error
+	GetPlayer(ctx context.Context, id int32) (db.Player, error)
+	ListPlayers(ctx context.Context) ([]db.Player, error)
+	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
+	RatingHistory(ctx context.Context, playerID int32) ([]db.RatingHistoryRow, error)
+	GetPlayerGameStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameEloStatsRow, error)
 }
 
 type PlayerService struct {
@@ -155,6 +164,45 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	}
 
 	return players, nil
+}
+
+func (s *PlayerService) CreatePlayer(ctx context.Context, name string) (db.Player, error) {
+	return s.Queries.CreatePlayer(ctx, db.CreatePlayerParams{
+		Name:          name,
+		GeologistName: pgtype.Text{Valid: false},
+	})
+}
+
+func (s *PlayerService) UpdatePlayer(ctx context.Context, id int32, name string) (db.Player, error) {
+	return s.Queries.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: id, Name: name})
+}
+
+func (s *PlayerService) DeletePlayer(ctx context.Context, id int32) error {
+	return s.Queries.DeletePlayer(ctx, id)
+}
+
+func (s *PlayerService) GetPlayer(ctx context.Context, id int32) (db.Player, error) {
+	return s.Queries.GetPlayer(ctx, id)
+}
+
+func (s *PlayerService) ListPlayers(ctx context.Context) ([]db.Player, error) {
+	return s.Queries.ListPlayers(ctx)
+}
+
+func (s *PlayerService) ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error) {
+	return s.Queries.ListPlayerUserLinks(ctx)
+}
+
+func (s *PlayerService) RatingHistory(ctx context.Context, playerID int32) ([]db.RatingHistoryRow, error) {
+	return s.Queries.RatingHistory(ctx, playerID)
+}
+
+func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameStatsRow, error) {
+	return s.Queries.GetPlayerGameStats(ctx, playerID)
+}
+
+func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameEloStatsRow, error) {
+	return s.Queries.GetPlayerGameEloStats(ctx, playerID)
 }
 
 const (

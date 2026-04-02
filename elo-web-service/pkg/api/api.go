@@ -12,6 +12,7 @@ type API struct {
 	PlayerService elo.IPlayerService
 	MatchService  elo.IMatchService
 	MarketService elo.IMarketService
+	ClubService   elo.IClubService
 	Queries       *db.Queries
 	Pool          *pgxpool.Pool
 }
@@ -24,6 +25,7 @@ func New(pool *pgxpool.Pool) *API {
 		PlayerService: elo.NewPlayerService(pool),
 		MatchService:  elo.NewMatchService(pool, marketService),
 		MarketService: marketService,
+		ClubService:   elo.NewClubService(pool),
 		Queries:       db.New(pool),
 		Pool:          pool,
 	}

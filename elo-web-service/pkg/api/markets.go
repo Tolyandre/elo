@@ -431,10 +431,7 @@ func (a *API) CreateMarket(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"status": "success",
-		"data":   gin.H{"id": fmt.Sprintf("%d", market.ID)},
-	})
+	SuccessCreatedDataResponse(c, gin.H{"id": fmt.Sprintf("%d", market.ID)})
 }
 
 func (a *API) DeleteMarket(c *gin.Context) {
@@ -456,7 +453,7 @@ func (a *API) DeleteMarket(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusNoContent)
+	SuccessMessageResponse(c, http.StatusOK, "Market deleted")
 }
 
 func (a *API) GetMarketsByMatchID(c *gin.Context) {
@@ -578,5 +575,5 @@ func (a *API) PlaceBet(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"status": "success"})
+	SuccessMessageResponse(c, http.StatusCreated, "Bet placed")
 }

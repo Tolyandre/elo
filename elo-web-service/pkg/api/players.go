@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
@@ -53,7 +52,7 @@ func (a *API) ListPlayers(c *gin.Context) {
 		return
 	}
 
-	userLinks, err := a.Queries.ListPlayerUserLinks(ctx)
+	userLinks, err := a.PlayerService.ListPlayerUserLinks(ctx)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -65,7 +64,7 @@ func (a *API) ListPlayers(c *gin.Context) {
 		}
 	}
 
-	dbPlayers, err := a.Queries.ListPlayers(ctx)
+	dbPlayers, err := a.PlayerService.ListPlayers(ctx)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -158,7 +157,7 @@ func (a *API) GetPlayerStats(c *gin.Context) {
 	}
 	playerID := int32(idInt)
 
-	player, err := a.Queries.GetPlayer(ctx, playerID)
+	player, err := a.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {
 		if db.IsNoRows(err) {
 			ErrorResponse(c, http.StatusNotFound, fmt.Errorf("player not found"))
@@ -168,7 +167,7 @@ func (a *API) GetPlayerStats(c *gin.Context) {
 		return
 	}
 
-	ratingRows, err := a.Queries.RatingHistory(ctx, playerID)
+	ratingRows, err := a.PlayerService.RatingHistory(ctx, playerID)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -183,7 +182,7 @@ func (a *API) GetPlayerStats(c *gin.Context) {
 		}
 	}
 
-	gameStats, err := a.Queries.GetPlayerGameStats(ctx, playerID)
+	gameStats, err := a.PlayerService.GetPlayerGameStats(ctx, playerID)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -198,7 +197,7 @@ func (a *API) GetPlayerStats(c *gin.Context) {
 		})
 	}
 
-	eloStats, err := a.Queries.GetPlayerGameEloStats(ctx, playerID)
+	eloStats, err := a.PlayerService.GetPlayerGameEloStats(ctx, playerID)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -264,10 +263,7 @@ func (a *API) CreatePlayer(c *gin.Context) {
 		return
 	}
 
-	player, err := a.Queries.CreatePlayer(c.Request.Context(), db.CreatePlayerParams{
-		Name:          body.Name,
-		GeologistName: pgtype.Text{Valid: false},
-	})
+	player, err := a.PlayerService.CreatePlayer(c.Request.Context(), body.Name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			ErrorResponse(c, http.StatusConflict, fmt.Errorf("player with this name already exists"))
@@ -310,10 +306,7 @@ func (a *API) PatchPlayer(c *gin.Context) {
 		return
 	}
 
-	player, err := a.Queries.UpdatePlayer(c.Request.Context(), db.UpdatePlayerParams{
-		ID:   int32(idInt),
-		Name: body.Name,
-	})
+	player, err := a.PlayerService.UpdatePlayer(c.Request.Context(), int32(idInt), body.Name)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("player not found: %w", err))
 		return
@@ -346,7 +339,7 @@ func (a *API) DeletePlayer(c *gin.Context) {
 		return
 	}
 
-	err = a.Queries.DeletePlayer(c.Request.Context(), int32(idInt))
+	err = a.PlayerService.DeletePlayer(c.Request.Context(), int32(idInt))
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("player not found: %w", err))
 		return

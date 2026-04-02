@@ -87,16 +87,6 @@ func (a *API) CreateSettings(c *gin.Context) {
 		return
 	}
 
-	user, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "You are not authorized to manage settings")
-		return
-	}
-
 	if payload.WinReward < 0.1 || payload.WinReward > 5 {
 		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("win_reward must be between 0.1 and 5"))
 		return
@@ -107,7 +97,7 @@ func (a *API) CreateSettings(c *gin.Context) {
 		return
 	}
 
-	err = a.Queries.CreateEloSettings(c.Request.Context(), db.CreateEloSettingsParams{
+	err := a.Queries.CreateEloSettings(c.Request.Context(), db.CreateEloSettingsParams{
 		EffectiveDate: pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
 		EloConstK:     payload.EloConstK,
 		EloConstD:     payload.EloConstD,
@@ -129,22 +119,12 @@ func (a *API) DeleteSettings(c *gin.Context) {
 		return
 	}
 
-	user, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "You are not authorized to manage settings")
-		return
-	}
-
 	if !payload.EffectiveDate.After(time.Now()) {
 		ErrorResponse(c, http.StatusBadRequest, "can only delete future settings")
 		return
 	}
 
-	err = a.Queries.DeleteEloSettings(c.Request.Context(), pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true})
+	err := a.Queries.DeleteEloSettings(c.Request.Context(), pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true})
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return

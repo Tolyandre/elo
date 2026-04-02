@@ -152,7 +152,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	// Lock and get the existing match
 	existingMatch, err := q.GetMatch(ctx, matchID)
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to get match %d: %v", matchID, err)
+		return db.Match{}, fmt.Errorf("%w: %v", ErrMatchNotFound, err)
 	}
 
 	// Validate date change
