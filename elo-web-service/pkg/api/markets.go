@@ -347,10 +347,6 @@ func (a *API) CreateMarket(c *gin.Context) {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "only admins can create markets")
-		return
-	}
 
 	var payload createMarketJson
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -443,16 +439,6 @@ func (a *API) CreateMarket(c *gin.Context) {
 
 func (a *API) DeleteMarket(c *gin.Context) {
 	ctx := c.Request.Context()
-
-	user, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "only admins can delete markets")
-		return
-	}
 
 	idStr := c.Param("id")
 	id, err := strconv.ParseInt(idStr, 10, 32)

@@ -45,6 +45,25 @@ func MustGetCurrentUser(ctx *gin.Context, userService elo.IUserService) (*db.Use
 	return user, nil
 }
 
+// RequireEditor is a Gin middleware that aborts with 403 if the authenticated
+// user does not have AllowEditing permission.
+func (a *API) RequireEditor() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := MustGetCurrentUser(c, a.UserService)
+		if err != nil {
+			ErrorResponse(c, http.StatusInternalServerError, err)
+			c.Abort()
+			return
+		}
+		if !user.AllowEditing {
+			ErrorResponse(c, http.StatusForbidden, "You are not authorized to perform this action")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 type userJson struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -71,17 +90,6 @@ func (a *API) ListUsers(c *gin.Context) {
 }
 
 func (a *API) PatchUser(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit users"))
-		return
-	}
-
 	userIdStr := c.Param("userId")
 	userIdInt, err := strconv.Atoi(userIdStr)
 	if err != nil {

@@ -89,17 +89,6 @@ func (a *API) GetClub(c *gin.Context) {
 }
 
 func (a *API) CreateClub(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to create clubs"))
-		return
-	}
-
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -136,17 +125,6 @@ func (a *API) CreateClub(c *gin.Context) {
 }
 
 func (a *API) PatchClub(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit clubs"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -193,17 +171,6 @@ func (a *API) PatchClub(c *gin.Context) {
 }
 
 func (a *API) DeleteClub(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to delete clubs"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -229,17 +196,6 @@ func (a *API) DeleteClub(c *gin.Context) {
 }
 
 func (a *API) AddClubMember(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit clubs"))
-		return
-	}
-
 	idStr := c.Param("id")
 	clubId, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -278,17 +234,6 @@ func (a *API) AddClubMember(c *gin.Context) {
 }
 
 func (a *API) RemoveClubMember(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit clubs"))
-		return
-	}
-
 	idStr := c.Param("id")
 	clubId, err := strconv.Atoi(idStr)
 	if err != nil {

@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +41,49 @@ type matchJson struct {
 	Players  map[string]matchPlayerJson `json:"score"`
 }
 
+// parseMatchScores converts string-keyed game/player IDs to int32.
+func parseMatchScores(gameIDStr string, scores map[string]float64) (int32, map[int32]float64, error) {
+	gameID, err := strconv.ParseInt(gameIDStr, 10, 32)
+	if err != nil {
+		return 0, nil, fmt.Errorf("invalid game_id: %s", gameIDStr)
+	}
+	playerScores := make(map[int32]float64, len(scores))
+	for k, v := range scores {
+		pid, err := strconv.ParseInt(k, 10, 32)
+		if err != nil {
+			return 0, nil, fmt.Errorf("invalid player_id: %s", k)
+		}
+		playerScores[int32(pid)] = v
+	}
+	return int32(gameID), playerScores, nil
+}
+
+func (p addMatchJson) toDomain() (int32, map[int32]float64, error) {
+	return parseMatchScores(p.GameId, p.Score)
+}
+
+func (p updateMatchJson) toDomain() (int32, map[int32]float64, error) {
+	return parseMatchScores(p.GameId, p.Score)
+}
+
+// matchErrorToHTTP maps domain errors from MatchService to HTTP responses.
+func matchErrorToHTTP(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, elo.ErrTooFewPlayers):
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, elo.ErrDateChangeTooLarge):
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, elo.ErrHistoryChangeConflict):
+		ErrorResponse(c, http.StatusConflict, err.Error())
+	case strings.Contains(err.Error(), "unable to get match"):
+		ErrorResponse(c, http.StatusNotFound, "Match not found")
+	case db.IsForeignKeyViolation(err):
+		ErrorResponse(c, http.StatusBadRequest, "invalid game_id or player_id: "+err.Error())
+	default:
+		ErrorResponse(c, http.StatusInternalServerError, err)
+	}
+}
+
 func (a *API) AddMatch(c *gin.Context) {
 	var payload addMatchJson
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -46,47 +91,15 @@ func (a *API) AddMatch(c *gin.Context) {
 		return
 	}
 
-	user, err := MustGetCurrentUser(c, a.UserService)
+	gameID, playerScores, err := payload.toDomain()
 	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "You are not authorized to add matches")
-		return
-	}
-
-	// Parse game_id from string to int32
-	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
+	match, err := a.MatchService.AddMatch(c.Request.Context(), gameID, playerScores, time.Now())
 	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "Invalid game_id: "+payload.GameId)
-		return
-	}
-
-	// Convert player IDs from string to int32
-	playerScores := make(map[int32]float64)
-	for playerIDStr, score := range payload.Score {
-		playerID, err := strconv.ParseInt(playerIDStr, 10, 32)
-		if err != nil {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id: "+playerIDStr)
-			return
-		}
-		playerScores[int32(playerID)] = score
-	}
-
-	// Add match to database with current timestamp
-	match, err := a.MatchService.AddMatch(c.Request.Context(), int32(gameID), playerScores, time.Now())
-	if err != nil {
-		if errors.Is(err, elo.ErrTooFewPlayers) {
-			ErrorResponse(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		if db.IsForeignKeyViolation(err) {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
-			return
-		}
-		ErrorResponse(c, http.StatusInternalServerError, err)
+		matchErrorToHTTP(c, err)
 		return
 	}
 
@@ -100,7 +113,6 @@ func (a *API) AddMatch(c *gin.Context) {
 }
 
 func (a *API) UpdateMatch(c *gin.Context) {
-	// Get match ID from URL parameter
 	matchIDStr := c.Param("id")
 	matchID, err := strconv.ParseInt(matchIDStr, 10, 32)
 	if err != nil {
@@ -114,70 +126,19 @@ func (a *API) UpdateMatch(c *gin.Context) {
 		return
 	}
 
-	user, err := MustGetCurrentUser(c, a.UserService)
+	gameID, playerScores, err := payload.toDomain()
 	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	if !user.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, "You are not authorized to update matches")
-		return
-	}
-
-	// Parse game_id from string to int32
-	gameID, err := strconv.ParseInt(payload.GameId, 10, 32)
+	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), gameID, playerScores, payload.Date)
 	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "Invalid game_id: "+payload.GameId)
-		return
-	}
-
-	// Convert player IDs from string to int32
-	playerScores := make(map[int32]float64)
-	for playerIDStr, score := range payload.Score {
-		playerID, err := strconv.ParseInt(playerIDStr, 10, 32)
-		if err != nil {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid player_id: "+playerIDStr)
-			return
-		}
-		playerScores[int32(playerID)] = score
-	}
-
-	// Update match in database
-	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), int32(gameID), playerScores, payload.Date)
-	if err != nil {
-		// Check for specific error cases
-		if db.IsForeignKeyViolation(err) {
-			ErrorResponse(c, http.StatusBadRequest, "Invalid game_id or player_id: "+err.Error())
-			return
-		}
-		if errors.Is(err, elo.ErrDateChangeTooLarge) {
-			ErrorResponse(c, http.StatusBadRequest, err.Error())
-			return
-		}
-		if contains(err.Error(), "unable to get match") {
-			ErrorResponse(c, http.StatusNotFound, "Match not found")
-			return
-		}
-		if errors.Is(err, elo.ErrHistoryChangeConflict) {
-			ErrorResponse(c, http.StatusConflict, err.Error())
-			return
-		}
-		ErrorResponse(c, http.StatusInternalServerError, err)
+		matchErrorToHTTP(c, err)
 		return
 	}
 
 	SuccessMessageResponse(c, http.StatusOK, "Match is updated")
-}
-
-// contains checks if a string contains a substring (helper for error checking)
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // matchCursor is the continuation token encoded as base64 JSON.

@@ -83,17 +83,6 @@ func (a *API) GetGame(c *gin.Context) {
 }
 
 func (a *API) PatchGame(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit games"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -132,17 +121,6 @@ func (a *API) PatchGame(c *gin.Context) {
 }
 
 func (a *API) CreateGame(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit games"))
-		return
-	}
-
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -239,17 +217,6 @@ func (a *API) RecalculateGameElo(c *gin.Context) {
 }
 
 func (a *API) DeleteGame(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit games"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {

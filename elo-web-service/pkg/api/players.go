@@ -250,17 +250,6 @@ func findPlayer(players []elo.Player, id string) *elo.Player {
 }
 
 func (a *API) CreatePlayer(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to create players"))
-		return
-	}
-
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -300,17 +289,6 @@ func (a *API) CreatePlayer(c *gin.Context) {
 }
 
 func (a *API) PatchPlayer(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to edit players"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -361,17 +339,6 @@ func (a *API) PatchPlayer(c *gin.Context) {
 }
 
 func (a *API) DeletePlayer(c *gin.Context) {
-	currentUser, err := MustGetCurrentUser(c, a.UserService)
-	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	if !currentUser.AllowEditing {
-		ErrorResponse(c, http.StatusForbidden, fmt.Errorf("You are not authorized to delete players"))
-		return
-	}
-
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
