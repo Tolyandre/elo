@@ -31,59 +31,49 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL: https://toly.is-cool.dev/elo-web-service
-    # defaults:
-    #    run:
-    #      working-directory: ./nextjs/
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Detect package manager
-        id: detect-package-manager
-        run: |
-          if [ -f "${{ github.workspace }}/nextjs/yarn.lock" ]; then
-            echo "manager=yarn" >> $GITHUB_OUTPUT
-            echo "command=install" >> $GITHUB_OUTPUT
-            echo "runner=yarn" >> $GITHUB_OUTPUT
-            exit 0
-          elif [ -f "${{ github.workspace }}/nextjs/package.json" ]; then
-            echo "manager=npm" >> $GITHUB_OUTPUT
-            echo "command=ci" >> $GITHUB_OUTPUT
-            echo "runner=npx --no-install" >> $GITHUB_OUTPUT
-            exit 0
-          else
-            echo "Unable to determine package manager"
-            exit 1
-          fi
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
-          cache: ${{ steps.detect-package-manager.outputs.manager }}
-          cache-dependency-path: nextjs/package-lock.json
+          node-version: "24"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+          package_json_file: nextjs/package.json
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "store=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+      - name: Restore pnpm cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-cache.outputs.store }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('nextjs/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+      - name: Restore Next.js build cache
+        uses: actions/cache@v5
+        with:
+          path: nextjs/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/pnpm-lock.yaml') }}-${{ hashFiles('nextjs/**/*.[jt]s', 'nextjs/**/*.[jt]sx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/pnpm-lock.yaml') }}-
       - name: Setup Pages
         uses: actions/configure-pages@v6
         with:
           static_site_generator: next
           generator_config_file: nextjs/next.config.js
-      - name: Restore cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            nextjs/.next/cache
-          # Generate a new cache whenever packages or source files change.
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/package-lock.json', 'nextjs/yarn.lock') }}-${{ hashFiles('nextjs/**/*.[jt]s', 'nextjs/**/*.[jt]sx') }}
-          # If source files changed but packages didn't, rebuild from a prior cache.
-          restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/package-lock.json', 'nextjs/yarn.lock') }}-
       - name: Install dependencies
-        run: cd nextjs && ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+        run: pnpm --dir ./nextjs install --frozen-lockfile
       - name: Run tests
-        # Use the detected runner so this works with npm/yarn
-        run: cd nextjs && ${{ steps.detect-package-manager.outputs.runner }} vitest --run --reporter dot
+        run: pnpm --dir ./nextjs test --run --reporter dot
         env:
           CI: true
       - name: Build with Next.js
-        run: cd nextjs && ${{ steps.detect-package-manager.outputs.runner }} next build
+        run: pnpm --dir ./nextjs build
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:

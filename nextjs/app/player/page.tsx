@@ -140,7 +140,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                                     width={55}
                                 />
                                 <Tooltip
-                                    formatter={(value: number) => [value, 'Эло']}
+                                    formatter={(value) => [value, 'Эло']}
                                 />
                                 <Line
                                     type="monotone"
