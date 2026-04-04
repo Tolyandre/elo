@@ -1167,7 +1167,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 							{trigger}
 						</DrawerTrigger>
 
-						<DrawerContent className="max-h-[85vh] p-0">
+						<DrawerContent className="max-h-[85dvh] p-0">
 							<DrawerHeader className="px-4 pt-4 pb-2">
 								<DrawerTitle>{placeholder}</DrawerTitle>
 							</DrawerHeader>
