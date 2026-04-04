@@ -43,6 +43,7 @@ type marketPoolsJson struct {
 	ClosesAt          *time.Time             `json:"closes_at"`
 	CreatedAt         *time.Time             `json:"created_at"`
 	ResolvedAt        *time.Time             `json:"resolved_at"`
+	BettingClosedAt   *time.Time             `json:"betting_closed_at,omitempty"`
 	YesPool           float64                `json:"yes_pool"`
 	NoPool            float64                `json:"no_pool"`
 	YesCoeff          float64                `json:"yes_coefficient"`
@@ -79,6 +80,13 @@ func calcCoefficient(pool, totalPool float64) float64 {
 		return 1
 	}
 	return totalPool / pool
+}
+
+func setBettingClosedAt(m *marketPoolsJson, bca pgtype.Timestamptz) {
+	if bca.Valid {
+		t := bca.Time
+		m.BettingClosedAt = &t
+	}
 }
 
 // buildMarketParamsFromRow builds the target_player_id and params JSON from a row that includes LEFT JOIN params columns.
@@ -157,12 +165,13 @@ func (a *API) ListMarkets(c *gin.Context) {
 			t := r.ResolvedAt.Time
 			m.ResolvedAt = &t
 		}
+		setBettingClosedAt(&m, r.BettingClosedAt)
 
 		if r.ResolutionOutcome.Valid {
 			s := r.ResolutionOutcome.String
 			m.ResolutionOutcome = &s
 		}
-		if r.Status == "open" {
+		if r.Status == "open" || r.Status == "betting_closed" {
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
@@ -219,7 +228,7 @@ func (a *API) GetMarket(c *gin.Context) {
 		ErrorResponse(c, http.StatusNotFound, "market not found")
 		return
 	}
-	if row.Status == "open" && row.ClosesAt.Valid && row.ClosesAt.Time.Before(time.Now()) {
+	if (row.Status == "open" || row.Status == "betting_closed") && row.ClosesAt.Valid && row.ClosesAt.Time.Before(time.Now()) {
 		_ = a.MarketService.ExpireOverdueMarkets(ctx)
 		row, err = a.Queries.GetMarketWithPools(ctx, marketID)
 		if err != nil {
@@ -259,6 +268,7 @@ func (a *API) GetMarket(c *gin.Context) {
 		t := row.ResolvedAt.Time
 		detail.ResolvedAt = &t
 	}
+	setBettingClosedAt(&detail.marketPoolsJson, row.BettingClosedAt)
 
 	if row.ResolutionOutcome.Valid {
 		s := row.ResolutionOutcome.String
@@ -503,6 +513,7 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 			t := r.ResolvedAt.Time
 			m.ResolvedAt = &t
 		}
+		setBettingClosedAt(&m, r.BettingClosedAt)
 		if r.ResolutionOutcome.Valid {
 			s := r.ResolutionOutcome.String
 			m.ResolutionOutcome = &s
@@ -576,4 +587,38 @@ func (a *API) PlaceBet(c *gin.Context) {
 	}
 
 	SuccessMessageResponse(c, http.StatusCreated, "Bet placed")
+}
+
+func (a *API) PatchMarket(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 32)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "invalid market id")
+		return
+	}
+
+	var body struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+
+	switch body.Status {
+	case "betting_closed":
+		if err := a.MarketService.LockMarketBetting(ctx, int32(id)); err != nil {
+			if err == elo.ErrMarketNotOpen {
+				ErrorResponse(c, http.StatusConflict, err.Error())
+				return
+			}
+			ErrorResponse(c, http.StatusInternalServerError, err)
+			return
+		}
+		SuccessMessageResponse(c, http.StatusOK, "Betting closed")
+	default:
+		ErrorResponse(c, http.StatusBadRequest, "unsupported status transition: "+body.Status)
+	}
 }

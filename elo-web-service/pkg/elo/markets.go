@@ -47,6 +47,11 @@ type IMarketService interface {
 	// the settlement order. Must be called within an active transaction.
 	ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error
 
+	// LockMarketBetting stops new bets from being placed on an open market.
+	// This is a user event: betting_closed_at is persisted and never cleared
+	// during recalculation. Returns ErrMarketNotOpen if the market is not 'open'.
+	LockMarketBetting(ctx context.Context, marketID int32) error
+
 	// ScheduleNextExpiry sets a timer for the next market expiry.
 	ScheduleNextExpiry(ctx context.Context)
 }
@@ -329,6 +334,32 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	}
 
 	return nil
+}
+
+// LockMarketBetting stops accepting new bets on an open market (user event).
+// betting_closed_at is stored permanently and never cleared during recalculation.
+func (s *MarketService) LockMarketBetting(ctx context.Context, marketID int32) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := s.Queries.WithTx(tx)
+
+	market, err := q.GetMarketWithPools(ctx, marketID)
+	if err != nil {
+		return fmt.Errorf("get market: %w", err)
+	}
+	if market.Status != "open" {
+		return ErrMarketNotOpen
+	}
+
+	if err := q.LockMarketBetting(ctx, marketID); err != nil {
+		return fmt.Errorf("lock market betting: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }
 
 // ExpireMarketsAtDate settles markets whose closes_at <= date.

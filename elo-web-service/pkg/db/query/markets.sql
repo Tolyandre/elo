@@ -1,7 +1,7 @@
 -- name: CreateMarket :one
 INSERT INTO markets (market_type, starts_at, closes_at, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome;
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at;
 
 -- name: CreateMatchWinnerParams :exec
 INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
@@ -14,7 +14,7 @@ VALUES ($1, $2, $3, $4, $5);
 -- name: GetMarketWithPools :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -34,7 +34,7 @@ GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
 -- name: ListMarketsWithPools :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -62,44 +62,44 @@ SELECT om.id, om.starts_at, om.closes_at,
     mwp.target_player_id, mwp.required_player_ids, mwp.game_id
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open';
+WHERE om.status IN ('open', 'betting_closed');
 
 -- name: ListOpenWinStreakMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open';
+WHERE om.status IN ('open', 'betting_closed');
 
 -- name: ListOverdueMatchWinnerMarkets :many
 SELECT om.id, om.closes_at
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= NOW();
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW();
 
 -- name: ListOverdueWinStreakMarkets :many
 SELECT om.id, om.closes_at, om.starts_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= NOW();
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW();
 
 -- name: ListOverdueMatchWinnerMarketsAtDate :many
 SELECT om.id, om.closes_at
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= $1;
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1;
 
 -- name: ListOverdueWinStreakMarketsAtDate :many
 SELECT om.id, om.closes_at, om.starts_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= $1;
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1;
 
 -- name: GetNearestMarketExpiry :one
 SELECT closes_at FROM markets
-WHERE status = 'open'
+WHERE status IN ('open', 'betting_closed')
 ORDER BY closes_at ASC
 LIMIT 1;
 
@@ -109,20 +109,28 @@ SET status = $2, resolved_at = $3, resolution_match_id = $4, resolution_outcome 
 WHERE id = $1;
 
 -- name: UnsettleMarket :exec
+-- Restores the pre-settlement status: betting_closed if the betting lock user event
+-- was set, otherwise open. betting_closed_at is intentionally left untouched — it is
+-- a user event and must never be cleared by recalculation.
 UPDATE markets
-SET status = 'open', resolved_at = NULL, resolution_match_id = NULL, resolution_outcome = NULL
+SET status = CASE WHEN betting_closed_at IS NOT NULL THEN 'betting_closed' ELSE 'open' END,
+    resolved_at = NULL,
+    resolution_match_id = NULL,
+    resolution_outcome = NULL
 WHERE id = $1;
 
 -- name: GetMarketsForUnsettle :many
 SELECT DISTINCT om.id
 FROM markets om
-WHERE om.status != 'open'
+WHERE om.status IN ('resolved', 'cancelled')
   AND om.resolved_at >= $1;
 
 -- name: GetMarketsForUnsettleWithResolvedAt :many
-SELECT id, resolved_at
+-- Returns resolved_at and betting_closed_at for the history conflict validation.
+-- betting_closed_at is a user event timestamp — preserved even after unsettling.
+SELECT id, resolved_at, betting_closed_at
 FROM markets
-WHERE status != 'open'
+WHERE status IN ('resolved', 'cancelled')
   AND resolved_at >= $1;
 
 -- name: GetMarketResolvedAt :one
@@ -143,7 +151,7 @@ RETURNING id, placed_at;
 SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
 FROM bets ob
 JOIN markets om ON om.id = ob.market_id
-WHERE ob.player_id = $1 AND om.status = 'open';
+WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed');
 
 -- name: GetBetsAggregatedByOutcome :many
 SELECT player_id, outcome, SUM(amount)::float8 AS total_amount
@@ -177,7 +185,7 @@ DELETE FROM player_ratings WHERE market_id = $1;
 -- name: ListMarketsByResolutionMatch :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -206,6 +214,15 @@ SELECT bet_limit FROM players WHERE id = $1;
 
 -- name: UpdatePlayerBetLimit :exec
 UPDATE players SET bet_limit = $2 WHERE id = $1;
+
+-- name: LockMarketBetting :exec
+-- Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
+-- Only succeeds if current status = 'open'; the caller must check affected rows or
+-- fetch the market first to return a proper domain error.
+UPDATE markets
+SET status = 'betting_closed',
+    betting_closed_at = NOW()
+WHERE id = $1 AND status = 'open';
 
 -- name: DeleteMarket :exec
 DELETE FROM markets WHERE id = $1;

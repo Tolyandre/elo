@@ -45,6 +45,8 @@ type Querier interface {
 	GetMarketResolvedAt(ctx context.Context, id int32) (pgtype.Timestamptz, error)
 	GetMarketWithPools(ctx context.Context, id int32) (GetMarketWithPoolsRow, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]int32, error)
+	// Returns resolved_at and betting_closed_at for the history conflict validation.
+	// betting_closed_at is a user event timestamp — preserved even after unsettling.
 	GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error)
 	GetMatch(ctx context.Context, id int32) (Match, error)
 	GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]GetMatchScoresForMatchRow, error)
@@ -92,10 +94,17 @@ type Querier interface {
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
+	// Only succeeds if current status = 'open'; the caller must check affected rows or
+	// fetch the market first to return a proper domain error.
+	LockMarketBetting(ctx context.Context, id int32) error
 	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
+	// Restores the pre-settlement status: betting_closed if the betting lock user event
+	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
+	// a user event and must never be cleared by recalculation.
 	UnsettleMarket(ctx context.Context, id int32) error
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)

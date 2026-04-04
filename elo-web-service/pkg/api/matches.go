@@ -72,7 +72,7 @@ func matchErrorToHTTP(c *gin.Context, err error) {
 		ErrorResponse(c, http.StatusBadRequest, err.Error())
 	case errors.Is(err, elo.ErrDateChangeTooLarge):
 		ErrorResponse(c, http.StatusBadRequest, err.Error())
-	case errors.Is(err, elo.ErrHistoryChangeConflict):
+	case errors.Is(err, elo.ErrHistoryChangeConflict), errors.Is(err, elo.ErrHistoryChangeConflictBettingLock):
 		ErrorResponse(c, http.StatusConflict, err.Error())
 	case errors.Is(err, elo.ErrMatchNotFound):
 		ErrorResponse(c, http.StatusNotFound, err.Error())

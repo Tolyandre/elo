@@ -8,6 +8,7 @@ var (
 	ErrBetLimitExceeded        = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen           = errors.New("рынок не открыт")
 	ErrPlayerHasNoLinkedPlayer = errors.New("у пользователя нет привязанного игрока")
-	ErrHistoryChangeConflict   = errors.New("изменение истории невозможно: ставка была сделана до того, как рынок был разрешён в результате новой даты партии")
+	ErrHistoryChangeConflict            = errors.New("изменение истории невозможно: ставка была сделана до того, как рынок был разрешён в результате новой даты партии")
+	ErrHistoryChangeConflictBettingLock = errors.New("изменение истории невозможно: приём ставок был закрыт до того, как рынок был разрешён в результате новой даты партии")
 	ErrMatchNotFound           = errors.New("матч не найден")
 )

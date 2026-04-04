@@ -638,12 +638,13 @@ export type WinStreakParams = {
 export type Market = {
     id: string;
     market_type: 'match_winner' | 'win_streak';
-    status: 'open' | 'resolved' | 'cancelled';
+    status: 'open' | 'betting_closed' | 'resolved' | 'cancelled';
     resolution_outcome?: string | null;
     starts_at: string | null;
     closes_at: string | null;
     created_at: string | null;
     resolved_at: string | null;
+    betting_closed_at?: string | null;
     yes_pool: number;
     no_pool: number;
     yes_coefficient: number;
@@ -717,6 +718,22 @@ export async function deleteMarketPromise(id: string): Promise<void> {
             credentials: 'include',
         });
         if (res.status === 204) return;
+        await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
+export async function closeMarketBettingPromise(id: string): Promise<void> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ status: 'betting_closed' }),
+        });
         await handleJsonErrorResponse(res);
     }
     catch (error) {

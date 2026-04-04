@@ -128,10 +128,23 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("recalculate bet limits: %w", err)
 	}
 
-	// Validate history consistency: if any market's resolved_at moved EARLIER due to
-	// recalculation, reject if bets exist in the shifted window [new, old).
-	// Those bets were placed while the market was open, but in the new timeline the
-	// market would already have been resolved when they were placed.
+	return validateUserEventsAgainstNewResolutions(ctx, q, oldResolutions)
+}
+
+// validateUserEventsAgainstNewResolutions checks that no user events fall in the
+// window [newResolvedAt, oldResolvedAt) for markets whose resolution moved earlier.
+//
+// User events checked (in order of the ADR):
+//  1. Bet placements — bets.placed_at
+//  2. Betting lock   — markets.betting_closed_at
+//
+// Adding a new market user event type: implement the check below following the
+// same [newResolvedAt, oldResolvedAt) window pattern.
+func validateUserEventsAgainstNewResolutions(
+	ctx context.Context,
+	q *db.Queries,
+	oldResolutions []db.GetMarketsForUnsettleWithResolvedAtRow,
+) error {
 	for _, old := range oldResolutions {
 		if !old.ResolvedAt.Valid {
 			continue
@@ -148,7 +161,8 @@ func (p *EventProcessor) RecalculateFrom(
 			// resolved_at did not move earlier; no new conflicts possible.
 			continue
 		}
-		// resolved_at moved earlier: any bet placed in [new, old) is now invalid.
+
+		// 1. Bet placements: any bet in [newResolvedAt, oldResolvedAt) is now invalid.
 		bets, err := q.GetBetsOnMarketPlacedBetween(ctx, db.GetBetsOnMarketPlacedBetweenParams{
 			MarketID:   old.ID,
 			PlacedAt:   newResolvedAt,
@@ -159,7 +173,17 @@ func (p *EventProcessor) RecalculateFrom(
 		}
 		if len(bets) > 0 {
 			b := bets[0]
-			return fmt.Errorf("%w: market_id=%d player_id=%d", ErrHistoryChangeConflict, old.ID, b.PlayerID)
+			return fmt.Errorf("%w: market_id=%d player_id=%d (bet placed after new resolution time)",
+				ErrHistoryChangeConflict, old.ID, b.PlayerID)
+		}
+
+		// 2. Betting lock: if betting_closed_at falls in [newResolvedAt, oldResolvedAt),
+		// the admin would have tried to lock betting on an already-resolved market.
+		if old.BettingClosedAt.Valid &&
+			!old.BettingClosedAt.Time.Before(newResolvedAt.Time) &&
+			old.BettingClosedAt.Time.Before(old.ResolvedAt.Time) {
+			return fmt.Errorf("%w: market_id=%d (betting was locked after new resolution time)",
+				ErrHistoryChangeConflictBettingLock, old.ID)
 		}
 	}
 

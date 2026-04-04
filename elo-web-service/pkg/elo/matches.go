@@ -254,7 +254,7 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 	if err != nil {
 		return fmt.Errorf("get market: %w", err)
 	}
-	if market.Status != "open" {
+	if market.Status != "open" && market.Status != "betting_closed" {
 		return ErrMarketNotOpen
 	}
 

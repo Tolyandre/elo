@@ -14,7 +14,7 @@ import (
 const createMarket = `-- name: CreateMarket :one
 INSERT INTO markets (market_type, starts_at, closes_at, created_by)
 VALUES ($1, $2, $3, $4)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at
 `
 
 type CreateMarketParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.ResolvedAt,
 		&i.ResolutionMatchID,
 		&i.ResolutionOutcome,
+		&i.BettingClosedAt,
 	)
 	return i, err
 }
@@ -207,7 +208,7 @@ func (q *Queries) GetMarketResolvedAt(ctx context.Context, id int32) (pgtype.Tim
 const getMarketWithPools = `-- name: GetMarketWithPools :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -236,6 +237,7 @@ type GetMarketWithPoolsRow struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
@@ -260,6 +262,7 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id int32) (GetMarketWi
 		&i.CreatedAt,
 		&i.ResolvedAt,
 		&i.ResolutionMatchID,
+		&i.BettingClosedAt,
 		&i.YesPool,
 		&i.NoPool,
 		&i.TargetPlayerID,
@@ -275,7 +278,7 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id int32) (GetMarketWi
 const getMarketsForUnsettle = `-- name: GetMarketsForUnsettle :many
 SELECT DISTINCT om.id
 FROM markets om
-WHERE om.status != 'open'
+WHERE om.status IN ('resolved', 'cancelled')
   AND om.resolved_at >= $1
 `
 
@@ -300,17 +303,20 @@ func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.T
 }
 
 const getMarketsForUnsettleWithResolvedAt = `-- name: GetMarketsForUnsettleWithResolvedAt :many
-SELECT id, resolved_at
+SELECT id, resolved_at, betting_closed_at
 FROM markets
-WHERE status != 'open'
+WHERE status IN ('resolved', 'cancelled')
   AND resolved_at >= $1
 `
 
 type GetMarketsForUnsettleWithResolvedAtRow struct {
-	ID         int32              `json:"id"`
-	ResolvedAt pgtype.Timestamptz `json:"resolved_at"`
+	ID              int32              `json:"id"`
+	ResolvedAt      pgtype.Timestamptz `json:"resolved_at"`
+	BettingClosedAt pgtype.Timestamptz `json:"betting_closed_at"`
 }
 
+// Returns resolved_at and betting_closed_at for the history conflict validation.
+// betting_closed_at is a user event timestamp — preserved even after unsettling.
 func (q *Queries) GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error) {
 	rows, err := q.db.Query(ctx, getMarketsForUnsettleWithResolvedAt, resolvedAt)
 	if err != nil {
@@ -320,7 +326,7 @@ func (q *Queries) GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resol
 	items := []GetMarketsForUnsettleWithResolvedAtRow{}
 	for rows.Next() {
 		var i GetMarketsForUnsettleWithResolvedAtRow
-		if err := rows.Scan(&i.ID, &i.ResolvedAt); err != nil {
+		if err := rows.Scan(&i.ID, &i.ResolvedAt, &i.BettingClosedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -349,7 +355,7 @@ func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (Mar
 
 const getNearestMarketExpiry = `-- name: GetNearestMarketExpiry :one
 SELECT closes_at FROM markets
-WHERE status = 'open'
+WHERE status IN ('open', 'betting_closed')
 ORDER BY closes_at ASC
 LIMIT 1
 `
@@ -413,7 +419,7 @@ const getPlayerReservedAmount = `-- name: GetPlayerReservedAmount :one
 SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
 FROM bets ob
 JOIN markets om ON om.id = ob.market_id
-WHERE ob.player_id = $1 AND om.status = 'open'
+WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed')
 `
 
 func (q *Queries) GetPlayerReservedAmount(ctx context.Context, playerID int32) (float64, error) {
@@ -576,7 +582,7 @@ func (q *Queries) InsertBetSettlementDetail(ctx context.Context, arg InsertBetSe
 const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -605,6 +611,7 @@ type ListMarketsByResolutionMatchRow struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
@@ -635,6 +642,7 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.CreatedAt,
 			&i.ResolvedAt,
 			&i.ResolutionMatchID,
+			&i.BettingClosedAt,
 			&i.YesPool,
 			&i.NoPool,
 			&i.TargetPlayerID,
@@ -657,7 +665,7 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 const listMarketsWithPools = `-- name: ListMarketsWithPools :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -686,6 +694,7 @@ type ListMarketsWithPoolsRow struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID pgtype.Int4        `json:"resolution_match_id"`
+	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
@@ -716,6 +725,7 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 			&i.CreatedAt,
 			&i.ResolvedAt,
 			&i.ResolutionMatchID,
+			&i.BettingClosedAt,
 			&i.YesPool,
 			&i.NoPool,
 			&i.TargetPlayerID,
@@ -740,7 +750,7 @@ SELECT om.id, om.starts_at, om.closes_at,
     mwp.target_player_id, mwp.required_player_ids, mwp.game_id
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open'
+WHERE om.status IN ('open', 'betting_closed')
 `
 
 type ListOpenMatchWinnerMarketsRow struct {
@@ -784,7 +794,7 @@ SELECT om.id, om.starts_at, om.closes_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open'
+WHERE om.status IN ('open', 'betting_closed')
 `
 
 type ListOpenWinStreakMarketsRow struct {
@@ -829,7 +839,7 @@ const listOverdueMatchWinnerMarkets = `-- name: ListOverdueMatchWinnerMarkets :m
 SELECT om.id, om.closes_at
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= NOW()
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW()
 `
 
 type ListOverdueMatchWinnerMarketsRow struct {
@@ -861,7 +871,7 @@ const listOverdueMatchWinnerMarketsAtDate = `-- name: ListOverdueMatchWinnerMark
 SELECT om.id, om.closes_at
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= $1
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1
 `
 
 type ListOverdueMatchWinnerMarketsAtDateRow struct {
@@ -894,7 +904,7 @@ SELECT om.id, om.closes_at, om.starts_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= NOW()
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW()
 `
 
 type ListOverdueWinStreakMarketsRow struct {
@@ -940,7 +950,7 @@ SELECT om.id, om.closes_at, om.starts_at,
     wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-WHERE om.status = 'open' AND om.closes_at <= $1
+WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1
 `
 
 type ListOverdueWinStreakMarketsAtDateRow struct {
@@ -981,6 +991,21 @@ func (q *Queries) ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesA
 	return items, nil
 }
 
+const lockMarketBetting = `-- name: LockMarketBetting :exec
+UPDATE markets
+SET status = 'betting_closed',
+    betting_closed_at = NOW()
+WHERE id = $1 AND status = 'open'
+`
+
+// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
+// Only succeeds if current status = 'open'; the caller must check affected rows or
+// fetch the market first to return a proper domain error.
+func (q *Queries) LockMarketBetting(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, lockMarketBetting, id)
+	return err
+}
+
 const resolveMarket = `-- name: ResolveMarket :exec
 UPDATE markets
 SET status = $2, resolved_at = $3, resolution_match_id = $4, resolution_outcome = $5
@@ -1008,10 +1033,16 @@ func (q *Queries) ResolveMarket(ctx context.Context, arg ResolveMarketParams) er
 
 const unsettleMarket = `-- name: UnsettleMarket :exec
 UPDATE markets
-SET status = 'open', resolved_at = NULL, resolution_match_id = NULL, resolution_outcome = NULL
+SET status = CASE WHEN betting_closed_at IS NOT NULL THEN 'betting_closed' ELSE 'open' END,
+    resolved_at = NULL,
+    resolution_match_id = NULL,
+    resolution_outcome = NULL
 WHERE id = $1
 `
 
+// Restores the pre-settlement status: betting_closed if the betting lock user event
+// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
+// a user event and must never be cleared by recalculation.
 func (q *Queries) UnsettleMarket(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, unsettleMarket, id)
 	return err

@@ -14,6 +14,7 @@ export function statusLabel(status: Market["status"], resolutionOutcome?: string
         return resolutionOutcome ?? "Разрешён";
     }
     if (status === "cancelled") return "Отменён";
+    if (status === "betting_closed") return "Ставки закрыты";
     return "Открыт";
 }
 
@@ -22,6 +23,7 @@ export function statusVariant(status: Market["status"], resolutionOutcome?: stri
         return resolutionOutcome === "no" ? "secondary" : "default";
     }
     if (status === "cancelled") return "destructive";
+    if (status === "betting_closed") return "outline";
     return "default";
 }
 
@@ -80,10 +82,17 @@ export function MarketCard({ market, className }: { market: Market; className?: 
     const { games } = useGames();
     const title = getMarketTitle(market, players, games, playerDisplayName);
     const isOpen = market.status === "open";
-    const date = isOpen
-        ? (market.closes_at ? new Date(market.closes_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null)
-        : (market.resolved_at ? new Date(market.resolved_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null);
-    const dateLabel = isOpen ? "Закрывается" : market.status === "cancelled" ? "Отменён" : "Разрешён";
+    const isBettingClosed = market.status === "betting_closed";
+    const dateValue = isOpen
+        ? market.closes_at
+        : isBettingClosed
+            ? (market.betting_closed_at ?? market.closes_at)
+            : market.resolved_at;
+    const date = dateValue ? new Date(dateValue).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+    const dateLabel = isOpen ? "Закрывается"
+        : isBettingClosed ? "Ставки закрыты"
+        : market.status === "cancelled" ? "Отменён"
+        : "Разрешён";
 
     return (
         <Card className={className}>
