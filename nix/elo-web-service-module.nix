@@ -67,6 +67,32 @@ in
             default = 86400;
           };
 
+          ollama = lib.mkOption {
+            type = lib.types.submodule {
+              options = {
+                # Ollama must be installed and running separately on the host.
+                # Standard setup: add `services.ollama.enable = true;` to your NixOS config.
+                # The service should be accessible at baseUrl before elo-web-service starts.
+                baseUrl = lib.mkOption {
+                  type = lib.types.str;
+                  default = "http://127.0.0.1:11434";
+                  description = "Ollama API base URL (used by elo-web-service to call /api/generate)";
+                };
+
+                # The model must be available in Ollama before use.
+                # Pull it manually: ollama pull llama3.1:8b
+                # qwen2.5 also works well for Russian + JSON mode.
+                model = lib.mkOption {
+                  type = lib.types.str;
+                  default = "llama3.1:8b";
+                  description = "Ollama model name for voice parsing. Must be pulled before use.";
+                };
+              };
+            };
+            default = { };
+            description = "Ollama settings for voice input NLP parsing";
+          };
+
           postgres = lib.mkOption {
             type = lib.types.submodule {
               options = {
@@ -152,6 +178,8 @@ in
             [
               "GIN_MODE=release"
               "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
+              "ELO_WEB_SERVICE_OLLAMA_BASE_URL=${config.services.elo-web-service.config.ollama.baseUrl}"
+              "ELO_WEB_SERVICE_OLLAMA_MODEL=${config.services.elo-web-service.config.ollama.model}"
             ]
             ++ lib.optional (pgPassword != null) [ "ELO_WEB_SERVICE_POSTGRES_PASSWORD=${pgPassword}" ]
           );

@@ -84,6 +84,7 @@ func main() {
 	router.PATCH("/games/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchGame)
 	router.POST("/games", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateGame)
 	router.POST("/admin/recalculate-game-elo", api.RecalculateGameElo)
+	router.POST("/voice/parse", oauth2.DeserializeUser(), api.RequireEditor(), api.ParseVoiceInput)
 	router.GET("/clubs", api.ListClubs)
 	router.GET("/clubs/:id", api.GetClub)
 	router.POST("/clubs", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateClub)

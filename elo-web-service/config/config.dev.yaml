@@ -27,3 +27,12 @@ cookie_ttl_seconds: 86400
 # Postgres connection string (password can be provided via env var `ELO_WEB_SERVICE_POSTGRES_PASSWORD`)
 # Example: postgres_dsn: "postgres://user-name@localhost:5432/db-name?sslmode=disable"
 postgres_dsn: "postgres://elo-web-service-test@localhost:5432/elo-web-service-test?sslmode=disable"
+
+# Ollama base URL for voice input NLP parsing.
+# Run locally: ollama serve (default port 11434)
+ollama_base_url: "http://127.0.0.1:11434"
+
+# Ollama model for voice input parsing. Must be pulled first: ollama pull qwen2.5
+# qwen2.5 understands Russian well and supports JSON mode.
+# Alternatives: llama3.1, gemma3
+ollama_model: "llama3.1:8b"

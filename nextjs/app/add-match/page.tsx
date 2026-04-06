@@ -15,6 +15,7 @@ import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { calculateEloChanges } from "../eloCalculation";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
+import { VoiceInput } from "@/components/voice-input";
 
 type Participant = {
     id: string;
@@ -37,6 +38,23 @@ function AddGameForm() {
     const settings = useSettings();
 
     const { games } = useGames();
+
+    const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
+        if (gameId) setSelectedGameId(gameId);
+        if (scores.length > 0) {
+            const merged = [...participants];
+            for (const { playerId, points } of scores) {
+                const existing = merged.find((p) => p.id === playerId);
+                const found = players.find((pl) => pl.id === playerId);
+                if (existing) {
+                    existing.points = String(points);
+                } else {
+                    merged.push({ id: playerId, points: String(points), name: found ? playerDisplayName(found) : playerId });
+                }
+            }
+            setParticipants(merged);
+        }
+    };
 
     const handlePlayersChange = (newIds: string[]) => {
         setParticipants(
@@ -111,6 +129,9 @@ function AddGameForm() {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+                <VoiceInput onResult={handleVoiceResult} />
+            </div>
             <div>
                 <label className="block font-semibold mb-2" htmlFor="gameName">
                     Название игры:

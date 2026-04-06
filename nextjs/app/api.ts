@@ -817,6 +817,27 @@ async function handleJsonErrorResponse(response: Response) {
     return body.data;
 }
 
+export type VoiceParseResult = {
+    game_id: string | null;
+    scores: { player_id: string; points: number }[];
+};
+
+export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/voice/parse`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ text }),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 function showToast(error: unknown) {
     if (error instanceof Error) {
         toast.error(error.message);
