@@ -137,8 +137,6 @@ function MarketPageContent() {
         <main className="max-w-sm mx-auto space-y-4">
             <MarketCard market={market} />
 
-            <ResolutionDescription market={market} />
-
             <div className="flex flex-col sm:flex-row gap-3">
                 <OutcomeColumn
                     label="ДА"
@@ -155,6 +153,8 @@ function MarketPageContent() {
                     betting={bettingNo}
                 />
             </div>
+
+            <ResolutionDescription market={market} />
 
             {isOpen && <ProjectedOutcome market={market} />}
 
