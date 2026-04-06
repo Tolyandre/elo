@@ -30,7 +30,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircleIcon, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircleIcon, Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { useMe } from "@/app/meContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -328,6 +328,39 @@ export default function SkullKingGamePage() {
         gameState.players.map((p) => p.id)
     );
 
+    // Drag-and-drop state for player reordering
+    const dragIndexRef = React.useRef<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+    function handleDragStart(index: number) {
+        dragIndexRef.current = index;
+    }
+
+    function handleDragOver(e: React.DragEvent, index: number) {
+        e.preventDefault();
+        setDragOverIndex(index);
+    }
+
+    function handleDrop(index: number) {
+        const from = dragIndexRef.current;
+        if (from === null || from === index) {
+            dragIndexRef.current = null;
+            setDragOverIndex(null);
+            return;
+        }
+        const newIds = [...setupPlayerIds];
+        const [moved] = newIds.splice(from, 1);
+        newIds.splice(index, 0, moved);
+        setSetupPlayerIds(newIds);
+        dragIndexRef.current = null;
+        setDragOverIndex(null);
+    }
+
+    function handleDragEnd() {
+        dragIndexRef.current = null;
+        setDragOverIndex(null);
+    }
+
     // Edit cell dialog state
     const [editCell, setEditCell] = useState<{ roundIndex: number; playerIndex: number } | null>(null);
 
@@ -522,8 +555,18 @@ export default function SkullKingGamePage() {
                                 <p className="text-sm font-medium text-muted-foreground">Порядок:</p>
                                 {setupPlayerIds.map((id, index) => {
                                     const player = allPlayers.find((p) => p.id === id);
+                                    const isDragOver = dragOverIndex === index;
                                     return (
-                                        <div key={id} className="flex items-center gap-2">
+                                        <div
+                                            key={id}
+                                            draggable
+                                            onDragStart={() => handleDragStart(index)}
+                                            onDragOver={(e) => handleDragOver(e, index)}
+                                            onDrop={() => handleDrop(index)}
+                                            onDragEnd={handleDragEnd}
+                                            className={`flex items-center gap-2 rounded px-1 cursor-grab active:cursor-grabbing transition-colors ${isDragOver ? "bg-accent" : ""}`}
+                                        >
+                                            <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
                                             <span className="flex-1 text-sm">{index + 1}. {player ? playerDisplayName(player) : id}</span>
                                             <Button
                                                 variant="ghost"
