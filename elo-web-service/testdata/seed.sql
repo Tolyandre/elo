@@ -26,10 +26,10 @@ INSERT INTO matches (id, date, game_id) VALUES
     (201, NOW() - INTERVAL '3 days', 50)
 ON CONFLICT (id) DO NOTHING;
 
--- match_scores: global_elo_pay/earn track global Elo deltas; game_elo_* track per-game Elo.
+-- match_scores: rating_pay/earn track global Elo deltas; game_elo_* track per-game Elo.
 -- Both use the same values here since all matches are the same game (Skull King)
 -- and all players start at 1000 Elo.
-INSERT INTO match_scores (match_id, player_id, score, global_elo_pay, global_elo_earn, game_elo_pay, game_elo_earn, game_new_elo) VALUES
+INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo) VALUES
     (200, 100, 120.0, -10.666666666666666, 24.0,                 -10.666666666666666, 24.0,                 1013.3333333333334),
     (200, 101,  80.0, -10.666666666666666,  8.0,                 -10.666666666666666,  8.0,                  997.3333333333334),
     (200, 102,  60.0, -10.666666666666666,  0.0,                 -10.666666666666666,  0.0,                  989.3333333333334),
@@ -56,7 +56,7 @@ WHERE ms.match_id IN (200, 201)
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
 
--- outcome_markets: test markets in various statuses
+-- markets: test markets in various statuses
 -- First get the dev user's ID for created_by
 DO $$
 DECLARE
@@ -70,60 +70,60 @@ BEGIN
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 989.8239449167427)  / 400.0)) WHERE id = 102;
 
     -- Market 1: open match_winner (Alice beats Bob in Skull King)
-    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
     VALUES (1, 'match_winner', 'open',
             NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO outcome_market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
     VALUES (1, 100, ARRAY[101], 50)
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
-    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
     VALUES (2, 'win_streak', 'open',
             NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO outcome_market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
+    INSERT INTO market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
     VALUES (2, 101, 50, 3, 1)
     ON CONFLICT (market_id) DO NOTHING;
 
-    -- Market 3: resolved_yes match_winner
-    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id)
-    VALUES (3, 'match_winner', 'resolved_yes',
-            NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days', 200)
+    -- Market 3: resolved match_winner (outcome: yes)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, resolution_outcome)
+    VALUES (3, 'match_winner', 'resolved',
+            NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days', 200, 'yes')
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO outcome_market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
     VALUES (3, 100, ARRAY[101, 102], 50)
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 4: cancelled match_winner (expired without matching match)
-    INSERT INTO outcome_markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at)
     VALUES (4, 'match_winner', 'cancelled',
             NOW() - INTERVAL '14 days', NOW() - INTERVAL '7 days', dev_user_id, NOW() - INTERVAL '7 days')
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO outcome_market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
     VALUES (4, 102, ARRAY[100], NULL)
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Bets on open market 1
-    INSERT INTO outcome_bets (market_id, player_id, outcome, amount) VALUES
+    INSERT INTO bets (market_id, player_id, outcome, amount) VALUES
         (1, 100, 'yes', 5.0),
         (1, 101, 'no',  8.0),
         (1, 102, 'yes', 3.0),
         (1, 102, 'yes', 2.0);  -- Carol bets twice on yes
 
     -- Bets on open market 2
-    INSERT INTO outcome_bets (market_id, player_id, outcome, amount) VALUES
+    INSERT INTO bets (market_id, player_id, outcome, amount) VALUES
         (2, 100, 'no',  6.0),
         (2, 101, 'yes', 10.0),
         (2, 102, 'no',  4.0);
 
     -- Bets + settlement for resolved market 3
-    INSERT INTO outcome_bets (market_id, player_id, outcome, amount) VALUES
+    INSERT INTO bets (market_id, player_id, outcome, amount) VALUES
         (3, 100, 'yes', 8.0),
         (3, 101, 'no',  5.0),
         (3, 102, 'no',  7.0);
@@ -142,11 +142,11 @@ BEGIN
     INSERT INTO player_ratings (date, player_id, rating, source_type, market_id)
     VALUES
         (NOW() - INTERVAL '7 days', 100,
-            1002.0534023250732 + (20.0 - 8.0), 'bet_settlement', 3),
+            1002.0534023250732 + (20.0 - 8.0), 'market_settlement', 3),
         (NOW() - INTERVAL '7 days', 101,
-            1008.1226527581842 + (0.0  - 5.0), 'bet_settlement', 3),
+            1008.1226527581842 + (0.0  - 5.0), 'market_settlement', 3),
         (NOW() - INTERVAL '7 days', 102,
-            989.8239449167427  + (0.0  - 7.0), 'bet_settlement', 3)
+            989.8239449167427  + (0.0  - 7.0), 'market_settlement', 3)
     ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL DO NOTHING;
 END $$;
 
@@ -156,5 +156,5 @@ SELECT setval('games_id_seq',   GREATEST(100, (SELECT MAX(id) FROM games)));
 SELECT setval('matches_id_seq', GREATEST(300, (SELECT MAX(id) FROM matches)));
 SELECT setval('clubs_id_seq',   GREATEST(10,  (SELECT MAX(id) FROM clubs)));
 SELECT setval('player_ratings_id_seq', GREATEST(100, (SELECT MAX(id) FROM player_ratings)));
-SELECT setval('outcome_markets_id_seq', GREATEST(10, (SELECT MAX(id) FROM outcome_markets)));
-SELECT setval('outcome_bets_id_seq',    GREATEST(50, (SELECT MAX(id) FROM outcome_bets)));
+SELECT setval('markets_id_seq', GREATEST(10, (SELECT MAX(id) FROM markets)));
+SELECT setval('bets_id_seq',    GREATEST(50, (SELECT MAX(id) FROM bets)));
