@@ -69,6 +69,7 @@ function GameWrapped() {
       game_name: game?.name ?? "",
       date: gm.date,
       score,
+      has_markets: false,
     };
   }
 

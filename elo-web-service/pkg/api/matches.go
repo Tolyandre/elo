@@ -33,11 +33,12 @@ type matchPlayerJson struct {
 }
 
 type matchJson struct {
-	Id       int                        `json:"id"`
-	GameId   string                     `json:"game_id"`
-	GameName string                     `json:"game_name"`
-	Date     time.Time                  `json:"date"`
-	Players  map[string]matchPlayerJson `json:"score"`
+	Id         int                        `json:"id"`
+	GameId     string                     `json:"game_id"`
+	GameName   string                     `json:"game_name"`
+	Date       time.Time                  `json:"date"`
+	Players    map[string]matchPlayerJson `json:"score"`
+	HasMarkets bool                       `json:"has_markets"`
 }
 
 // parseMatchScores converts string-keyed game/player IDs to int32.
@@ -197,11 +198,12 @@ func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Int4, boo
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
 // ordered match groups. Returns the matches map and ID-ordered slice.
 type tempMatch struct {
-	Id       int
-	GameId   string
-	GameName string
-	Date     time.Time
-	Players  map[int32]matchPlayerJson
+	Id         int
+	GameId     string
+	GameName   string
+	Date       time.Time
+	Players    map[int32]matchPlayerJson
+	HasMarkets bool
 }
 
 func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matchJson {
@@ -209,11 +211,12 @@ func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matc
 	for _, mid := range order {
 		tm := matchesMap[mid]
 		m := matchJson{
-			Id:       tm.Id,
-			GameId:   tm.GameId,
-			GameName: tm.GameName,
-			Date:     tm.Date,
-			Players:  make(map[string]matchPlayerJson, len(tm.Players)),
+			Id:         tm.Id,
+			GameId:     tm.GameId,
+			GameName:   tm.GameName,
+			Date:       tm.Date,
+			Players:    make(map[string]matchPlayerJson, len(tm.Players)),
+			HasMarkets: tm.HasMarkets,
 		}
 		for pid, playerData := range tm.Players {
 			m.Players[strconv.Itoa(int(pid))] = playerData
@@ -296,11 +299,12 @@ func (a *API) ListMatches(c *gin.Context) {
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:       int(r.MatchID),
-				GameId:   strconv.Itoa(int(r.GameID)),
-				GameName: r.GameName,
-				Date:     r.Date.Time,
-				Players:  make(map[int32]matchPlayerJson),
+				Id:         int(r.MatchID),
+				GameId:     strconv.Itoa(int(r.GameID)),
+				GameName:   r.GameName,
+				Date:       r.Date.Time,
+				Players:    make(map[int32]matchPlayerJson),
+				HasMarkets: r.HasMarkets,
 			}
 			order = append(order, r.MatchID)
 		}

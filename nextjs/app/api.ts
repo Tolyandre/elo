@@ -74,6 +74,7 @@ export type Match = {
     game_name: string;
     date: Date | null;
     score: Record<string, PlayerScore>;
+    has_markets: boolean;
 };
 
 export type PlayerScore = {
@@ -154,6 +155,7 @@ export async function getMatchesPagePromise(params?: {
                 ])
             ),
             date: m.date ? new Date(m.date) : null,
+            has_markets: m.has_markets ?? false,
         }));
         return { items, next: body.next ?? null };
     }
@@ -178,6 +180,7 @@ export async function getMatchByIdPromise(id: number): Promise<Match> {
                 ])
             ),
             date: m.date ? new Date(m.date) : null,
+            has_markets: m.has_markets ?? false,
         };
     }
     catch (error) {

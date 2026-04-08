@@ -235,7 +235,8 @@ SELECT
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no player_ratings row yet
     CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
+    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating,
+    EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = pm.id) AS has_markets
 FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
