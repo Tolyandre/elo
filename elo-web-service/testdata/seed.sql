@@ -12,10 +12,10 @@ ON CONFLICT (google_oauth_user_id) DO UPDATE
         google_oauth_user_name = EXCLUDED.google_oauth_user_name;
 
 -- Test players
-INSERT INTO players (id, name) VALUES (100, 'Alice'), (101, 'Bob'), (102, 'Carol')
+INSERT INTO players (id, name) VALUES (100, 'Alice'), (101, 'Bob'), (102, 'Carol'), (103, 'Dave')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO player_club_membership (club_id, player_id) VALUES (1,100),(1,101),(1,102)
+INSERT INTO player_club_membership (club_id, player_id) VALUES (1,100),(1,101),(1,102),(1,103)
 ON CONFLICT (club_id, player_id) DO NOTHING;
 
 -- Test matches
@@ -23,7 +23,8 @@ INSERT INTO games (id, name) VALUES (50, 'Skull King') ON CONFLICT (id) DO NOTHI
 
 INSERT INTO matches (id, date, game_id) VALUES
     (200, NOW() - INTERVAL '7 days', 50),
-    (201, NOW() - INTERVAL '3 days', 50)
+    (201, NOW() - INTERVAL '3 days', 50),
+    (202, NOW() - INTERVAL '1 day',  50)
 ON CONFLICT (id) DO NOTHING;
 
 -- match_scores: rating_pay/earn track global Elo deltas; game_elo_* track per-game Elo.
@@ -36,6 +37,16 @@ INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, g
     (201, 100,  70.0, -11.2799310082602,    0.0,                 -11.2799310082602,    0.0,                 1002.0534023250732),
     (201, 101, 130.0, -10.544013908482446, 21.333333333333332,   -10.544013908482446, 21.333333333333332,   1008.1226527581842),
     (201, 102, 100.0, -10.176055083257353, 10.666666666666666,   -10.176055083257353, 10.666666666666666,    989.8239449167427)
+ON CONFLICT (match_id, player_id) DO NOTHING;
+
+-- match 202: Dave wins (110), Alice 2nd (90), Bob 3rd (70), Carol last (50).
+-- All 4 start at: Dave=1000, Alice=1002.053, Bob=1008.123, Carol=989.824.
+-- pay = -K*WinExpect, earn = K*NormScore (loser=50, sum=120)
+INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo) VALUES
+    (202, 103, 110.0,  -8.0,         16.0,               -8.0,         16.0,               1008.0),
+    (202, 100,  90.0,  -8.062912,    10.666666666666666,  -8.062912,    10.666666666666666, 1004.6571570250732),
+    (202, 101,  70.0,  -8.249248,     5.333333333333333,  -8.249248,     5.333333333333333, 1005.2067380581842),
+    (202, 102,  50.0,  -7.687840,     0.0,                -7.687840,     0.0,                982.1361049167427)
 ON CONFLICT (match_id, player_id) DO NOTHING;
 
 -- player_ratings: global Elo after each match (source_type='match')
@@ -55,6 +66,21 @@ JOIN matches m ON m.id = ms.match_id
 WHERE ms.match_id IN (200, 201)
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
+-- player_ratings for match 202
+INSERT INTO player_ratings (date, player_id, rating, source_type, match_id)
+SELECT m.date, ms.player_id,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN 1008.0
+        WHEN (202, 100) THEN 1004.6571570250732
+        WHEN (202, 101) THEN 1005.2067380581842
+        WHEN (202, 102) THEN  982.1361049167427
+    END,
+    'match', ms.match_id
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.match_id = 202
+ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+
 
 -- markets: test markets in various statuses
 -- First get the dev user's ID for created_by
@@ -65,9 +91,11 @@ BEGIN
     SELECT id INTO dev_user_id FROM users WHERE google_oauth_user_id = 'dev-user-001';
 
     -- bet_limit for players (formula: K / (1 + 10^((startingElo - playerElo) / D)) with K=32, D=400, startingElo=1000)
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1002.0534023250732) / 400.0)) WHERE id = 100;
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.1226527581842) / 400.0)) WHERE id = 101;
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 989.8239449167427)  / 400.0)) WHERE id = 102;
+    -- bet_limits based on final Elo after match 202
+    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1004.6571570250732) / 400.0)) WHERE id = 100;
+    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1005.2067380581842) / 400.0)) WHERE id = 101;
+    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 982.1361049167427)  / 400.0)) WHERE id = 102;
+    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.0)             / 400.0)) WHERE id = 103;
 
     -- Market 1: open match_winner (Alice beats Bob in Skull King)
     INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
