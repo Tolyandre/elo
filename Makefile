@@ -1,4 +1,15 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test generate-api generate-go-api generate-ts-api
+
+## Regenerate Go server code from openapi.yaml
+generate-go-api:
+	go generate -C elo-web-service ./pkg/api/...
+
+## Regenerate TypeScript types from openapi.yaml
+generate-ts-api:
+	pnpm --dir ./nextjs run generate:api
+
+## Regenerate all API code from openapi.yaml (run after editing openapi.yaml)
+generate-api: generate-go-api generate-ts-api
 
 ## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
 # dev-up:

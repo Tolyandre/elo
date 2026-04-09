@@ -51,6 +51,17 @@ The backend expects a PostgreSQL database. Connection details are in `elo-web-se
 
 **Migrations are up-only.** Do not create down migration files. To roll back, write a new forward migration.
 
+### Nix Dependencies (gomod2nix)
+
+The Nix build uses `gomod2nix` instead of a vendor directory. After adding or updating Go dependencies (`go get`, `go mod tidy`), regenerate the lockfile:
+
+```bash
+cd elo-web-service
+gomod2nix generate
+```
+
+Commit the updated `gomod2nix.toml` alongside `go.mod` and `go.sum`. **Do not commit a `vendor/` directory** — it is not needed and conflicts with the gomod2nix approach.
+
 ### NixOS Module Testing
 ```bash
 # Check syntax

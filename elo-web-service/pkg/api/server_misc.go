@@ -2,46 +2,36 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
-// ParseVoiceInput uses Ollama to extract game and player scores from natural language speech.
-// It loads all games and players from the DB, builds a prompt, and calls Ollama with JSON mode.
-func (a *API) ParseVoiceInput(c *gin.Context) {
-	var body struct {
-		Text string `json:"text"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
-	if strings.TrimSpace(body.Text) == "" {
-		ErrorResponse(c, http.StatusBadRequest, "text is required")
-		return
+func (s *StrictServer) GetPing(_ context.Context, _ GetPingRequestObject) (GetPingResponseObject, error) {
+	return GetPing200JSONResponse{Status: "success", Message: "pong"}, nil
+}
+
+func (s *StrictServer) ParseVoiceInput(ctx context.Context, request ParseVoiceInputRequestObject) (ParseVoiceInputResponseObject, error) {
+	text := request.Body.Text
+	if strings.TrimSpace(text) == "" {
+		return ParseVoiceInput400JSONResponse{Status: "fail", Message: "text is required"}, nil
 	}
 
-	// Load games
-	games, err := a.GameService.GetGameTitlesOrderedByLastPlayed(c.Request.Context())
+	games, err := s.api.GameService.GetGameTitlesOrderedByLastPlayed(ctx)
 	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to load games: %w", err))
-		return
+		return nil, fmt.Errorf("failed to load games: %w", err)
 	}
 
-	// Load players
-	players, err := a.PlayerService.ListPlayers(c.Request.Context())
+	players, err := s.api.PlayerService.ListPlayers(ctx)
 	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to load players: %w", err))
-		return
+		return nil, fmt.Errorf("failed to load players: %w", err)
 	}
 
-	// Build lookup sets and prompt lines
 	gameIDs := make(map[string]struct{}, len(games))
 	var gameLines strings.Builder
 	for _, g := range games {
@@ -82,20 +72,14 @@ Return JSON in this exact format:
 Speech: %q`,
 		gameLines.String(),
 		playerLines.String(),
-		body.Text,
+		text,
 	)
 
-	print(prompt)
-
-	// Call Ollama
-	result, err := callOllama(prompt)
+	result, err := callOllamaVoice(prompt)
 	if err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("ollama error: %w", err))
-		return
+		return ParseVoiceInput500JSONResponse{Status: "fail", Message: fmt.Sprintf("ollama error: %v", err)}, nil
 	}
 
-	// Parse Ollama JSON response.
-	// Use *int for points so we can detect null (model didn't know the score).
 	type scoreItem struct {
 		PlayerID string `json:"player_id"`
 		Points   *int   `json:"points"`
@@ -105,49 +89,42 @@ Speech: %q`,
 		Scores []scoreItem `json:"scores"`
 	}
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
-		ErrorResponse(c, http.StatusInternalServerError, fmt.Errorf("failed to parse ollama response: %w, raw: %s", err, result))
-		return
+		return ParseVoiceInput500JSONResponse{Status: "fail", Message: fmt.Sprintf("failed to parse ollama response: %v, raw: %s", err, result)}, nil
 	}
 
-	// Validate all IDs against sets loaded from DB.
-	// Discards hallucinated IDs so an invalid game_id never reaches the frontend combobox.
 	if parsed.GameID != nil {
 		if _, ok := gameIDs[*parsed.GameID]; !ok {
 			parsed.GameID = nil
 		}
 	}
 
-	type validScore struct {
-		PlayerID string `json:"player_id"`
-		Points   int    `json:"points"`
-	}
-	validScores := make([]validScore, 0)
+	validScores := make([]VoiceScore, 0)
 	for _, s := range parsed.Scores {
 		if s.Points == nil {
-			continue // model returned null points — skip
+			continue
 		}
 		if _, ok := playerIDs[s.PlayerID]; !ok {
-			continue // hallucinated or empty player_id — skip
+			continue
 		}
-		validScores = append(validScores, validScore{PlayerID: s.PlayerID, Points: *s.Points})
+		validScores = append(validScores, VoiceScore{PlayerId: s.PlayerID, Points: *s.Points})
 	}
 
-	SuccessDataResponse(c, gin.H{
-		"game_id": parsed.GameID,
-		"scores":  validScores,
-	})
+	return ParseVoiceInput200JSONResponse{
+		Status: "success",
+		Data: VoiceParseResult{
+			GameId: parsed.GameID,
+			Scores: validScores,
+		},
+	}, nil
 }
 
-// callOllama sends a prompt to Ollama and returns the response text.
-// Uses Ollama's /api/generate endpoint with JSON format mode.
-func callOllama(prompt string) (string, error) {
+func callOllamaVoice(prompt string) (string, error) {
 	baseURL := cfg.Config.OllamaBaseUrl
 	model := cfg.Config.OllamaModel
 
 	reqBody, err := json.Marshal(map[string]interface{}{
 		"model":  model,
 		"prompt": prompt,
-		// JSON mode: Ollama guarantees valid JSON output
 		"format": "json",
 		"stream": false,
 	})

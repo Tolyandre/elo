@@ -41,11 +41,11 @@ func main() {
 
 	pool := initDbConnectionPool()
 	defer pool.Close()
-	api := api.New(pool)
-	oauth2 := oauth2.New(pool)
+	apiHandler := api.New(pool)
+	oauth2Handler := oauth2.New(pool)
 
 	// Start timer for time-based market expiry
-	api.MarketService.ScheduleNextExpiry(context.Background())
+	apiHandler.MarketService.ScheduleNextExpiry(context.Background())
 
 	router := gin.Default()
 
@@ -60,52 +60,92 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 
-	router.GET("/ping", api.GetPing)
-	router.GET("/players", api.ListPlayers)
-	router.GET("/players/:id/stats", api.GetPlayerStats)
-	router.POST("/players", oauth2.DeserializeUser(), api.RequireEditor(), api.CreatePlayer)
-	router.PATCH("/players/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchPlayer)
-	router.DELETE("/players/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.DeletePlayer)
-	router.GET("/users", api.ListUsers)
-	router.PATCH("/users/:userId", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchUser)
-	router.GET("/matches", api.ListMatches)
-	router.POST("/matches", oauth2.DeserializeUser(), api.RequireEditor(), api.AddMatch)
-	router.GET("/matches/:id", api.GetMatchById)
-	router.GET("/matches/:id/markets", api.GetMarketsByMatchID)
-	router.PUT("/matches/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.UpdateMatch)
-	router.GET("/settings", api.ListSettings)
-	router.GET("/settings/all", api.ListAllSettings)
-	router.POST("/settings", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateSettings)
-	router.DELETE("/settings", oauth2.DeserializeUser(), api.RequireEditor(), api.DeleteSettings)
-	router.GET("/games", api.ListGames)
-	router.GET("/games/:id", api.GetGame)
-	router.GET("/games/:id/matches", api.GetGameMatches)
-	router.DELETE("/games/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.DeleteGame)
-	router.PATCH("/games/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchGame)
-	router.POST("/games", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateGame)
-	router.POST("/admin/recalculate-game-elo", api.RecalculateGameElo)
-	router.POST("/voice/parse", oauth2.DeserializeUser(), api.RequireEditor(), api.ParseVoiceInput)
-	router.GET("/clubs", api.ListClubs)
-	router.GET("/clubs/:id", api.GetClub)
-	router.POST("/clubs", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateClub)
-	router.PATCH("/clubs/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchClub)
-	router.DELETE("/clubs/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.DeleteClub)
-	router.POST("/clubs/:id/members", oauth2.DeserializeUser(), api.RequireEditor(), api.AddClubMember)
-	router.DELETE("/clubs/:id/members/:playerId", oauth2.DeserializeUser(), api.RequireEditor(), api.RemoveClubMember)
+	// strictWrapper wraps the StrictServer via ServerInterfaceWrapper so that
+	// path-parameter methods (e.g. GetPlayerStats) are exposed as plain gin.HandlerFunc.
+	// Auth middleware is still applied per-route below, preserving the existing behavior.
+	// errorMiddleware converts unexpected handler errors (nil, err) into a JSON
+	// response with the same {"status":"fail","message":"..."} shape as typed errors.
+	errorMiddleware := func(f api.StrictHandlerFunc, operationID string) api.StrictHandlerFunc {
+		return func(ctx *gin.Context, req interface{}) (interface{}, error) {
+			resp, err := f(ctx, req)
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{
+					"status":  "fail",
+					"message": err.Error(),
+				})
+				ctx.Abort()
+				return nil, nil
+			}
+			return resp, nil
+		}
+	}
 
-	router.GET("/markets", oauth2.OptionalDeserializeUser(), api.ListMarkets)
-	router.POST("/markets", oauth2.DeserializeUser(), api.RequireEditor(), api.CreateMarket)
-	router.GET("/markets/:id", oauth2.OptionalDeserializeUser(), api.GetMarket)
-	router.PATCH("/markets/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.PatchMarket)
-	router.DELETE("/markets/:id", oauth2.DeserializeUser(), api.RequireEditor(), api.DeleteMarket)
-	router.POST("/markets/:id/bets", oauth2.DeserializeUser(), api.PlaceBet)
+	strictWrapper := &api.ServerInterfaceWrapper{
+		Handler: api.NewStrictHandler(api.NewStrictServer(apiHandler, oauth2Handler), []api.StrictMiddlewareFunc{errorMiddleware}),
+	}
 
-	auth_router := router.Group("/auth")
-	auth_router.POST("/logout", oauth2.LogoutUser)
-	auth_router.GET("/login", oauth2.Login)
-	auth_router.GET("/oauth2-callback", oauth2.GoogleOAuth)
-	auth_router.GET("/me", oauth2.DeserializeUser(), oauth2.GetMe)
-	auth_router.PATCH("/me", oauth2.DeserializeUser(), oauth2.PatchMe)
+	router.GET("/ping", strictWrapper.GetPing)
+
+	// Players
+	router.GET("/players", strictWrapper.ListPlayers)
+	router.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
+	router.POST("/players", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreatePlayer)
+	router.PATCH("/players/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchPlayer)
+	router.DELETE("/players/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeletePlayer)
+
+	// Users
+	router.GET("/users", strictWrapper.ListUsers)
+	router.PATCH("/users/:userId", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchUser)
+
+	// Matches
+	router.GET("/matches", strictWrapper.ListMatches)
+	router.POST("/matches", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.AddMatch)
+	router.GET("/matches/:id", strictWrapper.GetMatchById)
+	router.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
+	router.PUT("/matches/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.UpdateMatch)
+
+	// Settings
+	router.GET("/settings", strictWrapper.GetSettings)
+	router.GET("/settings/all", strictWrapper.ListAllSettings)
+	router.POST("/settings", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateSettings)
+	router.DELETE("/settings", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteSettings)
+
+	// Games
+	router.GET("/games", strictWrapper.ListGames)
+	router.GET("/games/:id", strictWrapper.GetGame)
+	router.GET("/games/:id/matches", strictWrapper.GetGameMatches)
+	router.DELETE("/games/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteGame)
+	router.PATCH("/games/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchGame)
+	router.POST("/games", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateGame)
+	router.POST("/admin/recalculate-game-elo", strictWrapper.RecalculateGameElo)
+
+	// Voice
+	router.POST("/voice/parse", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.ParseVoiceInput)
+
+	// Clubs
+	router.GET("/clubs", strictWrapper.ListClubs)
+	router.GET("/clubs/:id", strictWrapper.GetClub)
+	router.POST("/clubs", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateClub)
+	router.PATCH("/clubs/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchClub)
+	router.DELETE("/clubs/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteClub)
+	router.POST("/clubs/:id/members", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.AddClubMember)
+	router.DELETE("/clubs/:id/members/:playerId", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.RemoveClubMember)
+
+	// Markets
+	router.GET("/markets", oauth2Handler.OptionalDeserializeUser(), strictWrapper.ListMarkets)
+	router.POST("/markets", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateMarket)
+	router.GET("/markets/:id", oauth2Handler.OptionalDeserializeUser(), strictWrapper.GetMarket)
+	router.PATCH("/markets/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchMarket)
+	router.DELETE("/markets/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteMarket)
+	router.POST("/markets/:id/bets", oauth2Handler.DeserializeUser(), strictWrapper.PlaceBet)
+
+	// Auth (delegated to oauth2Handler via StrictServer stubs)
+	authRouter := router.Group("/auth")
+	authRouter.POST("/logout", oauth2Handler.LogoutUser)
+	authRouter.GET("/login", oauth2Handler.Login)
+	authRouter.GET("/oauth2-callback", oauth2Handler.GoogleOAuth)
+	authRouter.GET("/me", oauth2Handler.DeserializeUser(), oauth2Handler.GetMe)
+	authRouter.PATCH("/me", oauth2Handler.DeserializeUser(), oauth2Handler.PatchMe)
 
 	log.Fatal(router.Run(cfg.Config.Address))
 }

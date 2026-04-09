@@ -112,12 +112,12 @@ function PlayersTable() {
     );
 
     const rankedPlayers = useMemo<Player[]>(() => filtered
-        .filter((p: Player) => p.rank.now.rank !== null)
+        .filter((p: Player) => p.rank.now.rank != null)
         .sort((a: Player, b: Player) => b.rank.now.elo - a.rank.now.elo),
         [filtered]);
 
     const unRankedPlayers = useMemo<Player[]>(() => filtered
-        .filter((p: Player) => p.rank.now.rank === null)
+        .filter((p: Player) => p.rank.now.rank == null)
         .sort((a: Player, b: Player) => a.rank.now.matches_left_for_ranked - b.rank.now.matches_left_for_ranked),
         [filtered]);
 

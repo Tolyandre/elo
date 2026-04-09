@@ -1,0 +1,2258 @@
+openapi: "3.0.3"
+info:
+  title: Elo Web Service
+  version: "1.0.0"
+  description: Elo rating tracker for board games
+
+servers:
+  - url: /
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: elo-web-service-token
+      description: JWT token stored in HttpOnly cookie. Auth is enforced by Gin middleware, not OpenAPI runtime.
+
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [fail]
+        message:
+          type: string
+      required: [status, message]
+
+    ApiSuccessMessage:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        message:
+          type: string
+      required: [status, message]
+
+    EloRank:
+      type: object
+      properties:
+        elo:
+          type: number
+          format: double
+        rank:
+          type: integer
+          nullable: true
+        matches_left_for_ranked:
+          type: integer
+      required: [elo, matches_left_for_ranked]
+
+    HistoryRank:
+      type: object
+      properties:
+        now:
+          $ref: '#/components/schemas/EloRank'
+        day_ago:
+          $ref: '#/components/schemas/EloRank'
+        week_ago:
+          $ref: '#/components/schemas/EloRank'
+      required: [now, day_ago, week_ago]
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        geologist_name:
+          type: string
+          nullable: true
+        user_id:
+          type: string
+          nullable: true
+        rank:
+          $ref: '#/components/schemas/HistoryRank'
+      required: [id, name, rank]
+
+    PlayerRef:
+      description: Minimal player object returned after create/patch
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      required: [id, name]
+
+    RatingPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+        rating:
+          type: number
+          format: double
+      required: [date, rating]
+
+    GameMatchStat:
+      type: object
+      properties:
+        game_id:
+          type: string
+        game_name:
+          type: string
+        matches_count:
+          type: integer
+        wins:
+          type: integer
+      required: [game_id, game_name, matches_count, wins]
+
+    GameEloStat:
+      type: object
+      properties:
+        game_id:
+          type: string
+        game_name:
+          type: string
+        elo_earned:
+          type: number
+          format: double
+      required: [game_id, game_name, elo_earned]
+
+    PlayerStats:
+      type: object
+      properties:
+        player_name:
+          type: string
+        rating_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/RatingPoint'
+        top_games_by_matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameMatchStat'
+        top_games_by_elo_earned:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameEloStat'
+        worst_games_by_elo_earned:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameEloStat'
+      required: [player_name, rating_history, top_games_by_matches, top_games_by_elo_earned, worst_games_by_elo_earned]
+
+    MatchPlayer:
+      type: object
+      description: Per-player data within a match (keyed by player_id in the score map)
+      properties:
+        rating_pay:
+          type: number
+          format: double
+        rating_earn:
+          type: number
+          format: double
+        score:
+          type: number
+          format: double
+      required: [rating_pay, rating_earn, score]
+
+    Match:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_id:
+          type: string
+        game_name:
+          type: string
+        date:
+          type: string
+          format: date-time
+        score:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MatchPlayer'
+          description: Map of player_id (string) to player score data
+        has_markets:
+          type: boolean
+      required: [id, game_id, game_name, date, score, has_markets]
+
+    MatchesPage:
+      type: object
+      properties:
+        status:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Match'
+        next:
+          type: string
+          nullable: true
+          description: Cursor token for the next page; null if no more pages
+      required: [status, data]
+
+    GameListItem:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        last_played_order:
+          type: integer
+        total_matches:
+          type: integer
+      required: [id, name, last_played_order, total_matches]
+
+    GameList:
+      type: object
+      properties:
+        games:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameListItem'
+      required: [games]
+
+    GamePlayer:
+      type: object
+      properties:
+        id:
+          type: string
+        elo:
+          type: number
+          format: double
+        rank:
+          type: integer
+      required: [id, elo, rank]
+
+    Game:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        total_matches:
+          type: integer
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/GamePlayer'
+      required: [id, name, total_matches, players]
+
+    GameMatchPlayer:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        score:
+          type: number
+          format: double
+        game_elo_pay:
+          type: number
+          format: double
+        game_elo_earn:
+          type: number
+          format: double
+        game_new_elo:
+          type: number
+          format: double
+      required: [id, name, score, game_elo_pay, game_elo_earn, game_new_elo]
+
+    GameMatch:
+      type: object
+      properties:
+        id:
+          type: integer
+        date:
+          type: string
+          format: date-time
+          nullable: true
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameMatchPlayer'
+      required: [id, players]
+
+    Club:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        geologist_name:
+          type: string
+          nullable: true
+        players:
+          type: array
+          items:
+            type: integer
+          description: List of player IDs (integers)
+      required: [id, name, players]
+
+    Settings:
+      type: object
+      properties:
+        elo_const_k:
+          type: number
+          format: double
+        elo_const_d:
+          type: number
+          format: double
+        starting_elo:
+          type: number
+          format: double
+        win_reward:
+          type: number
+          format: double
+      required: [elo_const_k, elo_const_d, starting_elo, win_reward]
+
+    EloSettingEntry:
+      type: object
+      properties:
+        effective_date:
+          type: string
+          description: RFC3339 date or "-infinity"
+        elo_const_k:
+          type: number
+          format: double
+        elo_const_d:
+          type: number
+          format: double
+        starting_elo:
+          type: number
+          format: double
+        win_reward:
+          type: number
+          format: double
+      required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        can_edit:
+          type: boolean
+        player_id:
+          type: string
+          nullable: true
+      required: [id, name, can_edit]
+
+    SettlementDetail:
+      type: object
+      properties:
+        player_id:
+          type: string
+        player_name:
+          type: string
+        staked:
+          type: number
+          format: double
+        earned:
+          type: number
+          format: double
+      required: [player_id, player_name, staked, earned]
+
+    MatchWinnerParams:
+      type: object
+      properties:
+        required_player_ids:
+          type: array
+          items:
+            type: string
+        game_id:
+          type: string
+          nullable: true
+      required: [required_player_ids]
+
+    WinStreakParams:
+      type: object
+      properties:
+        game_id:
+          type: string
+        wins_required:
+          type: integer
+        max_losses:
+          type: integer
+          nullable: true
+      required: [game_id, wins_required]
+
+    Market:
+      type: object
+      properties:
+        id:
+          type: string
+        market_type:
+          type: string
+          enum: [match_winner, win_streak]
+        status:
+          type: string
+          enum: [open, betting_closed, resolved, expired]
+        resolution_outcome:
+          type: string
+          nullable: true
+        starts_at:
+          type: string
+          format: date-time
+          nullable: true
+        closes_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        betting_closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        yes_pool:
+          type: number
+          format: double
+        no_pool:
+          type: number
+          format: double
+        yes_coefficient:
+          type: number
+          format: double
+        no_coefficient:
+          type: number
+          format: double
+        target_player_id:
+          type: string
+        params:
+          nullable: true
+          description: Market-type-specific parameters
+          oneOf:
+            - $ref: '#/components/schemas/MatchWinnerParams'
+            - $ref: '#/components/schemas/WinStreakParams'
+        settlement:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettlementDetail'
+      required: [id, market_type, status, yes_pool, no_pool, yes_coefficient, no_coefficient, target_player_id]
+
+    MarketDetail:
+      allOf:
+        - $ref: '#/components/schemas/Market'
+        - type: object
+          properties:
+            my_yes_staked:
+              type: number
+              format: double
+              nullable: true
+            my_no_staked:
+              type: number
+              format: double
+              nullable: true
+            projected_yes_reward:
+              type: number
+              format: double
+              nullable: true
+            projected_no_reward:
+              type: number
+              format: double
+              nullable: true
+            reserved:
+              type: number
+              format: double
+              nullable: true
+            bet_limit:
+              type: number
+              format: double
+              nullable: true
+
+    VoiceScore:
+      type: object
+      properties:
+        player_id:
+          type: string
+        points:
+          type: integer
+      required: [player_id, points]
+
+    VoiceParseResult:
+      type: object
+      properties:
+        game_id:
+          type: string
+          nullable: true
+        scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/VoiceScore'
+      required: [scores]
+
+security: []
+
+paths:
+  /ping:
+    get:
+      operationId: GetPing
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: pong
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+
+  /players:
+    get:
+      operationId: ListPlayers
+      tags: [players]
+      summary: List all players with Elo rankings
+      responses:
+        "200":
+          description: Players with ranking history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Player'
+                required: [status, data]
+    post:
+      operationId: CreatePlayer
+      tags: [players]
+      summary: Create a new player
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Created player
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/PlayerRef'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Player with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /players/{id}/stats:
+    get:
+      operationId: GetPlayerStats
+      tags: [players]
+      summary: Get player rating history and game statistics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Player statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/PlayerStats'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /players/{id}:
+    patch:
+      operationId: PatchPlayer
+      tags: [players]
+      summary: Update player name
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Updated player
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/PlayerRef'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Name conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      operationId: DeletePlayer
+      tags: [players]
+      summary: Delete a player
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Player deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request (e.g. player has matches)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /games:
+    get:
+      operationId: ListGames
+      tags: [games]
+      summary: List all games ordered by last played
+      responses:
+        "200":
+          description: List of games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/GameList'
+                required: [status, data]
+    post:
+      operationId: CreateGame
+      tags: [games]
+      summary: Create a new game
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Created game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                    required: [id, name]
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Game with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /games/{id}:
+    get:
+      operationId: GetGame
+      tags: [games]
+      summary: Get game details and player Elo rankings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Game'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    patch:
+      operationId: PatchGame
+      tags: [games]
+      summary: Update game name
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Updated game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                    required: [id, name]
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      operationId: DeleteGame
+      tags: [games]
+      summary: Delete a game
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Game deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request (e.g. game has matches)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /games/{id}/matches:
+    get:
+      operationId: GetGameMatches
+      tags: [games]
+      summary: Get all matches for a game
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matches for the game
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GameMatch'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /matches:
+    get:
+      operationId: ListMatches
+      tags: [matches]
+      summary: List matches with cursor-based pagination
+      parameters:
+        - name: game_id
+          in: query
+          schema:
+            type: string
+          description: Filter by game ID
+        - name: player_id
+          in: query
+          schema:
+            type: string
+          description: Filter by player ID
+        - name: club_id
+          in: query
+          schema:
+            type: string
+          description: Filter by club ID; use "__no_club__" for players without a club
+        - name: next
+          in: query
+          schema:
+            type: string
+          description: Cursor token from previous page's "next" field
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+          description: Number of matches per page
+      responses:
+        "200":
+          description: Paginated match list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchesPage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    post:
+      operationId: AddMatch
+      tags: [matches]
+      summary: Add a new match
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                game_id:
+                  type: string
+                score:
+                  type: object
+                  additionalProperties:
+                    type: number
+                    format: double
+                  description: Map of player_id (string) to numeric score
+              required: [game_id, score]
+      responses:
+        "200":
+          description: Match added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                    required: [id]
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: History change conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /matches/{id}:
+    get:
+      operationId: GetMatchById
+      tags: [matches]
+      summary: Get a match by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Match details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Match'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    put:
+      operationId: UpdateMatch
+      tags: [matches]
+      summary: Update a match (scores and date)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                game_id:
+                  type: string
+                score:
+                  type: object
+                  additionalProperties:
+                    type: number
+                    format: double
+                  description: Map of player_id (string) to numeric score
+                date:
+                  type: string
+                  format: date-time
+              required: [game_id, score, date]
+      responses:
+        "200":
+          description: Match updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Match not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: History change conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /matches/{id}/markets:
+    get:
+      operationId: GetMarketsByMatchId
+      tags: [matches, markets]
+      summary: Get markets associated with a match
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Markets for the match
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Market'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /clubs:
+    get:
+      operationId: ListClubs
+      tags: [clubs]
+      summary: List all clubs
+      responses:
+        "200":
+          description: List of clubs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Club'
+                required: [status, data]
+    post:
+      operationId: CreateClub
+      tags: [clubs]
+      summary: Create a new club
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Created club
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Club'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Club with this name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /clubs/{id}:
+    get:
+      operationId: GetClub
+      tags: [clubs]
+      summary: Get a club by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Club details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Club'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Club not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    patch:
+      operationId: PatchClub
+      tags: [clubs]
+      summary: Update club name
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "200":
+          description: Updated club
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Club'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Club not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      operationId: DeleteClub
+      tags: [clubs]
+      summary: Delete a club
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Club deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Club not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /clubs/{id}/members:
+    post:
+      operationId: AddClubMember
+      tags: [clubs]
+      summary: Add a player to a club
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                player_id:
+                  type: integer
+              required: [player_id]
+      responses:
+        "200":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /clubs/{id}/members/{playerId}:
+    delete:
+      operationId: RemoveClubMember
+      tags: [clubs]
+      summary: Remove a player from a club
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /settings:
+    get:
+      operationId: GetSettings
+      tags: [settings]
+      summary: Get current active Elo settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/Settings'
+                required: [status, data]
+    post:
+      operationId: CreateSettings
+      tags: [settings]
+      summary: Create new Elo settings (effective from a future date)
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                effective_date:
+                  type: string
+                  format: date-time
+                  description: Must be in the future
+                elo_const_k:
+                  type: number
+                  format: double
+                elo_const_d:
+                  type: number
+                  format: double
+                starting_elo:
+                  type: number
+                  format: double
+                win_reward:
+                  type: number
+                  format: double
+                  minimum: 0.1
+                  maximum: 5
+              required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward]
+      responses:
+        "201":
+          description: Settings created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      operationId: DeleteSettings
+      tags: [settings]
+      summary: Delete future Elo settings
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                effective_date:
+                  type: string
+                  format: date-time
+              required: [effective_date]
+      responses:
+        "200":
+          description: Settings deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /settings/all:
+    get:
+      operationId: ListAllSettings
+      tags: [settings]
+      summary: Get all Elo settings entries (historical and future)
+      responses:
+        "200":
+          description: All settings entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EloSettingEntry'
+                required: [status, data]
+
+  /users:
+    get:
+      operationId: ListUsers
+      tags: [users]
+      summary: List all users
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                required: [status, data]
+
+  /users/{userId}:
+    patch:
+      operationId: PatchUser
+      tags: [users]
+      summary: Update user editing permissions
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                can_edit:
+                  type: boolean
+              required: [can_edit]
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/User'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /markets:
+    get:
+      operationId: ListMarkets
+      tags: [markets]
+      summary: List active and closed markets
+      responses:
+        "200":
+          description: Markets grouped into active and closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      active:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Market'
+                      closed:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Market'
+                    required: [active, closed]
+                required: [status, data]
+    post:
+      operationId: CreateMarket
+      tags: [markets]
+      summary: Create a new betting market
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                market_type:
+                  type: string
+                  enum: [match_winner, win_streak]
+                starts_at:
+                  type: string
+                  format: date-time
+                  description: Defaults to now if omitted; must not be in the past if provided
+                closes_at:
+                  type: string
+                  format: date-time
+                target_player_id:
+                  type: string
+                # match_winner fields
+                required_player_ids:
+                  type: array
+                  items:
+                    type: string
+                game_id:
+                  type: string
+                  nullable: true
+                # win_streak fields
+                streak_game_id:
+                  type: string
+                wins_required:
+                  type: integer
+                max_losses:
+                  type: integer
+                  nullable: true
+              required: [market_type, closes_at, target_player_id]
+      responses:
+        "201":
+          description: Market created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                    required: [id]
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /markets/{id}:
+    get:
+      operationId: GetMarket
+      tags: [markets]
+      summary: Get market details (includes user-specific projections if authenticated)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Market detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/MarketDetail'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "404":
+          description: Market not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    patch:
+      operationId: PatchMarket
+      tags: [markets]
+      summary: Update market status (e.g. close betting)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [betting_closed]
+              required: [status]
+      responses:
+        "200":
+          description: Market updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Market not open
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    delete:
+      operationId: DeleteMarket
+      tags: [markets]
+      summary: Delete a market (only if status is open)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Market deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Market not open
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /markets/{id}/bets:
+    post:
+      operationId: PlaceBet
+      tags: [markets]
+      summary: Place a bet on a market
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                outcome:
+                  type: string
+                  enum: [yes, no]
+                amount:
+                  type: number
+                  format: double
+                  minimum: 0
+                  exclusiveMinimum: true
+              required: [outcome, amount]
+      responses:
+        "201":
+          description: Bet placed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden (no linked player)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Market not open for betting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "422":
+          description: Bet limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/login:
+    get:
+      operationId: AuthLogin
+      tags: [auth]
+      summary: Initiate Google OAuth2 login flow
+      responses:
+        "302":
+          description: Redirect to Google OAuth
+
+  /auth/oauth2-callback:
+    get:
+      operationId: AuthOAuth2Callback
+      tags: [auth]
+      summary: Google OAuth2 callback
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required: [status]
+
+  /auth/logout:
+    post:
+      operationId: AuthLogout
+      tags: [auth]
+      summary: Logout (clears session cookie)
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+
+  /auth/me:
+    get:
+      operationId: GetMe
+      tags: [auth]
+      summary: Get current authenticated user
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/User'
+                required: [status, data]
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    patch:
+      operationId: PatchMe
+      tags: [auth]
+      summary: Update current user's linked player
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                player_id:
+                  type: string
+                  nullable: true
+      responses:
+        "204":
+          description: Updated
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "409":
+          description: Player already linked to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /admin/recalculate-game-elo:
+    post:
+      operationId: RecalculateGameElo
+      tags: [admin]
+      summary: Recalculate all game-specific Elo ratings
+      responses:
+        "200":
+          description: Recalculation complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccessMessage'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /voice/parse:
+    post:
+      operationId: ParseVoiceInput
+      tags: [voice]
+      summary: Parse natural language speech into game scores using Ollama
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Speech-to-text input to parse
+              required: [text]
+      responses:
+        "200":
+          description: Parsed game and scores
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/VoiceParseResult'
+                required: [status, data]
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        "500":
+          description: Ollama error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
