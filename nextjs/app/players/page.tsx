@@ -171,10 +171,7 @@ function PlayersTable() {
                                         />
                                     </td>
                                     <td className="py-2 px-1 w-50">
-                                        {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
-                                        {player.id === myPlayerId
-                                            ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{playerDisplayName(player)}</span>
-                                            : playerDisplayName(player)}
+                                        <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
                                     </td>
                                     <td className="py-2 px-1 align-top min-w-25">
                                         <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
@@ -202,10 +199,7 @@ function PlayersTable() {
                                         </td>
                                         <td className="py-2 text-center align-top min-w-7"></td>
                                         <td className="py-2 px-1 w-50">
-                                            {/* <Link href={`/player?id=${player.id}`} className="hover:underline">{player.name}</Link> */}
-                                            {player.id === myPlayerId
-                                                ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{playerDisplayName(player)}</span>
-                                                : playerDisplayName(player)}
+                                            <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
                                             <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
                                         </td>
                                         <td className="py-2 px-1 align-top min-w-25">
