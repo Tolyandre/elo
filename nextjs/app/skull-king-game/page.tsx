@@ -17,7 +17,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AuthWarning } from "@/components/auth-warning";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -30,7 +30,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircleIcon, Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { useMe } from "@/app/meContext";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -529,14 +529,7 @@ export default function SkullKingGamePage() {
                 )}
             </div>
 
-            {/* Auth warning */}
-            {!me.id && (
-                <Alert>
-                    <AlertCircleIcon />
-                    <AlertTitle>Для сохранения партии потребуется выполнить вход</AlertTitle>
-                    <AlertDescription>Результаты временно хранятся в браузере</AlertDescription>
-                </Alert>
-            )}
+            <AuthWarning />
 
             {/* ── SETUP ──────────────────────────────────────── */}
             {phase === "setup" && (
@@ -776,11 +769,6 @@ export default function SkullKingGamePage() {
                             >
                                 {saving ? "Сохранение..." : "Сохранить партию"}
                             </Button>
-                            {!me.id && (
-                                <p className="text-xs text-muted-foreground text-center">
-                                    Необходим вход для сохранения
-                                </p>
-                            )}
                         </div>
                     )}
                 </div>

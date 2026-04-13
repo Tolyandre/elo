@@ -17,7 +17,7 @@ import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair, TrendingUp } from "lucide-react"
+import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair, TrendingUp, Globe } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -80,6 +80,13 @@ export function NavigationBar() {
                 <>
                   <Crosshair className="inline-block mr-2 h-6 w-6 align-middle" />
                   Охота на змей
+                </>
+              } />
+
+              <ListItem href="/its-a-wonderful-world" title={
+                <>
+                  <Globe className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Этот Безумный Мир
                 </>
               } />
 
