@@ -34,6 +34,7 @@ import {
     suitValues,
     specialValues,
     calculateProbabilities1,
+    calculateProbabilities0,
 } from "./skull-king"
 
 import { RHFField } from "@/components/rhf-field"
@@ -52,6 +53,7 @@ const specialLabels: Record<Special, string> = {
     tigress: "Тигрица",
     mermaid: "Русалка",
     escape: "Белый флаг",
+    loot: "Деньги",
     kraken: "Кракен",
     "white-whale": "Белый кит",
 }
@@ -61,6 +63,7 @@ type FormValues = {
     turnOrder: number
     krakenEnabled: boolean
     whiteWhaleEnabled: boolean
+    lootEnabled: boolean
     cardType: Suit | Special | null
     suitValue: number
 }
@@ -72,6 +75,7 @@ export function SkullKingCalculator() {
             turnOrder: 1,
             krakenEnabled: false,
             whiteWhaleEnabled: false,
+            lootEnabled: false,
             cardType: null,
             suitValue: 1,
         },
@@ -97,6 +101,11 @@ export function SkullKingCalculator() {
         name: "whiteWhaleEnabled",
     })
 
+    const lootEnabled = useWatch({
+        control: form.control,
+        name: "lootEnabled",
+    })
+
     const cardType = useWatch({
         control: form.control,
         name: "cardType",
@@ -113,12 +122,13 @@ export function SkullKingCalculator() {
     const availableSpecials = useMemo<Special[]>(() => {
         return [
             ...specialValues.filter(
-                (s) => s !== "kraken" && s !== "white-whale",
+                (s) => s !== "kraken" && s !== "white-whale" && s !== "loot",
             ),
+            ...(lootEnabled ? ["loot" as Special] : []),
             ...(krakenEnabled ? ["kraken" as Special] : []),
             ...(whiteWhaleEnabled ? ["white-whale" as Special] : []),
         ]
-    }, [krakenEnabled, whiteWhaleEnabled])
+    }, [krakenEnabled, whiteWhaleEnabled, lootEnabled])
 
 
     const card: GameCard | null = useMemo(() => {
@@ -136,7 +146,7 @@ export function SkullKingCalculator() {
         return { type: cardType as Special }
     }, [cardType, suitValue])
 
-    const probabilities = useMemo(() => {
+    const probabilities1 = useMemo(() => {
         if (
             !numberOfPlayers ||
             !turnOrder ||
@@ -151,6 +161,7 @@ export function SkullKingCalculator() {
             card,
             krakenEnabled ?? false,
             whiteWhaleEnabled ?? false,
+            lootEnabled ?? false,
         )
     }, [
         numberOfPlayers,
@@ -158,15 +169,50 @@ export function SkullKingCalculator() {
         card,
         krakenEnabled,
         whiteWhaleEnabled,
+        lootEnabled,
     ])
 
-    const mathExpectation = useMemo<number | null>(() => {
-        if (!probabilities) {
+    const probabilities0 = useMemo(() => {
+        if (
+            !numberOfPlayers ||
+            !turnOrder ||
+            !card
+        ) {
+            return null
+        }
+
+        return calculateProbabilities0(
+            numberOfPlayers,
+            turnOrder,
+            card,
+            krakenEnabled ?? false,
+            whiteWhaleEnabled ?? false,
+            lootEnabled ?? false,
+        )
+    }, [
+        numberOfPlayers,
+        turnOrder,
+        card,
+        krakenEnabled,
+        whiteWhaleEnabled,
+        lootEnabled,
+    ])
+
+    const mathExpectation1 = useMemo<number | null>(() => {
+        if (!probabilities1) {
             return null;
         }
 
-        return mathjs.number(probabilities.reduce((acc, { probability, points }) => new Fraction(acc).add(probability.mul(points)), new Fraction(0)));
-    }, [probabilities]);
+        return mathjs.number(probabilities1.reduce((acc, { probability, points }) => new Fraction(acc).add(probability.mul(points)), new Fraction(0)));
+    }, [probabilities1]);
+
+    const mathExpectation0 = useMemo<number | null>(() => {
+        if (!probabilities0) {
+            return null;
+        }
+
+        return mathjs.number(probabilities0.reduce((acc, { probability, points }) => new Fraction(acc).add(probability.mul(points)), new Fraction(0)));
+    }, [probabilities0]);
 
     /* ----------------------------- effects ---------------------------- */
 
@@ -200,6 +246,16 @@ export function SkullKingCalculator() {
                 <Card>
                     <CardContent className="space-y-6">
                         <Field orientation="horizontal">
+                            <FieldTitle>Деньги в игре</FieldTitle>
+                            <Switch
+                                checked={lootEnabled}
+                                onCheckedChange={(v) =>
+                                    form.setValue("lootEnabled", v)
+                                }
+                            />
+                        </Field>
+
+                        <Field orientation="horizontal">
                             <FieldTitle>Кракен в игре</FieldTitle>
                             <Switch
                                 checked={krakenEnabled}
@@ -210,13 +266,12 @@ export function SkullKingCalculator() {
                         </Field>
 
                         <Field orientation="horizontal">
-                            <FieldTitle>Белый кит в игре <span className="text-xs text-muted-foreground">(не реализовано)</span></FieldTitle>
+                            <FieldTitle>Белый кит в игре</FieldTitle>
                             <Switch
                                 checked={whiteWhaleEnabled}
                                 onCheckedChange={(v) =>
                                     form.setValue("whiteWhaleEnabled", v)
                                 }
-                                disabled={true}
                             />
                         </Field>
 
@@ -340,22 +395,58 @@ export function SkullKingCalculator() {
                                 Мат. ожидание
                             </span>
                             <span className="font-mono">
-                                {mathExpectation?.toFixed(2) ?? "—"}
+                                {mathExpectation1?.toFixed(2) ?? "—"}
                             </span>
                         </div>
 
                         <Separator />
 
-                        {probabilities && (<div className="flex justify-between">
+                        {probabilities1 && (<div className="flex justify-between">
                             Вероятности
                         </div>
                         )}
-                        {/* {probabilities && (<div className="space-y-2 text-muted-foreground">
-                            Сумма вероятностей для контроля: <pre>{(mathjs.number(probabilities?.reduce((acc, { probability }) => acc.add(probability), new Fraction(0))) * 100).toFixed(2)}%</pre>
-                        </div>
-                        )} */}
 
-                        {probabilities?.map(
+                        {probabilities1?.map(
+                            ({ probability, points }, i) => (
+                                <div
+                                    key={i}
+                                    className="flex justify-between font-mono"
+                                >
+                                    <span>
+                                        {(mathjs.number(probability) * 100).toFixed(2)}%
+                                    </span>
+                                    <span>{points} очков</span>
+                                </div>
+                            ),
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            Результат (заявка 0)
+                        </CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                                Мат. ожидание
+                            </span>
+                            <span className="font-mono">
+                                {mathExpectation0?.toFixed(2) ?? "—"}
+                            </span>
+                        </div>
+
+                        <Separator />
+
+                        {probabilities0 && (<div className="flex justify-between">
+                            Вероятности
+                        </div>
+                        )}
+
+                        {probabilities0?.map(
                             ({ probability, points }, i) => (
                                 <div
                                     key={i}
