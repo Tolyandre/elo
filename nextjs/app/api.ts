@@ -841,6 +841,25 @@ export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
     }
 }
 
+export type SkullKingCardImageResult =
+    | { type: "jolly-roger" | "chest" | "parrot" | "map"; value: number }
+    | { type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale" };
+
+export async function parseSkullKingCardImagePromise(imageBase64: string): Promise<SkullKingCardImageResult> {
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/parse-card-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageBase64 }),
+        });
+        return await handleJsonErrorResponse(res);
+    }
+    catch (error) {
+        showToast(error);
+        throw error;
+    }
+}
+
 function showToast(error: unknown) {
     if (error instanceof Error) {
         toast.error(error.message);

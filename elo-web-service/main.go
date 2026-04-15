@@ -122,6 +122,9 @@ func main() {
 	// Voice
 	router.POST("/voice/parse", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.ParseVoiceInput)
 
+	// Skull King calculator
+	router.POST("/skull-king/parse-card-image", apiHandler.ParseSkullKingCardImage)
+
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)

@@ -87,10 +87,21 @@ in
                   default = "llama3.1:8b";
                   description = "Ollama model name for voice parsing. Must be pulled before use.";
                 };
+
+                # Vision (multimodal) model for Skull King card image recognition.
+                # Must be a model that supports the images[] field in /api/generate.
+                # Pull it manually: ollama pull llava
+                # Alternatives: moondream (smaller/faster), llava-llama3 (better quality).
+                # To auto-pull via NixOS: services.ollama.loadModels = [ "llava" ];
+                visionModel = lib.mkOption {
+                  type = lib.types.str;
+                  default = "llava";
+                  description = "Ollama vision model name for card image recognition. Must be pulled before use.";
+                };
               };
             };
             default = { };
-            description = "Ollama settings for voice input NLP parsing";
+            description = "Ollama settings for voice input NLP parsing and card image recognition";
           };
 
           postgres = lib.mkOption {
@@ -180,6 +191,7 @@ in
               "ELO_WEB_SERVICE_POSTGRES_DSN=${pgDsn}"
               "ELO_WEB_SERVICE_OLLAMA_BASE_URL=${config.services.elo-web-service.config.ollama.baseUrl}"
               "ELO_WEB_SERVICE_OLLAMA_MODEL=${config.services.elo-web-service.config.ollama.model}"
+              "ELO_WEB_SERVICE_OLLAMA_VISION_MODEL=${config.services.elo-web-service.config.ollama.visionModel}"
             ]
             ++ lib.optional (pgPassword != null) [ "ELO_WEB_SERVICE_POSTGRES_PASSWORD=${pgPassword}" ]
           );

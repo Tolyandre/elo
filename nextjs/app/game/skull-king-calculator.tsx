@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react"
 import { useForm, FormProvider, useWatch } from "react-hook-form"
 import * as mathjs from "mathjs"
+import dynamic from "next/dynamic"
 
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
@@ -36,6 +37,13 @@ import {
     calculateProbabilities1,
     calculateProbabilities0,
 } from "./skull-king"
+import type { SkullKingCardImageResult } from "@/app/api"
+
+// SSR-safe: the component uses FileReader and URL.createObjectURL which are browser-only
+const CardImageCapture = dynamic(
+    () => import("@/components/card-image-capture").then((m) => m.CardImageCapture),
+    { ssr: false },
+)
 
 import { RHFField } from "@/components/rhf-field"
 import { Fraction } from "mathjs"
@@ -214,6 +222,22 @@ export function SkullKingCalculator() {
         return mathjs.number(probabilities0.reduce((acc, { probability, points }) => new Fraction(acc).add(probability.mul(points)), new Fraction(0)));
     }, [probabilities0]);
 
+    /* ----------------------- card image recognition ------------------- */
+
+    const handleCardRecognized = (result: SkullKingCardImageResult) => {
+        form.setValue("cardType", result.type as Suit | Special)
+        if ("value" in result) {
+            form.setValue("suitValue", result.value)
+        }
+        if (result.type === "kraken") {
+            form.setValue("krakenEnabled", true)
+        } else if (result.type === "loot") {
+            form.setValue("lootEnabled", true)
+        } else if (result.type === "white-whale") {
+            form.setValue("whiteWhaleEnabled", true)
+        }
+    }
+
     /* ----------------------------- effects ---------------------------- */
 
     useEffect(() => {
@@ -343,6 +367,8 @@ export function SkullKingCalculator() {
                                 )}
                             </RHFField>
                         )}
+
+                        <CardImageCapture onResult={handleCardRecognized} />
 
                         <Separator />
 

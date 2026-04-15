@@ -25,6 +25,7 @@ type Configuration struct {
 	PostgresPassword   string `mapstructure:"postgres_password"`
 	OllamaBaseUrl      string `mapstructure:"ollama_base_url"`
 	OllamaModel        string `mapstructure:"ollama_model"`
+	OllamaVisionModel  string `mapstructure:"ollama_vision_model"`
 }
 
 var Config Configuration
@@ -55,6 +56,7 @@ func ReadConfiguration() {
 	viper.SetDefault("address", "localhost:8080")
 	viper.SetDefault("ollama_base_url", "http://127.0.0.1:11434")
 	viper.SetDefault("ollama_model", "qwen2.5")
+	viper.SetDefault("ollama_vision_model", "llava")
 	viper.SetEnvPrefix("ELO_WEB_SERVICE")
 	viper.AutomaticEnv()
 
@@ -103,6 +105,9 @@ func ReadConfiguration() {
 	}
 	if err := viper.BindEnv("ollama_model", "ELO_WEB_SERVICE_OLLAMA_MODEL"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OLLAMA_MODEL: %v", err)
+	}
+	if err := viper.BindEnv("ollama_vision_model", "ELO_WEB_SERVICE_OLLAMA_VISION_MODEL"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OLLAMA_VISION_MODEL: %v", err)
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
