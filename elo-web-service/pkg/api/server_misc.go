@@ -44,7 +44,11 @@ func (s *StrictServer) ParseVoiceInput(ctx context.Context, request ParseVoiceIn
 	for _, p := range players {
 		id := fmt.Sprintf("%d", p.ID)
 		playerIDs[id] = struct{}{}
-		fmt.Fprintf(&playerLines, "- %q -> %q\n", id, p.Name)
+		if p.GeologistName.Valid && p.GeologistName.String != "" {
+			fmt.Fprintf(&playerLines, "- %q -> %q (alias: %q)\n", id, p.Name, p.GeologistName.String)
+		} else {
+			fmt.Fprintf(&playerLines, "- %q -> %q\n", id, p.Name)
+		}
 	}
 
 	prompt := fmt.Sprintf(`You are a board game score parser. Extract game and player scores from spoken text (speech). Text may contain speech-to-text recognition errors, ignore errors. Text may contain partial information, like only game name or only players.
