@@ -103,7 +103,7 @@ function PlayersTable() {
             params.set("club", id);
         }
         const query = params.toString();
-        router.replace(query ? `${pathname}?${query}` : pathname);
+        router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     }
 
     const filtered = useMemo(
@@ -129,28 +129,28 @@ function PlayersTable() {
             </div>
 
             <div className="flex gap-2 items-center mb-3">
-                <a
-                    href="#"
-                    onClick={(e) => { e.preventDefault(); setPeriod("day_ago"); }}
+                <button
+                    type="button"
+                    onClick={() => setPeriod("day_ago")}
                     className={`px-3 py-1 rounded ${period === "day_ago" ? "" : "text-blue-600 underline decoration-dashed"}`}
                 >
                     за день
-                </a>
-                <a
-                    href="#"
-                    onClick={(e) => { e.preventDefault(); setPeriod("week_ago"); }}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPeriod("week_ago")}
                     className={`px-3 py-1 rounded ${period === "week_ago" ? "" : "text-blue-600 underline decoration-dashed"}`}
                 >
                     за неделю
-                </a>
+                </button>
             </div>
 
             {rankedPlayers.length === 0 && unRankedPlayers.length === 0 && selectedClubId !== null && (
                 <p className="text-muted-foreground mb-4">
                     Нет игроков.{" "}
-                    <a href="#" className="text-blue-600 underline decoration-dashed" onClick={(e) => { e.preventDefault(); setSelectedClubId(null); }}>
+                    <button type="button" className="text-blue-600 underline decoration-dashed" onClick={() => setSelectedClubId(null)}>
                         Показать все клубы
-                    </a>
+                    </button>
                 </p>
             )}
 

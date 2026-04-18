@@ -109,7 +109,7 @@ export function GameCombobox({
         value={searchQuery}
         onValueChange={setSearchQuery}
       />
-      <CommandList className={isMobile ? "max-h-[70dvh]" : undefined}>
+      <CommandList style={isMobile ? { maxHeight: "calc(var(--vvh, 100dvh) * 0.7)" } : undefined}>
         <CommandEmpty>
           <div className="py-2 px-2">
             <Button

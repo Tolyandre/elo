@@ -103,7 +103,7 @@ function MatchesPageWrapped() {
     }
     const query = params.toString();
     const url = query ? `${pathname}?${query}` : pathname;
-    router.replace(url);
+    router.replace(url, { scroll: false });
   }
 
   function handlePlayerChange(id?: string) {

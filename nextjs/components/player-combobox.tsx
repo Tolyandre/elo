@@ -88,7 +88,7 @@ export function PlayerCombobox({
       value={value}
       groups={groups}
       onSelect={handleSelect}
-      listClassName={isMobile ? "max-h-[70dvh]" : undefined}
+      listStyle={isMobile ? { maxHeight: "calc(var(--vvh, 100dvh) * 0.7)" } : undefined}
       allowClear={allowClear}
       onClear={allowClear ? () => { onChange?.(undefined); if (controlledValue === undefined) setInternalValue(""); setOpen(false); } : undefined}
     />
@@ -127,17 +127,18 @@ type PlayerCommandProps = {
   groups: { heading: string; options: { value: string; label: string }[] }[]
   onSelect: (value: string) => void
   listClassName?: string
+  listStyle?: React.CSSProperties
   allowClear?: boolean
   onClear?: () => void
 }
 
-function PlayerCommand({ value, groups, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
+function PlayerCommand({ value, groups, onSelect, listClassName, listStyle, allowClear, onClear }: PlayerCommandProps) {
   const { playerId } = useMe()
   return (
     <Command>
       <CommandInput placeholder="Искать игрока..." className="h-9" />
 
-      <CommandList className={listClassName}>
+      <CommandList className={listClassName} style={listStyle}>
         <CommandEmpty>Игрок не найден.</CommandEmpty>
 
         {allowClear && value && (
