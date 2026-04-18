@@ -13,21 +13,28 @@ import (
 
 var skullKingCardPrompt = `You are a Skull King card game expert. Identify the card shown in the image.
 
-Suit cards — each suit has values 1 through 14 printed on the card:
-- "jolly-roger": black Jolly Roger flag (skull and crossbones)
-- "chest": yellow/gold treasure chest
-- "parrot": green colourful parrot bird
-- "map": purple parchment treasure map
+SUIT CARDS have a number (1–14) printed prominently in the corners. Identify the suit by BORDER COLOR and artwork:
+- "jolly-roger" — BLACK/DARK border. Artwork: a sailing pirate ship on the sea, or a skull-and-crossbones (Jolly Roger) flag.
+- "chest"       — GOLD/YELLOW border. Artwork: a treasure chest, gold chains, or large stacks of gold coins.
+- "parrot"      — GREEN border. Artwork: a colorful tropical parrot (green and red plumage).
+- "map"         — PURPLE/VIOLET border. Artwork: a brown parchment scroll with a treasure map.
 
-Special cards — no numeric value, recognized by the character or symbol:
-- "skull-king": pirate captain
-- "pirate": a pirate character
-- "tigress": a female pirate with white flag
-- "mermaid": a mermaid (woman, fish tail might not be visible)
-- "escape": a white flag / surrender flag
-- "loot": a card with money
-- "kraken": a giant octopus / kraken sea monster
-- "white-whale": a white whale / beluga
+SPECIAL CARDS have NO number. Identify by the character or symbol depicted:
+- "skull-king"   — The Skull King pirate captain: dominant, elaborately dressed pirate figure. Boss of the game.
+- "pirate"       — A regular male pirate character (simpler than Skull King, may hold a sword or pistol).
+- "tigress"      — A female pirate character (Tigress). She may hold a white flag or sword.
+- "mermaid"      — An underwater scene with a woman (fish tail may not be visible; look for blue water, feminine figure).
+- "escape"       — A plain white flag / surrender flag. Simple white flag design.
+- "loot"         — Piles of gold coins or treasure (NO number printed — if there is a number it is a "chest" suit card instead).
+- "kraken"       — A giant octopus / sea monster with tentacles emerging from the sea.
+- "white-whale"  — A white beluga whale / white whale in the ocean.
+
+DISAMBIGUATION TIPS:
+- If you see gold coins WITH a number → "chest" (suit card). If gold coins with NO number → "loot" (special).
+- "skull-king" is the main boss figure; "pirate" is a regular pirate. When in doubt between the two, check for regalia/crown.
+- "mermaid" has a human/feminine figure in water; "white-whale" has a whale.
+- "tigress" is female; "pirate" is male.
+- Border color is a reliable indicator for suit cards when the artwork is unclear.
 
 Return ONLY valid JSON, no explanation:
 - Suit card:    {"type": "<suit-name>", "value": <integer 1-14>}
