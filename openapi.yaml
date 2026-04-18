@@ -372,22 +372,25 @@ components:
           type: array
           items:
             type: string
-        game_id:
-          type: string
-          nullable: true
+        game_ids:
+          type: array
+          items:
+            type: string
       required: [required_player_ids]
 
     WinStreakParams:
       type: object
       properties:
-        game_id:
-          type: string
+        game_ids:
+          type: array
+          items:
+            type: string
         wins_required:
           type: integer
         max_losses:
           type: integer
           nullable: true
-      required: [game_id, wins_required]
+      required: [game_ids, wins_required]
 
     Market:
       type: object
@@ -1821,12 +1824,15 @@ paths:
                   type: array
                   items:
                     type: string
-                game_id:
-                  type: string
-                  nullable: true
+                game_ids:
+                  type: array
+                  items:
+                    type: string
                 # win_streak fields
-                streak_game_id:
-                  type: string
+                streak_game_ids:
+                  type: array
+                  items:
+                    type: string
                 wins_required:
                   type: integer
                 max_losses:

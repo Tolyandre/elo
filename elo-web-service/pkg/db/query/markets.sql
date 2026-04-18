@@ -4,11 +4,11 @@ VALUES ($1, $2, $3, $4)
 RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at;
 
 -- name: CreateMatchWinnerParams :exec
-INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
 VALUES ($1, $2, $3, $4);
 
 -- name: CreateWinStreakParams :exec
-INSERT INTO market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
+INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5);
 
 -- name: GetMarketWithPools :one
@@ -19,8 +19,8 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
@@ -28,8 +28,8 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses;
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses;
 
 -- name: ListMarketsWithPools :many
 SELECT
@@ -39,16 +39,16 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 ORDER BY om.created_at DESC;
 
 -- name: GetMatchWinnerParams :one
@@ -59,14 +59,14 @@ SELECT * FROM market_win_streak_params WHERE market_id = $1;
 
 -- name: ListOpenMatchWinnerMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
-    mwp.target_player_id, mwp.required_player_ids, mwp.game_id
+    mwp.target_player_id, mwp.required_player_ids, mwp.game_ids
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed');
 
 -- name: ListOpenWinStreakMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed');
@@ -79,7 +79,7 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW();
 
 -- name: ListOverdueWinStreakMarkets :many
 SELECT om.id, om.closes_at, om.starts_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW();
@@ -92,7 +92,7 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1;
 
 -- name: ListOverdueWinStreakMarketsAtDate :many
 SELECT om.id, om.closes_at, om.starts_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1;
@@ -190,8 +190,8 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
@@ -199,8 +199,8 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.resolution_match_id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses;
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses;
 
 -- name: GetSettlementDetails :many
 SELECT bsd.player_id, p.name AS player_name, bsd.staked, bsd.earned
@@ -239,6 +239,6 @@ JOIN (
     GROUP BY match_id
 ) max_scores ON max_scores.match_id = ms.match_id
 WHERE ms.player_id = $1
-    AND m.game_id = $2
+    AND m.game_id = ANY($2::int[])
     AND m.date >= $3
     AND m.date <= $4;

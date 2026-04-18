@@ -5,7 +5,7 @@ package elo
 type MatchWinnerCondition struct {
 	TargetPlayerID    int32
 	RequiredPlayerIDs []int32
-	GameID            *int32
+	GameIDs           []int32
 }
 
 // Evaluate returns (resolved, outcome) where outcome is OutcomeYes or OutcomeNo.
@@ -14,7 +14,7 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 	if !window.Contains(match.Match.Date.Time) {
 		return false, ""
 	}
-	if c.GameID != nil && *c.GameID != match.Match.GameID {
+	if len(c.GameIDs) > 0 && !containsInt32(c.GameIDs, match.Match.GameID) {
 		return false, ""
 	}
 	for _, req := range c.RequiredPlayerIDs {
@@ -29,6 +29,15 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 		return true, OutcomeYes
 	}
 	return true, OutcomeNo
+}
+
+func containsInt32(slice []int32, v int32) bool {
+	for _, s := range slice {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // WinStreakCondition evaluates win/loss counts against the streak thresholds.

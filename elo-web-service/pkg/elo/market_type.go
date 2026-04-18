@@ -55,13 +55,13 @@ var marketTypeHandlers = map[string]MarketTypeHandler{
 type MatchWinnerCreateParams struct {
 	TargetPlayerID    int32
 	RequiredPlayerIDs []int32
-	GameID            *int32
+	GameIDs           []int32
 }
 
 // WinStreakCreateParams holds creation parameters for a win_streak market.
 type WinStreakCreateParams struct {
 	TargetPlayerID int32
-	GameID         int32
+	GameIDs        []int32
 	WinsRequired   int32
 	MaxLosses      *int32
 }

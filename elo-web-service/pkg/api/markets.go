@@ -66,13 +66,13 @@ type marketDetailJson struct {
 
 type matchWinnerParamsJson struct {
 	RequiredPlayerIDs []string `json:"required_player_ids"`
-	GameID            *string  `json:"game_id"`
+	GameIDs           []string `json:"game_ids"`
 }
 
 type winStreakParamsJson struct {
-	GameID       string `json:"game_id"`
-	WinsRequired int32  `json:"wins_required"`
-	MaxLosses    *int32 `json:"max_losses"`
+	GameIDs      []string `json:"game_ids"`
+	WinsRequired int32    `json:"wins_required"`
+	MaxLosses    *int32   `json:"max_losses"`
 }
 
 func calcCoefficient(pool, totalPool float64) float64 {
@@ -90,7 +90,7 @@ func setBettingClosedAt(m *marketPoolsJson, bca pgtype.Timestamptz) {
 }
 
 // buildMarketParamsFromRow builds the target_player_id and params JSON from a row that includes LEFT JOIN params columns.
-func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameID pgtype.Int4, wsGameID pgtype.Int4, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, interface{}) {
+func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameIDs []int32, wsGameIDs []int32, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, interface{}) {
 	targetIDStr := fmt.Sprintf("%d", targetPlayerID)
 
 	switch marketType {
@@ -99,14 +99,13 @@ func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredP
 		for i, rid := range requiredPlayerIds {
 			reqIDs[i] = fmt.Sprintf("%d", rid)
 		}
-		var gameIDStr *string
-		if mwGameID.Valid {
-			s := fmt.Sprintf("%d", mwGameID.Int32)
-			gameIDStr = &s
+		gameIDStrs := make([]string, len(mwGameIDs))
+		for i, gid := range mwGameIDs {
+			gameIDStrs[i] = fmt.Sprintf("%d", gid)
 		}
 		return targetIDStr, matchWinnerParamsJson{
 			RequiredPlayerIDs: reqIDs,
-			GameID:            gameIDStr,
+			GameIDs:           gameIDStrs,
 		}
 	case "win_streak":
 		var maxL *int32
@@ -114,8 +113,12 @@ func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredP
 			v := maxLosses.Int32
 			maxL = &v
 		}
+		wsGameIDStrs := make([]string, len(wsGameIDs))
+		for i, gid := range wsGameIDs {
+			wsGameIDStrs[i] = fmt.Sprintf("%d", gid)
+		}
 		return targetIDStr, winStreakParamsJson{
-			GameID:       fmt.Sprintf("%d", wsGameID.Int32),
+			GameIDs:      wsGameIDStrs,
 			WinsRequired: winsRequired.Int32,
 			MaxLosses:    maxL,
 		}
@@ -137,7 +140,7 @@ func (a *API) ListMarkets(c *gin.Context) {
 
 	for _, r := range rows {
 		totalPool := r.YesPool + r.NoPool
-		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameID, r.WsGameID, r.WinsRequired, r.MaxLosses)
+		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 		m := marketPoolsJson{
 			ID:             fmt.Sprintf("%d", r.ID),
 			MarketType:     r.MarketType,
@@ -238,7 +241,7 @@ func (a *API) GetMarket(c *gin.Context) {
 	}
 
 	totalPool := row.YesPool + row.NoPool
-	targetID, params := buildMarketParamsFromRow(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameID, row.WsGameID, row.WinsRequired, row.MaxLosses)
+	targetID, params := buildMarketParamsFromRow(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameIds, row.WsGameIds, row.WinsRequired, row.MaxLosses)
 	detail := marketDetailJson{
 		marketPoolsJson: marketPoolsJson{
 			ID:             fmt.Sprintf("%d", row.ID),
@@ -342,11 +345,11 @@ type createMarketJson struct {
 	// match_winner
 	TargetPlayerID    string   `json:"target_player_id"`
 	RequiredPlayerIDs []string `json:"required_player_ids"`
-	GameID            *string  `json:"game_id"`
+	GameIDs           []string `json:"game_ids"`
 	// win_streak (also uses TargetPlayerID)
-	StreakGameID *string `json:"streak_game_id"`
-	WinsRequired *int32  `json:"wins_required"`
-	MaxLosses    *int32  `json:"max_losses"`
+	StreakGameIDs []string `json:"streak_game_ids"`
+	WinsRequired  *int32   `json:"wins_required"`
+	MaxLosses     *int32   `json:"max_losses"`
 }
 
 func (a *API) CreateMarket(c *gin.Context) {
@@ -397,35 +400,38 @@ func (a *API) CreateMarket(c *gin.Context) {
 			}
 			requiredIDs = append(requiredIDs, int32(pid))
 		}
-		var gameID *int32
-		if payload.GameID != nil {
-			gid, err := strconv.ParseInt(*payload.GameID, 10, 32)
+		gameIDs := make([]int32, 0, len(payload.GameIDs))
+		for _, s := range payload.GameIDs {
+			gid, err := strconv.ParseInt(s, 10, 32)
 			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "invalid game_id")
+				ErrorResponse(c, http.StatusBadRequest, "invalid game_id: "+s)
 				return
 			}
-			gid32 := int32(gid)
-			gameID = &gid32
+			gameIDs = append(gameIDs, int32(gid))
 		}
 		params.MatchWinner = &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    int32(targetPlayerID),
 			RequiredPlayerIDs: requiredIDs,
-			GameID:            gameID,
+			GameIDs:           gameIDs,
 		}
 
 	case "win_streak":
-		if payload.StreakGameID == nil || payload.WinsRequired == nil {
-			ErrorResponse(c, http.StatusBadRequest, "win_streak requires streak_game_id and wins_required")
+		if payload.WinsRequired == nil {
+			ErrorResponse(c, http.StatusBadRequest, "win_streak requires wins_required")
 			return
 		}
-		gid, err := strconv.ParseInt(*payload.StreakGameID, 10, 32)
-		if err != nil {
-			ErrorResponse(c, http.StatusBadRequest, "invalid streak_game_id")
-			return
+		streakGameIDs := make([]int32, 0, len(payload.StreakGameIDs))
+		for _, s := range payload.StreakGameIDs {
+			gid, err := strconv.ParseInt(s, 10, 32)
+			if err != nil {
+				ErrorResponse(c, http.StatusBadRequest, "invalid streak_game_id: "+s)
+				return
+			}
+			streakGameIDs = append(streakGameIDs, int32(gid))
 		}
 		params.WinStreak = &elo.WinStreakCreateParams{
 			TargetPlayerID: int32(targetPlayerID),
-			GameID:         int32(gid),
+			GameIDs:        streakGameIDs,
 			WinsRequired:   *payload.WinsRequired,
 			MaxLosses:      payload.MaxLosses,
 		}
@@ -485,7 +491,7 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 	result := make([]marketPoolsJson, 0, len(rows))
 	for _, r := range rows {
 		totalPool := r.YesPool + r.NoPool
-		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameID, r.WsGameID, r.WinsRequired, r.MaxLosses)
+		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 		m := marketPoolsJson{
 			ID:             fmt.Sprintf("%d", r.ID),
 			MarketType:     r.MarketType,

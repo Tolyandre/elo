@@ -39,10 +39,13 @@ const matchWinnerStrategy: MarketTypeStrategy = {
         const requiredNames = (params?.required_player_ids ?? [])
             .map((id) => { const p = players.find((p) => p.id === id); return p ? getPlayerName(p) : "?"; })
             .join(", ");
-        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const gameNames = (params?.game_ids ?? [])
+            .map((id) => games.find((g) => g.id === id)?.name)
+            .filter(Boolean) as string[];
         let title = `${targetName} победит`;
-        if (game) title += ` в ${game.name}`;
-        if (requiredNames) title += game ? ` с участием ${requiredNames}` : ` в партии с участием ${requiredNames}`;
+        if (gameNames.length === 1) title += ` в ${gameNames[0]}`;
+        else if (gameNames.length > 1) title += ` в ${gameNames.join(" / ")}`;
+        if (requiredNames) title += gameNames.length > 0 ? ` с участием ${requiredNames}` : ` в партии с участием ${requiredNames}`;
         return title;
     },
     getResolutionDescription(market, players, games, getPlayerName) {
@@ -52,13 +55,13 @@ const matchWinnerStrategy: MarketTypeStrategy = {
         const requiredPlayerNames = (params?.required_player_ids ?? [])
             .map((id) => { const p = players.find((p) => p.id === id); return p ? getPlayerName(p) : "?"; });
         const allNames = [targetName, ...requiredPlayerNames];
-        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const gameNames = (params?.game_ids ?? []).map((id) => games.find((g) => g.id === id)?.name ?? "?");
         const period = buildPeriodNode(market);
 
         const vsNode = requiredPlayerNames.length > 0
             ? <> в партии с <H>{requiredPlayerNames.join(", ")}</H> (и возможно другими игроками)</>
             : <> в партии с любым составом</>;
-        const inGameNode = game ? <> в <H>{game.name}</H></> : null;
+        const inGameNode = gameNames.length > 0 ? <> в <H>{gameNames.join(" / ")}</H></> : null;
 
         return {
             yes: <><H>{targetName}</H> занимает первое место{vsNode}{inGameNode}</>,
@@ -75,9 +78,11 @@ const winStreakStrategy: MarketTypeStrategy = {
         const params = market.params as WinStreakParams | null;
         const found = players.find((p) => p.id === market.target_player_id);
         const targetName = found ? getPlayerName(found) : "?";
-        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const gameNames = (params?.game_ids ?? [])
+            .map((id) => games.find((g) => g.id === id)?.name)
+            .filter(Boolean) as string[];
         const wins = params?.wins_required ?? "?";
-        const inGame = game ? ` в ${game.name}` : "";
+        const inGame = gameNames.length === 1 ? ` в ${gameNames[0]}` : gameNames.length > 1 ? ` в ${gameNames.join(" / ")}` : "";
         let title = `${targetName} победит${inGame} ${wins} ${pluralizeRaz(params?.wins_required ?? 0)}`;
         if (params?.max_losses != null) {
             title += `, не проиграв более ${params.max_losses} раз`;
@@ -88,12 +93,12 @@ const winStreakStrategy: MarketTypeStrategy = {
         const params = market.params as WinStreakParams | null;
         const found = players.find((p) => p.id === market.target_player_id);
         const targetName = found ? getPlayerName(found) : "?";
-        const game = params?.game_id ? games.find((g) => g.id === params.game_id) : null;
+        const gameNames = (params?.game_ids ?? []).map((id) => games.find((g) => g.id === id)?.name ?? "?");
         const wins = params?.wins_required ?? "?";
         const lossLimit = params?.max_losses;
         const period = buildPeriodNode(market);
 
-        const inGameNode = game ? <> в <H>{game.name}</H></> : null;
+        const inGameNode = gameNames.length > 0 ? <> в <H>{gameNames.join(" / ")}</H></> : null;
         const periodNode = period ? <> в период {period}</> : null;
         const lossNode = lossLimit != null ? <>, допустив не более <H>{lossLimit}</H> поражений</> : null;
 

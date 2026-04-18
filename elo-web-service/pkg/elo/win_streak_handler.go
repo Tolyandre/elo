@@ -17,10 +17,14 @@ func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, mark
 	if p.MaxLosses != nil {
 		maxLosses = pgtype.Int4{Int32: *p.MaxLosses, Valid: true}
 	}
+	gameIDs := p.GameIDs
+	if gameIDs == nil {
+		gameIDs = []int32{}
+	}
 	return q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
 		MarketID:       marketID,
 		TargetPlayerID: p.TargetPlayerID,
-		GameID:         p.GameID,
+		GameIds:        gameIDs,
 		WinsRequired:   p.WinsRequired,
 		MaxLosses:      maxLosses,
 	})
@@ -42,13 +46,13 @@ func (t *winStreakTrigger) OnMatch(ctx context.Context, q *db.Queries, match Mat
 	matchDate := match.Match.Date.Time
 
 	for _, m := range markets {
-		if !match.ParticipantSet[m.TargetPlayerID] || match.Match.GameID != m.GameID {
+		if !match.ParticipantSet[m.TargetPlayerID] || !containsInt32(m.GameIds, match.Match.GameID) {
 			continue
 		}
 
 		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
 			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
+			Column2:  m.GameIds,
 			Date:     m.StartsAt,
 			Date_2:   pgtype.Timestamptz{Time: matchDate, Valid: true},
 		})
@@ -78,7 +82,7 @@ func (t *winStreakTrigger) OnTimeExpiry(ctx context.Context, q *db.Queries, cuto
 	for _, m := range markets {
 		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
 			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
+			Column2:  m.GameIds,
 			Date:     m.StartsAt,
 			Date_2:   m.ClosesAt,
 		})
@@ -106,7 +110,7 @@ func (t *winStreakTrigger) OnOverdue(ctx context.Context, q *db.Queries, settle 
 	for _, m := range markets {
 		stats, err := q.GetPlayerStreakStats(ctx, db.GetPlayerStreakStatsParams{
 			PlayerID: m.TargetPlayerID,
-			GameID:   m.GameID,
+			Column2:  m.GameIds,
 			Date:     m.StartsAt,
 			Date_2:   m.ClosesAt,
 		})

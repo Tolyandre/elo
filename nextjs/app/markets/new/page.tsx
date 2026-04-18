@@ -16,7 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { AlertCircleIcon } from "lucide-react";
-import { GameCombobox } from "@/components/game-combobox";
+import { GameMultiSelect } from "@/components/game-multi-select";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
 
@@ -31,10 +31,10 @@ export default function NewMarketPage() {
     // match_winner
     const [targetPlayerID, setTargetPlayerID] = useState("");
     const [requiredPlayerIDs, setRequiredPlayerIDs] = useState<string[]>([]);
-    const [gameID, setGameID] = useState<string | undefined>(undefined);
+    const [gameIDs, setGameIDs] = useState<string[]>([]);
     // win_streak
     const [streakTargetPlayerID, setStreakTargetPlayerID] = useState("");
-    const [streakGameID, setStreakGameID] = useState<string | undefined>(undefined);
+    const [streakGameIDs, setStreakGameIDs] = useState<string[]>([]);
     const [winsRequired, setWinsRequired] = useState("3");
     const [maxLosses, setMaxLosses] = useState("");
 
@@ -56,9 +56,9 @@ export default function NewMarketPage() {
             };
             if (marketType === "match_winner") {
                 payload.required_player_ids = requiredPlayerIDs;
-                payload.game_id = gameID || null;
+                payload.game_ids = gameIDs;
             } else {
-                payload.streak_game_id = streakGameID || null;
+                payload.streak_game_ids = streakGameIDs;
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
@@ -74,8 +74,8 @@ export default function NewMarketPage() {
     function buildPreviewMarket(): Market {
         const targetID = marketType === "match_winner" ? targetPlayerID : streakTargetPlayerID;
         const params = marketType === "match_winner"
-            ? { required_player_ids: requiredPlayerIDs, game_id: gameID ?? null }
-            : { game_id: streakGameID ?? "", wins_required: parseInt(winsRequired) || 0, max_losses: maxLosses !== "" ? parseInt(maxLosses) : null };
+            ? { required_player_ids: requiredPlayerIDs, game_ids: gameIDs }
+            : { game_ids: streakGameIDs, wins_required: parseInt(winsRequired) || 0, max_losses: maxLosses !== "" ? parseInt(maxLosses) : null };
         const startsAtISO = startsAtMode === "specific" && startsAt ? new Date(startsAt).toISOString() : new Date().toISOString();
         const closesAtISO = closesAt ? new Date(closesAt).toISOString() : null;
         return {
@@ -163,8 +163,8 @@ export default function NewMarketPage() {
                             <PlayerMultiSelect value={requiredPlayerIDs} onChange={setRequiredPlayerIDs} />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>Игра (необязательно)</Label>
-                            <GameCombobox value={gameID} onChange={setGameID} />
+                            <Label>Игры (необязательно)</Label>
+                            <GameMultiSelect value={gameIDs} onChange={setGameIDs} />
                         </div>
                     </>
                 )}
@@ -176,8 +176,8 @@ export default function NewMarketPage() {
                             <PlayerCombobox value={streakTargetPlayerID || undefined} onChange={v => setStreakTargetPlayerID(v ?? "")} allowClear />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>Игра</Label>
-                            <GameCombobox value={streakGameID} onChange={setStreakGameID} />
+                            <Label>Игры</Label>
+                            <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} />
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="wins_required">Побед требуется</Label>

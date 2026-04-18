@@ -58,18 +58,18 @@ type Market struct {
 }
 
 type MarketMatchWinnerParam struct {
-	MarketID          int32       `json:"market_id"`
-	TargetPlayerID    int32       `json:"target_player_id"`
-	RequiredPlayerIds []int32     `json:"required_player_ids"`
-	GameID            pgtype.Int4 `json:"game_id"`
+	MarketID          int32   `json:"market_id"`
+	TargetPlayerID    int32   `json:"target_player_id"`
+	RequiredPlayerIds []int32 `json:"required_player_ids"`
+	GameIds           []int32 `json:"game_ids"`
 }
 
 type MarketWinStreakParam struct {
 	MarketID       int32       `json:"market_id"`
 	TargetPlayerID int32       `json:"target_player_id"`
-	GameID         int32       `json:"game_id"`
 	WinsRequired   int32       `json:"wins_required"`
 	MaxLosses      pgtype.Int4 `json:"max_losses"`
+	GameIds        []int32     `json:"game_ids"`
 }
 
 type Match struct {

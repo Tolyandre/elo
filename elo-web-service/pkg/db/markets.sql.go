@@ -49,15 +49,15 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 }
 
 const createMatchWinnerParams = `-- name: CreateMatchWinnerParams :exec
-INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
+INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
 VALUES ($1, $2, $3, $4)
 `
 
 type CreateMatchWinnerParamsParams struct {
-	MarketID          int32       `json:"market_id"`
-	TargetPlayerID    int32       `json:"target_player_id"`
-	RequiredPlayerIds []int32     `json:"required_player_ids"`
-	GameID            pgtype.Int4 `json:"game_id"`
+	MarketID          int32   `json:"market_id"`
+	TargetPlayerID    int32   `json:"target_player_id"`
+	RequiredPlayerIds []int32 `json:"required_player_ids"`
+	GameIds           []int32 `json:"game_ids"`
 }
 
 func (q *Queries) CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error {
@@ -65,20 +65,20 @@ func (q *Queries) CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWi
 		arg.MarketID,
 		arg.TargetPlayerID,
 		arg.RequiredPlayerIds,
-		arg.GameID,
+		arg.GameIds,
 	)
 	return err
 }
 
 const createWinStreakParams = `-- name: CreateWinStreakParams :exec
-INSERT INTO market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
+INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateWinStreakParamsParams struct {
 	MarketID       int32       `json:"market_id"`
 	TargetPlayerID int32       `json:"target_player_id"`
-	GameID         int32       `json:"game_id"`
+	GameIds        []int32     `json:"game_ids"`
 	WinsRequired   int32       `json:"wins_required"`
 	MaxLosses      pgtype.Int4 `json:"max_losses"`
 }
@@ -87,7 +87,7 @@ func (q *Queries) CreateWinStreakParams(ctx context.Context, arg CreateWinStreak
 	_, err := q.db.Exec(ctx, createWinStreakParams,
 		arg.MarketID,
 		arg.TargetPlayerID,
-		arg.GameID,
+		arg.GameIds,
 		arg.WinsRequired,
 		arg.MaxLosses,
 	)
@@ -213,8 +213,8 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
@@ -222,8 +222,8 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 `
 
 type GetMarketWithPoolsRow struct {
@@ -242,8 +242,8 @@ type GetMarketWithPoolsRow struct {
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
 	RequiredPlayerIds []int32            `json:"required_player_ids"`
-	MwGameID          pgtype.Int4        `json:"mw_game_id"`
-	WsGameID          pgtype.Int4        `json:"ws_game_id"`
+	MwGameIds         []int32            `json:"mw_game_ids"`
+	WsGameIds         []int32            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
@@ -267,8 +267,8 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id int32) (GetMarketWi
 		&i.NoPool,
 		&i.TargetPlayerID,
 		&i.RequiredPlayerIds,
-		&i.MwGameID,
-		&i.WsGameID,
+		&i.MwGameIds,
+		&i.WsGameIds,
 		&i.WinsRequired,
 		&i.MaxLosses,
 	)
@@ -338,7 +338,7 @@ func (q *Queries) GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resol
 }
 
 const getMatchWinnerParams = `-- name: GetMatchWinnerParams :one
-SELECT market_id, target_player_id, required_player_ids, game_id FROM market_match_winner_params WHERE market_id = $1
+SELECT market_id, target_player_id, required_player_ids, game_ids FROM market_match_winner_params WHERE market_id = $1
 `
 
 func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (MarketMatchWinnerParam, error) {
@@ -348,7 +348,7 @@ func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID int32) (Mar
 		&i.MarketID,
 		&i.TargetPlayerID,
 		&i.RequiredPlayerIds,
-		&i.GameID,
+		&i.GameIds,
 	)
 	return i, err
 }
@@ -441,14 +441,14 @@ JOIN (
     GROUP BY match_id
 ) max_scores ON max_scores.match_id = ms.match_id
 WHERE ms.player_id = $1
-    AND m.game_id = $2
+    AND m.game_id = ANY($2::int[])
     AND m.date >= $3
     AND m.date <= $4
 `
 
 type GetPlayerStreakStatsParams struct {
 	PlayerID int32              `json:"player_id"`
-	GameID   int32              `json:"game_id"`
+	Column2  []int32            `json:"column_2"`
 	Date     pgtype.Timestamptz `json:"date"`
 	Date_2   pgtype.Timestamptz `json:"date_2"`
 }
@@ -461,7 +461,7 @@ type GetPlayerStreakStatsRow struct {
 func (q *Queries) GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error) {
 	row := q.db.QueryRow(ctx, getPlayerStreakStats,
 		arg.PlayerID,
-		arg.GameID,
+		arg.Column2,
 		arg.Date,
 		arg.Date_2,
 	)
@@ -511,7 +511,7 @@ func (q *Queries) GetSettlementDetails(ctx context.Context, marketID int32) ([]G
 }
 
 const getWinStreakParams = `-- name: GetWinStreakParams :one
-SELECT market_id, target_player_id, game_id, wins_required, max_losses FROM market_win_streak_params WHERE market_id = $1
+SELECT market_id, target_player_id, wins_required, max_losses, game_ids FROM market_win_streak_params WHERE market_id = $1
 `
 
 func (q *Queries) GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error) {
@@ -520,9 +520,9 @@ func (q *Queries) GetWinStreakParams(ctx context.Context, marketID int32) (Marke
 	err := row.Scan(
 		&i.MarketID,
 		&i.TargetPlayerID,
-		&i.GameID,
 		&i.WinsRequired,
 		&i.MaxLosses,
+		&i.GameIds,
 	)
 	return i, err
 }
@@ -587,8 +587,8 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
@@ -596,8 +596,8 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
 WHERE om.resolution_match_id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 `
 
 type ListMarketsByResolutionMatchRow struct {
@@ -616,8 +616,8 @@ type ListMarketsByResolutionMatchRow struct {
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
 	RequiredPlayerIds []int32            `json:"required_player_ids"`
-	MwGameID          pgtype.Int4        `json:"mw_game_id"`
-	WsGameID          pgtype.Int4        `json:"ws_game_id"`
+	MwGameIds         []int32            `json:"mw_game_ids"`
+	WsGameIds         []int32            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
@@ -647,8 +647,8 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.NoPool,
 			&i.TargetPlayerID,
 			&i.RequiredPlayerIds,
-			&i.MwGameID,
-			&i.WsGameID,
+			&i.MwGameIds,
+			&i.WsGameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
 		); err != nil {
@@ -670,16 +670,16 @@ SELECT
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
-    mwp.game_id AS mw_game_id,
-    wsp.game_id AS ws_game_id,
+    mwp.game_ids AS mw_game_ids,
+    wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN bets ob ON ob.market_id = om.id
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_id,
-         wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
+         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 ORDER BY om.created_at DESC
 `
 
@@ -699,8 +699,8 @@ type ListMarketsWithPoolsRow struct {
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    int32              `json:"target_player_id"`
 	RequiredPlayerIds []int32            `json:"required_player_ids"`
-	MwGameID          pgtype.Int4        `json:"mw_game_id"`
-	WsGameID          pgtype.Int4        `json:"ws_game_id"`
+	MwGameIds         []int32            `json:"mw_game_ids"`
+	WsGameIds         []int32            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
@@ -730,8 +730,8 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 			&i.NoPool,
 			&i.TargetPlayerID,
 			&i.RequiredPlayerIds,
-			&i.MwGameID,
-			&i.WsGameID,
+			&i.MwGameIds,
+			&i.WsGameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
 		); err != nil {
@@ -747,7 +747,7 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 
 const listOpenMatchWinnerMarkets = `-- name: ListOpenMatchWinnerMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
-    mwp.target_player_id, mwp.required_player_ids, mwp.game_id
+    mwp.target_player_id, mwp.required_player_ids, mwp.game_ids
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed')
@@ -759,7 +759,7 @@ type ListOpenMatchWinnerMarketsRow struct {
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
 	TargetPlayerID    int32              `json:"target_player_id"`
 	RequiredPlayerIds []int32            `json:"required_player_ids"`
-	GameID            pgtype.Int4        `json:"game_id"`
+	GameIds           []int32            `json:"game_ids"`
 }
 
 func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error) {
@@ -777,7 +777,7 @@ func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMat
 			&i.ClosesAt,
 			&i.TargetPlayerID,
 			&i.RequiredPlayerIds,
-			&i.GameID,
+			&i.GameIds,
 		); err != nil {
 			return nil, err
 		}
@@ -791,7 +791,7 @@ func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMat
 
 const listOpenWinStreakMarkets = `-- name: ListOpenWinStreakMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed')
@@ -802,7 +802,7 @@ type ListOpenWinStreakMarketsRow struct {
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
 	TargetPlayerID int32              `json:"target_player_id"`
-	GameID         int32              `json:"game_id"`
+	GameIds        []int32            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -821,7 +821,7 @@ func (q *Queries) ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinSt
 			&i.StartsAt,
 			&i.ClosesAt,
 			&i.TargetPlayerID,
-			&i.GameID,
+			&i.GameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
 		); err != nil {
@@ -901,7 +901,7 @@ func (q *Queries) ListOverdueMatchWinnerMarketsAtDate(ctx context.Context, close
 
 const listOverdueWinStreakMarkets = `-- name: ListOverdueWinStreakMarkets :many
 SELECT om.id, om.closes_at, om.starts_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW()
@@ -912,7 +912,7 @@ type ListOverdueWinStreakMarketsRow struct {
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
 	TargetPlayerID int32              `json:"target_player_id"`
-	GameID         int32              `json:"game_id"`
+	GameIds        []int32            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -931,7 +931,7 @@ func (q *Queries) ListOverdueWinStreakMarkets(ctx context.Context) ([]ListOverdu
 			&i.ClosesAt,
 			&i.StartsAt,
 			&i.TargetPlayerID,
-			&i.GameID,
+			&i.GameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
 		); err != nil {
@@ -947,7 +947,7 @@ func (q *Queries) ListOverdueWinStreakMarkets(ctx context.Context) ([]ListOverdu
 
 const listOverdueWinStreakMarketsAtDate = `-- name: ListOverdueWinStreakMarketsAtDate :many
 SELECT om.id, om.closes_at, om.starts_at,
-    wsp.target_player_id, wsp.game_id, wsp.wins_required, wsp.max_losses
+    wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1
@@ -958,7 +958,7 @@ type ListOverdueWinStreakMarketsAtDateRow struct {
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
 	TargetPlayerID int32              `json:"target_player_id"`
-	GameID         int32              `json:"game_id"`
+	GameIds        []int32            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -977,7 +977,7 @@ func (q *Queries) ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesA
 			&i.ClosesAt,
 			&i.StartsAt,
 			&i.TargetPlayerID,
-			&i.GameID,
+			&i.GameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
 		); err != nil {

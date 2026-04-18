@@ -652,10 +652,10 @@ export interface components {
         };
         MatchWinnerParams: {
             required_player_ids: string[];
-            game_id?: string | null;
+            game_ids?: string[];
         };
         WinStreakParams: {
-            game_id: string;
+            game_ids: string[];
             wins_required: number;
             max_losses?: number | null;
         };
@@ -734,7 +734,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
             };
         };
     };
@@ -2220,8 +2222,8 @@ export interface operations {
                     closes_at: string;
                     target_player_id: string;
                     required_player_ids?: string[];
-                    game_id?: string | null;
-                    streak_game_id?: string;
+                    game_ids?: string[];
+                    streak_game_ids?: string[];
                     wins_required?: number;
                     max_losses?: number | null;
                 };

@@ -13,19 +13,19 @@ type matchWinnerHandler struct{}
 
 func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID int32, params CreateMarketParams) error {
 	p := params.MatchWinner
-	gameID := pgtype.Int4{}
-	if p.GameID != nil {
-		gameID = pgtype.Int4{Int32: *p.GameID, Valid: true}
-	}
 	requiredIDs := p.RequiredPlayerIDs
 	if requiredIDs == nil {
 		requiredIDs = []int32{}
+	}
+	gameIDs := p.GameIDs
+	if gameIDs == nil {
+		gameIDs = []int32{}
 	}
 	return q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
 		MarketID:          marketID,
 		TargetPlayerID:    p.TargetPlayerID,
 		RequiredPlayerIds: requiredIDs,
-		GameID:            gameID,
+		GameIds:           gameIDs,
 	})
 }
 
@@ -46,7 +46,7 @@ func (t *matchWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, match M
 		cond := MatchWinnerCondition{
 			TargetPlayerID:    m.TargetPlayerID,
 			RequiredPlayerIDs: m.RequiredPlayerIds,
-			GameID:            pgInt4ToPtr(m.GameID),
+			GameIDs:           m.GameIds,
 		}
 		window := TimeWindow{StartsAt: m.StartsAt.Time, ClosesAt: m.ClosesAt.Time}
 		resolved, outcome := cond.Evaluate(match, window)

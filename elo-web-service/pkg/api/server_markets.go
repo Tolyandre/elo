@@ -12,23 +12,24 @@ import (
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
+func int32SliceToStrings(ids []int32) []string {
+	s := make([]string, len(ids))
+	for i, v := range ids {
+		s[i] = fmt.Sprintf("%d", v)
+	}
+	return s
+}
+
 // buildTypedMarketParams converts raw DB columns to the typed Market_Params union.
-func buildTypedMarketParams(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameID pgtype.Int4, wsGameID pgtype.Int4, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *Market_Params) {
+func buildTypedMarketParams(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameIDs []int32, wsGameIDs []int32, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *Market_Params) {
 	targetIDStr := fmt.Sprintf("%d", targetPlayerID)
 
 	switch marketType {
 	case "match_winner":
-		reqIDs := make([]string, len(requiredPlayerIds))
-		for i, rid := range requiredPlayerIds {
-			reqIDs[i] = fmt.Sprintf("%d", rid)
-		}
-		var gameIDStr *string
-		if mwGameID.Valid {
-			s := fmt.Sprintf("%d", mwGameID.Int32)
-			gameIDStr = &s
-		}
+		reqIDs := int32SliceToStrings(requiredPlayerIds)
+		gameIDStrs := int32SliceToStrings(mwGameIDs)
 		p := &Market_Params{}
-		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: reqIDs, GameId: gameIDStr})
+		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: reqIDs, GameIds: &gameIDStrs})
 		return targetIDStr, p
 	case "win_streak":
 		var maxL *int
@@ -36,9 +37,10 @@ func buildTypedMarketParams(marketType string, targetPlayerID int32, requiredPla
 			v := int(maxLosses.Int32)
 			maxL = &v
 		}
+		wsGameIDStrs := int32SliceToStrings(wsGameIDs)
 		p := &Market_Params{}
 		_ = p.FromWinStreakParams(WinStreakParams{
-			GameId:       fmt.Sprintf("%d", wsGameID.Int32),
+			GameIds:      wsGameIDStrs,
 			WinsRequired: int(winsRequired.Int32),
 			MaxLosses:    maxL,
 		})
@@ -48,22 +50,15 @@ func buildTypedMarketParams(marketType string, targetPlayerID int32, requiredPla
 }
 
 // buildTypedMarketDetailParams same as above but for MarketDetail_Params.
-func buildTypedMarketDetailParams(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameID pgtype.Int4, wsGameID pgtype.Int4, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *MarketDetail_Params) {
+func buildTypedMarketDetailParams(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameIDs []int32, wsGameIDs []int32, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *MarketDetail_Params) {
 	targetIDStr := fmt.Sprintf("%d", targetPlayerID)
 
 	switch marketType {
 	case "match_winner":
-		reqIDs := make([]string, len(requiredPlayerIds))
-		for i, rid := range requiredPlayerIds {
-			reqIDs[i] = fmt.Sprintf("%d", rid)
-		}
-		var gameIDStr *string
-		if mwGameID.Valid {
-			s := fmt.Sprintf("%d", mwGameID.Int32)
-			gameIDStr = &s
-		}
+		reqIDs := int32SliceToStrings(requiredPlayerIds)
+		gameIDStrs := int32SliceToStrings(mwGameIDs)
 		p := &MarketDetail_Params{}
-		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: reqIDs, GameId: gameIDStr})
+		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: reqIDs, GameIds: &gameIDStrs})
 		return targetIDStr, p
 	case "win_streak":
 		var maxL *int
@@ -71,9 +66,10 @@ func buildTypedMarketDetailParams(marketType string, targetPlayerID int32, requi
 			v := int(maxLosses.Int32)
 			maxL = &v
 		}
+		wsGameIDStrs := int32SliceToStrings(wsGameIDs)
 		p := &MarketDetail_Params{}
 		_ = p.FromWinStreakParams(WinStreakParams{
-			GameId:       fmt.Sprintf("%d", wsGameID.Int32),
+			GameIds:      wsGameIDStrs,
 			WinsRequired: int(winsRequired.Int32),
 			MaxLosses:    maxL,
 		})
@@ -106,7 +102,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 
 	for _, r := range rows {
 		totalPool := r.YesPool + r.NoPool
-		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameID, r.WsGameID, r.WinsRequired, r.MaxLosses)
+		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 
 		m := Market{
 			Id:             fmt.Sprintf("%d", r.ID),
@@ -201,7 +197,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	}
 
 	totalPool := row.YesPool + row.NoPool
-	targetID, params := buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameID, row.WsGameID, row.WinsRequired, row.MaxLosses)
+	targetID, params := buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameIds, row.WsGameIds, row.WinsRequired, row.MaxLosses)
 
 	detail := MarketDetail{
 		Id:             fmt.Sprintf("%d", row.ID),
@@ -340,28 +336,35 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 				requiredIDs = append(requiredIDs, int32(pid))
 			}
 		}
-		var gameID *int32
-		if body.GameId != nil {
-			gid, err := strconv.ParseInt(*body.GameId, 10, 32)
-			if err != nil {
-				return CreateMarket400JSONResponse{Status: "fail", Message: "invalid game_id"}, nil
+		gameIDs := make([]int32, 0)
+		if body.GameIds != nil {
+			for _, s := range *body.GameIds {
+				gid, err := strconv.ParseInt(s, 10, 32)
+				if err != nil {
+					return CreateMarket400JSONResponse{Status: "fail", Message: "invalid game_id: " + s}, nil
+				}
+				gameIDs = append(gameIDs, int32(gid))
 			}
-			gid32 := int32(gid)
-			gameID = &gid32
 		}
 		params.MatchWinner = &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    int32(targetPlayerID),
 			RequiredPlayerIDs: requiredIDs,
-			GameID:            gameID,
+			GameIDs:           gameIDs,
 		}
 
 	case "win_streak":
-		if body.StreakGameId == nil || body.WinsRequired == nil {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "win_streak requires streak_game_id and wins_required"}, nil
+		if body.WinsRequired == nil {
+			return CreateMarket400JSONResponse{Status: "fail", Message: "win_streak requires wins_required"}, nil
 		}
-		gid, err := strconv.ParseInt(*body.StreakGameId, 10, 32)
-		if err != nil {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "invalid streak_game_id"}, nil
+		streakGameIDs := make([]int32, 0)
+		if body.StreakGameIds != nil {
+			for _, s := range *body.StreakGameIds {
+				gid, err := strconv.ParseInt(s, 10, 32)
+				if err != nil {
+					return CreateMarket400JSONResponse{Status: "fail", Message: "invalid streak_game_id: " + s}, nil
+				}
+				streakGameIDs = append(streakGameIDs, int32(gid))
+			}
 		}
 		var maxLosses *int32
 		if body.MaxLosses != nil {
@@ -370,7 +373,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		}
 		params.WinStreak = &elo.WinStreakCreateParams{
 			TargetPlayerID: int32(targetPlayerID),
-			GameID:         int32(gid),
+			GameIDs:        streakGameIDs,
 			WinsRequired:   int32(*body.WinsRequired),
 			MaxLosses:      maxLosses,
 		}
@@ -477,7 +480,7 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 	result := make([]Market, 0, len(rows))
 	for _, r := range rows {
 		totalPool := r.YesPool + r.NoPool
-		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameID, r.WsGameID, r.WinsRequired, r.MaxLosses)
+		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 
 		m := Market{
 			Id:             fmt.Sprintf("%d", r.ID),

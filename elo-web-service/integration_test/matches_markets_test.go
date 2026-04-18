@@ -445,7 +445,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 		CreatedBy:  adminID,
 		WinStreak: &elo.WinStreakCreateParams{
 			TargetPlayerID: playerA,
-			GameID:         gameID,
+			GameIDs:        []int32{gameID},
 			WinsRequired:   3,
 		},
 	})

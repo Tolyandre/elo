@@ -92,7 +92,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when game_id does not match", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, GameID: &gameID}
+		cond := MatchWinnerCondition{TargetPlayerID: 10, GameIDs: []int32{gameID}}
 		match := makeMatch(inWindow, otherGameID, map[int32]float64{10: 5, 20: 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
@@ -101,7 +101,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("resolved when game_id matches", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, GameID: &gameID}
+		cond := MatchWinnerCondition{TargetPlayerID: 10, GameIDs: []int32{gameID}}
 		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
 		if !resolved || outcome != OutcomeYes {
