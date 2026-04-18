@@ -5,7 +5,7 @@ import { Check, ChevronsUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer"
+import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command"
 import { useClubs } from "@/app/clubsContext"
 import useIsMobile from "@/hooks/use-is-mobile"
@@ -41,9 +41,11 @@ export function ClubSelect({
     setOpen(false)
   }
 
+  const mobileListClass = isMobile ? "flex-1 min-h-0 overflow-y-auto max-h-none" : undefined
+
   const content = (
-    <Command>
-      <CommandList>
+    <Command className={isMobile ? "flex flex-col flex-1 min-h-0" : undefined}>
+      <CommandList className={mobileListClass}>
         <CommandGroup>
           <CommandItem value="__all__" keywords={["Все"]} onSelect={() => select(null)}>
             <Check className={cn("mr-2 h-4 w-4 shrink-0", value === null ? "opacity-100" : "opacity-0")} />
@@ -77,10 +79,17 @@ export function ClubSelect({
 
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-        <DrawerContent className="p-4">{content}</DrawerContent>
-      </Drawer>
+      <>
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between" onClick={() => setOpen(true)}>
+          <span className="truncate">{triggerLabel}</span>
+          <ChevronsUpDown className="opacity-50 shrink-0 ml-2 h-4 w-4" />
+        </Button>
+        <BottomSheet open={open} onOpenChange={setOpen}>
+          <div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            {content}
+          </div>
+        </BottomSheet>
+      </>
     )
   }
 

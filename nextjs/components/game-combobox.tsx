@@ -19,11 +19,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  Drawer,
-  DrawerContent,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
+import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { useGames } from "@/app/gamesContext"
 import { createGamePromise } from "@/app/api"
 import { useMatches } from "@/app/matches/MatchesContext"
@@ -101,15 +97,17 @@ export function GameCombobox({
     </Button>
   )
 
+  const mobileListClass = isMobile ? "flex-1 min-h-0 overflow-y-auto max-h-none" : undefined
+
   const content = (
-    <Command shouldFilter={true}>
+    <Command shouldFilter={true} className={isMobile ? "flex flex-col flex-1 min-h-0" : undefined}>
       <CommandInput
         placeholder="Искать игру..."
         className="h-9"
         value={searchQuery}
         onValueChange={setSearchQuery}
       />
-      <CommandList style={isMobile ? { maxHeight: "calc(var(--vvh, 100dvh) * 0.7)" } : undefined}>
+      <CommandList className={mobileListClass}>
         <CommandEmpty>
           <div className="py-2 px-2">
             <Button
@@ -150,13 +148,26 @@ export function GameCombobox({
     </Command>
   )
 
-  // 📱 MOBILE — Drawer
+  // 📱 MOBILE — BottomSheet
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-        <DrawerContent className="p-4">{content}</DrawerContent>
-      </Drawer>
+      <>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          onClick={() => setOpen(true)}
+        >
+          {value ? games.find((game) => game.id === value)?.name : "Игра..."}
+          <ChevronsUpDown className="opacity-50" />
+        </Button>
+        <BottomSheet open={open} onOpenChange={setOpen}>
+          <div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            {content}
+          </div>
+        </BottomSheet>
+      </>
     )
   }
 

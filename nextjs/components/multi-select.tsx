@@ -27,7 +27,7 @@ import {
 	CommandList,
 	CommandSeparator,
 } from "@/components/ui/command";
-import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "./ui/drawer";
+import { BottomSheet } from "./ui/bottom-sheet";
 
 /**
  * Animation types and configurations
@@ -980,7 +980,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 		</Button>);
 
 		// shouldFilter работает как встроенный фильтр, но здесь реализован свой
-		var content = (<Command shouldFilter={false}> 
+		var content = (<Command shouldFilter={false} className={screenSize === "mobile" ? "flex flex-col flex-1 min-h-0" : undefined}>
 			{searchable && (
 				<CommandInput
 					placeholder={searchPlaceholder}
@@ -998,8 +998,9 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			)}
 			<CommandList
 				className={cn(
-					"max-h-[40vh] overflow-y-auto multiselect-scrollbar",
-					screenSize === "mobile" && "max-h-[70dvh]",
+					screenSize === "mobile"
+						? "flex-1 min-h-0 overflow-y-auto max-h-none"
+						: "max-h-[40vh] overflow-y-auto multiselect-scrollbar",
 					"overscroll-behavior-y-contain"
 				)}>
 				<CommandEmpty>
@@ -1162,29 +1163,14 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 
 
 				{screenSize == "mobile" ? (
-					<Drawer open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-						<DrawerTrigger asChild>
-							{trigger}
-						</DrawerTrigger>
-
-						<DrawerContent className="max-h-[85dvh] p-0">
-							<DrawerHeader className="px-4 pt-4 pb-2">
-								<DrawerTitle>{placeholder}</DrawerTitle>
-							</DrawerHeader>
-
-							<div className="px-2 pb-4">
+					<>
+						{trigger}
+						<BottomSheet open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+							<div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
 								{content}
 							</div>
-
-							{/* <DrawerFooter>
-								<DrawerClose asChild>
-									<Button variant="outline" className="w-full">
-										Close
-									</Button>
-								</DrawerClose>
-							</DrawerFooter> */}
-						</DrawerContent>
-					</Drawer>
+						</BottomSheet>
+					</>
 				) : (
 					<Popover
 						open={isPopoverOpen}

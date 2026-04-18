@@ -10,11 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  Drawer,
-  DrawerContent,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
+import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
@@ -83,26 +79,41 @@ export function PlayerCombobox({
     </Button>
   )
 
+  const mobileListClass = isMobile ? "flex-1 min-h-0 overflow-y-auto max-h-none" : undefined
+
   const content = (
     <PlayerCommand
       value={value}
       groups={groups}
       onSelect={handleSelect}
-      listStyle={isMobile ? { maxHeight: "calc(var(--vvh, 100dvh) * 0.7)" } : undefined}
+      listClassName={mobileListClass}
       allowClear={allowClear}
       onClear={allowClear ? () => { onChange?.(undefined); if (controlledValue === undefined) setInternalValue(""); setOpen(false); } : undefined}
     />
   )
 
-  // 📱 MOBILE — Drawer
+  // 📱 MOBILE — BottomSheet
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-        <DrawerContent className="p-4">
-          {content}
-        </DrawerContent>
-      </Drawer>
+      <>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between"
+          onClick={() => setOpen(true)}
+        >
+          {value
+            ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value; })()
+            : "Игрок..."}
+          <ChevronsUpDown className="opacity-50" />
+        </Button>
+        <BottomSheet open={open} onOpenChange={setOpen}>
+          <div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
+            {content}
+          </div>
+        </BottomSheet>
+      </>
     )
   }
 
@@ -127,18 +138,17 @@ type PlayerCommandProps = {
   groups: { heading: string; options: { value: string; label: string }[] }[]
   onSelect: (value: string) => void
   listClassName?: string
-  listStyle?: React.CSSProperties
   allowClear?: boolean
   onClear?: () => void
 }
 
-function PlayerCommand({ value, groups, onSelect, listClassName, listStyle, allowClear, onClear }: PlayerCommandProps) {
+function PlayerCommand({ value, groups, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
   const { playerId } = useMe()
   return (
-    <Command>
+    <Command className={listClassName ? "flex flex-col flex-1 min-h-0" : undefined}>
       <CommandInput placeholder="Искать игрока..." className="h-9" />
 
-      <CommandList className={listClassName} style={listStyle}>
+      <CommandList className={listClassName}>
         <CommandEmpty>Игрок не найден.</CommandEmpty>
 
         {allowClear && value && (

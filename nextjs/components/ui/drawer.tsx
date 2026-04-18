@@ -5,24 +5,6 @@ import { Drawer as DrawerPrimitive } from "vaul"
 
 import { cn } from "@/lib/utils"
 
-// Android Chrome has a bug where CSS dvh values inside fixed-position elements
-// don't update when the virtual keyboard opens/closes. We work around it by
-// keeping a --vvh CSS variable in sync with the actual visual viewport height
-// and using it instead of dvh wherever the Drawer needs a viewport-relative size.
-function useVirtualKeyboardScrollReset() {
-  React.useEffect(() => {
-    const update = () => {
-      document.documentElement.style.setProperty(
-        "--vvh",
-        `${window.visualViewport?.height ?? window.innerHeight}px`
-      )
-    }
-    update()
-    window.visualViewport?.addEventListener("resize", update)
-    return () => window.visualViewport?.removeEventListener("resize", update)
-  }, [])
-}
-
 function Drawer({
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) {
@@ -68,7 +50,6 @@ function DrawerContent({
   children,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Content>) {
-  useVirtualKeyboardScrollReset()
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -76,11 +57,10 @@ function DrawerContent({
       <DrawerPrimitive.Title></DrawerPrimitive.Title> 
       <DrawerPrimitive.Content
         data-slot="drawer-content"
-        style={{ maxHeight: "calc(var(--vvh, 100dvh) * 0.8)" }}
         className={cn(
           "group/drawer-content bg-background fixed z-50 flex h-auto flex-col",
-          "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:rounded-b-lg data-[vaul-drawer-direction=top]:border-b",
-          "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t",
+          "data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[80vh] data-[vaul-drawer-direction=top]:rounded-b-lg data-[vaul-drawer-direction=top]:border-b",
+          "data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[80dvh] data-[vaul-drawer-direction=bottom]:rounded-t-lg data-[vaul-drawer-direction=bottom]:border-t",
           "data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-3/4 data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=right]:sm:max-w-sm",
           "data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-3/4 data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=left]:sm:max-w-sm",
           className
