@@ -1,5 +1,6 @@
 "use client"
 import React, { useState } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
@@ -89,7 +90,7 @@ export default function NewMarketPage() {
 
     return (
         <main className="max-w-sm mx-auto space-y-6">
-            <h1 className="text-2xl font-semibold">Создать рынок</h1>
+            <PageHeader title="Создать рынок" />
 
             {!canEdit && (
                 <Alert>

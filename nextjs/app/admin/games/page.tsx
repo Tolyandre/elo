@@ -1,6 +1,7 @@
 "use client"
 import React from "react";
 import Link from "next/link";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useState } from "react";
 import { patchGamePromise, deleteGamePromise, createGamePromise } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
@@ -83,13 +84,9 @@ export default function GamesAdminPage() {
 
     return (
         <main className="p-4">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-                    <h1 className="text-2xl font-semibold mb-4">Управление играми</h1>
-                    <div className="mt-2 sm:mt-0">
-                        <Link href="/admin" className="text-sm text-blue-600">
-                            Назад
-                        </Link>
-                    </div>
+                <PageHeader title="Управление играми" />
+                <div className="mb-4">
+                    <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
                 </div>
 
             {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}

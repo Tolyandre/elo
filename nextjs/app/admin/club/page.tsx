@@ -1,5 +1,6 @@
 "use client"
 import React, { Suspense, useEffect, useState } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -131,13 +132,9 @@ function ClubAdminContent() {
 
     return (
         <main className="p-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4">
-                <h1 className="text-2xl font-semibold">{clubDisplayName(club)}</h1>
-                <div className="mt-2 sm:mt-0">
-                    <Link href="/admin/clubs" className="text-sm text-blue-600">
-                        Назад
-                    </Link>
-                </div>
+            <PageHeader title={clubDisplayName(club)} />
+            <div className="mb-4">
+                <Link href="/admin/clubs" className="text-sm text-blue-600">Назад</Link>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
                 Удаление клуба возможно только если в нём нет игроков.

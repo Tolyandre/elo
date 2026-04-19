@@ -10,6 +10,7 @@ import { addMatchPromise } from "@/app/api";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
     Dialog,
@@ -506,9 +507,9 @@ export default function SkullKingGamePage() {
 
     return (
         <main className="max-w-5xl mx-auto p-4 space-y-4 overflow-x-hidden">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Skull King</h1>
-                {phase !== "setup" && (
+            <PageHeader
+                title="Skull King"
+                action={phase !== "setup" ? (
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button variant="outline" size="sm">Новая партия</Button>
@@ -526,8 +527,8 @@ export default function SkullKingGamePage() {
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
-                )}
-            </div>
+                ) : null}
+            />
 
             <AuthWarning />
 

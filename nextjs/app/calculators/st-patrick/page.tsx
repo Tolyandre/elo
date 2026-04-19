@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { StPatrickCalculator } from "@/app/game/st-patrick-calculator"
+import { PageHeader } from "@/app/pageHeaderContext"
 
 export const metadata: Metadata = {
   title: "Охота на змей",
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 export default function StPatrickCalculatorPage() {
     return (
         <main className="max-w-sm mx-auto">
-            <h1 className="text-2xl font-semibold mb-6">Охота на змей</h1>
+            <PageHeader title="Охота на змей" />
             <StPatrickCalculator />
         </main>
     )

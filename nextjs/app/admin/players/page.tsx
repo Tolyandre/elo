@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, listUsersPromise, User } from "@/app/api";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import {
@@ -88,13 +89,9 @@ export default function PlayersAdminPage() {
 
     return (
         <main className="p-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-                <h1 className="text-2xl font-semibold mb-4">Управление игроками</h1>
-                <div className="mt-2 sm:mt-0">
-                    <Link href="/admin" className="text-sm text-blue-600">
-                        Назад
-                    </Link>
-                </div>
+            <PageHeader title="Управление игроками" />
+            <div className="mb-4">
+                <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
             </div>
 
             {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}

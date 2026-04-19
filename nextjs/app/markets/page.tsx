@@ -3,6 +3,7 @@ import { Market, getMarketsPromise } from "@/app/api";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { MarketCard } from "@/components/market-card";
 
 export default function MarketsPage() {
@@ -22,12 +23,10 @@ export default function MarketsPage() {
 
     return (
         <main className="max-w-sm mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Ставки</h1>
-                <Button asChild size="sm">
-                    <Link href="/markets/new">Создать рынок</Link>
-                </Button>
-            </div>
+            <PageHeader
+                title="Ставки"
+                action={<Button asChild size="sm"><Link href="/markets/new">Создать рынок</Link></Button>}
+            />
 
             {data.active.length > 0 && (
                 <section className="space-y-4">

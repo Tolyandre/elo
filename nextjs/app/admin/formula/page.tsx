@@ -1,5 +1,6 @@
 "use client"
 import React, { useEffect, useState } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 import Link from "next/link";
 import {
     EloSettingEntry,
@@ -117,8 +118,8 @@ export default function FormulaAdminPage() {
 
     return (
         <main className="p-4 max-w-3xl">
-            <div className="flex items-center justify-between mb-6">
-                <h1 className="text-2xl font-semibold">Настройка формулы Elo</h1>
+            <PageHeader title="Настройка формулы Elo" />
+            <div className="mb-6">
                 <Button variant="link" asChild className="px-0">
                     <Link href="/admin">Назад</Link>
                 </Button>

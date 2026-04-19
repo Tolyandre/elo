@@ -26,6 +26,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { useSettings } from "@/app/settingsContext"
 import { EloCalculator } from "./EloCalculator"
+import { PageHeader } from "@/app/pageHeaderContext"
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -53,9 +54,7 @@ function HelpPageContent() {
 
     return (
         <div className="space-y-6 py-6">
-            <div className="flex items-center justify-between mt-8">
-                <h1 className="text-2xl font-semibold mb-4 mx-auto">Справка</h1>
-            </div>
+            <PageHeader title="Справка" />
             <p>
                 Elo-рейтинг для настольных игр
             </p>

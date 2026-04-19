@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ChartContainer } from '@/components/ui/chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
+import { PageHeader } from '@/app/pageHeaderContext'
 
 function formatDate(iso: string) {
     const d = new Date(iso)
@@ -116,7 +117,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 
     return (
         <div className="space-y-6 p-4 max-w-3xl mx-auto">
-            <h1 className="text-3xl font-bold">{stats.player_name}</h1>
+            <PageHeader title={stats.player_name} />
 
             <Card>
                 <CardHeader>

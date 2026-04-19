@@ -4,7 +4,8 @@ import "./globals.css";
 import { PlayersProvider } from "./players/PlayersContext";
 import { MatchesProvider } from "./matches/MatchesContext";
 import { SettingsProvider } from "./settingsContext";
-import { NavigationBar } from "@/components/navigation-bar";
+import { SiteHeader } from "@/components/site-header";
+import { PageHeaderProvider } from "./pageHeaderContext";
 import { PingError } from "@/components/ping-error";
 import { ThemeProvider } from "./theme-provider";
 import { MeProvider } from "./meContext";
@@ -81,14 +82,15 @@ export default function RootLayout({
                     />
                     <Toaster />
                     <div className="font-sans flex flex-col items-center min-h-screen">
-                      <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
-                        <NavigationBar />
-                        <div className="p-3 pt-6">
-                          <PingError />
-                          {children}
+                      <PageHeaderProvider>
+                        <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
+                          <SiteHeader />
+                          <div className="p-3">
+                            <PingError />
+                            {children}
+                          </div>
                         </div>
-                      </div>
-
+                      </PageHeaderProvider>
                     </div>
                   </ThemeProvider>
                 </body>

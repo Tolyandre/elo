@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -448,7 +449,7 @@ export default function ItsAWonderfulWorldPage() {
     if (gameState.phase === "setup") {
         return (
             <main className="max-w-sm mx-auto p-4 space-y-4">
-                <h1 className="text-2xl font-bold">Этот Безумный Мир</h1>
+                <PageHeader title="Этот Безумный Мир" />
                 <div className="space-y-3">
                     <PlayerMultiSelect value={setupPlayerIds} onChange={setSetupPlayerIds} />
                     <Button
@@ -468,8 +469,7 @@ export default function ItsAWonderfulWorldPage() {
     return (
         <main className="p-3 sm:p-4 space-y-4 max-w-5xl mx-auto">
             <AuthWarning />
-            <div className="flex items-center justify-between gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold">Этот Безумный Мир</h1>
+            <PageHeader title="Этот Безумный Мир" action={
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm">Новая партия</Button>
@@ -487,7 +487,7 @@ export default function ItsAWonderfulWorldPage() {
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
-            </div>
+            } />
 
             <ScoringTable state={gameState} onEdit={handleEdit} />
 

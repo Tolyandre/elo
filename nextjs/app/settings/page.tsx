@@ -1,6 +1,7 @@
 "use client"
 
 import { useMe } from "@/app/meContext"
+import { PageHeader } from "@/app/pageHeaderContext"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -21,7 +22,7 @@ export default function SettingsPage() {
 
     return (
         <main className="max-w-sm mx-auto">
-            <h1 className="text-2xl font-semibold mb-6">Мои настройки</h1>
+            <PageHeader title="Мои настройки" />
 
             <div className="space-y-6">
                 <div className="flex items-center justify-between">

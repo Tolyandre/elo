@@ -1,6 +1,7 @@
 "use client"
 import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { MarketDetail, getMarketByIdPromise, placeBetPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,7 @@ function MarketPageContent() {
     const betLimit = market.bet_limit;
     return (
         <main className="max-w-sm mx-auto space-y-4">
+            <PageHeader title="Ставки" />
             <MarketCard market={market} />
 
             <div className="flex flex-col sm:flex-row gap-3">

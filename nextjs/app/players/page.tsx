@@ -12,6 +12,7 @@ import { ClubSelect } from "@/components/club-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/app/pageHeaderContext";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
@@ -219,12 +220,10 @@ function PlayersTable() {
 export default function PlayersPage() {
     return (
         <main className="max-w-sm mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Игроки</h1>
-                <Button asChild size="sm">
-                    <Link href="/add-match">Добавить партию</Link>
-                </Button>
-            </div>
+            <PageHeader
+                title="Игроки"
+                action={<Button asChild size="sm"><Link href="/add-match">Добавить партию</Link></Button>}
+            />
             <LoadingOrError />
             <Suspense>
                 <PlayersTable />

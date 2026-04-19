@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
@@ -239,9 +240,7 @@ export default function AddGamePage() {
 
     return (
         <main className="max-w-sm mx-auto p-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold mb-4 mx-auto">Результат партии</h1>
-            </div>
+            <PageHeader title="Результат партии" />
 
             <AuthWarning />
             <AddGameForm />

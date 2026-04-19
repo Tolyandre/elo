@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { listUsersPromise, patchUserPromise, User } from "../../api";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -66,8 +67,8 @@ export default function AdminUsersPage() {
 
   return (
     <main className="p-4 max-w-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Управление пользователями</h1>
+      <PageHeader title="Управление пользователями" />
+      <div className="mb-6">
         <Button variant="link" asChild className="px-0">
           <Link href="/admin">Назад</Link>
         </Button>

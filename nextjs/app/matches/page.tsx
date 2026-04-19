@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -124,12 +125,10 @@ function MatchesPageWrapped() {
 
   return (
     <main className="max-w-sm mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Партии</h1>
-        <Button asChild size="sm">
-          <Link href="/add-match">Добавить партию</Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Партии"
+        action={<Button asChild size="sm"><Link href="/add-match">Добавить партию</Link></Button>}
+      />
 
       {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
 

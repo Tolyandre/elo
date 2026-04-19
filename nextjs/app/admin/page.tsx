@@ -1,13 +1,12 @@
 "use client"
 import React from "react";
 import Link from "next/link";
+import { PageHeader } from "@/app/pageHeaderContext";
 
 export default function AdminPage() {
   return (
     <main className="p-4 max-w-sm mx-auto">
-      <div className="flex items-center justify-between mt-8">
-        <h1 className="text-2xl font-semibold mb-4 mx-auto">Админка</h1>
-      </div>
+      <PageHeader title="Админка" />
 
       {/* <div className="flex flex-col items-start"> */}
       <div className="flex flex-col items-center">

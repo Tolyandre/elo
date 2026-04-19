@@ -2,6 +2,7 @@
 import { GameList, getGamesPromise } from "@/app/api";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
+import { PageHeader } from "@/app/pageHeaderContext";
 
 export default function AllGamesList() {
   const [games, setGames] = useState<GameList | null>(null);
@@ -16,16 +17,14 @@ export default function AllGamesList() {
   if (!games) {
     return (
       <main className="space-y-8 max-w-sm mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Loading games...</h1>
+        <PageHeader title="Игры" />
       </main>
     );
   }
 
   return (
     <main className="space-y-8 max-w-sm mx-auto">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold mb-4 mx-auto">Игры</h1>
-      </div>
+      <PageHeader title="Игры" />
       <table className="w-full table-auto border-collapse mb-6">
         <tbody>
           {games.games.map((game) => {

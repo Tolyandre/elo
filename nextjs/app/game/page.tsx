@@ -1,5 +1,6 @@
 "use client"
 import { Game, GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useSearchParams } from "next/navigation";
 import React, { Suspense, useEffect, useState } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -24,7 +25,7 @@ function GameWrapped() {
   if (!id) {
     return (
       <main className="space-y-8 max-w-sm mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Missing game id</h1>
+        <PageHeader title="Игра" />
         <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
       </main>
     );
@@ -77,9 +78,7 @@ function GameWrapped() {
     <main className="max-w-sm mx-auto">
       <div className="space-y-4">
         <div className=" max-w-sm">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-semibold mb-2 mx-auto">{game?.name}</h1>
-          </div>
+          <PageHeader title={game?.name ?? ""} />
 
           <p className="text-gray-600">Партий: {game?.total_matches}</p>
 

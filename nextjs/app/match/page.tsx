@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Edit2, ArrowLeft, X } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { MatchCard } from "@/components/match-card";
@@ -113,15 +114,12 @@ function MatchPageWrapped() {
         </Button>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Просмотр партии</h1>
-        {(
-          <EditMatchDialog match={match} onSuccess={() => {
-            invalidate();
-            toast.success("Партия обновлена");
-          }} />
-        )}
-      </div>
+      <PageHeader title="Просмотр партии" action={
+        <EditMatchDialog match={match} onSuccess={() => {
+          invalidate();
+          toast.success("Партия обновлена");
+        }} />
+      } />
 
       <Card>
         <CardContent>

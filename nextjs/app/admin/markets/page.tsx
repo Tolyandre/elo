@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Market, getMarketsPromise, deleteMarketPromise, closeMarketBettingPromise } from "@/app/api";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
@@ -69,8 +70,8 @@ export default function AdminMarketsPage() {
 
     return (
         <main className="p-4 max-w-sm mx-auto space-y-4">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Активные рынки</h1>
+            <PageHeader title="Активные рынки" />
+            <div className="mb-4">
                 <Button variant="link" asChild className="px-0">
                     <Link href="/admin">Назад</Link>
                 </Button>

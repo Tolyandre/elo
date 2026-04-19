@@ -1,6 +1,7 @@
 "use client"
 import React, { useState } from "react";
 import Link from "next/link";
+import { PageHeader } from "@/app/pageHeaderContext";
 import { createClubPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { useClubs } from "@/app/clubsContext";
@@ -30,13 +31,9 @@ export default function ClubsAdminPage() {
 
     return (
         <main className="p-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-                <h1 className="text-2xl font-semibold mb-4">Управление клубами</h1>
-                <div className="mt-2 sm:mt-0">
-                    <Link href="/admin" className="text-sm text-blue-600">
-                        Назад
-                    </Link>
-                </div>
+            <PageHeader title="Управление клубами" />
+            <div className="mb-4">
+                <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
             </div>
 
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
