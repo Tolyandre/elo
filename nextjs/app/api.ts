@@ -867,3 +867,106 @@ function showToast(error: unknown) {
         toast.error("An unknown error occurred " + error);
     }
 }
+
+// ─── Skull King game types (shared with page.tsx) ────────────────────────────
+
+export type SkullKingRoundEntry = {
+    bid: number;
+    actual: number | null;
+    bonus: number;
+};
+
+export type SkullKingGamePhase =
+    | "setup"
+    | "bidding"
+    | "waiting-for-bids"
+    | "bid-review"
+    | "result-entry"
+    | "round-complete";
+
+export type SkullKingGameState = {
+    phase: SkullKingGamePhase;
+    players: { id: string; name: string }[];
+    currentRound: number;
+    currentPlayerIndex: number;
+    rounds: (SkullKingRoundEntry | null)[][];
+    fallbackGameId?: string;
+};
+
+export type SkullKingTableSummary = {
+    id: string;
+    host_user_id: number;
+    game_state: SkullKingGameState;
+    connected_player_ids: number[];
+    created_at: string;
+    expires_at: string;
+};
+
+// ─── Skull King table API ─────────────────────────────────────────────────────
+
+export async function listSkullKingTablesPromise(): Promise<SkullKingTableSummary[]> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables`);
+    return handleJsonErrorResponse(res);
+}
+
+export async function createSkullKingTablePromise(gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ game_state: gameState }),
+    });
+    return handleJsonErrorResponse(res);
+}
+
+export async function getSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}`);
+    return handleJsonErrorResponse(res);
+}
+
+export async function updateSkullKingTableStatePromise(tableId: string, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/state`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ game_state: gameState }),
+    });
+    return handleJsonErrorResponse(res);
+}
+
+export async function joinSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/join`, {
+        method: "POST",
+        credentials: "include",
+    });
+    return handleJsonErrorResponse(res);
+}
+
+export async function submitSkullKingBidPromise(tableId: string, bid: number): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/bid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bid }),
+    });
+    return handleJsonErrorResponse(res);
+}
+
+export async function submitSkullKingResultPromise(tableId: string, actual: number, bonus: number): Promise<SkullKingTableSummary> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/result`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ actual, bonus }),
+    });
+    return handleJsonErrorResponse(res);
+}
+
+export async function deleteSkullKingTablePromise(tableId: string): Promise<void> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}`, {
+        method: "DELETE",
+        credentials: "include",
+    });
+    if (res.status === 204) return;
+    await handleJsonErrorResponse(res);
+}

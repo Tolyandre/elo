@@ -5,6 +5,8 @@
 package db
 
 import (
+	"time"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -109,6 +111,15 @@ type PlayerRating struct {
 	SourceType string             `json:"source_type"`
 	MatchID    pgtype.Int4        `json:"match_id"`
 	MarketID   pgtype.Int4        `json:"market_id"`
+}
+
+type SkullKingTable struct {
+	ID                 pgtype.UUID `json:"id"`
+	HostUserID         int32       `json:"host_user_id"`
+	GameState          []byte      `json:"game_state"`
+	ConnectedPlayerIds []int32     `json:"connected_player_ids"`
+	CreatedAt          time.Time   `json:"created_at"`
+	ExpiresAt          time.Time   `json:"expires_at"`
 }
 
 type User struct {

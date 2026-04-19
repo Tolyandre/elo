@@ -46,6 +46,8 @@ func main() {
 
 	// Start timer for time-based market expiry
 	apiHandler.MarketService.ScheduleNextExpiry(context.Background())
+	// Start timer for Skull King table cleanup
+	apiHandler.SkullKingTableService.ScheduleNextCleanup(context.Background())
 
 	router := gin.Default()
 
@@ -124,6 +126,18 @@ func main() {
 
 	// Skull King calculator
 	router.POST("/skull-king/parse-card-image", apiHandler.ParseSkullKingCardImage)
+
+	// Skull King game tables
+	sk := router.Group("/skull-king/tables")
+	sk.GET("", apiHandler.ListSkullKingTables)
+	sk.POST("", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.CreateSkullKingTable)
+	sk.GET("/:id", apiHandler.GetSkullKingTable)
+	sk.PATCH("/:id/state", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.UpdateSkullKingTableState)
+	sk.POST("/:id/join", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.JoinSkullKingTable)
+	sk.POST("/:id/bid", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.SubmitSkullKingBid)
+	sk.POST("/:id/result", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.SubmitSkullKingResult)
+	sk.DELETE("/:id", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.DeleteSkullKingTable)
+	sk.GET("/:id/events", apiHandler.SkullKingTableEvents)
 
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)

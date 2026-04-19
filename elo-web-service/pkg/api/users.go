@@ -45,6 +45,33 @@ func MustGetCurrentUser(ctx *gin.Context, userService elo.IUserService) (*db.Use
 	return user, nil
 }
 
+const CurrentPlayerIDKey = "currentPlayerID"
+
+// RequirePlayerID is a Gin middleware that aborts with 403 if the authenticated
+// user has no player_id linked. On success it sets CurrentPlayerIDKey in context.
+func (a *API) RequirePlayerID() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, err := MustGetCurrentUser(c, a.UserService)
+		if err != nil {
+			ErrorResponse(c, http.StatusUnauthorized, "authentication required")
+			c.Abort()
+			return
+		}
+		if !user.PlayerID.Valid {
+			ErrorResponse(c, http.StatusForbidden, "player association required to use game tables")
+			c.Abort()
+			return
+		}
+		c.Set(CurrentPlayerIDKey, user.PlayerID.Int32)
+		c.Next()
+	}
+}
+
+// MustGetCurrentPlayerID retrieves the player ID set by RequirePlayerID middleware.
+func MustGetCurrentPlayerID(c *gin.Context) int32 {
+	return c.MustGet(CurrentPlayerIDKey).(int32)
+}
+
 // RequireEditor is a Gin middleware that aborts with 403 if the authenticated
 // user does not have AllowEditing permission.
 func (a *API) RequireEditor() gin.HandlerFunc {

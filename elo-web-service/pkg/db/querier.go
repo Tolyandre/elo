@@ -6,6 +6,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -15,12 +16,14 @@ type Querier interface {
 	AddGame(ctx context.Context, name string) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]Game, error)
 	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
+	AddSkullKingTablePlayer(ctx context.Context, arg AddSkullKingTablePlayerParams) (SkullKingTable, error)
 	CreateClub(ctx context.Context, name string) (Club, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
+	CreateSkullKingTable(ctx context.Context, arg CreateSkullKingTableParams) (SkullKingTable, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	DeleteAllMatchScores(ctx context.Context) error
@@ -28,11 +31,13 @@ type Querier interface {
 	DeleteBetSettlementDetails(ctx context.Context, marketID int32) error
 	DeleteClub(ctx context.Context, id int32) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
+	DeleteExpiredSkullKingTables(ctx context.Context) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
 	DeleteMarket(ctx context.Context, id int32) error
 	DeleteMatchScores(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
 	DeletePlayerRatingsByMarket(ctx context.Context, marketID pgtype.Int4) error
+	DeleteSkullKingTable(ctx context.Context, id pgtype.UUID) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID int32) ([]GetBetsAggregatedByOutcomeRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
@@ -54,6 +59,7 @@ type Querier interface {
 	GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatchWithPlayersRow, error)
 	GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error)
 	GetNearestMarketExpiry(ctx context.Context) (pgtype.Timestamptz, error)
+	GetNearestSkullKingTableExpiry(ctx context.Context) (time.Time, error)
 	GetPlayer(ctx context.Context, id int32) (Player, error)
 	GetPlayerBetLimit(ctx context.Context, id int32) (float64, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error)
@@ -68,6 +74,8 @@ type Querier interface {
 	GetPlayerReservedAmount(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID int32) ([]GetSettlementDetailsRow, error)
+	GetSkullKingTable(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
+	GetSkullKingTableForUpdate(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error)
@@ -93,6 +101,7 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	ListSkullKingTables(ctx context.Context) ([]SkullKingTable, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 	// Only succeeds if current status = 'open'; the caller must check affected rows or
@@ -113,6 +122,7 @@ type Querier interface {
 	UpdateMatchScoreRating(ctx context.Context, arg UpdateMatchScoreRatingParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
+	UpdateSkullKingTableState(ctx context.Context, arg UpdateSkullKingTableStateParams) (SkullKingTable, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
