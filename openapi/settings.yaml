@@ -1,0 +1,179 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+SettingsResource:
+  get:
+    operationId: GetSettings
+    tags: [settings]
+    summary: Get current active Elo settings
+    responses:
+      "200":
+        description: Current settings
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Settings'
+              required: [status, data]
+  post:
+    operationId: CreateSettings
+    tags: [settings]
+    summary: Create new Elo settings (effective from a future date)
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              effective_date:
+                type: string
+                format: date-time
+                description: Must be in the future
+              elo_const_k:
+                type: number
+                format: double
+              elo_const_d:
+                type: number
+                format: double
+              starting_elo:
+                type: number
+                format: double
+              win_reward:
+                type: number
+                format: double
+                minimum: 0.1
+                maximum: 5
+            required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward]
+    responses:
+      "201":
+        description: Settings created
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteSettings
+    tags: [settings]
+    summary: Delete future Elo settings
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              effective_date:
+                type: string
+                format: date-time
+            required: [effective_date]
+    responses:
+      "200":
+        description: Settings deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+AllSettings:
+  get:
+    operationId: ListAllSettings
+    tags: [settings]
+    summary: Get all Elo settings entries (historical and future)
+    responses:
+      "200":
+        description: All settings entries
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/EloSettingEntry'
+              required: [status, data]
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+Settings:
+  type: object
+  properties:
+    elo_const_k:
+      type: number
+      format: double
+    elo_const_d:
+      type: number
+      format: double
+    starting_elo:
+      type: number
+      format: double
+    win_reward:
+      type: number
+      format: double
+  required: [elo_const_k, elo_const_d, starting_elo, win_reward]
+
+EloSettingEntry:
+  type: object
+  properties:
+    effective_date:
+      type: string
+      description: RFC3339 date or "-infinity"
+    elo_const_k:
+      type: number
+      format: double
+    elo_const_d:
+      type: number
+      format: double
+    starting_elo:
+      type: number
+      format: double
+    win_reward:
+      type: number
+      format: double
+  required: [effective_date, elo_const_k, elo_const_d, starting_elo, win_reward]

@@ -1,0 +1,20 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+RecalculateGameElo:
+  post:
+    operationId: RecalculateGameElo
+    tags: [admin]
+    summary: Recalculate all game-specific Elo ratings
+    responses:
+      "200":
+        description: Recalculation complete
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "500":
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'

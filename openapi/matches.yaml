@@ -1,0 +1,303 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+MatchesCollection:
+  get:
+    operationId: ListMatches
+    tags: [matches]
+    summary: List matches with cursor-based pagination
+    parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter by game ID
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter by player ID
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter by club ID; use "__no_club__" for players without a club
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of matches per page
+    responses:
+      "200":
+        description: Paginated match list
+        content:
+          application/json:
+            schema:
+              $ref: '#/MatchesPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  post:
+    operationId: AddMatch
+    tags: [matches]
+    summary: Add a new match
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_id:
+                type: string
+              score:
+                type: object
+                additionalProperties:
+                  type: number
+                  format: double
+                description: Map of player_id (string) to numeric score
+            required: [game_id, score]
+    responses:
+      "200":
+        description: Match added
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                  required: [id]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: History change conflict
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+MatchItem:
+  get:
+    operationId: GetMatchById
+    tags: [matches]
+    summary: Get a match by ID
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Match details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Match'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Match not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  put:
+    operationId: UpdateMatch
+    tags: [matches]
+    summary: Update a match (scores and date)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_id:
+                type: string
+              score:
+                type: object
+                additionalProperties:
+                  type: number
+                  format: double
+                description: Map of player_id (string) to numeric score
+              date:
+                type: string
+                format: date-time
+            required: [game_id, score, date]
+    responses:
+      "200":
+        description: Match updated
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Match not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: History change conflict
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+MatchMarketsPath:
+  get:
+    operationId: GetMarketsByMatchId
+    tags: [matches, markets]
+    summary: Get markets associated with a match
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Markets for the match
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: './markets.yaml#/Market'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+MatchPlayer:
+  type: object
+  description: Per-player data within a match (keyed by player_id in the score map)
+  properties:
+    rating_pay:
+      type: number
+      format: double
+    rating_earn:
+      type: number
+      format: double
+    score:
+      type: number
+      format: double
+  required: [rating_pay, rating_earn, score]
+
+Match:
+  type: object
+  properties:
+    id:
+      type: integer
+    game_id:
+      type: string
+    game_name:
+      type: string
+    date:
+      type: string
+      format: date-time
+    score:
+      type: object
+      additionalProperties:
+        $ref: '#/MatchPlayer'
+      description: Map of player_id (string) to player score data
+    has_markets:
+      type: boolean
+  required: [id, game_id, game_name, date, score, has_markets]
+
+MatchesPage:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/Match'
+    next:
+      type: string
+      nullable: true
+      description: Cursor token for the next page; null if no more pages
+  required: [status, data]

@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
-    "generate:api": "openapi-typescript ../openapi.yaml -o app/api-types.gen.ts"
+    "generate:api": "openapi-typescript ../openapi/openapi.yaml -o app/api-types.gen.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

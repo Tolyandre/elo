@@ -23,7 +23,6 @@ Each application (backend and frontend) has its own directory and can be develop
 ```bash
 pnpm --dir ./nextjs dev          # Run dev server on localhost:3000
 pnpm --dir ./nextjs build        # Build for production
-pnpm --dir ./nextjs lint         # Run linter
 pnpm --dir ./nextjs test         # Run tests with vitest
 ```
 
@@ -96,7 +95,8 @@ Database code is generated from SQL queries using sqlc. Edit `.sql` files in `pk
   - **admin/**: User administration
   - **oauth2-callback/**: OAuth2 callback handler
 - **app/*Context.tsx**: React Context providers for global state (settings, players, matches, games, auth)
-- **app/api.ts**: Centralized API client with typed functions for all backend endpoints
+- **app/api.ts**: Centralized API client built on `openapi-fetch` — type-safe HTTP calls generated from the OpenAPI contract
+- **app/api-types.gen.ts**: Auto-generated TypeScript types from `openapi/openapi.yaml` — do not edit manually
 - **components/**: Reusable React components (mostly shadcn/ui)
 
 ### Frontend Conventions
@@ -126,6 +126,24 @@ The custom Elo algorithm (pkg/elo/elo.go:59) handles multi-player matches:
 1. Normalizes scores relative to the lowest score
 2. Calculates win expectation for each player against all others
 3. Adjusts ratings using constants K (volatility) and D (scale factor)
+
+### API Contract (OpenAPI)
+
+The contract lives in `openapi/` as domain-specific files:
+- `openapi/openapi.yaml` — entry point with `$ref` to all domain files
+- `openapi/common.yaml`, `players.yaml`, `games.yaml`, `matches.yaml`, `clubs.yaml`, `settings.yaml`, `users.yaml`, `markets.yaml`, `auth.yaml`, `admin.yaml`, `voice.yaml`, `skull-king.yaml`
+
+To regenerate clients after editing the spec:
+
+```bash
+# Regenerate TypeScript types (frontend)
+pnpm --dir ./nextjs run generate:api
+
+# Regenerate Go server interfaces (backend)
+cd elo-web-service && go generate ./pkg/api/
+```
+
+After `generate:api`, `nextjs/app/api-types.gen.ts` is updated. The frontend uses the `client` export from `app/api.ts` (an `openapi-fetch` instance) for type-safe HTTP calls. SSE endpoints are not in the spec and use manual fetch in `hooks/useSkullKingSSE.ts`.
 
 ## Configuration
 

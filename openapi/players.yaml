@@ -1,0 +1,334 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+PlayersCollection:
+  get:
+    operationId: ListPlayers
+    tags: [players]
+    summary: List all players with Elo rankings
+    responses:
+      "200":
+        description: Players with ranking history
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/Player'
+              required: [status, data]
+  post:
+    operationId: CreatePlayer
+    tags: [players]
+    summary: Create a new player
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            required: [name]
+    responses:
+      "200":
+        description: Created player
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerRef'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Player with this name already exists
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+PlayerItem:
+  patch:
+    operationId: PatchPlayer
+    tags: [players]
+    summary: Update player name
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            required: [name]
+    responses:
+      "200":
+        description: Updated player
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerRef'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Name conflict
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeletePlayer
+    tags: [players]
+    summary: Delete a player
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Player deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request (e.g. player has matches)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+PlayerStatsPath:
+  get:
+    operationId: GetPlayerStats
+    tags: [players]
+    summary: Get player rating history and game statistics
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Player statistics
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/PlayerStats'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Player not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+EloRank:
+  type: object
+  properties:
+    elo:
+      type: number
+      format: double
+    rank:
+      type: integer
+      nullable: true
+    matches_left_for_ranked:
+      type: integer
+  required: [elo, matches_left_for_ranked]
+
+HistoryRank:
+  type: object
+  properties:
+    now:
+      $ref: '#/EloRank'
+    day_ago:
+      $ref: '#/EloRank'
+    week_ago:
+      $ref: '#/EloRank'
+  required: [now, day_ago, week_ago]
+
+Player:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    geologist_name:
+      type: string
+      nullable: true
+    user_id:
+      type: string
+      nullable: true
+    rank:
+      $ref: '#/HistoryRank'
+  required: [id, name, rank]
+
+PlayerRef:
+  description: Minimal player object returned after create/patch
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+  required: [id, name]
+
+RatingPoint:
+  type: object
+  properties:
+    date:
+      type: string
+      format: date-time
+    rating:
+      type: number
+      format: double
+  required: [date, rating]
+
+GameMatchStat:
+  type: object
+  properties:
+    game_id:
+      type: string
+    game_name:
+      type: string
+    matches_count:
+      type: integer
+    wins:
+      type: integer
+  required: [game_id, game_name, matches_count, wins]
+
+GameEloStat:
+  type: object
+  properties:
+    game_id:
+      type: string
+    game_name:
+      type: string
+    elo_earned:
+      type: number
+      format: double
+  required: [game_id, game_name, elo_earned]
+
+PlayerStats:
+  type: object
+  properties:
+    player_name:
+      type: string
+    rating_history:
+      type: array
+      items:
+        $ref: '#/RatingPoint'
+    top_games_by_matches:
+      type: array
+      items:
+        $ref: '#/GameMatchStat'
+    top_games_by_elo_earned:
+      type: array
+      items:
+        $ref: '#/GameEloStat'
+    worst_games_by_elo_earned:
+      type: array
+      items:
+        $ref: '#/GameEloStat'
+  required: [player_name, rating_history, top_games_by_matches, top_games_by_elo_earned, worst_games_by_elo_earned]

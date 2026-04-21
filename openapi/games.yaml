@@ -1,0 +1,338 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+GamesCollection:
+  get:
+    operationId: ListGames
+    tags: [games]
+    summary: List all games ordered by last played
+    responses:
+      "200":
+        description: List of games
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/GameList'
+              required: [status, data]
+  post:
+    operationId: CreateGame
+    tags: [games]
+    summary: Create a new game
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            required: [name]
+    responses:
+      "200":
+        description: Created game
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                  required: [id, name]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Game with this name already exists
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+GameItem:
+  get:
+    operationId: GetGame
+    tags: [games]
+    summary: Get game details and player Elo rankings
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Game details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Game'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  patch:
+    operationId: PatchGame
+    tags: [games]
+    summary: Update game name
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            required: [name]
+    responses:
+      "200":
+        description: Updated game
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+                  required: [id, name]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Game not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteGame
+    tags: [games]
+    summary: Delete a game
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Game deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request (e.g. game has matches)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Game not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+GameMatchesPath:
+  get:
+    operationId: GetGameMatches
+    tags: [games]
+    summary: Get all matches for a game
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Matches for the game
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/GameMatch'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+GameListItem:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    last_played_order:
+      type: integer
+    total_matches:
+      type: integer
+  required: [id, name, last_played_order, total_matches]
+
+GameList:
+  type: object
+  properties:
+    games:
+      type: array
+      items:
+        $ref: '#/GameListItem'
+  required: [games]
+
+GamePlayer:
+  type: object
+  properties:
+    id:
+      type: string
+    elo:
+      type: number
+      format: double
+    rank:
+      type: integer
+  required: [id, elo, rank]
+
+Game:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    total_matches:
+      type: integer
+    players:
+      type: array
+      items:
+        $ref: '#/GamePlayer'
+  required: [id, name, total_matches, players]
+
+GameMatchPlayer:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    score:
+      type: number
+      format: double
+    game_elo_pay:
+      type: number
+      format: double
+    game_elo_earn:
+      type: number
+      format: double
+    game_new_elo:
+      type: number
+      format: double
+  required: [id, name, score, game_elo_pay, game_elo_earn, game_new_elo]
+
+GameMatch:
+  type: object
+  properties:
+    id:
+      type: integer
+    date:
+      type: string
+      format: date-time
+      nullable: true
+    players:
+      type: array
+      items:
+        $ref: '#/GameMatchPlayer'
+  required: [id, players]

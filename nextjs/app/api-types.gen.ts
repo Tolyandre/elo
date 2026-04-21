@@ -479,6 +479,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skull-king/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all active Skull King tables */
+        get: operations["ListSkullKingTables"];
+        put?: never;
+        /** Create a new Skull King table */
+        post: operations["CreateSkullKingTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skull-king/tables/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Skull King table by ID */
+        get: operations["GetSkullKingTable"];
+        put?: never;
+        post?: never;
+        /** Delete a Skull King table (host only) */
+        delete: operations["DeleteSkullKingTable"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skull-king/tables/{id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update game state (host only) */
+        patch: operations["UpdateSkullKingTableState"];
+        trace?: never;
+    };
+    "/skull-king/tables/{id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Join a Skull King table as a player */
+        post: operations["JoinSkullKingTable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skull-king/tables/{id}/bid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a bid for the current round */
+        post: operations["SubmitSkullKingBid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skull-king/tables/{id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit actual tricks taken for the current round */
+        post: operations["SubmitSkullKingResult"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skull-king/parse-card-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Identify a Skull King card from a base64-encoded image */
+        post: operations["ParseSkullKingCardImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -541,33 +662,6 @@ export interface components {
             top_games_by_elo_earned: components["schemas"]["GameEloStat"][];
             worst_games_by_elo_earned: components["schemas"]["GameEloStat"][];
         };
-        /** @description Per-player data within a match (keyed by player_id in the score map) */
-        MatchPlayer: {
-            /** Format: double */
-            rating_pay: number;
-            /** Format: double */
-            rating_earn: number;
-            /** Format: double */
-            score: number;
-        };
-        Match: {
-            id: number;
-            game_id: string;
-            game_name: string;
-            /** Format: date-time */
-            date: string;
-            /** @description Map of player_id (string) to player score data */
-            score: {
-                [key: string]: components["schemas"]["MatchPlayer"];
-            };
-            has_markets: boolean;
-        };
-        MatchesPage: {
-            status: string;
-            data: components["schemas"]["Match"][];
-            /** @description Cursor token for the next page; null if no more pages */
-            next?: string | null;
-        };
         GameListItem: {
             id: string;
             name: string;
@@ -606,6 +700,33 @@ export interface components {
             /** Format: date-time */
             date?: string | null;
             players: components["schemas"]["GameMatchPlayer"][];
+        };
+        /** @description Per-player data within a match (keyed by player_id in the score map) */
+        MatchPlayer: {
+            /** Format: double */
+            rating_pay: number;
+            /** Format: double */
+            rating_earn: number;
+            /** Format: double */
+            score: number;
+        };
+        Match: {
+            id: number;
+            game_id: string;
+            game_name: string;
+            /** Format: date-time */
+            date: string;
+            /** @description Map of player_id (string) to player score data */
+            score: {
+                [key: string]: components["schemas"]["MatchPlayer"];
+            };
+            has_markets: boolean;
+        };
+        MatchesPage: {
+            status: string;
+            data: components["schemas"]["Match"][];
+            /** @description Cursor token for the next page; null if no more pages */
+            next?: string | null;
         };
         Club: {
             id: string;
@@ -664,7 +785,7 @@ export interface components {
             /** @enum {string} */
             market_type: "match_winner" | "win_streak";
             /** @enum {string} */
-            status: "open" | "betting_closed" | "resolved" | "expired";
+            status: "open" | "betting_closed" | "resolved" | "expired" | "cancelled";
             resolution_outcome?: string | null;
             /** Format: date-time */
             starts_at?: string | null;
@@ -710,6 +831,43 @@ export interface components {
         VoiceParseResult: {
             game_id?: string | null;
             scores: components["schemas"]["VoiceScore"][];
+        };
+        SkullKingPlayer: {
+            id: string;
+            name: string;
+        };
+        SkullKingRoundEntry: {
+            bid: number;
+            actual?: number | null;
+            bonus: number;
+        };
+        SkullKingGameState: {
+            /** @enum {string} */
+            phase: "setup" | "bidding" | "waiting-for-bids" | "bid-review" | "result-entry" | "round-complete";
+            players: components["schemas"]["SkullKingPlayer"][];
+            currentRound: number;
+            currentPlayerIndex: number;
+            /** @description rounds[roundIndex][playerIndex] — null until the player has entered data */
+            rounds: (components["schemas"]["SkullKingRoundEntry"] | null)[][];
+            fallbackGameId?: string | null;
+        };
+        SkullKingTableSummary: {
+            id: string;
+            host_user_id: number;
+            game_state: components["schemas"]["SkullKingGameState"];
+            connected_player_ids: number[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        SkullKingCardImageResult: {
+            /** @enum {string} */
+            type: "jolly-roger" | "chest" | "parrot" | "map";
+            value: number;
+        } | {
+            /** @enum {string} */
+            type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale";
         };
     };
     responses: never;
@@ -2746,6 +2904,423 @@ export interface operations {
                 };
             };
             /** @description Ollama error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListSkullKingTables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of tables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"][];
+                    };
+                };
+            };
+        };
+    };
+    CreateSkullKingTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    game_state: components["schemas"]["SkullKingGameState"];
+                };
+            };
+        };
+        responses: {
+            /** @description Table created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetSkullKingTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Table details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    DeleteSkullKingTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Table deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden (not host) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    UpdateSkullKingTableState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    game_state: components["schemas"]["SkullKingGameState"];
+                };
+            };
+        };
+        responses: {
+            /** @description Updated table */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden (not host) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    JoinSkullKingTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Joined table */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    SubmitSkullKingBid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bid: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Bid submitted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Wrong phase, player not in game, or bid already submitted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    SubmitSkullKingResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    actual: number;
+                    bonus: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Result submitted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingTableSummary"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Table not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Wrong phase, player not in game, or result already submitted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ParseSkullKingCardImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Base64-encoded card image */
+                    image: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Identified card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["SkullKingCardImageResult"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Image processing error */
             500: {
                 headers: {
                     [name: string]: unknown;

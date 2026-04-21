@@ -1,0 +1,113 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+AuthLogin:
+  get:
+    operationId: AuthLogin
+    tags: [auth]
+    summary: Initiate Google OAuth2 login flow
+    responses:
+      "302":
+        description: Redirect to Google OAuth
+
+AuthOAuth2Callback:
+  get:
+    operationId: AuthOAuth2Callback
+    tags: [auth]
+    summary: Google OAuth2 callback
+    parameters:
+      - name: code
+        in: query
+        schema:
+          type: string
+      - name: state
+        in: query
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Login successful
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+              required: [status]
+
+AuthLogout:
+  post:
+    operationId: AuthLogout
+    tags: [auth]
+    summary: Logout (clears session cookie)
+    responses:
+      "200":
+        description: Logged out
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+
+AuthMe:
+  get:
+    operationId: GetMe
+    tags: [auth]
+    summary: Get current authenticated user
+    security:
+      - cookieAuth: []
+    responses:
+      "200":
+        description: Current user
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: './users.yaml#/User'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  patch:
+    operationId: PatchMe
+    tags: [auth]
+    summary: Update current user's linked player
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              player_id:
+                type: string
+                nullable: true
+    responses:
+      "204":
+        description: Updated
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Player already linked to another user
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'

@@ -1,0 +1,80 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+VoiceParse:
+  post:
+    operationId: ParseVoiceInput
+    tags: [voice]
+    summary: Parse natural language speech into game scores using Ollama
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              text:
+                type: string
+                description: Speech-to-text input to parse
+            required: [text]
+    responses:
+      "200":
+        description: Parsed game and scores
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/VoiceParseResult'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "500":
+        description: Ollama error
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+VoiceScore:
+  type: object
+  properties:
+    player_id:
+      type: string
+    points:
+      type: integer
+  required: [player_id, points]
+
+VoiceParseResult:
+  type: object
+  properties:
+    game_id:
+      type: string
+      nullable: true
+    scores:
+      type: array
+      items:
+        $ref: '#/VoiceScore'
+  required: [scores]

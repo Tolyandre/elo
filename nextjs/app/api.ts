@@ -1,3 +1,5 @@
+import createClient, { type Middleware } from "openapi-fetch";
+import type { components, paths } from "./api-types.gen";
 import { toast } from "sonner";
 
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
@@ -7,65 +9,60 @@ if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
 
 export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
-export type EloRank = {
-    elo: number;
-    rank: number | null;
-    matches_left_for_ranked: number
-}
+// ─── openapi-fetch client ─────────────────────────────────────────────────────
 
-export type Player = {
-    id: string;
-    name: string;
-    geologist_name?: string | null;
-    user_id?: string | null;
-    rank: {
-        now: EloRank;
-        day_ago: EloRank;
-        week_ago: EloRank;
-    }
+const errorToastMiddleware: Middleware = {
+    async onResponse({ response }) {
+        if (!response.ok) {
+            const body = await response.clone().json().catch(() => null);
+            const msg = body?.message ?? `Ошибка ${response.status}`;
+            toast.error(msg);
+        }
+        return response;
+    },
 };
+
+export const client = createClient<paths>({
+    baseUrl: EloWebServiceBaseUrl,
+    credentials: "include",
+});
+client.use(errorToastMiddleware);
+
+// ─── Re-exported schema types ─────────────────────────────────────────────────
+
+export type EloRank = components["schemas"]["EloRank"];
+export type Player = components["schemas"]["Player"];
+export type User = components["schemas"]["User"];
+export type Club = components["schemas"]["Club"];
+export type GameList = components["schemas"]["GameList"];
+export type GameListItem = components["schemas"]["GameListItem"];
+export type Game = components["schemas"]["Game"];
+export type GameMatchPlayer = components["schemas"]["GameMatchPlayer"];
+export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
+export type Market = components["schemas"]["Market"];
+export type MarketDetail = components["schemas"]["MarketDetail"];
+export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
+export type WinStreakParams = components["schemas"]["WinStreakParams"];
+export type SettlementDetail = components["schemas"]["SettlementDetail"];
+export type VoiceParseResult = components["schemas"]["VoiceParseResult"];
+export type SkullKingTableSummary = components["schemas"]["SkullKingTableSummary"];
+export type SkullKingGameState = components["schemas"]["SkullKingGameState"];
+export type SkullKingRoundEntry = components["schemas"]["SkullKingRoundEntry"];
+export type SkullKingGamePhase = components["schemas"]["SkullKingGameState"]["phase"];
+export type SkullKingCardImageResult = components["schemas"]["SkullKingCardImageResult"];
+export type PlayerStats = components["schemas"]["PlayerStats"];
+export type GameEloStat = components["schemas"]["GameEloStat"];
+export type GameMatchStat = components["schemas"]["GameMatchStat"];
+
+// ─── Frontend-specific types (differ from raw API response) ───────────────────
 
 export type Period = keyof Player["rank"];
 
-export type User = {
-    id: string;
-    name: string;
-    can_edit: boolean;
-    player_id?: string | null;
-}
-
-export type Status = {
-    status: "success" | "fail";
-    error?: string;
-}
-
-export type Club = {
-    id: string;
-    name: string;
-    geologist_name?: string | null;
-    players: number[];
-};
-
-export type GameList = {
-    games: GameListItem[];
-};
-
-export type GameListItem = {
-    id: string;
-    name: string;
-    total_matches: number;
-    last_played_order: number;
-};
-
-export type Game = {
-    id: string;
-    name: string;
-    total_matches: number;
-    players: {
-        id: string;
-        elo: number;
-        rank: number;
-    }[];
+// score fields are camelCased; date is a Date object
+export type PlayerScore = {
+    ratingPay: number;
+    ratingEarn: number;
+    score: number;
 };
 
 export type Match = {
@@ -77,47 +74,56 @@ export type Match = {
     has_markets: boolean;
 };
 
-export type PlayerScore = {
-    ratingPay: number;
-    ratingEarn: number;
-    score: number;
-};
-
-export type GameMatchPlayer = {
-    id: string;
-    name: string;
-    score: number;
-    game_elo_pay: number;
-    game_elo_earn: number;
-    game_new_elo: number;
-};
-
+// date is a Date object
 export type GameMatch = {
     id: number;
     date: Date | null;
     players: GameMatchPlayer[];
 };
 
-export async function getPingPromise() {
-    var res = await fetch(`${EloWebServiceBaseUrl}/ping`);
-    return await handleJsonErrorResponse(res);
-}
-
-export async function getPlayersPromise(): Promise<Player[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/players`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
-}
+export type Status = {
+    status: "success" | "fail";
+    error?: string;
+};
 
 export type MatchesPage = {
     items: Match[];
     next: string | null;
 };
+
+export type RatingPoint = { date: string; rating: number };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mapMatch(m: components["schemas"]["Match"]): Match {
+    return {
+        id: m.id,
+        game_id: m.game_id,
+        game_name: m.game_name,
+        score: Object.fromEntries(
+            Object.entries(m.score).map(([pid, s]) => [
+                pid,
+                { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
+            ])
+        ),
+        date: m.date ? new Date(m.date) : null,
+        has_markets: m.has_markets,
+    };
+}
+
+// ─── API functions ────────────────────────────────────────────────────────────
+
+export async function getPingPromise() {
+    const { data, error } = await client.GET("/ping");
+    if (error) throw error;
+    return data;
+}
+
+export async function getPlayersPromise(): Promise<Player[]> {
+    const { data, error } = await client.GET("/players");
+    if (error) throw error;
+    return data.data;
+}
 
 export async function getMatchesPagePromise(params?: {
     player_id?: string;
@@ -126,227 +132,111 @@ export async function getMatchesPagePromise(params?: {
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
-    try {
-        const query = new URLSearchParams();
-        if (params?.next) {
-            // Continuation mode: search params are encoded in the cursor.
-            query.set("next", params.next);
-        } else {
-            // Initial mode: pass search params explicitly.
-            if (params?.player_id) query.set("player_id", params.player_id);
-            if (params?.game_id) query.set("game_id", params.game_id);
-            if (params?.club_id) query.set("club_id", params.club_id);
-        }
-        if (params?.limit) query.set("limit", String(params.limit));
-        const qs = query.toString();
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches${qs ? `?${qs}` : ""}`);
-        let body: any;
-        try { body = await res.json(); } catch { throw new Error(`Ошибка ${res.status}`); }
-        if (body.status === "fail") throw new Error(body.message);
-        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
-        const items: Match[] = (body.data as any[]).map(m => ({
-            id: m.id,
-            game_id: m.game_id,
-            game_name: m.game_name,
-            score: Object.fromEntries(
-                Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
-                    pid,
-                    { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
-                ])
-            ),
-            date: m.date ? new Date(m.date) : null,
-            has_markets: m.has_markets ?? false,
-        }));
-        return { items, next: body.next ?? null };
+    const query: Record<string, string | number> = {};
+    if (params?.next) {
+        // Continuation mode: search params are encoded in the cursor.
+        query.next = params.next;
+    } else {
+        // Initial mode: pass search params explicitly.
+        if (params?.player_id) query.player_id = params.player_id;
+        if (params?.game_id) query.game_id = params.game_id;
+        if (params?.club_id) query.club_id = params.club_id;
     }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    if (params?.limit) query.limit = params.limit;
+
+    const { data, error } = await client.GET("/matches", { params: { query } });
+    if (error) throw error;
+    return { items: data.data.map(mapMatch), next: data.next ?? null };
 }
 
 export async function getMatchByIdPromise(id: number): Promise<Match> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${id}`);
-        const m: any = await handleJsonErrorResponse(res);
-        return {
-            id: m.id,
-            game_id: m.game_id,
-            game_name: m.game_name,
-            score: Object.fromEntries(
-                Object.entries(m.score as Record<string, any>).map(([pid, s]) => [
-                    pid,
-                    { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
-                ])
-            ),
-            date: m.date ? new Date(m.date) : null,
-            has_markets: m.has_markets ?? false,
-        };
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/matches/{id}", { params: { path: { id: String(id) } } });
+    if (error) throw error;
+    return mapMatch(data.data);
 }
 
 export async function addMatchPromise(payload: { game_id: string, score: Record<string, number> }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/matches", { body: payload });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function updateMatchPromise(matchId: number, payload: { game_id: string, score: Record<string, number>, date: string }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${matchId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.PUT("/matches/{id}", {
+        params: { path: { id: String(matchId) } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data;
 }
 
-export type EloSettingEntry = {
-    effective_date: string;
-    elo_const_k: number;
-    elo_const_d: number;
-    starting_elo: number;
-    win_reward: number;
-}
-
-export async function getSettingsPromise(): Promise<{
-    elo_const_k: number,
-    elo_const_d: number,
-    starting_elo: number,
-    win_reward: number,
-}> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/settings`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+export async function getSettingsPromise(): Promise<components["schemas"]["Settings"]> {
+    const { data, error } = await client.GET("/settings");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getGamesPromise(): Promise<GameList> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/games");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getGamePromise(id: string): Promise<Game> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/games/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games/${gameId}/matches`);
-        const data: any[] = await handleJsonErrorResponse(res);
-        return data.map(m => ({
-            id: m.id,
-            date: m.date ? new Date(m.date) : null,
-            players: m.players as GameMatchPlayer[],
-        }));
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/games/{id}/matches", { params: { path: { id: gameId } } });
+    if (error) throw error;
+    return data.data.map(m => ({
+        id: m.id,
+        date: m.date ? new Date(m.date) : null,
+        players: m.players,
+    }));
 }
 
 export async function patchGamePromise(id: string, payload: { name: string }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.PATCH("/games/{id}", {
+        params: { path: { id } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function deleteGamePromise(id: string) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games/${id}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.DELETE("/games/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data;
 }
 
 export async function createGamePromise(payload: { name: string }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/games`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/games", { body: payload });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getMePromise(): Promise<User | undefined> {
+    // Manual fetch: 401 returns undefined instead of throwing
     try {
         const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
-        if (res.status === 401)
-            return undefined;
-
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
+        if (res.status === 401) return undefined;
+        const body = await res.json();
+        if (body.status === "fail") throw new Error(body.message);
+        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+        return body.data as User;
+    } catch (error) {
+        if (error instanceof Error) toast.error(error.message);
         throw error;
     }
 }
 
 export async function oauth2Callback(params?: Record<string, string | string[]>): Promise<Status> {
+    // Manual fetch: non-standard query param assembly
     try {
-        // Build query string from params if provided
         let url = `${EloWebServiceBaseUrl}/auth/oauth2-callback`;
         if (params && Object.keys(params).length > 0) {
             const searchParams = new URLSearchParams();
@@ -359,227 +249,118 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
             }
             url += `?${searchParams.toString()}`;
         }
-
         const res = await fetch(url, { method: 'GET', credentials: 'include' });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
+        const body = await res.json();
+        if (body.status === "fail") throw new Error(body.message);
+        if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+        return body;
+    } catch (error) {
+        if (error instanceof Error) toast.error(error.message);
         throw error;
     }
 }
 
 export async function logout(): Promise<Status> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/auth/logout");
+    if (error) throw error;
+    return data as Status;
 }
 
 export async function listUsersPromise(): Promise<User[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/users`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/users");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function patchMePromise(payload: { player_id: string | null }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        if (res.status === 204) return;
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.PATCH("/auth/me", { body: payload });
+    if (error) throw error;
 }
 
 export async function patchUserPromise(userId: string, payload: { can_edit: boolean }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/users/${userId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.PATCH("/users/{userId}", {
+        params: { path: { userId } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function createPlayerPromise(payload: { name: string }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/players`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/players", { body: payload });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function patchPlayerPromise(playerId: string, payload: { name: string }) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/players/${playerId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.PATCH("/players/{id}", {
+        params: { path: { id: playerId } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function deletePlayerPromise(playerId: string) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/players/${playerId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.DELETE("/players/{id}", { params: { path: { id: playerId } } });
+    if (error) throw error;
+    return data;
 }
 
 export async function listClubsPromise(): Promise<Club[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/clubs");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getClubPromise(id: string): Promise<Club> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/clubs/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function createClubPromise(payload: { name: string }): Promise<Club> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/clubs", { body: payload });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function patchClubPromise(id: string, payload: { name: string }): Promise<Club> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.PATCH("/clubs/{id}", {
+        params: { path: { id } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function deleteClubPromise(id: string) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${id}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.DELETE("/clubs/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data;
 }
 
 export async function addClubMemberPromise(clubId: string, playerId: number) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${clubId}/members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ player_id: playerId }),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/clubs/{id}/members", {
+        params: { path: { id: clubId } },
+        body: { player_id: playerId },
+    });
+    if (error) throw error;
+    return data;
 }
 
 export async function removeClubMemberPromise(clubId: string, playerId: number) {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/clubs/${clubId}/members/${playerId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.DELETE("/clubs/{id}/members/{playerId}", {
+        params: { path: { id: clubId, playerId: String(playerId) } },
+    });
+    if (error) throw error;
+    return data;
 }
 
 export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/settings/all`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/settings/all");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function createSettingsPromise(payload: {
@@ -589,108 +370,32 @@ export async function createSettingsPromise(payload: {
     starting_elo: number;
     win_reward: number;
 }): Promise<void> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/settings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.POST("/settings", { body: payload });
+    if (error) throw error;
 }
 
 export async function deleteSettingsPromise(effectiveDate: string): Promise<void> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/settings`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ effective_date: effectiveDate }),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.DELETE("/settings", {
+        body: { effective_date: effectiveDate },
+    });
+    if (error) throw error;
 }
 
-export type SettlementDetail = {
-    player_id: string;
-    player_name: string;
-    staked: number;
-    earned: number;
-};
-
-export type MatchWinnerParams = {
-    required_player_ids: string[];
-    game_ids: string[];
-};
-
-export type WinStreakParams = {
-    game_ids: string[];
-    wins_required: number;
-    max_losses: number | null;
-};
-
-export type Market = {
-    id: string;
-    market_type: 'match_winner' | 'win_streak';
-    status: 'open' | 'betting_closed' | 'resolved' | 'cancelled';
-    resolution_outcome?: string | null;
-    starts_at: string | null;
-    closes_at: string | null;
-    created_at: string | null;
-    resolved_at: string | null;
-    betting_closed_at?: string | null;
-    yes_pool: number;
-    no_pool: number;
-    yes_coefficient: number;
-    no_coefficient: number;
-    target_player_id: string;
-    params: MatchWinnerParams | WinStreakParams | null;
-    settlement?: SettlementDetail[];
-};
-
-export type MarketDetail = Market & {
-    my_yes_staked?: number;
-    my_no_staked?: number;
-    projected_yes_reward?: number;
-    projected_no_reward?: number;
-    reserved?: number;
-    bet_limit?: number;
-};
-
 export async function getMarketsPromise(): Promise<{ active: Market[]; closed: Market[] }> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets`, { credentials: 'include' });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/markets");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, { credentials: 'include' });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/markets/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function createMarketPromise(payload: {
-    market_type: string;
-    starts_at: string | null; // null = start immediately
+    market_type: "match_winner" | "win_streak";
+    starts_at: string | null;
     closes_at: string;
     target_player_id: string;
     required_player_ids?: string[];
@@ -699,274 +404,124 @@ export async function createMarketPromise(payload: {
     wins_required?: number | null;
     max_losses?: number | null;
 }): Promise<{ id: string }> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/markets", {
+        body: {
+            ...payload,
+            starts_at: payload.starts_at ?? undefined,
+            wins_required: payload.wins_required ?? undefined,
+        },
+    });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function deleteMarketPromise(id: string): Promise<void> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, {
-            method: 'DELETE',
-            credentials: 'include',
-        });
-        if (res.status === 204) return;
-        await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.DELETE("/markets/{id}", { params: { path: { id } } });
+    if (error) throw error;
 }
 
 export async function closeMarketBettingPromise(id: string): Promise<void> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ status: 'betting_closed' }),
-        });
-        await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.PATCH("/markets/{id}", {
+        params: { path: { id } },
+        body: { status: "betting_closed" },
+    });
+    if (error) throw error;
 }
 
 export async function getMarketsByMatchIdPromise(matchId: number): Promise<Market[]> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/matches/${matchId}/markets`, {
-            credentials: 'include',
-        });
-        const data = await handleJsonErrorResponse(res);
-        return (data ?? []) as Market[];
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/matches/{id}/markets", {
+        params: { path: { id: String(matchId) } },
+    });
+    if (error) throw error;
+    return data.data ?? [];
 }
 
 export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', amount: number): Promise<void> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/markets/${marketId}/bets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ outcome, amount }),
-        });
-        await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { error } = await client.POST("/markets/{id}/bets", {
+        params: { path: { id: marketId } },
+        body: { outcome, amount },
+    });
+    if (error) throw error;
 }
-
-export type RatingPoint = { date: string; rating: number };
-export type GameMatchStat = { game_id: string; game_name: string; matches_count: number; wins: number };
-export type GameEloStat = { game_id: string; game_name: string; elo_earned: number };
-export type PlayerStats = {
-    player_name: string;
-    rating_history: RatingPoint[];
-    top_games_by_matches: GameMatchStat[];
-    top_games_by_elo_earned: GameEloStat[];
-    worst_games_by_elo_earned: GameEloStat[];
-};
 
 export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/players/${id}/stats`);
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.GET("/players/{id}/stats", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
 }
-
-async function handleJsonErrorResponse(response: Response) {
-    let body: any;
-    try {
-        body = await response.json();
-    }
-    catch (error) {
-        if (!response.ok) {
-            throw new Error(`Ошибка ${response.status}`);
-        }
-        throw error;
-    }
-
-    if (body.status === "fail") {
-        throw new Error(body.message);
-    }
-
-    if (!response.ok) {
-        throw new Error(`Ошибка ${response.status}`);
-    }
-
-    return body.data;
-}
-
-export type VoiceParseResult = {
-    game_id: string | null;
-    scores: { player_id: string; points: number }[];
-};
 
 export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/voice/parse`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ text }),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/voice/parse", { body: { text } });
+    if (error) throw error;
+    return data.data;
 }
-
-export type SkullKingCardImageResult =
-    | { type: "jolly-roger" | "chest" | "parrot" | "map"; value: number }
-    | { type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale" };
 
 export async function parseSkullKingCardImagePromise(imageBase64: string): Promise<SkullKingCardImageResult> {
-    try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/parse-card-image`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image: imageBase64 }),
-        });
-        return await handleJsonErrorResponse(res);
-    }
-    catch (error) {
-        showToast(error);
-        throw error;
-    }
+    const { data, error } = await client.POST("/skull-king/parse-card-image", {
+        body: { image: imageBase64 },
+    });
+    if (error) throw error;
+    return data.data;
 }
-
-function showToast(error: unknown) {
-    if (error instanceof Error) {
-        toast.error(error.message);
-    } else {
-        toast.error("An unknown error occurred " + error);
-    }
-}
-
-// ─── Skull King game types (shared with page.tsx) ────────────────────────────
-
-export type SkullKingRoundEntry = {
-    bid: number;
-    actual: number | null;
-    bonus: number;
-};
-
-export type SkullKingGamePhase =
-    | "setup"
-    | "bidding"
-    | "waiting-for-bids"
-    | "bid-review"
-    | "result-entry"
-    | "round-complete";
-
-export type SkullKingGameState = {
-    phase: SkullKingGamePhase;
-    players: { id: string; name: string }[];
-    currentRound: number;
-    currentPlayerIndex: number;
-    rounds: (SkullKingRoundEntry | null)[][];
-    fallbackGameId?: string;
-};
-
-export type SkullKingTableSummary = {
-    id: string;
-    host_user_id: number;
-    game_state: SkullKingGameState;
-    connected_player_ids: number[];
-    created_at: string;
-    expires_at: string;
-};
 
 // ─── Skull King table API ─────────────────────────────────────────────────────
 
 export async function listSkullKingTablesPromise(): Promise<SkullKingTableSummary[]> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables`);
-    return handleJsonErrorResponse(res);
+    const { data, error } = await client.GET("/skull-king/tables");
+    if (error) throw error;
+    return data.data;
 }
 
 export async function createSkullKingTablePromise(gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ game_state: gameState }),
-    });
-    return handleJsonErrorResponse(res);
+    const { data, error } = await client.POST("/skull-king/tables", { body: { game_state: gameState } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function getSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}`);
-    return handleJsonErrorResponse(res);
+    const { data, error } = await client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function updateSkullKingTableStatePromise(tableId: string, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/state`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ game_state: gameState }),
+    const { data, error } = await client.PATCH("/skull-king/tables/{id}/state", {
+        params: { path: { id: tableId } },
+        body: { game_state: gameState },
     });
-    return handleJsonErrorResponse(res);
+    if (error) throw error;
+    return data.data;
 }
 
 export async function joinSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/join`, {
-        method: "POST",
-        credentials: "include",
+    const { data, error } = await client.POST("/skull-king/tables/{id}/join", {
+        params: { path: { id: tableId } },
     });
-    return handleJsonErrorResponse(res);
+    if (error) throw error;
+    return data.data;
 }
 
 export async function submitSkullKingBidPromise(tableId: string, bid: number): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/bid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ bid }),
+    const { data, error } = await client.POST("/skull-king/tables/{id}/bid", {
+        params: { path: { id: tableId } },
+        body: { bid },
     });
-    return handleJsonErrorResponse(res);
+    if (error) throw error;
+    return data.data;
 }
 
 export async function submitSkullKingResultPromise(tableId: string, actual: number, bonus: number): Promise<SkullKingTableSummary> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/result`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ actual, bonus }),
+    const { data, error } = await client.POST("/skull-king/tables/{id}/result", {
+        params: { path: { id: tableId } },
+        body: { actual, bonus },
     });
-    return handleJsonErrorResponse(res);
+    if (error) throw error;
+    return data.data;
 }
 
 export async function deleteSkullKingTablePromise(tableId: string): Promise<void> {
-    const res = await fetch(`${EloWebServiceBaseUrl}/skull-king/tables/${tableId}`, {
-        method: "DELETE",
-        credentials: "include",
+    const { error } = await client.DELETE("/skull-king/tables/{id}", {
+        params: { path: { id: tableId } },
     });
-    if (res.status === 204) return;
-    await handleJsonErrorResponse(res);
+    if (error) throw error;
 }

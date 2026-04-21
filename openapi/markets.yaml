@@ -1,0 +1,445 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+MarketsCollection:
+  get:
+    operationId: ListMarkets
+    tags: [markets]
+    summary: List active and closed markets
+    responses:
+      "200":
+        description: Markets grouped into active and closed
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    active:
+                      type: array
+                      items:
+                        $ref: '#/Market'
+                    closed:
+                      type: array
+                      items:
+                        $ref: '#/Market'
+                  required: [active, closed]
+              required: [status, data]
+  post:
+    operationId: CreateMarket
+    tags: [markets]
+    summary: Create a new betting market
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              market_type:
+                type: string
+                enum: [match_winner, win_streak]
+              starts_at:
+                type: string
+                format: date-time
+                description: Defaults to now if omitted; must not be in the past if provided
+              closes_at:
+                type: string
+                format: date-time
+              target_player_id:
+                type: string
+              # match_winner fields
+              required_player_ids:
+                type: array
+                items:
+                  type: string
+              game_ids:
+                type: array
+                items:
+                  type: string
+              # win_streak fields
+              streak_game_ids:
+                type: array
+                items:
+                  type: string
+              wins_required:
+                type: integer
+              max_losses:
+                type: integer
+                nullable: true
+            required: [market_type, closes_at, target_player_id]
+    responses:
+      "201":
+        description: Market created
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                  required: [id]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+MarketItem:
+  get:
+    operationId: GetMarket
+    tags: [markets]
+    summary: Get market details (includes user-specific projections if authenticated)
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Market detail
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/MarketDetail'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Market not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  patch:
+    operationId: PatchMarket
+    tags: [markets]
+    summary: Update market status (e.g. close betting)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [betting_closed]
+            required: [status]
+    responses:
+      "200":
+        description: Market updated
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Market not open
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteMarket
+    tags: [markets]
+    summary: Delete a market (only if status is open)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Market deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Market not open
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+MarketBets:
+  post:
+    operationId: PlaceBet
+    tags: [markets]
+    summary: Place a bet on a market
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              outcome:
+                type: string
+                enum: [yes, no]
+              amount:
+                type: number
+                format: double
+                minimum: 0
+                exclusiveMinimum: true
+            required: [outcome, amount]
+    responses:
+      "201":
+        description: Bet placed
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (no linked player)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Market not open for betting
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "422":
+        description: Bet limit exceeded
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+SettlementDetail:
+  type: object
+  properties:
+    player_id:
+      type: string
+    player_name:
+      type: string
+    staked:
+      type: number
+      format: double
+    earned:
+      type: number
+      format: double
+  required: [player_id, player_name, staked, earned]
+
+MatchWinnerParams:
+  type: object
+  properties:
+    required_player_ids:
+      type: array
+      items:
+        type: string
+    game_ids:
+      type: array
+      items:
+        type: string
+  required: [required_player_ids]
+
+WinStreakParams:
+  type: object
+  properties:
+    game_ids:
+      type: array
+      items:
+        type: string
+    wins_required:
+      type: integer
+    max_losses:
+      type: integer
+      nullable: true
+  required: [game_ids, wins_required]
+
+Market:
+  type: object
+  properties:
+    id:
+      type: string
+    market_type:
+      type: string
+      enum: [match_winner, win_streak]
+    status:
+      type: string
+      enum: [open, betting_closed, resolved, expired, cancelled]
+    resolution_outcome:
+      type: string
+      nullable: true
+    starts_at:
+      type: string
+      format: date-time
+      nullable: true
+    closes_at:
+      type: string
+      format: date-time
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+      nullable: true
+    resolved_at:
+      type: string
+      format: date-time
+      nullable: true
+    betting_closed_at:
+      type: string
+      format: date-time
+      nullable: true
+    yes_pool:
+      type: number
+      format: double
+    no_pool:
+      type: number
+      format: double
+    yes_coefficient:
+      type: number
+      format: double
+    no_coefficient:
+      type: number
+      format: double
+    target_player_id:
+      type: string
+    params:
+      nullable: true
+      description: Market-type-specific parameters
+      oneOf:
+        - $ref: '#/MatchWinnerParams'
+        - $ref: '#/WinStreakParams'
+    settlement:
+      type: array
+      items:
+        $ref: '#/SettlementDetail'
+  required: [id, market_type, status, yes_pool, no_pool, yes_coefficient, no_coefficient, target_player_id]
+
+MarketDetail:
+  allOf:
+    - $ref: '#/Market'
+    - type: object
+      properties:
+        my_yes_staked:
+          type: number
+          format: double
+          nullable: true
+        my_no_staked:
+          type: number
+          format: double
+          nullable: true
+        projected_yes_reward:
+          type: number
+          format: double
+          nullable: true
+        projected_no_reward:
+          type: number
+          format: double
+          nullable: true
+        reserved:
+          type: number
+          format: double
+          nullable: true
+        bet_limit:
+          type: number
+          format: double
+          nullable: true

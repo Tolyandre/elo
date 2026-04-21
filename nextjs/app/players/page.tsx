@@ -163,11 +163,11 @@ function PlayersTable() {
                             return (
                                 <tr key={player.id}>
                                     <td className="py-2 text-center align-top min-w-7">
-                                        <RankIcon rank={player.rank.now.rank} />
+                                        <RankIcon rank={player.rank.now.rank ?? null} />
                                     </td>
                                     <td className="py-2 text-center align-top min-w-7">
                                         <RankChangeIndicator
-                                            currentRank={player.rank.now.rank}
+                                            currentRank={player.rank.now.rank ?? null}
                                             previousRank={prev.rank}
                                         />
                                     </td>
@@ -196,7 +196,7 @@ function PlayersTable() {
                                 return (
                                     <tr key={player.id}>
                                         <td className="py-2 text-center align-top min-w-7">
-                                            <RankIcon rank={player.rank.now.rank} />
+                                            <RankIcon rank={player.rank.now.rank ?? null} />
                                         </td>
                                         <td className="py-2 text-center align-top min-w-7"></td>
                                         <td className="py-2 px-1 w-50">

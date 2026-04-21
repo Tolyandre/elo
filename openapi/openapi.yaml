@@ -1,0 +1,211 @@
+openapi: "3.0.3"
+info:
+  title: Elo Web Service
+  version: "1.0.0"
+  description: Elo rating tracker for board games
+
+servers:
+  - url: /
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: elo-web-service-token
+      description: JWT token stored in HttpOnly cookie. Auth is enforced by Gin middleware, not OpenAPI runtime.
+
+  schemas:
+    # Common
+    ApiError:
+      $ref: './common.yaml#/ApiError'
+    ApiSuccessMessage:
+      $ref: './common.yaml#/ApiSuccessMessage'
+
+    # Players
+    EloRank:
+      $ref: './players.yaml#/EloRank'
+    HistoryRank:
+      $ref: './players.yaml#/HistoryRank'
+    Player:
+      $ref: './players.yaml#/Player'
+    PlayerRef:
+      $ref: './players.yaml#/PlayerRef'
+    RatingPoint:
+      $ref: './players.yaml#/RatingPoint'
+    GameMatchStat:
+      $ref: './players.yaml#/GameMatchStat'
+    GameEloStat:
+      $ref: './players.yaml#/GameEloStat'
+    PlayerStats:
+      $ref: './players.yaml#/PlayerStats'
+
+    # Games
+    GameListItem:
+      $ref: './games.yaml#/GameListItem'
+    GameList:
+      $ref: './games.yaml#/GameList'
+    GamePlayer:
+      $ref: './games.yaml#/GamePlayer'
+    Game:
+      $ref: './games.yaml#/Game'
+    GameMatchPlayer:
+      $ref: './games.yaml#/GameMatchPlayer'
+    GameMatch:
+      $ref: './games.yaml#/GameMatch'
+
+    # Matches
+    MatchPlayer:
+      $ref: './matches.yaml#/MatchPlayer'
+    Match:
+      $ref: './matches.yaml#/Match'
+    MatchesPage:
+      $ref: './matches.yaml#/MatchesPage'
+
+    # Clubs
+    Club:
+      $ref: './clubs.yaml#/Club'
+
+    # Settings
+    Settings:
+      $ref: './settings.yaml#/Settings'
+    EloSettingEntry:
+      $ref: './settings.yaml#/EloSettingEntry'
+
+    # Users
+    User:
+      $ref: './users.yaml#/User'
+
+    # Markets
+    SettlementDetail:
+      $ref: './markets.yaml#/SettlementDetail'
+    MatchWinnerParams:
+      $ref: './markets.yaml#/MatchWinnerParams'
+    WinStreakParams:
+      $ref: './markets.yaml#/WinStreakParams'
+    Market:
+      $ref: './markets.yaml#/Market'
+    MarketDetail:
+      $ref: './markets.yaml#/MarketDetail'
+
+    # Voice
+    VoiceScore:
+      $ref: './voice.yaml#/VoiceScore'
+    VoiceParseResult:
+      $ref: './voice.yaml#/VoiceParseResult'
+
+    # Skull King
+    SkullKingPlayer:
+      $ref: './skull-king.yaml#/SkullKingPlayer'
+    SkullKingRoundEntry:
+      $ref: './skull-king.yaml#/SkullKingRoundEntry'
+    SkullKingGameState:
+      $ref: './skull-king.yaml#/SkullKingGameState'
+    SkullKingTableSummary:
+      $ref: './skull-king.yaml#/SkullKingTableSummary'
+    SkullKingCardImageResult:
+      $ref: './skull-king.yaml#/SkullKingCardImageResult'
+
+security: []
+
+paths:
+  /ping:
+    get:
+      operationId: GetPing
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: pong
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/ApiSuccessMessage'
+
+  # Players
+  /players:
+    $ref: './players.yaml#/PlayersCollection'
+  /players/{id}/stats:
+    $ref: './players.yaml#/PlayerStatsPath'
+  /players/{id}:
+    $ref: './players.yaml#/PlayerItem'
+
+  # Games
+  /games:
+    $ref: './games.yaml#/GamesCollection'
+  /games/{id}:
+    $ref: './games.yaml#/GameItem'
+  /games/{id}/matches:
+    $ref: './games.yaml#/GameMatchesPath'
+
+  # Matches
+  /matches:
+    $ref: './matches.yaml#/MatchesCollection'
+  /matches/{id}:
+    $ref: './matches.yaml#/MatchItem'
+  /matches/{id}/markets:
+    $ref: './matches.yaml#/MatchMarketsPath'
+
+  # Clubs
+  /clubs:
+    $ref: './clubs.yaml#/ClubsCollection'
+  /clubs/{id}:
+    $ref: './clubs.yaml#/ClubItem'
+  /clubs/{id}/members:
+    $ref: './clubs.yaml#/ClubMembers'
+  /clubs/{id}/members/{playerId}:
+    $ref: './clubs.yaml#/ClubMemberItem'
+
+  # Settings
+  /settings:
+    $ref: './settings.yaml#/SettingsResource'
+  /settings/all:
+    $ref: './settings.yaml#/AllSettings'
+
+  # Users
+  /users:
+    $ref: './users.yaml#/UsersCollection'
+  /users/{userId}:
+    $ref: './users.yaml#/UserItem'
+
+  # Markets
+  /markets:
+    $ref: './markets.yaml#/MarketsCollection'
+  /markets/{id}:
+    $ref: './markets.yaml#/MarketItem'
+  /markets/{id}/bets:
+    $ref: './markets.yaml#/MarketBets'
+
+  # Auth
+  /auth/login:
+    $ref: './auth.yaml#/AuthLogin'
+  /auth/oauth2-callback:
+    $ref: './auth.yaml#/AuthOAuth2Callback'
+  /auth/logout:
+    $ref: './auth.yaml#/AuthLogout'
+  /auth/me:
+    $ref: './auth.yaml#/AuthMe'
+
+  # Admin
+  /admin/recalculate-game-elo:
+    $ref: './admin.yaml#/RecalculateGameElo'
+
+  # Voice
+  /voice/parse:
+    $ref: './voice.yaml#/VoiceParse'
+
+  # Skull King
+  /skull-king/tables:
+    $ref: './skull-king.yaml#/SkullKingTables'
+  /skull-king/tables/{id}:
+    $ref: './skull-king.yaml#/SkullKingTableItem'
+  /skull-king/tables/{id}/state:
+    $ref: './skull-king.yaml#/SkullKingTableState'
+  /skull-king/tables/{id}/join:
+    $ref: './skull-king.yaml#/SkullKingTableJoin'
+  /skull-king/tables/{id}/bid:
+    $ref: './skull-king.yaml#/SkullKingTableBid'
+  /skull-king/tables/{id}/result:
+    $ref: './skull-king.yaml#/SkullKingTableResult'
+  /skull-king/parse-card-image:
+    $ref: './skull-king.yaml#/SkullKingParseCardImage'

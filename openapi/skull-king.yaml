@@ -1,0 +1,469 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+SkullKingTables:
+  get:
+    operationId: ListSkullKingTables
+    tags: [skull-king]
+    summary: List all active Skull King tables
+    responses:
+      "200":
+        description: List of tables
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+  post:
+    operationId: CreateSkullKingTable
+    tags: [skull-king]
+    summary: Create a new Skull King table
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_state:
+                $ref: '#/SkullKingGameState'
+            required: [game_state]
+    responses:
+      "201":
+        description: Table created
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingTableItem:
+  get:
+    operationId: GetSkullKingTable
+    tags: [skull-king]
+    summary: Get a Skull King table by ID
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Table details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteSkullKingTable
+    tags: [skull-king]
+    summary: Delete a Skull King table (host only)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "204":
+        description: Table deleted
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (not host)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingTableState:
+  patch:
+    operationId: UpdateSkullKingTableState
+    tags: [skull-king]
+    summary: Update game state (host only)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_state:
+                $ref: '#/SkullKingGameState'
+            required: [game_state]
+    responses:
+      "200":
+        description: Updated table
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (not host)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingTableJoin:
+  post:
+    operationId: JoinSkullKingTable
+    tags: [skull-king]
+    summary: Join a Skull King table as a player
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Joined table
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingTableBid:
+  post:
+    operationId: SubmitSkullKingBid
+    tags: [skull-king]
+    summary: Submit a bid for the current round
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              bid:
+                type: integer
+                minimum: 0
+            required: [bid]
+    responses:
+      "200":
+        description: Bid submitted
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Wrong phase, player not in game, or bid already submitted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingTableResult:
+  post:
+    operationId: SubmitSkullKingResult
+    tags: [skull-king]
+    summary: Submit actual tricks taken for the current round
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              actual:
+                type: integer
+                minimum: 0
+              bonus:
+                type: integer
+                minimum: 0
+            required: [actual, bonus]
+    responses:
+      "200":
+        description: Result submitted
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingTableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Wrong phase, player not in game, or result already submitted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+SkullKingParseCardImage:
+  post:
+    operationId: ParseSkullKingCardImage
+    tags: [skull-king]
+    summary: Identify a Skull King card from a base64-encoded image
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              image:
+                type: string
+                description: Base64-encoded card image
+            required: [image]
+    responses:
+      "200":
+        description: Identified card
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/SkullKingCardImageResult'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "500":
+        description: Image processing error
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+SkullKingPlayer:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+  required: [id, name]
+
+SkullKingRoundEntry:
+  type: object
+  properties:
+    bid:
+      type: integer
+    actual:
+      type: integer
+      nullable: true
+    bonus:
+      type: integer
+  required: [bid, bonus]
+
+SkullKingGameState:
+  type: object
+  properties:
+    phase:
+      type: string
+      enum: [setup, bidding, waiting-for-bids, bid-review, result-entry, round-complete]
+    players:
+      type: array
+      items:
+        $ref: '#/SkullKingPlayer'
+    currentRound:
+      type: integer
+    currentPlayerIndex:
+      type: integer
+    rounds:
+      type: array
+      description: rounds[roundIndex][playerIndex] — null until the player has entered data
+      items:
+        type: array
+        items:
+          allOf:
+            - $ref: '#/SkullKingRoundEntry'
+          nullable: true
+    fallbackGameId:
+      type: string
+      nullable: true
+  required: [phase, players, currentRound, currentPlayerIndex, rounds]
+
+SkullKingTableSummary:
+  type: object
+  properties:
+    id:
+      type: string
+    host_user_id:
+      type: integer
+    game_state:
+      $ref: '#/SkullKingGameState'
+    connected_player_ids:
+      type: array
+      items:
+        type: integer
+    created_at:
+      type: string
+      format: date-time
+    expires_at:
+      type: string
+      format: date-time
+  required: [id, host_user_id, game_state, connected_player_ids, created_at, expires_at]
+
+SkullKingCardImageResult:
+  oneOf:
+    - type: object
+      description: Card with a numeric value (jolly roger, chest, parrot, map)
+      properties:
+        type:
+          type: string
+          enum: [jolly-roger, chest, parrot, map]
+        value:
+          type: integer
+      required: [type, value]
+    - type: object
+      description: Special card without a numeric value
+      properties:
+        type:
+          type: string
+          enum: [skull-king, pirate, tigress, mermaid, escape, loot, kraken, white-whale]
+      required: [type]

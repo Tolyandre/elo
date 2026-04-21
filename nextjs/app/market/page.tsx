@@ -142,14 +142,14 @@ function MarketPageContent() {
             <div className="flex flex-col sm:flex-row gap-3">
                 <OutcomeColumn
                     label="ДА"
-                    myStaked={market.my_yes_staked}
+                    myStaked={market.my_yes_staked ?? undefined}
                     canBet={canBet}
                     onBet={isOpen ? () => handleBet("yes") : undefined}
                     betting={bettingYes}
                 />
                 <OutcomeColumn
                     label="НЕТ"
-                    myStaked={market.my_no_staked}
+                    myStaked={market.my_no_staked ?? undefined}
                     canBet={canBet}
                     onBet={isOpen ? () => handleBet("no") : undefined}
                     betting={bettingNo}
@@ -164,7 +164,7 @@ function MarketPageContent() {
                 <p className="text-sm text-muted-foreground text-center">{betDisabledReason}</p>
             )}
 
-            {isOpen && reserved !== undefined && betLimit !== undefined && (
+            {isOpen && reserved != null && betLimit != null && (
                 <p className="text-sm text-muted-foreground text-center">
                     Всего у вас активных ставок на {reserved.toFixed(1)} из лимита {betLimit.toFixed(1)}
                 </p>

@@ -1,0 +1,19 @@
+ApiError:
+  type: object
+  properties:
+    status:
+      type: string
+      enum: [fail]
+    message:
+      type: string
+  required: [status, message]
+
+ApiSuccessMessage:
+  type: object
+  properties:
+    status:
+      type: string
+      enum: [success]
+    message:
+      type: string
+  required: [status, message]

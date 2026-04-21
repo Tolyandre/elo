@@ -75,7 +75,7 @@ const initialState: GameState = {
 // ─── Scoring ─────────────────────────────────────────────────────────────────
 
 function calcRoundScore(entry: RoundEntry, roundNumber: number, playerCount: number): number {
-    if (entry.actual === null) return 0;
+    if (entry.actual == null) return 0;
     const { bid, actual, bonus } = entry;
     const zeroBase = (playerCount >= 8 && roundNumber >= 9) ? 8 : roundNumber;
     if (actual === bid) {
@@ -253,14 +253,14 @@ function EditCellDialog({
     const original = state.rounds[roundIndex]?.[playerIndex] ?? { bid: 0, actual: null, bonus: 0 };
 
     const [bid, setBid] = useState(original.bid);
-    const [actual, setActual] = useState<number | null>(original.actual);
+    const [actual, setActual] = useState<number | null>(original.actual ?? null);
     const [bonus, setBonus] = useState(original.bonus);
 
     // Reset on open
     React.useEffect(() => {
         if (open) {
             setBid(original.bid);
-            setActual(original.actual);
+            setActual(original.actual ?? null);
             setBonus(original.bonus);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1123,7 +1123,7 @@ export default function SkullKingGamePage() {
                                         Не найдена игра "Skull King". Выберите вручную:
                                     </p>
                                     <GameCombobox
-                                        value={gameState.fallbackGameId}
+                                        value={gameState.fallbackGameId ?? undefined}
                                         onChange={(id) =>
                                             setGameState({ ...gameState, fallbackGameId: id })
                                         }

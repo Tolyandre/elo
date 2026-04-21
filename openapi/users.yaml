@@ -1,0 +1,99 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+UsersCollection:
+  get:
+    operationId: ListUsers
+    tags: [users]
+    summary: List all users
+    responses:
+      "200":
+        description: List of users
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/User'
+              required: [status, data]
+
+UserItem:
+  patch:
+    operationId: PatchUser
+    tags: [users]
+    summary: Update user editing permissions
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              can_edit:
+                type: boolean
+            required: [can_edit]
+    responses:
+      "200":
+        description: Updated user
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/User'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: User not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+User:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    can_edit:
+      type: boolean
+    player_id:
+      type: string
+      nullable: true
+  required: [id, name, can_edit]
