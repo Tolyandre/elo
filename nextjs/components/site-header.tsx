@@ -15,7 +15,7 @@ export function SiteHeader() {
 
       {/* Заголовок + кнопка действия: вторая строка на мобиле, левый край на десктопе */}
       {(title || action) && (
-        <div className="order-last sm:order-first flex items-center justify-between sm:justify-start gap-2 max-w-sm mx-auto w-full pt-2 pb-2 sm:max-w-none sm:mx-0 sm:w-auto sm:px-4 sm:pt-0 sm:pb-0">
+        <div className="order-last sm:order-first flex items-center justify-between sm:justify-start gap-2 max-w-sm mx-auto w-full pt-2 pb-2 sm:max-w-none sm:mx-0 sm:w-auto sm:pt-0 sm:pb-0">
           {title && <h1 className="text-2xl font-semibold">{title}</h1>}
           {action}
         </div>

@@ -168,9 +168,9 @@ function GameTable({
             <table className="border-collapse text-sm md:text-base">
                 <thead>
                     <tr>
-                        <th className="border border-border px-2 py-1 md:px-3 md:py-2 text-center bg-muted min-w-12 md:min-w-16"></th>
+                        <th className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center bg-muted min-w-12 md:min-w-16"></th>
                         {players.map((p) => (
-                            <th key={p.id} className="border border-border px-1 py-1 md:px-2 md:py-2 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
+                            <th key={p.id} className="border border-border px-1 py-0.5 md:px-2 md:py-1.5 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
                                 <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
                                     {p.name}
                                 </span>
@@ -181,12 +181,12 @@ function GameTable({
                 <tbody>
                     {rounds.map((round, ri) => (
                         <tr key={ri}>
-                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center font-medium bg-muted/50">
+                            <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-medium bg-muted/50">
                                 {ri + 1}
                             </td>
                             {players.map((_, pi) => {
                                 const entry = round[pi];
-                                if (!entry) return <td key={pi} className="border border-border px-2 py-1" />;
+                                if (!entry) return <td key={pi} className="border border-border px-2 py-0.5" />;
                                 const isMasked = maskedRoundIndex !== undefined && ri === maskedRoundIndex;
                                 const isClickable = clickable && !isMasked;
                                 const score = !isMasked && entry.actual !== null
@@ -200,14 +200,14 @@ function GameTable({
                                 return (
                                     <td
                                         key={pi}
-                                        className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center whitespace-nowrap ${isClickable ? "cursor-pointer hover:bg-accent" : ""}`}
+                                        className={`border border-border px-1 py-0.5 md:px-3 md:py-1.5 text-center [container-type:inline-size] ${isClickable ? "cursor-pointer hover:bg-accent" : ""}`}
                                         onClick={() => isClickable && onCellClick!(ri, pi)}
                                     >
-                                        <div className="grid grid-cols-2 items-center gap-x-1">
-                                            <span className="text-xs md:text-sm text-muted-foreground text-center">
+                                        <div className="flex flex-col items-center leading-tight">
+                                            <span className="text-muted-foreground text-center whitespace-nowrap" style={{ fontSize: "clamp(7px, 6cqi, 12px)" }}>
                                                 {entry.actual !== null ? entry.actual : "—"}/{isMasked ? "?" : entry.bid}
                                             </span>
-                                            <span className={`font-semibold text-sm md:text-base text-center ${score! < 0 ? "text-red-600" : "text-green-700"}`}>
+                                            <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-red-600" : "text-green-700"}`} style={{ fontSize: "clamp(7px, 7cqi, 14px)" }}>
                                                 {scoreDisplay ?? ""}
                                             </span>
                                         </div>
@@ -219,9 +219,9 @@ function GameTable({
                     {/* Totals row */}
                     {rounds.length > 0 && (
                         <tr className="bg-muted/50 font-bold">
-                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center">Σ</td>
+                            <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center">Σ</td>
                             {totals.map((total, pi) => (
-                                <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center font-semibold ${total < 0 ? "text-red-600" : "text-green-700"}`}>
+                                <td key={pi} className={`border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-semibold ${total < 0 ? "text-red-600" : "text-green-700"}`}>
                                     {total}
                                 </td>
                             ))}
@@ -666,7 +666,7 @@ export default function SkullKingGamePage() {
 
 
     return (
-        <main className="max-w-5xl mx-auto p-4 space-y-4 overflow-x-hidden">
+        <main className="max-w-5xl mx-auto space-y-4 overflow-x-hidden">
             <PageHeader
                 title="Skull King"
                 action={phase !== "setup" ? (
@@ -931,15 +931,15 @@ export default function SkullKingGamePage() {
                                     maskedRoundIndex={currentRound - 1}
                                     onCellClick={(ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi })}
                                 />
-                                <div className="space-y-1 text-sm">
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm mt-1">
                                     {players.map((p, pi) => {
                                         if (!connectedPlayerIds.some(id => String(id) === p.id)) return null;
                                         const hasBid = !!rounds[currentRound - 1]?.[pi];
                                         return (
-                                            <div key={pi} className="flex items-center gap-2">
+                                            <div key={pi} className="flex items-center gap-1">
                                                 {hasBid
                                                     ? <Check className="h-3 w-3 text-green-600" />
-                                                    : <span className="h-3 w-3 rounded-full border border-muted-foreground inline-block" />
+                                                    : <span className="h-3 w-3 rounded-full border border-muted-foreground inline-block shrink-0" />
                                                 }
                                                 <span className={hasBid ? "text-foreground" : "text-muted-foreground"}>{p.name}</span>
                                             </div>
@@ -972,21 +972,14 @@ export default function SkullKingGamePage() {
                                 state={gameState}
                                 onCellClick={isHost ? (ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi }) : undefined}
                             />
-                            {isHost && (
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Нажмите на ячейку для редактирования
-                                </p>
-                            )}
-                            <div className="text-base md:text-lg font-medium mt-3 space-y-1">
+                            <div className="text-sm text-muted-foreground mt-3 space-y-1">
                                 <p>
-                                    Сумма планов:{" "}
-                                    <span className="font-bold">
+                                    План:{" "}
+                                    <span className="text-foreground text-base md:text-lg font-bold tabular-nums">
                                         {(rounds[currentRound - 1] ?? []).reduce((s, e) => s + (e?.bid ?? 0), 0)}
                                     </span>
-                                </p>
-                                <p>
-                                    Раздано карт:{" "}
-                                    <span className="font-bold">
+                                    {" "}взяток, раздано карт:{" "}
+                                    <span className="text-foreground text-base md:text-lg font-bold tabular-nums">
                                         {(players.length >= 8 && currentRound >= 9) ? 8 : currentRound}
                                     </span>
                                 </p>

@@ -13,8 +13,7 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
-import { usePlayers } from "@/app/players/PlayersContext"
-import { useMatches } from "@/app/matches/MatchesContext"
+import { cn } from "@/lib/utils"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
 import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair, TrendingUp, Globe } from "lucide-react"
@@ -22,15 +21,13 @@ import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
-  const { invalidate: invalidatePlayers } = usePlayers();
-  const { invalidate: invalidateMatches } = useMatches();
   const me = useMe();
 
   return (
     <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
-      <NavigationMenuList className="flex-wrap">
+      <NavigationMenuList className="flex-wrap gap-0">
         <NavigationMenuItem>
-          <NavigationMenuTrigger>Меню</NavigationMenuTrigger>
+          <NavigationMenuTrigger className="px-2">Меню</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
 
@@ -120,19 +117,19 @@ export function NavigationBar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-2")}>
             <Link href="/players">Игроки</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-2")}>
             <Link href="/matches">Партии</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={navigationMenuTriggerStyle()}>
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-2")}>
             <Link href="/help">Справка</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
