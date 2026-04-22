@@ -29,7 +29,7 @@
         in
         {
           default = pkgs.callPackage ./nix/default.nix {
-              inherit buildGoApplication;
+              inherit buildGoApplication pkgs;
               version = self.rev or self.dirtyRev;
             };
         }
@@ -61,6 +61,8 @@
                 pkgs.git
                 pkgs.go
                 pkgs.gcc
+                pkgs.pkg-config
+                pkgs.opencv
                 pkgs.sqlc
                 pkgs.delve
                 pkgs.python3

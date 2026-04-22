@@ -27,6 +27,22 @@ jobs:
       with:
         go-version: '1.24.5'
 
+    - name: Cache OpenCV build
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/pkgconfig/opencv4.pc
+        key: opencv-4.13.0-ubuntu-latest
+
+    - name: Download Go modules
+      run: go mod download
+
+    - name: Install OpenCV 4.13.0
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: |
+        cd $(go env GOPATH)/pkg/mod/gocv.io/x/gocv@v0.43.0
+        sudo make install
+
     - name: Build
       run: go build -v ./...
 
@@ -45,6 +61,22 @@ jobs:
       uses: actions/setup-go@v6
       with:
         go-version: '1.24.5'
+
+    - name: Cache OpenCV build
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/lib/pkgconfig/opencv4.pc
+        key: opencv-4.13.0-ubuntu-latest
+
+    - name: Download Go modules
+      run: go mod download
+
+    - name: Install OpenCV 4.13.0
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: |
+        cd $(go env GOPATH)/pkg/mod/gocv.io/x/gocv@v0.43.0
+        sudo make install
 
     - name: Integration Tests
       # Docker is available on ubuntu-latest; testcontainers-go uses the Docker socket directly.

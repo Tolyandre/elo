@@ -36,8 +36,3 @@ ollama_base_url: "http://127.0.0.1:11434"
 # qwen2.5 understands Russian well and supports JSON mode.
 # Alternatives: llama3.1, gemma3
 ollama_model: "llama3.1:8b"
-
-# Ollama model for card image recognition (multimodal/vision model).
-# Must be pulled first: ollama pull llava
-# Alternatives: moondream (smaller, faster), llava-llama3 (better quality)
-ollama_vision_model: "llama3.2-vision:11b"

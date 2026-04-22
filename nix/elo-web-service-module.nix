@@ -88,16 +88,12 @@ in
                   description = "Ollama model name for voice parsing. Must be pulled before use.";
                 };
 
-                # Vision (multimodal) model for Skull King card image recognition.
-                # Must be a model that supports the images[] field in /api/generate.
-                # Pull it manually: ollama pull llava
-                # Alternatives: moondream (smaller/faster), llava-llama3 (better quality).
-                # To auto-pull via NixOS: services.ollama.loadModels = [ "llava" ];
                 visionModel = lib.mkOption {
                   type = lib.types.str;
                   default = "llava";
-                  description = "Ollama vision model name for card image recognition. Must be pulled before use.";
+                  description = "Ollama model name for card image recognition. Must be pulled before use.";
                 };
+
               };
             };
             default = { };
