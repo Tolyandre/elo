@@ -1,5 +1,4 @@
 {
     "makefile.configureOnOpen": false,
-    "nixEnvSelector.nixFile": "${workspaceFolder}/flake.nix",
-    "nixEnvSelector.useFlakes": true
+    "python.defaultInterpreterPath": "${workspaceFolder}/.python-nix/bin/python3"
 }

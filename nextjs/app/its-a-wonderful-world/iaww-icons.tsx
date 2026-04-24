@@ -22,31 +22,88 @@ function IconFrame({
     );
 }
 
-/** 1. Science — atom: nucleus + 3 orbital ellipses */
-export function ScienceIcon({ size }: { size?: string }) {
+/** 1. Structure — factory with smokestacks */
+export function StructureIcon({ size }: { size?: string }) {
     return (
-        <IconFrame bg="#1c4a0a" size={size}>
-            {/* Orbital ellipses */}
-            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5" />
-            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5"
-                transform="rotate(60 24 24)" />
-            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5"
-                transform="rotate(120 24 24)" />
-            {/* Nucleus */}
-            <circle cx="24" cy="24" r="4.5" fill="#7cda3c" />
-            <circle cx="24" cy="24" r="2.5" fill="#1c4a0a" />
+        <IconFrame bg="#3a3a3a" size={size}>
+            {/* Smokestacks */}
+            <rect x="10" y="14" width="7" height="18" rx="1" fill="#8a8a8a" />
+            <rect x="20" y="10" width="7" height="22" rx="1" fill="#9a9a9a" />
+            <rect x="30" y="17" width="7" height="15" rx="1" fill="#7a7a7a" />
+            {/* Factory body */}
+            <rect x="7" y="32" width="34" height="11" rx="1" fill="#b0b0b0" />
+            {/* Windows */}
+            <rect x="11" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
+            <rect x="21" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
+            <rect x="31" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
+            {/* Smoke puffs */}
+            <circle cx="13" cy="11" r="3" fill="#666" opacity="0.7" />
+            <circle cx="16" cy="9" r="2.5" fill="#555" opacity="0.6" />
+            <circle cx="23" cy="7" r="3" fill="#666" opacity="0.7" />
+            <circle cx="26" cy="5" r="2.5" fill="#555" opacity="0.6" />
         </IconFrame>
     );
 }
 
-/** 2. Materials — isometric open treasure chest (mirrored: bright face right, lid upper-left)
+/** 2. Vehicle — tank */
+export function VehicleIcon({ size }: { size?: string }) {
+    return (
+        <IconFrame bg="#111111" size={size}>
+            {/* Treads */}
+            <rect x="7" y="31" width="34" height="9" rx="4" fill="#333333" />
+            {/* Tread detail */}
+            {[10, 15, 20, 25, 30, 35].map((x) => (
+                <rect key={x} x={x} y="31" width="3" height="9" rx="1" fill="#1a1a1a" opacity="0.8" />
+            ))}
+            {/* Hull */}
+            <rect x="9" y="26" width="30" height="9" rx="2" fill="#444444" />
+            {/* Turret */}
+            <rect x="15" y="18" width="18" height="11" rx="3" fill="#555555" />
+            {/* Barrel */}
+            <rect x="30" y="21" width="14" height="4" rx="2" fill="#444444" />
+            {/* Hatch circle */}
+            <circle cx="22" cy="21" r="3.5" fill="#333333" />
+            <circle cx="22" cy="21" r="2" fill="#1a1a1a" />
+        </IconFrame>
+    );
+}
+
+/** 3. Project — classical building with columns */
+export function ProjectIcon({ size }: { size?: string }) {
+    const uid = useId().replace(/:/g, "");
+    return (
+        <IconFrame bg="#8a6400" size={size}>
+            <defs>
+                <linearGradient id={`${uid}col`} x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#e8c060" />
+                    <stop offset="40%" stopColor="#f5d878" />
+                    <stop offset="100%" stopColor="#c8980a" />
+                </linearGradient>
+            </defs>
+            {/* Pediment (triangle top) */}
+            <polygon points="7,20 24,8 41,20" fill={`url(#${uid}col)`} />
+            <polygon points="9,20 24,10 39,20" fill="none" stroke="#c8980a" strokeWidth="0.5" />
+            {/* Entablature (beam under pediment) */}
+            <rect x="7" y="19" width="34" height="4" fill={`url(#${uid}col)`} />
+            {/* Columns */}
+            {[11, 18, 25, 32].map((x) => (
+                <rect key={x} x={x} y="23" width="5" height="14" rx="1" fill={`url(#${uid}col)`} />
+            ))}
+            {/* Steps */}
+            <rect x="7" y="37" width="34" height="3" rx="1" fill={`url(#${uid}col)`} />
+            <rect x="5" y="40" width="38" height="3" rx="1" fill={`url(#${uid}col)`} />
+        </IconFrame>
+    );
+}
+
+/** 4. Discovery — isometric open treasure chest (mirrored: bright face right, lid upper-left)
  *  Vectors (screen): L=(-12,+6) left-fwd, R=(+12,+6) right-fwd, H=(0,-14) up
  *  Key corners: BFR(35,36) BFL(23,42) BBL(11,36)
  *               TFR(35,22) TFL(23,28) TBL(11,22) TBR(23,16)
  *  Lid hinge TBR–TBL; opens upper-left: LFR(27,8) LFL(15,14)
  *  Lid top edge is curved (rounded chest arc).
  */
-export function MaterialsIcon({ size }: { size?: string }) {
+export function DiscoveryIcon({ size }: { size?: string }) {
     return (
         <IconFrame bg="#0d3d5c" size={size}>
             {/* 1. Lid outer face — curved top edge (furthest from viewer) */}
@@ -80,76 +137,19 @@ export function MaterialsIcon({ size }: { size?: string }) {
     );
 }
 
-/** 3. Industry — factory with smokestacks */
-export function IndustryIcon({ size }: { size?: string }) {
+/** 5. Research — atom: nucleus + 3 orbital ellipses */
+export function ResearchIcon({ size }: { size?: string }) {
     return (
-        <IconFrame bg="#3a3a3a" size={size}>
-            {/* Smokestacks */}
-            <rect x="10" y="14" width="7" height="18" rx="1" fill="#8a8a8a" />
-            <rect x="20" y="10" width="7" height="22" rx="1" fill="#9a9a9a" />
-            <rect x="30" y="17" width="7" height="15" rx="1" fill="#7a7a7a" />
-            {/* Factory body */}
-            <rect x="7" y="32" width="34" height="11" rx="1" fill="#b0b0b0" />
-            {/* Windows */}
-            <rect x="11" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
-            <rect x="21" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
-            <rect x="31" y="34" width="5" height="5" rx="1" fill="#3a3a3a" />
-            {/* Smoke puffs */}
-            <circle cx="13" cy="11" r="3" fill="#666" opacity="0.7" />
-            <circle cx="16" cy="9" r="2.5" fill="#555" opacity="0.6" />
-            <circle cx="23" cy="7" r="3" fill="#666" opacity="0.7" />
-            <circle cx="26" cy="5" r="2.5" fill="#555" opacity="0.6" />
-        </IconFrame>
-    );
-}
-
-/** 4. Exploration — classical building with columns */
-export function ExplorationIcon({ size }: { size?: string }) {
-    const uid = useId().replace(/:/g, "");
-    return (
-        <IconFrame bg="#8a6400" size={size}>
-            <defs>
-                <linearGradient id={`${uid}col`} x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#e8c060" />
-                    <stop offset="40%" stopColor="#f5d878" />
-                    <stop offset="100%" stopColor="#c8980a" />
-                </linearGradient>
-            </defs>
-            {/* Pediment (triangle top) */}
-            <polygon points="7,20 24,8 41,20" fill={`url(#${uid}col)`} />
-            <polygon points="9,20 24,10 39,20" fill="none" stroke="#c8980a" strokeWidth="0.5" />
-            {/* Entablature (beam under pediment) */}
-            <rect x="7" y="19" width="34" height="4" fill={`url(#${uid}col)`} />
-            {/* Columns */}
-            {[11, 18, 25, 32].map((x) => (
-                <rect key={x} x={x} y="23" width="5" height="14" rx="1" fill={`url(#${uid}col)`} />
-            ))}
-            {/* Steps */}
-            <rect x="7" y="37" width="34" height="3" rx="1" fill={`url(#${uid}col)`} />
-            <rect x="5" y="40" width="38" height="3" rx="1" fill={`url(#${uid}col)`} />
-        </IconFrame>
-    );
-}
-
-/** 5. Military — tank */
-export function MilitaryIcon({ size }: { size?: string }) {
-    return (
-        <IconFrame bg="#111111" size={size}>
-            {/* Treads */}
-            <rect x="7" y="31" width="34" height="9" rx="4" fill="#333333" />
-            {/* Tread detail */}
-            {[10, 15, 20, 25, 30, 35].map((x) => (
-                <rect key={x} x={x} y="31" width="3" height="9" rx="1" fill="#1a1a1a" opacity="0.8" />
-            ))}
-            {/* Hull */}
-            <rect x="9" y="26" width="30" height="9" rx="2" fill="#444444" />
-            {/* Turret */}
-            <rect x="15" y="18" width="18" height="11" rx="3" fill="#555555" />
-            {/* Barrel */}
-            <rect x="30" y="21" width="14" height="4" rx="2" fill="#444444" />
-            {/* Hatch circle */}
-            <circle cx="22" cy="21" r="3.5" fill="#333333" />
-            <circle cx="22" cy="21" r="2" fill="#1a1a1a" />
+        <IconFrame bg="#1c4a0a" size={size}>
+            {/* Orbital ellipses */}
+            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5" />
+            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5"
+                transform="rotate(60 24 24)" />
+            <ellipse cx="24" cy="24" rx="20" ry="7" fill="none" stroke="#7cda3c" strokeWidth="2.5"
+                transform="rotate(120 24 24)" />
+            {/* Nucleus */}
+            <circle cx="24" cy="24" r="4.5" fill="#7cda3c" />
+            <circle cx="24" cy="24" r="2.5" fill="#1c4a0a" />
         </IconFrame>
     );
 }

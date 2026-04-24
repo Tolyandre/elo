@@ -52,6 +52,11 @@
 /result
 .direnv/
 
+# python
+.python-nix
+recognition/**/__pycache__/
+recognition/**/*.pyc
+
 # golang
 /elo-web-service/__debug_bin**
 /elo-web-service/elo-web-service

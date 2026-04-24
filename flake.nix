@@ -47,6 +47,17 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           lib = pkgs.lib;
+          pythonEnv = pkgs.python3.withPackages (ps: [
+            ps.tkinter
+            ps.ultralytics
+            ps.albumentations
+            ps.opencv4
+            ps.pillow
+            ps.numpy
+            ps.fastapi
+            ps.uvicorn
+            ps.python-multipart
+          ]);
         in
         {
           default = pkgs.mkShell {
@@ -65,9 +76,30 @@
                 pkgs.opencv
                 pkgs.sqlc
                 pkgs.delve
-                pkgs.python3
+                pythonEnv
+                pkgs.ninja
+                pkgs.meson
+                pkgs.cmake
+                pkgs.zlib
                 gomod2nix.packages.${system}.default
               ];
+
+            shellHook = lib.optionalString pkgs.stdenv.isLinux ''
+              export LD_LIBRARY_PATH=${lib.makeLibraryPath [
+                pkgs.stdenv.cc.cc
+                pkgs.zlib
+                pkgs.glib
+                pkgs.xorg.libxcb
+                pkgs.xorg.libX11
+                pkgs.xorg.libXext
+                pkgs.libGL
+                pkgs.libglvnd
+              ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+
+              # Stable symlink so VSCode can locate the Nix Python interpreter.
+              # Recreated on every direnv reload when the env changes.
+              ln -sfn ${pythonEnv} "$PWD/.python-nix"
+            '';
           };
         }
       );

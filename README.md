@@ -4,26 +4,35 @@ Track friends elo rating in board games. Try it here: https://tolyandre.github.i
 
 # How to build and run
 
-Use [direnv](https://direnv.net/) with [nix-direnv](https://github.com/nix-community/nix-direnv) and [shell.nix](./shell.nix) to install development tools. 
+Development tools are managed via [Nix flakes](https://nix.dev/manual/nix/2.28/quick-start.html) and activated automatically with [direnv](https://direnv.net/) + [nix-direnv](https://github.com/nix-community/nix-direnv).
 
-For vscode direnv works with [Nix Extension Pack](https://marketplace.visualstudio.com/items?itemName=pinage404.nix-extension-pack).
-
-I am using NixOS to develop and host this project. Mac and other Linux users can install Nix package manager. If you not familiar with Nix, I suggest you read documentation first https://nix.dev/manual/nix/2.28/quick-start.html
+I am using NixOS to develop and host this project. Mac and other Linux users can install the Nix package manager.
 
 ```bash
 # Install Nix package manager
 curl -L https://nixos.org/nix/install | sh
 
-# Install direnv in nix profile (you may want install it with nix configuration instead)
-nix profile add nixpkgs#direnv --extra-experimental-features flakes --extra-experimental-features nix-command
+# Install direnv and nix-direnv (or configure via home-manager / NixOS)
+nix profile add nixpkgs#direnv nixpkgs#nix-direnv --extra-experimental-features "flakes nix-command"
 
-# You also neeed to register direnv shell hook and restart the shell
-# e.g. in case of zsh add to ~/.zshrc 
+# Register direnv shell hook — add to ~/.zshrc or ~/.bashrc:
 # eval "$(direnv hook zsh)"
 
-# Run the root of the project
+# Enable nix-direnv caching — add to ~/.config/direnv/direnvrc:
+# source_url "https://raw.githubusercontent.com/nix-community/nix-direnv/master/direnvrc" "<sha256>"
+# (or configure via home-manager: programs.direnv.nix-direnv.enable = true)
+
+# Allow direnv in the repo root
 direnv allow
 ```
+
+nix-direnv is required to avoid a VSCode restart loop: without it direnv re-evaluates the flake on every VSCode start, which triggers another reload prompt indefinitely.
+
+### VSCode setup
+
+Install the [mkhl.direnv](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv) extension. It picks up the flake devShell automatically — no separate Nix extension needed.
+
+The workspace [settings.json](.vscode/settings.json) already sets `python.defaultInterpreterPath` to `.venv/bin/python`, so the Python extension resolves imports correctly once the venv is created (see [Python section](#python-recognition-tools) below).
 
 ## Dependencies and fast startup
 
@@ -77,6 +86,12 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 cd elo-web-service
 go run . --config-path ./config/config.docker.yaml
 ```
+
+## Python (recognition tools)
+
+Card recognition scripts live in `recognition/` and use Python 3.11. All dependencies (`ultralytics`, `albumentations`, `opencv`, `fastapi`, etc.) are declared in `flake.nix` and provided by the Nix devShell — no `pip install` or venv setup required.
+
+After `direnv allow`, `python3.11` in the shell already has all packages available. VSCode's Python extension picks up the interpreter via `.vscode/settings.json`, which points to `.python-nix/bin/python3.11` — a symlink to the current Nix Python env, recreated automatically by the shellHook on each `direnv reload`.
 
 ## Hosting (NixOS)
 

@@ -5,7 +5,7 @@ import { VictoryPoints } from "./victory-points";
  * ScoringBadge — scoring rule from "It's a Wonderful World".
  * Composed from VictoryPoints + × + icon(s).
  *
- *   <ScoringBadge vp={2} icon={<ExplorationIcon />} />
+ *   <ScoringBadge vp={2} icon={<ProjectIcon />} />
  *   <ScoringBadge vp={1} icon={<GeneralToken />} icon2={<FinancierToken />} />
  */
 export function ScoringBadge({

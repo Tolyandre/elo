@@ -1,0 +1,482 @@
+{
+  "card_0000": {
+    "row": 0,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0001": {
+    "row": 0,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0002": {
+    "row": 0,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0003": {
+    "row": 0,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0004": {
+    "row": 0,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0005": {
+    "row": 0,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0006": {
+    "row": 0,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0007": {
+    "row": 0,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0008": {
+    "row": 0,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0009": {
+    "row": 0,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0100": {
+    "row": 1,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0101": {
+    "row": 1,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0102": {
+    "row": 1,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0103": {
+    "row": 1,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0104": {
+    "row": 1,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0105": {
+    "row": 1,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0106": {
+    "row": 1,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0107": {
+    "row": 1,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0108": {
+    "row": 1,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0109": {
+    "row": 1,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0200": {
+    "row": 2,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0201": {
+    "row": 2,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0202": {
+    "row": 2,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0203": {
+    "row": 2,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0204": {
+    "row": 2,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0205": {
+    "row": 2,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0206": {
+    "row": 2,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0207": {
+    "row": 2,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0208": {
+    "row": 2,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0209": {
+    "row": 2,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0300": {
+    "row": 3,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0301": {
+    "row": 3,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0302": {
+    "row": 3,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0303": {
+    "row": 3,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0304": {
+    "row": 3,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0305": {
+    "row": 3,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0306": {
+    "row": 3,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0307": {
+    "row": 3,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0308": {
+    "row": 3,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0309": {
+    "row": 3,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0400": {
+    "row": 4,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0401": {
+    "row": 4,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0402": {
+    "row": 4,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0403": {
+    "row": 4,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0404": {
+    "row": 4,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0405": {
+    "row": 4,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0406": {
+    "row": 4,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0407": {
+    "row": 4,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0408": {
+    "row": 4,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0409": {
+    "row": 4,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0500": {
+    "row": 5,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0501": {
+    "row": 5,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0502": {
+    "row": 5,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0503": {
+    "row": 5,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0504": {
+    "row": 5,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0505": {
+    "row": 5,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0506": {
+    "row": 5,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0507": {
+    "row": 5,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0508": {
+    "row": 5,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0509": {
+    "row": 5,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0600": {
+    "row": 6,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0601": {
+    "row": 6,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0602": {
+    "row": 6,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0603": {
+    "row": 6,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0604": {
+    "row": 6,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0605": {
+    "row": 6,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0606": {
+    "row": 6,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0607": {
+    "row": 6,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0608": {
+    "row": 6,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0609": {
+    "row": 6,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  },
+  "card_0700": {
+    "row": 7,
+    "col": 0,
+    "type": null,
+    "scoring": null
+  },
+  "card_0701": {
+    "row": 7,
+    "col": 1,
+    "type": null,
+    "scoring": null
+  },
+  "card_0702": {
+    "row": 7,
+    "col": 2,
+    "type": null,
+    "scoring": null
+  },
+  "card_0703": {
+    "row": 7,
+    "col": 3,
+    "type": null,
+    "scoring": null
+  },
+  "card_0704": {
+    "row": 7,
+    "col": 4,
+    "type": null,
+    "scoring": null
+  },
+  "card_0705": {
+    "row": 7,
+    "col": 5,
+    "type": null,
+    "scoring": null
+  },
+  "card_0706": {
+    "row": 7,
+    "col": 6,
+    "type": null,
+    "scoring": null
+  },
+  "card_0707": {
+    "row": 7,
+    "col": 7,
+    "type": null,
+    "scoring": null
+  },
+  "card_0708": {
+    "row": 7,
+    "col": 8,
+    "type": null,
+    "scoring": null
+  },
+  "card_0709": {
+    "row": 7,
+    "col": 9,
+    "type": null,
+    "scoring": null
+  }
+}

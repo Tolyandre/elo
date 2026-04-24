@@ -23,7 +23,7 @@ import {
 import { VictoryPoints } from "./victory-points";
 import { ScoringBadge } from "./scoring-badge";
 import {
-    ScienceIcon, MaterialsIcon, IndustryIcon, ExplorationIcon, MilitaryIcon,
+    ResearchIcon, DiscoveryIcon, StructureIcon, ProjectIcon, VehicleIcon,
     GeneralToken, FinancierToken, CultureToken,
 } from "./iaww-icons";
 
@@ -38,28 +38,28 @@ const S = "1.8em";
 
 const ROWS: RowDef[] = [
     { id: "direct", kind: "direct" },
-    { id: "industry",    kind: "single", icon: <IndustryIcon size={S} /> },
-    { id: "military",    kind: "single", icon: <MilitaryIcon size={S} /> },
-    { id: "science",     kind: "single", icon: <ScienceIcon size={S} /> },
-    { id: "exploration", kind: "single", icon: <ExplorationIcon size={S} /> },
-    { id: "materials",   kind: "single", icon: <MaterialsIcon size={S} /> },
-    { id: "financier",   kind: "single", icon: <FinancierToken size={S} /> },
-    { id: "general",     kind: "single", icon: <GeneralToken size={S} /> },
-    { id: "culture",     kind: "single", icon: <CultureToken size={S} /> },
+    { id: "structure",  kind: "single", icon: <StructureIcon size={S} /> },
+    { id: "vehicle",    kind: "single", icon: <VehicleIcon size={S} /> },
+    { id: "research",   kind: "single", icon: <ResearchIcon size={S} /> },
+    { id: "project",    kind: "single", icon: <ProjectIcon size={S} /> },
+    { id: "discovery",  kind: "single", icon: <DiscoveryIcon size={S} /> },
+    { id: "financier",  kind: "single", icon: <FinancierToken size={S} /> },
+    { id: "general",    kind: "single", icon: <GeneralToken size={S} /> },
+    { id: "culture",    kind: "single", icon: <CultureToken size={S} /> },
     // Pairs with fixed score-per-set multipliers
-    { id: "ind-sci",  coeff:  6, kind: "pair", icon: <IndustryIcon size={S} />,   icon2: <ScienceIcon size={S} /> },
-    { id: "sci-mat",  coeff: 10, kind: "pair", icon: <ScienceIcon size={S} />,    icon2: <MaterialsIcon size={S} /> },
-    { id: "ind-exp",  coeff:  7, kind: "pair", icon: <IndustryIcon size={S} />,   icon2: <ExplorationIcon size={S} /> },
-    { id: "mil-exp",  coeff:  8, kind: "pair", icon: <MilitaryIcon size={S} />,   icon2: <ExplorationIcon size={S} /> },
-    { id: "sci-exp",  coeff:  9, kind: "pair", icon: <ScienceIcon size={S} />,    icon2: <ExplorationIcon size={S} /> },
-    { id: "exp-mat",  coeff: 12, kind: "pair", icon: <ExplorationIcon size={S} />,icon2: <MaterialsIcon size={S} /> },
-    { id: "mil-sci",  coeff:  6, kind: "pair", icon: <MilitaryIcon size={S} />,   icon2: <ScienceIcon size={S} /> },
-    { id: "ind-mil",  coeff:  6, kind: "pair", icon: <IndustryIcon size={S} />,   icon2: <MilitaryIcon size={S} /> },
+    { id: "str-res",  coeff:  6, kind: "pair", icon: <StructureIcon size={S} />,  icon2: <ResearchIcon size={S} /> },
+    { id: "res-dis",  coeff: 10, kind: "pair", icon: <ResearchIcon size={S} />,   icon2: <DiscoveryIcon size={S} /> },
+    { id: "str-pro",  coeff:  7, kind: "pair", icon: <StructureIcon size={S} />,  icon2: <ProjectIcon size={S} /> },
+    { id: "veh-pro",  coeff:  8, kind: "pair", icon: <VehicleIcon size={S} />,    icon2: <ProjectIcon size={S} /> },
+    { id: "res-pro",  coeff:  9, kind: "pair", icon: <ResearchIcon size={S} />,   icon2: <ProjectIcon size={S} /> },
+    { id: "pro-dis",  coeff: 12, kind: "pair", icon: <ProjectIcon size={S} />,    icon2: <DiscoveryIcon size={S} /> },
+    { id: "veh-res",  coeff:  6, kind: "pair", icon: <VehicleIcon size={S} />,    icon2: <ResearchIcon size={S} /> },
+    { id: "str-veh",  coeff:  6, kind: "pair", icon: <StructureIcon size={S} />,  icon2: <VehicleIcon size={S} /> },
     { id: "fin-gen",  coeff:  6, kind: "pair", icon: <FinancierToken size={S} />, icon2: <GeneralToken size={S} /> },
-    { id: "mat-fin",  coeff:  6, kind: "pair", icon: <MaterialsIcon size={S} />,  icon2: <FinancierToken size={S} /> },
-    { id: "mil-fin",  coeff:  6, kind: "pair", icon: <MilitaryIcon size={S} />,   icon2: <FinancierToken size={S} /> },
-    { id: "exp-gen",  coeff:  6, kind: "pair", icon: <ExplorationIcon size={S} />,icon2: <GeneralToken size={S} /> },
-    { id: "ind-gen",  coeff:  5, kind: "pair", icon: <IndustryIcon size={S} />,   icon2: <GeneralToken size={S} /> },
+    { id: "dis-fin",  coeff:  6, kind: "pair", icon: <DiscoveryIcon size={S} />,  icon2: <FinancierToken size={S} /> },
+    { id: "veh-fin",  coeff:  6, kind: "pair", icon: <VehicleIcon size={S} />,    icon2: <FinancierToken size={S} /> },
+    { id: "pro-gen",  coeff:  6, kind: "pair", icon: <ProjectIcon size={S} />,    icon2: <GeneralToken size={S} /> },
+    { id: "str-gen",  coeff:  5, kind: "pair", icon: <StructureIcon size={S} />,  icon2: <GeneralToken size={S} /> },
 ];
 
 // ─── State ────────────────────────────────────────────────────────────────────
