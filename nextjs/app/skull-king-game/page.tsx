@@ -45,7 +45,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, ChevronDown, ChevronUp, GripVertical, Users } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, GripVertical, Sun, Users } from "lucide-react";
 import { useMe } from "@/app/meContext";
 import { toast } from "sonner";
 
@@ -145,16 +145,17 @@ function GameTable({
     state,
     onCellClick,
     maskedRoundIndex,
+    hideTotalPlayerIndices,
 }: {
     state: GameState;
     onCellClick?: (roundIndex: number, playerIndex: number) => void;
     maskedRoundIndex?: number;
+    hideTotalPlayerIndices?: number[];
 }) {
     const { players, rounds } = state;
-
+    const lastRoundIndex = rounds.length - 1;
     const clickable = !!onCellClick;
 
-    // Compute totals
     const totals = players.map((_, pi) =>
         rounds.reduce((sum, round, ri) => {
             const entry = round[pi];
@@ -163,68 +164,83 @@ function GameTable({
         }, 0)
     );
 
+    const headerCells = (
+        <>
+            <th className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center bg-muted min-w-12 md:min-w-16"></th>
+            {players.map((p) => (
+                <th key={p.id} className="border border-border px-1 py-0.5 md:px-2 md:py-1.5 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
+                    <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
+                        {p.name}
+                    </span>
+                </th>
+            ))}
+        </>
+    );
+
     return (
         <div className="overflow-x-auto max-w-full">
             <table className="border-collapse text-sm md:text-base">
                 <thead>
-                    <tr>
-                        <th className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center bg-muted min-w-12 md:min-w-16"></th>
-                        {players.map((p) => (
-                            <th key={p.id} className="border border-border px-1 py-0.5 md:px-2 md:py-1.5 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
-                                <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
-                                    {p.name}
-                                </span>
-                            </th>
-                        ))}
-                    </tr>
+                    <tr>{headerCells}</tr>
                 </thead>
                 <tbody>
-                    {rounds.map((round, ri) => (
-                        <tr key={ri}>
-                            <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-medium bg-muted/50">
-                                {ri + 1}
-                            </td>
-                            {players.map((_, pi) => {
-                                const entry = round[pi];
-                                if (!entry) return <td key={pi} className="border border-border px-2 py-0.5" />;
-                                const isMasked = maskedRoundIndex !== undefined && ri === maskedRoundIndex;
-                                const isClickable = clickable && !isMasked;
-                                const score = !isMasked && entry.actual !== null
-                                    ? calcRoundScore(entry, ri + 1, players.length)
-                                    : null;
-                                const scoreDisplay = score !== null
-                                    ? entry.bonus > 0
-                                        ? `${score - entry.bonus > 0 ? "+" : ""}${score - entry.bonus}+${entry.bonus}`
-                                        : `${score > 0 ? "+" : ""}${score}`
-                                    : null;
+                    {rounds.map((round, ri) => {
+                        const isLastRound = ri === lastRoundIndex;
+                        return (
+                            <tr key={ri}>
+                                <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-medium bg-muted/50">
+                                    {ri + 1}
+                                </td>
+                                {players.map((_, pi) => {
+                                    const entry = round[pi];
+                                    if (!entry) return <td key={pi} className="border border-border px-2 py-0.5" />;
+                                    const isMasked = maskedRoundIndex !== undefined && ri === maskedRoundIndex;
+                                    const isClickable = clickable && !isMasked;
+                                    const score = !isMasked && entry.actual !== null
+                                        ? calcRoundScore(entry, ri + 1, players.length)
+                                        : null;
+                                    const scoreDisplay = score !== null
+                                        ? entry.bonus > 0
+                                            ? `${score - entry.bonus > 0 ? "+" : ""}${score - entry.bonus}+${entry.bonus}`
+                                            : `${score > 0 ? "+" : ""}${score}`
+                                        : null;
+                                    const scalePct = isLastRound ? 1 : 0.75;
+                                    return (
+                                        <td
+                                            key={pi}
+                                            className={`border border-border px-1 py-0.5 md:px-3 md:py-1.5 text-center [container-type:inline-size] ${isClickable ? "cursor-pointer hover:bg-accent" : ""}`}
+                                            onClick={() => isClickable && onCellClick!(ri, pi)}
+                                        >
+                                            <div className="flex flex-col items-center leading-tight">
+                                                <span className="text-muted-foreground text-center whitespace-nowrap" style={{ fontSize: `clamp(${6 * scalePct}px, ${6 * scalePct}cqi, ${12 * scalePct}px)` }}>
+                                                    {entry.actual !== null ? entry.actual : "—"}/{isMasked ? "?" : entry.bid}
+                                                </span>
+                                                <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-red-600" : "text-green-700"}`} style={{ fontSize: `clamp(${6 * scalePct}px, ${7 * scalePct}cqi, ${14 * scalePct}px)` }}>
+                                                    {scoreDisplay ?? ""}
+                                                </span>
+                                            </div>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        );
+                    })}
+                    {/* Repeated header row before totals for easy reading */}
+                    {rounds.length > 0 && (
+                        <tr>{headerCells}</tr>
+                    )}
+                    {/* Totals row */}
+                    {rounds.length > 0 && (
+                        <tr className="bg-muted/50">
+                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold">Σ</td>
+                            {totals.map((total, pi) => {
+                                const isHidden = hideTotalPlayerIndices?.includes(pi);
                                 return (
-                                    <td
-                                        key={pi}
-                                        className={`border border-border px-1 py-0.5 md:px-3 md:py-1.5 text-center [container-type:inline-size] ${isClickable ? "cursor-pointer hover:bg-accent" : ""}`}
-                                        onClick={() => isClickable && onCellClick!(ri, pi)}
-                                    >
-                                        <div className="flex flex-col items-center leading-tight">
-                                            <span className="text-muted-foreground text-center whitespace-nowrap" style={{ fontSize: "clamp(7px, 6cqi, 12px)" }}>
-                                                {entry.actual !== null ? entry.actual : "—"}/{isMasked ? "?" : entry.bid}
-                                            </span>
-                                            <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-red-600" : "text-green-700"}`} style={{ fontSize: "clamp(7px, 7cqi, 14px)" }}>
-                                                {scoreDisplay ?? ""}
-                                            </span>
-                                        </div>
+                                    <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold ${isHidden ? "text-muted-foreground" : total < 0 ? "text-red-600" : "text-green-700"}`}>
+                                        {isHidden ? "—" : total}
                                     </td>
                                 );
                             })}
-                        </tr>
-                    ))}
-                    {/* Totals row */}
-                    {rounds.length > 0 && (
-                        <tr className="bg-muted/50 font-bold">
-                            <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center">Σ</td>
-                            {totals.map((total, pi) => (
-                                <td key={pi} className={`border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-semibold ${total < 0 ? "text-red-600" : "text-green-700"}`}>
-                                    {total}
-                                </td>
-                            ))}
                         </tr>
                     )}
                 </tbody>
@@ -301,7 +317,7 @@ function EditCellDialog({
                     </div>
                     {bonusApplicable && (
                         <div>
-                            <p className="text-sm font-medium mb-2">Бонус: {bonus}</p>
+                            <p className="text-sm font-medium mb-2">Бонус: <span className="text-xl md:text-2xl font-semibold">{bonus}</span></p>
                             <div className="flex flex-wrap gap-2">
                                 {[10, 20, 30, 40].map((b) => (
                                     <Button key={b} variant="outline" className="md:h-12 md:min-w-[3.5rem] md:text-base lg:h-14 lg:min-w-[4rem] lg:text-lg" onClick={() => setBonus((v) => v + b)}>
@@ -419,6 +435,49 @@ export default function SkullKingGamePage() {
     // Save state
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
+
+    // Wake lock
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wakeLockRef = React.useRef<any>(null);
+    const [wakeLockEnabled, setWakeLockEnabled] = useState(false);
+    const wakeLockSupported = typeof window !== "undefined" && "wakeLock" in navigator;
+
+    const acquireWakeLock = useCallback(async () => {
+        if (!wakeLockSupported) return;
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sentinel = await (navigator as any).wakeLock.request("screen");
+            wakeLockRef.current = sentinel;
+            setWakeLockEnabled(true);
+            sentinel.addEventListener("release", () => {
+                setWakeLockEnabled(false);
+                wakeLockRef.current = null;
+            });
+        } catch {
+            setWakeLockEnabled(false);
+        }
+    }, [wakeLockSupported]);
+
+    async function toggleWakeLock() {
+        if (wakeLockEnabled) {
+            await wakeLockRef.current?.release();
+        } else {
+            await acquireWakeLock();
+        }
+    }
+
+    useEffect(() => {
+        if (!wakeLockEnabled) return;
+        const onVisibilityChange = () => {
+            if (document.visibilityState === "visible") acquireWakeLock();
+        };
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    }, [wakeLockEnabled, acquireWakeLock]);
+
+    useEffect(() => {
+        return () => { wakeLockRef.current?.release(); };
+    }, []);
 
     const skullKingGame = useMemo(
         () => games.find((g) => g.name.toLowerCase().includes("skull king")),
@@ -669,29 +728,43 @@ export default function SkullKingGamePage() {
         <main className="max-w-5xl mx-auto space-y-4 overflow-x-hidden">
             <PageHeader
                 title="Skull King"
-                action={phase !== "setup" ? (
-                    isHost ? (
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm">Новая партия</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Начать новую партию?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        Результаты текущей партии будут удалены.
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                    <AlertDialogAction onClick={resetGame}>Начать</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                    ) : (
-                        <Button variant="outline" size="sm" onClick={resetGame}>Новая партия</Button>
-                    )
-                ) : null}
+                action={
+                    <div className="flex items-center gap-2">
+                        {wakeLockSupported && (
+                            <Button
+                                variant={wakeLockEnabled ? "secondary" : "ghost"}
+                                size="sm"
+                                onClick={toggleWakeLock}
+                                title={wakeLockEnabled ? "Экран не выключается" : "Экран может потухнуть"}
+                            >
+                                <Sun className="h-4 w-4" />
+                            </Button>
+                        )}
+                        {phase !== "setup" && (
+                            isHost ? (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="outline" size="sm">Новая партия</Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Начать новую партию?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Результаты текущей партии будут удалены.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                            <AlertDialogAction onClick={resetGame}>Начать</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            ) : (
+                                <Button variant="outline" size="sm" onClick={resetGame}>Новая партия</Button>
+                            )
+                        )}
+                    </div>
+                }
             />
 
             <AuthWarning />
@@ -824,7 +897,7 @@ export default function SkullKingGamePage() {
                             <CardTitle>Таблица результатов</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <GameTable state={gameState} maskedRoundIndex={currentRound - 1} />
+                            <GameTable state={gameState} />
                         </CardContent>
                     </Card>
                 </div>
@@ -952,7 +1025,17 @@ export default function SkullKingGamePage() {
                     {isHost && (
                         <Button
                             className="w-full md:h-12 md:text-base"
-                            onClick={() => setGameState({ ...gameState, phase: "bidding", currentPlayerIndex: 0 })}
+                            onClick={() => {
+                                const roundData = rounds[currentRound - 1] ?? [];
+                                const allBid = players.length > 0 &&
+                                    roundData.slice(0, players.length).every(e => e != null);
+                                if (allBid) {
+                                    setGameState({ ...gameState, phase: "bid-review", currentPlayerIndex: 0 });
+                                } else {
+                                    const firstUnfilled = roundData.findIndex(e => e == null);
+                                    setGameState({ ...gameState, phase: "bidding", currentPlayerIndex: firstUnfilled >= 0 ? firstUnfilled : 0 });
+                                }
+                            }}
                         >
                             Ввести ставки
                         </Button>
@@ -963,6 +1046,9 @@ export default function SkullKingGamePage() {
             {/* ── BID REVIEW ─────────────────────────────────── */}
             {phase === "bid-review" && (
                 <div className="space-y-4">
+                    {!isHost && (
+                        <p className="text-sm text-muted-foreground text-center">Ожидание ведущего...</p>
+                    )}
                     <Card>
                         <CardHeader>
                             <CardTitle>Раунд {currentRound} — планы введены</CardTitle>
@@ -990,9 +1076,6 @@ export default function SkullKingGamePage() {
                         <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={startResultEntry}>
                             Ввести результаты
                         </Button>
-                    )}
-                    {!isHost && (
-                        <p className="text-sm text-muted-foreground text-center">Ожидание ведущего...</p>
                     )}
                 </div>
             )}
@@ -1074,7 +1157,14 @@ export default function SkullKingGamePage() {
                             <CardTitle>Таблица результатов</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <GameTable state={gameState} />
+                            <GameTable
+                                state={gameState}
+                                hideTotalPlayerIndices={
+                                    players.map((_, pi) => pi).filter(pi =>
+                                        (rounds[currentRound - 1]?.[pi]?.actual ?? null) === null
+                                    )
+                                }
+                            />
                         </CardContent>
                     </Card>
                 )}
@@ -1084,6 +1174,12 @@ export default function SkullKingGamePage() {
             {/* ── ROUND COMPLETE ─────────────────────────────── */}
             {phase === "round-complete" && (
                 <div className="space-y-4">
+                    {!isHost && currentRound < TOTAL_ROUNDS && (
+                        <p className="text-sm text-muted-foreground text-center">Ожидание ведущего...</p>
+                    )}
+                    {currentRound === TOTAL_ROUNDS && !isHost && (
+                        <p className="text-sm text-muted-foreground text-center">Ожидание сохранения ведущим...</p>
+                    )}
                     <Card>
                         <CardHeader>
                             <CardTitle>
@@ -1109,10 +1205,6 @@ export default function SkullKingGamePage() {
                         <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={startNextRound}>
                             Следующий раунд ({currentRound + 1} / {TOTAL_ROUNDS})
                         </Button>
-                    )}
-
-                    {!isHost && currentRound < TOTAL_ROUNDS && (
-                        <p className="text-sm text-muted-foreground text-center">Ожидание ведущего...</p>
                     )}
 
                     {currentRound === TOTAL_ROUNDS && isHost && (
@@ -1147,9 +1239,6 @@ export default function SkullKingGamePage() {
                         </div>
                     )}
 
-                    {currentRound === TOTAL_ROUNDS && !isHost && (
-                        <p className="text-sm text-muted-foreground text-center">Ожидание сохранения ведущим...</p>
-                    )}
                 </div>
             )}
 
@@ -1228,7 +1317,7 @@ function ResultEntryCard({
                 <>
                     <div>
                         <p className="text-sm md:text-base font-medium mb-2">
-                            Бонус: {bonus}
+                            Бонус: <span className="text-xl md:text-2xl font-semibold">{bonus}</span>
                         </p>
                         <div className="flex flex-wrap gap-2">
                             {[10, 20, 30, 40].map((b) => (
