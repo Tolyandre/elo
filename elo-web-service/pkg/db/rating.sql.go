@@ -11,6 +11,85 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listMatchesForEloReset = `-- name: ListMatchesForEloReset :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    -- CASE forces sqlc to infer interface{} so pgx can scan NULL for a player's first match
+    CASE WHEN prev_pr.rating IS NULL THEN NULL ELSE prev_pr.rating END AS prev_global_elo,
+    COALESCE(es.elo_const_k, 32)    AS elo_const_k,
+    COALESCE(es.elo_const_d, 400)   AS elo_const_d,
+    COALESCE(es.starting_elo, 1000) AS starting_elo,
+    COALESCE(es.win_reward, 1)      AS win_reward
+FROM matches m
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN LATERAL (
+    SELECT pr2.rating
+    FROM player_ratings pr2
+    WHERE pr2.player_id = p.id
+      AND (pr2.date < m.date OR (pr2.date = m.date AND pr2.match_id IS NOT NULL AND pr2.match_id < m.id))
+    ORDER BY pr2.date DESC, pr2.id DESC
+    LIMIT 1
+) prev_pr ON true
+LEFT JOIN LATERAL (
+    SELECT elo_const_k, elo_const_d, starting_elo, win_reward
+    FROM elo_settings
+    WHERE effective_date <= m.date
+    ORDER BY effective_date DESC
+    LIMIT 1
+) es ON true
+WHERE m.date <= $1
+ORDER BY m.date ASC, m.id ASC
+`
+
+type ListMatchesForEloResetRow struct {
+	MatchID       int32              `json:"match_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	PlayerID      int32              `json:"player_id"`
+	PlayerName    string             `json:"player_name"`
+	Score         float64            `json:"score"`
+	PrevGlobalElo interface{}        `json:"prev_global_elo"`
+	EloConstK     float64            `json:"elo_const_k"`
+	EloConstD     float64            `json:"elo_const_d"`
+	StartingElo   float64            `json:"starting_elo"`
+	WinReward     float64            `json:"win_reward"`
+}
+
+func (q *Queries) ListMatchesForEloReset(ctx context.Context, date pgtype.Timestamptz) ([]ListMatchesForEloResetRow, error) {
+	rows, err := q.db.Query(ctx, listMatchesForEloReset, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchesForEloResetRow{}
+	for rows.Next() {
+		var i ListMatchesForEloResetRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.PrevGlobalElo,
+			&i.EloConstK,
+			&i.EloConstD,
+			&i.StartingElo,
+			&i.WinReward,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ratingHistory = `-- name: RatingHistory :many
 SELECT pr.date, pr.rating
 FROM player_ratings pr

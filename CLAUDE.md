@@ -131,7 +131,9 @@ The custom Elo algorithm (pkg/elo/elo.go:59) handles multi-player matches:
 
 The contract lives in `openapi/` as domain-specific files:
 - `openapi/openapi.yaml` — entry point with `$ref` to all domain files
-- `openapi/common.yaml`, `players.yaml`, `games.yaml`, `matches.yaml`, `clubs.yaml`, `settings.yaml`, `users.yaml`, `markets.yaml`, `auth.yaml`, `admin.yaml`, `voice.yaml`, `skull-king.yaml`
+- `openapi/common.yaml`, `players.yaml`, `games.yaml`, `matches.yaml`, `clubs.yaml`, `settings.yaml`, `users.yaml`, `markets.yaml`, `auth.yaml`, `admin.yaml`, `voice.yaml`, `skull-king.yaml`, `analytics.yaml`
+
+`openapi/bundled.json` is a generated intermediate artifact (gitignored); do not edit it manually.
 
 To regenerate clients after editing the spec:
 
@@ -141,7 +143,13 @@ pnpm --dir ./nextjs run generate:api
 
 # Regenerate Go server interfaces (backend)
 cd elo-web-service && go generate ./pkg/api/
+# or from the repo root:
+make generate-go-api
 ```
+
+**Go codegen is a two-step process** (both steps run automatically via `go generate ./pkg/api/`):
+1. `tools/bundle-openapi` — resolves all cross-file `$ref` into a single `openapi/bundled.json` using kin-openapi's `InternalizeRefs`. A custom resolver preserves the short alias names from `openapi.yaml` (e.g. `Club`, not `clubs_Club`).
+2. `oapi-codegen` — reads `bundled.json` and writes `pkg/api/generated.go` with Go types, Gin server interface, and strict handler scaffolding.
 
 After `generate:api`, `nextjs/app/api-types.gen.ts` is updated. The frontend uses the `client` export from `app/api.ts` (an `openapi-fetch` instance) for type-safe HTTP calls. SSE endpoints are not in the spec and use manual fetch in `hooks/useSkullKingSSE.ts`.
 

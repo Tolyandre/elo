@@ -88,6 +88,7 @@ type Querier interface {
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID pgtype.Int4) ([]ListMarketsByResolutionMatchRow, error)
 	ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPoolsRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
+	ListMatchesForEloReset(ctx context.Context, date pgtype.Timestamptz) ([]ListMatchesForEloResetRow, error)
 	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)
 	ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error)
 	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID int32) ([]ListMatchesWithPlayersByGameFromDBRow, error)

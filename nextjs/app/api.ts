@@ -525,3 +525,17 @@ export async function deleteSkullKingTablePromise(tableId: string): Promise<void
     });
     if (error) throw error;
 }
+
+// ─── Elo Reset ────────────────────────────────────────────────────────────────
+
+export type EloResetPlayerInfo = components["schemas"]["EloResetPlayerInfo"];
+export type EloResetSeriesPoint = components["schemas"]["EloResetSeriesPoint"];
+export type EloResetResult = components["schemas"]["EloResetResult"];
+
+export async function getEloResetPromise(playerIds: string[], calcDate: string): Promise<EloResetResult> {
+    const { data, error } = await client.GET("/analytics/elo-reset", {
+        params: { query: { player_id: playerIds, calc_date: calcDate } },
+    });
+    if (error) throw error;
+    return data.data;
+}

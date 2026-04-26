@@ -4,19 +4,12 @@
 package api
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
-	"path"
-	"strings"
 	"time"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
 	strictgin "github.com/oapi-codegen/runtime/strictmiddleware/gin"
@@ -77,6 +70,7 @@ func (e MarketMarketType) Valid() bool {
 // Defines values for MarketStatus.
 const (
 	MarketStatusBettingClosed MarketStatus = "betting_closed"
+	MarketStatusCancelled     MarketStatus = "cancelled"
 	MarketStatusExpired       MarketStatus = "expired"
 	MarketStatusOpen          MarketStatus = "open"
 	MarketStatusResolved      MarketStatus = "resolved"
@@ -86,6 +80,8 @@ const (
 func (e MarketStatus) Valid() bool {
 	switch e {
 	case MarketStatusBettingClosed:
+		return true
+	case MarketStatusCancelled:
 		return true
 	case MarketStatusExpired:
 		return true
@@ -119,6 +115,7 @@ func (e MarketDetailMarketType) Valid() bool {
 // Defines values for MarketDetailStatus.
 const (
 	MarketDetailStatusBettingClosed MarketDetailStatus = "betting_closed"
+	MarketDetailStatusCancelled     MarketDetailStatus = "cancelled"
 	MarketDetailStatusExpired       MarketDetailStatus = "expired"
 	MarketDetailStatusOpen          MarketDetailStatus = "open"
 	MarketDetailStatusResolved      MarketDetailStatus = "resolved"
@@ -129,11 +126,103 @@ func (e MarketDetailStatus) Valid() bool {
 	switch e {
 	case MarketDetailStatusBettingClosed:
 		return true
+	case MarketDetailStatusCancelled:
+		return true
 	case MarketDetailStatusExpired:
 		return true
 	case MarketDetailStatusOpen:
 		return true
 	case MarketDetailStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkullKingCardImageResult0Type.
+const (
+	Chest      SkullKingCardImageResult0Type = "chest"
+	JollyRoger SkullKingCardImageResult0Type = "jolly-roger"
+	Map        SkullKingCardImageResult0Type = "map"
+	Parrot     SkullKingCardImageResult0Type = "parrot"
+)
+
+// Valid indicates whether the value is a known member of the SkullKingCardImageResult0Type enum.
+func (e SkullKingCardImageResult0Type) Valid() bool {
+	switch e {
+	case Chest:
+		return true
+	case JollyRoger:
+		return true
+	case Map:
+		return true
+	case Parrot:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkullKingCardImageResult1Type.
+const (
+	Escape     SkullKingCardImageResult1Type = "escape"
+	Kraken     SkullKingCardImageResult1Type = "kraken"
+	Loot       SkullKingCardImageResult1Type = "loot"
+	Mermaid    SkullKingCardImageResult1Type = "mermaid"
+	Pirate     SkullKingCardImageResult1Type = "pirate"
+	SkullKing  SkullKingCardImageResult1Type = "skull-king"
+	Tigress    SkullKingCardImageResult1Type = "tigress"
+	WhiteWhale SkullKingCardImageResult1Type = "white-whale"
+)
+
+// Valid indicates whether the value is a known member of the SkullKingCardImageResult1Type enum.
+func (e SkullKingCardImageResult1Type) Valid() bool {
+	switch e {
+	case Escape:
+		return true
+	case Kraken:
+		return true
+	case Loot:
+		return true
+	case Mermaid:
+		return true
+	case Pirate:
+		return true
+	case SkullKing:
+		return true
+	case Tigress:
+		return true
+	case WhiteWhale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkullKingGameStatePhase.
+const (
+	BidReview      SkullKingGameStatePhase = "bid-review"
+	Bidding        SkullKingGameStatePhase = "bidding"
+	ResultEntry    SkullKingGameStatePhase = "result-entry"
+	RoundComplete  SkullKingGameStatePhase = "round-complete"
+	Setup          SkullKingGameStatePhase = "setup"
+	WaitingForBids SkullKingGameStatePhase = "waiting-for-bids"
+)
+
+// Valid indicates whether the value is a known member of the SkullKingGameStatePhase enum.
+func (e SkullKingGameStatePhase) Valid() bool {
+	switch e {
+	case BidReview:
+		return true
+	case Bidding:
+		return true
+	case ResultEntry:
+		return true
+	case RoundComplete:
+		return true
+	case Setup:
+		return true
+	case WaitingForBids:
 		return true
 	default:
 		return false
@@ -224,6 +313,24 @@ type EloRank struct {
 	Elo                  float64 `json:"elo"`
 	MatchesLeftForRanked int     `json:"matches_left_for_ranked"`
 	Rank                 *int    `json:"rank,omitempty"`
+}
+
+// EloResetPlayerInfo defines model for EloResetPlayerInfo.
+type EloResetPlayerInfo struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// EloResetResult defines model for EloResetResult.
+type EloResetResult struct {
+	Players []EloResetPlayerInfo  `json:"players"`
+	Series  []EloResetSeriesPoint `json:"series"`
+}
+
+// EloResetSeriesPoint defines model for EloResetSeriesPoint.
+type EloResetSeriesPoint struct {
+	Players   map[string]float64 `json:"players"`
+	ResetDate time.Time          `json:"reset_date"`
 }
 
 // EloSettingEntry defines model for EloSettingEntry.
@@ -455,6 +562,66 @@ type SettlementDetail struct {
 	Staked     float64 `json:"staked"`
 }
 
+// SkullKingCardImageResult defines model for SkullKingCardImageResult.
+type SkullKingCardImageResult struct {
+	union json.RawMessage
+}
+
+// SkullKingCardImageResult0 Card with a numeric value (jolly roger, chest, parrot, map)
+type SkullKingCardImageResult0 struct {
+	Type  SkullKingCardImageResult0Type `json:"type"`
+	Value int                           `json:"value"`
+}
+
+// SkullKingCardImageResult0Type defines model for SkullKingCardImageResult.0.Type.
+type SkullKingCardImageResult0Type string
+
+// SkullKingCardImageResult1 Special card without a numeric value
+type SkullKingCardImageResult1 struct {
+	Type SkullKingCardImageResult1Type `json:"type"`
+}
+
+// SkullKingCardImageResult1Type defines model for SkullKingCardImageResult.1.Type.
+type SkullKingCardImageResult1Type string
+
+// SkullKingGameState defines model for SkullKingGameState.
+type SkullKingGameState struct {
+	CurrentPlayerIndex int                     `json:"currentPlayerIndex"`
+	CurrentRound       int                     `json:"currentRound"`
+	FallbackGameId     *string                 `json:"fallbackGameId,omitempty"`
+	Phase              SkullKingGameStatePhase `json:"phase"`
+	Players            []SkullKingPlayer       `json:"players"`
+
+	// Rounds rounds[roundIndex][playerIndex] — null until the player has entered data
+	Rounds [][]*SkullKingRoundEntry `json:"rounds"`
+}
+
+// SkullKingGameStatePhase defines model for SkullKingGameState.Phase.
+type SkullKingGameStatePhase string
+
+// SkullKingPlayer defines model for SkullKingPlayer.
+type SkullKingPlayer struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// SkullKingRoundEntry defines model for SkullKingRoundEntry.
+type SkullKingRoundEntry struct {
+	Actual *int `json:"actual,omitempty"`
+	Bid    int  `json:"bid"`
+	Bonus  int  `json:"bonus"`
+}
+
+// SkullKingTableSummary defines model for SkullKingTableSummary.
+type SkullKingTableSummary struct {
+	ConnectedPlayerIds []int              `json:"connected_player_ids"`
+	CreatedAt          time.Time          `json:"created_at"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	GameState          SkullKingGameState `json:"game_state"`
+	HostUserId         int                `json:"host_user_id"`
+	Id                 string             `json:"id"`
+}
+
 // User defines model for User.
 type User struct {
 	CanEdit  bool    `json:"can_edit"`
@@ -480,6 +647,15 @@ type WinStreakParams struct {
 	GameIds      []string `json:"game_ids"`
 	MaxLosses    *int     `json:"max_losses,omitempty"`
 	WinsRequired int      `json:"wins_required"`
+}
+
+// GetEloResetParams defines parameters for GetEloReset.
+type GetEloResetParams struct {
+	// PlayerId Player IDs to include in the simulation
+	PlayerId []string `form:"player_id" json:"player_id"`
+
+	// CalcDate Calculation date (defaults to now)
+	CalcDate *time.Time `form:"calc_date,omitempty" json:"calc_date,omitempty"`
 }
 
 // PatchMeJSONBody defines parameters for PatchMe.
@@ -613,6 +789,33 @@ type CreateSettingsJSONBody struct {
 	WinReward     float64   `json:"win_reward"`
 }
 
+// ParseSkullKingCardImageJSONBody defines parameters for ParseSkullKingCardImage.
+type ParseSkullKingCardImageJSONBody struct {
+	// Image Base64-encoded card image
+	Image string `json:"image"`
+}
+
+// CreateSkullKingTableJSONBody defines parameters for CreateSkullKingTable.
+type CreateSkullKingTableJSONBody struct {
+	GameState SkullKingGameState `json:"game_state"`
+}
+
+// SubmitSkullKingBidJSONBody defines parameters for SubmitSkullKingBid.
+type SubmitSkullKingBidJSONBody struct {
+	Bid int `json:"bid"`
+}
+
+// SubmitSkullKingResultJSONBody defines parameters for SubmitSkullKingResult.
+type SubmitSkullKingResultJSONBody struct {
+	Actual int `json:"actual"`
+	Bonus  int `json:"bonus"`
+}
+
+// UpdateSkullKingTableStateJSONBody defines parameters for UpdateSkullKingTableState.
+type UpdateSkullKingTableStateJSONBody struct {
+	GameState SkullKingGameState `json:"game_state"`
+}
+
 // PatchUserJSONBody defines parameters for PatchUser.
 type PatchUserJSONBody struct {
 	CanEdit bool `json:"can_edit"`
@@ -668,6 +871,21 @@ type DeleteSettingsJSONRequestBody DeleteSettingsJSONBody
 
 // CreateSettingsJSONRequestBody defines body for CreateSettings for application/json ContentType.
 type CreateSettingsJSONRequestBody CreateSettingsJSONBody
+
+// ParseSkullKingCardImageJSONRequestBody defines body for ParseSkullKingCardImage for application/json ContentType.
+type ParseSkullKingCardImageJSONRequestBody ParseSkullKingCardImageJSONBody
+
+// CreateSkullKingTableJSONRequestBody defines body for CreateSkullKingTable for application/json ContentType.
+type CreateSkullKingTableJSONRequestBody CreateSkullKingTableJSONBody
+
+// SubmitSkullKingBidJSONRequestBody defines body for SubmitSkullKingBid for application/json ContentType.
+type SubmitSkullKingBidJSONRequestBody SubmitSkullKingBidJSONBody
+
+// SubmitSkullKingResultJSONRequestBody defines body for SubmitSkullKingResult for application/json ContentType.
+type SubmitSkullKingResultJSONRequestBody SubmitSkullKingResultJSONBody
+
+// UpdateSkullKingTableStateJSONRequestBody defines body for UpdateSkullKingTableState for application/json ContentType.
+type UpdateSkullKingTableStateJSONRequestBody UpdateSkullKingTableStateJSONBody
 
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
@@ -799,11 +1017,76 @@ func (t *MarketDetail_Params) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsSkullKingCardImageResult0 returns the union data inside the SkullKingCardImageResult as a SkullKingCardImageResult0
+func (t SkullKingCardImageResult) AsSkullKingCardImageResult0() (SkullKingCardImageResult0, error) {
+	var body SkullKingCardImageResult0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSkullKingCardImageResult0 overwrites any union data inside the SkullKingCardImageResult as the provided SkullKingCardImageResult0
+func (t *SkullKingCardImageResult) FromSkullKingCardImageResult0(v SkullKingCardImageResult0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSkullKingCardImageResult0 performs a merge with any union data inside the SkullKingCardImageResult, using the provided SkullKingCardImageResult0
+func (t *SkullKingCardImageResult) MergeSkullKingCardImageResult0(v SkullKingCardImageResult0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSkullKingCardImageResult1 returns the union data inside the SkullKingCardImageResult as a SkullKingCardImageResult1
+func (t SkullKingCardImageResult) AsSkullKingCardImageResult1() (SkullKingCardImageResult1, error) {
+	var body SkullKingCardImageResult1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSkullKingCardImageResult1 overwrites any union data inside the SkullKingCardImageResult as the provided SkullKingCardImageResult1
+func (t *SkullKingCardImageResult) FromSkullKingCardImageResult1(v SkullKingCardImageResult1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSkullKingCardImageResult1 performs a merge with any union data inside the SkullKingCardImageResult, using the provided SkullKingCardImageResult1
+func (t *SkullKingCardImageResult) MergeSkullKingCardImageResult1(v SkullKingCardImageResult1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SkullKingCardImageResult) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SkullKingCardImageResult) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(c *gin.Context)
+	// Simulate Elo if reset to starting_elo at various past dates
+	// (GET /analytics/elo-reset)
+	GetEloReset(c *gin.Context, params GetEloResetParams)
 	// Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(c *gin.Context)
@@ -921,6 +1204,33 @@ type ServerInterface interface {
 	// Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(c *gin.Context)
+	// Identify a Skull King card from a base64-encoded image
+	// (POST /skull-king/parse-card-image)
+	ParseSkullKingCardImage(c *gin.Context)
+	// List all active Skull King tables
+	// (GET /skull-king/tables)
+	ListSkullKingTables(c *gin.Context)
+	// Create a new Skull King table
+	// (POST /skull-king/tables)
+	CreateSkullKingTable(c *gin.Context)
+	// Delete a Skull King table (host only)
+	// (DELETE /skull-king/tables/{id})
+	DeleteSkullKingTable(c *gin.Context, id string)
+	// Get a Skull King table by ID
+	// (GET /skull-king/tables/{id})
+	GetSkullKingTable(c *gin.Context, id string)
+	// Submit a bid for the current round
+	// (POST /skull-king/tables/{id}/bid)
+	SubmitSkullKingBid(c *gin.Context, id string)
+	// Join a Skull King table as a player
+	// (POST /skull-king/tables/{id}/join)
+	JoinSkullKingTable(c *gin.Context, id string)
+	// Submit actual tricks taken for the current round
+	// (POST /skull-king/tables/{id}/result)
+	SubmitSkullKingResult(c *gin.Context, id string)
+	// Update game state (host only)
+	// (PATCH /skull-king/tables/{id}/state)
+	UpdateSkullKingTableState(c *gin.Context, id string)
 	// List all users
 	// (GET /users)
 	ListUsers(c *gin.Context)
@@ -952,6 +1262,47 @@ func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
 	}
 
 	siw.Handler.RecalculateGameElo(c)
+}
+
+// GetEloReset operation middleware
+func (siw *ServerInterfaceWrapper) GetEloReset(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEloResetParams
+
+	// ------------- Required query parameter "player_id" -------------
+
+	if paramValue := c.Query("player_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Query argument player_id is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "calc_date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "calc_date", c.Request.URL.Query(), &params.CalcDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter calc_date: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetEloReset(c, params)
 }
 
 // AuthLogin operation middleware
@@ -1787,6 +2138,201 @@ func (siw *ServerInterfaceWrapper) ListAllSettings(c *gin.Context) {
 	siw.Handler.ListAllSettings(c)
 }
 
+// ParseSkullKingCardImage operation middleware
+func (siw *ServerInterfaceWrapper) ParseSkullKingCardImage(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ParseSkullKingCardImage(c)
+}
+
+// ListSkullKingTables operation middleware
+func (siw *ServerInterfaceWrapper) ListSkullKingTables(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListSkullKingTables(c)
+}
+
+// CreateSkullKingTable operation middleware
+func (siw *ServerInterfaceWrapper) CreateSkullKingTable(c *gin.Context) {
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateSkullKingTable(c)
+}
+
+// DeleteSkullKingTable operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteSkullKingTable(c, id)
+}
+
+// GetSkullKingTable operation middleware
+func (siw *ServerInterfaceWrapper) GetSkullKingTable(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetSkullKingTable(c, id)
+}
+
+// SubmitSkullKingBid operation middleware
+func (siw *ServerInterfaceWrapper) SubmitSkullKingBid(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SubmitSkullKingBid(c, id)
+}
+
+// JoinSkullKingTable operation middleware
+func (siw *ServerInterfaceWrapper) JoinSkullKingTable(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.JoinSkullKingTable(c, id)
+}
+
+// SubmitSkullKingResult operation middleware
+func (siw *ServerInterfaceWrapper) SubmitSkullKingResult(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SubmitSkullKingResult(c, id)
+}
+
+// UpdateSkullKingTableState operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSkullKingTableState(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateSkullKingTableState(c, id)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(c *gin.Context) {
 
@@ -1869,6 +2415,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.POST(options.BaseURL+"/admin/recalculate-game-elo", wrapper.RecalculateGameElo)
+	router.GET(options.BaseURL+"/analytics/elo-reset", wrapper.GetEloReset)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.AuthLogout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetMe)
@@ -1908,6 +2455,15 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/settings", wrapper.GetSettings)
 	router.POST(options.BaseURL+"/settings", wrapper.CreateSettings)
 	router.GET(options.BaseURL+"/settings/all", wrapper.ListAllSettings)
+	router.POST(options.BaseURL+"/skull-king/parse-card-image", wrapper.ParseSkullKingCardImage)
+	router.GET(options.BaseURL+"/skull-king/tables", wrapper.ListSkullKingTables)
+	router.POST(options.BaseURL+"/skull-king/tables", wrapper.CreateSkullKingTable)
+	router.DELETE(options.BaseURL+"/skull-king/tables/:id", wrapper.DeleteSkullKingTable)
+	router.GET(options.BaseURL+"/skull-king/tables/:id", wrapper.GetSkullKingTable)
+	router.POST(options.BaseURL+"/skull-king/tables/:id/bid", wrapper.SubmitSkullKingBid)
+	router.POST(options.BaseURL+"/skull-king/tables/:id/join", wrapper.JoinSkullKingTable)
+	router.POST(options.BaseURL+"/skull-king/tables/:id/result", wrapper.SubmitSkullKingResult)
+	router.PATCH(options.BaseURL+"/skull-king/tables/:id/state", wrapper.UpdateSkullKingTableState)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 	router.POST(options.BaseURL+"/voice/parse", wrapper.ParseVoiceInput)
@@ -1934,6 +2490,35 @@ type RecalculateGameElo500JSONResponse ApiError
 func (response RecalculateGameElo500JSONResponse) VisitRecalculateGameEloResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEloResetRequestObject struct {
+	Params GetEloResetParams
+}
+
+type GetEloResetResponseObject interface {
+	VisitGetEloResetResponse(w http.ResponseWriter) error
+}
+
+type GetEloReset200JSONResponse struct {
+	Data   EloResetResult `json:"data"`
+	Status string         `json:"status"`
+}
+
+func (response GetEloReset200JSONResponse) VisitGetEloResetResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEloReset400JSONResponse ApiError
+
+func (response GetEloReset400JSONResponse) VisitGetEloResetResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -3490,6 +4075,355 @@ func (response ListAllSettings200JSONResponse) VisitListAllSettingsResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ParseSkullKingCardImageRequestObject struct {
+	Body *ParseSkullKingCardImageJSONRequestBody
+}
+
+type ParseSkullKingCardImageResponseObject interface {
+	VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error
+}
+
+type ParseSkullKingCardImage200JSONResponse struct {
+	Data   SkullKingCardImageResult `json:"data"`
+	Status string                   `json:"status"`
+}
+
+func (response ParseSkullKingCardImage200JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ParseSkullKingCardImage400JSONResponse ApiError
+
+func (response ParseSkullKingCardImage400JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ParseSkullKingCardImage500JSONResponse ApiError
+
+func (response ParseSkullKingCardImage500JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListSkullKingTablesRequestObject struct {
+}
+
+type ListSkullKingTablesResponseObject interface {
+	VisitListSkullKingTablesResponse(w http.ResponseWriter) error
+}
+
+type ListSkullKingTables200JSONResponse struct {
+	Data   []SkullKingTableSummary `json:"data"`
+	Status string                  `json:"status"`
+}
+
+func (response ListSkullKingTables200JSONResponse) VisitListSkullKingTablesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSkullKingTableRequestObject struct {
+	Body *CreateSkullKingTableJSONRequestBody
+}
+
+type CreateSkullKingTableResponseObject interface {
+	VisitCreateSkullKingTableResponse(w http.ResponseWriter) error
+}
+
+type CreateSkullKingTable201JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response CreateSkullKingTable201JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSkullKingTable400JSONResponse ApiError
+
+func (response CreateSkullKingTable400JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSkullKingTable401JSONResponse ApiError
+
+func (response CreateSkullKingTable401JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSkullKingTableRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeleteSkullKingTableResponseObject interface {
+	VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error
+}
+
+type DeleteSkullKingTable204Response struct {
+}
+
+func (response DeleteSkullKingTable204Response) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSkullKingTable401JSONResponse ApiError
+
+func (response DeleteSkullKingTable401JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSkullKingTable403JSONResponse ApiError
+
+func (response DeleteSkullKingTable403JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSkullKingTable404JSONResponse ApiError
+
+func (response DeleteSkullKingTable404JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSkullKingTableRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetSkullKingTableResponseObject interface {
+	VisitGetSkullKingTableResponse(w http.ResponseWriter) error
+}
+
+type GetSkullKingTable200JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response GetSkullKingTable200JSONResponse) VisitGetSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSkullKingTable404JSONResponse ApiError
+
+func (response GetSkullKingTable404JSONResponse) VisitGetSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingBidRequestObject struct {
+	Id   string `json:"id"`
+	Body *SubmitSkullKingBidJSONRequestBody
+}
+
+type SubmitSkullKingBidResponseObject interface {
+	VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error
+}
+
+type SubmitSkullKingBid200JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response SubmitSkullKingBid200JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingBid401JSONResponse ApiError
+
+func (response SubmitSkullKingBid401JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingBid404JSONResponse ApiError
+
+func (response SubmitSkullKingBid404JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingBid409JSONResponse ApiError
+
+func (response SubmitSkullKingBid409JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type JoinSkullKingTableRequestObject struct {
+	Id string `json:"id"`
+}
+
+type JoinSkullKingTableResponseObject interface {
+	VisitJoinSkullKingTableResponse(w http.ResponseWriter) error
+}
+
+type JoinSkullKingTable200JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response JoinSkullKingTable200JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type JoinSkullKingTable401JSONResponse ApiError
+
+func (response JoinSkullKingTable401JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type JoinSkullKingTable404JSONResponse ApiError
+
+func (response JoinSkullKingTable404JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingResultRequestObject struct {
+	Id   string `json:"id"`
+	Body *SubmitSkullKingResultJSONRequestBody
+}
+
+type SubmitSkullKingResultResponseObject interface {
+	VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error
+}
+
+type SubmitSkullKingResult200JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response SubmitSkullKingResult200JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingResult401JSONResponse ApiError
+
+func (response SubmitSkullKingResult401JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingResult404JSONResponse ApiError
+
+func (response SubmitSkullKingResult404JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SubmitSkullKingResult409JSONResponse ApiError
+
+func (response SubmitSkullKingResult409JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSkullKingTableStateRequestObject struct {
+	Id   string `json:"id"`
+	Body *UpdateSkullKingTableStateJSONRequestBody
+}
+
+type UpdateSkullKingTableStateResponseObject interface {
+	VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error
+}
+
+type UpdateSkullKingTableState200JSONResponse struct {
+	Data   SkullKingTableSummary `json:"data"`
+	Status string                `json:"status"`
+}
+
+func (response UpdateSkullKingTableState200JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSkullKingTableState401JSONResponse ApiError
+
+func (response UpdateSkullKingTableState401JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSkullKingTableState403JSONResponse ApiError
+
+func (response UpdateSkullKingTableState403JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSkullKingTableState404JSONResponse ApiError
+
+func (response UpdateSkullKingTableState404JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -3627,6 +4561,9 @@ type StrictServerInterface interface {
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(ctx context.Context, request RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error)
+	// Simulate Elo if reset to starting_elo at various past dates
+	// (GET /analytics/elo-reset)
+	GetEloReset(ctx context.Context, request GetEloResetRequestObject) (GetEloResetResponseObject, error)
 	// Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(ctx context.Context, request AuthLoginRequestObject) (AuthLoginResponseObject, error)
@@ -3744,6 +4681,33 @@ type StrictServerInterface interface {
 	// Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(ctx context.Context, request ListAllSettingsRequestObject) (ListAllSettingsResponseObject, error)
+	// Identify a Skull King card from a base64-encoded image
+	// (POST /skull-king/parse-card-image)
+	ParseSkullKingCardImage(ctx context.Context, request ParseSkullKingCardImageRequestObject) (ParseSkullKingCardImageResponseObject, error)
+	// List all active Skull King tables
+	// (GET /skull-king/tables)
+	ListSkullKingTables(ctx context.Context, request ListSkullKingTablesRequestObject) (ListSkullKingTablesResponseObject, error)
+	// Create a new Skull King table
+	// (POST /skull-king/tables)
+	CreateSkullKingTable(ctx context.Context, request CreateSkullKingTableRequestObject) (CreateSkullKingTableResponseObject, error)
+	// Delete a Skull King table (host only)
+	// (DELETE /skull-king/tables/{id})
+	DeleteSkullKingTable(ctx context.Context, request DeleteSkullKingTableRequestObject) (DeleteSkullKingTableResponseObject, error)
+	// Get a Skull King table by ID
+	// (GET /skull-king/tables/{id})
+	GetSkullKingTable(ctx context.Context, request GetSkullKingTableRequestObject) (GetSkullKingTableResponseObject, error)
+	// Submit a bid for the current round
+	// (POST /skull-king/tables/{id}/bid)
+	SubmitSkullKingBid(ctx context.Context, request SubmitSkullKingBidRequestObject) (SubmitSkullKingBidResponseObject, error)
+	// Join a Skull King table as a player
+	// (POST /skull-king/tables/{id}/join)
+	JoinSkullKingTable(ctx context.Context, request JoinSkullKingTableRequestObject) (JoinSkullKingTableResponseObject, error)
+	// Submit actual tricks taken for the current round
+	// (POST /skull-king/tables/{id}/result)
+	SubmitSkullKingResult(ctx context.Context, request SubmitSkullKingResultRequestObject) (SubmitSkullKingResultResponseObject, error)
+	// Update game state (host only)
+	// (PATCH /skull-king/tables/{id}/state)
+	UpdateSkullKingTableState(ctx context.Context, request UpdateSkullKingTableStateRequestObject) (UpdateSkullKingTableStateResponseObject, error)
 	// List all users
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -3785,6 +4749,33 @@ func (sh *strictHandler) RecalculateGameElo(ctx *gin.Context) {
 		ctx.Status(http.StatusInternalServerError)
 	} else if validResponse, ok := response.(RecalculateGameEloResponseObject); ok {
 		if err := validResponse.VisitRecalculateGameEloResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetEloReset operation middleware
+func (sh *strictHandler) GetEloReset(ctx *gin.Context, params GetEloResetParams) {
+	var request GetEloResetRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEloReset(ctx, request.(GetEloResetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEloReset")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(GetEloResetResponseObject); ok {
+		if err := validResponse.VisitGetEloResetResponse(ctx.Writer); err != nil {
 			ctx.Error(err)
 		}
 	} else if response != nil {
@@ -4930,6 +5921,283 @@ func (sh *strictHandler) ListAllSettings(ctx *gin.Context) {
 	}
 }
 
+// ParseSkullKingCardImage operation middleware
+func (sh *strictHandler) ParseSkullKingCardImage(ctx *gin.Context) {
+	var request ParseSkullKingCardImageRequestObject
+
+	var body ParseSkullKingCardImageJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ParseSkullKingCardImage(ctx, request.(ParseSkullKingCardImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ParseSkullKingCardImage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(ParseSkullKingCardImageResponseObject); ok {
+		if err := validResponse.VisitParseSkullKingCardImageResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSkullKingTables operation middleware
+func (sh *strictHandler) ListSkullKingTables(ctx *gin.Context) {
+	var request ListSkullKingTablesRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSkullKingTables(ctx, request.(ListSkullKingTablesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSkullKingTables")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(ListSkullKingTablesResponseObject); ok {
+		if err := validResponse.VisitListSkullKingTablesResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSkullKingTable operation middleware
+func (sh *strictHandler) CreateSkullKingTable(ctx *gin.Context) {
+	var request CreateSkullKingTableRequestObject
+
+	var body CreateSkullKingTableJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSkullKingTable(ctx, request.(CreateSkullKingTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSkullKingTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(CreateSkullKingTableResponseObject); ok {
+		if err := validResponse.VisitCreateSkullKingTableResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSkullKingTable operation middleware
+func (sh *strictHandler) DeleteSkullKingTable(ctx *gin.Context, id string) {
+	var request DeleteSkullKingTableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSkullKingTable(ctx, request.(DeleteSkullKingTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSkullKingTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(DeleteSkullKingTableResponseObject); ok {
+		if err := validResponse.VisitDeleteSkullKingTableResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSkullKingTable operation middleware
+func (sh *strictHandler) GetSkullKingTable(ctx *gin.Context, id string) {
+	var request GetSkullKingTableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSkullKingTable(ctx, request.(GetSkullKingTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSkullKingTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(GetSkullKingTableResponseObject); ok {
+		if err := validResponse.VisitGetSkullKingTableResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitSkullKingBid operation middleware
+func (sh *strictHandler) SubmitSkullKingBid(ctx *gin.Context, id string) {
+	var request SubmitSkullKingBidRequestObject
+
+	request.Id = id
+
+	var body SubmitSkullKingBidJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitSkullKingBid(ctx, request.(SubmitSkullKingBidRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitSkullKingBid")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(SubmitSkullKingBidResponseObject); ok {
+		if err := validResponse.VisitSubmitSkullKingBidResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// JoinSkullKingTable operation middleware
+func (sh *strictHandler) JoinSkullKingTable(ctx *gin.Context, id string) {
+	var request JoinSkullKingTableRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.JoinSkullKingTable(ctx, request.(JoinSkullKingTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "JoinSkullKingTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(JoinSkullKingTableResponseObject); ok {
+		if err := validResponse.VisitJoinSkullKingTableResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitSkullKingResult operation middleware
+func (sh *strictHandler) SubmitSkullKingResult(ctx *gin.Context, id string) {
+	var request SubmitSkullKingResultRequestObject
+
+	request.Id = id
+
+	var body SubmitSkullKingResultJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitSkullKingResult(ctx, request.(SubmitSkullKingResultRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitSkullKingResult")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(SubmitSkullKingResultResponseObject); ok {
+		if err := validResponse.VisitSubmitSkullKingResultResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSkullKingTableState operation middleware
+func (sh *strictHandler) UpdateSkullKingTableState(ctx *gin.Context, id string) {
+	var request UpdateSkullKingTableStateRequestObject
+
+	request.Id = id
+
+	var body UpdateSkullKingTableStateJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSkullKingTableState(ctx, request.(UpdateSkullKingTableStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSkullKingTableState")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(UpdateSkullKingTableStateResponseObject); ok {
+		if err := validResponse.VisitUpdateSkullKingTableStateResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListUsers operation middleware
 func (sh *strictHandler) ListUsers(ctx *gin.Context) {
 	var request ListUsersRequestObject
@@ -5021,156 +6289,4 @@ func (sh *strictHandler) ParseVoiceInput(ctx *gin.Context) {
 	} else if response != nil {
 		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
 	}
-}
-
-// Base64 encoded, gzipped, json marshaled Swagger object
-var swaggerSpec = []string{
-
-	"H4sIAAAAAAAC/+w9aXPbOJZ/BcXdqrGrZMtJej6M+1OuSXu3M3HZm+0PHRcLIp8kjEGADYB2tCn/9y0c",
-	"vEGKsiz6iL50OyKOh3e/B+DhRxDxJOUMmJLB6Y9ARktIsPnzbUo+CsGF/jsVPAWhCJgvCUiJF6D/VKsU",
-	"gtNAKkHYIribBFJhlZlWwLIkOP0zmGNCg6tJs+ndJBDwV0YExLqV6zcpBi978Nm/IVJ68LcpucyiCKT8",
-	"XIKwDWzSjvZA4L2n2awN0QI45QsiVchwYgBjGaV4RiE4VSKDSRtQEnvhz/u3PqQUr0CY2WKQkSCpIpwF",
-	"p8HvRCrE58g2QGcfJDogTMEChDwMJgFRkMjKkO6bHtP9goXAqxY6SBw4cMrJfRj5SPkFZtdtpADl+n9z",
-	"LhKsgtMg5plGSDEEy5KZhSPBKlqCDCnMVTjnIhSYXUPsB1q4yTowXLRsLEdD0z1Tx8IuQSnCFh+ZEivP",
-	"AudziBS5gTDGCtqUufjn+zdv3vwD6a+IC/QtOCJsThhRq29B4OEJoDyMOJMqjAdiruxxPbCHVFjoNYXD",
-	"yXNLWCjgFothUDURX8dSHeb6mhvQ1Wb2UeiTE5Y6WbaQrEJW/lPAPDgN/mNaqs6p05tTPeu56dOWoUmg",
-	"uMI0dHzm4+AeMav37Rc7DYXmUKVp4RG9ELBgMJSPFjiBsANx5lsH9hqLyYepdppUoelaiVZiHrWKE9iM",
-	"LnqcMwXJWu1mh+4DxwwzlLkolio05IpDLmIQft3VyYPbcE177uZ4Xcv8rL+315hrs5JvsIIjRcxsmxm2",
-	"ytrvI2YGwC5Z86FkncRUB/SyW5gz6yaCo/ukeLVJFwa3G2jgTVWajLiA+yjrKl/ZQRpLnDSw1FhOL979",
-	"uuq+qqc05hHPmPIz3S1hQ8TJr7fq47vBulbYxVRbEzn3d4ZoBGs1TQ8fnL8RqbhY+d21GK9CvODrxDJ3",
-	"9zT78dsNWt8CXG80QWOBerZJAWVlPN9KP2NxDR5mm1mHLowolxCHlh/vp+fMEHK7IQRgtSUYHVyTGASE",
-	"9vcyGDIsHd4SxoyZ0P6VVALwtSc80gQOIw7zOYkIMDWQjRkPU87pwNYpFjjxRDWWgEe6/ZFMISJzEiHT",
-	"GJRW8G3McAZf5sHpn/3cZRTRH2b953bqu0l/jz8IuzQoyttfGcaUnGYa1pBnKuIDgz7T7WZLiktQikLi",
-	"KDLIll4WXT6A0rG6x3E1rvd2/NwOvnkK2kbUxS4oEaF11vfUiLiPARUWC3DOjegyEiujojdlU91rMJ/6",
-	"dG1VwiZl8qAYt5SENogt0fIstVutORqe/ggwpYN43ihDzegtbRhSkpAOnHXQuxK3r0LGQ6nwdVegMWQI",
-	"jZytxkgF1wiCWEPTF6huMJIGaquhBEgQN/dc012L9leG+pu7636X6l7u1hLL0DJ91aWacU4Bsz7Pv/BG",
-	"cRwTrTMxPa+tYK3CLkOAppVIy9RXSGJ0YME9RIrnCTEzO4qxwkELqz659vuCLneR+8RVXPgFtRZn1KE+",
-	"B3HkgNNgoVuiloQhjIx1RgfXsIIYzVaVdRGG1BLcWhKcHgaTBhcIbPMmw0MX12N44HLvqKIy06QGaD5m",
-	"JwprlrordKjHlG0j0jB0OWSlrt1ogObaPKN1LgfkuTejbbhzqDG3asCzMAbfVZvb3mdCcoEUvwaG5vqv",
-	"JSDdFKV4Ab8irYoQmSPGUaK5S/8qN7P2A/PqZpU+3HQG5LtPq+fRVR/Cq2HT3STIZOGLrAGnJ7jujNEs",
-	"Li40NC2fmDCSYJorNtsHCVCZYBAjPFcgkI0ppqlhkslWqdFO8Lvh1iG+R1CdbPRQweiEpUX0YEm4MN3O",
-	"OWHKn4pNQ5PnC2ersJ4SHZyBylOs64avpO42y251jX7LhVS7A79B2yqBWuToWGo3gvug9/FOlY5bujcW",
-	"9PsYKWfh3QA+MN1ukPTn21/exs2D7dO0ws82AjfZrOgPB9fpmr5Qox8h5byThsC4MSdBD5N/lT4TF2EW",
-	"QkzUAI968FbW1sapAMq3jv/lJIJzLCRcgMxof0Z3vROh/b/hatNMfml8xnUqzY3cuYTL3Jv1mqou5tI6",
-	"akhGucYrtpMPkmZy6YFc3AR/DymX0o6xbqfcZrbDEvyh+XIZNLte+UIsCVEmiFpdaiI6tuf8msDbTC3b",
-	"bs5//fE/zlvV5gdM8PObUukXRlfIdjxGuisiEgGbcxHZcOkTYSghcUy1JoIJYlyhLymwt+dnSGRMm4zj",
-	"YBIQPYkdJ2f5U63ejm5hdqSDdhLBkQGg1Ag4Jf8Nmse0ULI5b0P9kXJkbQdSAkfXIIyzPeNYxMjuNk4C",
-	"RZQmg2n8B8zQpZ0tmAQ3IKQd6NXxyfGJJgpPgeGUBKfBm+OT4zeakbBaGvRNcZwQNhUQYRplVBtEPcWR",
-	"Mw0pt7upmpGwhu8sDk6Di7K1cw1sIi7lzDHK65MTSxymXCINpyklkRlj+m/JWXl+aJ2kts/xGOQ1TkgU",
-	"IBHOkB6FgjKi/feHBcWecvJAcMYUCIYpMtkagcA1nAQySxKsndEq4hCm1FCzTEqXhDcUxto/+DMwBAqu",
-	"9EBTnKnlVAcyzAY1Htpodv7dtGiQ5M3Ja8/BEoiJ0L6/4ugT5wsK6IuRpTrcZ4woooGutnmNDCRoTs1+",
-	"SgGv7l4Hl2eqm5kcwLrNYzPR73yxgBhpUOrrt/Chg4gCFhJJkNKymRb9w57FW+vqJdQnUJ9h2yX7g/8+",
-	"RBjn4QFj7jYW32dCAFMoczP9cvJqFAH8yjTKuSD/B3HNWpi0dtVO/Hl1d1Ul7ydQKHJQ6zGAKQ0exHYN",
-	"LfIa/WkTqHWanuufHVX/ykCqdzxebUHQDb0wD2lKUupOdy12+6WtE76mOoCJLenG0Z3vcIwcxh6PY/S8",
-	"/xhlXpvhQJgKwPEKUcKuIdYqGDOuliCc6GzCwpZoBRfrAf4m85EtG/WoKa7/+/oowpTOcHTda1ys7n+f",
-	"N3Ubr3YvVUNpnKK/MjDhvvOJIh7bnHeOuRbv+vtp5dPf8epBFeiGSnGINjS2GLmjw/OMNixL3aBGJVY9",
-	"pIpoNpOdtPmdSPXetNiJTRkUVJkzzf4d4R0Zm/zMssVNw2rrb9rNihxacpzafxs97nVJ3pvMp1nMQ2ny",
-	"YYnRjpzoEEW+a78hJ+0O/QZ7hsVQ66c0Pm9GmfefXMxIHAMb0+Jp7jG7k0gtiUSazwvzB9+JVHIzc2d5",
-	"BWHE4NYyTFu6C5U5/UHiO+vnmKCwJe8fzO9O3n3mTIfLpVUicdCUx12aqK3DGoN8u/Z4L1hjCdYv4wkW",
-	"4wrNecY2DHss2yPcJUCTzsD1qYrKkzRrVvoUJlQ+qvQ9HkPWAm3Lbmi2Qmcf/D5ZT2y9U8bb+3mjCITL",
-	"L+z9vL058qYwzBDuGluvSzdNIJm5i0AdueU41hB9Nu2etN7wbRau3xEcQ4Vs7X5a7CMcx3v3cxx530Tq",
-	"3sYxwvlBMMW7vUG/7E1/2K5n/RHWBST8BnYrixPvIDl4zytkczIjDNr2UvPkpMbycyk4c8GTftEpbiB3",
-	"Jm8/ua39kR2+4tL0KHlai4aOPK35iMzNY3sOg2KpLIrjClrdjes16dtP7gTiz+PWj3ZCd/c5YE3ivdZ7",
-	"WTlgLZA7ywEv6gFDriIKzTswB+yUxsvLARvkP24OGB3A8eLYUAotsUTu9PfhPhjfpcBtmxvuEKzu3PBT",
-	"FaH7eUa7NXdOKh83N9zK0C4qUCHM8vMj7nwiu24cUKy4Yz2Z252yxd7Fez4uXp7+3bt4e4vjSf8a5cOG",
-	"eHPTyk25PmP0uayC9jxs0mbX/sY9b+WQWVz/fVQpbu8tUpq7lQZC3BcXVCoQdOZkPrs2IyhzbEobbnB3",
-	"25XiaBHflUbZdqAGqzjwiuHHNRqODmgheJaaizyKIwuS8VAcUL68UrMRSgqa5lxR1F9Yk1JyqHooj2N9",
-	"3aeumhsbX+J6gBJOm94E27I4QqOMUJ0dPsAcZ1RJpDhi/BaROeIJUQriX1GSSWVs0AzyYhcplkq3SQW/",
-	"IbHJJQ5Dt0VHeD+sDyo5tOl9uXqtoJKDBpX9GeKlvhrHS207o4+hUFyNg/0Gy5PbYKkl91zRL6e5vYq7",
-	"YtAHpvoKZf7ykn2OufdHPl9kHt1RV5s4UxTvfnk9KyzogDO60rbRqlBEpBn0sMM76rzJ+GSFafO0X600",
-	"3hhGKC6meuFnQyuc23U6NKmixLw/ENEsBmlutFXqd9ryeoQzqZm3dmmzi3d772zuln8fIlpol8Rs1MIc",
-	"+izF8zg0Zvkg+4nvou5NWG+i0GkKZ7fs3qKRhNxdPBzkKE5nLgfkD/zPKY7g3RNXDTjJ65bD94hmktyA",
-	"qfCm1YQFol2gKMkbnHjqIlUqEefKZmVL+fH1aibvPMnhGiMQ3VrhvANz0ijaK5sxlA06YLx+O/3wEfWP",
-	"ra9jtYYB4/XrcagPCpmqyQi+RwDxpnUrjHJCWIOOOCuc+h69179hYjPeHbslDUoSqkCg2cpu2JirPL4b",
-	"/GUN3N6Du12DF09RdQxfLY51rwnMbYOzD79q/xJ9C8KQ8VD/FobfAsMW7h0Qc3CJZ6o85Omtc6B7bgpM",
-	"vayq4AlKBdwQnklTQfVvEn0zBVk1QARo3DG3qdm60cT/Mvoe8XmxZ5KCMHN2TGErfFfniG0iNjh9c2Iy",
-	"xNakvDo5qRiYV54XtXaZIqnWx/UV38ALwswOtC2STEmuex97B8vsV+SkMAflIsMaRzMstZ60gOtRqgLu",
-	"Hubp3Lp4G8efXQnXh/E2+up+ry3QPaAo4waFuVmWgCARyotp9xflruoif63oJ3CMo+dVlrEz5Fo69rd2",
-	"XmD45cpQo2iJ2QJQxNmckkaJxYEXhxjcWpXl1UkVp6PIynenEFW0fLcyN3VeRBbRnc3YtYT+PFfL7Xr7",
-	"75Zbm968XF6zkpmH/2xOIbeTTzfSf7gXOp6VpXavZjyTzKXmwH3i8kUecGypoGdmtF3utHggxpa2Nqej",
-	"9IfDQVZ87cm5YkNQvlsZjD0no77l6bvdn4HLj14muYfxNM5eOqZAWEoeERNgmxgWd/qHk0Z6KnXvLXTx",
-	"1Ln+/tjqPeWOmOXqfwNMdbC+hFrlxqX5OV9b+WZtZ+rt3LV5PLbufox6d2x9Xkmw5ddLUP5gSMdF4WpS",
-	"rutaSvGA75pDned5cdR9AaAKD1zAfJybvmnBcns/6eVkGFyF413d9m0VNC6FvaJsBx4ELBTAyzsI6Mjw",
-	"JO79uq2c/c3f8cRv27u/PWLWf5xqxyK1t9Pj2en8uubeTv8cimI8H+Ff2iXYKo3hTErjtmi3LzCV+aOS",
-	"nSFm5e3JF7ENUV3QCGGcOY5HpCLRz7Ah4TeztayIY1H3npcLa02+zZybqaCri4Fl5a3Ifke2eFXyoWwk",
-	"zOdgrk+Gm+w7NB9/rA/yLHL4OSb3V2ie6v0w56POM5UJMCkgWXJ/LkjFT31XV2pSM6puLmYe5TmuAhlt",
-	"JVW8fWXvSg/BZl9GbQQ91MiMZ7J63dcyxeBLvs/0yd3itN3fq4e5j1+tfYy3jszJg73O+wQPdRd6fH/P",
-	"92nf82VwW1M76KBg07y2qlP1zW3KilaqektTTGnvZstbSner+QdtuHyk3EHxkSmxGnfn5S2lJcKBKUFA",
-	"dhRVqdHGNUUH1p0lEabGo7UU6iFOJtdtgX2Vj7sBlr+OOf4DZhY3HftdmUNLjlf77wpSpz/0/1wR7r7M",
-	"3Fc5MC9nx3uc3FzfU+YNhPc8MP4UknS7f201z8+Vr63uzdtLyc5p7tmynJpmC6QFhLAFSkEkxDxd3KVM",
-	"bjiJYJpiIaHnTqT+bF6+P2Np9nD1kBR899T6uUwBouWR4kf6OyJ6SqQ4skCuyz6YMZ+mbjAYNLi8AJnR",
-	"HR/nNxO5rJM21vbk115jjKMxxnqE/gulOMHVt+cH3yXU/IEYVpnAFFHMFhleAJJG+my9NZuxtCcGM6kV",
-	"ip2uokuM/tC6xEwtbnIHIxM0OA2mwd3V3f8HAAD//7xk4KRFpAAA",
-}
-
-// GetSwagger returns the content of the embedded swagger specification file
-// or error if failed to decode
-func decodeSpec() ([]byte, error) {
-	zipped, err := base64.StdEncoding.DecodeString(strings.Join(swaggerSpec, ""))
-	if err != nil {
-		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(zipped))
-	if err != nil {
-		return nil, fmt.Errorf("error decompressing spec: %w", err)
-	}
-	var buf bytes.Buffer
-	_, err = buf.ReadFrom(zr)
-	if err != nil {
-		return nil, fmt.Errorf("error decompressing spec: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-var rawSpec = decodeSpecCached()
-
-// a naive cached of a decoded swagger spec
-func decodeSpecCached() func() ([]byte, error) {
-	data, err := decodeSpec()
-	return func() ([]byte, error) {
-		return data, err
-	}
-}
-
-// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
-func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
-	res := make(map[string]func() ([]byte, error))
-	if len(pathToFile) > 0 {
-		res[pathToFile] = rawSpec
-	}
-
-	return res
-}
-
-// GetSwagger returns the Swagger specification corresponding to the generated code
-// in this file. The external references of Swagger specification are resolved.
-// The logic of resolving external references is tightly connected to "import-mapping" feature.
-// Externally referenced files must be embedded in the corresponding golang packages.
-// Urls can be supported but this task was out of the scope.
-func GetSwagger() (swagger *openapi3.T, err error) {
-	resolvePath := PathToRawSpec("")
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = true
-	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
-		pathToFile := url.String()
-		pathToFile = path.Clean(pathToFile)
-		getSpec, ok := resolvePath[pathToFile]
-		if !ok {
-			err1 := fmt.Errorf("path not found: %s", pathToFile)
-			return nil, err1
-		}
-		return getSpec()
-	}
-	var specData []byte
-	specData, err = rawSpec()
-	if err != nil {
-		return
-	}
-	swagger, err = loader.LoadFromData(specData)
-	if err != nil {
-		return
-	}
-	return
 }

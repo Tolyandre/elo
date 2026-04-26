@@ -58,3 +58,6 @@
 
 # temporary assets
 /elo-web-service/assets
+
+# generated artifacts
+/openapi/bundled.json

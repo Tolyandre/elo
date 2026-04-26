@@ -139,6 +139,9 @@ func main() {
 	sk.DELETE("/:id", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.DeleteSkullKingTable)
 	sk.GET("/:id/events", apiHandler.SkullKingTableEvents)
 
+	// Analytics
+	router.GET("/analytics/elo-reset", strictWrapper.GetEloReset)
+
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)

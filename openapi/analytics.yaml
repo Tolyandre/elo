@@ -1,0 +1,81 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+EloResetPath:
+  get:
+    operationId: GetEloReset
+    tags: [analytics]
+    summary: Simulate Elo if reset to starting_elo at various past dates
+    parameters:
+      - name: player_id
+        in: query
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
+        style: form
+        explode: true
+        description: Player IDs to include in the simulation
+      - name: calc_date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+        description: Calculation date (defaults to now)
+    responses:
+      "200":
+        description: Elo reset simulation result
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/EloResetResult'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+EloResetPlayerInfo:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+  required: [id, name]
+
+EloResetSeriesPoint:
+  type: object
+  properties:
+    reset_date:
+      type: string
+      format: date-time
+    players:
+      type: object
+      additionalProperties:
+        type: number
+        format: double
+  required: [reset_date, players]
+
+EloResetResult:
+  type: object
+  properties:
+    series:
+      type: array
+      items:
+        $ref: '#/EloResetSeriesPoint'
+    players:
+      type: array
+      items:
+        $ref: '#/EloResetPlayerInfo'
+  required: [series, players]
