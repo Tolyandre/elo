@@ -66,7 +66,7 @@ export function NavigationBar() {
                 </>
               } />
 
-              <ListItem href="/skull-king-game" title={
+              <ListItem href="/calculators/skull-king-game" title={
                 <>
                   <Skull className="inline-block mr-2 h-6 w-6 align-middle" />
                   Skull King: игра
