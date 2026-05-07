@@ -20,24 +20,39 @@ import { AlertCircleIcon } from "lucide-react";
 import { GameMultiSelect } from "@/components/game-multi-select";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
+import { useSessionStorage } from "@/hooks/useSessionStorage";
+
+const STORAGE_KEYS = [
+    "new-market/marketType",
+    "new-market/startsAtMode",
+    "new-market/startsAt",
+    "new-market/closesAt",
+    "new-market/targetPlayerID",
+    "new-market/requiredPlayerIDs",
+    "new-market/gameIDs",
+    "new-market/streakTargetPlayerID",
+    "new-market/streakGameIDs",
+    "new-market/winsRequired",
+    "new-market/maxLosses",
+] as const;
 
 export default function NewMarketPage() {
     const me = useMe();
     const router = useRouter();
 
-    const [marketType, setMarketType] = useState<"match_winner" | "win_streak">("match_winner");
-    const [startsAtMode, setStartsAtMode] = useState<"now" | "specific">("now");
-    const [startsAt, setStartsAt] = useState("");
-    const [closesAt, setClosesAt] = useState("");
+    const [marketType, setMarketType] = useSessionStorage<"match_winner" | "win_streak">("new-market/marketType", "match_winner");
+    const [startsAtMode, setStartsAtMode] = useSessionStorage<"now" | "specific">("new-market/startsAtMode", "now");
+    const [startsAt, setStartsAt] = useSessionStorage("new-market/startsAt", "");
+    const [closesAt, setClosesAt] = useSessionStorage("new-market/closesAt", "");
     // match_winner
-    const [targetPlayerID, setTargetPlayerID] = useState("");
-    const [requiredPlayerIDs, setRequiredPlayerIDs] = useState<string[]>([]);
-    const [gameIDs, setGameIDs] = useState<string[]>([]);
+    const [targetPlayerID, setTargetPlayerID] = useSessionStorage("new-market/targetPlayerID", "");
+    const [requiredPlayerIDs, setRequiredPlayerIDs] = useSessionStorage<string[]>("new-market/requiredPlayerIDs", []);
+    const [gameIDs, setGameIDs] = useSessionStorage<string[]>("new-market/gameIDs", []);
     // win_streak
-    const [streakTargetPlayerID, setStreakTargetPlayerID] = useState("");
-    const [streakGameIDs, setStreakGameIDs] = useState<string[]>([]);
-    const [winsRequired, setWinsRequired] = useState("3");
-    const [maxLosses, setMaxLosses] = useState("");
+    const [streakTargetPlayerID, setStreakTargetPlayerID] = useSessionStorage("new-market/streakTargetPlayerID", "");
+    const [streakGameIDs, setStreakGameIDs] = useSessionStorage<string[]>("new-market/streakGameIDs", []);
+    const [winsRequired, setWinsRequired] = useSessionStorage("new-market/winsRequired", "3");
+    const [maxLosses, setMaxLosses] = useSessionStorage("new-market/maxLosses", "");
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -64,6 +79,7 @@ export default function NewMarketPage() {
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
             await createMarketPromise(payload);
+            STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/markets");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Ошибка");
