@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Skull, Crosshair, Globe, Activity } from "lucide-react"
+import { Skull, Crosshair, Globe, Activity, Timer } from "lucide-react"
 
 const items = [
   {
@@ -26,6 +26,11 @@ const items = [
     href: "/its-a-wonderful-world",
     icon: <Globe className="h-6 w-6" />,
     title: "Этот Безумный Мир",
+  },
+  {
+    href: "/calculators/chess-clock",
+    icon: <Timer className="h-6 w-6" />,
+    title: "Шахматные часы",
   },
 ] as const
 
