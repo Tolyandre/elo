@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { Settings, LogOut, SlidersHorizontal, Skull, Crosshair, TrendingUp, Globe, Activity } from "lucide-react"
+import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -30,6 +30,20 @@ export function NavigationBar() {
           <NavigationMenuTrigger className="px-2">Меню</NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
+
+              <ListItem href="/calculators" title={
+                <>
+                  <LayoutGrid className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Калькуляторы
+                </>
+              } />
+
+              <ListItem href="/markets" title={
+                <>
+                  <TrendingUp className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Ставки
+                </>
+              } />
 
               <ListItem href="/admin" title={
                 <>
@@ -49,48 +63,6 @@ export function NavigationBar() {
                 <>
                   <SiGithub className="inline-block mr-2 h-6 w-6 align-middle" />
                   Исходный код
-                </>
-              } />
-
-              <ListItem href="/markets" title={
-                <>
-                  <TrendingUp className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Ставки
-                </>
-              } />
-
-              <ListItem href="/calculators/skull-king" title={
-                <>
-                  <Skull className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Skull King
-                </>
-              } />
-
-              <ListItem href="/calculators/skull-king-game" title={
-                <>
-                  <Skull className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Skull King: игра
-                </>
-              } />
-
-              <ListItem href="/calculators/st-patrick" title={
-                <>
-                  <Crosshair className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Охота на змей
-                </>
-              } />
-
-              <ListItem href="/calculators/elo-reset" title={
-                <>
-                  <Activity className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Сходимость Эло
-                </>
-              } />
-
-              <ListItem href="/its-a-wonderful-world" title={
-                <>
-                  <Globe className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Этот Безумный Мир
                 </>
               } />
 
