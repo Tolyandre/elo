@@ -87,8 +87,8 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
 			Score:      r.Score,
-			RatingPay:  r.RatingPay,
-			RatingEarn: r.RatingEarn,
+			RatingPay:  r.RatingPay.Float64,
+			RatingEarn: r.RatingEarn.Float64,
 		}
 	}
 
@@ -196,8 +196,8 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
 			Score:      r.Score,
-			RatingPay:  r.RatingPay,
-			RatingEarn: r.RatingEarn,
+			RatingPay:  r.RatingPay.Float64,
+			RatingEarn: r.RatingEarn.Float64,
 		}
 	}
 

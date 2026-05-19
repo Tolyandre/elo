@@ -312,8 +312,8 @@ func (a *API) ListMatches(c *gin.Context) {
 		m := matchesMap[r.MatchID]
 		m.Players[r.PlayerID] = matchPlayerJson{
 			Score:      r.Score,
-			RatingPay:  r.RatingPay,
-			RatingEarn: r.RatingEarn,
+			RatingPay:  r.RatingPay.Float64,
+			RatingEarn: r.RatingEarn.Float64,
 		}
 	}
 
@@ -368,8 +368,8 @@ func (a *API) GetMatchById(c *gin.Context) {
 		m := matchesMap[r.MatchID]
 		m.Players[r.PlayerID] = matchPlayerJson{
 			Score:      r.Score,
-			RatingPay:  r.RatingPay,
-			RatingEarn: r.RatingEarn,
+			RatingPay:  r.RatingPay.Float64,
+			RatingEarn: r.RatingEarn.Float64,
 		}
 	}
 

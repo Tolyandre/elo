@@ -191,9 +191,9 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 			Id:          fmt.Sprintf("%d", r.PlayerID),
 			Name:        r.PlayerName,
 			Score:       r.Score,
-			GameEloPay:  r.GameEloPay,
-			GameEloEarn: r.GameEloEarn,
-			GameNewElo:  r.GameNewElo,
+			GameEloPay:  r.GameEloPay.Float64,
+			GameEloEarn: r.GameEloEarn.Float64,
+			GameNewElo:  r.GameNewElo.Float64,
 		})
 	}
 

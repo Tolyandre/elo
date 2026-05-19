@@ -123,22 +123,22 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.rating_pay,
-    s.rating_earn,
+    gas.staked AS rating_pay,
+    gas.earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
-    -- for players whose first match has no previous rating or no player_ratings row yet
-    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
+    -- for players whose first match has no previous rating or no settlement row yet
+    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating
 FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
+LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT pr2.rating
-    FROM player_ratings pr2
-    WHERE pr2.player_id = p.id AND pr2.date < m.date
-    ORDER BY pr2.date DESC, pr2.id DESC
+    SELECT gas2.new_rating
+    FROM global_arena_settlement gas2
+    WHERE gas2.player_id = p.id AND gas2.date < m.date
+    ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
 WHERE m.id = $1
@@ -153,8 +153,8 @@ type GetMatchWithPlayersRow struct {
 	PlayerID     int32              `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
-	RatingPay    float64            `json:"rating_pay"`
-	RatingEarn   float64            `json:"rating_earn"`
+	RatingPay    pgtype.Float8      `json:"rating_pay"`
+	RatingEarn   pgtype.Float8      `json:"rating_earn"`
 	GlobalNewElo interface{}        `json:"global_new_elo"`
 	PrevRating   interface{}        `json:"prev_rating"`
 }
@@ -218,149 +218,6 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 	return items, nil
 }
 
-const getPlayerLatestGameElo = `-- name: GetPlayerLatestGameElo :one
-SELECT ms.game_new_elo
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-  AND m.game_id = $2
-ORDER BY m.date DESC, m.id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGameEloParams struct {
-	PlayerID int32 `json:"player_id"`
-	GameID   int32 `json:"game_id"`
-}
-
-func (q *Queries) GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameElo, arg.PlayerID, arg.GameID)
-	var game_new_elo float64
-	err := row.Scan(&game_new_elo)
-	return game_new_elo, err
-}
-
-const getPlayerLatestGameEloBeforeMatch = `-- name: GetPlayerLatestGameEloBeforeMatch :one
-SELECT ms.game_new_elo
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE ms.player_id = $1
-  AND m.game_id = $2
-  AND (m.date < $3 OR (m.date = $3 AND m.id < $4))
-ORDER BY m.date DESC, m.id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGameEloBeforeMatchParams struct {
-	PlayerID int32              `json:"player_id"`
-	GameID   int32              `json:"game_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	ID       int32              `json:"id"`
-}
-
-func (q *Queries) GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameEloBeforeMatch,
-		arg.PlayerID,
-		arg.GameID,
-		arg.Date,
-		arg.ID,
-	)
-	var game_new_elo float64
-	err := row.Scan(&game_new_elo)
-	return game_new_elo, err
-}
-
-const getPlayerLatestGlobalElo = `-- name: GetPlayerLatestGlobalElo :one
-SELECT pr.rating
-FROM player_ratings pr
-WHERE pr.player_id = $1
-ORDER BY pr.date DESC, pr.id DESC
-LIMIT 1
-`
-
-func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalElo, playerID)
-	var rating float64
-	err := row.Scan(&rating)
-	return rating, err
-}
-
-const getPlayerLatestGlobalEloAtDate = `-- name: GetPlayerLatestGlobalEloAtDate :one
-SELECT pr.rating
-FROM player_ratings pr
-WHERE pr.player_id = $1
-  AND pr.date <= $2
-ORDER BY pr.date DESC, pr.id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGlobalEloAtDateParams struct {
-	PlayerID int32              `json:"player_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-}
-
-func (q *Queries) GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloAtDate, arg.PlayerID, arg.Date)
-	var rating float64
-	err := row.Scan(&rating)
-	return rating, err
-}
-
-const getPlayerLatestGlobalEloBeforeMatch = `-- name: GetPlayerLatestGlobalEloBeforeMatch :one
-SELECT pr.rating
-FROM player_ratings pr
-WHERE pr.player_id = $1
-  AND (pr.date < $2 OR (pr.date = $2 AND pr.match_id IS NOT NULL AND pr.match_id < $3))
-ORDER BY pr.date DESC, pr.id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGlobalEloBeforeMatchParams struct {
-	PlayerID int32              `json:"player_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  pgtype.Int4        `json:"match_id"`
-}
-
-func (q *Queries) GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloBeforeMatch, arg.PlayerID, arg.Date, arg.MatchID)
-	var rating float64
-	err := row.Scan(&rating)
-	return rating, err
-}
-
-const listLatestGameEloPerPlayer = `-- name: ListLatestGameEloPerPlayer :many
-SELECT DISTINCT ON (ms.player_id) ms.player_id, ms.game_new_elo
-FROM match_scores ms
-JOIN matches m ON m.id = ms.match_id
-WHERE m.game_id = $1
-ORDER BY ms.player_id, m.date DESC, m.id DESC
-`
-
-type ListLatestGameEloPerPlayerRow struct {
-	PlayerID   int32   `json:"player_id"`
-	GameNewElo float64 `json:"game_new_elo"`
-}
-
-func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID int32) ([]ListLatestGameEloPerPlayerRow, error) {
-	rows, err := q.db.Query(ctx, listLatestGameEloPerPlayer, gameID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListLatestGameEloPerPlayerRow{}
-	for rows.Next() {
-		var i ListLatestGameEloPerPlayerRow
-		if err := rows.Scan(&i.PlayerID, &i.GameNewElo); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listMatchResults = `-- name: ListMatchResults :many
 SELECT
     m.id AS match_id,
@@ -369,14 +226,14 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.rating_pay,
-    s.rating_earn,
-    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo
+    gas.staked AS rating_pay,
+    gas.earned AS rating_earn,
+    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
 JOIN matches m ON m.id = s.match_id
 JOIN games g ON g.id = m.game_id
-LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
+LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 WHERE m.id = $1
 ORDER BY s.score DESC
 `
@@ -388,8 +245,8 @@ type ListMatchResultsRow struct {
 	PlayerID     int32              `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
-	RatingPay    float64            `json:"rating_pay"`
-	RatingEarn   float64            `json:"rating_earn"`
+	RatingPay    pgtype.Float8      `json:"rating_pay"`
+	RatingEarn   pgtype.Float8      `json:"rating_earn"`
 	GlobalNewElo interface{}        `json:"global_new_elo"`
 }
 
@@ -432,23 +289,23 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.rating_pay,
-    s.rating_earn,
+    gas.staked AS rating_pay,
+    gas.earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
-    -- for players whose first match has no previous rating or no player_ratings row yet
-    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating
+    -- for players whose first match has no previous rating or no settlement row yet
+    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating
 
 FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
+LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT pr2.rating
-    FROM player_ratings pr2
-    WHERE pr2.player_id = p.id AND pr2.date < m.date
-    ORDER BY pr2.date DESC, pr2.id DESC
+    SELECT gas2.new_rating
+    FROM global_arena_settlement gas2
+    WHERE gas2.player_id = p.id AND gas2.date < m.date
+    ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
 ORDER BY m.date DESC, s.score DESC
@@ -462,8 +319,8 @@ type ListMatchesWithPlayersRow struct {
 	PlayerID     int32              `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
-	RatingPay    float64            `json:"rating_pay"`
-	RatingEarn   float64            `json:"rating_earn"`
+	RatingPay    pgtype.Float8      `json:"rating_pay"`
+	RatingEarn   pgtype.Float8      `json:"rating_earn"`
 	GlobalNewElo interface{}        `json:"global_new_elo"`
 	PrevRating   interface{}        `json:"prev_rating"`
 }
@@ -509,12 +366,12 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.rating_pay,
-    s.rating_earn,
+    gas.staked AS rating_pay,
+    gas.earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
-    -- for players whose first match has no previous rating or no player_ratings row yet
-    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating,
+    -- for players whose first match has no previous rating or no settlement row yet
+    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating,
     elo_settings.elo_const_k,
     elo_settings.elo_const_d,
     elo_settings.starting_elo,
@@ -524,12 +381,12 @@ FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
+LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT pr2.rating
-    FROM player_ratings pr2
-    WHERE pr2.player_id = p.id AND pr2.date < m.date
-    ORDER BY pr2.date DESC, pr2.id DESC
+    SELECT gas2.new_rating
+    FROM global_arena_settlement gas2
+    WHERE gas2.player_id = p.id AND gas2.date < m.date
+    ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
 LEFT JOIN LATERAL (
@@ -551,8 +408,8 @@ type ListMatchesWithPlayersByGameRow struct {
 	PlayerID     int32              `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
-	RatingPay    float64            `json:"rating_pay"`
-	RatingEarn   float64            `json:"rating_earn"`
+	RatingPay    pgtype.Float8      `json:"rating_pay"`
+	RatingEarn   pgtype.Float8      `json:"rating_earn"`
 	GlobalNewElo interface{}        `json:"global_new_elo"`
 	PrevRating   interface{}        `json:"prev_rating"`
 	EloConstK    float64            `json:"elo_const_k"`
@@ -586,63 +443,6 @@ func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([
 			&i.EloConstD,
 			&i.StartingElo,
 			&i.WinReward,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMatchesWithPlayersByGameFromDB = `-- name: ListMatchesWithPlayersByGameFromDB :many
-SELECT
-    m.id AS match_id,
-    m.date,
-    p.id AS player_id,
-    p.name AS player_name,
-    s.score,
-    s.game_elo_pay,
-    s.game_elo_earn,
-    s.game_new_elo
-FROM matches m
-JOIN match_scores s ON s.match_id = m.id
-JOIN players p ON p.id = s.player_id
-WHERE m.game_id = $1
-ORDER BY m.date ASC, m.id ASC, s.score DESC
-`
-
-type ListMatchesWithPlayersByGameFromDBRow struct {
-	MatchID     int32              `json:"match_id"`
-	Date        pgtype.Timestamptz `json:"date"`
-	PlayerID    int32              `json:"player_id"`
-	PlayerName  string             `json:"player_name"`
-	Score       float64            `json:"score"`
-	GameEloPay  float64            `json:"game_elo_pay"`
-	GameEloEarn float64            `json:"game_elo_earn"`
-	GameNewElo  float64            `json:"game_new_elo"`
-}
-
-func (q *Queries) ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID int32) ([]ListMatchesWithPlayersByGameFromDBRow, error) {
-	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGameFromDB, gameID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListMatchesWithPlayersByGameFromDBRow{}
-	for rows.Next() {
-		var i ListMatchesWithPlayersByGameFromDBRow
-		if err := rows.Scan(
-			&i.MatchID,
-			&i.Date,
-			&i.PlayerID,
-			&i.PlayerName,
-			&i.Score,
-			&i.GameEloPay,
-			&i.GameEloEarn,
-			&i.GameNewElo,
 		); err != nil {
 			return nil, err
 		}
@@ -692,23 +492,23 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    s.rating_pay,
-    s.rating_earn,
+    gas.staked AS rating_pay,
+    gas.earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
-    -- for players whose first match has no previous rating or no player_ratings row yet
-    CASE WHEN pr.rating IS NULL THEN NULL ELSE pr.rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.rating IS NULL THEN NULL ELSE prev_player_rating.rating END AS prev_rating,
+    -- for players whose first match has no previous rating or no settlement row yet
+    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
+    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating,
     EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = pm.id) AS has_markets
 FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN player_ratings pr ON pr.match_id = s.match_id AND pr.player_id = s.player_id
+LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT pr2.rating
-    FROM player_ratings pr2
-    WHERE pr2.player_id = p.id AND pr2.date < pm.date
-    ORDER BY pr2.date DESC, pr2.id DESC
+    SELECT gas2.new_rating
+    FROM global_arena_settlement gas2
+    WHERE gas2.player_id = p.id AND gas2.date < pm.date
+    ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
 ORDER BY pm.date DESC, pm.id DESC, s.score DESC
@@ -731,8 +531,8 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	PlayerID     int32              `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
-	RatingPay    float64            `json:"rating_pay"`
-	RatingEarn   float64            `json:"rating_earn"`
+	RatingPay    pgtype.Float8      `json:"rating_pay"`
+	RatingEarn   pgtype.Float8      `json:"rating_earn"`
 	GlobalNewElo interface{}        `json:"global_new_elo"`
 	PrevRating   interface{}        `json:"prev_rating"`
 	HasMarkets   bool               `json:"has_markets"`
@@ -795,88 +595,20 @@ func (q *Queries) UpdateMatch(ctx context.Context, arg UpdateMatchParams) error 
 	return err
 }
 
-const updateMatchScoreGameElo = `-- name: UpdateMatchScoreGameElo :exec
-UPDATE match_scores
-SET game_elo_pay = $3, game_elo_earn = $4, game_new_elo = $5
-WHERE match_id = $1 AND player_id = $2
-`
-
-type UpdateMatchScoreGameEloParams struct {
-	MatchID     int32   `json:"match_id"`
-	PlayerID    int32   `json:"player_id"`
-	GameEloPay  float64 `json:"game_elo_pay"`
-	GameEloEarn float64 `json:"game_elo_earn"`
-	GameNewElo  float64 `json:"game_new_elo"`
-}
-
-func (q *Queries) UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchScoreGameEloParams) error {
-	_, err := q.db.Exec(ctx, updateMatchScoreGameElo,
-		arg.MatchID,
-		arg.PlayerID,
-		arg.GameEloPay,
-		arg.GameEloEarn,
-		arg.GameNewElo,
-	)
-	return err
-}
-
-const updateMatchScoreRating = `-- name: UpdateMatchScoreRating :exec
-UPDATE match_scores
-SET rating_pay = $3, rating_earn = $4
-WHERE match_id = $1 AND player_id = $2
-`
-
-type UpdateMatchScoreRatingParams struct {
-	MatchID    int32   `json:"match_id"`
-	PlayerID   int32   `json:"player_id"`
-	RatingPay  float64 `json:"rating_pay"`
-	RatingEarn float64 `json:"rating_earn"`
-}
-
-func (q *Queries) UpdateMatchScoreRating(ctx context.Context, arg UpdateMatchScoreRatingParams) error {
-	_, err := q.db.Exec(ctx, updateMatchScoreRating,
-		arg.MatchID,
-		arg.PlayerID,
-		arg.RatingPay,
-		arg.RatingEarn,
-	)
-	return err
-}
-
 const upsertMatchScore = `-- name: UpsertMatchScore :exec
-INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO match_scores (match_id, player_id, score)
+VALUES ($1, $2, $3)
 ON CONFLICT (match_id, player_id)
-DO UPDATE SET
-    score = EXCLUDED.score,
-    rating_pay = EXCLUDED.rating_pay,
-    rating_earn = EXCLUDED.rating_earn,
-    game_elo_pay = EXCLUDED.game_elo_pay,
-    game_elo_earn = EXCLUDED.game_elo_earn,
-    game_new_elo = EXCLUDED.game_new_elo
+DO UPDATE SET score = EXCLUDED.score
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID     int32   `json:"match_id"`
-	PlayerID    int32   `json:"player_id"`
-	Score       float64 `json:"score"`
-	RatingPay   float64 `json:"rating_pay"`
-	RatingEarn  float64 `json:"rating_earn"`
-	GameEloPay  float64 `json:"game_elo_pay"`
-	GameEloEarn float64 `json:"game_elo_earn"`
-	GameNewElo  float64 `json:"game_new_elo"`
+	MatchID  int32   `json:"match_id"`
+	PlayerID int32   `json:"player_id"`
+	Score    float64 `json:"score"`
 }
 
 func (q *Queries) UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error {
-	_, err := q.db.Exec(ctx, upsertMatchScore,
-		arg.MatchID,
-		arg.PlayerID,
-		arg.Score,
-		arg.RatingPay,
-		arg.RatingEarn,
-		arg.GameEloPay,
-		arg.GameEloEarn,
-		arg.GameNewElo,
-	)
+	_, err := q.db.Exec(ctx, upsertMatchScore, arg.MatchID, arg.PlayerID, arg.Score)
 	return err
 }

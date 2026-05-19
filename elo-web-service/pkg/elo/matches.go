@@ -177,7 +177,15 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 		return db.Match{}, fmt.Errorf("unable to update match: %v", err)
 	}
 
-	// Delete old match scores to handle player list changes
+	// Delete old match scores and settlement records to handle player list changes.
+	// Explicit deletes are required because global_arena_settlement and game_arena_settlement
+	// reference matches(id), not match_scores, so there is no cascade from match_scores.
+	if err = q.DeleteGlobalArenaSettlementByMatch(ctx, pgtype.Int4{Int32: matchID, Valid: true}); err != nil {
+		return db.Match{}, fmt.Errorf("unable to delete global arena settlement for match %d: %v", matchID, err)
+	}
+	if err = q.DeleteGameArenaSettlementByMatch(ctx, pgtype.Int4{Int32: matchID, Valid: true}); err != nil {
+		return db.Match{}, fmt.Errorf("unable to delete game arena settlement for match %d: %v", matchID, err)
+	}
 	err = q.DeleteMatchScores(ctx, matchID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to delete old match scores: %v", err)
@@ -186,14 +194,9 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	// Insert new match scores (Elo will be calculated in recalculation step)
 	for playerID, score := range playerScores {
 		err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:     matchID,
-			PlayerID:    playerID,
-			Score:       score,
-			RatingPay:   0, // Will be recalculated
-			RatingEarn:  0, // Will be recalculated
-			GameEloPay:  0, // Will be recalculated
-			GameEloEarn: 0, // Will be recalculated
-			GameNewElo:  0, // Will be recalculated
+			MatchID:  matchID,
+			PlayerID: playerID,
+			Score:    score,
 		})
 		if err != nil {
 			return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
@@ -260,8 +263,8 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 
 	createdAt := market.CreatedAt.Time
 
-	if err := q.DeletePlayerRatingsByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
-		return fmt.Errorf("delete player ratings for market %d: %w", marketID, err)
+	if err := q.DeleteGlobalArenaSettlementByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
+		return fmt.Errorf("delete global arena settlement for market %d: %w", marketID, err)
 	}
 
 	if err := q.DeleteMarket(ctx, marketID); err != nil {
@@ -324,7 +327,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			PlayerID: playerID,
 			GameID:   match.GameID,
 			Date:     match.Date,
-			ID:       match.ID,
+			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
 		})
 		if err != nil {
 			previousGameElo[playerID] = settings.StartingElo
@@ -394,59 +397,61 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 	for playerID, score := range playerScores {
 		r := results[playerID]
 		if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
-			MatchID:     matchID,
-			PlayerID:    playerID,
-			Score:       score,
-			RatingPay:   r.ratingPay,
-			RatingEarn:  r.ratingEarn,
-			GameEloPay:  r.gameEloPay,
-			GameEloEarn: r.gameEloEarn,
-			GameNewElo:  r.newGameElo,
+			MatchID:  matchID,
+			PlayerID: playerID,
+			Score:    score,
 		}); err != nil {
 			return fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
 		}
-		if err := q.UpsertPlayerRatingByMatch(ctx, db.UpsertPlayerRatingByMatchParams{
-			MatchID:  pgtype.Int4{Int32: matchID, Valid: true},
-			PlayerID: playerID,
-			Rating:   r.newGlobalElo,
+		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
+			MatchID:   pgtype.Int4{Int32: matchID, Valid: true},
+			PlayerID:  playerID,
+			NewRating: r.newGlobalElo,
+			Staked:    r.ratingPay,
+			Earned:    r.ratingEarn,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert player rating for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %d: %v", playerID, err)
+		}
+		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
+			MatchID:   pgtype.Int4{Int32: matchID, Valid: true},
+			GameID:    gameID,
+			PlayerID:  playerID,
+			NewRating: r.newGameElo,
+			Staked:    r.gameEloPay,
+			Earned:    r.gameEloEarn,
+		}); err != nil {
+			return fmt.Errorf("unable to upsert game arena settlement for player %d: %v", playerID, err)
 		}
 	}
 
 	return nil
 }
 
-// calculateAndUpdateElo calculates Elo and updates only the Elo fields in match_scores.
+// calculateAndUpdateElo calculates Elo and upserts settlement records.
 // Used by recalculation to update Elo without changing scores.
 func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, previousElo map[int32]float64, previousGameElo map[int32]float64, settings EloSettings) error {
 	results := buildEloResults(playerScores, previousElo, previousGameElo, settings)
 
 	for playerID := range playerScores {
 		r := results[playerID]
-		if err := q.UpdateMatchScoreRating(ctx, db.UpdateMatchScoreRatingParams{
-			MatchID:    matchID,
-			PlayerID:   playerID,
-			RatingPay:  r.ratingPay,
-			RatingEarn: r.ratingEarn,
+		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
+			MatchID:   pgtype.Int4{Int32: matchID, Valid: true},
+			PlayerID:  playerID,
+			NewRating: r.newGlobalElo,
+			Staked:    r.ratingPay,
+			Earned:    r.ratingEarn,
 		}); err != nil {
-			return fmt.Errorf("unable to update rating for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %d: %v", playerID, err)
 		}
-		if err := q.UpdateMatchScoreGameElo(ctx, db.UpdateMatchScoreGameEloParams{
-			MatchID:     matchID,
-			PlayerID:    playerID,
-			GameEloPay:  r.gameEloPay,
-			GameEloEarn: r.gameEloEarn,
-			GameNewElo:  r.newGameElo,
+		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
+			MatchID:   pgtype.Int4{Int32: matchID, Valid: true},
+			GameID:    gameID,
+			PlayerID:  playerID,
+			NewRating: r.newGameElo,
+			Staked:    r.gameEloPay,
+			Earned:    r.gameEloEarn,
 		}); err != nil {
-			return fmt.Errorf("unable to update game Elo for player %d: %v", playerID, err)
-		}
-		if err := q.UpsertPlayerRatingByMatch(ctx, db.UpsertPlayerRatingByMatchParams{
-			MatchID:  pgtype.Int4{Int32: matchID, Valid: true},
-			PlayerID: playerID,
-			Rating:   r.newGlobalElo,
-		}); err != nil {
-			return fmt.Errorf("unable to upsert player rating for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert game arena settlement for player %d: %v", playerID, err)
 		}
 	}
 

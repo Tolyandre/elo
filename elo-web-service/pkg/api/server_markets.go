@@ -144,7 +144,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
-				if details, err := s.api.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
+				if details, err := s.api.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
 					m.Settlement = convertSettlement(details)
 				}
 			}
@@ -235,7 +235,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		detail.ResolutionOutcome = &v
 	}
 	if row.Status == "resolved" {
-		if details, err := s.api.Queries.GetSettlementDetails(ctx, marketID); err == nil {
+		if details, err := s.api.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err == nil {
 			detail.Settlement = convertSettlement(details)
 		}
 	}
@@ -518,7 +518,7 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 			m.ResolutionOutcome = &v
 		}
 		if r.Status == "resolved" {
-			if details, err := s.api.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
+			if details, err := s.api.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
 				m.Settlement = convertSettlement(details)
 			}
 		}

@@ -27,30 +27,27 @@ INSERT INTO matches (id, date, game_id) VALUES
     (202, NOW() - INTERVAL '1 day',  50)
 ON CONFLICT (id) DO NOTHING;
 
--- match_scores: rating_pay/earn track global Elo deltas; game_elo_* track per-game Elo.
--- Both use the same values here since all matches are the same game (Skull King)
--- and all players start at 1000 Elo.
-INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo) VALUES
-    (200, 100, 120.0, -10.666666666666666, 24.0,                 -10.666666666666666, 24.0,                 1013.3333333333334),
-    (200, 101,  80.0, -10.666666666666666,  8.0,                 -10.666666666666666,  8.0,                  997.3333333333334),
-    (200, 102,  60.0, -10.666666666666666,  0.0,                 -10.666666666666666,  0.0,                  989.3333333333334),
-    (201, 100,  70.0, -11.2799310082602,    0.0,                 -11.2799310082602,    0.0,                 1002.0534023250732),
-    (201, 101, 130.0, -10.544013908482446, 21.333333333333332,   -10.544013908482446, 21.333333333333332,   1008.1226527581842),
-    (201, 102, 100.0, -10.176055083257353, 10.666666666666666,   -10.176055083257353, 10.666666666666666,    989.8239449167427)
+-- match_scores: only score, no Elo columns (moved to global_arena_settlement / game_arena_settlement)
+INSERT INTO match_scores (match_id, player_id, score) VALUES
+    (200, 100, 120.0),
+    (200, 101,  80.0),
+    (200, 102,  60.0),
+    (201, 100,  70.0),
+    (201, 101, 130.0),
+    (201, 102, 100.0)
 ON CONFLICT (match_id, player_id) DO NOTHING;
 
--- match 202: Dave wins (110), Alice 2nd (90), Bob 3rd (70), Carol last (50).
--- All 4 start at: Dave=1000, Alice=1002.053, Bob=1008.123, Carol=989.824.
--- pay = -K*WinExpect, earn = K*NormScore (loser=50, sum=120)
-INSERT INTO match_scores (match_id, player_id, score, rating_pay, rating_earn, game_elo_pay, game_elo_earn, game_new_elo) VALUES
-    (202, 103, 110.0,  -8.0,         16.0,               -8.0,         16.0,               1008.0),
-    (202, 100,  90.0,  -8.062912,    10.666666666666666,  -8.062912,    10.666666666666666, 1004.6571570250732),
-    (202, 101,  70.0,  -8.249248,     5.333333333333333,  -8.249248,     5.333333333333333, 1005.2067380581842),
-    (202, 102,  50.0,  -7.687840,     0.0,                -7.687840,     0.0,                982.1361049167427)
+INSERT INTO match_scores (match_id, player_id, score) VALUES
+    (202, 103, 110.0),
+    (202, 100,  90.0),
+    (202, 101,  70.0),
+    (202, 102,  50.0)
 ON CONFLICT (match_id, player_id) DO NOTHING;
 
--- player_ratings: global Elo after each match (source_type='match')
-INSERT INTO player_ratings (date, player_id, rating, source_type, match_id)
+-- global_arena_settlement: global Elo after each match (discriminator='match').
+-- staked = rating_pay (negative), earned = rating_earn (non-negative).
+-- new_rating = prev_rating + earned + staked.
+INSERT INTO global_arena_settlement (date, player_id, new_rating, discriminator, match_id, staked, earned)
 SELECT m.date, ms.player_id,
     CASE (ms.match_id, ms.player_id)
         WHEN (200, 100) THEN 1013.3333333333334
@@ -60,14 +57,30 @@ SELECT m.date, ms.player_id,
         WHEN (201, 101) THEN 1008.1226527581842
         WHEN (201, 102) THEN  989.8239449167427
     END,
-    'match', ms.match_id
+    'match', ms.match_id,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (200, 100) THEN -10.666666666666666
+        WHEN (200, 101) THEN -10.666666666666666
+        WHEN (200, 102) THEN -10.666666666666666
+        WHEN (201, 100) THEN -11.2799310082602
+        WHEN (201, 101) THEN -10.544013908482446
+        WHEN (201, 102) THEN -10.176055083257353
+    END,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (200, 100) THEN 24.0
+        WHEN (200, 101) THEN  8.0
+        WHEN (200, 102) THEN  0.0
+        WHEN (201, 100) THEN  0.0
+        WHEN (201, 101) THEN 21.333333333333332
+        WHEN (201, 102) THEN 10.666666666666666
+    END
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.match_id IN (200, 201)
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
--- player_ratings for match 202
-INSERT INTO player_ratings (date, player_id, rating, source_type, match_id)
+-- global_arena_settlement for match 202
+INSERT INTO global_arena_settlement (date, player_id, new_rating, discriminator, match_id, staked, earned)
 SELECT m.date, ms.player_id,
     CASE (ms.match_id, ms.player_id)
         WHEN (202, 103) THEN 1008.0
@@ -75,12 +88,84 @@ SELECT m.date, ms.player_id,
         WHEN (202, 101) THEN 1005.2067380581842
         WHEN (202, 102) THEN  982.1361049167427
     END,
-    'match', ms.match_id
+    'match', ms.match_id,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN  -8.0
+        WHEN (202, 100) THEN  -8.062912
+        WHEN (202, 101) THEN  -8.249248
+        WHEN (202, 102) THEN  -7.687840
+    END,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN 16.0
+        WHEN (202, 100) THEN 10.666666666666666
+        WHEN (202, 101) THEN  5.333333333333333
+        WHEN (202, 102) THEN  0.0
+    END
 FROM match_scores ms
 JOIN matches m ON m.id = ms.match_id
 WHERE ms.match_id = 202
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
+-- game_arena_settlement: per-game Elo after each match.
+-- staked = game_elo_pay (negative), earned = game_elo_earn (non-negative).
+-- All matches are Skull King (game_id=50), so game Elo equals global Elo here.
+INSERT INTO game_arena_settlement (game_id, player_id, date, new_rating, discriminator, match_id, staked, earned)
+SELECT 50, ms.player_id, m.date,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (200, 100) THEN 1013.3333333333334
+        WHEN (200, 101) THEN  997.3333333333334
+        WHEN (200, 102) THEN  989.3333333333334
+        WHEN (201, 100) THEN 1002.0534023250732
+        WHEN (201, 101) THEN 1008.1226527581842
+        WHEN (201, 102) THEN  989.8239449167427
+    END,
+    'match', ms.match_id,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (200, 100) THEN -10.666666666666666
+        WHEN (200, 101) THEN -10.666666666666666
+        WHEN (200, 102) THEN -10.666666666666666
+        WHEN (201, 100) THEN -11.2799310082602
+        WHEN (201, 101) THEN -10.544013908482446
+        WHEN (201, 102) THEN -10.176055083257353
+    END,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (200, 100) THEN 24.0
+        WHEN (200, 101) THEN  8.0
+        WHEN (200, 102) THEN  0.0
+        WHEN (201, 100) THEN  0.0
+        WHEN (201, 101) THEN 21.333333333333332
+        WHEN (201, 102) THEN 10.666666666666666
+    END
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.match_id IN (200, 201)
+ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+
+INSERT INTO game_arena_settlement (game_id, player_id, date, new_rating, discriminator, match_id, staked, earned)
+SELECT 50, ms.player_id, m.date,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN 1008.0
+        WHEN (202, 100) THEN 1004.6571570250732
+        WHEN (202, 101) THEN 1005.2067380581842
+        WHEN (202, 102) THEN  982.1361049167427
+    END,
+    'match', ms.match_id,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN  -8.0
+        WHEN (202, 100) THEN  -8.062912
+        WHEN (202, 101) THEN  -8.249248
+        WHEN (202, 102) THEN  -7.687840
+    END,
+    CASE (ms.match_id, ms.player_id)
+        WHEN (202, 103) THEN 16.0
+        WHEN (202, 100) THEN 10.666666666666666
+        WHEN (202, 101) THEN  5.333333333333333
+        WHEN (202, 102) THEN  0.0
+    END
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+WHERE ms.match_id = 202
+ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
 -- markets: test markets in various statuses
 -- First get the dev user's ID for created_by
@@ -103,8 +188,8 @@ BEGIN
             NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
-    VALUES (1, 100, ARRAY[101], 50)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
+    VALUES (1, 100, ARRAY[101], ARRAY[50])
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
@@ -113,8 +198,8 @@ BEGIN
             NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_win_streak_params (market_id, target_player_id, game_id, wins_required, max_losses)
-    VALUES (2, 101, 50, 3, 1)
+    INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
+    VALUES (2, 101, ARRAY[50], 3, 1)
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 3: resolved match_winner (outcome: yes)
@@ -123,8 +208,8 @@ BEGIN
             NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days', 200, 'yes')
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
-    VALUES (3, 100, ARRAY[101, 102], 50)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
+    VALUES (3, 100, ARRAY[101, 102], ARRAY[50])
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 4: cancelled match_winner (expired without matching match)
@@ -133,8 +218,8 @@ BEGIN
             NOW() - INTERVAL '14 days', NOW() - INTERVAL '7 days', dev_user_id, NOW() - INTERVAL '7 days')
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_id)
-    VALUES (4, 102, ARRAY[100], NULL)
+    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
+    VALUES (4, 102, ARRAY[100], ARRAY[]::int[])
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Bets on open market 1
@@ -156,25 +241,19 @@ BEGIN
         (3, 101, 'no',  5.0),
         (3, 102, 'no',  7.0);
 
-    -- Settlement details for market 3 (Alice won: total_pool=20, yes_pool=8)
-    -- Alice (yes): earned = (8/8)*20 = 20
-    -- Bob (no):    earned = 0
-    -- Carol (no):  earned = 0
-    INSERT INTO bet_settlement_details (market_id, player_id, staked, earned) VALUES
-        (3, 100, 8.0, 20.0),
-        (3, 101, 5.0,  0.0),
-        (3, 102, 7.0,  0.0)
-    ON CONFLICT (market_id, player_id) DO NOTHING;
-
-    -- player_ratings for market 3 settlement
-    INSERT INTO player_ratings (date, player_id, rating, source_type, market_id)
+    -- global_arena_settlement for market 3 (discriminator='market').
+    -- Settlement: Alice (yes): earned=20, staked=-8; Bob: earned=0, staked=-5; Carol: earned=0, staked=-7.
+    -- new_rating = prev_global_elo + earned + staked
+    -- Prev Elo at resolution date (after match 201, before match 202):
+    --   Alice=1002.0534, Bob=1008.1226, Carol=989.8239
+    INSERT INTO global_arena_settlement (date, player_id, new_rating, discriminator, market_id, staked, earned)
     VALUES
         (NOW() - INTERVAL '7 days', 100,
-            1002.0534023250732 + (20.0 - 8.0), 'market_settlement', 3),
+            1002.0534023250732 + (20.0 - 8.0), 'market', 3, -8.0, 20.0),
         (NOW() - INTERVAL '7 days', 101,
-            1008.1226527581842 + (0.0  - 5.0), 'market_settlement', 3),
+            1008.1226527581842 + (0.0  - 5.0), 'market', 3, -5.0,  0.0),
         (NOW() - INTERVAL '7 days', 102,
-            989.8239449167427  + (0.0  - 7.0), 'market_settlement', 3)
+            989.8239449167427  + (0.0  - 7.0), 'market', 3, -7.0,  0.0)
     ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL DO NOTHING;
 END $$;
 
@@ -183,6 +262,6 @@ SELECT setval('players_id_seq', GREATEST(200, (SELECT MAX(id) FROM players)));
 SELECT setval('games_id_seq',   GREATEST(100, (SELECT MAX(id) FROM games)));
 SELECT setval('matches_id_seq', GREATEST(300, (SELECT MAX(id) FROM matches)));
 SELECT setval('clubs_id_seq',   GREATEST(10,  (SELECT MAX(id) FROM clubs)));
-SELECT setval('player_ratings_id_seq', GREATEST(100, (SELECT MAX(id) FROM player_ratings)));
+SELECT setval('global_arena_settlement_id_seq', GREATEST(100, (SELECT MAX(id) FROM global_arena_settlement)));
 SELECT setval('markets_id_seq', GREATEST(10, (SELECT MAX(id) FROM markets)));
 SELECT setval('bets_id_seq',    GREATEST(50, (SELECT MAX(id) FROM bets)));

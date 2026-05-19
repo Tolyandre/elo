@@ -19,13 +19,6 @@ type Bet struct {
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 }
 
-type BetSettlementDetail struct {
-	MarketID int32   `json:"market_id"`
-	PlayerID int32   `json:"player_id"`
-	Staked   float64 `json:"staked"`
-	Earned   float64 `json:"earned"`
-}
-
 type Club struct {
 	ID            int32       `json:"id"`
 	Name          string      `json:"name"`
@@ -43,6 +36,30 @@ type EloSetting struct {
 type Game struct {
 	ID   int32  `json:"id"`
 	Name string `json:"name"`
+}
+
+type GameArenaSettlement struct {
+	ID            int32              `json:"id"`
+	GameID        int32              `json:"game_id"`
+	PlayerID      int32              `json:"player_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	NewRating     float64            `json:"new_rating"`
+	Discriminator string             `json:"discriminator"`
+	MatchID       pgtype.Int4        `json:"match_id"`
+	Staked        float64            `json:"staked"`
+	Earned        float64            `json:"earned"`
+}
+
+type GlobalArenaSettlement struct {
+	ID            int32              `json:"id"`
+	PlayerID      int32              `json:"player_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	NewRating     float64            `json:"new_rating"`
+	Discriminator string             `json:"discriminator"`
+	MatchID       pgtype.Int4        `json:"match_id"`
+	MarketID      pgtype.Int4        `json:"market_id"`
+	Staked        float64            `json:"staked"`
+	Earned        float64            `json:"earned"`
 }
 
 type Market struct {
@@ -81,14 +98,9 @@ type Match struct {
 }
 
 type MatchScore struct {
-	MatchID     int32   `json:"match_id"`
-	PlayerID    int32   `json:"player_id"`
-	Score       float64 `json:"score"`
-	RatingPay   float64 `json:"rating_pay"`
-	RatingEarn  float64 `json:"rating_earn"`
-	GameEloPay  float64 `json:"game_elo_pay"`
-	GameEloEarn float64 `json:"game_elo_earn"`
-	GameNewElo  float64 `json:"game_new_elo"`
+	MatchID  int32   `json:"match_id"`
+	PlayerID int32   `json:"player_id"`
+	Score    float64 `json:"score"`
 }
 
 type Player struct {
@@ -101,16 +113,6 @@ type Player struct {
 type PlayerClubMembership struct {
 	ClubID   int32 `json:"club_id"`
 	PlayerID int32 `json:"player_id"`
-}
-
-type PlayerRating struct {
-	ID         int32              `json:"id"`
-	Date       pgtype.Timestamptz `json:"date"`
-	PlayerID   int32              `json:"player_id"`
-	Rating     float64            `json:"rating"`
-	SourceType string             `json:"source_type"`
-	MatchID    pgtype.Int4        `json:"match_id"`
-	MarketID   pgtype.Int4        `json:"market_id"`
 }
 
 type SkullKingTable struct {

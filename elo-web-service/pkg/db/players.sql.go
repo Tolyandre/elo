@@ -113,10 +113,11 @@ const getPlayerGameEloStats = `-- name: GetPlayerGameEloStats :many
 SELECT
   g.id::text AS game_id,
   g.name     AS game_name,
-  SUM(ms.rating_earn + ms.rating_pay)::float8 AS elo_earned
+  SUM(gas.earned + gas.staked)::float8 AS elo_earned
 FROM match_scores ms
 JOIN matches m ON ms.match_id = m.id
 JOIN games g ON m.game_id = g.id
+JOIN global_arena_settlement gas ON gas.match_id = ms.match_id AND gas.player_id = ms.player_id AND gas.discriminator = 'match'
 WHERE ms.player_id = $1
 GROUP BY g.id, g.name
 ORDER BY elo_earned DESC

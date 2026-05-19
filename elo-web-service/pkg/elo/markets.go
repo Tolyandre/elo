@@ -204,11 +204,8 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
 	for _, marketID := range marketIDs {
-		if err := q.DeletePlayerRatingsByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
-			return fmt.Errorf("delete player ratings for market %d: %w", marketID, err)
-		}
-		if err := q.DeleteBetSettlementDetails(ctx, marketID); err != nil {
-			return fmt.Errorf("delete settlement details for market %d: %w", marketID, err)
+		if err := q.DeleteGlobalArenaSettlementByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
+			return fmt.Errorf("delete global arena settlement for market %d: %w", marketID, err)
 		}
 		if err := q.UnsettleMarket(ctx, marketID); err != nil {
 			return fmt.Errorf("unsettle market %d: %w", marketID, err)
@@ -276,15 +273,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		staked := players[pid].totalStaked
 		earnedAmt := earned[pid]
 
-		if err := q.InsertBetSettlementDetail(ctx, db.InsertBetSettlementDetailParams{
-			MarketID: marketID,
-			PlayerID: pid,
-			Staked:   staked,
-			Earned:   earnedAmt,
-		}); err != nil {
-			return fmt.Errorf("insert settlement detail for player %d: %w", pid, err)
-		}
-
 		var currentElo float64
 		latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
 			PlayerID: pid,
@@ -301,13 +289,15 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 
 		newRating := currentElo + (earnedAmt - staked)
-		if err := q.UpsertPlayerRatingByMarket(ctx, db.UpsertPlayerRatingByMarketParams{
-			Date:     resolvedAtTz,
-			PlayerID: pid,
-			Rating:   newRating,
-			MarketID: pgtype.Int4{Int32: marketID, Valid: true},
+		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
+			PlayerID:  pid,
+			Date:      resolvedAtTz,
+			NewRating: newRating,
+			MarketID:  pgtype.Int4{Int32: marketID, Valid: true},
+			Staked:    -staked,   // negated: staked is always negative (cost)
+			Earned:    earnedAmt,
 		}); err != nil {
-			return fmt.Errorf("upsert player rating for player %d: %w", pid, err)
+			return fmt.Errorf("upsert global arena settlement for player %d: %w", pid, err)
 		}
 	}
 

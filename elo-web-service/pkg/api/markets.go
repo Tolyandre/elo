@@ -178,7 +178,7 @@ func (a *API) ListMarkets(c *gin.Context) {
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
-				if details, err := a.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
+				if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
 					m.Settlement = make([]settlementDetailJson, len(details))
 					for i, d := range details {
 						m.Settlement[i] = settlementDetailJson{
@@ -278,7 +278,7 @@ func (a *API) GetMarket(c *gin.Context) {
 		detail.ResolutionOutcome = &s
 	}
 	if row.Status == "resolved" {
-		if details, err := a.Queries.GetSettlementDetails(ctx, marketID); err == nil {
+		if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err == nil {
 			detail.Settlement = make([]settlementDetailJson, len(details))
 			for i, d := range details {
 				detail.Settlement[i] = settlementDetailJson{
@@ -525,7 +525,7 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 			m.ResolutionOutcome = &s
 		}
 		if r.Status == "resolved" {
-			if details, err := a.Queries.GetSettlementDetails(ctx, r.ID); err == nil {
+			if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
 				m.Settlement = make([]settlementDetailJson, len(details))
 				for i, d := range details {
 					m.Settlement[i] = settlementDetailJson{

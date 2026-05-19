@@ -28,15 +28,16 @@ type Querier interface {
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
-	DeleteBetSettlementDetails(ctx context.Context, marketID int32) error
 	DeleteClub(ctx context.Context, id int32) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredSkullKingTables(ctx context.Context) error
 	DeleteGame(ctx context.Context, id int32) (Game, error)
+	DeleteGameArenaSettlementByMatch(ctx context.Context, matchID pgtype.Int4) error
+	DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID pgtype.Int4) error
+	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID pgtype.Int4) error
 	DeleteMarket(ctx context.Context, id int32) error
 	DeleteMatchScores(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
-	DeletePlayerRatingsByMarket(ctx context.Context, marketID pgtype.Int4) error
 	DeleteSkullKingTable(ctx context.Context, id pgtype.UUID) error
 	DeleteUser(ctx context.Context, id int32) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID int32) ([]GetBetsAggregatedByOutcomeRow, error)
@@ -73,14 +74,13 @@ type Querier interface {
 	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
-	GetSettlementDetails(ctx context.Context, marketID int32) ([]GetSettlementDetailsRow, error)
+	GetSettlementDetails(ctx context.Context, marketID pgtype.Int4) ([]GetSettlementDetailsRow, error)
 	GetSkullKingTable(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
 	GetSkullKingTableForUpdate(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error)
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
-	InsertBetSettlementDetail(ctx context.Context, arg InsertBetSettlementDetailParams) error
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListEloSettings(ctx context.Context) ([]EloSetting, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
@@ -119,17 +119,16 @@ type Querier interface {
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
-	UpdateMatchScoreGameElo(ctx context.Context, arg UpdateMatchScoreGameEloParams) error
-	UpdateMatchScoreRating(ctx context.Context, arg UpdateMatchScoreRatingParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
 	UpdateSkullKingTableState(ctx context.Context, arg UpdateSkullKingTableStateParams) (SkullKingTable, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
+	UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error
+	UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error
+	UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
-	UpsertPlayerRatingByMarket(ctx context.Context, arg UpsertPlayerRatingByMarketParams) error
-	UpsertPlayerRatingByMatch(ctx context.Context, arg UpsertPlayerRatingByMatchParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -94,12 +94,12 @@ func (q *Queries) CreateWinStreakParams(ctx context.Context, arg CreateWinStreak
 	return err
 }
 
-const deleteBetSettlementDetails = `-- name: DeleteBetSettlementDetails :exec
-DELETE FROM bet_settlement_details WHERE market_id = $1
+const deleteGlobalArenaSettlementByMarket = `-- name: DeleteGlobalArenaSettlementByMarket :exec
+DELETE FROM global_arena_settlement WHERE market_id = $1 AND discriminator = 'market'
 `
 
-func (q *Queries) DeleteBetSettlementDetails(ctx context.Context, marketID int32) error {
-	_, err := q.db.Exec(ctx, deleteBetSettlementDetails, marketID)
+func (q *Queries) DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID pgtype.Int4) error {
+	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMarket, marketID)
 	return err
 }
 
@@ -109,15 +109,6 @@ DELETE FROM markets WHERE id = $1
 
 func (q *Queries) DeleteMarket(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, deleteMarket, id)
-	return err
-}
-
-const deletePlayerRatingsByMarket = `-- name: DeletePlayerRatingsByMarket :exec
-DELETE FROM player_ratings WHERE market_id = $1
-`
-
-func (q *Queries) DeletePlayerRatingsByMarket(ctx context.Context, marketID pgtype.Int4) error {
-	_, err := q.db.Exec(ctx, deletePlayerRatingsByMarket, marketID)
 	return err
 }
 
@@ -471,11 +462,11 @@ func (q *Queries) GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakS
 }
 
 const getSettlementDetails = `-- name: GetSettlementDetails :many
-SELECT bsd.player_id, p.name AS player_name, bsd.staked, bsd.earned
-FROM bet_settlement_details bsd
+SELECT bsd.player_id, p.name AS player_name, (-bsd.staked)::float8 AS staked, bsd.earned
+FROM global_arena_settlement bsd
 JOIN players p ON p.id = bsd.player_id
-WHERE bsd.market_id = $1
-ORDER BY (bsd.earned - bsd.staked) DESC
+WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
+ORDER BY (bsd.earned + bsd.staked) DESC
 `
 
 type GetSettlementDetailsRow struct {
@@ -485,7 +476,7 @@ type GetSettlementDetailsRow struct {
 	Earned     float64 `json:"earned"`
 }
 
-func (q *Queries) GetSettlementDetails(ctx context.Context, marketID int32) ([]GetSettlementDetailsRow, error) {
+func (q *Queries) GetSettlementDetails(ctx context.Context, marketID pgtype.Int4) ([]GetSettlementDetailsRow, error) {
 	rows, err := q.db.Query(ctx, getSettlementDetails, marketID)
 	if err != nil {
 		return nil, err
@@ -555,28 +546,6 @@ func (q *Queries) InsertBet(ctx context.Context, arg InsertBetParams) (InsertBet
 	var i InsertBetRow
 	err := row.Scan(&i.ID, &i.PlacedAt)
 	return i, err
-}
-
-const insertBetSettlementDetail = `-- name: InsertBetSettlementDetail :exec
-INSERT INTO bet_settlement_details (market_id, player_id, staked, earned)
-VALUES ($1, $2, $3, $4)
-`
-
-type InsertBetSettlementDetailParams struct {
-	MarketID int32   `json:"market_id"`
-	PlayerID int32   `json:"player_id"`
-	Staked   float64 `json:"staked"`
-	Earned   float64 `json:"earned"`
-}
-
-func (q *Queries) InsertBetSettlementDetail(ctx context.Context, arg InsertBetSettlementDetailParams) error {
-	_, err := q.db.Exec(ctx, insertBetSettlementDetail,
-		arg.MarketID,
-		arg.PlayerID,
-		arg.Staked,
-		arg.Earned,
-	)
-	return err
 }
 
 const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :many
@@ -1062,26 +1031,31 @@ func (q *Queries) UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetL
 	return err
 }
 
-const upsertPlayerRatingByMarket = `-- name: UpsertPlayerRatingByMarket :exec
-INSERT INTO player_ratings (date, player_id, rating, source_type, market_id)
-VALUES ($1, $2, $3, 'market_settlement', $4)
+const upsertGlobalArenaSettlementByMarket = `-- name: UpsertGlobalArenaSettlementByMarket :exec
+INSERT INTO global_arena_settlement (player_id, date, new_rating, discriminator, market_id, staked, earned)
+VALUES ($1, $2, $3, 'market', $4, $5, $6)
 ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
-DO UPDATE SET rating = EXCLUDED.rating, date = EXCLUDED.date
+DO UPDATE SET new_rating = EXCLUDED.new_rating, date = EXCLUDED.date,
+              staked = EXCLUDED.staked, earned = EXCLUDED.earned
 `
 
-type UpsertPlayerRatingByMarketParams struct {
-	Date     pgtype.Timestamptz `json:"date"`
-	PlayerID int32              `json:"player_id"`
-	Rating   float64            `json:"rating"`
-	MarketID pgtype.Int4        `json:"market_id"`
+type UpsertGlobalArenaSettlementByMarketParams struct {
+	PlayerID  int32              `json:"player_id"`
+	Date      pgtype.Timestamptz `json:"date"`
+	NewRating float64            `json:"new_rating"`
+	MarketID  pgtype.Int4        `json:"market_id"`
+	Staked    float64            `json:"staked"`
+	Earned    float64            `json:"earned"`
 }
 
-func (q *Queries) UpsertPlayerRatingByMarket(ctx context.Context, arg UpsertPlayerRatingByMarketParams) error {
-	_, err := q.db.Exec(ctx, upsertPlayerRatingByMarket,
-		arg.Date,
+func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error {
+	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByMarket,
 		arg.PlayerID,
-		arg.Rating,
+		arg.Date,
+		arg.NewRating,
 		arg.MarketID,
+		arg.Staked,
+		arg.Earned,
 	)
 	return err
 }
