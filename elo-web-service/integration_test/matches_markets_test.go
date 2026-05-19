@@ -51,7 +51,7 @@ func createTestAdmin(t *testing.T, pool *pgxpool.Pool) int32 {
 	return id
 }
 
-// playerRatingRows returns all player_ratings rows for a player, ordered by date then id.
+// playerRatingRows returns all global_arena_settlement rows for a player, ordered by date.
 func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID int32) []db.RatingHistoryRow {
 	t.Helper()
 	rows, err := db.New(pool).RatingHistory(context.Background(), playerID)
@@ -61,7 +61,7 @@ func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID int32) []db.Rat
 	return rows
 }
 
-// latestRating returns the most recent player_ratings entry for a player.
+// latestRating returns the most recent global_arena_settlement entry for a player.
 func latestRating(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
 	t.Helper()
 	rows := playerRatingRows(t, pool, playerID)
@@ -71,12 +71,12 @@ func latestRating(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
 	return rows[len(rows)-1].Rating
 }
 
-// marketSettlementRatingCount returns how many player_ratings rows exist for a player with source_type='market_settlement'.
+// marketSettlementRatingCount returns how many global_arena_settlement rows exist for a player with discriminator='market'.
 func marketSettlementRatingCount(t *testing.T, pool *pgxpool.Pool, playerID int32) int {
 	t.Helper()
 	var count int
 	err := pool.QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM player_ratings WHERE player_id = $1 AND source_type = 'market_settlement'`,
+		`SELECT COUNT(*) FROM global_arena_settlement WHERE player_id = $1 AND discriminator = 'market'`,
 		playerID,
 	).Scan(&count)
 	if err != nil {
@@ -87,7 +87,7 @@ func marketSettlementRatingCount(t *testing.T, pool *pgxpool.Pool, playerID int3
 
 // --- Tests ---
 
-// TestAddMatch_PlayerRatingsCreated verifies that adding a match creates player_ratings rows
+// TestAddMatch_PlayerRatingsCreated verifies that adding a match creates global_arena_settlement rows
 // for every participant and that Elo deltas (pay + earn) sum to approximately zero.
 func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
@@ -105,7 +105,7 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
-	// Each player must have exactly one rating row after a single match.
+	// Each player must have exactly one settlement row after a single match.
 	for _, pid := range []int32{p1, p2, p3} {
 		rows := playerRatingRows(t, pool, pid)
 		if len(rows) != 1 {
@@ -151,7 +151,7 @@ func TestAddMatch_EloOrderPreserved(t *testing.T) {
 }
 
 // TestMarketSettlement_MatchTriggered verifies that adding a match that satisfies a
-// match_winner market resolves the market and creates market_settlement player_ratings rows.
+// match_winner market resolves the market and creates market_settlement global_arena_settlement rows.
 func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -214,7 +214,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 		t.Errorf("market resolution_outcome = %v, want \"yes\"", m.ResolutionOutcome)
 	}
 
-	// Both players must have a market_settlement rating row
+	// Both players must have a market_settlement settlement row
 	if c := marketSettlementRatingCount(t, pool, playerA); c != 1 {
 		t.Errorf("playerA: expected 1 market_settlement row, got %d", c)
 	}
@@ -229,7 +229,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	// Find the last two rows: second-to-last is match, last is market settlement (or vice versa)
 	// The key invariant: the settlement winner's final rating > initial rating
 	if len(allRowsA) < 2 {
-		t.Fatalf("playerA: expected at least 2 rating rows (match + market), got %d", len(allRowsA))
+		t.Fatalf("playerA: expected at least 2 settlement rows (match + market), got %d", len(allRowsA))
 	}
 	finalA := allRowsA[len(allRowsA)-1].Rating
 	finalB := latestRating(t, pool, playerB)
