@@ -18,6 +18,7 @@ type Querier interface {
 	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
 	AddSkullKingTablePlayer(ctx context.Context, arg AddSkullKingTablePlayerParams) (SkullKingTable, error)
 	CreateClub(ctx context.Context, name string) (Club, error)
+	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
@@ -28,6 +29,10 @@ type Querier interface {
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
+	// Single delete covering match, market, AND correction settlements.
+	// Called at the start of RecalculateFrom so per-market deletes in
+	// UnsettleMarketsFromDate become harmless no-ops.
+	DeleteAllSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteClub(ctx context.Context, id int32) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredSkullKingTables(ctx context.Context) error
@@ -43,6 +48,7 @@ type Querier interface {
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID int32) ([]GetBetsAggregatedByOutcomeRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
 	GetClub(ctx context.Context, id int32) ([]GetClubRow, error)
+	GetCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Correction, error)
 	GetCountMatchesByGame(ctx context.Context, gameID int32) (int64, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
 	GetGameByID(ctx context.Context, id int32) (Game, error)
@@ -66,12 +72,28 @@ type Querier interface {
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]GetPlayerGameEloStatsRow, error)
+	// Counts game-specific matches a player participated in within [from_date, to_date].
+	GetPlayerGameMatchCountInPeriod(ctx context.Context, arg GetPlayerGameMatchCountInPeriodParams) (int32, error)
 	GetPlayerGameStats(ctx context.Context, playerID int32) ([]GetPlayerGameStatsRow, error)
+	// Counts matches a player participated in within [from_date, to_date].
+	GetPlayerGlobalMatchCountInPeriod(ctx context.Context, arg GetPlayerGlobalMatchCountInPeriodParams) (int32, error)
 	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error)
 	GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error)
+	// Returns the display game rating and current game league.
+	GetPlayerLatestGameRating(ctx context.Context, arg GetPlayerLatestGameRatingParams) (GetPlayerLatestGameRatingRow, error)
+	GetPlayerLatestGameRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGameRatingBeforeMatchParams) (GetPlayerLatestGameRatingBeforeMatchRow, error)
+	// Returns the true Elo value (new_elo) for Elo calculations.
 	GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error)
 	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
+	// Returns the display rating (new_rating) and current league for rating-track calculations.
+	GetPlayerLatestGlobalRating(ctx context.Context, playerID int32) (GetPlayerLatestGlobalRatingRow, error)
+	GetPlayerLatestGlobalRatingAtDate(ctx context.Context, arg GetPlayerLatestGlobalRatingAtDateParams) (GetPlayerLatestGlobalRatingAtDateRow, error)
+	GetPlayerLatestGlobalRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalRatingBeforeMatchParams) (GetPlayerLatestGlobalRatingBeforeMatchRow, error)
+	// Picks the latest settlement before correction $3 for player $1 at date $2.
+	// Same-date matches/markets (discriminator != 'correction') come before corrections.
+	// Earlier same-date corrections (correction_id < $3) are also included.
+	GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestGlobalStateBeforeCorrectionParams) (GetPlayerLatestGlobalStateBeforeCorrectionRow, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID pgtype.Int4) ([]GetSettlementDetailsRow, error)
@@ -82,9 +104,10 @@ type Querier interface {
 	GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error)
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
-	ListEloSettings(ctx context.Context) ([]EloSetting, error)
+	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListLatestGameEloPerPlayer(ctx context.Context, gameID int32) ([]ListLatestGameEloPerPlayerRow, error)
+	ListLatestGameRatingPerPlayer(ctx context.Context, gameID int32) ([]ListLatestGameRatingPerPlayerRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID pgtype.Int4) ([]ListMarketsByResolutionMatchRow, error)
 	ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPoolsRow, error)
 	ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error)
@@ -109,6 +132,7 @@ type Querier interface {
 	// fetch the market first to return a proper domain error.
 	LockMarketBetting(ctx context.Context, id int32) error
 	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
+	// Returns new_rating (display value) ordered by date for the player graph.
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
@@ -126,6 +150,7 @@ type Querier interface {
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
 	UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error
+	UpsertGlobalArenaSettlementByCorrection(ctx context.Context, arg UpsertGlobalArenaSettlementByCorrectionParams) error
 	UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error
 	UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error

@@ -279,12 +279,15 @@ GamePlayer:
   properties:
     id:
       type: string
-    elo:
+    rating:
       type: number
       format: double
+    league:
+      type: string
+      enum: [newbie, amateur]
     rank:
       type: integer
-  required: [id, elo, rank]
+  required: [id, rating, league, rank]
 
 Game:
   type: object

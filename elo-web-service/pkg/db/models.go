@@ -25,12 +25,26 @@ type Club struct {
 	GeologistName pgtype.Text `json:"geologist_name"`
 }
 
+type Correction struct {
+	ID            int32              `json:"id"`
+	PlayerID      int32              `json:"player_id"`
+	Discriminator string             `json:"discriminator"`
+	Diff          float64            `json:"diff"`
+	Date          pgtype.Timestamptz `json:"date"`
+}
+
 type EloSetting struct {
-	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
-	EloConstK     float64            `json:"elo_const_k"`
-	EloConstD     float64            `json:"elo_const_d"`
-	StartingElo   float64            `json:"starting_elo"`
-	WinReward     float64            `json:"win_reward"`
+	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                 float64            `json:"elo_const_k"`
+	EloConstD                 float64            `json:"elo_const_d"`
+	StartingElo               float64            `json:"starting_elo"`
+	WinReward                 float64            `json:"win_reward"`
+	StartingRating            float64            `json:"starting_rating"`
+	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
+	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
+	RatingMaxK                float64            `json:"rating_max_k"`
+	RatingKTau                float64            `json:"rating_k_tau"`
 }
 
 type Game struct {
@@ -46,8 +60,12 @@ type GameArenaSettlement struct {
 	NewRating     float64            `json:"new_rating"`
 	Discriminator string             `json:"discriminator"`
 	MatchID       pgtype.Int4        `json:"match_id"`
-	Staked        float64            `json:"staked"`
-	Earned        float64            `json:"earned"`
+	NewElo        float64            `json:"new_elo"`
+	EloStaked     float64            `json:"elo_staked"`
+	EloEarned     float64            `json:"elo_earned"`
+	RatingStaked  float64            `json:"rating_staked"`
+	RatingEarned  float64            `json:"rating_earned"`
+	League        string             `json:"league"`
 }
 
 type GlobalArenaSettlement struct {
@@ -58,8 +76,13 @@ type GlobalArenaSettlement struct {
 	Discriminator string             `json:"discriminator"`
 	MatchID       pgtype.Int4        `json:"match_id"`
 	MarketID      pgtype.Int4        `json:"market_id"`
-	Staked        float64            `json:"staked"`
-	Earned        float64            `json:"earned"`
+	NewElo        float64            `json:"new_elo"`
+	EloStaked     float64            `json:"elo_staked"`
+	EloEarned     float64            `json:"elo_earned"`
+	RatingStaked  float64            `json:"rating_staked"`
+	RatingEarned  float64            `json:"rating_earned"`
+	League        string             `json:"league"`
+	CorrectionID  pgtype.Int4        `json:"correction_id"`
 }
 
 type Market struct {

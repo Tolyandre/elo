@@ -226,15 +226,20 @@ PlayerStatsPath:
 EloRank:
   type: object
   properties:
-    elo:
+    rating:
       type: number
       format: double
+    league:
+      type: string
+      enum: [newbie, amateur, elite]
     rank:
       type: integer
       nullable: true
-    matches_left_for_ranked:
+    matches_left_for_elite:
       type: integer
-  required: [elo, matches_left_for_ranked]
+      nullable: true
+      description: Only set for amateur league players; how many more matches are needed to reach elite league.
+  required: [rating, league]
 
 HistoryRank:
   type: object

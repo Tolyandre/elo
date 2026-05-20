@@ -25,9 +25,10 @@ type historyRankJson struct {
 	WeekAgo playerEloRankJson `json:"week_ago"`
 }
 type playerEloRankJson struct {
-	Elo                  float64 `json:"elo"`
-	Rank                 *int    `json:"rank"`
-	MatchesLeftForRanked int     `json:"matches_left_for_ranked"`
+	Rating              float64 `json:"rating"`
+	League              string  `json:"league"`
+	Rank                *int    `json:"rank"`
+	MatchesLeftForElite *int    `json:"matches_left_for_elite,omitempty"`
 }
 
 func (a *API) ListPlayers(c *gin.Context) {
@@ -92,6 +93,12 @@ func (a *API) ListPlayers(c *gin.Context) {
 			}
 		}
 
+		var matchesLeftForElite *int
+		if p.League == "amateur" && p.MatchesLeftForElite > 0 {
+			v := p.MatchesLeftForElite
+			matchesLeftForElite = &v
+		}
+
 		jsonPlayers = append(jsonPlayers, playerJson{
 			ID:            p.ID,
 			Name:          p.Name,
@@ -99,19 +106,20 @@ func (a *API) ListPlayers(c *gin.Context) {
 			UserID:        userID,
 			Rank: historyRankJson{
 				Now: playerEloRankJson{
-					Elo:                  p.Elo,
-					Rank:                 p.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating:              p.Elo,
+					League:              p.League,
+					Rank:                p.Rank,
+					MatchesLeftForElite: matchesLeftForElite,
 				},
 				DayAgo: playerEloRankJson{
-					Elo:                  dayAgo.Elo,
-					Rank:                 dayAgo.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating: dayAgo.Elo,
+					League: dayAgo.League,
+					Rank:   dayAgo.Rank,
 				},
 				WeekAgo: playerEloRankJson{
-					Elo:                  weekAgo.Elo,
-					Rank:                 weekAgo.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating: weekAgo.Elo,
+					League: weekAgo.League,
+					Rank:   weekAgo.Rank,
 				},
 			},
 		})

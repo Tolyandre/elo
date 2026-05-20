@@ -90,23 +90,26 @@ function GameWrapped() {
           </p>
         </div>
 
-        <table className="table-auto border-collapse">
-          <tbody>
-            {game?.players.map((player) => {
-              return (
-                <tr key={player.id}>
-                  <td className="px-1 py-2">
-                    <div className="flex items-center gap-2">
-                      <span>{player.rank}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2">{allPlayers.find(p => p.id === player.id)?.name}</td>
-                  <td className="px-1 py-2">{player.elo.toFixed(0)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {(["amateur", "newbie"] as const).map((league) => {
+          const leaguePlayers = game?.players.filter(p => p.league === league) ?? [];
+          if (leaguePlayers.length === 0) return null;
+          return (
+            <div key={league}>
+              <h2 className="text-lg font-semibold mb-1">{league === "amateur" ? "Любители" : "Новички"}</h2>
+              <table className="table-auto border-collapse mb-4">
+                <tbody>
+                  {leaguePlayers.map((player) => (
+                    <tr key={player.id}>
+                      <td className="px-1 py-2"><span>{player.rank}</span></td>
+                      <td className="px-4 py-2">{allPlayers.find(p => p.id === player.id)?.name}</td>
+                      <td className="px-1 py-2">{player.rating.toFixed(0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
 
         <h2 className="text-xl font-semibold">История партий</h2>
         {loadingMatches ? (

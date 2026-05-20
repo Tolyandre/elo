@@ -11,15 +11,18 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
+type GamePlayerStat struct {
+	Id     string
+	Elo    float64
+	League string
+	Rank   int
+}
+
 type GameStatistics struct {
 	Id           string
 	Name         string
 	TotalMatches int
-	Players      []struct {
-		Id   string
-		Elo  float64
-		Rank int
-	}
+	Players      []GamePlayerStat
 }
 
 type GameTitles struct {
@@ -88,10 +91,10 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		return nil, fmt.Errorf("invalid game id: %v", err)
 	}
 
-	// Read latest game Elo per player from DB
-	eloRows, err := s.Queries.ListLatestGameEloPerPlayer(ctx, int32(gid))
+	// Read latest game rating per player from DB (display rating + league)
+	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, int32(gid))
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve game elo from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve game rating from db: %v", err)
 	}
 
 	// Get total match count for the game
@@ -113,29 +116,16 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 	}
 
-	players := make([]struct {
-		Id   string
-		Elo  float64
-		Rank int
-	}, 0, len(eloRows))
-
-	for _, r := range eloRows {
-		players = append(players, struct {
-			Id   string
-			Elo  float64
-			Rank int
-		}{
-			Id:   fmt.Sprintf("%d", r.PlayerID),
-			Elo:  r.GameNewElo,
-			Rank: 0,
+	players := make([]GamePlayerStat, 0, len(ratingRows))
+	for _, r := range ratingRows {
+		players = append(players, GamePlayerStat{
+			Id:     fmt.Sprintf("%d", r.PlayerID),
+			Elo:    r.GameNewRating,
+			League: r.League,
 		})
 	}
 
-	slices.SortFunc(players, func(a, b struct {
-		Id   string
-		Elo  float64
-		Rank int
-	}) int {
+	slices.SortFunc(players, func(a, b GamePlayerStat) int {
 		if b.Elo-a.Elo > 0 {
 			return 1
 		}

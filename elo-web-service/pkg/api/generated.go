@@ -49,6 +49,45 @@ func (e ApiSuccessMessageStatus) Valid() bool {
 	}
 }
 
+// Defines values for EloRankLeague.
+const (
+	EloRankLeagueAmateur EloRankLeague = "amateur"
+	EloRankLeagueElite   EloRankLeague = "elite"
+	EloRankLeagueNewbie  EloRankLeague = "newbie"
+)
+
+// Valid indicates whether the value is a known member of the EloRankLeague enum.
+func (e EloRankLeague) Valid() bool {
+	switch e {
+	case EloRankLeagueAmateur:
+		return true
+	case EloRankLeagueElite:
+		return true
+	case EloRankLeagueNewbie:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GamePlayerLeague.
+const (
+	GamePlayerLeagueAmateur GamePlayerLeague = "amateur"
+	GamePlayerLeagueNewbie  GamePlayerLeague = "newbie"
+)
+
+// Valid indicates whether the value is a known member of the GamePlayerLeague enum.
+func (e GamePlayerLeague) Valid() bool {
+	switch e {
+	case GamePlayerLeagueAmateur:
+		return true
+	case GamePlayerLeagueNewbie:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MarketMarketType.
 const (
 	MarketMarketTypeMatchWinner MarketMarketType = "match_winner"
@@ -229,6 +268,21 @@ func (e SkullKingGameStatePhase) Valid() bool {
 	}
 }
 
+// Defines values for CreatePlayerCorrectionJSONBodyDiscriminator.
+const (
+	Correction CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
+)
+
+// Valid indicates whether the value is a known member of the CreatePlayerCorrectionJSONBodyDiscriminator enum.
+func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
+	switch e {
+	case Correction:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateMarketJSONBodyMarketType.
 const (
 	MatchWinner CreateMarketJSONBodyMarketType = "match_winner"
@@ -310,10 +364,16 @@ type Club struct {
 
 // EloRank defines model for EloRank.
 type EloRank struct {
-	Elo                  float64 `json:"elo"`
-	MatchesLeftForRanked int     `json:"matches_left_for_ranked"`
-	Rank                 *int    `json:"rank,omitempty"`
+	League EloRankLeague `json:"league"`
+
+	// MatchesLeftForElite Only set for amateur league players; how many more matches are needed to reach elite league.
+	MatchesLeftForElite *int    `json:"matches_left_for_elite,omitempty"`
+	Rank                *int    `json:"rank,omitempty"`
+	Rating              float64 `json:"rating"`
 }
+
+// EloRankLeague defines model for EloRank.League.
+type EloRankLeague string
 
 // EloResetPlayerInfo defines model for EloResetPlayerInfo.
 type EloResetPlayerInfo struct {
@@ -398,10 +458,14 @@ type GameMatchStat struct {
 
 // GamePlayer defines model for GamePlayer.
 type GamePlayer struct {
-	Elo  float64 `json:"elo"`
-	Id   string  `json:"id"`
-	Rank int     `json:"rank"`
+	Id     string           `json:"id"`
+	League GamePlayerLeague `json:"league"`
+	Rank   int              `json:"rank"`
+	Rating float64          `json:"rating"`
 }
+
+// GamePlayerLeague defines model for GamePlayer.League.
+type GamePlayerLeague string
 
 // HistoryRank defines model for HistoryRank.
 type HistoryRank struct {
@@ -649,6 +713,15 @@ type WinStreakParams struct {
 	WinsRequired int      `json:"wins_required"`
 }
 
+// CreatePlayerCorrectionJSONBody defines parameters for CreatePlayerCorrection.
+type CreatePlayerCorrectionJSONBody struct {
+	Diff          float32                                     `json:"diff"`
+	Discriminator CreatePlayerCorrectionJSONBodyDiscriminator `json:"discriminator"`
+}
+
+// CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
+type CreatePlayerCorrectionJSONBodyDiscriminator string
+
 // GetEloResetParams defines parameters for GetEloReset.
 type GetEloResetParams struct {
 	// PlayerId Player IDs to include in the simulation
@@ -826,6 +899,9 @@ type ParseVoiceInputJSONBody struct {
 	// Text Speech-to-text input to parse
 	Text string `json:"text"`
 }
+
+// CreatePlayerCorrectionJSONRequestBody defines body for CreatePlayerCorrection for application/json ContentType.
+type CreatePlayerCorrectionJSONRequestBody CreatePlayerCorrectionJSONBody
 
 // PatchMeJSONRequestBody defines body for PatchMe for application/json ContentType.
 type PatchMeJSONRequestBody PatchMeJSONBody
@@ -1081,6 +1157,9 @@ func (t *SkullKingCardImageResult) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Apply a manual rating correction for a player
+	// (POST /admin/players/{id}/corrections)
+	CreatePlayerCorrection(c *gin.Context, id string)
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(c *gin.Context)
@@ -1250,6 +1329,32 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
+
+// CreatePlayerCorrection operation middleware
+func (siw *ServerInterfaceWrapper) CreatePlayerCorrection(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreatePlayerCorrection(c, id)
+}
 
 // RecalculateGameElo operation middleware
 func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
@@ -2414,6 +2519,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
+	router.POST(options.BaseURL+"/admin/players/:id/corrections", wrapper.CreatePlayerCorrection)
 	router.POST(options.BaseURL+"/admin/recalculate-game-elo", wrapper.RecalculateGameElo)
 	router.GET(options.BaseURL+"/analytics/elo-reset", wrapper.GetEloReset)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
@@ -2467,6 +2573,42 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 	router.POST(options.BaseURL+"/voice/parse", wrapper.ParseVoiceInput)
+}
+
+type CreatePlayerCorrectionRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreatePlayerCorrectionJSONRequestBody
+}
+
+type CreatePlayerCorrectionResponseObject interface {
+	VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error
+}
+
+type CreatePlayerCorrection200JSONResponse ApiSuccessMessage
+
+func (response CreatePlayerCorrection200JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePlayerCorrection400JSONResponse ApiError
+
+func (response CreatePlayerCorrection400JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreatePlayerCorrection500JSONResponse ApiError
+
+func (response CreatePlayerCorrection500JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type RecalculateGameEloRequestObject struct {
@@ -4558,6 +4700,9 @@ func (response ParseVoiceInput500JSONResponse) VisitParseVoiceInputResponse(w ht
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Apply a manual rating correction for a player
+	// (POST /admin/players/{id}/corrections)
+	CreatePlayerCorrection(ctx context.Context, request CreatePlayerCorrectionRequestObject) (CreatePlayerCorrectionResponseObject, error)
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(ctx context.Context, request RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error)
@@ -4729,6 +4874,41 @@ func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareF
 type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
+}
+
+// CreatePlayerCorrection operation middleware
+func (sh *strictHandler) CreatePlayerCorrection(ctx *gin.Context, id string) {
+	var request CreatePlayerCorrectionRequestObject
+
+	request.Id = id
+
+	var body CreatePlayerCorrectionJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePlayerCorrection(ctx, request.(CreatePlayerCorrectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePlayerCorrection")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(CreatePlayerCorrectionResponseObject); ok {
+		if err := validResponse.VisitCreatePlayerCorrectionResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // RecalculateGameElo operation middleware

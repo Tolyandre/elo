@@ -1,5 +1,51 @@
 # ─── Path items ──────────────────────────────────────────────────────────────
 
+AdminPlayerCorrections:
+  post:
+    operationId: CreatePlayerCorrection
+    tags: [admin]
+    summary: Apply a manual rating correction for a player
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [discriminator, diff]
+            properties:
+              discriminator:
+                type: string
+                enum: [correction]
+              diff:
+                type: number
+    responses:
+      "200":
+        description: Correction applied
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "500":
+        description: Internal server error
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 RecalculateGameElo:
   post:
     operationId: RecalculateGameElo

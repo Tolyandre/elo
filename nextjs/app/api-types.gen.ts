@@ -479,6 +479,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/players/{id}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a manual rating correction for a player */
+        post: operations["CreatePlayerCorrection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/voice/parse": {
         parameters: {
             query?: never;
@@ -633,9 +650,12 @@ export interface components {
         };
         EloRank: {
             /** Format: double */
-            elo: number;
+            rating: number;
+            /** @enum {string} */
+            league: "newbie" | "amateur" | "elite";
             rank?: number | null;
-            matches_left_for_ranked: number;
+            /** @description Only set for amateur league players; how many more matches are needed to reach elite league. */
+            matches_left_for_elite?: number | null;
         };
         HistoryRank: {
             now: components["schemas"]["EloRank"];
@@ -691,7 +711,9 @@ export interface components {
         GamePlayer: {
             id: string;
             /** Format: double */
-            elo: number;
+            rating: number;
+            /** @enum {string} */
+            league: "newbie" | "amateur";
             rank: number;
         };
         Game: {
@@ -2904,6 +2926,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreatePlayerCorrection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    discriminator: "correction";
+                    diff: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Correction applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Internal server error */

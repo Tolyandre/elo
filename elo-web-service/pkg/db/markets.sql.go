@@ -462,11 +462,12 @@ func (q *Queries) GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakS
 }
 
 const getSettlementDetails = `-- name: GetSettlementDetails :many
-SELECT bsd.player_id, p.name AS player_name, (-bsd.staked)::float8 AS staked, bsd.earned
+SELECT bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
 FROM global_arena_settlement bsd
 JOIN players p ON p.id = bsd.player_id
 WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
-ORDER BY (bsd.earned + bsd.staked) DESC
+ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC
 `
 
 type GetSettlementDetailsRow struct {
@@ -1032,20 +1033,32 @@ func (q *Queries) UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetL
 }
 
 const upsertGlobalArenaSettlementByMarket = `-- name: UpsertGlobalArenaSettlementByMarket :exec
-INSERT INTO global_arena_settlement (player_id, date, new_rating, discriminator, market_id, staked, earned)
-VALUES ($1, $2, $3, 'market', $4, $5, $6)
+INSERT INTO global_arena_settlement
+    (player_id, date, new_rating, new_elo, discriminator, market_id,
+     elo_staked, elo_earned, rating_staked, rating_earned, league)
+VALUES ($1, $2, $3, $4, 'market', $5, $6, $7, $8, $9, $10)
 ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
-DO UPDATE SET new_rating = EXCLUDED.new_rating, date = EXCLUDED.date,
-              staked = EXCLUDED.staked, earned = EXCLUDED.earned
+DO UPDATE SET new_rating    = EXCLUDED.new_rating,
+              new_elo       = EXCLUDED.new_elo,
+              date          = EXCLUDED.date,
+              elo_staked    = EXCLUDED.elo_staked,
+              elo_earned    = EXCLUDED.elo_earned,
+              rating_staked = EXCLUDED.rating_staked,
+              rating_earned = EXCLUDED.rating_earned,
+              league        = EXCLUDED.league
 `
 
 type UpsertGlobalArenaSettlementByMarketParams struct {
-	PlayerID  int32              `json:"player_id"`
-	Date      pgtype.Timestamptz `json:"date"`
-	NewRating float64            `json:"new_rating"`
-	MarketID  pgtype.Int4        `json:"market_id"`
-	Staked    float64            `json:"staked"`
-	Earned    float64            `json:"earned"`
+	PlayerID     int32              `json:"player_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	NewRating    float64            `json:"new_rating"`
+	NewElo       float64            `json:"new_elo"`
+	MarketID     pgtype.Int4        `json:"market_id"`
+	EloStaked    float64            `json:"elo_staked"`
+	EloEarned    float64            `json:"elo_earned"`
+	RatingStaked float64            `json:"rating_staked"`
+	RatingEarned float64            `json:"rating_earned"`
+	League       string             `json:"league"`
 }
 
 func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error {
@@ -1053,9 +1066,13 @@ func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg U
 		arg.PlayerID,
 		arg.Date,
 		arg.NewRating,
+		arg.NewElo,
 		arg.MarketID,
-		arg.Staked,
-		arg.Earned,
+		arg.EloStaked,
+		arg.EloEarned,
+		arg.RatingStaked,
+		arg.RatingEarned,
+		arg.League,
 	)
 	return err
 }

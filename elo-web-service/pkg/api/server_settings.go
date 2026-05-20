@@ -60,12 +60,24 @@ func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSetting
 		return CreateSettings400JSONResponse{Status: "fail", Message: "effective_date must be in the future"}, nil
 	}
 
-	err := s.api.Queries.CreateEloSettings(ctx, db.CreateEloSettingsParams{
-		EffectiveDate: pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
-		EloConstK:     payload.EloConstK,
-		EloConstD:     payload.EloConstD,
-		StartingElo:   payload.StartingElo,
-		WinReward:     payload.WinReward,
+	// Preserve league-related fields not exposed in the admin UI by copying from current settings.
+	latest, err := s.api.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.api.Queries.CreateEloSettings(ctx, db.CreateEloSettingsParams{
+		EffectiveDate:             pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
+		EloConstK:                 payload.EloConstK,
+		EloConstD:                 payload.EloConstD,
+		StartingElo:               payload.StartingElo,
+		WinReward:                 payload.WinReward,
+		StartingRating:            latest.StartingRating,
+		NewbieLeagueGoal:          latest.NewbieLeagueGoal,
+		RatingMaxK:                latest.RatingMaxK,
+		RatingKTau:                latest.RatingKTau,
+		EliteLeagueMatches6months: latest.EliteLeagueMatches6months,
+		EliteLeagueMatches2months: latest.EliteLeagueMatches2months,
 	})
 	if err != nil {
 		return nil, err

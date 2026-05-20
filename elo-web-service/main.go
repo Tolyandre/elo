@@ -120,6 +120,7 @@ func main() {
 	router.PATCH("/games/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchGame)
 	router.POST("/games", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateGame)
 	router.POST("/admin/recalculate-game-elo", strictWrapper.RecalculateGameElo)
+	router.POST("/admin/players/:id/corrections", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreatePlayerCorrection)
 
 	// Voice
 	router.POST("/voice/parse", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.ParseVoiceInput)

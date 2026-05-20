@@ -65,6 +65,12 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 			}
 		}
 
+		var matchesLeftForElite *int
+		if p.League == "amateur" && p.MatchesLeftForElite > 0 {
+			v := p.MatchesLeftForElite
+			matchesLeftForElite = &v
+		}
+
 		result = append(result, Player{
 			Id:            p.ID,
 			Name:          p.Name,
@@ -72,19 +78,20 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 			UserId:        userID,
 			Rank: HistoryRank{
 				Now: EloRank{
-					Elo:                  p.Elo,
-					Rank:                 p.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating:              p.Elo,
+					League:              EloRankLeague(p.League),
+					Rank:                p.Rank,
+					MatchesLeftForElite: matchesLeftForElite,
 				},
 				DayAgo: EloRank{
-					Elo:                  dayAgo.Elo,
-					Rank:                 dayAgo.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating: dayAgo.Elo,
+					League: EloRankLeague(dayAgo.League),
+					Rank:   dayAgo.Rank,
 				},
 				WeekAgo: EloRank{
-					Elo:                  weekAgo.Elo,
-					Rank:                 weekAgo.Rank,
-					MatchesLeftForRanked: p.MatchesLeftForRanked,
+					Rating: weekAgo.Elo,
+					League: EloRankLeague(weekAgo.League),
+					Rank:   weekAgo.Rank,
 				},
 			},
 		})

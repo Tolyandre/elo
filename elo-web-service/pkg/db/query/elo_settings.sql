@@ -1,22 +1,34 @@
 -- name: GetEloSettingsForDate :one
-SELECT elo_const_k, elo_const_d, starting_elo, win_reward
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 WHERE effective_date <= $1
 ORDER BY effective_date DESC
 LIMIT 1;
 
 -- name: GetLatestEloSettings :one
-SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
 LIMIT 1;
 
 -- name: CreateEloSettings :exec
-INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
+    starting_rating, newbie_league_goal,
+    rating_max_k, rating_k_tau,
+    elite_league_matches_6months, elite_league_matches_2months)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
 
 -- name: ListEloSettings :many
-SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward
+SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC;
 

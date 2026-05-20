@@ -12,16 +12,25 @@ import (
 )
 
 const createEloSettings = `-- name: CreateEloSettings :exec
-INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
+    starting_rating, newbie_league_goal,
+    rating_max_k, rating_k_tau,
+    elite_league_matches_6months, elite_league_matches_2months)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
 
 type CreateEloSettingsParams struct {
-	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
-	EloConstK     float64            `json:"elo_const_k"`
-	EloConstD     float64            `json:"elo_const_d"`
-	StartingElo   float64            `json:"starting_elo"`
-	WinReward     float64            `json:"win_reward"`
+	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                 float64            `json:"elo_const_k"`
+	EloConstD                 float64            `json:"elo_const_d"`
+	StartingElo               float64            `json:"starting_elo"`
+	WinReward                 float64            `json:"win_reward"`
+	StartingRating            float64            `json:"starting_rating"`
+	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
+	RatingMaxK                float64            `json:"rating_max_k"`
+	RatingKTau                float64            `json:"rating_k_tau"`
+	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
 }
 
 func (q *Queries) CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error {
@@ -31,6 +40,12 @@ func (q *Queries) CreateEloSettings(ctx context.Context, arg CreateEloSettingsPa
 		arg.EloConstD,
 		arg.StartingElo,
 		arg.WinReward,
+		arg.StartingRating,
+		arg.NewbieLeagueGoal,
+		arg.RatingMaxK,
+		arg.RatingKTau,
+		arg.EliteLeagueMatches6months,
+		arg.EliteLeagueMatches2months,
 	)
 	return err
 }
@@ -45,7 +60,10 @@ func (q *Queries) DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Ti
 }
 
 const getEloSettingsForDate = `-- name: GetEloSettingsForDate :one
-SELECT elo_const_k, elo_const_d, starting_elo, win_reward
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 WHERE effective_date <= $1
 ORDER BY effective_date DESC
@@ -53,10 +71,16 @@ LIMIT 1
 `
 
 type GetEloSettingsForDateRow struct {
-	EloConstK   float64 `json:"elo_const_k"`
-	EloConstD   float64 `json:"elo_const_d"`
-	StartingElo float64 `json:"starting_elo"`
-	WinReward   float64 `json:"win_reward"`
+	EloConstK                 float64 `json:"elo_const_k"`
+	EloConstD                 float64 `json:"elo_const_d"`
+	StartingElo               float64 `json:"starting_elo"`
+	WinReward                 float64 `json:"win_reward"`
+	StartingRating            float64 `json:"starting_rating"`
+	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
+	RatingMaxK                float64 `json:"rating_max_k"`
+	RatingKTau                float64 `json:"rating_k_tau"`
+	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
 }
 
 func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error) {
@@ -67,23 +91,38 @@ func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtyp
 		&i.EloConstD,
 		&i.StartingElo,
 		&i.WinReward,
+		&i.StartingRating,
+		&i.NewbieLeagueGoal,
+		&i.RatingMaxK,
+		&i.RatingKTau,
+		&i.EliteLeagueMatches6months,
+		&i.EliteLeagueMatches2months,
 	)
 	return i, err
 }
 
 const getLatestEloSettings = `-- name: GetLatestEloSettings :one
-SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date
+SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
 LIMIT 1
 `
 
 type GetLatestEloSettingsRow struct {
-	EloConstK     float64            `json:"elo_const_k"`
-	EloConstD     float64            `json:"elo_const_d"`
-	StartingElo   float64            `json:"starting_elo"`
-	WinReward     float64            `json:"win_reward"`
-	EffectiveDate pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                 float64            `json:"elo_const_k"`
+	EloConstD                 float64            `json:"elo_const_d"`
+	StartingElo               float64            `json:"starting_elo"`
+	WinReward                 float64            `json:"win_reward"`
+	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
+	StartingRating            float64            `json:"starting_rating"`
+	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
+	RatingMaxK                float64            `json:"rating_max_k"`
+	RatingKTau                float64            `json:"rating_k_tau"`
+	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
 }
 
 func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error) {
@@ -95,31 +134,60 @@ func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSetting
 		&i.StartingElo,
 		&i.WinReward,
 		&i.EffectiveDate,
+		&i.StartingRating,
+		&i.NewbieLeagueGoal,
+		&i.RatingMaxK,
+		&i.RatingKTau,
+		&i.EliteLeagueMatches6months,
+		&i.EliteLeagueMatches2months,
 	)
 	return i, err
 }
 
 const listEloSettings = `-- name: ListEloSettings :many
-SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward
+SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
+       starting_rating, newbie_league_goal,
+       rating_max_k, rating_k_tau,
+       elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
 `
 
-func (q *Queries) ListEloSettings(ctx context.Context) ([]EloSetting, error) {
+type ListEloSettingsRow struct {
+	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                 float64            `json:"elo_const_k"`
+	EloConstD                 float64            `json:"elo_const_d"`
+	StartingElo               float64            `json:"starting_elo"`
+	WinReward                 float64            `json:"win_reward"`
+	StartingRating            float64            `json:"starting_rating"`
+	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
+	RatingMaxK                float64            `json:"rating_max_k"`
+	RatingKTau                float64            `json:"rating_k_tau"`
+	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
+}
+
+func (q *Queries) ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error) {
 	rows, err := q.db.Query(ctx, listEloSettings)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []EloSetting{}
+	items := []ListEloSettingsRow{}
 	for rows.Next() {
-		var i EloSetting
+		var i ListEloSettingsRow
 		if err := rows.Scan(
 			&i.EffectiveDate,
 			&i.EloConstK,
 			&i.EloConstD,
 			&i.StartingElo,
 			&i.WinReward,
+			&i.StartingRating,
+			&i.NewbieLeagueGoal,
+			&i.RatingMaxK,
+			&i.RatingKTau,
+			&i.EliteLeagueMatches6months,
+			&i.EliteLeagueMatches2months,
 		); err != nil {
 			return nil, err
 		}

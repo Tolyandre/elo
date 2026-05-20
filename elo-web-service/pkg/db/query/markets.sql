@@ -167,11 +167,19 @@ WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome;
 
 -- name: UpsertGlobalArenaSettlementByMarket :exec
-INSERT INTO global_arena_settlement (player_id, date, new_rating, discriminator, market_id, staked, earned)
-VALUES ($1, $2, $3, 'market', $4, $5, $6)
+INSERT INTO global_arena_settlement
+    (player_id, date, new_rating, new_elo, discriminator, market_id,
+     elo_staked, elo_earned, rating_staked, rating_earned, league)
+VALUES ($1, $2, $3, $4, 'market', $5, $6, $7, $8, $9, $10)
 ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
-DO UPDATE SET new_rating = EXCLUDED.new_rating, date = EXCLUDED.date,
-              staked = EXCLUDED.staked, earned = EXCLUDED.earned;
+DO UPDATE SET new_rating    = EXCLUDED.new_rating,
+              new_elo       = EXCLUDED.new_elo,
+              date          = EXCLUDED.date,
+              elo_staked    = EXCLUDED.elo_staked,
+              elo_earned    = EXCLUDED.elo_earned,
+              rating_staked = EXCLUDED.rating_staked,
+              rating_earned = EXCLUDED.rating_earned,
+              league        = EXCLUDED.league;
 
 -- name: DeleteGlobalArenaSettlementByMarket :exec
 DELETE FROM global_arena_settlement WHERE market_id = $1 AND discriminator = 'market';
@@ -197,11 +205,12 @@ GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
          wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses;
 
 -- name: GetSettlementDetails :many
-SELECT bsd.player_id, p.name AS player_name, (-bsd.staked)::float8 AS staked, bsd.earned
+SELECT bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
 FROM global_arena_settlement bsd
 JOIN players p ON p.id = bsd.player_id
 WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
-ORDER BY (bsd.earned + bsd.staked) DESC;
+ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 
 -- name: GetPlayerBetLimit :one
 SELECT bet_limit FROM players WHERE id = $1;

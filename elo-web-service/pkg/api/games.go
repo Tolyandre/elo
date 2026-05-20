@@ -46,9 +46,10 @@ func (a *API) ListGames(c *gin.Context) {
 
 func (a *API) GetGame(c *gin.Context) {
 	type playerJson struct {
-		Id   string  `json:"id"`
-		Elo  float64 `json:"elo"`
-		Rank int     `json:"rank"`
+		Id     string  `json:"id"`
+		Rating float64 `json:"rating"`
+		League string  `json:"league"`
+		Rank   int     `json:"rank"`
 	}
 
 	type gameJson struct {
@@ -68,9 +69,10 @@ func (a *API) GetGame(c *gin.Context) {
 	var playerList []playerJson = make([]playerJson, 0, len(gameStatistics.Players))
 	for _, p := range gameStatistics.Players {
 		playerList = append(playerList, playerJson{
-			Id:   p.Id,
-			Elo:  p.Elo,
-			Rank: p.Rank,
+			Id:     p.Id,
+			Rating: p.Elo,
+			League: p.League,
+			Rank:   p.Rank,
 		})
 	}
 

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
-import { useSettings } from "../settingsContext";
 import { useMe } from "../meContext";
 import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,7 +13,6 @@ import { AlertCircleIcon } from "lucide-react";
 import { useGames } from "../gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
-import { calculateEloChanges } from "../eloCalculation";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { VoiceInput } from "@/components/voice-input";
 
@@ -36,7 +34,6 @@ function AddGameForm() {
 
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
-    const settings = useSettings();
 
     const { games } = useGames();
 
@@ -76,18 +73,6 @@ function AddGameForm() {
 
         setErrors((prev) => ({ ...prev, [id]: !isNumber(value) }));
     };
-
-    const eloChange = useMemo(() => {
-        const playerElos = new Map(players.map(pl => [pl.id, pl.rank.now.elo]));
-        return calculateEloChanges(
-            participants.map(p => ({ id: p.id, points: Number(p.points) })),
-            playerElos,
-            settings.eloConstK,
-            settings.eloConstD,
-            settings.startingElo,
-            settings.winReward
-        );
-    }, [participants, players, settings]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -153,10 +138,6 @@ function AddGameForm() {
                                 <div className="flex items-center gap-2">
                                     <span className="w-40">
                                         <div>{p.name}</div>
-                                        <div className="text-sm text-gray-500"> {round(eloChange.find(v => v.id == p.id)?.delta || 0, 0)} (
-                                            <span className="text-red-600"> {round(eloChange.find(v => v.id == p.id)?.minus || 0, 0)} </span>
-                                            <span className="text-green-600">+{round(eloChange.find(v => v.id == p.id)?.plus || 0, 0)}</span>)
-                                        </div>
                                     </span>
                                     <input
                                         type="text"

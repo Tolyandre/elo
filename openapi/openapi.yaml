@@ -201,6 +201,8 @@ paths:
   # Admin
   /admin/recalculate-game-elo:
     $ref: './admin.yaml#/RecalculateGameElo'
+  /admin/players/{id}/corrections:
+    $ref: './admin.yaml#/AdminPlayerCorrections'
 
   # Voice
   /voice/parse:

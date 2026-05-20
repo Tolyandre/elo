@@ -59,7 +59,7 @@ SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL;
 SELECT
   g.id::text AS game_id,
   g.name     AS game_name,
-  SUM(gas.earned + gas.staked)::float8 AS elo_earned
+  SUM(gas.elo_earned + gas.elo_staked)::float8 AS elo_earned
 FROM match_scores ms
 JOIN matches m ON ms.match_id = m.id
 JOIN games g ON m.game_id = g.id
