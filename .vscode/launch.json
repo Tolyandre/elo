@@ -10,6 +10,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "./elo-web-service",
+            "buildFlags": "-tags opencv",
             "args": [
                 "--config-path",
                 "./config/config.dev.yaml"
@@ -22,6 +23,7 @@
             "request": "launch",
             "mode": "auto",
             "program": "./elo-web-service",
+            "buildFlags": "-tags opencv",
             "args": [
                 "--config-path",
                 "./config/config.docker.yaml"

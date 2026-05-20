@@ -13,4 +13,5 @@ buildGoApplication {
   nativeBuildInputs = [ pkgs.pkg-config ];
   buildInputs = [ pkgs.opencv ];
   CGO_ENABLED = "1";
+  tags = [ "opencv" ];
 }
