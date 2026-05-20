@@ -307,6 +307,15 @@ export async function deletePlayerPromise(playerId: string) {
     return data;
 }
 
+export async function createPlayerCorrectionPromise(playerId: string, diff: number) {
+    const { data, error } = await client.POST("/admin/players/{id}/corrections", {
+        params: { path: { id: playerId } },
+        body: { discriminator: "correction", diff },
+    });
+    if (error) throw error;
+    return data;
+}
+
 export async function listClubsPromise(): Promise<Club[]> {
     const { data, error } = await client.GET("/clubs");
     if (error) throw error;

@@ -269,33 +269,75 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 
 	resolvedAtTz := pgtype.Timestamptz{Time: resolvedAt, Valid: true}
 
+	settingsRow, err := q.GetEloSettingsForDate(ctx, resolvedAtTz)
+	if err != nil {
+		return fmt.Errorf("get elo settings: %w", err)
+	}
+	settings := EloSettingsFromDB(settingsRow)
+
+	date6MAgo := pgtype.Timestamptz{Time: resolvedAt.Add(-6 * 30 * 24 * time.Hour), Valid: true}
+	date2MAgo := pgtype.Timestamptz{Time: resolvedAt.Add(-2 * 30 * 24 * time.Hour), Valid: true}
+
 	for _, pid := range allPlayerIDs {
 		staked := players[pid].totalStaked
 		earnedAmt := earned[pid]
 
+		// Elo track
 		var currentElo float64
 		latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
 			PlayerID: pid,
 			Date:     resolvedAtTz,
 		})
 		if err != nil {
-			settings, sErr := q.GetEloSettingsForDate(ctx, resolvedAtTz)
-			if sErr != nil {
-				return fmt.Errorf("get elo settings: %w", sErr)
-			}
 			currentElo = settings.StartingElo
 		} else {
 			currentElo = latestElo
 		}
+		eloStaked := -staked
+		eloEarned := earnedAmt
+		newElo := currentElo + eloStaked + eloEarned
 
-		newRating := currentElo + (earnedAmt - staked)
+		// Rating track (same amounts as elo, but based on prevRating)
+		var currentRating float64
+		var storedLeague string
+		latestRating, err := q.GetPlayerLatestGlobalRatingAtDate(ctx, db.GetPlayerLatestGlobalRatingAtDateParams{
+			PlayerID: pid,
+			Date:     resolvedAtTz,
+		})
+		if err != nil {
+			currentRating = settings.StartingRating
+			storedLeague = initialLeague(settings)
+		} else {
+			currentRating = latestRating.Rating
+			storedLeague = latestRating.League
+		}
+		ratingStaked, ratingEarned := eloStaked, eloEarned
+		newRating := currentRating + ratingStaked + ratingEarned
+
+		count6M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+			PlayerID: pid,
+			Date:     date6MAgo,
+			Date_2:   resolvedAtTz,
+		})
+		count2M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+			PlayerID: pid,
+			Date:     date2MAgo,
+			Date_2:   resolvedAtTz,
+		})
+		prevLeague := effectiveLeague(storedLeague, int(count2M), int(count6M), settings)
+		newLeague := determineGlobalLeague(prevLeague, newRating, int(count6M), int(count2M), settings)
+
 		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
-			PlayerID:  pid,
-			Date:      resolvedAtTz,
-			NewRating: newRating,
-			MarketID:  pgtype.Int4{Int32: marketID, Valid: true},
-			Staked:    -staked,   // negated: staked is always negative (cost)
-			Earned:    earnedAmt,
+			PlayerID:     pid,
+			Date:         resolvedAtTz,
+			NewRating:    newRating,
+			NewElo:       newElo,
+			MarketID:     pgtype.Int4{Int32: marketID, Valid: true},
+			EloStaked:    eloStaked,
+			EloEarned:    eloEarned,
+			RatingStaked: ratingStaked,
+			RatingEarned: ratingEarned,
+			League:       newLeague,
 		}); err != nil {
 			return fmt.Errorf("upsert global arena settlement for player %d: %w", pid, err)
 		}

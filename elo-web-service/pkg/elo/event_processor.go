@@ -45,14 +45,12 @@ func (p *EventProcessor) processMatchSettlements(
 	matchID int32,
 	gameID int32,
 	playerScores map[int32]float64,
-	previousElo map[int32]float64,
-	previousGameElo map[int32]float64,
-	settings EloSettings,
+	state MatchPrevState,
 	matchDate time.Time,
 	eloCalcFn EloCalcFunc,
 ) error {
 	// Steps 1 & 2: Calculate and store/update rating + game_elo
-	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, previousElo, previousGameElo, settings); err != nil {
+	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, state); err != nil {
 		return fmt.Errorf("elo calc for match %d: %w", matchID, err)
 	}
 
@@ -76,7 +74,7 @@ func (p *EventProcessor) RecalculateFrom(
 	q *db.Queries,
 	startDate time.Time,
 	calcAndUpdateElo EloCalcFunc,
-	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (map[int32]float64, map[int32]float64, EloSettings, error),
+	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (MatchPrevState, error),
 ) error {
 	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
 	// whether recalculation moves any market's resolution to an earlier time.
@@ -85,7 +83,13 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("snapshot market resolutions: %w", err)
 	}
 
-	// Unsettle markets resolved by matches on/after startDate
+	// Delete all settlement rows from startDate in one query (match, market, and correction).
+	// The per-market deletes inside UnsettleMarketsFromDate will become no-ops.
+	if err := q.DeleteAllSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
+		return fmt.Errorf("delete settlements from date: %w", err)
+	}
+
+	// Reset market state (status, resolved_at) for markets resolved on/after startDate.
 	if err := p.MarketService.UnsettleMarketsFromDate(ctx, q, startDate); err != nil {
 		return fmt.Errorf("unsettle markets: %w", err)
 	}
@@ -95,28 +99,51 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("get matches from date %v: %w", startDate, err)
 	}
 
+	corrections, err := q.GetCorrectionsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true})
+	if err != nil {
+		return fmt.Errorf("get corrections from date %v: %w", startDate, err)
+	}
+
 	allAffectedPlayers := make(map[int32]bool)
 
-	for _, match := range matches {
-		matchScores, err := q.GetMatchScoresForMatch(ctx, match.ID)
-		if err != nil {
-			return fmt.Errorf("get scores for match %d: %w", match.ID, err)
-		}
+	// Merge matches and corrections in date order. On the same date, matches come first.
+	mi, ci := 0, 0
+	for mi < len(matches) || ci < len(corrections) {
+		pickMatch := mi < len(matches) &&
+			(ci >= len(corrections) || !corrections[ci].Date.Time.Before(matches[mi].Date.Time))
 
-		playerScores := make(map[int32]float64)
-		for _, ms := range matchScores {
-			playerScores[ms.PlayerID] = ms.Score
-			allAffectedPlayers[ms.PlayerID] = true
-		}
+		if pickMatch {
+			match := matches[mi]
+			mi++
 
-		previousElo, previousGameElo, settings, err := lockAndGetPrevElos(ctx, q, match, playerScores)
-		if err != nil {
-			return fmt.Errorf("lock/get prev elos for match %d: %w", match.ID, err)
-		}
+			matchScores, err := q.GetMatchScoresForMatch(ctx, match.ID)
+			if err != nil {
+				return fmt.Errorf("get scores for match %d: %w", match.ID, err)
+			}
 
-		if err := p.processMatchSettlements(ctx, q, match.ID, match.GameID, playerScores,
-			previousElo, previousGameElo, settings, match.Date.Time, calcAndUpdateElo); err != nil {
-			return err
+			playerScores := make(map[int32]float64)
+			for _, ms := range matchScores {
+				playerScores[ms.PlayerID] = ms.Score
+				allAffectedPlayers[ms.PlayerID] = true
+			}
+
+			state, err := lockAndGetPrevElos(ctx, q, match, playerScores)
+			if err != nil {
+				return fmt.Errorf("lock/get prev elos for match %d: %w", match.ID, err)
+			}
+
+			if err := p.processMatchSettlements(ctx, q, match.ID, match.GameID, playerScores,
+				state, match.Date.Time, calcAndUpdateElo); err != nil {
+				return err
+			}
+		} else {
+			correction := corrections[ci]
+			ci++
+
+			if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
+				return fmt.Errorf("apply correction %d: %w", correction.ID, err)
+			}
+			allAffectedPlayers[correction.PlayerID] = true
 		}
 	}
 

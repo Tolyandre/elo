@@ -112,15 +112,54 @@ function PlayersTable() {
         [players, selectedClubId, clubs]
     );
 
-    const rankedPlayers = useMemo<Player[]>(() => filtered
-        .filter((p: Player) => p.rank.now.rank != null)
-        .sort((a: Player, b: Player) => b.rank.now.elo - a.rank.now.elo),
-        [filtered]);
+    const byRating = (a: Player, b: Player) => b.rank.now.rating - a.rank.now.rating;
 
-    const unRankedPlayers = useMemo<Player[]>(() => filtered
-        .filter((p: Player) => p.rank.now.rank == null)
-        .sort((a: Player, b: Player) => a.rank.now.matches_left_for_ranked - b.rank.now.matches_left_for_ranked),
-        [filtered]);
+    const elitePlayers = useMemo<Player[]>(() =>
+        filtered.filter(p => p.rank.now.league === "elite").sort(byRating), [filtered]);
+    const amateurPlayers = useMemo<Player[]>(() =>
+        filtered.filter(p => p.rank.now.league === "amateur").sort(byRating), [filtered]);
+    const newbiePlayers = useMemo<Player[]>(() =>
+        filtered.filter(p => p.rank.now.league === "newbie").sort(byRating), [filtered]);
+
+    const hasAny = elitePlayers.length + amateurPlayers.length + newbiePlayers.length > 0;
+
+    function PlayerRow({ player }: { player: Player }) {
+        const prev = player.rank[period] ?? player.rank.day_ago;
+        const matchesLeftForElite = player.rank.now.matches_left_for_elite;
+        return (
+            <tr key={player.id}>
+                <td className="py-2 text-center align-top min-w-7">
+                    <RankIcon rank={player.rank.now.rank ?? null} />
+                </td>
+                <td className="py-2 text-center align-top min-w-7">
+                    <RankChangeIndicator currentRank={player.rank.now.rank ?? null} previousRank={prev.rank} />
+                </td>
+                <td className="py-2 px-1 w-50">
+                    <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
+                    {matchesLeftForElite != null && matchesLeftForElite > 0 && (
+                        <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} до высшей</span>
+                    )}
+                </td>
+                <td className="py-2 px-1 align-top min-w-25">
+                    <EloValueAndDiff currentElo={player.rank.now.rating} previousElo={prev.rating} />
+                </td>
+            </tr>
+        );
+    }
+
+    function LeagueSection({ title, players }: { title: string; players: Player[] }) {
+        if (players.length === 0) return null;
+        return (
+            <>
+                <h2 className="text-xl font-semibold mb-2 mt-4">{title}</h2>
+                <table className="table-auto border-collapse mb-4">
+                    <tbody>
+                        {players.map(p => <PlayerRow key={p.id} player={p} />)}
+                    </tbody>
+                </table>
+            </>
+        );
+    }
 
     if (loading || error) return null;
     return (
@@ -146,7 +185,7 @@ function PlayersTable() {
                 </button>
             </div>
 
-            {rankedPlayers.length === 0 && unRankedPlayers.length === 0 && selectedClubId !== null && (
+            {!hasAny && selectedClubId !== null && (
                 <p className="text-muted-foreground mb-4">
                     Нет игроков.{" "}
                     <button type="button" className="text-blue-600 underline decoration-dashed" onClick={() => setSelectedClubId(null)}>
@@ -155,64 +194,9 @@ function PlayersTable() {
                 </p>
             )}
 
-            {rankedPlayers.length > 0 && (
-                <table className="table-auto border-collapse mb-6">
-                    <tbody>
-                        {rankedPlayers.map((player) => {
-                            const prev = player.rank[period] ?? player.rank.day_ago;
-                            return (
-                                <tr key={player.id}>
-                                    <td className="py-2 text-center align-top min-w-7">
-                                        <RankIcon rank={player.rank.now.rank ?? null} />
-                                    </td>
-                                    <td className="py-2 text-center align-top min-w-7">
-                                        <RankChangeIndicator
-                                            currentRank={player.rank.now.rank ?? null}
-                                            previousRank={prev.rank}
-                                        />
-                                    </td>
-                                    <td className="py-2 px-1 w-50">
-                                        <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
-                                    </td>
-                                    <td className="py-2 px-1 align-top min-w-25">
-                                        <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            )}
-
-            {unRankedPlayers.length > 0 && (
-                <>
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-semibold mb-4 mx-auto">Недостаточно партий</h2>
-                    </div>
-                    <table className="table-auto border-collapse mb-6">
-                        <tbody>
-                            {unRankedPlayers.map((player) => {
-                                const prev = player.rank[period] ?? player.rank.day_ago;
-                                return (
-                                    <tr key={player.id}>
-                                        <td className="py-2 text-center align-top min-w-7">
-                                            <RankIcon rank={player.rank.now.rank ?? null} />
-                                        </td>
-                                        <td className="py-2 text-center align-top min-w-7"></td>
-                                        <td className="py-2 px-1 w-50">
-                                            <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
-                                            <span className="text-xs text-muted-foreground ml-1">ещё {player.rank.now.matches_left_for_ranked}</span>
-                                        </td>
-                                        <td className="py-2 px-1 align-top min-w-25">
-                                            <EloValueAndDiff currentElo={player.rank.now.elo} previousElo={prev.elo} />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </>
-            )}
+            <LeagueSection title="Высшая лига" players={elitePlayers} />
+            <LeagueSection title="Любители" players={amateurPlayers} />
+            <LeagueSection title="Новички" players={newbiePlayers} />
         </>
     );
 }

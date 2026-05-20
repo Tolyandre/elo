@@ -15,17 +15,47 @@ type EloSettings struct {
 	D           float64
 	StartingElo float64
 	WinReward   float64
+
+	// League thresholds and rating-track K formula coefficients.
+	StartingRating   float64
+	NewbieLeagueGoal float64
+	RatingMaxK       float64 // upper bound of K for rating track (when gap is large)
+	RatingKTau       float64 // exponential decay constant for K(gap) formula
+	EliteMatches6M   int
+	EliteMatches2M   int
 }
 
 // EloSettingsFromDB converts a sqlc-generated row to a domain value object,
 // decoupling the domain from the generated DB type.
 func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 	return EloSettings{
-		K:           row.EloConstK,
-		D:           row.EloConstD,
-		StartingElo: row.StartingElo,
-		WinReward:   row.WinReward,
+		K:             row.EloConstK,
+		D:             row.EloConstD,
+		StartingElo:   row.StartingElo,
+		WinReward:     row.WinReward,
+		StartingRating:   row.StartingRating,
+		NewbieLeagueGoal: row.NewbieLeagueGoal,
+		RatingMaxK:       row.RatingMaxK,
+		RatingKTau:       row.RatingKTau,
+		EliteMatches6M:   int(row.EliteLeagueMatches6months),
+		EliteMatches2M:   int(row.EliteLeagueMatches2months),
 	}
+}
+
+// MatchPrevState bundles all per-player prior state needed to compute one match's settlements.
+type MatchPrevState struct {
+	Elo        map[int32]float64 // true global Elo before this match
+	GameElo    map[int32]float64 // true game Elo before this match
+	Rating     map[int32]float64 // display global rating before this match
+	GameRating map[int32]float64 // display game rating before this match
+	League     map[int32]string  // global league before this match ("newbie"/"amateur"/"elite")
+	GameLeague map[int32]string  // game league before this match ("newbie"/"amateur")
+
+	// Elite promotion match counts for the match date (includes the current match).
+	Count6M map[int32]int // matches in last 6 months
+	Count2M map[int32]int // matches in last 2 months
+
+	Settings EloSettings
 }
 
 // EloCalcFunc is the signature for functions that compute and persist Elo for one match.
@@ -34,8 +64,8 @@ type EloCalcFunc func(
 	ctx context.Context,
 	q *db.Queries,
 	matchID, gameID int32,
-	playerScores, previousElo, previousGameElo map[int32]float64,
-	settings EloSettings,
+	playerScores map[int32]float64,
+	state MatchPrevState,
 ) error
 
 // TimeWindow is a closed time interval used to constrain market resolution.

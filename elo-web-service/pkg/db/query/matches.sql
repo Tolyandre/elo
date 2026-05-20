@@ -17,8 +17,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.staked AS rating_pay,
-    gas.earned AS rating_earn,
+    gas.rating_staked AS rating_pay,
+    gas.rating_earned AS rating_earn,
     CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
@@ -37,8 +37,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.staked AS rating_pay,
-    gas.earned AS rating_earn,
+    gas.rating_staked AS rating_pay,
+    gas.rating_earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
     CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
@@ -73,8 +73,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.staked AS rating_pay,
-    gas.earned AS rating_earn,
+    gas.rating_staked AS rating_pay,
+    gas.rating_earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
     CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
@@ -144,8 +144,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.staked AS rating_pay,
-    gas.earned AS rating_earn,
+    gas.rating_staked AS rating_pay,
+    gas.rating_earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
     CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
@@ -174,8 +174,8 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.staked AS rating_pay,
-    gas.earned AS rating_earn,
+    gas.rating_staked AS rating_pay,
+    gas.rating_earned AS rating_earn,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
     CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,

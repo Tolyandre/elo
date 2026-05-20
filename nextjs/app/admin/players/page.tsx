@@ -1,7 +1,7 @@
 "use client"
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, listUsersPromise, User } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, User } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
@@ -21,9 +21,12 @@ export default function PlayersAdminPage() {
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
+    const [correctionOpen, setCorrectionOpen] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedName, setSelectedName] = useState<string>("");
+    const [selectedRating, setSelectedRating] = useState<number>(0);
     const [renameValue, setRenameValue] = useState<string>("");
+    const [correctionValue, setCorrectionValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
     const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
 
@@ -80,6 +83,44 @@ export default function PlayersAdminPage() {
             await deletePlayerPromise(selectedId);
             invalidatePlayers();
             setDeleteOpen(false);
+        } catch (err) {
+            // toast shown by API helper
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
+    function openCorrection(id: string, rating: number) {
+        setSelectedId(id);
+        setSelectedRating(rating);
+        setCorrectionValue("");
+        setCorrectionOpen(true);
+    }
+
+    async function confirmReset() {
+        if (!selectedId) return;
+        const diff = -selectedRating;
+        try {
+            setActionLoading(true);
+            await createPlayerCorrectionPromise(selectedId, diff);
+            invalidatePlayers();
+            setCorrectionOpen(false);
+        } catch (err) {
+            // toast shown by API helper
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
+    async function confirmCorrection() {
+        if (!selectedId) return;
+        const diff = parseInt(correctionValue, 10);
+        if (isNaN(diff)) return;
+        try {
+            setActionLoading(true);
+            await createPlayerCorrectionPromise(selectedId, diff);
+            invalidatePlayers();
+            setCorrectionOpen(false);
         } catch (err) {
             // toast shown by API helper
         } finally {
@@ -145,7 +186,7 @@ export default function PlayersAdminPage() {
                                         <div>
                                             <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
                                             <div className="text-sm text-muted-foreground">
-                                                Рейтинг: {player.rank.now.elo.toFixed(0)}
+                                                Рейтинг: {player.rank.now.rating.toFixed(0)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
                                             </div>
                                             {player.user_id && (
@@ -160,6 +201,14 @@ export default function PlayersAdminPage() {
                                                 disabled={!canEdit}
                                             >
                                                 Rename
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => openCorrection(player.id, player.rank.now.rating)}
+                                                disabled={!canEdit}
+                                            >
+                                                Корректировка
                                             </Button>
                                             <Button
                                                 variant="destructive"
@@ -196,7 +245,7 @@ export default function PlayersAdminPage() {
                                             <td className="px-4 py-2 text-sm text-muted-foreground">
                                                 {player.user_id ? userMap.get(player.user_id) : ""}
                                             </td>
-                                            <td className="px-4 py-2">{player.rank.now.elo.toFixed(0)}</td>
+                                            <td className="px-4 py-2">{player.rank.now.rating.toFixed(0)}</td>
                                             <td className="px-4 py-2">{player.rank.now.rank ? `#${player.rank.now.rank}` : "—"}</td>
                                             <td className="px-4 py-2">
                                                 <div className="flex gap-2">
@@ -207,6 +256,14 @@ export default function PlayersAdminPage() {
                                                         disabled={!canEdit}
                                                     >
                                                         Rename
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => openCorrection(player.id, player.rank.now.rating)}
+                                                        disabled={!canEdit}
+                                                    >
+                                                        Корректировка
                                                     </Button>
                                                     <Button
                                                         variant="destructive"
@@ -262,6 +319,38 @@ export default function PlayersAdminPage() {
                         <Button variant="destructive" onClick={confirmDelete} disabled={actionLoading}>
                             {actionLoading ? "Удаление..." : "Удалить"}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Correction dialog */}
+            <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Корректировка рейтинга</DialogTitle>
+                        <DialogDescription>Текущий рейтинг: {selectedRating}</DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-3 mt-2">
+                        <Button variant="destructive" onClick={confirmReset} disabled={actionLoading}>
+                            {actionLoading ? "Применение..." : `Обнулить (−${selectedRating})`}
+                        </Button>
+                        <div className="flex gap-2 items-center">
+                            <input
+                                type="number"
+                                step="1"
+                                className="border rounded p-2 flex-1"
+                                placeholder="Произвольное изменение (целое)"
+                                value={correctionValue}
+                                onChange={(e) => setCorrectionValue(e.target.value)}
+                                aria-label="Correction value"
+                            />
+                            <Button onClick={confirmCorrection} disabled={actionLoading || isNaN(parseInt(correctionValue, 10))}>
+                                {actionLoading ? "Применение..." : "Применить"}
+                            </Button>
+                        </div>
+                    </div>
+                    <DialogFooter className="mt-2">
+                        <Button variant="outline" onClick={() => setCorrectionOpen(false)} disabled={actionLoading}>Отмена</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

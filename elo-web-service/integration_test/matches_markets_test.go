@@ -61,7 +61,7 @@ func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID int32) []db.Rat
 	return rows
 }
 
-// latestRating returns the most recent global_arena_settlement entry for a player.
+// latestRating returns the most recent new_rating (display track) for a player.
 func latestRating(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
 	t.Helper()
 	rows := playerRatingRows(t, pool, playerID)
@@ -69,6 +69,20 @@ func latestRating(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
 		t.Fatalf("no rating rows for player %d", playerID)
 	}
 	return rows[len(rows)-1].Rating
+}
+
+// latestElo returns the most recent new_elo (true Elo, zero-sum) for a player.
+func latestElo(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
+	t.Helper()
+	var elo float64
+	err := pool.QueryRow(context.Background(),
+		`SELECT new_elo FROM global_arena_settlement WHERE player_id = $1 ORDER BY date DESC, id DESC LIMIT 1`,
+		playerID,
+	).Scan(&elo)
+	if err != nil {
+		t.Fatalf("latestElo for player %d: %v", playerID, err)
+	}
+	return elo
 }
 
 // marketSettlementRatingCount returns how many global_arena_settlement rows exist for a player with discriminator='market'.
@@ -113,16 +127,16 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 		}
 	}
 
-	// Check sum of all ratings equals 3 * startingElo (Elo is zero-sum across players)
+	// Check sum of all new_elo equals 3 * startingElo (true Elo is zero-sum across players)
 	const startingElo = 1000.0
-	var ratingsSum float64
+	var eloSum float64
 	for _, pid := range []int32{p1, p2, p3} {
-		ratingsSum += latestRating(t, pool, pid)
+		eloSum += latestElo(t, pool, pid)
 	}
 	const epsilon = 0.001
 	expected := float64(3) * startingElo
-	if diff := ratingsSum - expected; diff < -epsilon || diff > epsilon {
-		t.Errorf("sum of ratings = %.4f, want %.4f (zero-sum property)", ratingsSum, expected)
+	if diff := eloSum - expected; diff < -epsilon || diff > epsilon {
+		t.Errorf("sum of elo = %.4f, want %.4f (zero-sum property)", eloSum, expected)
 	}
 }
 

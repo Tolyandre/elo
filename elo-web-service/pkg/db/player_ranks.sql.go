@@ -14,12 +14,12 @@ import (
 const listPlayersWithStats = `-- name: ListPlayersWithStats :many
 SELECT p.id, p.name,
   CASE WHEN latest_elo.new_rating IS NULL THEN NULL ELSE latest_elo.new_rating END AS rating,
-  COALESCE(cnt_30.cnt, 0) AS cnt_30,
-  COALESCE(cnt_90.cnt, 0) AS cnt_90,
+  COALESCE(latest_elo.league, 'newbie') AS league,
+  COALESCE(cnt_60.cnt, 0) AS cnt_60,
   COALESCE(cnt_180.cnt, 0) AS cnt_180
 FROM players p
 LEFT JOIN LATERAL (
-  SELECT gas.new_rating
+  SELECT gas.new_rating, gas.league
   FROM global_arena_settlement gas
   WHERE gas.player_id = p.id AND gas.date <= $1
   ORDER BY gas.date DESC, gas.id DESC
@@ -28,13 +28,8 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT count(*) AS cnt FROM matches m
   JOIN match_scores ms ON ms.match_id = m.id
-  WHERE ms.player_id = p.id AND m.date >= ($1 - interval '30 days') AND m.date <= $1
-) cnt_30 ON true
-LEFT JOIN LATERAL (
-  SELECT count(*) AS cnt FROM matches m
-  JOIN match_scores ms ON ms.match_id = m.id
-  WHERE ms.player_id = p.id AND m.date >= ($1 - interval '90 days') AND m.date <= $1
-) cnt_90 ON true
+  WHERE ms.player_id = p.id AND m.date >= ($1 - interval '60 days') AND m.date <= $1
+) cnt_60 ON true
 LEFT JOIN LATERAL (
   SELECT count(*) AS cnt FROM matches m
   JOIN match_scores ms ON ms.match_id = m.id
@@ -47,8 +42,8 @@ type ListPlayersWithStatsRow struct {
 	ID     int32       `json:"id"`
 	Name   string      `json:"name"`
 	Rating interface{} `json:"rating"`
-	Cnt30  int64       `json:"cnt_30"`
-	Cnt90  int64       `json:"cnt_90"`
+	League string      `json:"league"`
+	Cnt60  int64       `json:"cnt_60"`
 	Cnt180 int64       `json:"cnt_180"`
 }
 
@@ -65,8 +60,8 @@ func (q *Queries) ListPlayersWithStats(ctx context.Context, date pgtype.Timestam
 			&i.ID,
 			&i.Name,
 			&i.Rating,
-			&i.Cnt30,
-			&i.Cnt90,
+			&i.League,
+			&i.Cnt60,
 			&i.Cnt180,
 		); err != nil {
 			return nil, err
