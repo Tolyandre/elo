@@ -156,7 +156,14 @@ Settings:
     win_reward:
       type: number
       format: double
-  required: [elo_const_k, elo_const_d, starting_elo, win_reward]
+    newbie_league_goal:
+      type: number
+      format: double
+    elite_league_matches_6months:
+      type: integer
+    elite_league_matches_2months:
+      type: integer
+  required: [elo_const_k, elo_const_d, starting_elo, win_reward, newbie_league_goal, elite_league_matches_6months, elite_league_matches_2months]
 
 EloSettingEntry:
   type: object

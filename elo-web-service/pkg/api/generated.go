@@ -612,10 +612,13 @@ type RatingPoint struct {
 
 // Settings defines model for Settings.
 type Settings struct {
-	EloConstD   float64 `json:"elo_const_d"`
-	EloConstK   float64 `json:"elo_const_k"`
-	StartingElo float64 `json:"starting_elo"`
-	WinReward   float64 `json:"win_reward"`
+	EliteLeagueMatches2months int     `json:"elite_league_matches_2months"`
+	EliteLeagueMatches6months int     `json:"elite_league_matches_6months"`
+	EloConstD                 float64 `json:"elo_const_d"`
+	EloConstK                 float64 `json:"elo_const_k"`
+	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
+	StartingElo               float64 `json:"starting_elo"`
+	WinReward                 float64 `json:"win_reward"`
 }
 
 // SettlementDetail defines model for SettlementDetail.

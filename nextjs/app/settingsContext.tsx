@@ -8,6 +8,9 @@ export type SettingsState = {
   eloConstD: number,
   startingElo: number,
   winReward: number,
+  newbieLeagueGoal: number,
+  eliteMatches6m: number,
+  eliteMatches2m: number,
 };
 
 const SettingsContext = createContext<SettingsState | undefined>(undefined);
@@ -26,6 +29,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       eloConstD: Number(data.elo_const_d),
       startingElo: Number(data.starting_elo),
       winReward: Number(data.win_reward),
+      newbieLeagueGoal: Number(data.newbie_league_goal),
+      eliteMatches6m: Number(data.elite_league_matches_6months),
+      eliteMatches2m: Number(data.elite_league_matches_2months),
     });
   };
 
@@ -35,6 +41,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       eloConstK: settings === undefined ? 0 : settings.eloConstK,
       startingElo: settings === undefined ? 1000 : settings.startingElo,
       winReward: settings === undefined ? 1 : settings.winReward,
+      newbieLeagueGoal: settings === undefined ? 0 : settings.newbieLeagueGoal,
+      eliteMatches6m: settings === undefined ? 0 : settings.eliteMatches6m,
+      eliteMatches2m: settings === undefined ? 0 : settings.eliteMatches2m,
     }}>
       {children}
     </SettingsContext.Provider>

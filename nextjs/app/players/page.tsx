@@ -8,6 +8,7 @@ import { useClubs } from "@/app/clubsContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { Player, Club, Period } from "../api";
 import { useMe } from "@/app/meContext";
+import { useSettings } from "@/app/settingsContext";
 import { ClubSelect } from "@/components/club-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
@@ -82,6 +83,7 @@ function PlayersTable() {
     const { players, playerDisplayName, loading, error } = usePlayers();
     const { clubs } = useClubs();
     const { playerId: myPlayerId, selectedClubId, setSelectedClubId } = useMe();
+    const { newbieLeagueGoal, eliteMatches6m, eliteMatches2m } = useSettings();
     const [period, setPeriod] = useLocalStorage<Period>("players-period", "day_ago");
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -137,7 +139,7 @@ function PlayersTable() {
                 <td className="py-2 px-1 w-50">
                     <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
                     {matchesLeftForElite != null && matchesLeftForElite > 0 && (
-                        <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} до высшей</span>
+                        <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite}</span>
                     )}
                 </td>
                 <td className="py-2 px-1 align-top min-w-25">
@@ -147,16 +149,17 @@ function PlayersTable() {
         );
     }
 
-    function LeagueSection({ title, players }: { title: string; players: Player[] }) {
+    function LeagueSection({ title, footer, players }: { title: string; footer?: string; players: Player[] }) {
         if (players.length === 0) return null;
         return (
             <>
                 <h2 className="text-xl font-semibold mb-2 mt-4">{title}</h2>
-                <table className="table-auto border-collapse mb-4">
+                <table className="table-auto border-collapse mb-2">
                     <tbody>
                         {players.map(p => <PlayerRow key={p.id} player={p} />)}
                     </tbody>
                 </table>
+                {footer && <p className="text-xs text-muted-foreground mb-2">{footer}</p>}
             </>
         );
     }
@@ -194,8 +197,16 @@ function PlayersTable() {
                 </p>
             )}
 
-            <LeagueSection title="Высшая лига" players={elitePlayers} />
-            <LeagueSection title="Любители" players={amateurPlayers} />
+            <LeagueSection
+                title="Высшая лига"
+                footer={eliteMatches6m > 0 ? `Для Высшей Лиги нужно ${eliteMatches6m} партий за последние 6 месяцев, среди них ${eliteMatches2m} за последние 2 месяца` : undefined}
+                players={elitePlayers}
+            />
+            <LeagueSection
+                title="Любители"
+                footer={newbieLeagueGoal > 0 ? `Для Лиги Любителей нужен рейтинг: ${newbieLeagueGoal}` : undefined}
+                players={amateurPlayers}
+            />
             <LeagueSection title="Новички" players={newbiePlayers} />
         </>
     );

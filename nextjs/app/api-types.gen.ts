@@ -783,6 +783,10 @@ export interface components {
             starting_elo: number;
             /** Format: double */
             win_reward: number;
+            /** Format: double */
+            newbie_league_goal: number;
+            elite_league_matches_6months: number;
+            elite_league_matches_2months: number;
         };
         EloSettingEntry: {
             /** @description RFC3339 date or "-infinity" */

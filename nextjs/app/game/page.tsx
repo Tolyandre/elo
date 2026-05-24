@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import React, { Suspense, useEffect, useState } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
+import { useSettings } from "@/app/settingsContext";
 import { MatchCard } from "@/components/match-card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -36,6 +37,7 @@ function GameWrapped() {
   const [loadingMatches, setLoadingMatches] = useState(true);
   const { players: allPlayers } = usePlayers();
   const { roundToInteger } = useMe();
+  const { newbieLeagueGoal } = useSettings();
 
   useEffect(() => {
     getGamePromise(id)
@@ -95,8 +97,8 @@ function GameWrapped() {
           if (leaguePlayers.length === 0) return null;
           return (
             <div key={league}>
-              <h2 className="text-lg font-semibold mb-1">{league === "amateur" ? "Любители" : "Новички"}</h2>
-              <table className="table-auto border-collapse mb-4">
+              <h2 className="text-lg font-semibold mb-2 mt-4">{league === "amateur" ? "Любители" : "Новички"}</h2>
+              <table className="table-auto border-collapse mb-2">
                 <tbody>
                   {leaguePlayers.map((player) => (
                     <tr key={player.id}>
@@ -107,6 +109,9 @@ function GameWrapped() {
                   ))}
                 </tbody>
               </table>
+              {league === "amateur" && newbieLeagueGoal > 0 && (
+                <p className="text-xs text-muted-foreground mb-2">Для Лиги Любителей нужен рейтинг: {newbieLeagueGoal}</p>
+              )}
             </div>
           );
         })}

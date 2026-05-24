@@ -16,10 +16,13 @@ func (s *StrictServer) GetSettings(ctx context.Context, _ GetSettingsRequestObje
 	return GetSettings200JSONResponse{
 		Status: "success",
 		Data: Settings{
-			EloConstK:   settings.EloConstK,
-			EloConstD:   settings.EloConstD,
-			StartingElo: settings.StartingElo,
-			WinReward:   settings.WinReward,
+			EloConstK:                 settings.EloConstK,
+			EloConstD:                 settings.EloConstD,
+			StartingElo:               settings.StartingElo,
+			WinReward:                 settings.WinReward,
+			NewbieLeagueGoal:          settings.NewbieLeagueGoal,
+			EliteLeagueMatches6months: int(settings.EliteLeagueMatches6months),
+			EliteLeagueMatches2months: int(settings.EliteLeagueMatches2months),
 		},
 	}, nil
 }
