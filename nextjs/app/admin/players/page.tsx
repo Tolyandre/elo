@@ -14,6 +14,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Edit2 } from "lucide-react";
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
@@ -92,24 +93,9 @@ export default function PlayersAdminPage() {
 
     function openCorrection(id: string, rating: number) {
         setSelectedId(id);
-        setSelectedRating(rating);
+        setSelectedRating(Math.round(rating));
         setCorrectionValue("");
         setCorrectionOpen(true);
-    }
-
-    async function confirmReset() {
-        if (!selectedId) return;
-        const diff = -selectedRating;
-        try {
-            setActionLoading(true);
-            await createPlayerCorrectionPromise(selectedId, diff);
-            invalidatePlayers();
-            setCorrectionOpen(false);
-        } catch (err) {
-            // toast shown by API helper
-        } finally {
-            setActionLoading(false);
-        }
     }
 
     async function confirmCorrection() {
@@ -185,9 +171,19 @@ export default function PlayersAdminPage() {
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
-                                            <div className="text-sm text-muted-foreground">
-                                                Рейтинг: {player.rank.now.rating.toFixed(0)}
+                                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                                Рейтинг: {Math.round(player.rank.now.rating)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-6 w-6 ml-1"
+                                                    onClick={() => openCorrection(player.id, player.rank.now.rating)}
+                                                    disabled={!canEdit}
+                                                    aria-label="Корректировка рейтинга"
+                                                >
+                                                    <Edit2 className="h-3 w-3" />
+                                                </Button>
                                             </div>
                                             {player.user_id && (
                                                 <div className="text-xs text-muted-foreground">{userMap.get(player.user_id)}</div>
@@ -201,14 +197,6 @@ export default function PlayersAdminPage() {
                                                 disabled={!canEdit}
                                             >
                                                 Rename
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => openCorrection(player.id, player.rank.now.rating)}
-                                                disabled={!canEdit}
-                                            >
-                                                Корректировка
                                             </Button>
                                             <Button
                                                 variant="destructive"
@@ -245,7 +233,21 @@ export default function PlayersAdminPage() {
                                             <td className="px-4 py-2 text-sm text-muted-foreground">
                                                 {player.user_id ? userMap.get(player.user_id) : ""}
                                             </td>
-                                            <td className="px-4 py-2">{player.rank.now.rating.toFixed(0)}</td>
+                                            <td className="px-4 py-2">
+                                                <span className="flex items-center gap-1">
+                                                    {Math.round(player.rank.now.rating)}
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-6 w-6"
+                                                        onClick={() => openCorrection(player.id, player.rank.now.rating)}
+                                                        disabled={!canEdit}
+                                                        aria-label="Корректировка рейтинга"
+                                                    >
+                                                        <Edit2 className="h-3 w-3" />
+                                                    </Button>
+                                                </span>
+                                            </td>
                                             <td className="px-4 py-2">{player.rank.now.rank ? `#${player.rank.now.rank}` : "—"}</td>
                                             <td className="px-4 py-2">
                                                 <div className="flex gap-2">
@@ -256,14 +258,6 @@ export default function PlayersAdminPage() {
                                                         disabled={!canEdit}
                                                     >
                                                         Rename
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => openCorrection(player.id, player.rank.now.rating)}
-                                                        disabled={!canEdit}
-                                                    >
-                                                        Корректировка
                                                     </Button>
                                                     <Button
                                                         variant="destructive"
@@ -331,20 +325,28 @@ export default function PlayersAdminPage() {
                         <DialogDescription>Текущий рейтинг: {selectedRating}</DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-3 mt-2">
-                        <Button variant="destructive" onClick={confirmReset} disabled={actionLoading}>
-                            {actionLoading ? "Применение..." : `Обнулить (−${selectedRating})`}
+                        <Button
+                            variant="outline"
+                            onClick={() => setCorrectionValue(String(-selectedRating))}
+                            disabled={actionLoading}
+                        >
+                            Обнулить (−{selectedRating})
                         </Button>
                         <div className="flex gap-2 items-center">
                             <input
                                 type="number"
                                 step="1"
                                 className="border rounded p-2 flex-1"
-                                placeholder="Произвольное изменение (целое)"
+                                placeholder="Изменение рейтинга"
                                 value={correctionValue}
                                 onChange={(e) => setCorrectionValue(e.target.value)}
                                 aria-label="Correction value"
                             />
-                            <Button onClick={confirmCorrection} disabled={actionLoading || isNaN(parseInt(correctionValue, 10))}>
+                            <Button
+                                variant="destructive"
+                                onClick={confirmCorrection}
+                                disabled={actionLoading || isNaN(parseInt(correctionValue, 10))}
+                            >
                                 {actionLoading ? "Применение..." : "Применить"}
                             </Button>
                         </div>
