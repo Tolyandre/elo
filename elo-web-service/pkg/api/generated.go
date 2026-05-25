@@ -270,13 +270,13 @@ func (e SkullKingGameStatePhase) Valid() bool {
 
 // Defines values for CreatePlayerCorrectionJSONBodyDiscriminator.
 const (
-	Correction CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
+	CreatePlayerCorrectionJSONBodyDiscriminatorCorrection CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
 )
 
 // Valid indicates whether the value is a known member of the CreatePlayerCorrectionJSONBodyDiscriminator enum.
 func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
 	switch e {
-	case Correction:
+	case CreatePlayerCorrectionJSONBodyDiscriminatorCorrection:
 		return true
 	default:
 		return false
@@ -360,6 +360,24 @@ type Club struct {
 
 	// Players List of player IDs (integers)
 	Players []int `json:"players"`
+}
+
+// Correction defines model for Correction.
+type Correction struct {
+	Date       time.Time `json:"date"`
+	Diff       float64   `json:"diff"`
+	Id         int       `json:"id"`
+	PlayerId   string    `json:"player_id"`
+	PlayerName string    `json:"player_name"`
+}
+
+// CorrectionsPage defines model for CorrectionsPage.
+type CorrectionsPage struct {
+	Data []Correction `json:"data"`
+
+	// Next Cursor token for the next page; null if no more pages
+	Next   *string `json:"next,omitempty"`
+	Status string  `json:"status"`
 }
 
 // EloRank defines model for EloRank.
@@ -758,6 +776,21 @@ type PatchClubJSONBody struct {
 // AddClubMemberJSONBody defines parameters for AddClubMember.
 type AddClubMemberJSONBody struct {
 	PlayerId int `json:"player_id"`
+}
+
+// ListCorrectionsParams defines parameters for ListCorrections.
+type ListCorrectionsParams struct {
+	// PlayerId Filter by player ID
+	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
+
+	// ClubId Filter by club ID; use "__no_club__" for players without a club
+	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
+
+	// Next Cursor token from previous page's "next" field
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+
+	// Limit Number of corrections per page
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateGameJSONBody defines parameters for CreateGame.
@@ -1205,6 +1238,9 @@ type ServerInterface interface {
 	// Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(c *gin.Context, id string, playerId string)
+	// List corrections with cursor-based pagination
+	// (GET /corrections)
+	ListCorrections(c *gin.Context, params ListCorrectionsParams)
 	// List all games ordered by last played
 	// (GET /games)
 	ListGames(c *gin.Context)
@@ -1666,6 +1702,56 @@ func (siw *ServerInterfaceWrapper) RemoveClubMember(c *gin.Context) {
 	}
 
 	siw.Handler.RemoveClubMember(c, id, playerId)
+}
+
+// ListCorrections operation middleware
+func (siw *ServerInterfaceWrapper) ListCorrections(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCorrectionsParams
+
+	// ------------- Optional query parameter "player_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "club_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "club_id", c.Request.URL.Query(), &params.ClubId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter club_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter next: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListCorrections(c, params)
 }
 
 // ListGames operation middleware
@@ -2537,6 +2623,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/clubs/:id", wrapper.PatchClub)
 	router.POST(options.BaseURL+"/clubs/:id/members", wrapper.AddClubMember)
 	router.DELETE(options.BaseURL+"/clubs/:id/members/:playerId", wrapper.RemoveClubMember)
+	router.GET(options.BaseURL+"/corrections", wrapper.ListCorrections)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
@@ -3098,6 +3185,32 @@ type RemoveClubMember403JSONResponse ApiError
 func (response RemoveClubMember403JSONResponse) VisitRemoveClubMemberResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCorrectionsRequestObject struct {
+	Params ListCorrectionsParams
+}
+
+type ListCorrectionsResponseObject interface {
+	VisitListCorrectionsResponse(w http.ResponseWriter) error
+}
+
+type ListCorrections200JSONResponse CorrectionsPage
+
+func (response ListCorrections200JSONResponse) VisitListCorrectionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCorrections400JSONResponse ApiError
+
+func (response ListCorrections400JSONResponse) VisitListCorrectionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4748,6 +4861,9 @@ type StrictServerInterface interface {
 	// Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error)
+	// List corrections with cursor-based pagination
+	// (GET /corrections)
+	ListCorrections(ctx context.Context, request ListCorrectionsRequestObject) (ListCorrectionsResponseObject, error)
 	// List all games ordered by last played
 	// (GET /games)
 	ListGames(ctx context.Context, request ListGamesRequestObject) (ListGamesResponseObject, error)
@@ -5304,6 +5420,33 @@ func (sh *strictHandler) RemoveClubMember(ctx *gin.Context, id string, playerId 
 		ctx.Status(http.StatusInternalServerError)
 	} else if validResponse, ok := response.(RemoveClubMemberResponseObject); ok {
 		if err := validResponse.VisitRemoveClubMemberResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCorrections operation middleware
+func (sh *strictHandler) ListCorrections(ctx *gin.Context, params ListCorrectionsParams) {
+	var request ListCorrectionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCorrections(ctx, request.(ListCorrectionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCorrections")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(ListCorrectionsResponseObject); ok {
+		if err := validResponse.VisitListCorrectionsResponse(ctx.Writer); err != nil {
 			ctx.Error(err)
 		}
 	} else if response != nil {

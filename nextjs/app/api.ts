@@ -93,6 +93,20 @@ export type MatchesPage = {
 
 export type RatingPoint = { date: string; rating: number };
 
+// date is a Date object
+export type Correction = {
+    id: number;
+    player_id: string;
+    player_name: string;
+    diff: number;
+    date: Date | null;
+};
+
+export type CorrectionsPage = {
+    items: Correction[];
+    next: string | null;
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mapMatch(m: components["schemas"]["Match"]): Match {
@@ -147,6 +161,32 @@ export async function getMatchesPagePromise(params?: {
     const { data, error } = await client.GET("/matches", { params: { query } });
     if (error) throw error;
     return { items: data.data.map(mapMatch), next: data.next ?? null };
+}
+
+export async function getCorrectionsPagePromise(params?: {
+    player_id?: string;
+    club_id?: string;
+    next?: string;
+}): Promise<CorrectionsPage> {
+    const query: Record<string, string> = {};
+    if (params?.next) {
+        query.next = params.next;
+    } else {
+        if (params?.player_id) query.player_id = params.player_id;
+        if (params?.club_id) query.club_id = params.club_id;
+    }
+    const { data, error } = await client.GET("/corrections", { params: { query } });
+    if (error) throw error;
+    return {
+        items: data.data.map(c => ({
+            id: c.id,
+            player_id: c.player_id,
+            player_name: c.player_name,
+            diff: c.diff,
+            date: c.date ? new Date(c.date) : null,
+        })),
+        next: data.next ?? null,
+    };
 }
 
 export async function getMatchByIdPromise(id: number): Promise<Match> {

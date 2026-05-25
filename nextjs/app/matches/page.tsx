@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
+import { CorrectionCard } from "@/components/correction-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "../meContext";
@@ -57,7 +58,7 @@ export default function MatchesPage() {
 
 function MatchesPageWrapped() {
   const { roundToInteger, setRoundToInteger, selectedClubId, setSelectedClubId } = useMe();
-  const { matches, loading, loadingMore, error, hasMore, filters, setFilters, loadMore } = useMatches();
+  const { items, loading, loadingMore, error, hasMore, filters, setFilters, loadMore } = useMatches();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -174,9 +175,11 @@ function MatchesPageWrapped() {
           </>
         ) : (
           <>
-            {matches.map((m) => (
-              <MatchWithMarkets key={m.id} match={m} roundToInteger={roundToInteger} />
-            ))}
+            {items.map((item) =>
+              item.type === "match"
+                ? <MatchWithMarkets key={`m-${item.data.id}`} match={item.data} roundToInteger={roundToInteger} />
+                : <CorrectionCard key={`c-${item.data.id}`} correction={item.data} />
+            )}
           </>
         )}
 

@@ -110,6 +110,83 @@ func (q *Queries) GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context
 	return i, err
 }
 
+const listCorrectionsPaginated = `-- name: ListCorrectionsPaginated :many
+SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
+FROM corrections c
+JOIN players p ON p.id = c.player_id
+WHERE
+  ($1::int4 IS NULL OR c.player_id = $1::int4)
+  AND (
+    $2::timestamptz IS NULL
+    OR c.date < $2::timestamptz
+  )
+  AND (
+    $3::int4 IS NULL
+    OR EXISTS (
+      SELECT 1 FROM player_club_membership pcm
+      WHERE pcm.club_id = $3::int4
+        AND pcm.player_id = c.player_id
+    )
+  )
+  AND (
+    $4::bool IS NOT TRUE
+    OR NOT EXISTS (
+      SELECT 1 FROM player_club_membership pcm2
+      WHERE pcm2.player_id = c.player_id
+    )
+  )
+ORDER BY c.date DESC, c.id DESC
+LIMIT $5::int4
+`
+
+type ListCorrectionsPaginatedParams struct {
+	PlayerID   pgtype.Int4        `json:"player_id"`
+	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	ClubID     pgtype.Int4        `json:"club_id"`
+	NoClub     pgtype.Bool        `json:"no_club"`
+	Limit      int32              `json:"limit"`
+}
+
+type ListCorrectionsPaginatedRow struct {
+	ID         int32              `json:"id"`
+	PlayerID   int32              `json:"player_id"`
+	Diff       float64            `json:"diff"`
+	Date       pgtype.Timestamptz `json:"date"`
+	PlayerName string             `json:"player_name"`
+}
+
+func (q *Queries) ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error) {
+	rows, err := q.db.Query(ctx, listCorrectionsPaginated,
+		arg.PlayerID,
+		arg.CursorDate,
+		arg.ClubID,
+		arg.NoClub,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCorrectionsPaginatedRow{}
+	for rows.Next() {
+		var i ListCorrectionsPaginatedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PlayerID,
+			&i.Diff,
+			&i.Date,
+			&i.PlayerName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertGlobalArenaSettlementByCorrection = `-- name: UpsertGlobalArenaSettlementByCorrection :exec
 INSERT INTO global_arena_settlement
     (player_id, date, new_rating, new_elo, discriminator, correction_id,

@@ -46,6 +46,81 @@ AdminPlayerCorrections:
             schema:
               $ref: './common.yaml#/ApiError'
 
+CorrectionsCollection:
+  get:
+    operationId: ListCorrections
+    tags: [corrections]
+    summary: List corrections with cursor-based pagination
+    parameters:
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter by player ID
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter by club ID; use "__no_club__" for players without a club
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of corrections per page
+    responses:
+      "200":
+        description: Paginated correction list
+        content:
+          application/json:
+            schema:
+              $ref: '#/CorrectionsPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+Correction:
+  type: object
+  properties:
+    id:
+      type: integer
+    player_id:
+      type: string
+    player_name:
+      type: string
+    diff:
+      type: number
+      format: double
+    date:
+      type: string
+      format: date-time
+  required: [id, player_id, player_name, diff, date]
+
+CorrectionsPage:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/Correction'
+    next:
+      type: string
+      nullable: true
+      description: Cursor token for the next page; null if no more pages
+  required: [status, data]
+
 RecalculateGameElo:
   post:
     operationId: RecalculateGameElo

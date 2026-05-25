@@ -24,6 +24,34 @@ DO UPDATE SET new_rating    = EXCLUDED.new_rating,
               rating_earned = EXCLUDED.rating_earned,
               league        = EXCLUDED.league;
 
+-- name: ListCorrectionsPaginated :many
+SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
+FROM corrections c
+JOIN players p ON p.id = c.player_id
+WHERE
+  (sqlc.narg('player_id')::int4 IS NULL OR c.player_id = sqlc.narg('player_id')::int4)
+  AND (
+    sqlc.narg('cursor_date')::timestamptz IS NULL
+    OR c.date < sqlc.narg('cursor_date')::timestamptz
+  )
+  AND (
+    sqlc.narg('club_id')::int4 IS NULL
+    OR EXISTS (
+      SELECT 1 FROM player_club_membership pcm
+      WHERE pcm.club_id = sqlc.narg('club_id')::int4
+        AND pcm.player_id = c.player_id
+    )
+  )
+  AND (
+    sqlc.narg('no_club')::bool IS NOT TRUE
+    OR NOT EXISTS (
+      SELECT 1 FROM player_club_membership pcm2
+      WHERE pcm2.player_id = c.player_id
+    )
+  )
+ORDER BY c.date DESC, c.id DESC
+LIMIT sqlc.arg('limit')::int4;
+
 -- name: GetPlayerLatestGlobalStateBeforeCorrection :one
 -- Picks the latest settlement before correction $3 for player $1 at date $2.
 -- Same-date matches/markets (discriminator != 'correction') come before corrections.

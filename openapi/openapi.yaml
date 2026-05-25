@@ -94,6 +94,12 @@ components:
     VoiceParseResult:
       $ref: './voice.yaml#/VoiceParseResult'
 
+    # Corrections
+    Correction:
+      $ref: './admin.yaml#/Correction'
+    CorrectionsPage:
+      $ref: './admin.yaml#/CorrectionsPage'
+
     # Analytics
     EloResetPlayerInfo:
       $ref: './analytics.yaml#/EloResetPlayerInfo'
@@ -197,6 +203,10 @@ paths:
   # Analytics
   /analytics/elo-reset:
     $ref: './analytics.yaml#/EloResetPath'
+
+  # Corrections
+  /corrections:
+    $ref: './admin.yaml#/CorrectionsCollection'
 
   # Admin
   /admin/recalculate-game-elo:

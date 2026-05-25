@@ -462,6 +462,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List corrections with cursor-based pagination */
+        get: operations["ListCorrections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/recalculate-game-elo": {
         parameters: {
             query?: never;
@@ -874,6 +891,21 @@ export interface components {
         VoiceParseResult: {
             game_id?: string | null;
             scores: components["schemas"]["VoiceScore"][];
+        };
+        Correction: {
+            id: number;
+            player_id: string;
+            player_name: string;
+            /** Format: double */
+            diff: number;
+            /** Format: date-time */
+            date: string;
+        };
+        CorrectionsPage: {
+            status: string;
+            data: components["schemas"]["Correction"][];
+            /** @description Cursor token for the next page; null if no more pages */
+            next?: string | null;
         };
         EloResetPlayerInfo: {
             id: string;
@@ -2901,6 +2933,44 @@ export interface operations {
                         status: string;
                         data: components["schemas"]["EloResetResult"];
                     };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListCorrections: {
+        parameters: {
+            query?: {
+                /** @description Filter by player ID */
+                player_id?: string;
+                /** @description Filter by club ID; use "__no_club__" for players without a club */
+                club_id?: string;
+                /** @description Cursor token from previous page's "next" field */
+                next?: string;
+                /** @description Number of corrections per page */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated correction list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionsPage"];
                 };
             };
             /** @description Bad request */
