@@ -765,6 +765,8 @@ export interface components {
             rating_earn: number;
             /** Format: double */
             score: number;
+            /** Format: double */
+            rating_after: number;
         };
         Match: {
             id: number;

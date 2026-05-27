@@ -27,9 +27,10 @@ type updateMatchJson struct {
 }
 
 type matchPlayerJson struct {
-	RatingPay  float64 `json:"rating_pay"`
-	RatingEarn float64 `json:"rating_earn"`
-	Score      float64 `json:"score"`
+	RatingPay   float64 `json:"rating_pay"`
+	RatingEarn  float64 `json:"rating_earn"`
+	Score       float64 `json:"score"`
+	RatingAfter float64 `json:"rating_after"`
 }
 
 type matchJson struct {
@@ -310,10 +311,15 @@ func (a *API) ListMatches(c *gin.Context) {
 		}
 
 		m := matchesMap[r.MatchID]
+		var ratingAfter float64
+		if v, ok := r.GlobalNewElo.(float64); ok {
+			ratingAfter = v
+		}
 		m.Players[r.PlayerID] = matchPlayerJson{
-			Score:      r.Score,
-			RatingPay:  r.RatingPay.Float64,
-			RatingEarn: r.RatingEarn.Float64,
+			Score:       r.Score,
+			RatingPay:   r.RatingPay.Float64,
+			RatingEarn:  r.RatingEarn.Float64,
+			RatingAfter: ratingAfter,
 		}
 	}
 
@@ -366,10 +372,15 @@ func (a *API) GetMatchById(c *gin.Context) {
 			order = append(order, r.MatchID)
 		}
 		m := matchesMap[r.MatchID]
+		var ratingAfter float64
+		if v, ok := r.GlobalNewElo.(float64); ok {
+			ratingAfter = v
+		}
 		m.Players[r.PlayerID] = matchPlayerJson{
-			Score:      r.Score,
-			RatingPay:  r.RatingPay.Float64,
-			RatingEarn: r.RatingEarn.Float64,
+			Score:       r.Score,
+			RatingPay:   r.RatingPay.Float64,
+			RatingEarn:  r.RatingEarn.Float64,
+			RatingAfter: ratingAfter,
 		}
 	}
 

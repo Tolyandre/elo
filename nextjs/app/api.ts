@@ -63,6 +63,7 @@ export type PlayerScore = {
     ratingPay: number;
     ratingEarn: number;
     score: number;
+    ratingAfter?: number | null;
 };
 
 export type Match = {
@@ -117,7 +118,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         score: Object.fromEntries(
             Object.entries(m.score).map(([pid, s]) => [
                 pid,
-                { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score },
+                { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score, ratingAfter: s.rating_after },
             ])
         ),
         date: m.date ? new Date(m.date) : null,

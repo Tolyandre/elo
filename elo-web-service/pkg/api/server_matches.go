@@ -85,10 +85,15 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 			}
 			order = append(order, r.MatchID)
 		}
+		var ratingAfter float64
+		if v, ok := r.GlobalNewElo.(float64); ok {
+			ratingAfter = v
+		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
-			Score:      r.Score,
-			RatingPay:  r.RatingPay.Float64,
-			RatingEarn: r.RatingEarn.Float64,
+			Score:       r.Score,
+			RatingPay:   r.RatingPay.Float64,
+			RatingEarn:  r.RatingEarn.Float64,
+			RatingAfter: ratingAfter,
 		}
 	}
 
@@ -98,9 +103,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		score := make(map[string]MatchPlayer, len(m.Players))
 		for pid, p := range m.Players {
 			score[pid] = MatchPlayer{
-				RatingPay:  p.RatingPay,
-				RatingEarn: p.RatingEarn,
-				Score:      p.Score,
+				RatingPay:   p.RatingPay,
+				RatingEarn:  p.RatingEarn,
+				Score:       p.Score,
+				RatingAfter: p.RatingAfter,
 			}
 		}
 		data = append(data, Match{
@@ -194,10 +200,15 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 			}
 			order = append(order, r.MatchID)
 		}
+		var ratingAfter float64
+		if v, ok := r.GlobalNewElo.(float64); ok {
+			ratingAfter = v
+		}
 		matchesMap[r.MatchID].Players[r.PlayerID] = matchPlayerJson{
-			Score:      r.Score,
-			RatingPay:  r.RatingPay.Float64,
-			RatingEarn: r.RatingEarn.Float64,
+			Score:       r.Score,
+			RatingPay:   r.RatingPay.Float64,
+			RatingEarn:  r.RatingEarn.Float64,
+			RatingAfter: ratingAfter,
 		}
 	}
 
@@ -206,9 +217,10 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 	score := make(map[string]MatchPlayer, len(m.Players))
 	for pid, p := range m.Players {
 		score[pid] = MatchPlayer{
-			RatingPay:  p.RatingPay,
-			RatingEarn: p.RatingEarn,
-			Score:      p.Score,
+			RatingPay:   p.RatingPay,
+			RatingEarn:  p.RatingEarn,
+			Score:       p.Score,
+			RatingAfter: p.RatingAfter,
 		}
 	}
 

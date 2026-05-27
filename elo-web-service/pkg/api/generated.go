@@ -578,9 +578,10 @@ type Match struct {
 
 // MatchPlayer Per-player data within a match (keyed by player_id in the score map)
 type MatchPlayer struct {
-	RatingEarn float64 `json:"rating_earn"`
-	RatingPay  float64 `json:"rating_pay"`
-	Score      float64 `json:"score"`
+	RatingAfter float64 `json:"rating_after"`
+	RatingEarn  float64 `json:"rating_earn"`
+	RatingPay   float64 `json:"rating_pay"`
+	Score       float64 `json:"score"`
 }
 
 // MatchWinnerParams defines model for MatchWinnerParams.

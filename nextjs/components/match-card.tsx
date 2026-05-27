@@ -32,6 +32,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           eloEarn: data.ratingEarn,
           score: data.score,
           eloChange: data.ratingPay + data.ratingEarn,
+          ratingAfter: data.ratingAfter ?? null,
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -81,6 +82,9 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                   {p.playerId === myPlayerId
                     ? <span className="truncate text-sm bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
                     : <span className="truncate text-sm">{p.name}</span>}
+                  {p.ratingAfter != null && (
+                    <span className="text-xs text-muted-foreground shrink-0">{Math.round(p.ratingAfter)}</span>
+                  )}
                 </div>
 
                 <div className="relative h-2 bg-gray-200 rounded overflow-hidden">

@@ -264,7 +264,10 @@ MatchPlayer:
     score:
       type: number
       format: double
-  required: [rating_pay, rating_earn, score]
+    rating_after:
+      type: number
+      format: double
+  required: [rating_pay, rating_earn, score, rating_after]
 
 Match:
   type: object

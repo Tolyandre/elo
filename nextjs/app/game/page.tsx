@@ -64,6 +64,7 @@ function GameWrapped() {
         ratingPay: p.game_elo_pay,
         ratingEarn: p.game_elo_earn,
         score: p.score,
+        ratingAfter: p.game_new_elo,
       };
     }
     return {
