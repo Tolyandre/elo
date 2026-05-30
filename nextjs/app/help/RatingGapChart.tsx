@@ -39,11 +39,7 @@ import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { useSettings } from "@/app/settingsContext"
 import { ChartContainer } from "@/components/ui/chart"
-
-// Mirror of elo-web-service/pkg/elo/matches.go:ratingK
-function ratingK(gap: number, kStd: number, kMax: number, tau: number): number {
-    return kStd + (kMax - kStd) * (1 - Math.exp(-Math.abs(gap) / tau))
-}
+import { ratingK, pairwiseExpected } from "@/app/eloCalculation"
 
 export function RatingGapChart() {
     const settings = useSettings()
@@ -75,7 +71,7 @@ export function RatingGapChart() {
         const points = []
         for (let rating = 0; rating <= xMax; rating += step) {
             // E: use visible_rating as player's effective elo (see file comment).
-            const E = 1 / (1 + Math.pow(10, (effOpponentElo - rating) / effD))
+            const E = pairwiseExpected(rating, effOpponentElo, effD)
             const gap = effPlayerElo - rating
             const Kr = ratingK(gap, K, kMax, effTau)
             // Two outcomes shown per x:

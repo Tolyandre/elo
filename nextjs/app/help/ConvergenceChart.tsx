@@ -2,12 +2,6 @@
 
 // ConvergenceChart — simulates how hidden elo and visible rating converge over matches
 // for n players with configurable win probabilities.
-//
-// Cross-references (keep in sync when calculation changes):
-//   - ratingK formula:        elo-web-service/pkg/elo/matches.go:ratingK
-//   - applyNewbieClamping:    elo-web-service/pkg/elo/matches.go:applyNewbieClamping
-//   - WinExpectation formula: elo-web-service/pkg/elo/elo.go:WinExpectation
-//   - NormalizedScore:        elo-web-service/pkg/elo/elo.go:NormalizedScore
 
 import { useEffect, useMemo, useState } from "react"
 import {
@@ -18,56 +12,10 @@ import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { useSettings } from "@/app/settingsContext"
 import { ChartContainer } from "@/components/ui/chart"
-
-// Mirror of elo-web-service/pkg/elo/matches.go:ratingK
-function ratingK(gap: number, kStd: number, kMax: number, tau: number): number {
-    return kStd + (kMax - kStd) * (1 - Math.exp(-Math.abs(gap) / tau))
-}
-
-// Mirror of elo-web-service/pkg/elo/matches.go:applyNewbieClamping
-function applyNewbieClamping(league: string, staked: number, earned: number): [number, number] {
-    if (league === "newbie" && staked + earned < 0) return [0, 1]
-    return [staked, earned]
-}
-
-// Mirror of elo-web-service/pkg/elo/elo.go:NormalizedScore (with WinReward W).
-// Returns normalised scores summing to 1.
-function normaliseScores(rawScores: number[], W: number): number[] {
-    const min = Math.min(...rawScores)
-    const shifted = rawScores.map(s => Math.pow(Math.max(s - min, 0), W))
-    const total = shifted.reduce((a, b) => a + b, 0)
-    if (total === 0) return rawScores.map(() => 1 / rawScores.length)
-    return shifted.map(v => v / total)
-}
-
-// Mirror of elo-web-service/pkg/elo/elo.go:WinExpectation (elo track).
-// Sums p_ij for all j≠i, divides by pairs count.  Σ_i E_i = 1 → Elo is conserved.
-function expectedScore(elos: number[], i: number, D: number): number {
-    let sum = 0
-    for (let j = 0; j < elos.length; j++) {
-        if (j !== i) sum += 1 / (1 + Math.pow(10, (elos[j] - elos[i]) / D))
-    }
-    return sum / (elos.length * (elos.length - 1) / 2)
-}
-
-// Mirror of elo-web-service/pkg/elo/matches.go:buildEloResults (rating track, lines ~489-492).
-// For the RATING track, player i's expected score uses their VISIBLE RATING as their own elo,
-// while all opponents still use their TRUE elos.
-//
-// This is the convergence engine: when rating[i] < elo[i]:
-//   E_rating[i] = p(rating[i] beats elos[j]) < p(elos[i] beats elos[j]) = E_elo[i]
-// → rating_staked = kR * E_rating  is SMALLER than elo_staked = K * E_elo
-// → net rating gain per game > net elo gain per game  →  rating rises toward elo
-//
-// As rating → elo: E_rating → E_elo and kR → K → excess disappears (stable at convergence).
-function expectedScoreForRating(elos: number[], ratings: number[], i: number, D: number): number {
-    let sum = 0
-    for (let j = 0; j < elos.length; j++) {
-        // player i is seen at ratings[i]; opponents are at their true elos[j]
-        if (j !== i) sum += 1 / (1 + Math.pow(10, (elos[j] - ratings[i]) / D))
-    }
-    return sum / (elos.length * (elos.length - 1) / 2)
-}
+import {
+    ratingK, applyNewbieClamping, normaliseScores,
+    expectedScore, expectedScoreForRating,
+} from "@/app/eloCalculation"
 
 const PLAYER_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#a855f7"]
 
