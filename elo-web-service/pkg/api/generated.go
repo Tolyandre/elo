@@ -458,12 +458,12 @@ type GameMatch struct {
 
 // GameMatchPlayer defines model for GameMatchPlayer.
 type GameMatchPlayer struct {
-	GameEloEarn float64 `json:"game_elo_earn"`
-	GameEloPay  float64 `json:"game_elo_pay"`
-	GameNewElo  float64 `json:"game_new_elo"`
-	Id          string  `json:"id"`
-	Name        string  `json:"name"`
-	Score       float64 `json:"score"`
+	Id           string  `json:"id"`
+	Name         string  `json:"name"`
+	RatingAfter  float64 `json:"rating_after"`
+	RatingEarned float64 `json:"rating_earned"`
+	RatingStaked float64 `json:"rating_staked"`
+	Score        float64 `json:"score"`
 }
 
 // GameMatchStat defines model for GameMatchStat.
@@ -578,10 +578,10 @@ type Match struct {
 
 // MatchPlayer Per-player data within a match (keyed by player_id in the score map)
 type MatchPlayer struct {
-	RatingAfter float64 `json:"rating_after"`
-	RatingEarn  float64 `json:"rating_earn"`
-	RatingPay   float64 `json:"rating_pay"`
-	Score       float64 `json:"score"`
+	RatingAfter  float64 `json:"rating_after"`
+	RatingEarned float64 `json:"rating_earned"`
+	RatingStaked float64 `json:"rating_staked"`
+	Score        float64 `json:"score"`
 }
 
 // MatchWinnerParams defines model for MatchWinnerParams.
@@ -626,6 +626,7 @@ type PlayerStats struct {
 // RatingPoint defines model for RatingPoint.
 type RatingPoint struct {
 	Date   time.Time `json:"date"`
+	Elo    float64   `json:"elo"`
 	Rating float64   `json:"rating"`
 }
 
@@ -636,7 +637,10 @@ type Settings struct {
 	EloConstD                 float64 `json:"elo_const_d"`
 	EloConstK                 float64 `json:"elo_const_k"`
 	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
+	RatingKTau                float64 `json:"rating_k_tau"`
+	RatingMaxK                float64 `json:"rating_max_k"`
 	StartingElo               float64 `json:"starting_elo"`
+	StartingRating            float64 `json:"starting_rating"`
 	WinReward                 float64 `json:"win_reward"`
 }
 

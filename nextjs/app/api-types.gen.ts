@@ -696,6 +696,8 @@ export interface components {
             date: string;
             /** Format: double */
             rating: number;
+            /** Format: double */
+            elo: number;
         };
         GameMatchStat: {
             game_id: string;
@@ -745,11 +747,11 @@ export interface components {
             /** Format: double */
             score: number;
             /** Format: double */
-            game_elo_pay: number;
+            rating_staked: number;
             /** Format: double */
-            game_elo_earn: number;
+            rating_earned: number;
             /** Format: double */
-            game_new_elo: number;
+            rating_after: number;
         };
         GameMatch: {
             id: number;
@@ -760,9 +762,9 @@ export interface components {
         /** @description Per-player data within a match (keyed by player_id in the score map) */
         MatchPlayer: {
             /** Format: double */
-            rating_pay: number;
+            rating_staked: number;
             /** Format: double */
-            rating_earn: number;
+            rating_earned: number;
             /** Format: double */
             score: number;
             /** Format: double */
@@ -806,6 +808,12 @@ export interface components {
             newbie_league_goal: number;
             elite_league_matches_6months: number;
             elite_league_matches_2months: number;
+            /** Format: double */
+            starting_rating: number;
+            /** Format: double */
+            rating_max_k: number;
+            /** Format: double */
+            rating_k_tau: number;
         };
         EloSettingEntry: {
             /** @description RFC3339 date or "-infinity" */

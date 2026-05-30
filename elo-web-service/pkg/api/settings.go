@@ -11,10 +11,16 @@ import (
 )
 
 type settingsJson struct {
-	EloConstK   float64 `json:"elo_const_k"`
-	EloConstD   float64 `json:"elo_const_d"`
-	StartingElo float64 `json:"starting_elo"`
-	WinReward   float64 `json:"win_reward"`
+	EloConstK                 float64 `json:"elo_const_k"`
+	EloConstD                 float64 `json:"elo_const_d"`
+	StartingElo               float64 `json:"starting_elo"`
+	WinReward                 float64 `json:"win_reward"`
+	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
+	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
+	StartingRating            float64 `json:"starting_rating"`
+	RatingMaxK                float64 `json:"rating_max_k"`
+	RatingKTau                float64 `json:"rating_k_tau"`
 }
 
 type eloSettingEntryJson struct {
@@ -46,10 +52,16 @@ func (a *API) ListSettings(c *gin.Context) {
 	}
 
 	SuccessDataResponse(c, settingsJson{
-		EloConstK:   settings.EloConstK,
-		EloConstD:   settings.EloConstD,
-		StartingElo: settings.StartingElo,
-		WinReward:   settings.WinReward,
+		EloConstK:                 settings.EloConstK,
+		EloConstD:                 settings.EloConstD,
+		StartingElo:               settings.StartingElo,
+		WinReward:                 settings.WinReward,
+		NewbieLeagueGoal:          settings.NewbieLeagueGoal,
+		EliteLeagueMatches6months: settings.EliteLeagueMatches6months,
+		EliteLeagueMatches2months: settings.EliteLeagueMatches2months,
+		StartingRating:            settings.StartingRating,
+		RatingMaxK:                settings.RatingMaxK,
+		RatingKTau:                settings.RatingKTau,
 	})
 }
 

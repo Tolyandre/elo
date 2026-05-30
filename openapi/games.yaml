@@ -314,16 +314,16 @@ GameMatchPlayer:
     score:
       type: number
       format: double
-    game_elo_pay:
+    rating_staked:
       type: number
       format: double
-    game_elo_earn:
+    rating_earned:
       type: number
       format: double
-    game_new_elo:
+    rating_after:
       type: number
       format: double
-  required: [id, name, score, game_elo_pay, game_elo_earn, game_new_elo]
+  required: [id, name, score, rating_staked, rating_earned, rating_after]
 
 GameMatch:
   type: object

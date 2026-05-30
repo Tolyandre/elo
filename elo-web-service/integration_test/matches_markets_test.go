@@ -76,7 +76,7 @@ func latestElo(t *testing.T, pool *pgxpool.Pool, playerID int32) float64 {
 	t.Helper()
 	var elo float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT new_elo FROM global_arena_settlement WHERE player_id = $1 ORDER BY date DESC, id DESC LIMIT 1`,
+		`SELECT elo_after FROM global_arena_settlement WHERE player_id = $1 ORDER BY date DESC, id DESC LIMIT 1`,
 		playerID,
 	).Scan(&elo)
 	if err != nil {

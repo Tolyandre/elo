@@ -82,11 +82,11 @@ type Querier interface {
 	// Returns the display game rating and current game league.
 	GetPlayerLatestGameRating(ctx context.Context, arg GetPlayerLatestGameRatingParams) (GetPlayerLatestGameRatingRow, error)
 	GetPlayerLatestGameRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGameRatingBeforeMatchParams) (GetPlayerLatestGameRatingBeforeMatchRow, error)
-	// Returns the true Elo value (new_elo) for Elo calculations.
+	// Returns the true Elo value (elo_after) for Elo calculations.
 	GetPlayerLatestGlobalElo(ctx context.Context, playerID int32) (float64, error)
 	GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error)
 	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
-	// Returns the display rating (new_rating) and current league for rating-track calculations.
+	// Returns the display rating (rating_after) and current league for rating-track calculations.
 	GetPlayerLatestGlobalRating(ctx context.Context, playerID int32) (GetPlayerLatestGlobalRatingRow, error)
 	GetPlayerLatestGlobalRatingAtDate(ctx context.Context, arg GetPlayerLatestGlobalRatingAtDateParams) (GetPlayerLatestGlobalRatingAtDateRow, error)
 	GetPlayerLatestGlobalRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalRatingBeforeMatchParams) (GetPlayerLatestGlobalRatingBeforeMatchRow, error)
@@ -133,7 +133,7 @@ type Querier interface {
 	// fetch the market first to return a proper domain error.
 	LockMarketBetting(ctx context.Context, id int32) error
 	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
-	// Returns new_rating (display value) ordered by date for the player graph.
+	// Returns rating_after and elo_after ordered by date for the player graph.
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error

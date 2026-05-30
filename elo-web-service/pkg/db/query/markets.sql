@@ -168,12 +168,12 @@ GROUP BY outcome;
 
 -- name: UpsertGlobalArenaSettlementByMarket :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, new_rating, new_elo, discriminator, market_id,
+    (player_id, date, rating_after, elo_after, discriminator, market_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
 VALUES ($1, $2, $3, $4, 'market', $5, $6, $7, $8, $9, $10)
 ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
-DO UPDATE SET new_rating    = EXCLUDED.new_rating,
-              new_elo       = EXCLUDED.new_elo,
+DO UPDATE SET rating_after  = EXCLUDED.rating_after,
+              elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
               elo_staked    = EXCLUDED.elo_staked,
               elo_earned    = EXCLUDED.elo_earned,

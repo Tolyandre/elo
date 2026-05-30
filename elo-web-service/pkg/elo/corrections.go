@@ -72,8 +72,8 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	if err := q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
 		PlayerID:     playerID,
 		Date:         correction.Date,
-		NewRating:    newRating,
-		NewElo:       prevElo,
+		RatingAfter:  newRating,
+		EloAfter:     prevElo,
 		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
 		RatingStaked: ratingStaked,
 		RatingEarned: ratingEarned,
@@ -134,8 +134,8 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 	return q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
 		PlayerID:     correction.PlayerID,
 		Date:         correction.Date,
-		NewRating:    newRating,
-		NewElo:       prevElo,
+		RatingAfter:  newRating,
+		EloAfter:     prevElo,
 		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
 		RatingStaked: ratingStaked,
 		RatingEarned: ratingEarned,

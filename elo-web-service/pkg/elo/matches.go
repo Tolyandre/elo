@@ -325,7 +325,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			state.GameRating[playerID] = settings.StartingRating
 			state.GameLeague[playerID] = initialLeague(settings)
 		} else {
-			state.GameRating[playerID] = prevGameRating.GameNewRating
+			state.GameRating[playerID] = prevGameRating.GameRatingAfter
 			state.GameLeague[playerID] = prevGameRating.League
 		}
 
@@ -552,8 +552,8 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
 			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
 			PlayerID:     playerID,
-			NewRating:    r.newGlobalRating,
-			NewElo:       r.newGlobalElo,
+			RatingAfter:  r.newGlobalRating,
+			EloAfter:     r.newGlobalElo,
 			EloStaked:    r.eloStaked,
 			EloEarned:    r.eloEarned,
 			RatingStaked: r.ratingStaked,
@@ -566,8 +566,8 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
 			GameID:       gameID,
 			PlayerID:     playerID,
-			NewRating:    r.newGameRating,
-			NewElo:       r.newGameElo,
+			RatingAfter:  r.newGameRating,
+			EloAfter:     r.newGameElo,
 			EloStaked:    r.gameEloStaked,
 			EloEarned:    r.gameEloEarned,
 			RatingStaked: r.gameRatingStaked,
@@ -591,8 +591,8 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
 			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
 			PlayerID:     playerID,
-			NewRating:    r.newGlobalRating,
-			NewElo:       r.newGlobalElo,
+			RatingAfter:  r.newGlobalRating,
+			EloAfter:     r.newGlobalElo,
 			EloStaked:    r.eloStaked,
 			EloEarned:    r.eloEarned,
 			RatingStaked: r.ratingStaked,
@@ -605,8 +605,8 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
 			GameID:       gameID,
 			PlayerID:     playerID,
-			NewRating:    r.newGameRating,
-			NewElo:       r.newGameElo,
+			RatingAfter:  r.newGameRating,
+			EloAfter:     r.newGameElo,
 			EloStaked:    r.gameEloStaked,
 			EloEarned:    r.gameEloEarned,
 			RatingStaked: r.gameRatingStaked,

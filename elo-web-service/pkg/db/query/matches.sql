@@ -17,9 +17,9 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.rating_staked AS rating_pay,
-    gas.rating_earned AS rating_earn,
-    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo
+    gas.rating_staked,
+    gas.rating_earned,
+    CASE WHEN gas.rating_after IS NULL THEN NULL ELSE gas.rating_after END AS rating_after
 FROM match_scores s
 JOIN players p ON p.id = s.player_id
 JOIN matches m ON m.id = s.match_id
@@ -37,12 +37,12 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.rating_staked AS rating_pay,
-    gas.rating_earned AS rating_earn,
+    gas.rating_staked,
+    gas.rating_earned,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
-    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating
+    CASE WHEN gas.rating_after IS NULL THEN NULL ELSE gas.rating_after END AS rating_after,
+    CASE WHEN prev_player_rating.rating_after IS NULL THEN NULL ELSE prev_player_rating.rating_after END AS prev_rating
 
 FROM matches m
 JOIN games g ON g.id = m.game_id
@@ -50,7 +50,7 @@ JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
 LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT gas2.new_rating
+    SELECT gas2.rating_after
     FROM global_arena_settlement gas2
     WHERE gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC
@@ -73,12 +73,12 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.rating_staked AS rating_pay,
-    gas.rating_earned AS rating_earn,
+    gas.rating_staked,
+    gas.rating_earned,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
-    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating,
+    CASE WHEN gas.rating_after IS NULL THEN NULL ELSE gas.rating_after END AS rating_after,
+    CASE WHEN prev_player_rating.rating_after IS NULL THEN NULL ELSE prev_player_rating.rating_after END AS prev_rating,
     elo_settings.elo_const_k,
     elo_settings.elo_const_d,
     elo_settings.starting_elo,
@@ -90,7 +90,7 @@ JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
 LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT gas2.new_rating
+    SELECT gas2.rating_after
     FROM global_arena_settlement gas2
     WHERE gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC
@@ -144,12 +144,12 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.rating_staked AS rating_pay,
-    gas.rating_earned AS rating_earn,
+    gas.rating_staked,
+    gas.rating_earned,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
-    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating,
+    CASE WHEN gas.rating_after IS NULL THEN NULL ELSE gas.rating_after END AS rating_after,
+    CASE WHEN prev_player_rating.rating_after IS NULL THEN NULL ELSE prev_player_rating.rating_after END AS prev_rating,
     EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = pm.id) AS has_markets
 FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
@@ -157,7 +157,7 @@ JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
 LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT gas2.new_rating
+    SELECT gas2.rating_after
     FROM global_arena_settlement gas2
     WHERE gas2.player_id = p.id AND gas2.date < pm.date
     ORDER BY gas2.date DESC, gas2.id DESC
@@ -174,19 +174,19 @@ SELECT
     p.id AS player_id,
     p.name AS player_name,
     s.score,
-    gas.rating_staked AS rating_pay,
-    gas.rating_earned AS rating_earn,
+    gas.rating_staked,
+    gas.rating_earned,
     -- CASE forces sqlc to infer a nullable type (interface{}) so pgx can scan NULL
     -- for players whose first match has no previous rating or no settlement row yet
-    CASE WHEN gas.new_rating IS NULL THEN NULL ELSE gas.new_rating END AS global_new_elo,
-    CASE WHEN prev_player_rating.new_rating IS NULL THEN NULL ELSE prev_player_rating.new_rating END AS prev_rating
+    CASE WHEN gas.rating_after IS NULL THEN NULL ELSE gas.rating_after END AS rating_after,
+    CASE WHEN prev_player_rating.rating_after IS NULL THEN NULL ELSE prev_player_rating.rating_after END AS prev_rating
 FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
 LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
-    SELECT gas2.new_rating
+    SELECT gas2.rating_after
     FROM global_arena_settlement gas2
     WHERE gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC

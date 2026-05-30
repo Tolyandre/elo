@@ -57,10 +57,10 @@ type GameArenaSettlement struct {
 	GameID        int32              `json:"game_id"`
 	PlayerID      int32              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
-	NewRating     float64            `json:"new_rating"`
+	RatingAfter   float64            `json:"rating_after"`
+	EloAfter      float64            `json:"elo_after"`
 	Discriminator string             `json:"discriminator"`
 	MatchID       pgtype.Int4        `json:"match_id"`
-	NewElo        float64            `json:"new_elo"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
@@ -72,17 +72,17 @@ type GlobalArenaSettlement struct {
 	ID            int32              `json:"id"`
 	PlayerID      int32              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
-	NewRating     float64            `json:"new_rating"`
+	RatingAfter   float64            `json:"rating_after"`
+	EloAfter      float64            `json:"elo_after"`
 	Discriminator string             `json:"discriminator"`
 	MatchID       pgtype.Int4        `json:"match_id"`
 	MarketID      pgtype.Int4        `json:"market_id"`
-	NewElo        float64            `json:"new_elo"`
+	CorrectionID  pgtype.Int4        `json:"correction_id"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
 	RatingEarned  float64            `json:"rating_earned"`
 	League        string             `json:"league"`
-	CorrectionID  pgtype.Int4        `json:"correction_id"`
 }
 
 type Market struct {

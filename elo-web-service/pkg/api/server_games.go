@@ -134,12 +134,12 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 		players := make([]GameMatchPlayer, 0, len(m.Players))
 		for _, p := range m.Players {
 			players = append(players, GameMatchPlayer{
-				Id:          p.Id,
-				Name:        p.Name,
-				Score:       p.Score,
-				GameEloPay:  p.GameEloPay,
-				GameEloEarn: p.GameEloEarn,
-				GameNewElo:  p.GameNewElo,
+				Id:           p.Id,
+				Name:         p.Name,
+				Score:        p.Score,
+				RatingStaked: p.RatingStaked,
+				RatingEarned: p.RatingEarned,
+				RatingAfter:  p.RatingAfter,
 			})
 		}
 		gm := GameMatch{

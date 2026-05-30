@@ -199,6 +199,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 			ratingHistory = append(ratingHistory, RatingPoint{
 				Date:   r.Date.Time.UTC(),
 				Rating: r.Rating,
+				Elo:    r.Elo,
 			})
 		}
 	}

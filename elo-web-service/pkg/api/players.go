@@ -131,6 +131,7 @@ func (a *API) ListPlayers(c *gin.Context) {
 type ratingPointJson struct {
 	Date   string  `json:"date"`
 	Rating float64 `json:"rating"`
+	Elo    float64 `json:"elo"`
 }
 
 type gameMatchStatJson struct {
@@ -186,6 +187,7 @@ func (a *API) GetPlayerStats(c *gin.Context) {
 			ratingHistory = append(ratingHistory, ratingPointJson{
 				Date:   r.Date.Time.UTC().Format(time.RFC3339),
 				Rating: r.Rating,
+				Elo:    r.Elo,
 			})
 		}
 	}

@@ -113,6 +113,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
     const chartData = stats.rating_history.map(p => ({
         date: formatDate(p.date),
         rating: Math.round(p.rating),
+        elo: Math.round(p.elo),
     }))
 
     return (
@@ -127,7 +128,10 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                     {chartData.length === 0 ? (
                         <p className="text-muted-foreground text-sm">Нет данных</p>
                     ) : (
-                        <ChartContainer config={{ rating: { label: 'Эло', color: 'var(--chart-1)' } }}>
+                        <ChartContainer config={{
+                            rating: { label: 'Рейтинг', color: 'var(--chart-1)' },
+                            elo: { label: 'Эло', color: 'var(--chart-3)' },
+                        }}>
                             <LineChart data={chartData}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis
@@ -141,14 +145,24 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                                     width={55}
                                 />
                                 <Tooltip
-                                    formatter={(value) => [value, 'Эло']}
+                                    formatter={(value, name) => [value, name === 'rating' ? 'Рейтинг' : 'Эло']}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="elo"
+                                    stroke="var(--color-elo)"
+                                    strokeDasharray="5 3"
+                                    strokeWidth={1.0}
+                                    dot={false}
+                                    name="elo"
                                 />
                                 <Line
                                     type="monotone"
                                     dataKey="rating"
                                     stroke="var(--color-rating)"
+                                    strokeWidth={2.5}
                                     dot={false}
-                                    strokeWidth={2}
+                                    name="rating"
                                 />
                             </LineChart>
                         </ChartContainer>

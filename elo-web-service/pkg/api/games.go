@@ -160,12 +160,12 @@ func (a *API) CreateGame(c *gin.Context) {
 
 func (a *API) GetGameMatches(c *gin.Context) {
 	type gameMatchPlayerJson struct {
-		Id          string  `json:"id"`
-		Name        string  `json:"name"`
-		Score       float64 `json:"score"`
-		GameEloPay  float64 `json:"game_elo_pay"`
-		GameEloEarn float64 `json:"game_elo_earn"`
-		GameNewElo  float64 `json:"game_new_elo"`
+		Id           string  `json:"id"`
+		Name         string  `json:"name"`
+		Score        float64 `json:"score"`
+		RatingStaked float64 `json:"rating_staked"`
+		RatingEarned float64 `json:"rating_earned"`
+		RatingAfter  float64 `json:"rating_after"`
 	}
 
 	type gameMatchJson struct {
@@ -186,12 +186,12 @@ func (a *API) GetGameMatches(c *gin.Context) {
 		players := make([]gameMatchPlayerJson, 0, len(m.Players))
 		for _, p := range m.Players {
 			players = append(players, gameMatchPlayerJson{
-				Id:          p.Id,
-				Name:        p.Name,
-				Score:       p.Score,
-				GameEloPay:  p.GameEloPay,
-				GameEloEarn: p.GameEloEarn,
-				GameNewElo:  p.GameNewElo,
+				Id:           p.Id,
+				Name:         p.Name,
+				Score:        p.Score,
+				RatingStaked: p.RatingStaked,
+				RatingEarned: p.RatingEarned,
+				RatingAfter:  p.RatingAfter,
 			})
 		}
 		var datePtr *time.Time

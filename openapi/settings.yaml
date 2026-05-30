@@ -163,7 +163,16 @@ Settings:
       type: integer
     elite_league_matches_2months:
       type: integer
-  required: [elo_const_k, elo_const_d, starting_elo, win_reward, newbie_league_goal, elite_league_matches_6months, elite_league_matches_2months]
+    starting_rating:
+      type: number
+      format: double
+    rating_max_k:
+      type: number
+      format: double
+    rating_k_tau:
+      type: number
+      format: double
+  required: [elo_const_k, elo_const_d, starting_elo, win_reward, newbie_league_goal, elite_league_matches_6months, elite_league_matches_2months, starting_rating, rating_max_k, rating_k_tau]
 
 EloSettingEntry:
   type: object

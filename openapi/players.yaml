@@ -288,7 +288,10 @@ RatingPoint:
     rating:
       type: number
       format: double
-  required: [date, rating]
+    elo:
+      type: number
+      format: double
+  required: [date, rating, elo]
 
 GameMatchStat:
   type: object

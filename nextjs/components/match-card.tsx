@@ -28,18 +28,18 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
         return {
           name,
           playerId,
-          eloPay: data.ratingPay,
-          eloEarn: data.ratingEarn,
+          ratingStaked: data.ratingStaked,
+          ratingEarned: data.ratingEarned,
           score: data.score,
-          eloChange: data.ratingPay + data.ratingEarn,
+          ratingChange: data.ratingStaked + data.ratingEarned,
           ratingAfter: data.ratingAfter ?? null,
         };
       })
       .sort((a, b) => b.score - a.score);
 
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
-    const totalEarn = players.reduce((sum, p) => sum + p.eloEarn, 0) || 1;
-    const totalPay = players.reduce((sum, p) => sum + Math.abs(p.eloPay), 0) || 1;
+    const totalEarn = players.reduce((sum, p) => sum + p.ratingEarned, 0) || 1;
+    const totalPay = players.reduce((sum, p) => sum + Math.abs(p.ratingStaked), 0) || 1;
 
     return { players, ranks, totalEarn, totalPay };
   }, [match.score, playerMap, playerDisplayName]);
@@ -91,12 +91,12 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                   {/* Earned Elo indicator */}
                   <div
                     className="absolute top-0 h-1 bg-green-400"
-                    style={{ width: `${(p.eloEarn / totalEarn) * 100}%` }}
+                    style={{ width: `${(p.ratingEarned / totalEarn) * 100}%` }}
                   />
-                  {/* Paid Elo indicator */}
+                  {/* Staked rating indicator */}
                   <div
                     className="absolute bottom-0 h-1 bg-red-400"
-                    style={{ width: `${(Math.abs(p.eloPay) / Math.abs(totalPay)) * 100}%` }}
+                    style={{ width: `${(Math.abs(p.ratingStaked) / Math.abs(totalPay)) * 100}%` }}
                   />
                 </div>
               </div>
@@ -108,14 +108,14 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               <div className="text-right w-16 flex-shrink-0">
                 <div
                   className={`font-semibold text-sm ${
-                    p.eloChange > 0 ? "text-green-600" : p.eloChange < 0 ? "text-red-600" : "text-gray-600"
+                    p.ratingChange > 0 ? "text-green-600" : p.ratingChange < 0 ? "text-red-600" : "text-gray-600"
                   }`}
                 >
-                  {p.eloChange >= 0 ? "+" : ""}
-                  {p.eloChange.toFixed(roundToInteger ? 0 : 1)}
+                  {p.ratingChange >= 0 ? "+" : ""}
+                  {p.ratingChange.toFixed(roundToInteger ? 0 : 1)}
                 </div>
                 <div className="text-xs text-muted-foreground whitespace-nowrap">
-                  ({p.eloPay.toFixed(roundToInteger ? 0 : 1)} + {p.eloEarn.toFixed(roundToInteger ? 0 : 1)})
+                  ({p.ratingStaked.toFixed(roundToInteger ? 0 : 1)} + {p.ratingEarned.toFixed(roundToInteger ? 0 : 1)})
                 </div>
               </div>
             </li>

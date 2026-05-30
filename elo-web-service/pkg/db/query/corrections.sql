@@ -13,12 +13,12 @@ DELETE FROM global_arena_settlement WHERE date >= $1;
 
 -- name: UpsertGlobalArenaSettlementByCorrection :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, new_rating, new_elo, discriminator, correction_id,
+    (player_id, date, rating_after, elo_after, discriminator, correction_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
 VALUES ($1, $2, $3, $4, 'correction', $5, 0, 0, $6, $7, $8)
 ON CONFLICT (correction_id, player_id) WHERE correction_id IS NOT NULL
-DO UPDATE SET new_rating    = EXCLUDED.new_rating,
-              new_elo       = EXCLUDED.new_elo,
+DO UPDATE SET rating_after  = EXCLUDED.rating_after,
+              elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
               rating_staked = EXCLUDED.rating_staked,
               rating_earned = EXCLUDED.rating_earned,
@@ -56,7 +56,7 @@ LIMIT sqlc.arg('limit')::int4;
 -- Picks the latest settlement before correction $3 for player $1 at date $2.
 -- Same-date matches/markets (discriminator != 'correction') come before corrections.
 -- Earlier same-date corrections (correction_id < $3) are also included.
-SELECT gas.new_rating AS rating, gas.new_elo AS elo, gas.league
+SELECT gas.rating_after AS rating, gas.elo_after AS elo, gas.league
 FROM global_arena_settlement gas
 WHERE gas.player_id = $1
   AND (gas.date < $2

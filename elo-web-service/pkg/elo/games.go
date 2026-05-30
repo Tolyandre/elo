@@ -32,12 +32,12 @@ type GameTitles struct {
 }
 
 type GameMatchPlayer struct {
-	Id          string
-	Name        string
-	Score       float64
-	GameEloPay  float64
-	GameEloEarn float64
-	GameNewElo  float64
+	Id           string
+	Name         string
+	Score        float64
+	RatingStaked float64
+	RatingEarned float64
+	RatingAfter  float64
 }
 
 type GameMatch struct {
@@ -120,7 +120,7 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	for _, r := range ratingRows {
 		players = append(players, GamePlayerStat{
 			Id:     fmt.Sprintf("%d", r.PlayerID),
-			Elo:    r.GameNewRating,
+			Elo:    r.GameRatingAfter,
 			League: r.League,
 		})
 	}
@@ -178,12 +178,12 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 		}
 
 		matchMap[r.MatchID].Players = append(matchMap[r.MatchID].Players, GameMatchPlayer{
-			Id:          fmt.Sprintf("%d", r.PlayerID),
-			Name:        r.PlayerName,
-			Score:       r.Score,
-			GameEloPay:  r.GameEloPay.Float64,
-			GameEloEarn: r.GameEloEarn.Float64,
-			GameNewElo:  r.GameNewElo.Float64,
+			Id:           fmt.Sprintf("%d", r.PlayerID),
+			Name:         r.PlayerName,
+			Score:        r.Score,
+			RatingStaked: r.GameRatingStaked.Float64,
+			RatingEarned: r.GameRatingEarned.Float64,
+			RatingAfter:  r.GameRatingAfter.Float64,
 		})
 	}
 

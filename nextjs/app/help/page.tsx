@@ -26,6 +26,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { useSettings } from "@/app/settingsContext"
 import { EloCalculator } from "./EloCalculator"
+import { RatingGapChart } from "./RatingGapChart"
+import { ConvergenceChart } from "./ConvergenceChart"
 import { PageHeader } from "@/app/pageHeaderContext"
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -202,7 +204,147 @@ function HelpPageContent() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* ── Section 3: When to apply Elo ── */}
+                {/* ── Section 3: Arenas and leagues ── */}
+                <AccordionItem value="arenas">
+                    <AccordionTrigger className="text-base font-semibold">
+                        Арены и лиги
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 text-sm leading-relaxed">
+                        <p>
+                            Рейтинг рассчитывается отдельно для <strong>глобальной арены</strong> (все игры вместе)
+                            и для каждой <strong>игровой арены</strong> (отдельно для каждой игры).
+                            Это позволяет видеть как общий уровень игрока, так и его мастерство в конкретной игре.
+                        </p>
+
+                        <p>Арена состоит из лиг, чтобы разделить игроков, сыгравших много партий и только начинающих, т.к. 
+                            начальный рейтинг не точен.
+                        </p>
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            Структура лиг
+                        </p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm border-collapse">
+                                <thead>
+                                    <tr className="border-b">
+                                        <th className="text-left py-2 pr-4">Лига</th>
+                                        <th className="text-left py-2 pr-4">Смысл</th>
+                                        <th className="text-left py-2">Условие перехода</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    <tr>
+                                        <td className="py-2 pr-4 font-medium">Лига Новичков</td>
+                                        <td className="py-2 pr-4 text-muted-foreground">Рейтинг новичков занижен, и растёт пока не сравняется с их настоящим эло.
+                                            Увеличение рейтинга с каждой партией мотивирует играть на рейтинг. Начальное действительное значение эло часто падает, что демотивирует новичков.
+                                        </td>
+                                        <td className="py-2">
+                                            Переход в Лигу Любителей, когда рейтинг ≥ {settings.newbieLeagueGoal}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 pr-4 font-medium">Лига Любителей</td>
+                                        <td className="py-2 pr-4 text-muted-foreground">Сюда попадают игроки, рейтинг которых сравнялся с настоящим значением эло.
+                                            Лига Любителей также нужна, чтобы игроки, достигшие выского эло и прекратившие играть, позволили занимать лидерство активным игрокам.
+                                        </td>
+                                        <td className="py-2">
+                                            Переход в Высшую лигу при ≥ {settings.eliteMatches6m} партий за полгода
+                                            и ≥ {settings.eliteMatches2m} за 2 месяца
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td className="py-2 pr-4 font-medium">Высшая лига</td>
+                                        <td className="py-2 pr-4 text-muted-foreground">Игроки, которые активно играют. Их рейтинг отражает реальное эло.</td>
+                                        <td className="py-2">
+                                            Возврат в Лигу Любителей, если активность падает ниже порогов
+                                            ({settings.eliteMatches6m} за полгода или {settings.eliteMatches2m} за 2 мес.)
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p>
+                            Новый игрок попадает в Лигу Новичков, если стартовый рейтинг ({settings.startingRating}) меньше
+                            порога перехода ({settings.newbieLeagueGoal}). Принадлежность к Высшей лиге
+                            проверяется при каждой партии по скользящим счётчикам активности.
+                        </p>
+                        <p>
+                            На <strong>игровой арене</strong> есть только Лига Новичков и Лига Любителей — Высшая лига
+                            отсутствует.
+                        </p>
+                    </AccordionContent>
+                </AccordionItem>
+
+                {/* ── Section 4: Beginner rating ── */}
+                <AccordionItem value="beginner-rating">
+                    <AccordionTrigger className="text-base font-semibold">
+                        Рейтинг новичков на арене
+                    </AccordionTrigger>
+                    <AccordionContent className="space-y-4 text-sm leading-relaxed">
+                        <p>
+                            У каждого игрока хранятся два значения: скрытое <strong>эло</strong> (начинается с <strong>{settings.startingElo}</strong>) и
+                            видимый <strong>рейтинг</strong> (начинается с <strong>{settings.startingRating}</strong>). Эло используется при расчёте ожидаемого
+                            результата игрока, а также влияет на расчёт соперникам.
+                            Видимый рейтинг отображается в приложении, постепенно сходясь с эло.
+                        </p>
+                        <p>
+                            Это сделано, чтобы новички не разочаровывались регулярным падением рейтинга в начале, если их уровень ниже стартового эло.
+                            Видимый рейтинг отражает реальный уровень только после нескольких игр.
+                            Регулярный рост на старте мотивирует новичков играть больше партий. При этом 
+                            начисление рейтинга постепенно становится справедливым с каждой партией.
+                        </p>
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            Адаптивный коэффициент K для рейтинга
+                        </p>
+                        <p>
+                            Для обеспечения сходимости рейтинга к эло расчёт рейтинга производится по тем же формулам, но используется адаптивный{" "}
+                            <InlineMath math="K_{\text{rating}}" />, зависящий от разрыва{" "}
+                            <InlineMath math="\text{gap} = \text{elo} - \text{rating}" />:
+                        </p>
+                        <Card className="bg-muted/50">
+                            <CardContent className="py-3 overflow-x-auto">
+                                <BlockMath math={String.raw`K_{\text{rating}}(\text{gap}) = K_{\text{std}} + (K_{\text{max}} - K_{\text{std}}) \cdot \left(1 - e^{-|\text{gap}|/\tau}\right)`} />
+                            </CardContent>
+                        </Card>
+                        <p>
+                            При <InlineMath math="\text{gap} = 0" /> (сходимость достигнута){" "}
+                            <InlineMath math={`K_{\\text{rating}} = K_{\\text{std}} = ${settings.eloConstK}`} />.
+                            При большом разрыве <InlineMath math="K_{\text{rating}}" /> приближается к{" "}
+                            <InlineMath math={`K_{\\text{max}} = ${settings.ratingMaxK}`} />, ускоряя сходимость.
+                            Константа затухания <InlineMath math={`\\tau = ${settings.ratingKTau}`} />.
+                        </p>
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            Защита новичков
+                        </p>
+                        <p>
+                            Пока игрок в Лиге Новичков, его рейтинг не может уменьшиться: если по формуле выходит
+                            убыток, результат заменяется на <InlineMath math="+1" />.
+                        </p>
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            График 1: зависимость staked/earned от разрыва
+                        </p>
+                        <p className="text-muted-foreground">
+                            Настройте ожидаемый (E) и фактический (S) результат партии и посмотрите, как
+                            rating_staked/rating_earned растут с разрывом, тогда как elo_staked/elo_earned остаются постоянными.
+                        </p>
+                        <RatingGapChart />
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            График 2: сходимость рейтинга
+                        </p>
+                        <p className="text-muted-foreground">
+                            Симуляция нескольких игроков со случайными исходами партий. Пунктир — скрытое эло,
+                            сплошная линия — видимый рейтинг. Задайте вероятность победы каждого игрока.
+                        </p>
+                        <ConvergenceChart />
+                    </AccordionContent>
+                </AccordionItem>
+
+                {/* ── Section 5: When to apply Elo ── */}
                 <AccordionItem value="when-elo">
                     <AccordionTrigger className="text-base font-semibold">
                         Когда применяется Elo?
@@ -281,7 +423,7 @@ function HelpPageContent() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* ── Section 4: Interactive calculator ── */}
+                {/* ── Section 6: Interactive calculator ── */}
                 <AccordionItem value="calculator">
                     <AccordionTrigger className="text-base font-semibold">
                         Пример расчёта (интерактивный)
@@ -291,7 +433,7 @@ function HelpPageContent() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* ── Section 5: Goals and etiquette ── */}
+                {/* ── Section 7: Goals and etiquette ── */}
                 <AccordionItem value="etiquette">
                     <AccordionTrigger className="text-base font-semibold">
                         Цели и правила использования
@@ -350,7 +492,7 @@ function HelpPageContent() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* ── Section 6: Who adds data to the rating? ── */}
+                {/* ── Section 8: Who adds data to the rating? ── */}
                 <AccordionItem value="etiquette">
                     <AccordionTrigger className="text-base font-semibold">
                         Кто вносит данные в рейтинг
@@ -371,7 +513,7 @@ function HelpPageContent() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* ── Section 7: Tips ── */}
+                {/* ── Section 9: Tips ── */}
                 <AccordionItem value="tips">
                     <AccordionTrigger className="text-base font-semibold">
                         Советы игрокам

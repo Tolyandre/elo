@@ -255,10 +255,10 @@ MatchPlayer:
   type: object
   description: Per-player data within a match (keyed by player_id in the score map)
   properties:
-    rating_pay:
+    rating_staked:
       type: number
       format: double
-    rating_earn:
+    rating_earned:
       type: number
       format: double
     score:
@@ -267,7 +267,7 @@ MatchPlayer:
     rating_after:
       type: number
       format: double
-  required: [rating_pay, rating_earn, score, rating_after]
+  required: [rating_staked, rating_earned, score, rating_after]
 
 Match:
   type: object

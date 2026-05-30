@@ -330,8 +330,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
 			PlayerID:     pid,
 			Date:         resolvedAtTz,
-			NewRating:    newRating,
-			NewElo:       newElo,
+			RatingAfter:  newRating,
+			EloAfter:     newElo,
 			MarketID:     pgtype.Int4{Int32: marketID, Valid: true},
 			EloStaked:    eloStaked,
 			EloEarned:    eloEarned,

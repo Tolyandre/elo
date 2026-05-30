@@ -60,8 +60,8 @@ export type Period = keyof Player["rank"];
 
 // score fields are camelCased; date is a Date object
 export type PlayerScore = {
-    ratingPay: number;
-    ratingEarn: number;
+    ratingStaked: number;
+    ratingEarned: number;
     score: number;
     ratingAfter?: number | null;
 };
@@ -118,7 +118,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         score: Object.fromEntries(
             Object.entries(m.score).map(([pid, s]) => [
                 pid,
-                { ratingPay: s.rating_pay, ratingEarn: s.rating_earn, score: s.score, ratingAfter: s.rating_after },
+                { ratingStaked: s.rating_staked, ratingEarned: s.rating_earned, score: s.score, ratingAfter: s.rating_after },
             ])
         ),
         date: m.date ? new Date(m.date) : null,
