@@ -673,6 +673,10 @@ export interface components {
             rank?: number | null;
             /** @description Only set for amateur league players; how many more matches are needed to reach elite league. */
             matches_left_for_elite?: number | null;
+            /** @description Lower bound of wins needed to reach amateur league (elo treated as fixed). */
+            wins_needed_for_amateur?: number | null;
+            /** @description Upper bound of wins needed (accounts for elo growth ≈ K/2 per win). */
+            wins_needed_for_amateur_upper?: number | null;
         };
         HistoryRank: {
             now: components["schemas"]["EloRank"];
@@ -734,6 +738,10 @@ export interface components {
             /** @enum {string} */
             league: "newbie" | "amateur";
             rank: number;
+            /** @description Lower bound of wins needed to reach amateur league (elo treated as fixed). */
+            wins_needed_for_amateur?: number | null;
+            /** @description Upper bound of wins needed (accounts for elo growth ≈ K/2 per win). */
+            wins_needed_for_amateur_upper?: number | null;
         };
         Game: {
             id: string;
@@ -805,15 +813,19 @@ export interface components {
             /** Format: double */
             win_reward: number;
             /** Format: double */
-            newbie_league_goal: number;
+            newbie_league_earned_min: number;
+            /** Format: double */
+            newbie_league_earned_max: number;
+            /** Format: double */
+            newbie_league_earned_tau: number;
+            /** Format: double */
+            newbie_league_goal_gap: number;
+            /** Format: double */
+            starting_rating_global_arena: number;
+            /** Format: double */
+            starting_rating_game_arena: number;
             elite_league_matches_6months: number;
             elite_league_matches_2months: number;
-            /** Format: double */
-            starting_rating: number;
-            /** Format: double */
-            rating_max_k: number;
-            /** Format: double */
-            rating_k_tau: number;
         };
         EloSettingEntry: {
             /** @description RFC3339 date or "-infinity" */

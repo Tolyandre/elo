@@ -13,12 +13,14 @@ import (
 )
 
 type Player struct {
-	ID                  string
-	Name                string
-	Elo                 float64
-	League              string
-	Rank                *int
-	MatchesLeftForElite int // > 0 only for amateur players
+	ID                        string
+	Name                      string
+	Elo                       float64
+	League                    string
+	Rank                      *int
+	MatchesLeftForElite       int // > 0 only for amateur players
+	WinsNeededForAmateurLower int // lower bound: elo fixed, only rating grows
+	WinsNeededForAmateurUpper int // upper bound: elo also grows ≈ K/2 per win
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
@@ -43,6 +45,41 @@ func NewPlayerService(pool *pgxpool.Pool) IPlayerService {
 		Queries: db.New(pool),
 		Pool:    pool,
 	}
+}
+
+// calcWinsNeededForAmateur estimates the range [lower, upper] of wins needed to close
+// the directed gap (elo − rating) to NewbieLeagueGoalGap, assuming the player wins every match.
+//
+// Lower bound: elo stays fixed (only rating grows).
+//   n_lower = ∫ dg / Δ_win(g),  Δ_win(g) = earnedMax(g) − K·E(g)
+//
+// Upper bound: elo also grows ≈ K/2 per win (2-player equal-elo approximation, conservative).
+//   n_upper = ∫ dg / (Δ_win(g) − K/2)
+//
+// E(g) = 1/(1+10^(g/D)): 2-player win expectation at rating gap g.
+func calcWinsNeededForAmateur(gap float64, s EloSettings) (lower, upper int) {
+	goalGap := s.NewbieLeagueGoalGap
+	if gap <= goalGap || s.D == 0 {
+		return 0, 0
+	}
+	const step = 1.0
+	deltaEloPerWin := s.K / 2
+	var totalLower, totalUpper float64
+	for g := goalGap; g < gap; g += step {
+		delta := math.Min(step, gap-g)
+		mid := g + delta/2
+		earnedMax := s.K + (s.NewbieLeagueEarnedMax-s.K)*(1-math.Exp(-mid/s.NewbieLeagueEarnedTau))
+		eWin := 1.0 / (1.0 + math.Pow(10, mid/s.D))
+		netRating := earnedMax - s.K*eWin
+		if netRating > 0 {
+			totalLower += delta / netRating
+		}
+		netGap := netRating - deltaEloPerWin
+		if netGap > 0 {
+			totalUpper += delta / netGap
+		}
+	}
+	return int(math.Ceil(totalLower)), int(math.Ceil(totalUpper))
 }
 
 // leaguePriority returns sort order: elite < amateur < newbie (lower = ranked higher).
@@ -79,16 +116,20 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 
 	players := make([]Player, 0, len(rows))
 	for _, r := range rows {
-		eloVal := settings.StartingRating
+		ratingVal := settings.StartingRatingGlobal
 		if r.Rating != nil {
-			eloVal = r.Rating.(float64)
+			ratingVal = r.Rating.(float64)
+		}
+		eloVal := settings.StartingElo
+		if r.Elo != nil {
+			eloVal = r.Elo.(float64)
 		}
 
-		// Determine effective league: for players with no settlement, derive from starting_rating;
+		// Determine effective league: for players with no settlement, derive from starting values;
 		// for existing players, correct stale elite based on current match counts.
 		var league string
 		if r.Rating == nil {
-			league = initialLeague(settings)
+			league = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
 		} else {
 			league = effectiveLeague(r.League, int(r.Cnt60), int(r.Cnt180), settings)
 		}
@@ -103,12 +144,20 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 			}
 		}
 
+		var winsLower, winsUpper int
+		if league == "newbie" {
+			gap := eloVal - ratingVal // directed: only positive when elo > rating
+			winsLower, winsUpper = calcWinsNeededForAmateur(gap, settings)
+		}
+
 		players = append(players, Player{
-			ID:                  fmt.Sprintf("%d", r.ID),
-			Elo:                 eloVal,
-			League:              league,
-			Name:                r.Name,
-			MatchesLeftForElite: matchesLeftForElite,
+			ID:                        fmt.Sprintf("%d", r.ID),
+			Elo:                       ratingVal, // displayed rating used for ranking
+			League:                    league,
+			Name:                      r.Name,
+			MatchesLeftForElite:       matchesLeftForElite,
+			WinsNeededForAmateurLower: winsLower,
+			WinsNeededForAmateurUpper: winsUpper,
 		})
 	}
 

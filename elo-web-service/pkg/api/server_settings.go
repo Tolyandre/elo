@@ -16,11 +16,16 @@ func (s *StrictServer) GetSettings(ctx context.Context, _ GetSettingsRequestObje
 	return GetSettings200JSONResponse{
 		Status: "success",
 		Data: Settings{
-			EloConstK:                 settings.EloConstK,
-			EloConstD:                 settings.EloConstD,
-			StartingElo:               settings.StartingElo,
-			WinReward:                 settings.WinReward,
-			NewbieLeagueGoal:          settings.NewbieLeagueGoal,
+			EloConstK:                  settings.EloConstK,
+			EloConstD:                  settings.EloConstD,
+			StartingElo:                settings.StartingElo,
+			WinReward:                  settings.WinReward,
+			NewbieLeagueEarnedMin:      settings.NewbieLeagueEarnedMin,
+			NewbieLeagueEarnedMax:      settings.NewbieLeagueEarnedMax,
+			NewbieLeagueEarnedTau:      settings.NewbieLeagueEarnedTau,
+			NewbieLeagueGoalGap:        settings.NewbieLeagueGoalGap,
+			StartingRatingGlobalArena:  settings.StartingRatingGlobalArena,
+			StartingRatingGameArena:    settings.StartingRatingGameArena,
 			EliteLeagueMatches6months: int(settings.EliteLeagueMatches6months),
 			EliteLeagueMatches2months: int(settings.EliteLeagueMatches2months),
 		},
@@ -70,17 +75,19 @@ func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSetting
 	}
 
 	err = s.api.Queries.CreateEloSettings(ctx, db.CreateEloSettingsParams{
-		EffectiveDate:             pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
-		EloConstK:                 payload.EloConstK,
-		EloConstD:                 payload.EloConstD,
-		StartingElo:               payload.StartingElo,
-		WinReward:                 payload.WinReward,
-		StartingRating:            latest.StartingRating,
-		NewbieLeagueGoal:          latest.NewbieLeagueGoal,
-		RatingMaxK:                latest.RatingMaxK,
-		RatingKTau:                latest.RatingKTau,
-		EliteLeagueMatches6months: latest.EliteLeagueMatches6months,
-		EliteLeagueMatches2months: latest.EliteLeagueMatches2months,
+		EffectiveDate:               pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
+		EloConstK:                   payload.EloConstK,
+		EloConstD:                   payload.EloConstD,
+		StartingElo:                 payload.StartingElo,
+		WinReward:                   payload.WinReward,
+		NewbieLeagueEarnedMin:       latest.NewbieLeagueEarnedMin,
+		NewbieLeagueEarnedMax:       latest.NewbieLeagueEarnedMax,
+		NewbieLeagueEarnedTau:       latest.NewbieLeagueEarnedTau,
+		NewbieLeagueGoalGap:         latest.NewbieLeagueGoalGap,
+		StartingRatingGlobalArena:   latest.StartingRatingGlobalArena,
+		StartingRatingGameArena:     latest.StartingRatingGameArena,
+		EliteLeagueMatches6months:   latest.EliteLeagueMatches6months,
+		EliteLeagueMatches2months:   latest.EliteLeagueMatches2months,
 	})
 	if err != nil {
 		return nil, err

@@ -8,12 +8,14 @@ export type SettingsState = {
   eloConstD: number,
   startingElo: number,
   winReward: number,
-  newbieLeagueGoal: number,
+  newbieLeagueEarnedMin: number,
+  newbieLeagueEarnedMax: number,
+  newbieLeagueEarnedTau: number,
+  newbieLeagueGoalGap: number,
+  startingRatingGlobalArena: number,
+  startingRatingGameArena: number,
   eliteMatches6m: number,
   eliteMatches2m: number,
-  startingRating: number,
-  ratingMaxK: number,
-  ratingKTau: number,
 };
 
 const SettingsContext = createContext<SettingsState | undefined>(undefined);
@@ -32,12 +34,14 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       eloConstD: Number(data.elo_const_d),
       startingElo: Number(data.starting_elo),
       winReward: Number(data.win_reward),
-      newbieLeagueGoal: Number(data.newbie_league_goal),
+      newbieLeagueEarnedMin: Number(data.newbie_league_earned_min),
+      newbieLeagueEarnedMax: Number(data.newbie_league_earned_max),
+      newbieLeagueEarnedTau: Number(data.newbie_league_earned_tau),
+      newbieLeagueGoalGap: Number(data.newbie_league_goal_gap),
+      startingRatingGlobalArena: Number(data.starting_rating_global_arena),
+      startingRatingGameArena: Number(data.starting_rating_game_arena),
       eliteMatches6m: Number(data.elite_league_matches_6months),
       eliteMatches2m: Number(data.elite_league_matches_2months),
-      startingRating: Number(data.starting_rating),
-      ratingMaxK: Number(data.rating_max_k),
-      ratingKTau: Number(data.rating_k_tau),
     });
   };
 
@@ -47,12 +51,14 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       eloConstK: settings === undefined ? 0 : settings.eloConstK,
       startingElo: settings === undefined ? 1000 : settings.startingElo,
       winReward: settings === undefined ? 1 : settings.winReward,
-      newbieLeagueGoal: settings === undefined ? 500 : settings.newbieLeagueGoal,
+      newbieLeagueEarnedMin: settings === undefined ? 2 : settings.newbieLeagueEarnedMin,
+      newbieLeagueEarnedMax: settings === undefined ? 64 : settings.newbieLeagueEarnedMax,
+      newbieLeagueEarnedTau: settings === undefined ? 100 : settings.newbieLeagueEarnedTau,
+      newbieLeagueGoalGap: settings === undefined ? 16 : settings.newbieLeagueGoalGap,
+      startingRatingGlobalArena: settings === undefined ? 0 : settings.startingRatingGlobalArena,
+      startingRatingGameArena: settings === undefined ? 900 : settings.startingRatingGameArena,
       eliteMatches6m: settings === undefined ? 20 : settings.eliteMatches6m,
       eliteMatches2m: settings === undefined ? 3 : settings.eliteMatches2m,
-      startingRating: settings === undefined ? 0 : settings.startingRating,
-      ratingMaxK: settings === undefined ? 64 : settings.ratingMaxK,
-      ratingKTau: settings === undefined ? 100 : settings.ratingKTau,
     }}>
       {children}
     </SettingsContext.Provider>

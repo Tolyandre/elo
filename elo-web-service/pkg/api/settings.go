@@ -11,16 +11,18 @@ import (
 )
 
 type settingsJson struct {
-	EloConstK                 float64 `json:"elo_const_k"`
-	EloConstD                 float64 `json:"elo_const_d"`
-	StartingElo               float64 `json:"starting_elo"`
-	WinReward                 float64 `json:"win_reward"`
-	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
-	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
-	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
-	StartingRating            float64 `json:"starting_rating"`
-	RatingMaxK                float64 `json:"rating_max_k"`
-	RatingKTau                float64 `json:"rating_k_tau"`
+	EloConstK                  float64 `json:"elo_const_k"`
+	EloConstD                  float64 `json:"elo_const_d"`
+	StartingElo                float64 `json:"starting_elo"`
+	WinReward                  float64 `json:"win_reward"`
+	NewbieLeagueEarnedMin      float64 `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax      float64 `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau      float64 `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap        float64 `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena  float64 `json:"starting_rating_global_arena"`
+	StartingRatingGameArena    float64 `json:"starting_rating_game_arena"`
+	EliteLeagueMatches6months  int32   `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months  int32   `json:"elite_league_matches_2months"`
 }
 
 type eloSettingEntryJson struct {
@@ -56,12 +58,14 @@ func (a *API) ListSettings(c *gin.Context) {
 		EloConstD:                 settings.EloConstD,
 		StartingElo:               settings.StartingElo,
 		WinReward:                 settings.WinReward,
-		NewbieLeagueGoal:          settings.NewbieLeagueGoal,
+		NewbieLeagueEarnedMin:     settings.NewbieLeagueEarnedMin,
+		NewbieLeagueEarnedMax:     settings.NewbieLeagueEarnedMax,
+		NewbieLeagueEarnedTau:     settings.NewbieLeagueEarnedTau,
+		NewbieLeagueGoalGap:       settings.NewbieLeagueGoalGap,
+		StartingRatingGlobalArena: settings.StartingRatingGlobalArena,
+		StartingRatingGameArena:   settings.StartingRatingGameArena,
 		EliteLeagueMatches6months: settings.EliteLeagueMatches6months,
 		EliteLeagueMatches2months: settings.EliteLeagueMatches2months,
-		StartingRating:            settings.StartingRating,
-		RatingMaxK:                settings.RatingMaxK,
-		RatingKTau:                settings.RatingKTau,
 	})
 }
 
@@ -109,12 +113,26 @@ func (a *API) CreateSettings(c *gin.Context) {
 		return
 	}
 
-	err := a.Queries.CreateEloSettings(c.Request.Context(), db.CreateEloSettingsParams{
-		EffectiveDate: pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
-		EloConstK:     payload.EloConstK,
-		EloConstD:     payload.EloConstD,
-		StartingElo:   payload.StartingElo,
-		WinReward:     payload.WinReward,
+	latest, err := a.Queries.GetEloSettingsForDate(c.Request.Context(), pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	err = a.Queries.CreateEloSettings(c.Request.Context(), db.CreateEloSettingsParams{
+		EffectiveDate:             pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
+		EloConstK:                 payload.EloConstK,
+		EloConstD:                 payload.EloConstD,
+		StartingElo:               payload.StartingElo,
+		WinReward:                 payload.WinReward,
+		NewbieLeagueEarnedMin:     latest.NewbieLeagueEarnedMin,
+		NewbieLeagueEarnedMax:     latest.NewbieLeagueEarnedMax,
+		NewbieLeagueEarnedTau:     latest.NewbieLeagueEarnedTau,
+		NewbieLeagueGoalGap:       latest.NewbieLeagueGoalGap,
+		StartingRatingGlobalArena: latest.StartingRatingGlobalArena,
+		StartingRatingGameArena:   latest.StartingRatingGameArena,
+		EliteLeagueMatches6months: latest.EliteLeagueMatches6months,
+		EliteLeagueMatches2months: latest.EliteLeagueMatches2months,
 	})
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)

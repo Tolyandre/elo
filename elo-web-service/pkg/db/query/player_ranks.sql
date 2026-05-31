@@ -1,12 +1,13 @@
 -- name: ListPlayersWithStats :many
 SELECT p.id, p.name,
   CASE WHEN latest_elo.rating_after IS NULL THEN NULL ELSE latest_elo.rating_after END AS rating,
+  CASE WHEN latest_elo.elo_after IS NULL THEN NULL ELSE latest_elo.elo_after END AS elo,
   COALESCE(latest_elo.league, 'newbie') AS league,
   COALESCE(cnt_60.cnt, 0) AS cnt_60,
   COALESCE(cnt_180.cnt, 0) AS cnt_180
 FROM players p
 LEFT JOIN LATERAL (
-  SELECT gas.rating_after, gas.league
+  SELECT gas.rating_after, gas.elo_after, gas.league
   FROM global_arena_settlement gas
   WHERE gas.player_id = p.id AND gas.date <= $1
   ORDER BY gas.date DESC, gas.id DESC

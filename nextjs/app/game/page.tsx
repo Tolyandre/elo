@@ -6,6 +6,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { useSettings } from "@/app/settingsContext";
+import { winsNeededForAmateur } from "@/app/eloCalculation";
 import { MatchCard } from "@/components/match-card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -37,7 +38,13 @@ function GameWrapped() {
   const [loadingMatches, setLoadingMatches] = useState(true);
   const { players: allPlayers } = usePlayers();
   const { roundToInteger } = useMe();
-  const { newbieLeagueGoal } = useSettings();
+  const { newbieLeagueGoalGap, startingRatingGameArena, startingElo,
+          eloConstK, eloConstD, newbieLeagueEarnedMax, newbieLeagueEarnedTau } = useSettings();
+
+  const [typicalWinsLower, typicalWinsUpper] = winsNeededForAmateur(
+    startingElo - startingRatingGameArena,
+    newbieLeagueGoalGap, eloConstK, newbieLeagueEarnedMax, newbieLeagueEarnedTau, eloConstD
+  );
 
   useEffect(() => {
     getGamePromise(id)
@@ -95,23 +102,35 @@ function GameWrapped() {
 
         {(["amateur", "newbie"] as const).map((league) => {
           const leaguePlayers = game?.players.filter(p => p.league === league) ?? [];
-          if (leaguePlayers.length === 0) return null;
+          const title = league === "amateur" ? "Любители" : "Новички";
           return (
             <div key={league}>
-              <h2 className="text-lg font-semibold mb-2 mt-4">{league === "amateur" ? "Любители" : "Новички"}</h2>
-              <table className="table-auto border-collapse mb-2">
-                <tbody>
-                  {leaguePlayers.map((player) => (
-                    <tr key={player.id}>
-                      <td className="px-1 py-2"><span>{player.rank}</span></td>
-                      <td className="px-4 py-2">{allPlayers.find(p => p.id === player.id)?.name}</td>
-                      <td className="px-1 py-2">{player.rating.toFixed(0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {league === "amateur" && newbieLeagueGoal > 0 && (
-                <p className="text-xs text-muted-foreground mb-2">Для Лиги Любителей нужен рейтинг: {newbieLeagueGoal}</p>
+              <h2 className="text-lg font-semibold mb-2 mt-4">{title}</h2>
+              {leaguePlayers.length === 0
+                ? <p className="text-sm text-muted-foreground mb-2">Нет игроков</p>
+                : <table className="table-auto border-collapse mb-2">
+                  <tbody>
+                    {leaguePlayers.map((player) => (
+                      <tr key={player.id}>
+                        <td className="px-1 py-2"><span>{player.rank}</span></td>
+                        <td className="px-4 py-2">
+                          {allPlayers.find(p => p.id === player.id)?.name}
+                          {player.wins_needed_for_amateur != null && player.wins_needed_for_amateur > 0 && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ещё ~{player.wins_needed_for_amateur}{player.wins_needed_for_amateur_upper != null && player.wins_needed_for_amateur_upper > player.wins_needed_for_amateur ? `–${player.wins_needed_for_amateur_upper}` : ""} побед
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-1 py-2">{player.rating.toFixed(0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              }
+              {league === "amateur" && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  Для Лиги Любителей нужно совпадение рейтинга с эло (эло − рейтинг ≤ {newbieLeagueGoalGap}), примерно {typicalWinsLower}–{typicalWinsUpper} побед
+                </p>
               )}
             </div>
           );

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChartContainer } from '@/components/ui/chart'
@@ -116,13 +116,26 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
         elo: Math.round(p.elo),
     }))
 
+    const current = chartData.length > 0 ? chartData[chartData.length - 1] : null
+
     return (
         <div className="space-y-6 p-4 max-w-3xl mx-auto">
             <PageHeader title={stats.player_name} />
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Рейтинг Эло</CardTitle>
+                <CardHeader className="pb-2">
+                    <div className="flex items-end justify-between gap-4">
+                        <div>
+                            <CardTitle className="text-sm font-medium text-muted-foreground mb-1">Рейтинг</CardTitle>
+                            {current && <p className="text-4xl font-bold leading-none">{current.rating}</p>}
+                        </div>
+                        {current && (
+                            <div className="text-right text-sm text-muted-foreground mb-0.5">
+                                <span>эло </span>
+                                <span className="font-medium text-foreground">{current.elo}</span>
+                            </div>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {chartData.length === 0 ? (
@@ -146,6 +159,10 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                                 />
                                 <Tooltip
                                     formatter={(value, name) => [value, name === 'rating' ? 'Рейтинг' : 'Эло']}
+                                />
+                                <Legend
+                                    formatter={(name) => name === 'rating' ? 'Рейтинг' : 'Эло'}
+                                    wrapperStyle={{ fontSize: 12, paddingTop: 4 }}
                                 />
                                 <Line
                                     type="monotone"

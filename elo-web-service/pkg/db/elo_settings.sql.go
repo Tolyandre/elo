@@ -13,10 +13,11 @@ import (
 
 const createEloSettings = `-- name: CreateEloSettings :exec
 INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
-    starting_rating, newbie_league_goal,
-    rating_max_k, rating_k_tau,
+    newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
+    newbie_league_goal_gap,
+    starting_rating_global_arena, starting_rating_game_arena,
     elite_league_matches_6months, elite_league_matches_2months)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `
 
 type CreateEloSettingsParams struct {
@@ -25,10 +26,12 @@ type CreateEloSettingsParams struct {
 	EloConstD                 float64            `json:"elo_const_d"`
 	StartingElo               float64            `json:"starting_elo"`
 	WinReward                 float64            `json:"win_reward"`
-	StartingRating            float64            `json:"starting_rating"`
-	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
-	RatingMaxK                float64            `json:"rating_max_k"`
-	RatingKTau                float64            `json:"rating_k_tau"`
+	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
 }
@@ -40,10 +43,12 @@ func (q *Queries) CreateEloSettings(ctx context.Context, arg CreateEloSettingsPa
 		arg.EloConstD,
 		arg.StartingElo,
 		arg.WinReward,
-		arg.StartingRating,
-		arg.NewbieLeagueGoal,
-		arg.RatingMaxK,
-		arg.RatingKTau,
+		arg.NewbieLeagueEarnedMin,
+		arg.NewbieLeagueEarnedMax,
+		arg.NewbieLeagueEarnedTau,
+		arg.NewbieLeagueGoalGap,
+		arg.StartingRatingGlobalArena,
+		arg.StartingRatingGameArena,
 		arg.EliteLeagueMatches6months,
 		arg.EliteLeagueMatches2months,
 	)
@@ -61,8 +66,9 @@ func (q *Queries) DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Ti
 
 const getEloSettingsForDate = `-- name: GetEloSettingsForDate :one
 SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
-       starting_rating, newbie_league_goal,
-       rating_max_k, rating_k_tau,
+       newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
+       newbie_league_goal_gap,
+       starting_rating_global_arena, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 WHERE effective_date <= $1
@@ -75,10 +81,12 @@ type GetEloSettingsForDateRow struct {
 	EloConstD                 float64 `json:"elo_const_d"`
 	StartingElo               float64 `json:"starting_elo"`
 	WinReward                 float64 `json:"win_reward"`
-	StartingRating            float64 `json:"starting_rating"`
-	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
-	RatingMaxK                float64 `json:"rating_max_k"`
-	RatingKTau                float64 `json:"rating_k_tau"`
+	NewbieLeagueEarnedMin     float64 `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64 `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64 `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64 `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
 }
@@ -91,10 +99,12 @@ func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtyp
 		&i.EloConstD,
 		&i.StartingElo,
 		&i.WinReward,
-		&i.StartingRating,
-		&i.NewbieLeagueGoal,
-		&i.RatingMaxK,
-		&i.RatingKTau,
+		&i.NewbieLeagueEarnedMin,
+		&i.NewbieLeagueEarnedMax,
+		&i.NewbieLeagueEarnedTau,
+		&i.NewbieLeagueGoalGap,
+		&i.StartingRatingGlobalArena,
+		&i.StartingRatingGameArena,
 		&i.EliteLeagueMatches6months,
 		&i.EliteLeagueMatches2months,
 	)
@@ -103,8 +113,9 @@ func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtyp
 
 const getLatestEloSettings = `-- name: GetLatestEloSettings :one
 SELECT elo_const_k, elo_const_d, starting_elo, win_reward, effective_date,
-       starting_rating, newbie_league_goal,
-       rating_max_k, rating_k_tau,
+       newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
+       newbie_league_goal_gap,
+       starting_rating_global_arena, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
@@ -117,10 +128,12 @@ type GetLatestEloSettingsRow struct {
 	StartingElo               float64            `json:"starting_elo"`
 	WinReward                 float64            `json:"win_reward"`
 	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
-	StartingRating            float64            `json:"starting_rating"`
-	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
-	RatingMaxK                float64            `json:"rating_max_k"`
-	RatingKTau                float64            `json:"rating_k_tau"`
+	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
 }
@@ -134,10 +147,12 @@ func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSetting
 		&i.StartingElo,
 		&i.WinReward,
 		&i.EffectiveDate,
-		&i.StartingRating,
-		&i.NewbieLeagueGoal,
-		&i.RatingMaxK,
-		&i.RatingKTau,
+		&i.NewbieLeagueEarnedMin,
+		&i.NewbieLeagueEarnedMax,
+		&i.NewbieLeagueEarnedTau,
+		&i.NewbieLeagueGoalGap,
+		&i.StartingRatingGlobalArena,
+		&i.StartingRatingGameArena,
 		&i.EliteLeagueMatches6months,
 		&i.EliteLeagueMatches2months,
 	)
@@ -146,8 +161,9 @@ func (q *Queries) GetLatestEloSettings(ctx context.Context) (GetLatestEloSetting
 
 const listEloSettings = `-- name: ListEloSettings :many
 SELECT effective_date, elo_const_k, elo_const_d, starting_elo, win_reward,
-       starting_rating, newbie_league_goal,
-       rating_max_k, rating_k_tau,
+       newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau,
+       newbie_league_goal_gap,
+       starting_rating_global_arena, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months
 FROM elo_settings
 ORDER BY effective_date DESC
@@ -159,10 +175,12 @@ type ListEloSettingsRow struct {
 	EloConstD                 float64            `json:"elo_const_d"`
 	StartingElo               float64            `json:"starting_elo"`
 	WinReward                 float64            `json:"win_reward"`
-	StartingRating            float64            `json:"starting_rating"`
-	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
-	RatingMaxK                float64            `json:"rating_max_k"`
-	RatingKTau                float64            `json:"rating_k_tau"`
+	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
 }
@@ -182,10 +200,12 @@ func (q *Queries) ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, er
 			&i.EloConstD,
 			&i.StartingElo,
 			&i.WinReward,
-			&i.StartingRating,
-			&i.NewbieLeagueGoal,
-			&i.RatingMaxK,
-			&i.RatingKTau,
+			&i.NewbieLeagueEarnedMin,
+			&i.NewbieLeagueEarnedMax,
+			&i.NewbieLeagueEarnedTau,
+			&i.NewbieLeagueGoalGap,
+			&i.StartingRatingGlobalArena,
+			&i.StartingRatingGameArena,
 			&i.EliteLeagueMatches6months,
 			&i.EliteLeagueMatches2months,
 		); err != nil {

@@ -39,12 +39,14 @@ type EloSetting struct {
 	EloConstD                 float64            `json:"elo_const_d"`
 	StartingElo               float64            `json:"starting_elo"`
 	WinReward                 float64            `json:"win_reward"`
-	StartingRating            float64            `json:"starting_rating"`
-	NewbieLeagueGoal          float64            `json:"newbie_league_goal"`
 	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
 	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
-	RatingMaxK                float64            `json:"rating_max_k"`
-	RatingKTau                float64            `json:"rating_k_tau"`
+	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 }
 
 type Game struct {

@@ -216,7 +216,7 @@ function HelpPageContent() {
                             Это позволяет видеть как общий уровень игрока, так и его мастерство в конкретной игре.
                         </p>
 
-                        <p>Арена состоит из лиг, чтобы разделить игроков, сыгравших много партий и только начинающих, т.к. 
+                        <p>Арена состоит из лиг, чтобы разделить игроков, сыгравших много партий и только начинающих, т.к.
                             начальный рейтинг не точен.
                         </p>
 
@@ -239,7 +239,7 @@ function HelpPageContent() {
                                             Увеличение рейтинга с каждой партией мотивирует играть на рейтинг. Начальное действительное значение эло часто падает, что демотивирует новичков.
                                         </td>
                                         <td className="py-2">
-                                            Переход в Лигу Любителей, когда рейтинг ≥ {settings.newbieLeagueGoal}
+                                            Переход в Лигу Любителей, когда |эло − рейтинг| ≤ {settings.newbieLeagueGoalGap}
                                         </td>
                                     </tr>
                                     <tr>
@@ -265,8 +265,9 @@ function HelpPageContent() {
                         </div>
 
                         <p>
-                            Новый игрок попадает в Лигу Новичков, если стартовый рейтинг ({settings.startingRating}) меньше
-                            порога перехода ({settings.newbieLeagueGoal}). Принадлежность к Высшей лиге
+                            Новый игрок попадает в Лигу Новичков, если стартовый разрыв |эло − рейтинг| больше{" "}
+                            {settings.newbieLeagueGoalGap} (стартовый рейтинг на глобальной арене — {settings.startingRatingGlobalArena},
+                            на игровой — {settings.startingRatingGameArena}). Принадлежность к Высшей лиге
                             проверяется при каждой партии по скользящим счётчикам активности.
                         </p>
                         <p>
@@ -284,52 +285,77 @@ function HelpPageContent() {
                     <AccordionContent className="space-y-4 text-sm leading-relaxed">
                         <p>
                             У каждого игрока хранятся два значения: скрытое <strong>эло</strong> (начинается с <strong>{settings.startingElo}</strong>) и
-                            видимый <strong>рейтинг</strong> (начинается с <strong>{settings.startingRating}</strong>). Эло используется при расчёте ожидаемого
+                            видимый <strong>рейтинг</strong> (начинается с <strong>{settings.startingRatingGlobalArena}</strong> на глобальной арене,
+                            <strong> {settings.startingRatingGameArena}</strong> на игровой). Эло используется при расчёте ожидаемого
                             результата игрока, а также влияет на расчёт соперникам.
                             Видимый рейтинг отображается в приложении, постепенно сходясь с эло.
                         </p>
                         <p>
                             Это сделано, чтобы новички не разочаровывались регулярным падением рейтинга в начале, если их уровень ниже стартового эло.
                             Видимый рейтинг отражает реальный уровень только после нескольких игр.
-                            Регулярный рост на старте мотивирует новичков играть больше партий. При этом 
+                            Регулярный рост на старте мотивирует новичков играть больше партий. При этом
                             начисление рейтинга постепенно становится справедливым с каждой партией.
                         </p>
 
                         <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
-                            Адаптивный коэффициент K для рейтинга
+                            Формула рейтинга новичков
                         </p>
                         <p>
-                            Для обеспечения сходимости рейтинга к эло расчёт рейтинга производится по тем же формулам, но используется адаптивный{" "}
-                            <InlineMath math="K_{\text{rating}}" />, зависящий от разрыва{" "}
-                            <InlineMath math="\text{gap} = \text{elo} - \text{rating}" />:
+                            Для рейтинга новичков считается и рейтинг и эло. Эло считается по обычной формуле,
+                            которая описана в предыдущем разделе. Для расчёта рейтинга используется та же формула, но
+                            берётся рейтинг игрока (вместо эло) и значения эло соперников. Чтобы рейтинг быстрее стремился
+                            к эло, к компоненте earned добавляется множитель, который зависит от разрыва между рейтингом и эло.
                         </p>
+                        <p>Для эло:</p>
                         <Card className="bg-muted/50">
-                            <CardContent className="py-3 overflow-x-auto">
-                                <BlockMath math={String.raw`K_{\text{rating}}(\text{gap}) = K_{\text{std}} + (K_{\text{max}} - K_{\text{std}}) \cdot \left(1 - e^{-|\text{gap}|/\tau}\right)`} />
+                            <CardContent className="py-3 overflow-x-auto space-y-2">
+                                <p>
+                                    <InlineMath math="E_i" /> — ожидаемый нормированный результат игрока <InlineMath math="i" />
+                                </p><p>
+                                    <InlineMath math={`elo\\_staked = -K \\cdot E_i`} /> - плата за участие
+                                </p><p>
+                                    <InlineMath math="S_i" /> — нормированные победные очки
+                                </p><p>
+                                    <InlineMath math={`elo\\_earned = K \\cdot S_i`} /> - заработано
+                                </p>
                             </CardContent>
                         </Card>
                         <p>
-                            При <InlineMath math="\text{gap} = 0" /> (сходимость достигнута){" "}
-                            <InlineMath math={`K_{\\text{rating}} = K_{\\text{std}} = ${settings.eloConstK}`} />.
-                            При большом разрыве <InlineMath math="K_{\text{rating}}" /> приближается к{" "}
-                            <InlineMath math={`K_{\\text{max}} = ${settings.ratingMaxK}`} />, ускоряя сходимость.
-                            Константа затухания <InlineMath math={`\\tau = ${settings.ratingKTau}`} />.
+                            Для рейтинга:
                         </p>
+                        <Card className="bg-muted/50">
+                            <CardContent className="py-3 overflow-x-auto space-y-2">
+                                <p>
+                                    <InlineMath math="E_i^\text{r}" /> — ожидаемый нормированный результат игрока <InlineMath math="i" /> при расчёте через рейтинг вместо эло
+                                </p>
+                                <p>
+                                    <InlineMath math="gap = |рейтинг - эло|" /> - разрыв между рейтингом и эло
+                                </p>
+                                <p className="text-xs font-medium">Когда эло &gt; рейтинг (рейтинг догоняет эло):</p>
+                                <BlockMath math={String.raw`t = 1 - e^{-\text{gap}/\tau}, \quad \tau = ${settings.newbieLeagueEarnedTau}`} />
+                                <BlockMath math={String.raw`\text{rating\_earned}_{\min} = ${settings.newbieLeagueEarnedMin} \cdot t, \quad \text{rating\_earned}_{\max} = K + (${settings.newbieLeagueEarnedMax} - K) \cdot t`} />
+                                <BlockMath math={String.raw`\text{rating\_earned} = \text{rating\_earned}_{\min} + S_i \cdot (\text{rating\_earned}_{\max} - \text{rating\_earned}_{\min})`} />
+                                <BlockMath math={String.raw`\text{rating\_staked} = -K \cdot E_i^\text{r} \quad \text{(без усиления)}`} />
 
-                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
-                            Защита новичков
-                        </p>
+                                <p className="text-xs font-medium mt-2">Когда рейтинг &gt; эло (рейтинг превысил эло):</p>
+                                <BlockMath math={String.raw`t = 1 - e^{-\text{gap}/\tau}, \quad `} />
+                                <BlockMath math={String.raw`\text{rating\_staked} = -\bigl(K + (${settings.newbieLeagueEarnedMax} - K)\cdot t\bigr) \cdot E_i^\text{r} \quad `} />
+                                <BlockMath math={String.raw`\text{rating\_earned} = K \cdot S_i \quad \text{(без усиления)}`} />
+                            </CardContent>
+                        </Card>
                         <p>
-                            Пока игрок в Лиге Новичков, его рейтинг не может уменьшиться: если по формуле выходит
-                            убыток, результат заменяется на <InlineMath math="+1" />.
+                            При gap = 0 оба случая совпадают со стандартным Эло.
+                            Пока рейтинг значительно меньше эло: <InlineMath math={"E_i^\\text{r} \\approx 0"} /> → staked ≈ 0
+                            , поэтому <InlineMath math={`\\text{rating\\_earned}_{\\min} = ${settings.newbieLeagueEarnedMin}t`} /> гарантирует
+                             положительный итог при поражении.
                         </p>
 
                         <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
-                            График 1: зависимость staked/earned от разрыва
+                            График 1: зависимость staked/earned от видимого рейтинга
                         </p>
                         <p className="text-muted-foreground">
-                            Настройте ожидаемый (E) и фактический (S) результат партии и посмотрите, как
-                            rating_staked/rating_earned растут с разрывом, тогда как elo_staked/elo_earned остаются постоянными.
+                            Левее эло: rating_earned (зелёная) усилена. Правее эло: rating_staked (оранжевая) усилена.
+                            Пунктир — elo-трек, сплошная — rating-трек.
                         </p>
                         <RatingGapChart />
 
@@ -341,6 +367,35 @@ function HelpPageContent() {
                             сплошная линия — видимый рейтинг. Задайте вероятность победы каждого игрока.
                         </p>
                         <ConvergenceChart />
+
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
+                            Примерное число побед для выхода из Лиги Новичков
+                        </p>
+                        <p>
+                            Условие перехода в Лигу Любителей: <InlineMath math={`\\text{эло} - \\text{рейтинг} \\le ${settings.newbieLeagueGoalGap}`} /> (без модуля — рейтинг догнал эло).
+                            Изменение рейтинга за одну победу с текущим разрывом <InlineMath math="g" /> (gap):
+                        </p>
+                        <Card className="bg-muted/50">
+                            <CardContent className="py-3 overflow-x-auto space-y-1">
+                                <BlockMath math={String.raw`\Delta_\text{win}(g) = \text{rating\_earned}_{\max}(g) - K \cdot E(g)`} />
+                                <BlockMath math={String.raw`E(g) = \frac{1}{1 + 10^{g/D}}, \quad D = ${settings.eloConstD}`} />
+                            </CardContent>
+                        </Card>
+                        <p>
+                            Здесь <InlineMath math="E(g)" /> — ожидаемый результат игрока с рейтингом <InlineMath math="\text{эло} - g" /> против соперника с рейтингом <InlineMath math="\text{эло}" />.
+                            Тогда число побед — интеграл:
+                        </p>
+                        <Card className="bg-muted/50">
+                            <CardContent className="py-3 overflow-x-auto space-y-1">
+                                <BlockMath math={String.raw`n_{\min} \approx \int_{\Delta}^{\text{gap}} \frac{dg}{\Delta_\text{win}(g)}`} />
+                                <BlockMath math={String.raw`n_{\max} \approx \int_{\Delta}^{\text{gap}} \frac{dg}{\Delta_\text{win}(g) - K/2}, \quad \Delta = ${settings.newbieLeagueGoalGap}`} />
+                            </CardContent>
+                        </Card>
+                        <p>
+                            <InlineMath math="n_{\min}" /> — нижняя граница (эло фиксировано).{" "}
+                            <InlineMath math="n_{\max}" /> — верхняя граница: вычитается прирост эло за победу ≈ <InlineMath math="K/2" /> (расчёт исходя из двух игроков, соперник равен по силе).
+                            Отображается рядом с именем игрока в Лиге Новичков в формате <em>~ <InlineMath math="n_{\min}" /> –<InlineMath math="n_{\max}" /> побед</em>.
+                        </p>
                     </AccordionContent>
                 </AccordionItem>
 

@@ -287,6 +287,14 @@ GamePlayer:
       enum: [newbie, amateur]
     rank:
       type: integer
+    wins_needed_for_amateur:
+      type: integer
+      nullable: true
+      description: Lower bound of wins needed to reach amateur league (elo treated as fixed).
+    wins_needed_for_amateur_upper:
+      type: integer
+      nullable: true
+      description: Upper bound of wins needed (accounts for elo growth ≈ K/2 per win).
   required: [id, rating, league, rank]
 
 Game:

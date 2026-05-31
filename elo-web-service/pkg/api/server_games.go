@@ -44,11 +44,22 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 
 	players := make([]GamePlayer, 0, len(gameStatistics.Players))
 	for _, p := range gameStatistics.Players {
+		var winsLower, winsUpper *int
+		if p.League == "newbie" && p.WinsNeededForAmateurLower > 0 {
+			v := p.WinsNeededForAmateurLower
+			winsLower = &v
+		}
+		if p.League == "newbie" && p.WinsNeededForAmateurUpper > 0 {
+			v := p.WinsNeededForAmateurUpper
+			winsUpper = &v
+		}
 		players = append(players, GamePlayer{
-			Id:     p.Id,
-			Rating: p.Elo,
-			League: GamePlayerLeague(p.League),
-			Rank:   p.Rank,
+			Id:                        p.Id,
+			Rating:                    p.Elo,
+			League:                    GamePlayerLeague(p.League),
+			Rank:                      p.Rank,
+			WinsNeededForAmateur:      winsLower,
+			WinsNeededForAmateurUpper: winsUpper,
 		})
 	}
 

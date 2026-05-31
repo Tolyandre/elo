@@ -167,7 +167,11 @@ WHERE gas.game_id = $1
 ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC;
 
 -- name: ListLatestGameRatingPerPlayer :many
-SELECT DISTINCT ON (gas.player_id) gas.player_id, gas.rating_after AS game_rating_after, gas.league
+SELECT DISTINCT ON (gas.player_id)
+  gas.player_id,
+  gas.rating_after AS game_rating_after,
+  gas.elo_after    AS game_elo_after,
+  gas.league
 FROM game_arena_settlement gas
 WHERE gas.game_id = $1
 ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC;

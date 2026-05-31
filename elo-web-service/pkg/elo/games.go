@@ -6,16 +6,20 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 type GamePlayerStat struct {
-	Id     string
-	Elo    float64
-	League string
-	Rank   int
+	Id                        string
+	Elo                       float64
+	League                    string
+	Rank                      int
+	WinsNeededForAmateurLower int
+	WinsNeededForAmateurUpper int
 }
 
 type GameStatistics struct {
@@ -116,12 +120,26 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 	}
 
+	settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get elo settings: %v", err)
+	}
+	settings := EloSettingsFromDB(settingsRow)
+
 	players := make([]GamePlayerStat, 0, len(ratingRows))
 	for _, r := range ratingRows {
+		var winsLower, winsUpper int
+		if r.League == "newbie" {
+			gap := r.GameEloAfter - r.GameRatingAfter
+			winsLower, winsUpper = calcWinsNeededForAmateur(gap, settings)
+		}
+
 		players = append(players, GamePlayerStat{
-			Id:     fmt.Sprintf("%d", r.PlayerID),
-			Elo:    r.GameRatingAfter,
-			League: r.League,
+			Id:                        fmt.Sprintf("%d", r.PlayerID),
+			Elo:                       r.GameRatingAfter,
+			League:                    r.League,
+			WinsNeededForAmateurLower: winsLower,
+			WinsNeededForAmateurUpper: winsUpper,
 		})
 	}
 

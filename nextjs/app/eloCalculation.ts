@@ -52,15 +52,59 @@ export function calculateEloChanges(
     });
 }
 
-// Mirror of elo-web-service/pkg/elo/matches.go:ratingK
-export function ratingK(gap: number, kStd: number, kMax: number, tau: number): number {
-    return kStd + (kMax - kStd) * (1 - Math.exp(-Math.abs(gap) / tau))
+// Mirror of elo-web-service/pkg/elo/matches.go:scaleRatingEarned
+// Amplifies earned only when elo > rating (rating still catching up).
+// When rating >= elo, returns ratingEarnedRaw unchanged (standard Elo).
+export function scaleRatingEarned(
+    ratingEarnedRaw: number, prevElo: number, prevRating: number,
+    K: number, earnedMin: number, earnedMax: number, tau: number
+): number {
+    if (prevRating >= prevElo) return ratingEarnedRaw
+    const gap = prevElo - prevRating
+    const t = 1 - Math.exp(-gap / tau)
+    const effMin = earnedMin * t
+    const effMax = K + (earnedMax - K) * t
+    if (K === 0) return effMin
+    return effMin + (ratingEarnedRaw / K) * (effMax - effMin)
 }
 
-// Mirror of elo-web-service/pkg/elo/matches.go:applyNewbieClamping
-export function applyNewbieClamping(league: string, staked: number, earned: number): [number, number] {
-    if (league === "newbie" && staked + earned < 0) return [0, 1]
-    return [staked, earned]
+// Mirror of elo-web-service/pkg/elo/matches.go:scaleRatingStaked
+// Amplifies staked only when rating > elo (rating has overshot, needs to come back).
+// When rating <= elo, returns ratingStakedRaw unchanged (standard Elo).
+export function scaleRatingStaked(
+    ratingStakedRaw: number, prevElo: number, prevRating: number,
+    K: number, earnedMax: number, tau: number
+): number {
+    if (prevRating <= prevElo || K === 0) return ratingStakedRaw
+    const gap = prevRating - prevElo
+    const t = 1 - Math.exp(-gap / tau)
+    const stakedScale = K + (earnedMax - K) * t
+    return ratingStakedRaw * (stakedScale / K)
+}
+
+// Numerical estimate of wins needed to close the directed gap (elo − rating) to goalGap.
+// Returns [lower, upper] bounds:
+//   lower: elo treated as fixed (only rating grows per win)
+//   upper: elo also grows ≈ K/2 per win (conservative 2-player equal-elo approximation)
+// Δ_win(g) = earnedMax(g) − K·E(g), E(g) = 1/(1+10^(g/D))
+export function winsNeededForAmateur(
+    gap: number, goalGap: number, K: number, earnedMax: number, tau: number, D: number
+): [number, number] {
+    if (gap <= goalGap || D === 0) return [0, 0]
+    const STEP = 1
+    const deltaEloPerWin = K / 2
+    let totalLower = 0, totalUpper = 0
+    for (let g = goalGap; g < gap; g += STEP) {
+        const delta = Math.min(STEP, gap - g)
+        const mid = g + delta / 2
+        const eMax = K + (earnedMax - K) * (1 - Math.exp(-mid / tau))
+        const eWin = 1 / (1 + Math.pow(10, mid / D))
+        const netRating = eMax - K * eWin
+        if (netRating > 0) totalLower += delta / netRating
+        const netGap = netRating - deltaEloPerWin
+        if (netGap > 0) totalUpper += delta / netGap
+    }
+    return [Math.ceil(totalLower), Math.ceil(totalUpper)]
 }
 
 // Mirror of elo-web-service/pkg/elo/elo.go:NormalizedScore

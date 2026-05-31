@@ -239,6 +239,14 @@ EloRank:
       type: integer
       nullable: true
       description: Only set for amateur league players; how many more matches are needed to reach elite league.
+    wins_needed_for_amateur:
+      type: integer
+      nullable: true
+      description: Lower bound of wins needed to reach amateur league (elo treated as fixed).
+    wins_needed_for_amateur_upper:
+      type: integer
+      nullable: true
+      description: Upper bound of wins needed (accounts for elo growth ≈ K/2 per win).
   required: [rating, league]
 
 HistoryRank:

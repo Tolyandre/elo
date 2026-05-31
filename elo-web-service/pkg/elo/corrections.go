@@ -55,9 +55,9 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	var prevRating, prevElo float64
 	var prevLeague string
 	if err != nil {
-		prevRating = settings.StartingRating
+		prevRating = settings.StartingRatingGlobal
 		prevElo = settings.StartingElo
-		prevLeague = initialLeague(settings)
+		prevLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
 	} else {
 		prevRating = prevRow.Rating
 		prevElo = prevRow.Elo
@@ -67,7 +67,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	newRating := prevRating + diff
 	ratingStaked := math.Min(diff, 0)
 	ratingEarned := math.Max(diff, 0)
-	league := determineCorrectionLeague(prevLeague, newRating, settings)
+	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
 
 	if err := q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
 		PlayerID:     playerID,
@@ -86,11 +86,11 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 }
 
 // determineCorrectionLeague returns the league after a manual rating correction.
-// Any rating below the newbie goal demotes the player to "newbie" regardless of
-// match count; rating at or above the goal promotes "newbie" → "amateur" and
-// keeps "amateur"/"elite" as-is (elite requires match counts we don't have here).
-func determineCorrectionLeague(prev string, newRating float64, s EloSettings) string {
-	if newRating < s.NewbieLeagueGoal {
+// Uses isInNewbieLeague (shared with match settlements) to check the gap condition.
+// Corrections can demote any player to newbie if the gap opens (elo - rating > goalGap),
+// unlike match settlements which only check the gap for players already in the newbie league.
+func determineCorrectionLeague(prev string, newRating, prevElo float64, s EloSettings) string {
+	if isInNewbieLeague(newRating, prevElo, s) { // prevElo - newRating > goalGap
 		return "newbie"
 	}
 	if prev == "newbie" {
@@ -117,9 +117,9 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 	var prevRating, prevElo float64
 	var prevLeague string
 	if err != nil {
-		prevRating = settings.StartingRating
+		prevRating = settings.StartingRatingGlobal
 		prevElo = settings.StartingElo
-		prevLeague = initialLeague(settings)
+		prevLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
 	} else {
 		prevRating = prevRow.Rating
 		prevElo = prevRow.Elo
@@ -129,7 +129,7 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 	newRating := prevRating + correction.Diff
 	ratingStaked := math.Min(correction.Diff, 0)
 	ratingEarned := math.Max(correction.Diff, 0)
-	league := determineCorrectionLeague(prevLeague, newRating, settings)
+	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
 
 	return q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
 		PlayerID:     correction.PlayerID,

@@ -71,6 +71,16 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 			matchesLeftForElite = &v
 		}
 
+		var winsNeededForAmateur, winsNeededForAmateurUpper *int
+		if p.League == "newbie" && p.WinsNeededForAmateurLower > 0 {
+			v := p.WinsNeededForAmateurLower
+			winsNeededForAmateur = &v
+		}
+		if p.League == "newbie" && p.WinsNeededForAmateurUpper > 0 {
+			v := p.WinsNeededForAmateurUpper
+			winsNeededForAmateurUpper = &v
+		}
+
 		result = append(result, Player{
 			Id:            p.ID,
 			Name:          p.Name,
@@ -78,10 +88,12 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 			UserId:        userID,
 			Rank: HistoryRank{
 				Now: EloRank{
-					Rating:              p.Elo,
-					League:              EloRankLeague(p.League),
-					Rank:                p.Rank,
-					MatchesLeftForElite: matchesLeftForElite,
+					Rating:                    p.Elo,
+					League:                    EloRankLeague(p.League),
+					Rank:                      p.Rank,
+					MatchesLeftForElite:        matchesLeftForElite,
+					WinsNeededForAmateur:       winsNeededForAmateur,
+					WinsNeededForAmateurUpper:  winsNeededForAmateurUpper,
 				},
 				DayAgo: EloRank{
 					Rating: dayAgo.Elo,

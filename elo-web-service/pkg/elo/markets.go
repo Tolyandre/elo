@@ -305,8 +305,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			Date:     resolvedAtTz,
 		})
 		if err != nil {
-			currentRating = settings.StartingRating
-			storedLeague = initialLeague(settings)
+			currentRating = settings.StartingRatingGlobal
+			storedLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
 		} else {
 			currentRating = latestRating.Rating
 			storedLeague = latestRating.League
@@ -325,7 +325,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			Date_2:   resolvedAtTz,
 		})
 		prevLeague := effectiveLeague(storedLeague, int(count2M), int(count6M), settings)
-		newLeague := determineGlobalLeague(prevLeague, newRating, int(count6M), int(count2M), settings)
+		newLeague := determineGlobalLeague(prevLeague, newRating, newElo, int(count6M), int(count2M), settings)
 
 		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
 			PlayerID:     pid,

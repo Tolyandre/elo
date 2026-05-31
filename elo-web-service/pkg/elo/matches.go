@@ -308,8 +308,8 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
 		})
 		if err != nil {
-			state.Rating[playerID] = settings.StartingRating
-			state.League[playerID] = initialLeague(settings)
+			state.Rating[playerID] = settings.StartingRatingGlobal
+			state.League[playerID] = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
 		} else {
 			state.Rating[playerID] = prevGlobalRating.Rating
 			state.League[playerID] = prevGlobalRating.League
@@ -322,8 +322,8 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
 		})
 		if err != nil {
-			state.GameRating[playerID] = settings.StartingRating
-			state.GameLeague[playerID] = initialLeague(settings)
+			state.GameRating[playerID] = settings.StartingRatingGame
+			state.GameLeague[playerID] = initialLeagueForStarting(settings.StartingRatingGame, settings.StartingElo, settings)
 		} else {
 			state.GameRating[playerID] = prevGameRating.GameRatingAfter
 			state.GameLeague[playerID] = prevGameRating.League
@@ -387,26 +387,47 @@ type eloCalcResult struct {
 	newGameLeague   string
 }
 
-// ratingK returns K for the rating track using a continuous formula based on the gap
-// between true_elo and display rating: K(gap) = K_std + (RatingMaxK − K_std) × (1 − e^(−|gap|/τ)).
-// At gap=0 (converged) K equals K_std; as gap grows K approaches RatingMaxK.
-func ratingK(gap float64, s EloSettings) float64 {
-	return s.K + (s.RatingMaxK-s.K)*(1-math.Exp(-math.Abs(gap)/s.RatingKTau))
+// isInNewbieLeague returns true if elo still exceeds rating by more than the amateur threshold.
+// Condition is directional: player is newbie only while elo > rating + goalGap.
+// When rating catches up (elo - rating <= goalGap) or overshoots, the gap condition is met.
+// Shared by match and correction league determination functions.
+func isInNewbieLeague(rating, elo float64, s EloSettings) bool {
+	return elo-rating > s.NewbieLeagueGoalGap
 }
 
-// applyNewbieClamping prevents the rating from decreasing in the newbie league.
-// If staked+earned < 0, the player gets +1 instead of a loss.
-func applyNewbieClamping(league string, staked, earned float64) (float64, float64) {
-	if league == "newbie" && staked+earned < 0 {
-		return 0, 1
+// scaleRatingEarned amplifies rating_earned_raw when elo > rating (rating still catching up).
+// Maps ratingEarnedRaw ∈ [0, K] to [earnedMin·t, K+(earnedMax−K)·t] where t depends on gap.
+// When rating >= elo (caught up or overshot), earned is unchanged (standard Elo).
+func scaleRatingEarned(ratingEarnedRaw, prevElo, prevRating float64, s EloSettings) float64 {
+	if prevRating >= prevElo {
+		return ratingEarnedRaw
 	}
-	return staked, earned
+	gap := prevElo - prevRating
+	t := 1 - math.Exp(-gap/s.NewbieLeagueEarnedTau)
+	earnedMin := s.NewbieLeagueEarnedMin * t
+	earnedMax := s.K + (s.NewbieLeagueEarnedMax-s.K)*t
+	if s.K == 0 {
+		return earnedMin
+	}
+	return earnedMin + (ratingEarnedRaw/s.K)*(earnedMax-earnedMin)
 }
 
-// initialLeague returns the league for a player with no prior settlement.
-// If starting_rating already meets the newbie promotion threshold, they start as amateur.
-func initialLeague(s EloSettings) string {
-	if s.StartingRating >= s.NewbieLeagueGoal {
+// scaleRatingStaked amplifies rating_staked when rating > elo (rating has overshot).
+// Multiplies staked by stakedScale/K, where stakedScale increases with the overshoot gap.
+// When rating <= elo (normal case), staked is unchanged (standard Elo).
+func scaleRatingStaked(ratingStakedRaw, prevElo, prevRating float64, s EloSettings) float64 {
+	if prevRating <= prevElo || s.K == 0 {
+		return ratingStakedRaw
+	}
+	gap := prevRating - prevElo
+	t := 1 - math.Exp(-gap/s.NewbieLeagueEarnedTau)
+	stakedScale := s.K + (s.NewbieLeagueEarnedMax-s.K)*t
+	return ratingStakedRaw * (stakedScale / s.K)
+}
+
+// initialLeagueForStarting returns the league for a player with no prior settlement.
+func initialLeagueForStarting(startingRating, startingElo float64, s EloSettings) string {
+	if startingElo-startingRating <= s.NewbieLeagueGoalGap {
 		return "amateur"
 	}
 	return "newbie"
@@ -427,11 +448,10 @@ func effectiveLeague(storedLeague string, cnt60, cnt180 int, s EloSettings) stri
 }
 
 // determineGlobalLeague returns the league a player is in AFTER a global-arena settlement.
-func determineGlobalLeague(prev string, newRating float64, count6M, count2M int, s EloSettings) string {
-	if prev == "newbie" {
-		if newRating >= s.NewbieLeagueGoal {
-			return "amateur"
-		}
+// When a newbie's gap condition is met, the elite check is also applied immediately —
+// a player who simultaneously satisfies both the amateur and elite thresholds goes straight to elite.
+func determineGlobalLeague(prev string, newRating, newElo float64, count6M, count2M int, s EloSettings) string {
+	if prev == "newbie" && isInNewbieLeague(newRating, newElo, s) {
 		return "newbie"
 	}
 	if count6M >= s.EliteMatches6M && count2M >= s.EliteMatches2M {
@@ -441,9 +461,12 @@ func determineGlobalLeague(prev string, newRating float64, count6M, count2M int,
 }
 
 // determineGameLeague returns the league a player is in AFTER a game-arena settlement.
-func determineGameLeague(prev string, newRating float64, s EloSettings) string {
-	if prev == "newbie" && newRating < s.NewbieLeagueGoal {
-		return "newbie"
+func determineGameLeague(prev string, newRating, newElo float64, s EloSettings) string {
+	if prev == "newbie" {
+		if isInNewbieLeague(newRating, newElo, s) {
+			return "newbie"
+		}
+		return "amateur"
 	}
 	return "amateur"
 }
@@ -479,41 +502,37 @@ func buildEloResults(playerScores map[int32]float64, state MatchPrevState) map[i
 		eloEarned := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
 
 		// Global rating track: player's own rating replaces their elo in WinExpectation;
-		// K scales with gap between true elo and display rating.
-		globalGap := state.Elo[id] - state.Rating[id]
-		kR := ratingK(globalGap, s)
-		dR := s.D
+		// earned is scaled by gap between true elo and display rating (ADR-03).
 		prevEloForRating := make(map[string]float64, len(prevEloStr))
 		for k, v := range prevEloStr {
 			prevEloForRating[k] = v
 		}
 		prevEloForRating[idStr] = state.Rating[id]
 
-		ratingStakedRaw := -kR * WinExpectation(state.Rating[id], playerScoresStr, s.StartingElo, prevEloForRating, dR)
-		ratingEarnedRaw := kR * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
-		ratingStaked, ratingEarned := applyNewbieClamping(state.League[id], ratingStakedRaw, ratingEarnedRaw)
+		ratingStakedRaw := -s.K * WinExpectation(state.Rating[id], playerScoresStr, s.StartingElo, prevEloForRating, s.D)
+		ratingStaked := scaleRatingStaked(ratingStakedRaw, state.Elo[id], state.Rating[id], s)
+		ratingEarnedRaw := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		ratingEarned := scaleRatingEarned(ratingEarnedRaw, state.Elo[id], state.Rating[id], s)
 		newGlobalRating := state.Rating[id] + ratingStaked + ratingEarned
-		newGlobalLeague := determineGlobalLeague(state.League[id], newGlobalRating, state.Count6M[id], state.Count2M[id], s)
+		newGlobalLeague := determineGlobalLeague(state.League[id], newGlobalRating, newGlobalElos[idStr], state.Count6M[id], state.Count2M[id], s)
 
 		// Game elo track
 		gameEloStaked := -s.K * WinExpectation(state.GameElo[id], playerScoresStr, s.StartingElo, prevGameEloStr, s.D)
 		gameEloEarned := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
 
-		// Game rating track: K scales with gap between true game elo and display game rating.
-		gameGap := state.GameElo[id] - state.GameRating[id]
-		kGR := ratingK(gameGap, s)
-		dGR := s.D
+		// Game rating track: same earned-scaling approach as global rating track.
 		prevGameEloForRating := make(map[string]float64, len(prevGameEloStr))
 		for k, v := range prevGameEloStr {
 			prevGameEloForRating[k] = v
 		}
 		prevGameEloForRating[idStr] = state.GameRating[id]
 
-		gameRatingStakedRaw := -kGR * WinExpectation(state.GameRating[id], playerScoresStr, s.StartingElo, prevGameEloForRating, dGR)
-		gameRatingEarnedRaw := kGR * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
-		gameRatingStaked, gameRatingEarned := applyNewbieClamping(state.GameLeague[id], gameRatingStakedRaw, gameRatingEarnedRaw)
+		gameRatingStakedRaw := -s.K * WinExpectation(state.GameRating[id], playerScoresStr, s.StartingElo, prevGameEloForRating, s.D)
+		gameRatingStaked := scaleRatingStaked(gameRatingStakedRaw, state.GameElo[id], state.GameRating[id], s)
+		gameRatingEarnedRaw := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		gameRatingEarned := scaleRatingEarned(gameRatingEarnedRaw, state.GameElo[id], state.GameRating[id], s)
 		newGameRating := state.GameRating[id] + gameRatingStaked + gameRatingEarned
-		newGameLeague := determineGameLeague(state.GameLeague[id], newGameRating, s)
+		newGameLeague := determineGameLeague(state.GameLeague[id], newGameRating, newGameElos[idStr], s)
 
 		results[id] = eloCalcResult{
 			eloStaked:        eloStaked,

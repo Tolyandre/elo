@@ -16,13 +16,18 @@ type EloSettings struct {
 	StartingElo float64
 	WinReward   float64
 
-	// League thresholds and rating-track K formula coefficients.
-	StartingRating   float64
-	NewbieLeagueGoal float64
-	RatingMaxK       float64 // upper bound of K for rating track (when gap is large)
-	RatingKTau       float64 // exponential decay constant for K(gap) formula
-	EliteMatches6M   int
-	EliteMatches2M   int
+	// Newbie league earned scaling parameters.
+	NewbieLeagueEarnedMin float64
+	NewbieLeagueEarnedMax float64
+	NewbieLeagueEarnedTau float64
+	NewbieLeagueGoalGap   float64 // gap threshold for newbie → amateur promotion
+
+	// Starting display rating per arena type.
+	StartingRatingGlobal float64
+	StartingRatingGame   float64
+
+	EliteMatches6M int
+	EliteMatches2M int
 }
 
 // EloSettingsFromDB converts a sqlc-generated row to a domain value object,
@@ -33,10 +38,12 @@ func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 		D:             row.EloConstD,
 		StartingElo:   row.StartingElo,
 		WinReward:     row.WinReward,
-		StartingRating:   row.StartingRating,
-		NewbieLeagueGoal: row.NewbieLeagueGoal,
-		RatingMaxK:       row.RatingMaxK,
-		RatingKTau:       row.RatingKTau,
+		NewbieLeagueEarnedMin: row.NewbieLeagueEarnedMin,
+		NewbieLeagueEarnedMax: row.NewbieLeagueEarnedMax,
+		NewbieLeagueEarnedTau: row.NewbieLeagueEarnedTau,
+		NewbieLeagueGoalGap:   row.NewbieLeagueGoalGap,
+		StartingRatingGlobal:  row.StartingRatingGlobalArena,
+		StartingRatingGame:    row.StartingRatingGameArena,
 		EliteMatches6M:   int(row.EliteLeagueMatches6months),
 		EliteMatches2M:   int(row.EliteLeagueMatches2months),
 	}

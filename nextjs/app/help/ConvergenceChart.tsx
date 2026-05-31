@@ -2,6 +2,7 @@
 
 // ConvergenceChart — simulates how hidden elo and visible rating converge over matches
 // for n players with configurable win probabilities.
+// Uses the ADR-03 formula: scaleRatingEarned for rating track, gap-based promotion condition.
 
 import { useEffect, useMemo, useState } from "react"
 import {
@@ -13,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { useSettings } from "@/app/settingsContext"
 import { ChartContainer } from "@/components/ui/chart"
 import {
-    ratingK, applyNewbieClamping, normaliseScores,
+    scaleRatingEarned, scaleRatingStaked, normaliseScores,
     expectedScore, expectedScoreForRating,
 } from "@/app/eloCalculation"
 
@@ -26,16 +27,19 @@ function simulate(
     probs: number[],
     startingElo: number,
     startingRating: number,
-    newbieLeagueGoal: number,
+    goalGap: number,
     K: number,
     D: number,
-    kMax: number,
-    tau: number,
+    earnedMin: number,
+    earnedMax: number,
+    earnedTau: number,
     W: number,
 ): SimPoint[] {
     const elos = Array(n).fill(startingElo)
     const ratings = Array(n).fill(startingRating)
-    const leagues: string[] = Array(n).fill(startingRating >= newbieLeagueGoal ? "amateur" : "newbie")
+    const leagues: string[] = Array(n).fill(
+        Math.abs(startingElo - startingRating) <= goalGap ? "amateur" : "newbie"
+    )
 
     const points: SimPoint[] = []
 
@@ -47,9 +51,6 @@ function simulate(
     points.push(initial)
 
     for (let game = 1; game <= 200; game++) {
-        // Pick a winner randomly according to configured win probabilities.
-        // Winner gets raw score 1, losers 0 → after normalisation winner S=1, others S=0.
-        // This guarantees Σ S_i = 1, and together with Σ E_i = 1 ensures Elo is conserved.
         const rand = Math.random()
         let cumulative = 0
         let winnerIdx = n - 1
@@ -61,26 +62,22 @@ function simulate(
         rawScores[winnerIdx] = 1
         const S = normaliseScores(rawScores, W)
 
-        // All expectations computed from the same snapshot (prev elos/ratings),
-        // matching the Go implementation which reads state once before writing.
         const E_elo    = elos.map((_, i) => expectedScore(elos, i, D))
         const E_rating = elos.map((_, i) => expectedScoreForRating(elos, ratings, i, D))
 
-        // Compute new values for all players before mutating state.
         const newElos    = elos.map((e, i)    => e + K * (S[i] - E_elo[i]))
         const newRatings = ratings.map((r, i) => {
-            const gap = elos[i] - r  // gap from prev state (prev elo, prev rating)
-            const kRating = ratingK(gap, K, kMax, tau)
-            let staked = -(kRating * E_rating[i])
-            let earned = kRating * S[i]
-            ;[staked, earned] = applyNewbieClamping(leagues[i], staked, earned)
+            const ratingEarnedRaw = K * S[i]
+            const stakedRaw = -(K * E_rating[i])
+            const staked = scaleRatingStaked(stakedRaw, elos[i], r, K, earnedMax, earnedTau)
+            const earned = scaleRatingEarned(ratingEarnedRaw, elos[i], r, K, earnedMin, earnedMax, earnedTau)
             return r + staked + earned
         })
 
         for (let i = 0; i < n; i++) {
             elos[i]    = newElos[i]
             ratings[i] = newRatings[i]
-            if (leagues[i] === "newbie" && newRatings[i] >= newbieLeagueGoal) {
+            if (leagues[i] === "newbie" && elos[i] - ratings[i] <= goalGap) {
                 leagues[i] = "amateur"
             }
         }
@@ -92,7 +89,7 @@ function simulate(
         }
         points.push(pt)
 
-        const converged = elos.every((e, i) => Math.round(e) === Math.round(ratings[i]))
+        const converged = elos.every((e, i) => e - ratings[i] <= goalGap)
         if (converged) break
     }
 
@@ -105,17 +102,17 @@ export function ConvergenceChart() {
     const [playerCount, setPlayerCount] = useState(2)
     const [probWeights, setProbWeights] = useState([50, 50, 33, 25])
     const [seed, setSeed] = useState(0)
-    const [D,   setD]   = useState<number | null>(null)
-    const [tau, setTau] = useState<number | null>(null)
+    const [D,         setD]         = useState<number | null>(null)
+    const [earnedTau, setEarnedTau] = useState<number | null>(null)
 
     useEffect(() => { setMounted(true) }, [])
     useEffect(() => {
-        if (settings.eloConstD  > 0 && D   === null) setD(settings.eloConstD)
-        if (settings.ratingKTau > 0 && tau === null) setTau(settings.ratingKTau)
-    }, [settings, D, tau])
+        if (settings.eloConstD          > 0 && D         === null) setD(settings.eloConstD)
+        if (settings.newbieLeagueEarnedTau > 0 && earnedTau === null) setEarnedTau(settings.newbieLeagueEarnedTau)
+    }, [settings, D, earnedTau])
 
-    const effD   = D   ?? (settings.eloConstD  || 400)
-    const effTau = tau ?? (settings.ratingKTau || 100)
+    const effD        = D         ?? (settings.eloConstD          || 400)
+    const effEarnedTau = earnedTau ?? (settings.newbieLeagueEarnedTau || 100)
 
     const probs = useMemo(() => {
         const raw = probWeights.slice(0, playerCount)
@@ -129,15 +126,16 @@ export function ConvergenceChart() {
         return simulate(
             playerCount, probs,
             settings.startingElo || 1000,
-            settings.startingRating || 0,
-            settings.newbieLeagueGoal || 500,
+            settings.startingRatingGlobalArena,
+            settings.newbieLeagueGoalGap || 16,
             settings.eloConstK || 32,
             effD,
-            settings.ratingMaxK || 64,
-            effTau,
+            settings.newbieLeagueEarnedMin,
+            settings.newbieLeagueEarnedMax,
+            effEarnedTau,
             settings.winReward || 1,
         )
-    }, [mounted, seed, playerCount, probs, settings, effD, effTau])
+    }, [mounted, seed, playerCount, probs, settings, effD, effEarnedTau])
 
     const gamesPlayed = data.length - 1
 
@@ -156,9 +154,9 @@ export function ConvergenceChart() {
                         onValueChange={([v]) => setD(v)} />
                 </div>
                 <div className="space-y-2">
-                    <Label>τ (скорость сходимости K): {effTau}</Label>
-                    <Slider min={10} max={500} step={10} value={[effTau]}
-                        onValueChange={([v]) => setTau(v)} />
+                    <Label>τ (скорость масштабирования earned): {effEarnedTau}</Label>
+                    <Slider min={10} max={500} step={10} value={[effEarnedTau]}
+                        onValueChange={([v]) => setEarnedTau(v)} />
                 </div>
             </div>
 
@@ -215,8 +213,8 @@ export function ConvergenceChart() {
 
             <p className="text-xs text-muted-foreground">
                 Пунктир — скрытое эло (сумма постоянна). Сплошная — видимый рейтинг.
-                Эло начинается с {settings.startingElo}, рейтинг с {settings.startingRating}.
-                Симуляция останавливается, когда round(эло) = round(рейтинг) для всех, не более 200 партий.
+                Эло начинается с {settings.startingElo}, рейтинг с {settings.startingRatingGlobalArena}.
+                Сходимость: эло − рейтинг ≤ {settings.newbieLeagueGoalGap} для всех игроков (не более 200 партий).
             </p>
         </div>
     )

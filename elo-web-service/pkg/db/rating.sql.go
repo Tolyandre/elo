@@ -354,7 +354,11 @@ func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID int32) 
 }
 
 const listLatestGameRatingPerPlayer = `-- name: ListLatestGameRatingPerPlayer :many
-SELECT DISTINCT ON (gas.player_id) gas.player_id, gas.rating_after AS game_rating_after, gas.league
+SELECT DISTINCT ON (gas.player_id)
+  gas.player_id,
+  gas.rating_after AS game_rating_after,
+  gas.elo_after    AS game_elo_after,
+  gas.league
 FROM game_arena_settlement gas
 WHERE gas.game_id = $1
 ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
@@ -363,6 +367,7 @@ ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
 type ListLatestGameRatingPerPlayerRow struct {
 	PlayerID        int32   `json:"player_id"`
 	GameRatingAfter float64 `json:"game_rating_after"`
+	GameEloAfter    float64 `json:"game_elo_after"`
 	League          string  `json:"league"`
 }
 
@@ -375,7 +380,12 @@ func (q *Queries) ListLatestGameRatingPerPlayer(ctx context.Context, gameID int3
 	items := []ListLatestGameRatingPerPlayerRow{}
 	for rows.Next() {
 		var i ListLatestGameRatingPerPlayerRow
-		if err := rows.Scan(&i.PlayerID, &i.GameRatingAfter, &i.League); err != nil {
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.GameRatingAfter,
+			&i.GameEloAfter,
+			&i.League,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

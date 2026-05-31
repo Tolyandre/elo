@@ -388,6 +388,12 @@ type EloRank struct {
 	MatchesLeftForElite *int    `json:"matches_left_for_elite,omitempty"`
 	Rank                *int    `json:"rank,omitempty"`
 	Rating              float64 `json:"rating"`
+
+	// WinsNeededForAmateur Lower bound of wins needed to reach amateur league (elo treated as fixed).
+	WinsNeededForAmateur *int `json:"wins_needed_for_amateur,omitempty"`
+
+	// WinsNeededForAmateurUpper Upper bound of wins needed (accounts for elo growth ≈ K/2 per win).
+	WinsNeededForAmateurUpper *int `json:"wins_needed_for_amateur_upper,omitempty"`
 }
 
 // EloRankLeague defines model for EloRank.League.
@@ -480,6 +486,12 @@ type GamePlayer struct {
 	League GamePlayerLeague `json:"league"`
 	Rank   int              `json:"rank"`
 	Rating float64          `json:"rating"`
+
+	// WinsNeededForAmateur Lower bound of wins needed to reach amateur league (elo treated as fixed).
+	WinsNeededForAmateur *int `json:"wins_needed_for_amateur,omitempty"`
+
+	// WinsNeededForAmateurUpper Upper bound of wins needed (accounts for elo growth ≈ K/2 per win).
+	WinsNeededForAmateurUpper *int `json:"wins_needed_for_amateur_upper,omitempty"`
 }
 
 // GamePlayerLeague defines model for GamePlayer.League.
@@ -636,11 +648,13 @@ type Settings struct {
 	EliteLeagueMatches6months int     `json:"elite_league_matches_6months"`
 	EloConstD                 float64 `json:"elo_const_d"`
 	EloConstK                 float64 `json:"elo_const_k"`
-	NewbieLeagueGoal          float64 `json:"newbie_league_goal"`
-	RatingKTau                float64 `json:"rating_k_tau"`
-	RatingMaxK                float64 `json:"rating_max_k"`
+	NewbieLeagueEarnedMax     float64 `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedMin     float64 `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
 	StartingElo               float64 `json:"starting_elo"`
-	StartingRating            float64 `json:"starting_rating"`
+	StartingRatingGameArena   float64 `json:"starting_rating_game_arena"`
+	StartingRatingGlobalArena float64 `json:"starting_rating_global_arena"`
 	WinReward                 float64 `json:"win_reward"`
 }
 

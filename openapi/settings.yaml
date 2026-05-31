@@ -156,23 +156,29 @@ Settings:
     win_reward:
       type: number
       format: double
-    newbie_league_goal:
+    newbie_league_earned_min:
+      type: number
+      format: double
+    newbie_league_earned_max:
+      type: number
+      format: double
+    newbie_league_earned_tau:
+      type: number
+      format: double
+    newbie_league_goal_gap:
+      type: number
+      format: double
+    starting_rating_global_arena:
+      type: number
+      format: double
+    starting_rating_game_arena:
       type: number
       format: double
     elite_league_matches_6months:
       type: integer
     elite_league_matches_2months:
       type: integer
-    starting_rating:
-      type: number
-      format: double
-    rating_max_k:
-      type: number
-      format: double
-    rating_k_tau:
-      type: number
-      format: double
-  required: [elo_const_k, elo_const_d, starting_elo, win_reward, newbie_league_goal, elite_league_matches_6months, elite_league_matches_2months, starting_rating, rating_max_k, rating_k_tau]
+  required: [elo_const_k, elo_const_d, starting_elo, win_reward, newbie_league_earned_min, newbie_league_earned_max, newbie_league_earned_tau, newbie_league_goal_gap, starting_rating_global_arena, starting_rating_game_arena, elite_league_matches_6months, elite_league_matches_2months]
 
 EloSettingEntry:
   type: object
