@@ -781,6 +781,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 		var trigger = (<Button
 			ref={buttonRef}
 			{...props}
+			type="button"
 			onClick={handleTogglePopover}
 			disabled={disabled}
 			role="combobox"

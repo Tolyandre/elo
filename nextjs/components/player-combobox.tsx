@@ -67,6 +67,7 @@ export function PlayerCombobox({
 
   const trigger = (
     <Button
+      type="button"
       variant="outline"
       role="combobox"
       aria-expanded={open}
@@ -97,6 +98,7 @@ export function PlayerCombobox({
     return (
       <>
         <Button
+          type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
