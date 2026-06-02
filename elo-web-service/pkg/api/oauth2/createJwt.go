@@ -27,7 +27,7 @@ func CreateJwt(ttl time.Duration, userID int32, secretJWTKey string) (string, er
 	return tokenString, nil
 }
 
-func ValidateToken(token string, signedJWTKey string) (string, error) {
+func ValidateToken(token string, signedJWTKey string) (string, time.Time, error) {
 	tok, err := jwt.Parse(token, func(jwtToken *jwt.Token) (interface{}, error) {
 		if _, ok := jwtToken.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected method: %s", jwtToken.Header["alg"])
@@ -36,13 +36,14 @@ func ValidateToken(token string, signedJWTKey string) (string, error) {
 		return []byte(signedJWTKey), nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("invalidate token: %w", err)
+		return "", time.Time{}, fmt.Errorf("invalidate token: %w", err)
 	}
 
 	claims, ok := tok.Claims.(jwt.MapClaims)
 	if !ok || !tok.Valid {
-		return "", fmt.Errorf("invalid token claim")
+		return "", time.Time{}, fmt.Errorf("invalid token claim")
 	}
 
-	return fmt.Sprintf("%v", claims["sub"]), nil
+	expiry := time.Unix(int64(claims["exp"].(float64)), 0)
+	return fmt.Sprintf("%v", claims["sub"]), expiry, nil
 }
