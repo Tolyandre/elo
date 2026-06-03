@@ -1,0 +1,249 @@
+{
+  "version": "4.0.0-beta.7",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          174.4254078400238,
+          2058.780920187044
+        ],
+        [
+          958.9212917319614,
+          2045.0874935977906
+        ],
+        [
+          961.4720280574106,
+          2191.2190798129554
+        ],
+        [
+          176.97614416547293,
+          2204.9125064022087
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 6.265732014659643
+    },
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2059.9962967912406,
+          3203.838552675837
+        ],
+        [
+          2826.7249492771816,
+          3150.2236623817516
+        ],
+        [
+          2838.203282235503,
+          3314.3714712021265
+        ],
+        [
+          2071.4746297495626,
+          3367.986361496212
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 6.213372137099814
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          321.79487179487114,
+          3498.076923076922
+        ],
+        [
+          1093.5897435897432,
+          3498.076923076922
+        ],
+        [
+          1093.5897435897432,
+          3639.1025641025635
+        ],
+        [
+          321.79487179487114,
+          3639.1025641025635
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1055.0663493290433,
+          1846.7500793085214
+        ],
+        [
+          1815.991311762352,
+          1816.1881757644956
+        ],
+        [
+          1821.8567275940338,
+          1962.224279665837
+        ],
+        [
+          1060.931765160725,
+          1992.7861832098629
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 6.243042734383717
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2122.5156768127435,
+          1847.3450375083178
+        ],
+        [
+          2881.910509266486,
+          1790.245853232884
+        ],
+        [
+          2892.8689385718717,
+          1935.9882958250157
+        ],
+        [
+          2133.47410611813,
+          1993.0874801004493
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 6.208136149343831
+    },
+    {
+      "label": "iww_structure_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1139.7435897435892,
+          3377.564102564102
+        ],
+        [
+          1903.8461538461536,
+          3377.564102564102
+        ],
+        [
+          1903.8461538461536,
+          3518.589743589743
+        ],
+        [
+          1139.7435897435892,
+          3518.589743589743
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_3",
+      "score": null,
+      "points": [
+        [
+          174.35897435897425,
+          2078.205128205128
+        ],
+        [
+          324.35897435897414,
+          2078.205128205128
+        ],
+        [
+          324.35897435897414,
+          2187.8205128205122
+        ],
+        [
+          174.35897435897425,
+          2187.8205128205122
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rectangle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "iww_vp_2",
+      "score": null,
+      "points": [
+        [
+          2055.543803367852,
+          3222.0998775677203
+        ],
+        [
+          2224.362334950283,
+          3210.2949358571755
+        ],
+        [
+          2234.199786375737,
+          3350.9770455092016
+        ],
+        [
+          2065.3812547933057,
+          3362.7819872197465
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 6.213372137099814
+    }
+  ],
+  "imagePath": "IMG_20260428_205434.jpg",
+  "imageData": null,
+  "imageHeight": 4000,
+  "imageWidth": 3000
+}

@@ -1,0 +1,644 @@
+{
+  "version": "4.0.0-beta.7",
+  "flags": {},
+  "checked": false,
+  "shapes": [
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1177.4193548387098,
+          694.0860215053762
+        ],
+        [
+          1317.2043010752689,
+          694.0860215053762
+        ],
+        [
+          1317.2043010752689,
+          1504.8387096774193
+        ],
+        [
+          1177.4193548387098,
+          1504.8387096774193
+        ]
+      ],
+      "group_id": null,
+      "description": null,
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1344.4623655913979,
+          696.2365591397848
+        ],
+        [
+          1488.5483870967741,
+          696.2365591397848
+        ],
+        [
+          1488.5483870967741,
+          1511.2903225806451
+        ],
+        [
+          1344.4623655913979,
+          1511.2903225806451
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_project_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1517.7271673672071,
+          705.6425533485832
+        ],
+        [
+          1678.992924650496,
+          708.4574576126613
+        ],
+        [
+          1665.0685315575236,
+          1506.185403640664
+        ],
+        [
+          1503.8027742742347,
+          1503.370499376586
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.017453292519943295
+    },
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          1701.7431887794266,
+          711.0181941549204
+        ],
+        [
+          1854.3383473135252,
+          716.3469345116463
+        ],
+        [
+          1826.6439079947666,
+          1509.411913371961
+        ],
+        [
+          1674.048749460668,
+          1504.083173015235
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.03490658503988659
+    },
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2020.0111741070652,
+          695.2788670760777
+        ],
+        [
+          2159.604549932973,
+          702.594645905737
+        ],
+        [
+          2117.623234495085,
+          1503.645864106718
+        ],
+        [
+          1978.0298586691767,
+          1496.3300852770587
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.05235987755982989
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2212.548816228339,
+          734.6633187065156
+        ],
+        [
+          2368.8520748384435,
+          745.5931072775023
+        ],
+        [
+          2312.9032258064512,
+          1545.6989247311826
+        ],
+        [
+          2156.599967196347,
+          1534.7691361601958
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.06981317007977318
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2380.256701540768,
+          734.890670515474
+        ],
+        [
+          2513.2652415754114,
+          744.1915336813572
+        ],
+        [
+          2456.4099651258985,
+          1557.2598671189344
+        ],
+        [
+          2323.401425091255,
+          1547.9590039530513
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.06981317007977318
+    },
+    {
+      "label": "iww_structure_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2558.817204301075,
+          686.1827956989246
+        ],
+        [
+          2698.602150537634,
+          686.1827956989246
+        ],
+        [
+          2698.602150537634,
+          1496.9354838709678
+        ],
+        [
+          2558.817204301075,
+          1496.9354838709678
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_discovery_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2729.078271050768,
+          714.5090757203552
+        ],
+        [
+          2888.121112339829,
+          720.0629741203231
+        ],
+        [
+          2860.276567658909,
+          1517.4264081506124
+        ],
+        [
+          2701.233726369848,
+          1511.8725097506444
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.03490658503988659
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          2902.6486106417933,
+          739.2293524647761
+        ],
+        [
+          3040.199176080981,
+          744.0327240539375
+        ],
+        [
+          3013.4804216162706,
+          1509.157744309417
+        ],
+        [
+          2875.929856177083,
+          1504.3543727202557
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.03490658503988659
+    },
+    {
+      "label": "iww_vehicle_card_bottom",
+      "score": null,
+      "points": [
+        [
+          3083.1397281923705,
+          749.8029242553557
+        ],
+        [
+          3231.4364315564944,
+          754.9815592499206
+        ],
+        [
+          3203.7419922377358,
+          1548.0465381102354
+        ],
+        [
+          3055.445288873612,
+          1542.8679031156705
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0.03490658503988659
+    },
+    {
+      "label": "iww_vp_2",
+      "score": null,
+      "points": [
+        [
+          1170.9677419354834,
+          1362.9032258064517
+        ],
+        [
+          1325.8064516129027,
+          1362.9032258064517
+        ],
+        [
+          1325.8064516129027,
+          1500.5376344086021
+        ],
+        [
+          1170.9677419354834,
+          1500.5376344086021
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_25",
+      "score": null,
+      "points": [
+        [
+          1338.7096774193542,
+          1358.6021505376339
+        ],
+        [
+          1489.247311827957,
+          1358.6021505376339
+        ],
+        [
+          1489.247311827957,
+          1496.2365591397847
+        ],
+        [
+          1338.7096774193542,
+          1496.2365591397847
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_2_per_discovery",
+      "score": null,
+      "points": [
+        [
+          1499.9999999999993,
+          1257.5268817204294
+        ],
+        [
+          1669.8924731182794,
+          1257.5268817204294
+        ],
+        [
+          1669.8924731182794,
+          1494.0860215053763
+        ],
+        [
+          1499.9999999999993,
+          1494.0860215053763
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_7",
+      "score": null,
+      "points": [
+        [
+          1691.3978494623655,
+          1356.4516129032259
+        ],
+        [
+          1833.333333333333,
+          1356.4516129032259
+        ],
+        [
+          1833.333333333333,
+          1498.3870967741934
+        ],
+        [
+          1691.3978494623655,
+          1498.3870967741934
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_2",
+      "score": null,
+      "points": [
+        [
+          1826.8817204301074,
+          1356.4516129032259
+        ],
+        [
+          1968.817204301075,
+          1356.4516129032259
+        ],
+        [
+          1968.817204301075,
+          1496.2365591397847
+        ],
+        [
+          1826.8817204301074,
+          1496.2365591397847
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_1",
+      "score": null,
+      "points": [
+        [
+          1970.967741935484,
+          1365.0537634408597
+        ],
+        [
+          2119.354838709677,
+          1365.0537634408597
+        ],
+        [
+          2119.354838709677,
+          1498.3870967741934
+        ],
+        [
+          1970.967741935484,
+          1498.3870967741934
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_2",
+      "score": null,
+      "points": [
+        [
+          2702.1505376344085,
+          1382.258064516129
+        ],
+        [
+          2852.68817204301,
+          1382.258064516129
+        ],
+        [
+          2852.68817204301,
+          1515.591397849462
+        ],
+        [
+          2702.1505376344085,
+          1515.591397849462
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_vp_3_per_discovery",
+      "score": null,
+      "points": [
+        [
+          3203.2258064516127,
+          1225.268817204301
+        ],
+        [
+          3358.064516129032,
+          1225.268817204301
+        ],
+        [
+          3358.064516129032,
+          1491.9354838709678
+        ],
+        [
+          3203.2258064516127,
+          1491.9354838709678
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "rotation",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": [],
+      "direction": 0
+    },
+    {
+      "label": "iww_general_1",
+      "score": null,
+      "points": [
+        [
+          2244.086021505376,
+          2098.3870967741937
+        ],
+        [
+          2325.806451612903,
+          2220.967741935484
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "iww_general_1",
+      "score": null,
+      "points": [
+        [
+          2786.0215053763436,
+          2156.3978494623652
+        ],
+        [
+          2900.0,
+          2253.2258064516127
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    },
+    {
+      "label": "iww_general_1",
+      "score": null,
+      "points": [
+        [
+          2265.591397849462,
+          2474.7311827956987
+        ],
+        [
+          2355.9139784946233,
+          2595.16129032258
+        ]
+      ],
+      "group_id": null,
+      "description": "",
+      "difficult": false,
+      "shape_type": "circle",
+      "flags": {},
+      "attributes": {},
+      "kie_linking": []
+    }
+  ],
+  "imagePath": "2.jpg",
+  "imageData": null,
+  "imageHeight": 3000,
+  "imageWidth": 4000
+}
