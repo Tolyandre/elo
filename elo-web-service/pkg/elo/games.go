@@ -143,7 +143,12 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		})
 	}
 
+	// Sort: amateur first, then newbie; within each league by rating descending.
 	slices.SortFunc(players, func(a, b GamePlayerStat) int {
+		pa, pb := leaguePriority(a.League), leaguePriority(b.League)
+		if pa != pb {
+			return pa - pb
+		}
 		if b.Elo-a.Elo > 0 {
 			return 1
 		}
@@ -153,12 +158,22 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		return 0
 	})
 
+	// Assign continuous ranks; ties share rank only within the same league.
+	rank := 0
+	var prevRoundElo float64 = math.NaN()
+	var prevRank int
+	var prevLeague string
 	for i := range players {
-		if i > 0 && math.Round(players[i].Elo) == math.Round(players[i-1].Elo) {
-			players[i].Rank = players[i-1].Rank
+		rounded := math.Round(players[i].Elo)
+		if !math.IsNaN(prevRoundElo) && rounded == prevRoundElo && players[i].League == prevLeague {
+			players[i].Rank = prevRank
 		} else {
-			players[i].Rank = i + 1
+			players[i].Rank = rank + 1
+			prevRank = players[i].Rank
+			prevRoundElo = rounded
+			prevLeague = players[i].League
 		}
+		rank++
 	}
 
 	return &GameStatistics{
