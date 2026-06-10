@@ -70,6 +70,40 @@ function EloValueAndDiff({ currentElo, previousElo }: { currentElo: number; prev
     );
 }
 
+function computeRanks(players: Player[], period: "now" | Period): Map<string, number> {
+    const leaguePrio = (l: string) => l === "elite" ? 0 : l === "amateur" ? 1 : 2;
+    type Snap = { rating: number; league: string };
+    const snap = (p: Player): Snap | null => {
+        const r = period === "now" ? p.rank.now : (p.rank[period] ?? null);
+        return r ? { rating: r.rating, league: r.league } : null;
+    };
+
+    const entries = players.flatMap(p => { const s = snap(p); return s ? [{ id: p.id, ...s }] : []; });
+    entries.sort((a, b) => {
+        const ld = leaguePrio(a.league) - leaguePrio(b.league);
+        return ld !== 0 ? ld : b.rating - a.rating;
+    });
+
+    const map = new Map<string, number>();
+    let counter = 0;
+    let prevRounded: number | null = null;
+    let prevLeague: string | null = null;
+    let prevRank = 0;
+    for (const e of entries) {
+        const rounded = Math.round(e.rating);
+        if (prevRounded === rounded && prevLeague === e.league) {
+            map.set(e.id, prevRank);
+        } else {
+            prevRank = counter + 1;
+            map.set(e.id, prevRank);
+            prevRounded = rounded;
+            prevLeague = e.league;
+        }
+        counter++;
+    }
+    return map;
+}
+
 function filterByClub(players: Player[], selectedClubId: string | null, clubs: Club[]): Player[] {
     if (selectedClubId === null) return players;
     if (selectedClubId === NO_CLUB_ID) {
@@ -131,6 +165,10 @@ function PlayersTable() {
     const newbiePlayers = useMemo<Player[]>(() =>
         filtered.filter(p => p.rank.now.league === "newbie").sort(byRating), [filtered]);
 
+    const isClubFiltered = selectedClubId !== null && selectedClubId !== NO_CLUB_ID;
+    const clubRanksNow  = useMemo(() => isClubFiltered ? computeRanks(filtered, "now")    : null, [isClubFiltered, filtered]);
+    const clubRanksPrev = useMemo(() => isClubFiltered ? computeRanks(filtered, period)   : null, [isClubFiltered, filtered, period]);
+
     const hasAny = elitePlayers.length + amateurPlayers.length + newbiePlayers.length > 0;
 
     function PlayerRow({ player }: { player: Player }) {
@@ -138,13 +176,15 @@ function PlayersTable() {
         const matchesLeftForElite = player.rank.now.matches_left_for_elite;
         const winsLower = player.rank.now.wins_needed_for_amateur;
         const winsUpper = player.rank.now.wins_needed_for_amateur_upper;
+        const displayRank  = isClubFiltered ? (clubRanksNow?.get(player.id)  ?? null) : (player.rank.now.rank ?? null);
+        const previousRank = isClubFiltered ? (clubRanksPrev?.get(player.id) ?? null) : (prev.rank ?? null);
         return (
             <tr key={player.id}>
                 <td className="py-2 text-center align-top min-w-7">
-                    <RankIcon rank={player.rank.now.rank ?? null} />
+                    <RankIcon rank={displayRank} />
                 </td>
                 <td className="py-2 text-center align-top min-w-7">
-                    <RankChangeIndicator currentRank={player.rank.now.rank ?? null} previousRank={prev.rank} />
+                    <RankChangeIndicator currentRank={displayRank} previousRank={previousRank} />
                 </td>
                 <td className="py-2 px-1 w-50">
                     <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
