@@ -76,6 +76,7 @@
                 pkgs.opencv
                 pkgs.sqlc
                 pkgs.delve
+                pkgs.gopls
                 pythonEnv
                 pkgs.ninja
                 pkgs.meson
@@ -96,9 +97,11 @@
                 pkgs.libglvnd
               ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
-              # Stable symlink so VSCode can locate the Nix Python interpreter.
+              # Stable symlinks so VSCode can locate Nix-provided tools.
               # Recreated on every direnv reload when the env changes.
               ln -sfn ${pythonEnv} "$PWD/.python-nix"
+              ln -sfn ${pkgs.delve} "$PWD/.delve-nix"
+              ln -sfn ${pkgs.gopls} "$PWD/.gopls-nix"
             '';
           };
         }

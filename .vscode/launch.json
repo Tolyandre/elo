@@ -30,7 +30,7 @@
             ],
             "envFile": "${workspaceFolder}/elo-web-service/.env.docker"
         },
-{
+        {
             "name": "Run migrations",
             "type": "go",
             "request": "launch",

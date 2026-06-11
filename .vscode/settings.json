@@ -1,4 +1,8 @@
 {
     "makefile.configureOnOpen": false,
-    "python.defaultInterpreterPath": "${workspaceFolder}/.python-nix/bin/python3"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.python-nix/bin/python3",
+    "go.alternateTools": {
+        "dlv": "${workspaceFolder}/.delve-nix/bin/dlv",
+        "gopls": "${workspaceFolder}/.gopls-nix/bin/gopls"
+    }
 }

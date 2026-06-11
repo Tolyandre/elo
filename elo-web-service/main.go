@@ -44,10 +44,8 @@ func main() {
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
 
-	// Start timer for time-based market expiry
-	apiHandler.MarketService.ScheduleNextExpiry(context.Background())
-	// Start timer for Skull King table cleanup
-	apiHandler.SkullKingTableService.ScheduleNextCleanup(context.Background())
+	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())
+	go apiHandler.SkullKingTableService.ScheduleNextCleanup(context.Background())
 
 	router := gin.Default()
 
