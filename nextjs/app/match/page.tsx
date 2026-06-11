@@ -7,6 +7,7 @@ import { usePlayers } from "../players/PlayersContext";
 import { useMe } from "../meContext";
 import { Match, Market, updateMatchPromise, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../api";
 import { MarketCard } from "@/components/market-card";
+import { LoginLink } from "@/components/login-link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -300,7 +301,10 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
             {!isAuthenticated && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>Для редактирования необходимо авторизоваться.</AlertDescription>
+                <AlertDescription className="flex flex-col items-start gap-2">
+                  <span>Для редактирования необходимо авторизоваться.</span>
+                  <LoginLink />
+                </AlertDescription>
               </Alert>
             )}
             {isAuthenticated && !canEdit && (

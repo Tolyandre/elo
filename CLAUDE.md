@@ -19,11 +19,23 @@ Each application (backend and frontend) has its own directory and can be develop
 
 ## Common Commands
 
+### Full dev stack (Makefile + Docker Compose)
+The `Makefile` orchestrates a local stack (postgres on host port **5433**, `mock-oauth2`, migrations, seed). Containers run via Docker or Podman.
+```bash
+make dev-up          # Start postgres + mock-oauth2, run migrations, seed data
+make dev-seed        # Re-apply idempotent seed data (elo-web-service/testdata/seed.sql)
+make dev-migrate     # Re-apply migrations against the dev DB
+make backend-run     # Run backend with -tags opencv, loads secrets from .env.docker
+make frontend-run    # Run the Next.js dev server
+make dev-down        # Stop all dev dependencies
+```
+
 ### Frontend (Next.js)
 ```bash
 pnpm --dir ./nextjs dev          # Run dev server on localhost:3000
 pnpm --dir ./nextjs build        # Build for production
 pnpm --dir ./nextjs test         # Run tests with vitest
+pnpm --dir ./nextjs lint         # Lint with next lint
 ```
 
 ### Backend (Go)
@@ -32,16 +44,24 @@ pnpm --dir ./nextjs test         # Run tests with vitest
 cd elo-web-service
 go run . --config-path ./config/config.dev.yaml
 
-# Apply database migrations
-cd elo-web-service
+# Run with OpenCV-backed Skull King card recognition (see Card Recognition below)
+go run -tags opencv . --config-path ./config/config.dev.yaml
+
+# Apply database migrations (config-based)
 set -a && source .env && set +a && go run . --config-path ./config/config.dev.yaml --migrate-db
+# ...or against an explicit DSN, no config required (used by the Makefile)
+go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 
 # Run tests
-cd elo-web-service
 go test ./...
 
+# Run a single test
+go test ./pkg/elo/ -run TestCalculateNewElo
+
+# Integration tests (testcontainers; needs a Docker/Podman socket)
+make integration-test-podman    # or: make integration-test-colima
+
 # Generate type-safe DB code from SQL queries
-cd elo-web-service
 sqlc generate
 ```
 
@@ -80,19 +100,25 @@ nix-build test-integration.nix
   - `pkg/db/query/*.sql`: SQL queries for sqlc
   - `pkg/db/*.sql.go`: Generated Go code (do not edit manually)
 - **pkg/elo/**: Core Elo rating calculation logic
+- **pkg/cardrecognition/skull-king/**: OpenCV-based recognition of Skull King cards from images (card location, corner/special/number matching against `templates/`)
 - **pkg/configuration/**: Configuration parsing from YAML and environment variables
-- **migrations/**: Database migrations (numbered, up/down pairs)
+- **elo-web-service/migrations/**: Database migrations, embedded via `embed_migrations.go`. **Up-only** — files are named `NNN_description.up.sql` (no down files).
 
 Database code is generated from SQL queries using sqlc. Edit `.sql` files in `pkg/db/query/`, then run `sqlc generate`.
+
+### Card Recognition (OpenCV build tag)
+The card-recognition feature depends on OpenCV and is gated behind the `opencv` build tag. `pkg/api/recognizer_opencv.go` (`//go:build opencv`) wires the real recognizer; `pkg/api/recognizer_noop.go` (`//go:build !opencv`) is a stub used by default. Build/run with `-tags opencv` to enable it (the Makefile's `backend-run` does this).
 
 ### Frontend Structure (Next.js)
 - **app/**: Next.js App Router pages and layouts
   - **page.tsx**: Home page with player rankings
-  - **matches/**: Match history view
-  - **game/**: Add new match with game-specific calculators (Skull King, St. Patrick)
-  - **players/**: Player management
-  - **games/**: Game list
+  - **add-match/**, **match/**, **matches/**: Add a match and view match history
+  - **game/**, **games/**: Game detail and game list
+  - **calculators/**, **skull-king-game/**, **its-a-wonderful-world/**: Game-specific score calculators
+  - **player/**, **players/**: Player detail and management
+  - **market/**, **markets/**: Market features
   - **admin/**: User administration
+  - **settings/**, **help/**: Settings and help pages
   - **oauth2-callback/**: OAuth2 callback handler
 - **app/*Context.tsx**: React Context providers for global state (settings, players, matches, games, auth)
 - **app/api.ts**: Centralized API client built on `openapi-fetch` — type-safe HTTP calls generated from the OpenAPI contract
@@ -122,7 +148,7 @@ Key tables:
 - **users**: OAuth2 users with editing permissions
 
 ### Elo Calculation
-The custom Elo algorithm (pkg/elo/elo.go:59) handles multi-player matches:
+The custom Elo algorithm (`CalculateNewElo` in pkg/elo/elo.go) handles multi-player matches:
 1. Normalizes scores relative to the lowest score
 2. Calculates win expectation for each player against all others
 3. Adjusts ratings using constants K (volatility) and D (scale factor)

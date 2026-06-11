@@ -142,6 +142,16 @@ func (s *SkullKingTableService) broadcast(tableID string, summary SkullKingTable
 	s.Hub.Broadcast(tableID, payload)
 }
 
+// broadcastLobby signals lobby subscribers that the set of tables changed.
+// The signal carries no payload — clients refetch the full list.
+func (s *SkullKingTableService) broadcastLobby() {
+	payload, err := json.Marshal(sseEvent{Type: "tables-changed"})
+	if err != nil {
+		return
+	}
+	s.Hub.BroadcastLobby(payload)
+}
+
 // findPlayerIndex returns the index of the player with the given app player ID
 // (stored as a string in GameState.Players[].ID), or -1 if not found.
 func findPlayerIndex(players []SkullKingPlayer, playerID int32) int {
@@ -186,6 +196,7 @@ func (s *SkullKingTableService) CreateTable(ctx context.Context, hostUserID int3
 	}
 	// Reschedule cleanup timer to account for the new table's expiry
 	go s.ScheduleNextCleanup(context.Background())
+	s.broadcastLobby()
 	return summary, nil
 }
 
@@ -452,13 +463,21 @@ func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string,
 	if row.HostUserID != hostUserID {
 		return ErrNotTableHost
 	}
-	return s.Queries.DeleteSkullKingTable(ctx, pgID)
+	if err := s.Queries.DeleteSkullKingTable(ctx, pgID); err != nil {
+		return err
+	}
+	s.broadcastLobby()
+	return nil
 }
 
 // ─── Cleanup timer ────────────────────────────────────────────────────────────
 
 func (s *SkullKingTableService) DeleteExpiredTables(ctx context.Context) error {
-	return s.Queries.DeleteExpiredSkullKingTables(ctx)
+	if err := s.Queries.DeleteExpiredSkullKingTables(ctx); err != nil {
+		return err
+	}
+	s.broadcastLobby()
+	return nil
 }
 
 // ScheduleNextCleanup mirrors MarketService.ScheduleNextExpiry.

@@ -20,7 +20,7 @@ import {
     SkullKingRoundEntry as RoundEntry,
     SkullKingTableSummary,
 } from "@/app/api";
-import { useSkullKingSSE } from "@/hooks/useSkullKingSSE";
+import { useSkullKingSSE, useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { AuthWarning } from "@/components/auth-warning";
+import { LoginLink } from "@/components/login-link";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -115,11 +116,13 @@ function BidButtons({
     selected,
     onSelect,
     compact = false,
+    disabled = false,
 }: {
     roundNumber: number;
     selected: number | null;
     onSelect: (n: number) => void;
     compact?: boolean;
+    disabled?: boolean;
 }) {
     return (
         <div className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2 md:gap-3"}`}>
@@ -128,6 +131,7 @@ function BidButtons({
                     key={i}
                     variant={selected === i ? "default" : "outline"}
                     size={compact ? "default" : "lg"}
+                    disabled={disabled}
                     className={compact
                         ? "h-10 min-w-10 md:h-12 md:min-w-12 md:text-lg lg:h-14 lg:min-w-14 lg:text-xl"
                         : "w-14 h-14 text-xl md:w-16 md:h-16 md:text-2xl lg:w-20 lg:h-20 lg:text-3xl"
@@ -404,6 +408,26 @@ export default function SkullKingGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tableSession]);
 
+    // Like setGameState, but awaits the server sync and exposes an in-flight flag
+    // (isSyncing) so host entry buttons can disable + show a spinner while sending.
+    // In local-only mode (no table) it applies state instantly and never blocks.
+    const syncGameState = useCallback(async (newState: GameState) => {
+        if (!(tableSession?.isHost && tableSession.tableId)) {
+            setGameStateRaw(newState);
+            return;
+        }
+        setIsSyncing(true);
+        try {
+            setGameStateRaw(newState);
+            await updateSkullKingTableStatePromise(tableSession.tableId, newState);
+        } catch (err) {
+            toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setIsSyncing(false);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tableSession]);
+
     // Refresh local state from the server (used to recover from phase mismatches on 409)
     const refreshStateFromServer = useCallback(async () => {
         if (!tableSession?.tableId) return;
@@ -459,6 +483,9 @@ export default function SkullKingGamePage() {
     // Loading state for server interactions
     const [isTransitioning, setIsTransitioning] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
+    const [resetDialogOpen, setResetDialogOpen] = useState(false);
     const [isBidRevealed, setIsBidRevealed] = useState(false);
 
     // Reset bid reveal when round changes
@@ -530,7 +557,12 @@ export default function SkullKingGamePage() {
         [games]
     );
 
-    // Load active tables when in setup phase
+    // Subscribe to lobby SSE while on the setup screen so the active-tables list
+    // auto-refreshes when tables are created/deleted on the server.
+    const lobbyEnabled = gameState.phase === "setup" && tableSession === null;
+    const lobbyTick = useSkullKingLobbySSE(lobbyEnabled);
+
+    // Load active tables when in setup phase (re-runs on each lobby signal)
     useEffect(() => {
         if (gameState.phase !== "setup" || tableSession !== null) return;
         setTablesLoading(true);
@@ -538,7 +570,7 @@ export default function SkullKingGamePage() {
             .then(setActiveTables)
             .catch(() => {}) // ignore errors silently
             .finally(() => setTablesLoading(false));
-    }, [gameState.phase, tableSession]);
+    }, [gameState.phase, tableSession, lobbyTick]);
 
     async function handleJoinTable(table: SkullKingTableSummary) {
         if (!me.isAuthenticated || !me.playerId) return;
@@ -563,7 +595,10 @@ export default function SkullKingGamePage() {
     async function resetGame() {
         // Only delete server table if we have a real (non-placeholder) tableId
         if (tableSession?.isHost && tableSession.tableId) {
-            try { await deleteSkullKingTablePromise(tableSession.tableId); } catch { /* ignore */ }
+            setIsResetting(true);
+            try { await deleteSkullKingTablePromise(tableSession.tableId); }
+            catch { /* ignore */ }
+            finally { setIsResetting(false); }
         }
         setGameStateRaw(initialState);
         setTableSession(null);
@@ -674,10 +709,10 @@ export default function SkullKingGamePage() {
             newRounds[roundIndex].slice(0, players.length).every((e) => e !== null);
 
         if (allBid) {
-            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "bid-review" });
+            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "bid-review" });
         } else {
             const next = findNextUnfilled(playerIndex, players.length, (i) => !!newRounds[roundIndex][i]);
-            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
+            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
         }
     }
 
@@ -708,7 +743,7 @@ export default function SkullKingGamePage() {
             .every((e) => e !== null && e.actual !== null);
 
         if (allDone) {
-            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" });
+            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" });
         } else {
             const needsResult = (i: number) => (newRounds[roundIndex][i]?.actual ?? null) === null;
             const isConnected = (i: number) => connectedPlayerIds.some(id => String(id) === players[i].id);
@@ -719,7 +754,7 @@ export default function SkullKingGamePage() {
             const disconnectedNeeding = players.map((_, i) => i).filter(i => needsResult(i) && !isConnected(i));
             const connectedNeeding = players.map((_, i) => i).filter(i => needsResult(i) && isConnected(i));
             const next = findNext(disconnectedNeeding) ?? findNext(connectedNeeding);
-            setGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
+            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
         }
     }
 
@@ -805,7 +840,7 @@ export default function SkullKingGamePage() {
                         )}
                         {phase !== "setup" && (
                             isHost ? (
-                                <AlertDialog>
+                                <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
                                     <AlertDialogTrigger asChild>
                                         <Button variant="outline" size="sm">Новая партия</Button>
                                     </AlertDialogTrigger>
@@ -817,8 +852,16 @@ export default function SkullKingGamePage() {
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
-                                            <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                            <AlertDialogAction onClick={resetGame}>Начать</AlertDialogAction>
+                                            <AlertDialogCancel disabled={isResetting}>Отмена</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                disabled={isResetting}
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    resetGame().then(() => setResetDialogOpen(false));
+                                                }}
+                                            >
+                                                {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Начать"}
+                                            </AlertDialogAction>
                                         </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>
@@ -872,13 +915,16 @@ export default function SkullKingGamePage() {
                                                     onClick={() => handleJoinTable(table)}
                                                     title={!canJoin ? "Для входа нужна авторизация и привязка к игроку" : undefined}
                                                 >
-                                                    {joiningTableId === table.id ? "Вход..." : "Войти"}
+                                                    {joiningTableId === table.id ? <Loader2 className="h-4 w-4 animate-spin" /> : "Войти"}
                                                 </Button>
                                             </div>
                                         );
                                     })}
                                     {!me.isAuthenticated && (
-                                        <p className="text-xs text-muted-foreground">Войдите в аккаунт и привяжите игрока, чтобы присоединиться к столу</p>
+                                        <div className="flex flex-col items-start gap-2">
+                                            <p className="text-xs text-muted-foreground">Войдите в аккаунт и привяжите игрока, чтобы присоединиться к столу</p>
+                                            <LoginLink />
+                                        </div>
                                     )}
                                     {me.isAuthenticated && !me.playerId && (
                                         <p className="text-xs text-muted-foreground">Привяжите аккаунт к игроку, чтобы присоединиться к столу</p>
@@ -995,7 +1041,13 @@ export default function SkullKingGamePage() {
                                         roundNumber={currentRound}
                                         selected={rounds[currentRound - 1]?.[pi]?.bid ?? null}
                                         onSelect={(bid) => handleBidSelect(bid, pi)}
+                                        disabled={isSyncing}
                                     />
+                                    {isSyncing && (
+                                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                                            <Loader2 className="h-4 w-4 animate-spin" /> Сохранение...
+                                        </p>
+                                    )}
                                 </TabsContent>
                             ))}
                         </Tabs>
@@ -1253,6 +1305,7 @@ export default function SkullKingGamePage() {
                                                 initialActual={entry?.actual ?? null}
                                                 initialBonus={entry?.bonus ?? 0}
                                                 onSubmit={(actual, bonus) => handleResultSubmit(actual, bonus, pi)}
+                                                disabled={isSyncing}
                                             />
                                         </TabsContent>
                                     );
@@ -1392,6 +1445,7 @@ function ResultEntryCard({
     initialActual = null,
     initialBonus = 0,
     onSubmit,
+    disabled = false,
 }: {
     player: { id: string; name: string };
     roundNumber: number;
@@ -1399,6 +1453,7 @@ function ResultEntryCard({
     initialActual?: number | null;
     initialBonus?: number;
     onSubmit: (actual: number, bonus: number) => void;
+    disabled?: boolean;
 }) {
     const [actual, setActual] = useState<number | null>(initialActual);
     const [bonus, setBonus] = useState(initialBonus);
@@ -1436,7 +1491,13 @@ function ResultEntryCard({
                     roundNumber={roundNumber}
                     selected={actual}
                     onSelect={handleActualSelect}
+                    disabled={disabled}
                 />
+                {disabled && (
+                    <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Сохранение...
+                    </p>
+                )}
             </div>
 
             {bonusApplicable && (
@@ -1450,20 +1511,21 @@ function ResultEntryCard({
                                 <Button
                                     key={b}
                                     variant="outline"
+                                    disabled={disabled}
                                     className="md:h-12 md:min-w-[3.5rem] md:text-base lg:h-14 lg:min-w-[4rem] lg:text-lg"
                                     onClick={() => setBonus((v) => v + b)}
                                 >
                                     +{b}
                                 </Button>
                             ))}
-                            <Button variant="ghost" className="md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={() => setBonus(0)}>
+                            <Button variant="ghost" disabled={disabled} className="md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={() => setBonus(0)}>
                                 Сбросить
                             </Button>
                         </div>
                     </div>
 
-                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={handleNext}>
-                        Дальше
+                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" disabled={disabled} onClick={handleNext}>
+                        {disabled ? <Loader2 className="h-5 w-5 animate-spin" /> : "Дальше"}
                     </Button>
                 </>
             )}

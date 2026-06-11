@@ -3,6 +3,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { useMe } from "@/app/meContext";
+import { LoginLink } from "@/components/login-link";
 
 /**
  * Shows an alert if the user is not logged in or lacks edit permission.
@@ -16,7 +17,10 @@ export function AuthWarning() {
             <Alert>
                 <AlertCircleIcon />
                 <AlertTitle>Для сохранения партии потребуется выполнить вход</AlertTitle>
-                <AlertDescription>Результаты временно хранятся в браузере</AlertDescription>
+                <AlertDescription className="flex flex-col items-start gap-2">
+                    <span>Результаты временно хранятся в браузере</span>
+                    <LoginLink />
+                </AlertDescription>
             </Alert>
         );
     }

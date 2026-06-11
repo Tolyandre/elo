@@ -258,3 +258,40 @@ type sseTableEvent struct {
 	Type string      `json:"type"`
 	Data interface{} `json:"data"`
 }
+
+// ─── Lobby events stream ──────────────────────────────────────────────────────
+// Signals subscribers whenever the set of tables changes (create/delete/expiry).
+// Carries no payload — clients refetch the full list on each signal.
+
+func (a *API) SkullKingLobbyEvents(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	ch, cancel := a.SkullKingHub.SubscribeLobby()
+	defer cancel()
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	// Send an initial signal so the client syncs immediately on connect.
+	initialPayload, err := json.Marshal(sseTableEvent{Type: "tables-changed"})
+	if err == nil {
+		fmt.Fprintf(c.Writer, "data: %s\n\n", initialPayload)
+		c.Writer.Flush()
+	}
+
+	clientGone := ctx.Done()
+	for {
+		select {
+		case <-clientGone:
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
+			c.Writer.Flush()
+		}
+	}
+}

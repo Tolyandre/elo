@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useState } from "react";
 import { patchGamePromise, deleteGamePromise, createGamePromise } from "@/app/api";
+import { LoginLink } from "@/components/login-link";
 import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
 import {
@@ -89,7 +90,12 @@ export default function GamesAdminPage() {
                     <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
                 </div>
 
-            {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}
+            {!isAuthenticated && (
+                <div className="flex flex-col items-start gap-2">
+                    <p>Для редактирования необходимо авторизоваться.</p>
+                    <LoginLink />
+                </div>
+            )}
             {isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игр.</p>}
             <p>Удаление возможно для игр без партий.</p>
 

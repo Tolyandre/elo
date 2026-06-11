@@ -10,6 +10,7 @@ import { useMe } from "../meContext";
 import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
+import { LoginLink } from "@/components/login-link";
 import { useGames } from "../gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
@@ -200,7 +201,7 @@ export default function AddGamePage() {
                     <AlertCircleIcon />
                     <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
                     <AlertDescription>
-                        <p></p>
+                        <LoginLink />
                     </AlertDescription>
                 </Alert>
             )

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, User } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
+import { LoginLink } from "@/components/login-link";
 import { useMe } from "@/app/meContext";
 import {
     Dialog,
@@ -121,7 +122,12 @@ export default function PlayersAdminPage() {
                 <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
             </div>
 
-            {!isAuthenticated && <p>Для редактирования необходимо авторизоваться.</p>}
+            {!isAuthenticated && (
+                <div className="flex flex-col items-start gap-2">
+                    <p>Для редактирования необходимо авторизоваться.</p>
+                    <LoginLink />
+                </div>
+            )}
             {isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игроков.</p>}
             <p>Удаление возможно для игроков без партий.</p>
 

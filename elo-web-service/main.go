@@ -138,6 +138,8 @@ func main() {
 	sk.POST("/:id/result", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.SubmitSkullKingResult)
 	sk.DELETE("/:id", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.DeleteSkullKingTable)
 	sk.GET("/:id/events", apiHandler.SkullKingTableEvents)
+	// Lobby SSE — separate path to avoid colliding with the /:id wildcard above
+	router.GET("/skull-king/lobby/events", apiHandler.SkullKingLobbyEvents)
 
 	// Analytics
 	router.GET("/analytics/elo-reset", strictWrapper.GetEloReset)

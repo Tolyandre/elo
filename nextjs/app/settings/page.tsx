@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { PlayerCombobox } from "@/components/player-combobox"
 import { patchMePromise } from "@/app/api"
+import { LoginLink } from "@/components/login-link"
 
 export default function SettingsPage() {
     const { roundToInteger, setRoundToInteger, geologistMode, setGeologistMode, isAuthenticated, playerId, invalidate } = useMe()
@@ -54,7 +55,10 @@ export default function SettingsPage() {
                         <PlayerCombobox value={playerId} onChange={handlePlayerChange} allowClear />
                     </div>
                 ) : (
-                    <p className="text-sm text-muted-foreground">После входа будут доступны дополнительные настройки.</p>
+                    <div className="flex flex-col items-start gap-2">
+                        <p className="text-sm text-muted-foreground">После входа будут доступны дополнительные настройки.</p>
+                        <LoginLink />
+                    </div>
                 )}
             </div>
         </main>
