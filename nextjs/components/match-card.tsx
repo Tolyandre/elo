@@ -124,8 +124,4 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
       </CardContent>
     </Card>
   );
-}, (prevProps, nextProps) => (
-  prevProps.match.id === nextProps.match.id &&
-  prevProps.roundToInteger === nextProps.roundToInteger &&
-  prevProps.clickable === nextProps.clickable
-));
+});

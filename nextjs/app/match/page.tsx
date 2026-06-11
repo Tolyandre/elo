@@ -33,6 +33,7 @@ function MatchPageWrapped() {
   const searchParams = useSearchParams();
   const matchId = searchParams.get("id");
   const { matches, loading: contextLoading, invalidate } = useMatches();
+  const { invalidate: invalidatePlayers } = usePlayers();
   const { roundToInteger, setRoundToInteger } = useMe();
   const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
@@ -55,7 +56,7 @@ function MatchPageWrapped() {
       .finally(() => setFetchLoading(false));
   }, [matchId, matchFromContext, contextLoading]);
 
-  const match = matchFromContext ?? matchFromApi;
+  const match = matchFromApi ?? matchFromContext;
   const loading = (contextLoading && !matchFromContext) || fetchLoading;
 
   useEffect(() => {
@@ -117,6 +118,8 @@ function MatchPageWrapped() {
       <PageHeader title="Просмотр партии" action={
         <EditMatchDialog match={match} onSuccess={() => {
           invalidate();
+          invalidatePlayers();
+          getMatchByIdPromise(Number(matchId!)).then(setMatchFromApi);
           toast.success("Партия обновлена");
         }} />
       } />
