@@ -30,6 +30,7 @@ export function PlayersProvider({ children
     const { geologistMode } = useMe();
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setLoading(true);
         getPlayersPromise()
             .then((data) => {

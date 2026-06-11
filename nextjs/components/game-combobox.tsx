@@ -80,7 +80,7 @@ export function GameCombobox({
         setSearchQuery("");
         setCreating(false);
       }, 100);
-    } catch (err) {
+    } catch {
       setCreating(false);
     }
   };

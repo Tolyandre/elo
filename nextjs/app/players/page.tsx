@@ -114,6 +114,68 @@ function filterByClub(players: Player[], selectedClubId: string | null, clubs: C
     return players.filter(p => clubPlayerIds.has(p.id));
 }
 
+// Shared context for the row/league components below (hoisted to module scope
+// so they keep a stable identity across renders).
+type RowContext = {
+    period: Period;
+    isClubFiltered: boolean;
+    clubRanksNow: Map<string, number> | null;
+    clubRanksPrev: Map<string, number> | null;
+    myPlayerId: string | undefined;
+    playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string;
+};
+
+function PlayerRow({ player, ctx }: { player: Player; ctx: RowContext }) {
+    const { period, isClubFiltered, clubRanksNow, clubRanksPrev, myPlayerId, playerDisplayName } = ctx;
+    const prev = player.rank[period] ?? player.rank.day_ago;
+    const matchesLeftForElite = player.rank.now.matches_left_for_elite;
+    const winsLower = player.rank.now.wins_needed_for_amateur;
+    const winsUpper = player.rank.now.wins_needed_for_amateur_upper;
+    const displayRank  = isClubFiltered ? (clubRanksNow?.get(player.id)  ?? null) : (player.rank.now.rank ?? null);
+    const previousRank = isClubFiltered ? (clubRanksPrev?.get(player.id) ?? null) : (prev.rank ?? null);
+    return (
+        <tr key={player.id}>
+            <td className="py-2 text-center align-top min-w-7">
+                <RankIcon rank={displayRank} />
+            </td>
+            <td className="py-2 text-center align-top min-w-7">
+                <RankChangeIndicator currentRank={displayRank} previousRank={previousRank} />
+            </td>
+            <td className="py-2 px-1 w-50">
+                <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
+                {matchesLeftForElite != null && matchesLeftForElite > 0 && (
+                    <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} партий</span>
+                )}
+                {winsLower != null && winsLower > 0 && (
+                    <span className="text-xs text-muted-foreground ml-1">
+                        ещё ~{winsLower}{winsUpper != null && winsUpper > winsLower ? `–${winsUpper}` : ""} побед
+                    </span>
+                )}
+            </td>
+            <td className="py-2 px-1 align-top min-w-25">
+                <EloValueAndDiff currentElo={player.rank.now.rating} previousElo={prev.rating} />
+            </td>
+        </tr>
+    );
+}
+
+function LeagueSection({ title, footer, players, ctx }: { title: string; footer?: string; players: Player[]; ctx: RowContext }) {
+    return (
+        <>
+            <h2 className="text-xl font-semibold mb-2 mt-4">{title}</h2>
+            {players.length === 0
+                ? <p className="text-sm text-muted-foreground mb-2">Нет игроков</p>
+                : <table className="table-auto border-collapse mb-2">
+                    <tbody>
+                        {players.map(p => <PlayerRow key={p.id} player={p} ctx={ctx} />)}
+                    </tbody>
+                </table>
+            }
+            {footer && <p className="text-xs text-muted-foreground mb-2">{footer}</p>}
+        </>
+    );
+}
+
 function PlayersTable() {
     const { players, playerDisplayName, loading, error } = usePlayers();
     const { clubs } = useClubs();
@@ -164,55 +226,9 @@ function PlayersTable() {
 
     const hasAny = elitePlayers.length + amateurPlayers.length + newbiePlayers.length > 0;
 
-    function PlayerRow({ player }: { player: Player }) {
-        const prev = player.rank[period] ?? player.rank.day_ago;
-        const matchesLeftForElite = player.rank.now.matches_left_for_elite;
-        const winsLower = player.rank.now.wins_needed_for_amateur;
-        const winsUpper = player.rank.now.wins_needed_for_amateur_upper;
-        const displayRank  = isClubFiltered ? (clubRanksNow?.get(player.id)  ?? null) : (player.rank.now.rank ?? null);
-        const previousRank = isClubFiltered ? (clubRanksPrev?.get(player.id) ?? null) : (prev.rank ?? null);
-        return (
-            <tr key={player.id}>
-                <td className="py-2 text-center align-top min-w-7">
-                    <RankIcon rank={displayRank} />
-                </td>
-                <td className="py-2 text-center align-top min-w-7">
-                    <RankChangeIndicator currentRank={displayRank} previousRank={previousRank} />
-                </td>
-                <td className="py-2 px-1 w-50">
-                    <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
-                    {matchesLeftForElite != null && matchesLeftForElite > 0 && (
-                        <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} партий</span>
-                    )}
-                    {winsLower != null && winsLower > 0 && (
-                        <span className="text-xs text-muted-foreground ml-1">
-                            ещё ~{winsLower}{winsUpper != null && winsUpper > winsLower ? `–${winsUpper}` : ""} побед
-                        </span>
-                    )}
-                </td>
-                <td className="py-2 px-1 align-top min-w-25">
-                    <EloValueAndDiff currentElo={player.rank.now.rating} previousElo={prev.rating} />
-                </td>
-            </tr>
-        );
-    }
-
-    function LeagueSection({ title, footer, players }: { title: string; footer?: string; players: Player[] }) {
-        return (
-            <>
-                <h2 className="text-xl font-semibold mb-2 mt-4">{title}</h2>
-                {players.length === 0
-                    ? <p className="text-sm text-muted-foreground mb-2">Нет игроков</p>
-                    : <table className="table-auto border-collapse mb-2">
-                        <tbody>
-                            {players.map(p => <PlayerRow key={p.id} player={p} />)}
-                        </tbody>
-                    </table>
-                }
-                {footer && <p className="text-xs text-muted-foreground mb-2">{footer}</p>}
-            </>
-        );
-    }
+    const rowContext: RowContext = {
+        period, isClubFiltered, clubRanksNow, clubRanksPrev, myPlayerId, playerDisplayName,
+    };
 
     if (loading || error) return null;
     return (
@@ -251,13 +267,15 @@ function PlayersTable() {
                 title="Высшая лига"
                 footer={eliteMatches6m > 0 ? `Для Высшей Лиги нужно ${eliteMatches6m} партий за последние 6 месяцев, среди них ${eliteMatches2m} за последние 2 месяца` : undefined}
                 players={elitePlayers}
+                ctx={rowContext}
             />
             <LeagueSection
                 title="Любители"
                 footer={`Для Лиги Любителей нужно совпадение рейтинга с эло (эло − рейтинг ≤ ${newbieLeagueGoalGap}), примерно ${typicalWinsLower}–${typicalWinsUpper} побед`}
                 players={amateurPlayers}
+                ctx={rowContext}
             />
-            <LeagueSection title="Новички" players={newbiePlayers} />
+            <LeagueSection title="Новички" players={newbiePlayers} ctx={rowContext} />
         </>
     );
 }

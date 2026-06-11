@@ -56,7 +56,7 @@ export default function GamesAdminPage() {
             await patchGamePromise(selectedId, { name: newName });
             invalidateGames();
             setRenameOpen(false);
-        } catch (err) {
+        } catch {
             // toast shown by API helper
         } finally {
             setActionLoading(false);
@@ -76,7 +76,7 @@ export default function GamesAdminPage() {
             await deleteGamePromise(selectedId);
             invalidateGames();
             setDeleteOpen(false);
-        } catch (err) {
+        } catch {
             // toast shown by API helper
         } finally {
             setActionLoading(false);
@@ -114,7 +114,7 @@ export default function GamesAdminPage() {
                             await createGamePromise({ name: newName.trim() });
                             invalidateGames();
                             setNewName("");
-                        } catch (err) {
+                        } catch {
                             // toast already shown
                         }
                     }}
@@ -244,7 +244,7 @@ export default function GamesAdminPage() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Удалить игру</DialogTitle>
-                        <DialogDescription>Вы уверены, что хотите удалить игру "{selectedName}"? Это действие нельзя отменить.</DialogDescription>
+                        <DialogDescription>Вы уверены, что хотите удалить игру «{selectedName}»? Это действие нельзя отменить.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Отмена</Button>

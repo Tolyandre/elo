@@ -32,12 +32,14 @@ export function RatingGapChart() {
     const [earnedTau, setEarnedTau] = useState<number | null>(null)
 
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- seed local controls from settings once they load */
         if (settings.startingElo > 0 && playerElo === null) {
             setPlayerElo(settings.startingElo)
             setOpponentElo(settings.startingElo)
         }
         if (settings.eloConstD > 0 && D === null) setD(settings.eloConstD)
         if (settings.newbieLeagueEarnedTau > 0 && earnedTau === null) setEarnedTau(settings.newbieLeagueEarnedTau)
+        /* eslint-enable react-hooks/set-state-in-effect */
     }, [settings, playerElo, D, earnedTau])
 
     const effPlayerElo = playerElo ?? (settings.startingElo || 1000)

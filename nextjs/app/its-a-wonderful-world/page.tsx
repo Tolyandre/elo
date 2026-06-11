@@ -126,6 +126,7 @@ function EditDialog({
 
     React.useEffect(() => {
         if (!target) return;
+        /* eslint-disable react-hooks/set-state-in-effect -- sync the edit inputs from the selected target */
         if (target.kind === "direct") {
             const v = state.directVP[target.playerId] || 0;
             setDirectVal(v ? String(v) : "");
@@ -134,6 +135,7 @@ function EditDialog({
             setCoeff(c?.coeff ? String(c.coeff) : "");
             setCount(c?.count ? String(c.count) : "");
         }
+        /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [target]);
 

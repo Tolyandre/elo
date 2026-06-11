@@ -17,6 +17,7 @@ export function useLocalStorage<T>(
         const stored = localStorage.getItem(key);
         if (stored !== null) {
             try {
+                // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration: localStorage is only available after mount
                 setInternalState(JSON.parse(stored));
             } catch {
             }

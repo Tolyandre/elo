@@ -24,12 +24,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState<SettingsState | undefined>(undefined);
 
   useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    const data = await getSettingsPromise();
-    setSettings({
+    let cancelled = false;
+    getSettingsPromise().then((data) => {
+      if (cancelled) return;
+      setSettings({
       eloConstK: Number(data.elo_const_k),
       eloConstD: Number(data.elo_const_d),
       startingElo: Number(data.starting_elo),
@@ -42,8 +40,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       startingRatingGameArena: Number(data.starting_rating_game_arena),
       eliteMatches6m: Number(data.elite_league_matches_6months),
       eliteMatches2m: Number(data.elite_league_matches_2months),
+      });
     });
-  };
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <SettingsContext.Provider value={{

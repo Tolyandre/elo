@@ -254,7 +254,7 @@ export function SkullKingCalculator() {
                 numberOfPlayers,
             )
         }
-    }, [numberOfPlayers, turnOrder])
+    }, [numberOfPlayers, turnOrder, form])
 
 
     /* ----------------------------- render ----------------------------- */

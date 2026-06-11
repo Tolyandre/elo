@@ -3,6 +3,7 @@ import {
   useFormContext,
   FieldValues,
   Path,
+  ControllerRenderProps,
 } from "react-hook-form"
 import {
   Field,
@@ -16,7 +17,7 @@ type RHFFieldProps<TFieldValues extends FieldValues> = {
   name: Path<TFieldValues>
   label?: React.ReactNode
   description?: React.ReactNode
-  children: (field: any) => React.ReactNode
+  children: (field: ControllerRenderProps<TFieldValues, Path<TFieldValues>>) => React.ReactNode
 }
 
 export function RHFField<TFieldValues extends FieldValues>({

@@ -71,6 +71,7 @@ export default function FormulaAdminPage() {
             .finally(() => setLoading(false));
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() sets a loading flag before async fetch
     useEffect(() => { load(); }, []);
 
     async function handleCreate(e: React.FormEvent) {

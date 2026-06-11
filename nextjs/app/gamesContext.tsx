@@ -15,13 +15,12 @@ export const GamesProvider = ({ children }: { children: ReactNode }) => {
   const [stamp, setStamp] = useState<number>(0);
 
   useEffect(() => {
-    loadGames();
+    let cancelled = false;
+    getGamesPromise().then((data) => {
+      if (!cancelled) setGames(data.games);
+    });
+    return () => { cancelled = true; };
   }, [stamp]);
-
-  const loadGames = async () => {
-    const data = await getGamesPromise();
-    setGames(data.games);
-  };
 
   const invalidate = () => {
     setStamp((s) => s + 1);

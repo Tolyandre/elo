@@ -433,6 +433,7 @@ function SetupScreen({
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- sync per-player configs when the selected players change
         setPlayerConfigs((prev) =>
             selectedIds.map((id, index) => {
                 const existing = prev.find((p) => p.id === id)
@@ -673,7 +674,7 @@ export default function ChessClockPage() {
     const [nowMs, setNowMs] = useState(() => Date.now())
     const [showNav, setShowNav] = useState(false)
     const [wakeLockEnabled, setWakeLockEnabled] = useState(false)
-    const wakeLockRef = useRef<any>(null)
+    const wakeLockRef = useRef<WakeLockSentinel | null>(null)
     const wakeLockSupported =
         typeof window !== "undefined" && "wakeLock" in navigator
 
@@ -688,7 +689,7 @@ export default function ChessClockPage() {
     const acquireWakeLock = useCallback(async () => {
         if (!wakeLockSupported) return
         try {
-            wakeLockRef.current = await (navigator as any).wakeLock.request("screen")
+            wakeLockRef.current = await navigator.wakeLock.request("screen")
             wakeLockRef.current.addEventListener("release", () => {
                 setWakeLockEnabled(false)
                 wakeLockRef.current = null
@@ -717,11 +718,13 @@ export default function ChessClockPage() {
 
     // Auto-acquire when game starts, release when returning to setup
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- wake-lock side effect toggles its own state flag */
         if (state.phase === "playing") {
             acquireWakeLock()
         } else if (state.phase === "setup") {
             releaseWakeLock()
         }
+        /* eslint-enable react-hooks/set-state-in-effect */
     }, [state.phase, acquireWakeLock, releaseWakeLock])
 
     function toggleWakeLock() {

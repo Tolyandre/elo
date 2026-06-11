@@ -52,16 +52,13 @@ function ClubAdminContent() {
 
     const [memberLoading, setMemberLoading] = useState<Record<string, boolean>>({});
 
-    function loadClub() {
+    useEffect(() => {
         if (!clubId) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setLoading(true);
         getClubPromise(clubId)
             .then((data) => setClub(data))
             .finally(() => setLoading(false));
-    }
-
-    useEffect(() => {
-        loadClub();
     }, [clubId]);
 
     async function confirmRename() {

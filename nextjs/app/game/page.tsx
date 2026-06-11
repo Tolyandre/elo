@@ -24,15 +24,6 @@ function GameWrapped() {
   const searchParams = useSearchParams()
   const id = searchParams.get('id')
 
-  if (!id) {
-    return (
-      <main className="space-y-8 max-w-sm mx-auto">
-        <PageHeader title="Игра" />
-        <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
-      </main>
-    );
-  }
-
   const [game, setGame] = useState<Game | null>(null);
   const [gameMatches, setGameMatches] = useState<GameMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
@@ -47,6 +38,7 @@ function GameWrapped() {
   );
 
   useEffect(() => {
+    if (!id) return;
     getGamePromise(id)
       .then((data) => {
         setGame(data);
@@ -54,6 +46,8 @@ function GameWrapped() {
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
     setLoadingMatches(true);
     getGameMatchesPromise(id)
       .then((data) => {
@@ -61,6 +55,15 @@ function GameWrapped() {
       })
       .finally(() => setLoadingMatches(false));
   }, [id]);
+
+  if (!id) {
+    return (
+      <main className="space-y-8 max-w-sm mx-auto">
+        <PageHeader title="Игра" />
+        <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
+      </main>
+    );
+  }
 
   // Convert GameMatch to Match format for MatchCard reuse,
   // mapping game Elo values into the score record.

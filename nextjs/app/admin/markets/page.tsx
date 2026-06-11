@@ -31,6 +31,7 @@ export default function AdminMarketsPage() {
     const [closingBetting, setClosingBetting] = useState(false);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setLoading(true);
         getMarketsPromise()
             .then((data) => setMarkets(data.active))

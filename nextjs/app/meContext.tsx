@@ -33,16 +33,16 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [geologistMode, setGeologistMode] = useLocalStorage<boolean>("geologist-mode", false);
 
   useEffect(() => {
-    loadMe();
+    let cancelled = false;
+    getMePromise().then((user) => {
+      if (cancelled) return;
+      setId(user?.id);
+      setName(user?.name);
+      setCanEdit(user?.can_edit ?? false);
+      setPlayerId(user?.player_id ?? undefined);
+    });
+    return () => { cancelled = true; };
   }, [stamp]);
-
-  const loadMe = async () => {
-    const user = await getMePromise();
-    setId(user?.id);
-    setName(user?.name);
-    setCanEdit(user?.can_edit ?? false);
-    setPlayerId(user?.player_id ?? undefined);
-  };
 
   const doLogout = () => {
     logout()

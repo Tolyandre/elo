@@ -201,8 +201,10 @@ function PlayerPageContent() {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- loading indicator around async fetch */
         if (!id) { setLoading(false); return }
         setLoading(true)
+        /* eslint-enable react-hooks/set-state-in-effect */
         getPlayerStatsPromise(id)
             .then(data => { setStats(data); setLoading(false) })
             .catch(() => setLoading(false))

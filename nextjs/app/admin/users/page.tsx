@@ -25,6 +25,7 @@ export default function AdminUsersPage() {
   const [selfRevokeTarget, setSelfRevokeTarget] = useState<User | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
     setLoading(true);
     listUsersPromise()
       .then((data) => setUsers(data))

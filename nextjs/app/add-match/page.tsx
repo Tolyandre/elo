@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
-import { usePathname } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { LoginLink } from "@/components/login-link";
-import { useGames } from "../gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
@@ -35,8 +33,6 @@ function AddGameForm() {
 
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
-
-    const { games } = useGames();
 
     const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
         if (gameId) setSelectedGameId(gameId);
@@ -192,11 +188,12 @@ function AddGameForm() {
 
 export default function AddGamePage() {
     const me = useMe();
-    const pathname = usePathname();
 
-    function AuthWarning() {
-        if (!me.id) {
-            return (
+    return (
+        <main className="max-w-sm mx-auto p-4">
+            <PageHeader title="Результат партии" />
+
+            {!me.id && (
                 <Alert>
                     <AlertCircleIcon />
                     <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
@@ -204,11 +201,8 @@ export default function AddGamePage() {
                         <LoginLink />
                     </AlertDescription>
                 </Alert>
-            )
-        }
-
-        if (!me.canEdit) {
-            return (
+            )}
+            {me.id && !me.canEdit && (
                 <Alert>
                     <AlertCircleIcon />
                     <AlertTitle><b>{me.name}</b> пока не можете добавлять партии</AlertTitle>
@@ -216,15 +210,7 @@ export default function AddGamePage() {
                         <p>Кто-то должен разрешить вам доступ</p>
                     </AlertDescription>
                 </Alert>
-            )
-        }
-    }
-
-    return (
-        <main className="max-w-sm mx-auto p-4">
-            <PageHeader title="Результат партии" />
-
-            <AuthWarning />
+            )}
             <AddGameForm />
         </main>
     );
@@ -234,9 +220,4 @@ function isNumber(value?: string | number): boolean {
     return ((value != null) &&
         (value !== '') &&
         !isNaN(Number(value.toString())));
-}
-
-function round(num: number, fractionDigits: number): number {
-    const factor = Math.pow(10, fractionDigits);
-    return Math.round(num * factor) / factor;
 }

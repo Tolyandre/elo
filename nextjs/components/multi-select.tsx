@@ -25,7 +25,6 @@ import {
 	CommandInput,
 	CommandItem,
 	CommandList,
-	CommandSeparator,
 } from "@/components/ui/command";
 import { BottomSheet } from "./ui/bottom-sheet";
 
@@ -334,7 +333,6 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			animationConfig,
 			maxCount = 3,
 			modalPopover = false,
-			asChild = false,
 			className,
 			hideSelectAll = false,
 			searchable = true,
@@ -778,7 +776,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			}
 		}, [selectedValues, isPopoverOpen, searchValue, announce, getAllOptions]);
 
-		var trigger = (<Button
+		const trigger = (<Button
 			ref={buttonRef}
 			{...props}
 			type="button"
@@ -981,7 +979,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 		</Button>);
 
 		// shouldFilter работает как встроенный фильтр, но здесь реализован свой
-		var content = (<Command shouldFilter={false} className={screenSize === "mobile" ? "flex flex-col flex-1 min-h-0" : undefined}>
+		const content = (<Command shouldFilter={false} className={screenSize === "mobile" ? "flex flex-col flex-1 min-h-0" : undefined}>
 			{searchable && (
 				<CommandInput
 					placeholder={searchPlaceholder}

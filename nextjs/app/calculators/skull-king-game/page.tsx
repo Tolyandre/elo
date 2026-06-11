@@ -33,7 +33,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { AuthWarning } from "@/components/auth-warning";
-import { LoginLink } from "@/components/login-link";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -286,9 +285,11 @@ function EditCellDialog({
     // Reset on open
     React.useEffect(() => {
         if (open) {
+            /* eslint-disable react-hooks/set-state-in-effect -- sync dialog fields from props when it opens */
             setBid(original.bid);
             setActual(original.actual ?? null);
             setBonus(original.bonus);
+            /* eslint-enable react-hooks/set-state-in-effect */
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, roundIndex, playerIndex]);
@@ -374,11 +375,37 @@ export default function SkullKingGamePage() {
     const sseTable = useSkullKingSSE(tableSession?.tableId || null);
     const [connectedPlayerIds, setConnectedPlayerIds] = useState<number[]>([]);
 
+    // Loading state for server interactions
+    const [isTransitioning, setIsTransitioning] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
+    const [resetDialogOpen, setResetDialogOpen] = useState(false);
+    const [isBidRevealed, setIsBidRevealed] = useState(false);
+
+    // Async phase transition: updates local state and awaits server sync
+    const doPhaseTransition = useCallback(async (newState: GameState) => {
+        setIsTransitioning(true);
+        try {
+            setGameStateRaw(newState);
+            if (tableSession?.isHost && tableSession.tableId) {
+                await updateSkullKingTableStatePromise(tableSession.tableId, newState);
+            }
+        } catch (err) {
+            toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setIsTransitioning(false);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tableSession]);
+
     // When SSE delivers an update, apply game state and connected player list
     useEffect(() => {
         if (sseTable) {
+            /* eslint-disable react-hooks/set-state-in-effect -- apply state pushed from the SSE subscription */
             setGameStateRaw(sseTable.game_state);
             setConnectedPlayerIds(sseTable.connected_player_ids);
+            /* eslint-enable react-hooks/set-state-in-effect */
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sseTable]);
@@ -391,6 +418,7 @@ export default function SkullKingGamePage() {
             .slice(0, players.length)
             .every(e => e !== null && e.actual !== null);
         if (allDone) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- advance phase once all results arrive via SSE
             doPhaseTransition({ ...gameState, phase: "round-complete", currentPlayerIndex: 0 });
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -480,34 +508,11 @@ export default function SkullKingGamePage() {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
 
-    // Loading state for server interactions
-    const [isTransitioning, setIsTransitioning] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [isResetting, setIsResetting] = useState(false);
-    const [resetDialogOpen, setResetDialogOpen] = useState(false);
-    const [isBidRevealed, setIsBidRevealed] = useState(false);
-
     // Reset bid reveal when round changes
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the per-round reveal toggle on round change
         setIsBidRevealed(false);
     }, [gameState.currentRound]);
-
-    // Async phase transition: updates local state and awaits server sync
-    const doPhaseTransition = useCallback(async (newState: GameState) => {
-        setIsTransitioning(true);
-        try {
-            setGameStateRaw(newState);
-            if (tableSession?.isHost && tableSession.tableId) {
-                await updateSkullKingTableStatePromise(tableSession.tableId, newState);
-            }
-        } catch (err) {
-            toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
-        } finally {
-            setIsTransitioning(false);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tableSession]);
 
     // Wake lock
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -565,6 +570,7 @@ export default function SkullKingGamePage() {
     // Load active tables when in setup phase (re-runs on each lobby signal)
     useEffect(() => {
         if (gameState.phase !== "setup" || tableSession !== null) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setTablesLoading(true);
         listSkullKingTablesPromise()
             .then(setActiveTables)
@@ -923,7 +929,6 @@ export default function SkullKingGamePage() {
                                     {!me.isAuthenticated && (
                                         <div className="flex flex-col items-start gap-2">
                                             <p className="text-xs text-muted-foreground">Войдите в аккаунт и привяжите игрока, чтобы присоединиться к столу</p>
-                                            <LoginLink />
                                         </div>
                                     )}
                                     {me.isAuthenticated && !me.playerId && (
@@ -1391,7 +1396,7 @@ export default function SkullKingGamePage() {
                             {!skullKingGame && (
                                 <div className="space-y-1">
                                     <p className="text-sm text-muted-foreground">
-                                        Не найдена игра "Skull King". Выберите вручную:
+                                        Не найдена игра «Skull King». Выберите вручную:
                                     </p>
                                     <GameCombobox
                                         value={gameState.fallbackGameId ?? undefined}

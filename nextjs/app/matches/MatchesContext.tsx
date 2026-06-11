@@ -47,7 +47,7 @@ function mergeTimeline(matches: Match[], corrections: Correction[]): TimelineIte
 
 export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   const [allMatches, setAllMatches] = useState<Match[]>([]);
-  const [allCorrections, setAllCorrections] = useState<Correction[]>([]);
+  const [, setAllCorrections] = useState<Correction[]>([]);
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -65,6 +65,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   // Load page 1 whenever filters or stamp change
   useEffect(() => {
     let cancelled = false;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before async fetch */
     setLoading(true);
     setError(null);
     matchCursorRef.current = null;
@@ -103,7 +104,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
       });
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [filters, stamp]);
 
   const loadMore = useCallback(() => {
@@ -148,7 +149,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
       .finally(() => {
         setLoadingMore(false);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [loadingMore, filters.gameId]);
 
   const setFilters = useCallback((f: Filters) => {

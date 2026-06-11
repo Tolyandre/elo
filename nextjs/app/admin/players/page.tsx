@@ -65,7 +65,7 @@ export default function PlayersAdminPage() {
             await patchPlayerPromise(selectedId, { name: newName });
             invalidatePlayers();
             setRenameOpen(false);
-        } catch (err) {
+        } catch {
             // toast shown by API helper
         } finally {
             setActionLoading(false);
@@ -85,7 +85,7 @@ export default function PlayersAdminPage() {
             await deletePlayerPromise(selectedId);
             invalidatePlayers();
             setDeleteOpen(false);
-        } catch (err) {
+        } catch {
             // toast shown by API helper
         } finally {
             setActionLoading(false);
@@ -108,7 +108,7 @@ export default function PlayersAdminPage() {
             await createPlayerCorrectionPromise(selectedId, diff);
             invalidatePlayers();
             setCorrectionOpen(false);
-        } catch (err) {
+        } catch {
             // toast shown by API helper
         } finally {
             setActionLoading(false);
@@ -146,7 +146,7 @@ export default function PlayersAdminPage() {
                                 await createPlayerPromise({ name: newName.trim() });
                                 invalidatePlayers();
                                 setNewName("");
-                            } catch (err) {
+                            } catch {
                                 // toast already shown
                             }
                         }}
@@ -312,7 +312,7 @@ export default function PlayersAdminPage() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Удалить игрока</DialogTitle>
-                        <DialogDescription>Вы уверены, что хотите удалить игрока "{selectedName}"? Это действие нельзя отменить.</DialogDescription>
+                        <DialogDescription>Вы уверены, что хотите удалить игрока «{selectedName}»? Это действие нельзя отменить.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Отмена</Button>

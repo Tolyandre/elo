@@ -165,6 +165,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
 
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect -- seed the edit form from the match when the dialog opens */
       // Initialize form with current match data
       if (match.date) {
         // Format date to datetime-local format: YYYY-MM-DDTHH:mm
@@ -188,13 +189,14 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
       setPlayerScores(scores);
       setError("");
       setSelectedPlayerToAdd(undefined);
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [open, match]);
 
   // Automatically add player when selected
   useEffect(() => {
     if (!selectedPlayerToAdd) return;
-
+    /* eslint-disable react-hooks/set-state-in-effect -- react to the player picker selection */
     if (playerScores[selectedPlayerToAdd]) {
       setError("Игрок уже добавлен в партию");
       setSelectedPlayerToAdd(undefined);
@@ -207,6 +209,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
     }));
     setSelectedPlayerToAdd(undefined);
     setError("");
+    /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlayerToAdd]);
 

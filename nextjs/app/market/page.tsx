@@ -8,6 +8,21 @@ import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ResolutionDescription } from "@/components/resolution-description";
 
+function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: number; earned: number; totalStaked: number }) {
+    const positive = net >= 0;
+    return (
+        <div className="flex justify-between text-sm gap-2">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="flex gap-2 shrink-0">
+                <span className="text-muted-foreground">({totalStaked.toFixed(1)} → {earned.toFixed(1)})</span>
+                <span className={`w-12 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                    {positive ? "+" : ""}{net.toFixed(1)}
+                </span>
+            </span>
+        </div>
+    );
+}
+
 function ProjectedOutcome({ market }: { market: MarketDetail }) {
     const myYes = market.my_yes_staked ?? 0;
     const myNo = market.my_no_staked ?? 0;
@@ -22,26 +37,11 @@ function ProjectedOutcome({ market }: { market: MarketDetail }) {
     const netIfYes = earnedIfYes - totalStaked;
     const netIfNo = earnedIfNo - totalStaked;
 
-    function DeltaRow({ label, net, earned }: { label: string; net: number; earned: number }) {
-        const positive = net >= 0;
-        return (
-            <div className="flex justify-between text-sm gap-2">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="flex gap-2 shrink-0">
-                    <span className="text-muted-foreground">({totalStaked.toFixed(1)} → {earned.toFixed(1)})</span>
-                    <span className={`w-12 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
-                        {positive ? "+" : ""}{net.toFixed(1)}
-                    </span>
-                </span>
-            </div>
-        );
-    }
-
     return (
         <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
             <p className="text-sm text-muted-foreground font-medium tracking-wide mb-2">Если рынок разрешится сейчас</p>
-            <DeltaRow label="ДА" net={netIfYes} earned={earnedIfYes} />
-            <DeltaRow label="НЕТ" net={netIfNo} earned={earnedIfNo} />
+            <DeltaRow label="ДА" net={netIfYes} earned={earnedIfYes} totalStaked={totalStaked} />
+            <DeltaRow label="НЕТ" net={netIfNo} earned={earnedIfNo} totalStaked={totalStaked} />
         </div>
     );
 }
@@ -96,6 +96,7 @@ function MarketPageContent() {
 
     useEffect(() => {
         if (!id) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setLoading(true);
         getMarketByIdPromise(id).then(setMarket).finally(() => setLoading(false));
     }, [id]);

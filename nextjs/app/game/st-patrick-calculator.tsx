@@ -77,10 +77,10 @@ function BlackCardsInput({
     name,
     maxPlayedCount,
 }: {
-    name: string
+    name: "blackCards"
     maxPlayedCount: number
 }) {
-    const { field } = useController({ name: name as any });
+    const { field } = useController<FormValues, "blackCards">({ name });
     const cards: CardState[] = field.value ?? [];
 
     const playedCount = cards.filter((v) => v === "played").length;
@@ -185,7 +185,7 @@ export function StPatrickCalculator() {
         if (roundNumber > maxRounds) {
             form.setValue("roundNumber", maxRounds);
         }
-    }, [numberOfPlayers, roundNumber])
+    }, [numberOfPlayers, roundNumber, form])
 
     /* validation for black cards */
     useEffect(() => {
@@ -213,17 +213,17 @@ export function StPatrickCalculator() {
                 message: `Количество карт 'у соперников' не должно превышать ${opponentsCardsInHand}`,
             });
         } else {
-            form.clearErrors("blackCards" as any);
+            form.clearErrors("blackCards");
         }
-    }, [blackCards, numberOfPlayers, roundNumber])
+    }, [blackCards, numberOfPlayers, roundNumber, cardsInHand, maxPlayedCount, opponentsCardsInHand, form])
 
 
     const probabilitiesPerMyCard = useMemo(() => {
-        if ((form.formState.errors as any).blackCards) return null;
+        if (form.formState.errors.blackCards) return null;
         if (!numberOfPlayers || !roundNumber || !blackCards) return null;
 
         return computeProbabilities(numberOfPlayers, roundNumber, blackCards);
-    }, [numberOfPlayers, roundNumber, blackCards, (form.formState.errors as any)?.blackCards])
+    }, [numberOfPlayers, roundNumber, blackCards, form.formState.errors.blackCards])
 
 
     /* ----------------------------- render ----------------------------- */
@@ -288,8 +288,8 @@ export function StPatrickCalculator() {
                                 maxPlayedCount={maxPlayedCount}
                             />
 
-                            {form.formState.errors && (form.formState.errors as any).blackCards && (
-                                <div className="text-sm text-destructive mt-2">{(form.formState.errors as any).blackCards.message}</div>
+                            {form.formState.errors.blackCards && (
+                                <div className="text-sm text-destructive mt-2">{form.formState.errors.blackCards.message}</div>
                             )}
                         </div>
 
@@ -309,7 +309,7 @@ export function StPatrickCalculator() {
                             Вероятность что хотя бы один из соперников
                             будет вынужден взять взятку, если вы заходите с карты:
                         </p>
-                        {!((form.formState.errors as any).blackCards) ? (
+                        {!(form.formState.errors.blackCards) ? (
                             probabilitiesPerMyCard && probabilitiesPerMyCard.length > 0 ? (
                                 <table className="w-full text-sm">
                                     <thead>

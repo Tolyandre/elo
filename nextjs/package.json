@@ -7,7 +7,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest",
     "generate:api": "openapi-typescript ../openapi/openapi.yaml -o app/api-types.gen.ts"
   },
@@ -51,6 +51,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.2.2",
     "jsdom": "^29.0.1",
     "openapi-fetch": "^0.17.0",
     "openapi-typescript": "^7.13.0",

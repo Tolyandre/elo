@@ -10,14 +10,16 @@ export function PingError() {
 
     const [pingError, setPingError] = useState<null | true | false>(null);
     const [longWait, setLongWait] = useState(false);
-    const [showAlert, setShowAlert] = useState(false);
     const pathname = usePathname();
 
     useEffect(() => {
         let cancelled = false;
 
+        // Reset to the loading state for the freshly navigated route before re-pinging.
+        /* eslint-disable react-hooks/set-state-in-effect -- reset ping status on navigation */
         setPingError(null);
         setLongWait(false);
+        /* eslint-enable react-hooks/set-state-in-effect */
         const timer = setTimeout(() => {
             if (!cancelled) setLongWait(true);
         }, 5000);
@@ -32,9 +34,8 @@ export function PingError() {
         };
     }, [pathname]);
 
-    useEffect(() => {
-        setShowAlert(longWait && pingError === null || pingError === true);
-    }, [longWait, pingError]);
+    // Derived during render — no separate state/effect needed.
+    const showAlert = (longWait && pingError === null) || pingError === true;
 
     if (showAlert)
         return (

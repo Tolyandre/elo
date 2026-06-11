@@ -51,6 +51,7 @@ export function EloCalculator() {
                 elo: settings.startingElo,
                 score: 3 - i,
             })))
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time form seed from settings once they load
             setInitialized(true)
         }
     }, [settings.eloConstK, settings.eloConstD, settings.winReward, settings.startingElo, initialized, setValue])

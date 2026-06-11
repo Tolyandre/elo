@@ -105,10 +105,13 @@ export function ConvergenceChart() {
     const [D,         setD]         = useState<number | null>(null)
     const [earnedTau, setEarnedTau] = useState<number | null>(null)
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mark mounted to avoid SSR hydration mismatch
     useEffect(() => { setMounted(true) }, [])
     useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- seed local controls from settings once they load */
         if (settings.eloConstD          > 0 && D         === null) setD(settings.eloConstD)
         if (settings.newbieLeagueEarnedTau > 0 && earnedTau === null) setEarnedTau(settings.newbieLeagueEarnedTau)
+        /* eslint-enable react-hooks/set-state-in-effect */
     }, [settings, D, earnedTau])
 
     const effD        = D         ?? (settings.eloConstD          || 400)
