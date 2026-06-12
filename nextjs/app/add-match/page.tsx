@@ -1,19 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
-import { addMatchPromise } from "../api";
 import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
+import { useOffline } from "../offline/OfflineContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircleIcon } from "lucide-react";
+import { AlertCircleIcon, CloudOff } from "lucide-react";
 import { LoginLink } from "@/components/login-link";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { VoiceInput } from "@/components/voice-input";
+import { PendingMatch } from "@/lib/offline/types";
 
 type Participant = {
     id: string;
@@ -21,18 +22,50 @@ type Participant = {
     points: string;
 };
 
-function AddGameForm() {
+function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
     const { players, playerDisplayName, loading } = usePlayers();
-    const [participants, setParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
-    const [selectedGameId, setSelectedGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
+    const { pendingPlayers, isOnline, submitMatch, updatePendingMatch } = useOffline();
+    const [draftParticipants, setDraftParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
+    const [draftGameId, setDraftGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
+    // Editing a pending match keeps its own state so the regular add-match draft survives.
+    const [editParticipants, setEditParticipants] = useState<Participant[]>([]);
+    const [editGameId, setEditGameId] = useState<string | undefined>(undefined);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const router = useRouter();
 
+    const participants = editMatch ? editParticipants : draftParticipants;
+    const setParticipants = editMatch ? setEditParticipants : setDraftParticipants;
+    const selectedGameId = editMatch ? editGameId : draftGameId;
+    const setSelectedGameId = editMatch ? setEditGameId : setDraftGameId;
+
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+
+    const resolvePlayerName = (id: string): string => {
+        const pending = pendingPlayers.find((p) => p.clientId === id);
+        if (pending) return `${pending.name} (офлайн)`;
+        const found = players.find((pl) => pl.id === id);
+        return found ? playerDisplayName(found) : "Unknown";
+    };
+
+    // Prefill once from the pending match being edited (after players are known).
+    const editInitializedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!editMatch || loading || editInitializedRef.current === editMatch.clientId) return;
+        editInitializedRef.current = editMatch.clientId;
+        setEditParticipants(
+            Object.entries(editMatch.score).map(([id, points]) => ({
+                id,
+                points: String(points),
+                name: resolvePlayerName(id),
+            })),
+        );
+        setEditGameId(editMatch.gameId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editMatch, loading]);
 
     const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
         if (gameId) setSelectedGameId(gameId);
@@ -40,11 +73,10 @@ function AddGameForm() {
             const merged = [...participants];
             for (const { playerId, points } of scores) {
                 const existing = merged.find((p) => p.id === playerId);
-                const found = players.find((pl) => pl.id === playerId);
                 if (existing) {
                     existing.points = String(points);
                 } else {
-                    merged.push({ id: playerId, points: String(points), name: found ? playerDisplayName(found) : playerId });
+                    merged.push({ id: playerId, points: String(points), name: resolvePlayerName(playerId) });
                 }
             }
             setParticipants(merged);
@@ -55,8 +87,7 @@ function AddGameForm() {
         setParticipants(
             newIds.map((id) => {
                 const existing = participants.find((p) => p.id === id);
-                const found = players.find((pl) => pl.id === id);
-                return existing ?? { id, points: "", name: found ? playerDisplayName(found) : "Unknown" };
+                return existing ?? { id, points: "", name: resolvePlayerName(id) };
             })
         );
     };
@@ -86,16 +117,24 @@ function AddGameForm() {
 
         setSubmitting(true);
         try {
-            const result = await addMatchPromise({
-                game_id: selectedGameId,
-                score,
-            });
+            if (editMatch) {
+                updatePendingMatch(editMatch.clientId, { gameId: selectedGameId, score });
+                router.push("/matches");
+                return;
+            }
+
+            const result = await submitMatch({ game_id: selectedGameId, score });
             setSuccess(true);
-            invalidateMatches();
-            invalidatePlayers();
             sessionStorage.removeItem("add-match/participants");
             sessionStorage.removeItem("add-match/selectedGameId");
-            router.push(`/match?id=${result.id}`);
+            if (result.kind === "online") {
+                invalidateMatches();
+                invalidatePlayers();
+                router.push(`/match?id=${result.id}`);
+            } else {
+                // Saved locally — the pending card is shown at the top of the match list.
+                router.push("/matches");
+            }
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {
@@ -108,10 +147,22 @@ function AddGameForm() {
         }
     };
 
-    if (loading) return <div className="p-4">Загрузка игроков...</div>;
+    if (loading && isOnline) return <div className="p-4">Загрузка игроков...</div>;
+
+    const offlineMode = !isOnline;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {offlineMode && (
+                <Alert>
+                    <CloudOff />
+                    <AlertTitle>Нет сети — партия будет сохранена офлайн</AlertTitle>
+                    <AlertDescription>
+                        Результат сохранится на этом устройстве и автоматически отправится на
+                        сервер, когда появится интернет. Не очищайте данные браузера до синхронизации.
+                    </AlertDescription>
+                </Alert>
+            )}
             <div>
                 <VoiceInput onResult={handleVoiceResult} />
             </div>
@@ -174,7 +225,7 @@ function AddGameForm() {
                         Сохранение...
                     </>
                 ) : (
-                    'Сохранить результат'
+                    editMatch ? 'Сохранить изменения' : offlineMode ? 'Сохранить офлайн' : 'Сохранить результат'
                 )}
             </button>
             {success && (
@@ -187,11 +238,23 @@ function AddGameForm() {
 }
 
 export default function AddGamePage() {
+    return (
+        <Suspense>
+            <AddGamePageWrapped />
+        </Suspense>
+    );
+}
+
+function AddGamePageWrapped() {
     const me = useMe();
+    const { pendingMatches, ready } = useOffline();
+    const searchParams = useSearchParams();
+    const editClientId = searchParams.get("edit");
+    const editMatch = editClientId ? pendingMatches.find((m) => m.clientId === editClientId) : undefined;
 
     return (
         <main className="max-w-sm mx-auto p-4">
-            <PageHeader title="Результат партии" />
+            <PageHeader title={editMatch ? "Редактирование офлайн-партии" : "Результат партии"} />
 
             {!me.id && (
                 <Alert>
@@ -211,7 +274,17 @@ export default function AddGamePage() {
                     </AlertDescription>
                 </Alert>
             )}
-            <AddGameForm />
+            {editClientId && ready && !editMatch ? (
+                <Alert>
+                    <AlertCircleIcon />
+                    <AlertTitle>Партия не найдена</AlertTitle>
+                    <AlertDescription>
+                        Возможно, она уже синхронизирована с сервером или удалена.
+                    </AlertDescription>
+                </Alert>
+            ) : (
+                <AddGameForm key={editMatch?.clientId ?? "new"} editMatch={editMatch} />
+            )}
         </main>
     );
 }

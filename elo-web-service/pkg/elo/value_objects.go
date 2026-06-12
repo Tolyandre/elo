@@ -115,6 +115,22 @@ func validateMatchDateChange(old, new time.Time) error {
 	return nil
 }
 
+// newMatchMaxAge limits how far in the past a client-supplied match date may be.
+// Covers offline-created matches synced after a long stretch without network.
+const newMatchMaxAge = 30 * 24 * time.Hour
+
+// newMatchClockSkewTolerance allows slightly-future dates from devices with a fast clock.
+const newMatchClockSkewTolerance = 10 * time.Minute
+
+// validateNewMatchDate returns ErrMatchDateOutOfRange if a client-supplied date
+// for a new match is in the future (beyond clock-skew tolerance) or older than 30 days.
+func validateNewMatchDate(now, date time.Time) error {
+	if date.After(now.Add(newMatchClockSkewTolerance)) || date.Before(now.Add(-newMatchMaxAge)) {
+		return fmt.Errorf("%w: now=%v date=%v", ErrMatchDateOutOfRange, now, date)
+	}
+	return nil
+}
+
 // pgInt4ToPtr converts a nullable pgtype.Int4 to *int32 (nil when not valid).
 func pgInt4ToPtr(v pgtype.Int4) *int32 {
 	if !v.Valid {

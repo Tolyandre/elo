@@ -76,11 +76,15 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	a := mainapi.New(pool)
 	o := apioauth2.New(pool)
 
-	r.GET("/ping", a.GetPing)
-	r.GET("/players", a.ListPlayers)
-	r.POST("/players", o.DeserializeUser(), a.CreatePlayer)
-	r.PATCH("/players/:id", o.DeserializeUser(), a.PatchPlayer)
-	r.DELETE("/players/:id", o.DeserializeUser(), a.DeletePlayer)
+	strictWrapper := &mainapi.ServerInterfaceWrapper{
+		Handler: mainapi.NewStrictHandler(mainapi.NewStrictServer(a, o), nil),
+	}
+
+	r.GET("/ping", strictWrapper.GetPing)
+	r.GET("/players", strictWrapper.ListPlayers)
+	r.POST("/players", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreatePlayer)
+	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)
+	r.DELETE("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeletePlayer)
 	return r
 }
 

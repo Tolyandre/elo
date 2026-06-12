@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
@@ -139,7 +140,14 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
-	match, err := s.api.MatchService.AddMatch(ctx, gameID, playerScores, time.Now())
+	date := time.Now()
+	opts := elo.AddMatchOpts{IdempotencyKey: uuidPtrToPg(request.Body.IdempotencyKey)}
+	if request.Body.Date != nil {
+		date = *request.Body.Date
+		opts.ClientDate = true
+	}
+
+	match, err := s.api.MatchService.AddMatch(ctx, gameID, playerScores, date, opts)
 	if err != nil {
 		return addMatchError(err), nil
 	}
@@ -160,9 +168,17 @@ func addMatchError(err error) AddMatchResponseObject {
 	}
 }
 
+// uuidPtrToPg converts an optional request UUID to the nullable pgtype.UUID used by the domain.
+func uuidPtrToPg(u *openapi_types.UUID) pgtype.UUID {
+	if u == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *u, Valid: true}
+}
+
 func matchDomainError(err error) int {
 	switch {
-	case errors.Is(err, elo.ErrTooFewPlayers), errors.Is(err, elo.ErrDateChangeTooLarge), db.IsForeignKeyViolation(err):
+	case errors.Is(err, elo.ErrTooFewPlayers), errors.Is(err, elo.ErrDateChangeTooLarge), errors.Is(err, elo.ErrMatchDateOutOfRange), db.IsForeignKeyViolation(err):
 		return 400
 	case errors.Is(err, elo.ErrHistoryChangeConflict), errors.Is(err, elo.ErrHistoryChangeConflictBettingLock):
 		return 409

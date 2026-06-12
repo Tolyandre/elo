@@ -6,12 +6,12 @@ import { MatchesProvider } from "./matches/MatchesContext";
 import { SettingsProvider } from "./settingsContext";
 import { SiteHeader } from "@/components/site-header";
 import { PageHeaderProvider } from "./pageHeaderContext";
-import { PingError } from "@/components/ping-error";
 import { ThemeProvider } from "./theme-provider";
 import { MeProvider } from "./meContext";
 import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
+import { OfflineProvider } from "./offline/OfflineContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -64,6 +64,7 @@ export default function RootLayout({
             <ClubsProvider>
             <MatchesProvider>
               <PlayersProvider>
+                <OfflineProvider>
                 <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
                   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
                     <script
@@ -86,7 +87,6 @@ export default function RootLayout({
                         <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
                           <SiteHeader />
                           <div className="p-3">
-                            <PingError />
                             {children}
                           </div>
                         </div>
@@ -94,6 +94,7 @@ export default function RootLayout({
                     </div>
                   </ThemeProvider>
                 </body>
+                </OfflineProvider>
               </PlayersProvider>
             </MatchesProvider>
             </ClubsProvider>

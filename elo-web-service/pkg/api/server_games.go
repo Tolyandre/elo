@@ -80,7 +80,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 		return CreateGame400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	game, err := s.api.GameService.AddGame(ctx, name)
+	game, err := s.api.GameService.AddGame(ctx, name, uuidPtrToPg(request.Body.IdempotencyKey))
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreateGame409JSONResponse{Status: "fail", Message: "game with this name already exists"}, nil

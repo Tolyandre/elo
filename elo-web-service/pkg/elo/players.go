@@ -24,7 +24,7 @@ type Player struct {
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
-	CreatePlayer(ctx context.Context, name string) (db.Player, error)
+	CreatePlayer(ctx context.Context, name string, idempotencyKey pgtype.UUID) (db.Player, error)
 	UpdatePlayer(ctx context.Context, id int32, name string) (db.Player, error)
 	DeletePlayer(ctx context.Context, id int32) error
 	GetPlayer(ctx context.Context, id int32) (db.Player, error)
@@ -199,10 +199,13 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	return players, nil
 }
 
-func (s *PlayerService) CreatePlayer(ctx context.Context, name string) (db.Player, error) {
+// CreatePlayer creates a player. A valid idempotencyKey makes the call retryable:
+// a repeated insert with the same key returns the existing row instead of failing.
+func (s *PlayerService) CreatePlayer(ctx context.Context, name string, idempotencyKey pgtype.UUID) (db.Player, error) {
 	return s.Queries.CreatePlayer(ctx, db.CreatePlayerParams{
-		Name:          name,
-		GeologistName: pgtype.Text{Valid: false},
+		Name:           name,
+		GeologistName:  pgtype.Text{Valid: false},
+		IdempotencyKey: idempotencyKey,
 	})
 }
 

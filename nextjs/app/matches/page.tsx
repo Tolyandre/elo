@@ -15,9 +15,11 @@ import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
 import { CorrectionCard } from "@/components/correction-card";
+import { PendingMatchCard } from "@/components/pending-match-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "../meContext";
+import { useOffline } from "../offline/OfflineContext";
 import { getMarketsByMatchIdPromise, Match, Market } from "../api";
 
 function MatchWithMarkets({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
@@ -59,6 +61,16 @@ export default function MatchesPage() {
 function MatchesPageWrapped() {
   const { roundToInteger, setRoundToInteger, selectedClubId, setSelectedClubId } = useMe();
   const { items, loading, loadingMore, error, hasMore, filters, setFilters, loadMore } = useMatches();
+  const { pendingMatches } = useOffline();
+
+  // Unsynced matches go on top, newest first. Game filter applies; a player
+  // filter hides them (pending score keys may reference offline player ids).
+  const visiblePending = React.useMemo(() => {
+    if (filters.playerId) return [];
+    return pendingMatches
+      .filter((m) => !filters.gameId || m.gameId === filters.gameId)
+      .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [pendingMatches, filters.gameId, filters.playerId]);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -166,6 +178,10 @@ function MatchesPageWrapped() {
             </FieldGroup>
           </CardContent>
         </Card>
+
+        {visiblePending.map((pm) => (
+          <PendingMatchCard key={pm.clientId} match={pm} />
+        ))}
 
         {loading ? (
           <>

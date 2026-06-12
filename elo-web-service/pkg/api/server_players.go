@@ -118,7 +118,7 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 		return CreatePlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.CreatePlayer(ctx, name)
+	player, err := s.api.PlayerService.CreatePlayer(ctx, name, uuidPtrToPg(request.Body.IdempotencyKey))
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreatePlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil

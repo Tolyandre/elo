@@ -8,7 +8,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { useMe } from "@/app/meContext";
-import { addMatchPromise } from "@/app/api";
+import { useOffline } from "@/app/offline/OfflineContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { AuthWarning } from "@/components/auth-warning";
@@ -372,6 +372,7 @@ export default function ItsAWonderfulWorldPage() {
     const me = useMe();
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+    const { submitMatch } = useOffline();
     const router = useRouter();
 
     const [gameState, setGameState] = useLocalStorage<GameState>(LS_KEY, INITIAL);
@@ -434,11 +435,16 @@ export default function ItsAWonderfulWorldPage() {
             gameState.players.forEach(p => {
                 score[p.id] = playerTotal(gameState, p.id);
             });
-            const result = await addMatchPromise({ game_id: gameId, score });
-            invalidateMatches();
-            invalidatePlayers();
+            const result = await submitMatch({ game_id: gameId, score });
             localStorage.removeItem(LS_KEY);
-            router.push(`/match?id=${result.id}`);
+            if (result.kind === "online") {
+                invalidateMatches();
+                invalidatePlayers();
+                router.push(`/match?id=${result.id}`);
+            } else {
+                // Saved offline — the pending card is at the top of the match list.
+                router.push("/matches");
+            }
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));
         } finally {

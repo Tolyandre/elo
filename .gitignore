@@ -70,3 +70,7 @@ recognition/**/*.pyc
 
 # generated artifacts
 /openapi/bundled.json
+
+# generated service worker (built by @serwist/next during pnpm build)
+nextjs/public/sw.js
+nextjs/public/sw.js.map

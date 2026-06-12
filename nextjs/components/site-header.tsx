@@ -2,6 +2,7 @@
 
 import { usePageHeaderContext } from "@/app/pageHeaderContext"
 import { NavigationBar } from "@/components/navigation-bar"
+import { SyncStatus } from "@/components/sync-status"
 
 export function SiteHeader() {
   const { title, action } = usePageHeaderContext()
@@ -9,7 +10,8 @@ export function SiteHeader() {
   return (
     <header className="flex flex-col sm:flex-row sm:items-center w-full space-y-3 px-3">
       {/* Навигация: первая строка на мобиле, правый край на десктопе */}
-      <div className="order-first sm:order-last sm:ml-auto">
+      <div className="order-first sm:order-last sm:ml-auto flex items-center gap-1">
+        <SyncStatus />
         <NavigationBar />
       </div>
 

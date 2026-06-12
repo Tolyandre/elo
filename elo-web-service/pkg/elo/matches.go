@@ -28,8 +28,19 @@ func NewMatchService(pool *pgxpool.Pool, marketService IMarketService) IMatchSer
 	}
 }
 
+// AddMatchOpts carries optional behaviour for AddMatch, used by offline sync.
+type AddMatchOpts struct {
+	// IdempotencyKey deduplicates retries: when set and a match with this key
+	// already exists, AddMatch returns it without creating anything.
+	IdempotencyKey pgtype.UUID
+	// ClientDate marks the date as client-supplied: it is validated (no future,
+	// max 30 days back) and Elo is recalculated from that date so later matches
+	// are settled correctly.
+	ClientDate bool
+}
+
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
+	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
 	RecalculateAllGameElo(ctx context.Context) error
 
@@ -41,9 +52,15 @@ type IMatchService interface {
 
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error) {
+func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
 	if len(playerScores) < 2 {
 		return db.Match{}, ErrTooFewPlayers
+	}
+
+	if opts.ClientDate {
+		if err := validateNewMatchDate(time.Now(), date); err != nil {
+			return db.Match{}, err
+		}
 	}
 
 	tx, err := s.Pool.Begin(ctx)
@@ -56,38 +73,72 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 	q := s.Queries.WithTx(tx)
 
+	if opts.IdempotencyKey.Valid {
+		existing, err := q.GetMatchByIdempotencyKey(ctx, opts.IdempotencyKey)
+		if err == nil {
+			return existing, nil
+		}
+		if !db.IsNoRows(err) {
+			return db.Match{}, fmt.Errorf("get match by idempotency key: %v", err)
+		}
+	}
+
 	dt := pgtype.Timestamptz{Time: date, Valid: true}
 
 	// create match (foreign key will validate game_id exists)
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		Date:   dt,
-		GameID: gameID,
+		Date:           dt,
+		GameID:         gameID,
+		IdempotencyKey: opts.IdempotencyKey,
 	})
 	if err != nil {
+		// Concurrent retry with the same idempotency key: return the winner's match.
+		if opts.IdempotencyKey.Valid && db.IsUniqueViolation(err) {
+			_ = tx.Rollback(ctx)
+			return s.Queries.GetMatchByIdempotencyKey(ctx, opts.IdempotencyKey)
+		}
 		return db.Match{}, fmt.Errorf("unable to create match: %v", err)
 	}
 
-	// Lock players and collect all prior state needed for dual-track settlement
-	state, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
-	if err != nil {
-		return db.Match{}, err
-	}
+	if opts.ClientDate {
+		// Client-supplied (possibly backdated) date: write scores, then replay all
+		// events from that date so this match and every later one settle in order.
+		for playerID, score := range playerScores {
+			if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+				MatchID:  createdMatch.ID,
+				PlayerID: playerID,
+				Score:    score,
+			}); err != nil {
+				return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
+			}
+		}
 
-	playerIDs := make([]int32, 0, len(playerScores))
-	for playerID := range playerScores {
-		playerIDs = append(playerIDs, playerID)
-	}
+		if err := s.recalculateEloFromDate(ctx, q, date); err != nil {
+			return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
+		}
+	} else {
+		// Lock players and collect all prior state needed for dual-track settlement
+		state, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
+		if err != nil {
+			return db.Match{}, err
+		}
 
-	if err := s.EventProcessor.processMatchSettlements(
-		ctx, q, createdMatch.ID, gameID, playerScores,
-		state, date,
-		s.calculateAndStoreEloWithScores,
-	); err != nil {
-		return db.Match{}, err
-	}
+		playerIDs := make([]int32, 0, len(playerScores))
+		for playerID := range playerScores {
+			playerIDs = append(playerIDs, playerID)
+		}
 
-	if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
-		return db.Match{}, fmt.Errorf("recalculate bet limits: %v", err)
+		if err := s.EventProcessor.processMatchSettlements(
+			ctx, q, createdMatch.ID, gameID, playerScores,
+			state, date,
+			s.calculateAndStoreEloWithScores,
+		); err != nil {
+			return db.Match{}, err
+		}
+
+		if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
+			return db.Match{}, fmt.Errorf("recalculate bet limits: %v", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

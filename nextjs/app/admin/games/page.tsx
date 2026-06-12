@@ -3,10 +3,12 @@ import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useState } from "react";
-import { patchGamePromise, deleteGamePromise, createGamePromise } from "@/app/api";
+import { patchGamePromise, deleteGamePromise, createGamePromise, isNetworkFailure } from "@/app/api";
 import { LoginLink } from "@/components/login-link";
 import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
+import { useOffline } from "@/app/offline/OfflineContext";
+import { PendingEntityList } from "@/components/pending-entity-list";
 import {
     Dialog,
     DialogContent,
@@ -21,6 +23,7 @@ import { Button } from "@/components/ui/button";
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
     const { isAuthenticated, canEdit } = useMe();
+    const { pendingGames, isOnline, addPendingGame, updatePendingGame, deletePendingGame } = useOffline();
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -110,20 +113,39 @@ export default function GamesAdminPage() {
                 <Button
                     onClick={async () => {
                         if (!newName || newName.trim() === "") return;
+                        const name = newName.trim();
+                        if (!isOnline) {
+                            addPendingGame(name);
+                            setNewName("");
+                            return;
+                        }
                         try {
-                            await createGamePromise({ name: newName.trim() });
+                            await createGamePromise({ name });
                             invalidateGames();
                             setNewName("");
-                        } catch {
-                            // toast already shown
+                        } catch (e) {
+                            if (isNetworkFailure(e)) {
+                                // network died mid-request — queue the game offline instead
+                                addPendingGame(name);
+                                setNewName("");
+                            }
+                            // HTTP errors: toast already shown
                         }
                     }}
                     disabled={!canEdit}
                 >
-                    Добавить
+                    {isOnline ? "Добавить" : "Добавить офлайн"}
                 </Button>
                 </div>
             </div>
+
+            <PendingEntityList
+                title="Не синхронизированные игры"
+                items={pendingGames}
+                canEdit={canEdit}
+                onRename={updatePendingGame}
+                onDelete={deletePendingGame}
+            />
 
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">

@@ -1,7 +1,11 @@
 -- name: CreateMatch :one
-INSERT INTO matches (date, game_id)
-VALUES ($1, $2)
+INSERT INTO matches (date, game_id, idempotency_key)
+VALUES ($1, $2, $3)
 RETURNING *;
+
+-- name: GetMatchByIdempotencyKey :one
+SELECT * FROM matches
+WHERE idempotency_key = $1;
 
 -- name: UpsertMatchScore :exec
 INSERT INTO match_scores (match_id, player_id, score)

@@ -28,6 +28,19 @@ export const client = createClient<paths>({
 });
 client.use(errorToastMiddleware);
 
+/** Thrown when the server is unreachable (no network), as opposed to an HTTP error. */
+export class NetworkError extends Error {
+    constructor(message = "Нет соединения с сервером") {
+        super(message);
+        this.name = "NetworkError";
+    }
+}
+
+/** True for errors meaning "request never reached the server" (fetch rejects with TypeError). */
+export function isNetworkFailure(e: unknown): boolean {
+    return e instanceof NetworkError || e instanceof TypeError;
+}
+
 // ─── Re-exported schema types ─────────────────────────────────────────────────
 
 export type EloRank = components["schemas"]["EloRank"];
@@ -128,10 +141,26 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
 
 // ─── API functions ────────────────────────────────────────────────────────────
 
-export async function getPingPromise() {
-    const { data, error } = await client.GET("/ping");
-    if (error) throw error;
-    return data;
+// Lightweight API health check used by the offline indicator. Uses a raw fetch
+// (not the openapi client) to avoid the error toast middleware on failure, and
+// returns a boolean instead of throwing. The service worker serves /ping as
+// NetworkOnly, so the result reflects the real API state. A timeout treats a
+// hanging server (no response, not a refused connection) as unreachable.
+export async function pingApiPromise(timeoutMs = 8000): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${EloWebServiceBaseUrl}/ping`, {
+            method: "GET",
+            credentials: "include",
+            signal: controller.signal,
+        });
+        return res.ok;
+    } catch {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 export async function getPlayersPromise(): Promise<Player[]> {
@@ -196,7 +225,7 @@ export async function getMatchByIdPromise(id: number): Promise<Match> {
     return mapMatch(data.data);
 }
 
-export async function addMatchPromise(payload: { game_id: string, score: Record<string, number> }) {
+export async function addMatchPromise(payload: { game_id: string, score: Record<string, number>, date?: string, idempotency_key?: string }) {
     const { data, error } = await client.POST("/matches", { body: payload });
     if (error) throw error;
     return data.data;
@@ -254,17 +283,24 @@ export async function deleteGamePromise(id: string) {
     return data;
 }
 
-export async function createGamePromise(payload: { name: string }) {
+export async function createGamePromise(payload: { name: string, idempotency_key?: string }) {
     const { data, error } = await client.POST("/games", { body: payload });
     if (error) throw error;
     return data.data;
 }
 
 export async function getMePromise(): Promise<User | undefined> {
-    // Manual fetch: 401 returns undefined instead of throwing
+    // Manual fetch: 401 returns undefined instead of throwing.
+    // A network failure throws NetworkError without a toast so the caller can
+    // fall back to a cached identity while offline.
+    let res: Response;
     try {
-        const res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
-        if (res.status === 401) return undefined;
+        res = await fetch(`${EloWebServiceBaseUrl}/auth/me`, { method: 'GET', credentials: 'include' });
+    } catch {
+        throw new NetworkError();
+    }
+    if (res.status === 401) return undefined;
+    try {
         const body = await res.json();
         if (body.status === "fail") throw new Error(body.message);
         if (!res.ok) throw new Error(`Ошибка ${res.status}`);
@@ -327,7 +363,7 @@ export async function patchUserPromise(userId: string, payload: { can_edit: bool
     return data.data;
 }
 
-export async function createPlayerPromise(payload: { name: string }) {
+export async function createPlayerPromise(payload: { name: string, idempotency_key?: string }) {
     const { data, error } = await client.POST("/players", { body: payload });
     if (error) throw error;
     return data.data;

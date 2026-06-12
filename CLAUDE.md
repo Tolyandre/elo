@@ -134,7 +134,18 @@ Frontend uses React Context for state management. Key contexts:
 - `PlayersProvider`: Player data and rankings
 - `MatchesProvider`: Match history
 - `GamesProvider`: Available games
-- `MeProvider`: Current authenticated user
+- `MeProvider`: Current authenticated user (caches identity in localStorage so `canEdit` gating works offline)
+- `OfflineProvider` (`app/offline/OfflineContext.tsx`): pending offline-created matches/players/games + auto-sync
+
+### Offline Mode (PWA)
+The app works offline for previously authenticated users with edit rights:
+- **Pending store**: offline-created matches/players/games live in localStorage (`offline-pending-v1`), types in `nextjs/lib/offline/types.ts`. Temp ids are `"offline:<uuid>"`; the uuid is sent as `idempotency_key` on sync so retries never create duplicates.
+- **Sync engine** (`nextjs/lib/offline/sync.ts`, pure/DI, vitest-covered): on reconnect pushes games → players → matches in creation order, rewriting temp ids to server ids. HTTP errors mark the item `error` (user can edit/delete it); network errors abort the run; 401 sets `authRequired`.
+- **Match submission**: pages and calculators call `useOffline().submitMatch(...)` instead of `addMatchPromise` directly — it queues offline when there is no network OR when the request fails at the network level (API server down but network up).
+- **API reachability**: `OfflineContext` probes `/ping` (`pingApiPromise`, raw fetch with an 8s timeout) with exponential backoff (30s→15min, reset on focus/online/navigation/new pending). `apiReachable === false` (network up, server off) shows the crossed-cloud indicator (`components/sync-status.tsx`) and, when the server returns, auto-triggers a resync (also resyncs on window focus/visibility). There is no separate ping banner anymore.
+- **Backend support**: `POST /matches` accepts optional `date` (≤30 days in the past, Elo replayed from that date via `RecalculateFrom`) and `idempotency_key`; `POST /players` and `POST /games` accept `idempotency_key` (unique nullable column, `ON CONFLICT DO UPDATE ... RETURNING *`).
+- **Service worker**: Serwist (`@serwist/next`), source `nextjs/app/sw.ts`, generated `public/sw.js` (gitignored). Precaches **both** each page's HTML and its RSC `.txt` payload (client-side `<Link>` navigation fetches `<route>.txt`, so without it unvisited pages don't open offline). API GETs use NetworkFirst (`elo-api` cache); `/ping`, `/auth/*`, SSE and all writes are NetworkOnly (never cached). **When adding a page, add its route to `nextjs/lib/offline/routes.ts`** — `scripts/check-precache.mjs` (runs after `pnpm build`) fails if a `PAGES` route is missing from the export and warns about exported routes not in `PAGES`. Production build uses webpack (`next build --webpack`) because `@serwist/next` hooks into webpack; `next dev` stays on Turbopack with the SW disabled. New-deploy detection: precache `revision` = `GITHUB_SHA`, with `skipWaiting`/`clientsClaim`/`cleanupOutdatedCaches`.
+- **basePath**: set via `NEXT_PUBLIC_BASE_PATH` (`/elo` on GitHub Pages, configured in `.github/workflows/nextjs.yml`).
 
 ### Database Schema
 Key tables:

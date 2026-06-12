@@ -7,7 +7,6 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import {
-    addMatchPromise,
     listSkullKingTablesPromise,
     createSkullKingTablePromise,
     updateSkullKingTableStatePromise,
@@ -21,6 +20,7 @@ import {
     SkullKingTableSummary,
 } from "@/app/api";
 import { useSkullKingSSE, useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
+import { useOffline } from "@/app/offline/OfflineContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
@@ -357,6 +357,7 @@ export default function SkullKingGamePage() {
     const { games } = useGames();
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+    const { submitMatch } = useOffline();
     const router = useRouter();
 
     const [gameState, setGameStateRaw] = useLocalStorage<GameState>(LS_KEY, initialState);
@@ -796,16 +797,23 @@ export default function SkullKingGamePage() {
             gameState.players.forEach((p, pi) => {
                 score[p.id] = playerTotal(gameState.rounds, pi, gameState.players.length);
             });
-            const result = await addMatchPromise({ game_id: gameId, score });
-            invalidateMatches();
-            invalidatePlayers();
-            // Delete server table if in table mode
-            if (tableSession?.tableId) {
-                try { await deleteSkullKingTablePromise(tableSession.tableId); } catch { /* ignore */ }
+            const result = await submitMatch({ game_id: gameId, score });
+            if (result.kind === "online") {
+                invalidateMatches();
+                invalidatePlayers();
+                // Delete server table if in table mode
+                if (tableSession?.tableId) {
+                    try { await deleteSkullKingTablePromise(tableSession.tableId); } catch { /* ignore */ }
+                }
             }
             localStorage.removeItem(LS_KEY);
             setTableSession(null);
-            router.push(`/match?id=${result.id}`);
+            if (result.kind === "online") {
+                router.push(`/match?id=${result.id}`);
+            } else {
+                // Saved offline — the pending card is at the top of the match list.
+                router.push("/matches");
+            }
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));
         } finally {

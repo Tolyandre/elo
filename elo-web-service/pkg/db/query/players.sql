@@ -1,6 +1,8 @@
 -- name: CreatePlayer :one
-INSERT INTO players (name, geologist_name)
-VALUES ($1, $2)
+INSERT INTO players (name, geologist_name, idempotency_key)
+VALUES ($1, $2, $3)
+ON CONFLICT (idempotency_key)
+DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
 RETURNING *;
 
 -- name: GetPlayer :one

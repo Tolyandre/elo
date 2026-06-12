@@ -56,7 +56,7 @@ type IGameService interface {
 	GetGameMatches(ctx context.Context, id string) ([]GameMatch, error)
 	DeleteGame(ctx context.Context, id int32) (*db.Game, error)
 	UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error)
-	AddGame(ctx context.Context, name string) (*db.Game, error)
+	AddGame(ctx context.Context, name string, idempotencyKey pgtype.UUID) (*db.Game, error)
 }
 
 type GameService struct {
@@ -247,8 +247,13 @@ func (s *GameService) UpdateGameName(ctx context.Context, id int32, name string)
 	return &g, nil
 }
 
-func (s *GameService) AddGame(ctx context.Context, name string) (*db.Game, error) {
-	g, err := s.Queries.AddGame(ctx, name)
+// AddGame creates a game. A valid idempotencyKey makes the call retryable:
+// a repeated insert with the same key returns the existing row instead of failing.
+func (s *GameService) AddGame(ctx context.Context, name string, idempotencyKey pgtype.UUID) (*db.Game, error) {
+	g, err := s.Queries.AddGame(ctx, db.AddGameParams{
+		Name:           name,
+		IdempotencyKey: idempotencyKey,
+	})
 	if err != nil {
 		return nil, err
 	}

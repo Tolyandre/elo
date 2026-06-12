@@ -122,42 +122,6 @@ func (a *API) PatchGame(c *gin.Context) {
 	SuccessDataResponse(c, resp)
 }
 
-func (a *API) CreateGame(c *gin.Context) {
-	var body struct {
-		Name string `json:"name"`
-	}
-
-	if err := c.BindJSON(&body); err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
-
-	if body.Name == "" {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("name is required"))
-		return
-	}
-
-	game, err := a.GameService.AddGame(c.Request.Context(), body.Name)
-	if err != nil {
-		if db.IsUniqueViolation(err) {
-			ErrorResponse(c, http.StatusConflict, fmt.Errorf("game with this name already exists"))
-			return
-		}
-		ErrorResponse(c, http.StatusInternalServerError, err)
-		return
-	}
-
-	resp := struct {
-		Id   string `json:"id"`
-		Name string `json:"name"`
-	}{
-		Id:   strconv.Itoa(int(game.ID)),
-		Name: game.Name,
-	}
-
-	SuccessDataResponse(c, resp)
-}
-
 func (a *API) GetGameMatches(c *gin.Context) {
 	type gameMatchPlayerJson struct {
 		Id           string  `json:"id"`

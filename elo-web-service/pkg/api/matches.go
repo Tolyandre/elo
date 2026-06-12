@@ -15,11 +15,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-type addMatchJson struct {
-	GameId string             `json:"game_id" binding:"required"`
-	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
-}
-
 type updateMatchJson struct {
 	GameId string             `json:"game_id" binding:"required"`
 	Score  map[string]float64 `json:"score" binding:"required"` // key is player_id as string
@@ -59,10 +54,6 @@ func parseMatchScores(gameIDStr string, scores map[string]float64) (int32, map[i
 	return int32(gameID), playerScores, nil
 }
 
-func (p addMatchJson) toDomain() (int32, map[int32]float64, error) {
-	return parseMatchScores(p.GameId, p.Score)
-}
-
 func (p updateMatchJson) toDomain() (int32, map[int32]float64, error) {
 	return parseMatchScores(p.GameId, p.Score)
 }
@@ -83,34 +74,6 @@ func matchErrorToHTTP(c *gin.Context, err error) {
 	default:
 		ErrorResponse(c, http.StatusInternalServerError, err)
 	}
-}
-
-func (a *API) AddMatch(c *gin.Context) {
-	var payload addMatchJson
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
-
-	gameID, playerScores, err := payload.toDomain()
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
-		return
-	}
-
-	match, err := a.MatchService.AddMatch(c.Request.Context(), gameID, playerScores, time.Now())
-	if err != nil {
-		matchErrorToHTTP(c, err)
-		return
-	}
-
-	resp := struct {
-		Id int32 `json:"id"`
-	}{
-		Id: match.ID,
-	}
-
-	SuccessDataResponse(c, resp)
 }
 
 func (a *API) UpdateMatch(c *gin.Context) {

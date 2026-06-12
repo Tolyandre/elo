@@ -31,6 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL: https://toly.is-cool.dev/elo-web-service
+      # basePath is set explicitly (used by next.config.ts for the app, service
+      # worker precache URLs and web manifest) instead of being injected by
+      # actions/configure-pages.
+      NEXT_PUBLIC_BASE_PATH: /elo
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -62,9 +66,6 @@ jobs:
             ${{ runner.os }}-nextjs-${{ hashFiles('nextjs/pnpm-lock.yaml') }}-
       - name: Setup Pages
         uses: actions/configure-pages@v6
-        with:
-          static_site_generator: next
-          generator_config_file: nextjs/next.config.js
       - name: Install dependencies
         run: pnpm --dir ./nextjs install --frozen-lockfile
       - name: Run tests

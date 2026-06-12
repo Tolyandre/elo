@@ -15,6 +15,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
+	gocv.io/x/gocv v0.43.0
 )
 
 require (
@@ -116,7 +117,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.39.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	gocv.io/x/gocv v0.43.0 // indirect
 	golang.org/x/arch v0.18.0 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
 	golang.org/x/mod v0.32.0 // indirect

@@ -21,9 +21,10 @@ import {
 } from "@/components/ui/popover"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { useGames } from "@/app/gamesContext"
-import { createGamePromise } from "@/app/api"
+import { createGamePromise, isNetworkFailure } from "@/app/api"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
+import { useOffline } from "@/app/offline/OfflineContext"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { buildGameGroups } from "@/lib/game-groups"
 
@@ -45,11 +46,23 @@ export function GameCombobox({
   const { matches } = useMatches();
   const { playerId } = useMe();
   const { isMobile } = useIsMobile();
+  const { pendingGames, isOnline, addPendingGame } = useOffline();
 
-  const groups = React.useMemo(
-    () => buildGameGroups(games, matches, playerId),
-    [games, matches, playerId]
-  );
+  const groups = React.useMemo(() => {
+    const base = buildGameGroups(games, matches, playerId);
+    if (pendingGames.length === 0) return base;
+    return [
+      {
+        heading: "Офлайн (не синхронизировано)",
+        options: pendingGames.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)` })),
+      },
+      ...base,
+    ];
+  }, [games, matches, playerId, pendingGames]);
+
+  const displayName = (id: string) =>
+    games.find((game) => game.id === id)?.name
+    ?? pendingGames.find((g) => g.clientId === id)?.name;
 
   const handleSelect = (currentValue: string) => {
     const next = currentValue === value ? "" : currentValue;
@@ -60,27 +73,40 @@ export function GameCombobox({
     setOpen(false);
   };
 
+  const selectCreated = (id: string) => {
+    // Wait a bit for context to update
+    setTimeout(() => {
+      if (controlledValue === undefined) {
+        setInternalValue(id);
+      }
+      if (onChange) {
+        onChange(id);
+      }
+      setOpen(false);
+      setSearchQuery("");
+      setCreating(false);
+    }, 100);
+  };
+
   const handleCreateGame = async () => {
     if (!searchQuery.trim() || creating) return;
 
     setCreating(true);
+    const name = searchQuery.trim();
+    if (!isOnline) {
+      selectCreated(addPendingGame(name).clientId);
+      return;
+    }
     try {
-      const newGame = await createGamePromise({ name: searchQuery.trim() });
+      const newGame = await createGamePromise({ name });
       invalidate();
-
-      // Wait a bit for context to update
-      setTimeout(() => {
-        if (controlledValue === undefined) {
-          setInternalValue(newGame.id);
-        }
-        if (onChange) {
-          onChange(newGame.id);
-        }
-        setOpen(false);
-        setSearchQuery("");
-        setCreating(false);
-      }, 100);
-    } catch {
+      selectCreated(newGame.id);
+    } catch (e) {
+      if (isNetworkFailure(e)) {
+        // network died mid-request — queue the game offline instead
+        selectCreated(addPendingGame(name).clientId);
+        return;
+      }
       setCreating(false);
     }
   };
@@ -92,7 +118,7 @@ export function GameCombobox({
       aria-expanded={open}
       className="w-full justify-between"
     >
-      {value ? games.find((game) => game.id === value)?.name : "Игра..."}
+      {value ? displayName(value) : "Игра..."}
       <ChevronsUpDown className="opacity-50" />
     </Button>
   )
@@ -159,7 +185,7 @@ export function GameCombobox({
           className="w-full justify-between"
           onClick={() => setOpen(true)}
         >
-          {value ? games.find((game) => game.id === value)?.name : "Игра..."}
+          {value ? displayName(value) : "Игра..."}
           <ChevronsUpDown className="opacity-50" />
         </Button>
         <BottomSheet open={open} onOpenChange={setOpen}>

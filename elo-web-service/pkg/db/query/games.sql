@@ -17,23 +17,25 @@ ORDER BY MAX(m.date) DESC;
 -- name: DeleteGame :one
 DELETE FROM games
 WHERE id = $1
-RETURNING id, name;
+RETURNING *;
 
 -- name: UpdateGameName :one
 UPDATE games
 SET name = $2
 WHERE id = $1
-RETURNING id, name;
+RETURNING *;
 
 -- name: AddGame :one
-INSERT INTO games (name)
-VALUES ($1)
-RETURNING id, name;
+INSERT INTO games (name, idempotency_key)
+VALUES ($1, $2)
+ON CONFLICT (idempotency_key)
+DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+RETURNING *;
 
 -- name: GetGameByName :one
-SELECT id, name FROM games
+SELECT * FROM games
 WHERE name = $1;
 
 -- name: GetGameByID :one
-SELECT id, name FROM games
+SELECT * FROM games
 WHERE id = $1;

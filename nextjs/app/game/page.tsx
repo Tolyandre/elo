@@ -8,7 +8,9 @@ import { useMe } from "@/app/meContext";
 import { useSettings } from "@/app/settingsContext";
 import { winsNeededForAmateur } from "@/app/eloCalculation";
 import { MatchCard } from "@/components/match-card";
+import { PendingMatchCard } from "@/components/pending-match-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useOffline } from "@/app/offline/OfflineContext";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /game?id=<GAME_ID>
@@ -29,6 +31,7 @@ function GameWrapped() {
   const [loadingMatches, setLoadingMatches] = useState(true);
   const { players: allPlayers } = usePlayers();
   const { roundToInteger } = useMe();
+  const { pendingMatches } = useOffline();
   const { newbieLeagueGoalGap, startingRatingGameArena, startingElo,
           eloConstK, eloConstD, newbieLeagueEarnedMax, newbieLeagueEarnedTau } = useSettings();
 
@@ -140,6 +143,12 @@ function GameWrapped() {
         })}
 
         <h2 className="text-xl font-semibold">История партий</h2>
+        {pendingMatches
+          .filter((pm) => pm.gameId === id)
+          .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((pm) => (
+            <PendingMatchCard key={pm.clientId} match={pm} />
+          ))}
         {loadingMatches ? (
           <>
             {Array.from({ length: 3 }).map((_, i) => (

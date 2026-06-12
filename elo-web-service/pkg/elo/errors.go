@@ -5,6 +5,7 @@ import "errors"
 var (
 	ErrTooFewPlayers           = errors.New("партия требует минимум 2 игрока")
 	ErrDateChangeTooLarge      = errors.New("изменение даты партии не может превышать 3 дня")
+	ErrMatchDateOutOfRange     = errors.New("дата партии не может быть в будущем или старше 30 дней")
 	ErrBetLimitExceeded        = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen           = errors.New("рынок не открыт")
 	ErrPlayerHasNoLinkedPlayer = errors.New("у пользователя нет привязанного игрока")

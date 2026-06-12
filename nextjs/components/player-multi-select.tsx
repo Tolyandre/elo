@@ -6,6 +6,7 @@ import { MultiSelect, MultiSelectGroup, MultiSelectOption } from "./multi-select
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
 import { useMe } from "@/app/meContext"
+import { useOffline } from "@/app/offline/OfflineContext"
 import { buildPlayerGroups } from "@/lib/player-groups"
 
 
@@ -21,6 +22,7 @@ export function PlayerMultiSelect({
   const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
   const { playerId: myPlayerId } = useMe()
+  const { pendingPlayers } = useOffline()
 
   const recentPlayerIds = useMemo(() => (
     Array.from(
@@ -33,16 +35,22 @@ export function PlayerMultiSelect({
     ).slice(0, 8)
   ), [matches])
 
-  const options: MultiSelectOption[] | MultiSelectGroup[] = useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName).map(group => ({
+  const options: MultiSelectOption[] | MultiSelectGroup[] = useMemo(() => {
+    const groups: MultiSelectGroup[] = buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName).map(group => ({
       ...group,
       options: group.options.map(opt => opt.value === myPlayerId
         ? { ...opt, render: <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{opt.label}</span> }
         : opt
       ),
-    })),
-    [players, clubs, recentPlayerIds, myPlayerId, playerDisplayName, clubDisplayName]
-  )
+    }))
+    if (pendingPlayers.length > 0) {
+      groups.unshift({
+        heading: "Офлайн (не синхронизировано)",
+        options: pendingPlayers.map(p => ({ value: p.clientId, label: `${p.name} (офлайн)` })),
+      })
+    }
+    return groups
+  }, [players, clubs, recentPlayerIds, myPlayerId, playerDisplayName, clubDisplayName, pendingPlayers])
 
   const handleSelect = (currentValue: string[]) => {
     onChange?.(currentValue);

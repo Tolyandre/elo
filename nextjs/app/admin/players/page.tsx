@@ -1,11 +1,13 @@
 "use client"
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, User } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, isNetworkFailure, User } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { LoginLink } from "@/components/login-link";
 import { useMe } from "@/app/meContext";
+import { useOffline } from "@/app/offline/OfflineContext";
+import { PendingEntityList } from "@/components/pending-entity-list";
 import {
     Dialog,
     DialogContent,
@@ -20,6 +22,7 @@ import { Edit2 } from "lucide-react";
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
     const { isAuthenticated, canEdit } = useMe();
+    const { pendingPlayers, isOnline, addPendingPlayer, updatePendingPlayer, deletePendingPlayer } = useOffline();
     const [newName, setNewName] = useState<string>("");
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
@@ -142,20 +145,39 @@ export default function PlayersAdminPage() {
                     <Button
                         onClick={async () => {
                             if (!newName || newName.trim() === "") return;
+                            const name = newName.trim();
+                            if (!isOnline) {
+                                addPendingPlayer(name);
+                                setNewName("");
+                                return;
+                            }
                             try {
-                                await createPlayerPromise({ name: newName.trim() });
+                                await createPlayerPromise({ name });
                                 invalidatePlayers();
                                 setNewName("");
-                            } catch {
-                                // toast already shown
+                            } catch (e) {
+                                if (isNetworkFailure(e)) {
+                                    // network died mid-request — queue the player offline instead
+                                    addPendingPlayer(name);
+                                    setNewName("");
+                                }
+                                // HTTP errors: toast already shown
                             }
                         }}
                         disabled={!canEdit}
                     >
-                        Добавить
+                        {isOnline ? "Добавить" : "Добавить офлайн"}
                     </Button>
                 </div>
             </div>
+
+            <PendingEntityList
+                title="Не синхронизированные игроки"
+                items={pendingPlayers}
+                canEdit={canEdit}
+                onRename={updatePendingPlayer}
+                onDelete={deletePendingPlayer}
+            />
 
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">
