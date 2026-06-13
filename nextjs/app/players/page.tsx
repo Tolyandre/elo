@@ -286,7 +286,7 @@ export default function PlayersPage() {
         <main className="max-w-sm mx-auto space-y-6">
             <PageHeader
                 title="Игроки"
-                action={<Button asChild size="sm"><Link href="/add-match">Добавить партию</Link></Button>}
+                action={<Button asChild size="sm"><Link href="/matches/new">Добавить партию</Link></Button>}
             />
             <LoadingOrError />
             <Suspense>

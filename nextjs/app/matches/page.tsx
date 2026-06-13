@@ -141,7 +141,7 @@ function MatchesPageWrapped() {
     <main className="max-w-sm mx-auto space-y-6">
       <PageHeader
         title="Партии"
-        action={<Button asChild size="sm"><Link href="/add-match">Добавить партию</Link></Button>}
+        action={<Button asChild size="sm"><Link href="/matches/new">Добавить партию</Link></Button>}
       />
 
       {error && <ErrorAlert message={error} />}
@@ -181,7 +181,7 @@ function MatchesPageWrapped() {
         </Card>
 
         {visiblePending.map((pm) => (
-          <PendingMatchCard key={pm.clientId} match={pm} />
+          <PendingMatchCard key={pm.clientId} match={pm} clickable />
         ))}
 
         {loading ? (

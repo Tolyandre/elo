@@ -1,12 +1,12 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
-import { PageHeader } from "@/app/pageHeaderContext";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
-import { useMatches } from "../matches/MatchesContext";
+import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
+import { Match, updateMatchPromise } from "../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
 import { LoginLink } from "@/components/login-link";
@@ -15,6 +15,7 @@ import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { VoiceInput } from "@/components/voice-input";
 import { PendingMatch } from "@/lib/offline/types";
+import { toast } from "sonner";
 
 type Participant = {
     id: string;
@@ -22,27 +23,67 @@ type Participant = {
     points: string;
 };
 
-function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
+/** Login / permission alerts shown above the form on both the new and edit pages. */
+export function MatchFormAuthAlerts() {
+    const me = useMe();
+    return (
+        <>
+            {!me.loading && !me.id && (
+                <Alert>
+                    <AlertCircleIcon />
+                    <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
+                    <AlertDescription>
+                        <LoginLink />
+                    </AlertDescription>
+                </Alert>
+            )}
+            {!me.loading && me.id && !me.canEdit && (
+                <Alert>
+                    <AlertCircleIcon />
+                    <AlertTitle><b>{me.name}</b> пока не можете добавлять партии</AlertTitle>
+                    <AlertDescription>
+                        <p>Кто-то должен разрешить вам доступ</p>
+                    </AlertDescription>
+                </Alert>
+            )}
+        </>
+    );
+}
+
+export function MatchForm({ editPending, editSaved }: { editPending?: PendingMatch; editSaved?: Match }) {
     const { players, playerDisplayName, loading } = usePlayers();
-    const { pendingPlayers, offline, submitMatch, updatePendingMatch } = useOffline();
-    const [draftParticipants, setDraftParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
-    const [draftGameId, setDraftGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
-    // Editing a pending match keeps its own state so the regular add-match draft survives.
-    const [editParticipants, setEditParticipants] = useState<Participant[]>([]);
-    const [editGameId, setEditGameId] = useState<string | undefined>(undefined);
+    const { pendingPlayers, offline, isSyncing, submitMatch, updatePendingMatch } = useOffline();
+    const isEdit = !!editPending || !!editSaved;
+    // Block saving an offline (pending) edit while a sync is running — the sync
+    // could remove/rewrite this very match mid-flight. Creating and editing saved
+    // matches are unaffected.
+    const syncBlocked = !!editPending && isSyncing;
+
+    // The whole form draft is persisted per target (a brand-new match, an offline
+    // pending match, or a saved match), so a refresh keeps in-progress edits and
+    // the three targets never share state.
+    const draftKey = editPending?.clientId ?? (editSaved ? `saved:${editSaved.id}` : "new");
+    const [participants, setParticipants] = useSessionStorage<Participant[]>(`match-form:${draftKey}:participants`, []);
+    const [selectedGameId, setSelectedGameId] = useSessionStorage<string | undefined>(`match-form:${draftKey}:game`, undefined);
+    const [editDate, setEditDate] = useSessionStorage<string>(`match-form:${draftKey}:date`, "");
+    // Persisted so the one-time prefill from the edited match survives a refresh
+    // instead of clobbering the user's draft.
+    const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const router = useRouter();
 
-    const participants = editMatch ? editParticipants : draftParticipants;
-    const setParticipants = editMatch ? setEditParticipants : setDraftParticipants;
-    const selectedGameId = editMatch ? editGameId : draftGameId;
-    const setSelectedGameId = editMatch ? setEditGameId : setDraftGameId;
-
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+
+    const clearDraft = () => {
+        sessionStorage.removeItem(`match-form:${draftKey}:participants`);
+        sessionStorage.removeItem(`match-form:${draftKey}:game`);
+        sessionStorage.removeItem(`match-form:${draftKey}:date`);
+        sessionStorage.removeItem(`match-form:${draftKey}:seeded`);
+    };
 
     const resolvePlayerName = (id: string): string => {
         const pending = pendingPlayers.find((p) => p.clientId === id);
@@ -51,21 +92,34 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
         return found ? playerDisplayName(found) : "Unknown";
     };
 
-    // Prefill once from the pending match being edited (after players are known).
-    const editInitializedRef = useRef<string | null>(null);
+    // Prefill once from the match being edited (after players are known). `seeded`
+    // is persisted, so on a later refresh the saved draft is used as-is.
     useEffect(() => {
-        if (!editMatch || loading || editInitializedRef.current === editMatch.clientId) return;
-        editInitializedRef.current = editMatch.clientId;
-        setEditParticipants(
-            Object.entries(editMatch.score).map(([id, points]) => ({
-                id,
-                points: String(points),
-                name: resolvePlayerName(id),
-            })),
-        );
-        setEditGameId(editMatch.gameId);
+        if (loading || !isEdit || seeded) return;
+        if (editPending) {
+            setParticipants(
+                Object.entries(editPending.score).map(([id, points]) => ({
+                    id,
+                    points: String(points),
+                    name: resolvePlayerName(id),
+                })),
+            );
+            setSelectedGameId(editPending.gameId);
+            setEditDate(toDatetimeLocal(new Date(editPending.createdAt)));
+        } else if (editSaved) {
+            setParticipants(
+                Object.entries(editSaved.score).map(([id, data]) => ({
+                    id,
+                    points: String(data.score),
+                    name: resolvePlayerName(id),
+                })),
+            );
+            setSelectedGameId(editSaved.game_id);
+            setEditDate(editSaved.date ? toDatetimeLocal(editSaved.date) : "");
+        }
+        setSeeded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [editMatch, loading]);
+    }, [editPending, editSaved, loading, isEdit, seeded]);
 
     const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
         if (gameId) setSelectedGameId(gameId);
@@ -109,6 +163,10 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
         if (participants.length === 0) return;
         // Проверка ошибок
         if (Object.values(errors).some(Boolean)) return;
+        if (isEdit && !editDate) {
+            setBottomErrorMessage("Укажите дату партии");
+            return;
+        }
 
         const score: Record<string, number> = {};
         participants.forEach(p => {
@@ -117,20 +175,37 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
 
         setSubmitting(true);
         try {
-            if (editMatch) {
-                updatePendingMatch(editMatch.clientId, { gameId: selectedGameId, score });
-                router.push("/matches");
+            if (editSaved) {
+                await updateMatchPromise(editSaved.id, {
+                    game_id: selectedGameId,
+                    score,
+                    date: new Date(editDate).toISOString(),
+                });
+                clearDraft();
+                invalidateMatches();
+                invalidatePlayers();
+                toast.success("Партия обновлена");
+                router.push(`/matches/view?id=${editSaved.id}`);
+                return;
+            }
+            if (editPending) {
+                updatePendingMatch(editPending.clientId, {
+                    gameId: selectedGameId,
+                    score,
+                    createdAt: new Date(editDate).toISOString(),
+                });
+                clearDraft();
+                router.push(`/matches/view?id=${encodeURIComponent(editPending.clientId)}`);
                 return;
             }
 
             const result = await submitMatch({ game_id: selectedGameId, score });
             setSuccess(true);
-            sessionStorage.removeItem("add-match/participants");
-            sessionStorage.removeItem("add-match/selectedGameId");
+            clearDraft();
             if (result.kind === "online") {
                 invalidateMatches();
                 invalidatePlayers();
-                router.push(`/match?id=${result.id}`);
+                router.push(`/matches/view?id=${result.id}`);
             } else {
                 // Saved locally — the pending card is shown at the top of the match list.
                 router.push("/matches");
@@ -151,19 +226,42 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
-            {offline && (
+            {offline && (editSaved ? (
+                <Alert variant="destructive">
+                    <CloudOff />
+                    <AlertTitle>Нет связи с сервером — редактирование сохранённой партии недоступно</AlertTitle>
+                    <AlertDescription>
+                        Попробуйте снова, когда соединение восстановится.
+                    </AlertDescription>
+                </Alert>
+            ) : (
                 <Alert>
                     <CloudOff />
                     <AlertTitle>Офлайн — партия будет сохранена на устройстве</AlertTitle>
                     <AlertDescription>
-                        Результат сохранится на этом устройстве и автоматически отправится на
-                        сервер, когда связь восстановится. Не очищайте данные браузера до сохранения на сервере.
+                        Партия автоматически отправится на сервер, когда связь
+                        восстановится.
                     </AlertDescription>
                 </Alert>
-            )}
+            ))}
             <div>
                 <VoiceInput onResult={handleVoiceResult} />
             </div>
+            {isEdit && (
+                <div>
+                    <label className="block font-semibold mb-2" htmlFor="matchDate">
+                        Дата и время:
+                    </label>
+                    <input
+                        id="matchDate"
+                        type="datetime-local"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="border rounded px-2 py-1 w-full"
+                        required
+                    />
+                </div>
+            )}
             <div>
                 <label className="block font-semibold mb-2" htmlFor="gameName">
                     Название игры:
@@ -211,7 +309,7 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
             <button
                 type="submit"
                 className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors flex items-center justify-center"
-                disabled={participants.length === 0 || !selectedGameId || submitting}
+                disabled={participants.length === 0 || !selectedGameId || submitting || syncBlocked}
                 aria-busy={submitting}
             >
                 {submitting ? (
@@ -223,9 +321,12 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
                         Сохранение...
                     </>
                 ) : (
-                    editMatch ? 'Сохранить изменения' : offline ? 'Сохранить офлайн' : 'Сохранить результат'
+                    isEdit ? 'Сохранить изменения' : offline ? 'Сохранить офлайн' : 'Сохранить результат'
                 )}
             </button>
+            {syncBlocked && (
+                <div className="text-muted-foreground text-sm">Идёт синхронизация — подождите…</div>
+            )}
             {success && (
                 <div className="text-green-600 font-semibold mt-2">
                     Партия добавлена! Перенаправление...
@@ -235,53 +336,17 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
     );
 }
 
-export default function AddGamePage() {
-    return (
-        <Suspense>
-            <AddGamePageWrapped />
-        </Suspense>
-    );
-}
-
-function AddGamePageWrapped() {
-    const me = useMe();
-    const { pendingMatches } = useOffline();
-    const searchParams = useSearchParams();
-    const editClientId = searchParams.get("edit");
-    const editMatch = editClientId ? pendingMatches.find((m) => m.clientId === editClientId) : undefined;
-
-    // When ?edit= points to a match that no longer exists (already synced or
-    // deleted), we simply show the normal "add a new match" form instead of a
-    // dead-end error — so any number of new matches can always be added.
-    return (
-        <main className="max-w-sm mx-auto p-4">
-            <PageHeader title={editMatch ? "Редактирование офлайн-партии" : "Результат партии"} />
-
-            {!me.loading && !me.id && (
-                <Alert>
-                    <AlertCircleIcon />
-                    <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
-                    <AlertDescription>
-                        <LoginLink />
-                    </AlertDescription>
-                </Alert>
-            )}
-            {!me.loading && me.id && !me.canEdit && (
-                <Alert>
-                    <AlertCircleIcon />
-                    <AlertTitle><b>{me.name}</b> пока не можете добавлять партии</AlertTitle>
-                    <AlertDescription>
-                        <p>Кто-то должен разрешить вам доступ</p>
-                    </AlertDescription>
-                </Alert>
-            )}
-            <AddGameForm key={editMatch?.clientId ?? "new"} editMatch={editMatch} />
-        </main>
-    );
-}
-
 function isNumber(value?: string | number): boolean {
     return ((value != null) &&
         (value !== '') &&
         !isNaN(Number(value.toString())));
+}
+
+function toDatetimeLocal(d: Date): string {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
 }

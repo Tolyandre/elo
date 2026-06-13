@@ -809,7 +809,7 @@ export default function SkullKingGamePage() {
             localStorage.removeItem(LS_KEY);
             setTableSession(null);
             if (result.kind === "online") {
-                router.push(`/match?id=${result.id}`);
+                router.push(`/matches/view?id=${result.id}`);
             } else {
                 // Saved offline — the pending card is at the top of the match list.
                 router.push("/matches");

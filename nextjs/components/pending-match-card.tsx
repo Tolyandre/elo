@@ -1,36 +1,25 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useOffline } from "@/app/offline/OfflineContext";
-import { useMe } from "@/app/meContext";
 import { PendingMatch } from "@/lib/offline/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { RankIcon } from "@/components/rank-icon";
-import { CloudOff, Pencil, Trash2 } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+import { CloudOff } from "lucide-react";
 
 // Card for a match created offline and not yet synced: no Elo data, with a
-// status badge and edit/delete actions (delete is the escape hatch when the
-// server rejects the item after reconnecting).
-export function PendingMatchCard({ match }: { match: PendingMatch }) {
+// status badge. When `clickable`, it opens the match detail page where edit and
+// delete actions live (delete is the escape hatch when the server rejects the
+// item after reconnecting).
+export function PendingMatchCard({ match, clickable = false }: { match: PendingMatch; clickable?: boolean }) {
     const { playerMap, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const { pendingPlayers, pendingGames, deletePendingMatch } = useOffline();
-    const { canEdit } = useMe();
+    const { pendingPlayers, pendingGames } = useOffline();
     const router = useRouter();
-    const [deleteOpen, setDeleteOpen] = useState(false);
 
     const gameName = useMemo(() => {
         const pending = pendingGames.find((g) => g.clientId === match.gameId);
@@ -57,7 +46,10 @@ export function PendingMatchCard({ match }: { match: PendingMatch }) {
     const createdAt = new Date(match.createdAt);
 
     return (
-        <Card className="border-dashed">
+        <Card
+            className={clickable ? "border-dashed cursor-pointer hover:bg-accent/50 transition-colors" : "border-dashed"}
+            onClick={clickable ? () => router.push(`/matches/view?id=${encodeURIComponent(match.clientId)}`) : undefined}
+        >
             <CardHeader>
                 <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
                     <span>{gameName}</span>
@@ -94,47 +86,7 @@ export function PendingMatchCard({ match }: { match: PendingMatch }) {
                         </li>
                     ))}
                 </ul>
-
-                {canEdit && (
-                    <div className="flex gap-2 mt-4">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => router.push(`/add-match?edit=${encodeURIComponent(match.clientId)}`)}
-                        >
-                            <Pencil />
-                            Редактировать
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
-                            <Trash2 />
-                            Удалить
-                        </Button>
-                    </div>
-                )}
             </CardContent>
-
-            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить несохранённую партию</DialogTitle>
-                        <DialogDescription>
-                            Партия «{gameName}» ещё не отправлена на сервер и будет удалена с этого устройства без возможности восстановления.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteOpen(false)}>Отмена</Button>
-                        <Button
-                            variant="destructive"
-                            onClick={() => {
-                                deletePendingMatch(match.clientId);
-                                setDeleteOpen(false);
-                            }}
-                        >
-                            Удалить
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </Card>
     );
 }

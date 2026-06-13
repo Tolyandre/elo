@@ -59,7 +59,7 @@ type  OfflineState = {
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
     addPendingMatch: (m: { gameId: string; score: Record<string, number> }) => PendingMatch;
-    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number> }) => void;
+    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string }) => void;
     deletePendingMatch: (clientId: string) => void;
     addPendingPlayer: (name: string) => PendingPlayer;
     updatePendingPlayer: (clientId: string, name: string) => void;
@@ -151,6 +151,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         setStore((prev) => {
             const next = fn(prev);
             persistStore(next);
+            // Keep the ref in sync synchronously: `storeRef` is otherwise updated
+            // by a lagging effect, so a sync triggered right after a mutation (e.g.
+            // delete + navigation re-probing /ping) would read a stale snapshot and
+            // resurrect the just-removed item.
+            storeRef.current = next;
             return next;
         });
     }, []);
@@ -182,32 +187,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             });
     }, [invalidateGames, invalidateMatches, invalidatePlayers]);
 
-    // Auto-sync: after the store is loaded, when the network returns, and when
-    // edit rights become known. Sync requires auth, so gate on canEdit.
-    useEffect(() => {
-        if (!loaded || !isOnline || !canEdit) return;
-        syncNow();
-    }, [loaded, isOnline, canEdit, syncNow]);
-
-    useEffect(() => {
-        const onOnline = () => syncNow();
-        window.addEventListener("online", onOnline);
-        return () => window.removeEventListener("online", onOnline);
-    }, [syncNow]);
-
-    // Resync when the tab regains focus — covers the "network up but API was
-    // down" case, where no `online` event fires when the server comes back.
-    useEffect(() => {
-        const onFocus = () => {
-            if (navigator.onLine && canEdit) syncNow();
-        };
-        window.addEventListener("focus", onFocus);
-        document.addEventListener("visibilitychange", onFocus);
-        return () => {
-            window.removeEventListener("focus", onFocus);
-            document.removeEventListener("visibilitychange", onFocus);
-        };
-    }, [syncNow, canEdit]);
+    // Sync is driven solely by the API health probe below: a fresh `pingApiPromise`
+    // success is the single automatic trigger, so we never start a sync while the
+    // server is unreachable (a failed attempt would otherwise abort and overwrite
+    // the snapshot, resurrecting items the user deleted/edited mid-sync). The manual
+    // "Сохранить на сервере" button still calls `syncNow` directly as an explicit action.
 
     // API health probe. Pings once per trigger (mount, navigation, focus, online,
     // new pending items) — NOT on an idle timer while everything is healthy. Only
@@ -226,15 +210,15 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
         const run = async () => {
             if (cancelled || !navigator.onLine) return; // offline: the `online` event re-triggers
-            const wasReachable = apiReachableRef.current;
             const ok = await pingApiPromise();
             if (cancelled) return;
             setApiReachable(ok);
             if (ok) {
-                // Healthy → stop polling (no idle pings). Resync if the API just
-                // came back and work is queued.
+                // Healthy → stop polling (no idle pings). The confirmed ping is the
+                // single automatic sync trigger: drain any queued work now (covers
+                // both API recovery and items just added while the API was up).
                 delay = MIN_DELAY;
-                if (wasReachable !== true && pendingCountRef.current > 0 && canEdit) {
+                if (pendingCountRef.current > 0 && canEdit) {
                     syncNow();
                 }
             } else {
@@ -253,11 +237,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         run();
         window.addEventListener("focus", reset);
         window.addEventListener("online", reset);
+        document.addEventListener("visibilitychange", reset);
         return () => {
             cancelled = true;
             if (timer) clearTimeout(timer);
             window.removeEventListener("focus", reset);
             window.removeEventListener("online", reset);
+            document.removeEventListener("visibilitychange", reset);
         };
         // Re-probe immediately on navigation and when new items are queued.
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
@@ -278,12 +264,19 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: string, patch: { gameId: string; score: Record<string, number> }) => {
+        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
                     m.clientId === clientId
-                        ? { ...m, gameId: patch.gameId, score: patch.score, status: "pending", error: undefined }
+                        ? {
+                              ...m,
+                              gameId: patch.gameId,
+                              score: patch.score,
+                              createdAt: patch.createdAt ?? m.createdAt,
+                              status: "pending",
+                              error: undefined,
+                          }
                         : m,
                 ),
             }));

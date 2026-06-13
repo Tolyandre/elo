@@ -440,7 +440,7 @@ export default function ItsAWonderfulWorldPage() {
             if (result.kind === "online") {
                 invalidateMatches();
                 invalidatePlayers();
-                router.push(`/match?id=${result.id}`);
+                router.push(`/matches/view?id=${result.id}`);
             } else {
                 // Saved offline — the pending card is at the top of the match list.
                 router.push("/matches");

@@ -46,7 +46,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
 
   const handleClick = useCallback(() => {
     if (clickable) {
-      router.push(`/match?id=${match.id}`);
+      router.push(`/matches/view?id=${match.id}`);
     }
   }, [clickable, match.id, router]);
 

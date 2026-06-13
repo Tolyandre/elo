@@ -113,6 +113,7 @@ export function GameCombobox({
 
   const trigger = (
     <Button
+      type="button"
       variant="outline"
       role="combobox"
       aria-expanded={open}
@@ -137,6 +138,7 @@ export function GameCombobox({
         <CommandEmpty>
           <div className="py-2 px-2">
             <Button
+              type="button"
               variant="ghost"
               className="w-full justify-start text-sm"
               onClick={handleCreateGame}
@@ -179,6 +181,7 @@ export function GameCombobox({
     return (
       <>
         <Button
+          type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}

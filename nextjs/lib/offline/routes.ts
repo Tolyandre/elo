@@ -5,7 +5,6 @@
 // KEEP IN SYNC with app/**/page.tsx: add new routes here when adding pages.
 export const PAGES = [
     "/",
-    "/add-match",
     "/admin",
     "/admin/club",
     "/admin/clubs",
@@ -27,8 +26,10 @@ export const PAGES = [
     "/market",
     "/markets",
     "/markets/new",
-    "/match",
     "/matches",
+    "/matches/edit",
+    "/matches/new",
+    "/matches/view",
     "/oauth2-callback",
     "/player",
     "/players",
