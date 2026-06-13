@@ -27,6 +27,14 @@ const serwist = new Serwist({
     },
     runtimeCaching: [
         {
+            // Never cache the service worker script or the web manifest — they must
+            // reflect the latest deploy so updates are detected. (The browser's own
+            // SW update check bypasses the worker anyway; this guards other fetches.)
+            matcher: ({ url, sameOrigin }) =>
+                sameOrigin && (url.pathname.endsWith("/sw.js") || url.pathname.endsWith("/manifest.webmanifest")),
+            handler: new NetworkOnly(),
+        },
+        {
             // Cacheable API reads: try the network, fall back to the last seen
             // response so player/game/match lists render offline. Excludes /ping
             // (must reflect real API state), auth and SSE.

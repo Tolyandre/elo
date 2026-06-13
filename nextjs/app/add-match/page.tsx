@@ -24,7 +24,7 @@ type Participant = {
 
 function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
     const { players, playerDisplayName, loading } = usePlayers();
-    const { pendingPlayers, isOnline, offline, submitMatch, updatePendingMatch } = useOffline();
+    const { pendingPlayers, offline, submitMatch, updatePendingMatch } = useOffline();
     const [draftParticipants, setDraftParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
     const [draftGameId, setDraftGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
     // Editing a pending match keeps its own state so the regular add-match draft survives.
@@ -147,13 +147,11 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
         }
     };
 
-    if (loading && isOnline) return <div className="p-4">Загрузка игроков...</div>;
-
-    const offlineMode = offline;
+    if (loading && !offline) return <div className="p-4">Загрузка игроков...</div>;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
-            {offlineMode && (
+            {offline && (
                 <Alert>
                     <CloudOff />
                     <AlertTitle>Офлайн — партия будет сохранена на устройстве</AlertTitle>
@@ -225,7 +223,7 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
                         Сохранение...
                     </>
                 ) : (
-                    editMatch ? 'Сохранить изменения' : offlineMode ? 'Сохранить офлайн' : 'Сохранить результат'
+                    editMatch ? 'Сохранить изменения' : offline ? 'Сохранить офлайн' : 'Сохранить результат'
                 )}
             </button>
             {success && (
@@ -247,11 +245,14 @@ export default function AddGamePage() {
 
 function AddGamePageWrapped() {
     const me = useMe();
-    const { pendingMatches, ready } = useOffline();
+    const { pendingMatches } = useOffline();
     const searchParams = useSearchParams();
     const editClientId = searchParams.get("edit");
     const editMatch = editClientId ? pendingMatches.find((m) => m.clientId === editClientId) : undefined;
 
+    // When ?edit= points to a match that no longer exists (already synced or
+    // deleted), we simply show the normal "add a new match" form instead of a
+    // dead-end error — so any number of new matches can always be added.
     return (
         <main className="max-w-sm mx-auto p-4">
             <PageHeader title={editMatch ? "Редактирование офлайн-партии" : "Результат партии"} />
@@ -274,17 +275,7 @@ function AddGamePageWrapped() {
                     </AlertDescription>
                 </Alert>
             )}
-            {editClientId && ready && !editMatch ? (
-                <Alert>
-                    <AlertCircleIcon />
-                    <AlertTitle>Партия не найдена</AlertTitle>
-                    <AlertDescription>
-                        Возможно, она уже сохранена на сервере или удалена.
-                    </AlertDescription>
-                </Alert>
-            ) : (
-                <AddGameForm key={editMatch?.clientId ?? "new"} editMatch={editMatch} />
-            )}
+            <AddGameForm key={editMatch?.clientId ?? "new"} editMatch={editMatch} />
         </main>
     );
 }

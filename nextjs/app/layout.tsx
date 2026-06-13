@@ -12,6 +12,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
+import { SwUpdateReloader } from "@/components/sw-update-reloader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -82,6 +83,7 @@ export default function RootLayout({
                       }}
                     />
                     <Toaster />
+                    <SwUpdateReloader />
                     <div className="font-sans flex flex-col items-center min-h-screen">
                       <PageHeaderProvider>
                         <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
