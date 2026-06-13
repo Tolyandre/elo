@@ -9,8 +9,10 @@ export function SiteHeader() {
 
   return (
     <header className="flex flex-col sm:flex-row sm:items-center w-full space-y-3 px-3">
-      {/* Навигация: первая строка на мобиле, правый край на десктопе */}
-      <div className="order-first sm:order-last sm:ml-auto flex items-center gap-1">
+      {/* Навигация: первая строка на мобиле, правый край на десктопе.
+          flex-nowrap + компактный индикатор удерживают облачко и пункты меню
+          на одной строке на большинстве мобильных экранов. */}
+      <div className="order-first sm:order-last sm:ml-auto flex flex-nowrap items-center gap-0.5">
         <SyncStatus />
         <NavigationBar />
       </div>

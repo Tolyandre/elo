@@ -45,7 +45,7 @@ export function PlayerMultiSelect({
     }))
     if (pendingPlayers.length > 0) {
       groups.unshift({
-        heading: "Офлайн (не синхронизировано)",
+        heading: "Офлайн (не сохранено)",
         options: pendingPlayers.map(p => ({ value: p.clientId, label: `${p.name} (офлайн)` })),
       })
     }

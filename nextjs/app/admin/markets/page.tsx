@@ -8,6 +8,8 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
+import { ErrorAlert } from "@/components/error-alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getMarketTitle } from "@/app/market/marketTypes";
 import {
     Dialog,
@@ -78,9 +80,15 @@ export default function AdminMarketsPage() {
                 </Button>
             </div>
 
-            {loading && <p className="text-muted-foreground">Загрузка...</p>}
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            {!loading && markets.length === 0 && (
+            {error && <ErrorAlert message={error} />}
+            {loading && (
+                <>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                    ))}
+                </>
+            )}
+            {!loading && !error && markets.length === 0 && (
                 <p className="text-muted-foreground">Активных рынков нет</p>
             )}
 

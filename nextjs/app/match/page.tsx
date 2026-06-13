@@ -161,7 +161,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
   const [error, setError] = useState("");
   const [selectedPlayerToAdd, setSelectedPlayerToAdd] = useState<string | undefined>(undefined);
   const { players: allPlayers } = usePlayers();
-  const { isAuthenticated, canEdit } = useMe();
+  const { isAuthenticated, canEdit, loading: meLoading } = useMe();
 
   useEffect(() => {
     if (open) {
@@ -301,7 +301,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
               </Alert>
             )}
 
-            {!isAuthenticated && (
+            {!meLoading && !isAuthenticated && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription className="flex flex-col items-start gap-2">
@@ -310,7 +310,7 @@ function EditMatchDialog({ match, onSuccess }: { match: Match; onSuccess: () => 
                 </AlertDescription>
               </Alert>
             )}
-            {isAuthenticated && !canEdit && (
+            {!meLoading && isAuthenticated && !canEdit && (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>У вас нет прав для редактирования партий.</AlertDescription>

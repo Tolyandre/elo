@@ -16,6 +16,7 @@ import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
 import { CorrectionCard } from "@/components/correction-card";
 import { PendingMatchCard } from "@/components/pending-match-card";
+import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "../meContext";
@@ -36,7 +37,7 @@ function MatchWithMarkets({ match, roundToInteger }: { match: Match; roundToInte
   return (
     <div>
       <MatchCard match={match} roundToInteger={roundToInteger} clickable />
-      {error && <p className="text-sm text-red-500 mt-2">{error}</p>}
+      {error && <ErrorAlert message={error} className="mt-2" />}
       {relatedMarkets.length > 0 && (
         <div className="space-y-3 mt-3">
           {relatedMarkets.map((market) => (
@@ -143,7 +144,7 @@ function MatchesPageWrapped() {
         action={<Button asChild size="sm"><Link href="/add-match">Добавить партию</Link></Button>}
       />
 
-      {error && <p className="text-red-500 text-center">Ошибка: {error}</p>}
+      {error && <ErrorAlert message={error} />}
 
       <div className="space-y-4">
         <Card>

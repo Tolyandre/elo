@@ -31,7 +31,7 @@ const STORAGE_KEY = "offline-pending-v1";
 
 export type SubmitMatchResult = { kind: "online"; id: number } | { kind: "offline"; clientId: string };
 
-type OfflineState = {
+type  OfflineState = {
     pendingMatches: PendingMatch[];
     pendingPlayers: PendingPlayer[];
     pendingGames: PendingGame[];
@@ -39,11 +39,20 @@ type OfflineState = {
     errorCount: number;
     /** True once the store has been hydrated from localStorage after mount. */
     ready: boolean;
+    /**
+     * Effective offline state — the single source of truth for "queue locally
+     * instead of calling the server". True when there is no network OR the server
+     * is known to be unreachable (network up but /ping failing). The cloud-off
+     * indicator is shown exactly when this is true, so the icon and offline
+     * behaviour always coincide.
+     */
+    offline: boolean;
+    /** Raw navigator.onLine. Prefer `offline`; use this only to tell apart the cause. */
     isOnline: boolean;
     /**
      * API server reachability (independent of network): null until first probe,
-     * false when the network is up but /ping fails (server is off). Used to show
-     * the indicator and to auto-resync once the API comes back.
+     * false when the network is up but /ping fails (server is off). Prefer
+     * `offline`; use this only to tell apart "no network" from "server down".
      */
     apiReachable: boolean | null;
     isSyncing: boolean;
@@ -109,6 +118,8 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const [authRequired, setAuthRequired] = useState(false);
     const [apiReachable, setApiReachable] = useState<boolean | null>(null);
     const isOnline = useOnlineStatus();
+    // Single source of truth for offline behaviour and the cloud-off indicator.
+    const offline = !isOnline || apiReachable === false;
     const pathname = usePathname();
     const syncInProgressRef = useRef(false);
     const storeRef = useRef(store);
@@ -198,10 +209,12 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         };
     }, [syncNow, canEdit]);
 
-    // API health probe with exponential backoff (30s → 15min). Pings on mount,
-    // on navigation, on focus/online, and on a self-scheduling timer. A successful
-    // ping after a failure (or while items are pending) triggers a resync, so the
-    // queue drains once the server comes back even without a network drop.
+    // API health probe. Pings once per trigger (mount, navigation, focus, online,
+    // new pending items) — NOT on an idle timer while everything is healthy. Only
+    // once a ping fails does it keep polling with exponential backoff (30s → 15min)
+    // to detect recovery; a successful ping after a failure (with queued items)
+    // triggers a resync, so the queue drains once the server comes back even
+    // without a network drop.
     useEffect(() => {
         if (!loaded) return;
 
@@ -211,33 +224,24 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         let cancelled = false;
 
-        const schedule = () => {
-            if (cancelled) return;
-            timer = setTimeout(run, delay);
-        };
-
         const run = async () => {
-            if (cancelled) return;
-            if (!navigator.onLine) {
-                // Offline is reported by useOnlineStatus; don't probe, just back off.
-                delay = Math.min(delay * 2, MAX_DELAY);
-                schedule();
-                return;
-            }
+            if (cancelled || !navigator.onLine) return; // offline: the `online` event re-triggers
             const wasReachable = apiReachableRef.current;
             const ok = await pingApiPromise();
             if (cancelled) return;
             setApiReachable(ok);
             if (ok) {
-                delay = MIN_DELAY; // reset backoff while healthy
-                // API just became reachable (or first success) and work is queued.
+                // Healthy → stop polling (no idle pings). Resync if the API just
+                // came back and work is queued.
+                delay = MIN_DELAY;
                 if (wasReachable !== true && pendingCountRef.current > 0 && canEdit) {
                     syncNow();
                 }
             } else {
-                delay = Math.min(delay * 2, MAX_DELAY);
+                // Unreachable → keep probing for recovery with growing backoff.
+                delay = Math.min(delay * 1.1, MAX_DELAY);
+                timer = setTimeout(run, delay);
             }
-            schedule();
         };
 
         const reset = () => {
@@ -255,7 +259,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             window.removeEventListener("focus", reset);
             window.removeEventListener("online", reset);
         };
-        // Re-run the probe immediately on navigation and when new items are queued.
+        // Re-probe immediately on navigation and when new items are queued.
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
@@ -364,7 +368,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         async (payload: { game_id: string; score: Record<string, number> }): Promise<SubmitMatchResult> => {
             const referencesPending =
                 isOfflineId(payload.game_id) || Object.keys(payload.score).some(isOfflineId);
-            if (isOnline && !referencesPending) {
+            // Skip the network attempt when effectively offline (no network or the
+            // server is known to be unreachable) so the action queues instantly
+            // instead of hanging on a request that will time out.
+            const canTryServer = isOnline && apiReachableRef.current !== false;
+            if (canTryServer && !referencesPending) {
                 try {
                     const result = await addMatchPromise(payload);
                     return { kind: "online", id: result.id };
@@ -393,6 +401,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 pendingCount,
                 errorCount,
                 ready: loaded,
+                offline,
                 isOnline,
                 apiReachable,
                 isSyncing,

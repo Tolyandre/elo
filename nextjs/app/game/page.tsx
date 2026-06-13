@@ -9,6 +9,7 @@ import { useSettings } from "@/app/settingsContext";
 import { winsNeededForAmateur } from "@/app/eloCalculation";
 import { MatchCard } from "@/components/match-card";
 import { PendingMatchCard } from "@/components/pending-match-card";
+import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOffline } from "@/app/offline/OfflineContext";
 
@@ -27,6 +28,8 @@ function GameWrapped() {
   const id = searchParams.get('id')
 
   const [game, setGame] = useState<Game | null>(null);
+  const [loadingGame, setLoadingGame] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [gameMatches, setGameMatches] = useState<GameMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const { players: allPlayers } = usePlayers();
@@ -42,10 +45,15 @@ function GameWrapped() {
 
   useEffect(() => {
     if (!id) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
+    setLoadingGame(true);
+    setError(null);
     getGamePromise(id)
       .then((data) => {
         setGame(data);
-      });
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Не удалось загрузить игру"))
+      .finally(() => setLoadingGame(false));
   }, [id]);
 
   useEffect(() => {
@@ -96,7 +104,7 @@ function GameWrapped() {
         <div className=" max-w-sm">
           <PageHeader title={game?.name ?? ""} />
 
-          <p className="text-gray-600">Партий: {game?.total_matches}</p>
+          <p className="text-gray-600">Партий: {game?.total_matches ?? "…"}</p>
 
           <p className="text-sm text-muted-foreground mt-1">
             Это рейтинг по партиям одной игры, рассчитывается независимо от
@@ -106,7 +114,19 @@ function GameWrapped() {
           </p>
         </div>
 
-        {(["amateur", "newbie"] as const).map((league) => {
+        {error && <ErrorAlert message={error} />}
+
+        {!game ? (
+          // Skeleton while loading; nothing on error (the ErrorAlert above covers it).
+          // Never fall through to the league list with a null game, or it would
+          // wrongly render "Нет игроков" before the data has loaded.
+          loadingGame ? (
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-32" />
+              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+          ) : null
+        ) : (["amateur", "newbie"] as const).map((league) => {
           const leaguePlayers = game?.players.filter(p => p.league === league) ?? [];
           const title = league === "amateur" ? "Любители" : "Новички";
           return (

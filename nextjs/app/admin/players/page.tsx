@@ -17,13 +17,15 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Edit2 } from "lucide-react";
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
-    const { isAuthenticated, canEdit } = useMe();
-    const { pendingPlayers, isOnline, addPendingPlayer, updatePendingPlayer, deletePendingPlayer } = useOffline();
+    const { isAuthenticated, canEdit, loading: meLoading } = useMe();
+    const { pendingPlayers, offline, addPendingPlayer, updatePendingPlayer, deletePendingPlayer } = useOffline();
     const [newName, setNewName] = useState<string>("");
+    const [adding, setAdding] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [correctionOpen, setCorrectionOpen] = useState(false);
@@ -125,13 +127,13 @@ export default function PlayersAdminPage() {
                 <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
             </div>
 
-            {!isAuthenticated && (
+            {!meLoading && !isAuthenticated && (
                 <div className="flex flex-col items-start gap-2">
                     <p>Для редактирования необходимо авторизоваться.</p>
                     <LoginLink />
                 </div>
             )}
-            {isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игроков.</p>}
+            {!meLoading && isAuthenticated && !canEdit && <p>У вас нет прав для редактирования игроков.</p>}
             <p>Удаление возможно для игроков без партий.</p>
 
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
@@ -144,13 +146,14 @@ export default function PlayersAdminPage() {
                 <div className="w-full sm:w-auto">
                     <Button
                         onClick={async () => {
-                            if (!newName || newName.trim() === "") return;
+                            if (adding || !newName || newName.trim() === "") return;
                             const name = newName.trim();
-                            if (!isOnline) {
+                            if (offline) {
                                 addPendingPlayer(name);
                                 setNewName("");
                                 return;
                             }
+                            setAdding(true);
                             try {
                                 await createPlayerPromise({ name });
                                 invalidatePlayers();
@@ -162,17 +165,21 @@ export default function PlayersAdminPage() {
                                     setNewName("");
                                 }
                                 // HTTP errors: toast already shown
+                            } finally {
+                                setAdding(false);
                             }
                         }}
-                        disabled={!canEdit}
+                        disabled={!canEdit || adding}
+                        aria-busy={adding}
                     >
-                        {isOnline ? "Добавить" : "Добавить офлайн"}
+                        {adding && <Spinner className="size-4" />}
+                        {offline ? "Добавить офлайн" : "Добавить"}
                     </Button>
                 </div>
             </div>
 
             <PendingEntityList
-                title="Не синхронизированные игроки"
+                title="Не сохранённые игроки"
                 items={pendingPlayers}
                 canEdit={canEdit}
                 onRename={updatePendingPlayer}

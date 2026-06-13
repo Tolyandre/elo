@@ -24,7 +24,7 @@ type Participant = {
 
 function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
     const { players, playerDisplayName, loading } = usePlayers();
-    const { pendingPlayers, isOnline, submitMatch, updatePendingMatch } = useOffline();
+    const { pendingPlayers, isOnline, offline, submitMatch, updatePendingMatch } = useOffline();
     const [draftParticipants, setDraftParticipants] = useSessionStorage<Participant[]>("add-match/participants", []);
     const [draftGameId, setDraftGameId] = useSessionStorage<string | undefined>("add-match/selectedGameId", undefined);
     // Editing a pending match keeps its own state so the regular add-match draft survives.
@@ -149,17 +149,17 @@ function AddGameForm({ editMatch }: { editMatch?: PendingMatch }) {
 
     if (loading && isOnline) return <div className="p-4">Загрузка игроков...</div>;
 
-    const offlineMode = !isOnline;
+    const offlineMode = offline;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
             {offlineMode && (
                 <Alert>
                     <CloudOff />
-                    <AlertTitle>Нет сети — партия будет сохранена офлайн</AlertTitle>
+                    <AlertTitle>Офлайн — партия будет сохранена на устройстве</AlertTitle>
                     <AlertDescription>
                         Результат сохранится на этом устройстве и автоматически отправится на
-                        сервер, когда появится интернет. Не очищайте данные браузера до синхронизации.
+                        сервер, когда связь восстановится. Не очищайте данные браузера до сохранения на сервере.
                     </AlertDescription>
                 </Alert>
             )}
@@ -256,7 +256,7 @@ function AddGamePageWrapped() {
         <main className="max-w-sm mx-auto p-4">
             <PageHeader title={editMatch ? "Редактирование офлайн-партии" : "Результат партии"} />
 
-            {!me.id && (
+            {!me.loading && !me.id && (
                 <Alert>
                     <AlertCircleIcon />
                     <AlertTitle>Чтобы добавить партию, выполните вход</AlertTitle>
@@ -265,7 +265,7 @@ function AddGamePageWrapped() {
                     </AlertDescription>
                 </Alert>
             )}
-            {me.id && !me.canEdit && (
+            {!me.loading && me.id && !me.canEdit && (
                 <Alert>
                     <AlertCircleIcon />
                     <AlertTitle><b>{me.name}</b> пока не можете добавлять партии</AlertTitle>
@@ -279,7 +279,7 @@ function AddGamePageWrapped() {
                     <AlertCircleIcon />
                     <AlertTitle>Партия не найдена</AlertTitle>
                     <AlertDescription>
-                        Возможно, она уже синхронизирована с сервером или удалена.
+                        Возможно, она уже сохранена на сервере или удалена.
                     </AlertDescription>
                 </Alert>
             ) : (

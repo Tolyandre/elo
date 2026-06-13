@@ -46,14 +46,14 @@ export function GameCombobox({
   const { matches } = useMatches();
   const { playerId } = useMe();
   const { isMobile } = useIsMobile();
-  const { pendingGames, isOnline, addPendingGame } = useOffline();
+  const { pendingGames, offline, addPendingGame } = useOffline();
 
   const groups = React.useMemo(() => {
     const base = buildGameGroups(games, matches, playerId);
     if (pendingGames.length === 0) return base;
     return [
       {
-        heading: "Офлайн (не синхронизировано)",
+        heading: "Офлайн (не сохранено)",
         options: pendingGames.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)` })),
       },
       ...base,
@@ -93,7 +93,7 @@ export function GameCombobox({
 
     setCreating(true);
     const name = searchQuery.trim();
-    if (!isOnline) {
+    if (offline) {
       selectCreated(addPendingGame(name).clientId);
       return;
     }

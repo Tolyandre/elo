@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getMePromise, logout, NetworkError, User } from "./api";
+import { getMePromise, logout, User } from "./api";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 // Cached /auth/me identity so canEdit gating keeps working while offline.
@@ -24,6 +24,12 @@ export type MeState = {
   canEdit: boolean;
   playerId: string | undefined;
   isAuthenticated: boolean;
+  /**
+   * True until the identity is determined (cached value applied or the network
+   * call settled). Gate auth-dependent UI on this so messages like
+   * "log in to add a match" don't flash before the cached user loads.
+   */
+  loading: boolean;
   logout: () => void;
   invalidate: () => void;
   roundToInteger: boolean;
@@ -41,6 +47,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [name, setName] = useState<string | undefined>(undefined);
   const [canEdit, setCanEdit] = useState<boolean>(false);
   const [playerId, setPlayerId] = useState<string | undefined>(undefined);
+  const [loading, setLoading] = useState<boolean>(true);
   const [stamp, setStamp] = useState<number>(0);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
   const [selectedClubId, setSelectedClubId] = useLocalStorage<string | null>("selected-club-id", null);
@@ -48,6 +55,22 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Apply the cached identity first so a returning authorized user is known
+    // immediately (no flash of "log in" while the /auth/me request is in flight,
+    // which can hang when the server is down). A confident cached answer ends the
+    // loading state right away; without a cache we wait for the network.
+    const cached = readMeCache();
+    if (cached) {
+      /* eslint-disable react-hooks/set-state-in-effect -- SSR-safe hydration: localStorage is only available after mount */
+      setId(cached.id);
+      setName(cached.name);
+      setCanEdit(cached.can_edit ?? false);
+      setPlayerId(cached.player_id ?? undefined);
+      setLoading(false);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+
     getMePromise()
       .then((user) => {
         if (cancelled) return;
@@ -63,16 +86,12 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
           // 401 — the session is gone, the cached identity must go too.
           localStorage.removeItem(ME_CACHE_KEY);
         }
+        setLoading(false);
       })
-      .catch((e) => {
-        if (cancelled || !(e instanceof NetworkError)) return;
-        // Offline: fall back to the identity cached on the last successful login.
-        const cached = readMeCache();
-        if (!cached) return;
-        setId(cached.id);
-        setName(cached.name);
-        setCanEdit(cached.can_edit ?? false);
-        setPlayerId(cached.player_id ?? undefined);
+      .catch(() => {
+        if (cancelled) return;
+        // Offline / server down: keep the cached identity already applied above.
+        setLoading(false);
       });
     return () => { cancelled = true; };
   }, [stamp]);
@@ -99,6 +118,7 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
       canEdit,
       playerId,
       isAuthenticated: !!id,
+      loading,
       logout: doLogout,
       invalidate,
       roundToInteger,

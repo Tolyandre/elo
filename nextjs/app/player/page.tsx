@@ -9,6 +9,7 @@ import { ChartContainer } from '@/components/ui/chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
 import { PageHeader } from '@/app/pageHeaderContext'
+import { ErrorAlert } from '@/components/error-alert'
 
 function formatDate(iso: string) {
     const d = new Date(iso)
@@ -199,20 +200,23 @@ function PlayerPageContent() {
     const id = searchParams.get('id')
     const [stats, setStats] = useState<PlayerStats | null>(null)
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
         /* eslint-disable react-hooks/set-state-in-effect -- loading indicator around async fetch */
         if (!id) { setLoading(false); return }
         setLoading(true)
+        setError(null)
         /* eslint-enable react-hooks/set-state-in-effect */
         getPlayerStatsPromise(id)
             .then(data => { setStats(data); setLoading(false) })
-            .catch(() => setLoading(false))
+            .catch(e => { setError(e instanceof Error ? e.message : String(e)); setLoading(false) })
     }, [id])
 
     if (!id) return <div className="p-6 text-muted-foreground">Игрок не указан</div>
     if (loading) return <LoadingSkeleton />
-    if (!stats) return <div className="p-6 text-destructive">Не удалось загрузить данные</div>
+    if (error) return <div className="p-6"><ErrorAlert message={error} /></div>
+    if (!stats) return <div className="p-6"><ErrorAlert message="Данные игрока не найдены" /></div>
 
     return <PlayerProfileContent stats={stats} />
 }

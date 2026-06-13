@@ -14,12 +14,13 @@ import { ClubSelect } from "@/components/club-select";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { Button } from "@/components/ui/button";
+import { ErrorAlert } from "@/components/error-alert";
 import { PageHeader } from "@/app/pageHeaderContext";
 
 function LoadingOrError() {
     const { loading, error } = usePlayers();
     if (loading) return <div>Загрузка...</div>;
-    if (error) return <div>Ошибка: {error}</div>;
+    if (error) return <ErrorAlert message={error} />;
     return null;
 }
 

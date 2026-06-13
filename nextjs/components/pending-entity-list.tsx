@@ -60,7 +60,7 @@ export function PendingEntityList({
                                 ) : (
                                     <Badge variant="secondary">
                                         <CloudOff />
-                                        не синхронизировано
+                                        не сохранено
                                     </Badge>
                                 )}
                             </div>
@@ -94,7 +94,7 @@ export function PendingEntityList({
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Переименовать</DialogTitle>
-                        <DialogDescription>Запись ещё не синхронизирована — изменение сохранится локально.</DialogDescription>
+                        <DialogDescription>Запись ещё не сохранена на сервере — изменение сохранится локально.</DialogDescription>
                     </DialogHeader>
                     <div className="mt-2">
                         <input
@@ -124,7 +124,7 @@ export function PendingEntityList({
                         <DialogTitle>Удалить</DialogTitle>
                         <DialogDescription>
                             «{deleteItem?.name}» ещё не отправлено на сервер и будет удалено с этого устройства.
-                            Партии, ссылающиеся на эту запись, не смогут синхронизироваться.
+                            Партии, ссылающиеся на эту запись, не смогут сохраниться.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

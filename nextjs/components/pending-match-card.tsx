@@ -74,7 +74,7 @@ export function PendingMatchCard({ match }: { match: PendingMatch }) {
                     ) : (
                         <Badge variant="secondary">
                             <CloudOff />
-                            не синхронизировано
+                            не сохранено
                         </Badge>
                     )}
                 </div>
@@ -116,7 +116,7 @@ export function PendingMatchCard({ match }: { match: PendingMatch }) {
             <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Удалить несинхронизированную партию</DialogTitle>
+                        <DialogTitle>Удалить несохранённую партию</DialogTitle>
                         <DialogDescription>
                             Партия «{gameName}» ещё не отправлена на сервер и будет удалена с этого устройства без возможности восстановления.
                         </DialogDescription>
