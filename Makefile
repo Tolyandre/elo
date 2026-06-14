@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test generate-api generate-go-api generate-ts-api
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test copy-prod-db-to-stage generate-api generate-go-api generate-ts-api
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -48,6 +48,13 @@ copy-prod-db-to-test:
 	  sudo -u postgres psql -f scripts/copy-prod-db-to-test.sql \
 	    -v db_password="$$ELO_WEB_SERVICE_POSTGRES_PASSWORD"
 	@echo ">>> Done. elo-web-service-test is now a copy of elo-web-service."
+
+## Copy production DB (elo-web-service) to stage DB (elo-web-service-stage).
+## Run on the server after the stage NixOS module created the role + database
+## (stage uses Unix-socket peer auth, so no password is needed).
+copy-prod-db-to-stage:
+	sudo -u postgres psql -f scripts/copy-prod-db-to-stage.sql
+	@echo ">>> Done. elo-web-service-stage is now a copy of elo-web-service."
 
 ## Run integration tests (requires colima or Docker with socket at ~/.colima/default/docker.sock)
 integration-test-colima:

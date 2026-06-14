@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { PlayersProvider } from "./players/PlayersContext";
 import { MatchesProvider } from "./matches/MatchesContext";
@@ -13,16 +14,7 @@ import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { EnvBanner } from "@/components/env-banner";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://tolyandre.github.io/elo"),
@@ -66,7 +58,7 @@ export default function RootLayout({
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
-                <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+                <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
                   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
                     <script
                       type="application/ld+json"
@@ -84,15 +76,18 @@ export default function RootLayout({
                     />
                     <Toaster />
                     <SwUpdateReloader />
-                    <div className="font-sans flex flex-col items-center min-h-screen">
-                      <PageHeaderProvider>
-                        <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
-                          <SiteHeader />
-                          <div className="p-3">
-                            {children}
+                    <div className="flex flex-col min-h-screen">
+                      <EnvBanner />
+                      <div className="font-sans flex flex-col items-center flex-1">
+                        <PageHeaderProvider>
+                          <div className="flex flex-col w-full max-w-5xl rounded-lg shadow-md">
+                            <SiteHeader />
+                            <div className="p-3">
+                              {children}
+                            </div>
                           </div>
-                        </div>
-                      </PageHeaderProvider>
+                        </PageHeaderProvider>
+                      </div>
                     </div>
                   </ThemeProvider>
                 </body>

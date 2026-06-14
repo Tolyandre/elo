@@ -38,6 +38,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Install Nix
+        uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-26.05
+          extra_nix_config: "experimental-features = nix-command flakes"
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -67,13 +72,24 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v6
       - name: Install dependencies
-        run: pnpm --dir ./nextjs install --frozen-lockfile
+        # This install only feeds the vitest run below; the deployed artifact is
+        # built by Nix. --ignore-scripts sidesteps pnpm 10+'s ERR_PNPM_IGNORED_BUILDS
+        # hard failure on dependency build scripts the tests don't need (native
+        # binaries come via optionalDependencies). pnpm-workspace.yaml's
+        # onlyBuiltDependencies still governs the real (Nix) build.
+        run: pnpm --dir ./nextjs install --frozen-lockfile --ignore-scripts
       - name: Run tests
         run: pnpm --dir ./nextjs test --run --reporter dot
         env:
           CI: true
-      - name: Build with Next.js
-        run: pnpm --dir ./nextjs build
+      # Build via the Nix package used for the on-prem (stage/domain) deploys, so
+      # the same artifact and build path are exercised by the production pipeline.
+      # NEXT_PUBLIC_* values are baked into the package defaults (basePath "/elo",
+      # prod backend); the precache revision is the flake's git rev.
+      - name: Build with Nix
+        run: nix build .#frontend --print-out-paths
+      - name: Copy static export to ./nextjs/out
+        run: cp -rL --no-preserve=mode,ownership result ./nextjs/out
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4

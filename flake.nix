@@ -32,14 +32,30 @@
               inherit buildGoApplication pkgs;
               version = self.rev or self.dirtyRev;
             };
+
+          # Static Next.js export. The default parameters target the GitHub Pages
+          # deployment (basePath "/elo", prod backend); override basePath /
+          # apiBaseUrl / bannerText for other installs (e.g. stage).
+          frontend = pkgs.callPackage ./nix/frontend.nix {
+            apiBaseUrl = "https://toly.is-cool.dev/elo-web-service";
+            basePath = "/elo";
+            revision = self.rev or self.dirtyRev or "dev";
+          };
         }
       );
 
-      # The module receives the pre-built package via _module.args rather than
-      # building it independently, so vendorHash is no longer needed in the module.
+      # The modules receive their pre-built packages via _module.args rather than
+      # building them independently, so vendorHash is no longer needed.
       nixosModules.default = { pkgs, ... }: {
         imports = [ ./nix/elo-web-service-module.nix ];
         _module.args.elo-web-service-pkg = self.packages.${pkgs.system}.default;
+      };
+
+      # Multi-instance static frontend builder. Import alongside the default
+      # (backend) module; instances select their build via `package`.
+      nixosModules.frontend = { pkgs, ... }: {
+        imports = [ ./nix/elo-frontend-module.nix ];
+        _module.args.elo-frontend-pkg = self.packages.${pkgs.system}.frontend;
       };
 
       devShells = forAllSystems (
@@ -90,9 +106,9 @@
                 pkgs.stdenv.cc.cc
                 pkgs.zlib
                 pkgs.glib
-                pkgs.xorg.libxcb
-                pkgs.xorg.libX11
-                pkgs.xorg.libXext
+                pkgs.libxcb
+                pkgs.libx11
+                pkgs.libxext
                 pkgs.libGL
                 pkgs.libglvnd
               ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}

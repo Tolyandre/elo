@@ -13,10 +13,8 @@ pkgs.testers.nixosTest {
 
       _module.args.elo-web-service-pkg = elo-web-service-pkg;
 
-      services.elo-web-service = {
-        enable = true;
-
-        config = {
+      services.elo-web-service.instances."elo-web-service" = {
+        settings = {
           address = "localhost:4949";
           oauth2_auth_uri = "https://fake/oauth2_auth_uri";
           oauth2_redirect_uri = "https://fake/oauth2_redirect_uri";

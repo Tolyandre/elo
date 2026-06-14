@@ -14,7 +14,7 @@ import (
 func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var token string
-		cookie, err := ctx.Cookie(TokenCookieName)
+		cookie, err := ctx.Cookie(cfg.Config.CookieName)
 
 		authorizationHeader := ctx.Request.Header.Get("Authorization")
 		fields := strings.Fields(authorizationHeader)
@@ -50,7 +50,7 @@ func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 func (a *OAUTH2) OptionalDeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var token string
-		cookie, err := ctx.Cookie(TokenCookieName)
+		cookie, err := ctx.Cookie(cfg.Config.CookieName)
 
 		authorizationHeader := ctx.Request.Header.Get("Authorization")
 		fields := strings.Fields(authorizationHeader)

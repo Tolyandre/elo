@@ -2,7 +2,7 @@
   "name": "elo",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@11.5.1",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --webpack && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-precache.mjs",
@@ -29,6 +29,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "geist": "^1.7.2",
     "katex": "^0.16.44",
     "lucide-react": "^1.7.0",
     "mathjs": "^15.1.1",

@@ -21,7 +21,9 @@ func (a *OAUTH2) LogoutUser(ctx *gin.Context) {
 	api.SuccessMessageResponse(ctx, http.StatusOK, "User logged out successfully")
 }
 
-const TokenCookieName = "elo-web-service-token"
+// DefaultTokenCookieName is the auth cookie name used when cookie_name is not
+// configured. The effective name is cfg.Config.CookieName (see configuration).
+const DefaultTokenCookieName = "elo-web-service-token"
 
 func (a *OAUTH2) GoogleOAuth(ctx *gin.Context) {
 	if errParam := ctx.Query("error"); errParam != "" {
@@ -115,7 +117,7 @@ func (a *OAUTH2) Login(ctx *gin.Context) {
 
 func setTokenCookie(ctx *gin.Context, token string, maxAge int) {
 	http.SetCookie(ctx.Writer, &http.Cookie{
-		Name:     TokenCookieName,
+		Name:     cfg.Config.CookieName,
 		Value:    url.QueryEscape(token),
 		MaxAge:   maxAge,
 		Path:     "/",

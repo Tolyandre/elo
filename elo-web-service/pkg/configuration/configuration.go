@@ -20,6 +20,7 @@ type Configuration struct {
 	Oauth2Scopes                 string  `mapstructure:"oauth2_scopes"`
 	CookieJwtSecret              string  `mapstructure:"cookie_jwt_secret"`
 	CookieTtlSeconds             int     `mapstructure:"cookie_ttl_seconds"`
+	CookieName                   string  `mapstructure:"cookie_name"`
 	FrontendUri                  string  `mapstructure:"frontend_uri"`
 	PostgresDSN                  string  `mapstructure:"postgres_dsn"`
 	PostgresPassword             string  `mapstructure:"postgres_password"`
@@ -93,6 +94,9 @@ func ReadConfiguration() {
 	if err := viper.BindEnv("cookie_ttl_seconds", "ELO_WEB_SERVICE_COOKIE_TTL_SECONDS"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_TTL_SECONDS: %v", err)
 	}
+	if err := viper.BindEnv("cookie_name", "ELO_WEB_SERVICE_COOKIE_NAME"); err != nil {
+		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_NAME: %v", err)
+	}
 	if err := viper.BindEnv("frontend_uri", "ELO_WEB_SERVICE_FRONTEND_URI"); err != nil {
 		log.Fatalf("failed to bind env ELO_WEB_SERVICE_FRONTEND_URI: %v", err)
 	}
@@ -127,6 +131,12 @@ func ReadConfiguration() {
 	if err := viper.Unmarshal(&Config); err != nil {
 		log.Fatalf("config unmarshal error: %v", err)
 		os.Exit(1)
+	}
+
+	// Default the auth cookie name when not configured, so existing deployments
+	// (and dev configs) keep the original cookie and users stay logged in.
+	if Config.CookieName == "" {
+		Config.CookieName = "elo-web-service-token"
 	}
 
 	// Validate that all config fields are non-empty (at least a non-empty string)
