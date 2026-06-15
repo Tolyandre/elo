@@ -12,6 +12,7 @@ import { MeProvider } from "./meContext";
 import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
+import { TournamentsProvider } from "./tournamentsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { EnvBanner } from "@/components/env-banner";
@@ -55,6 +56,7 @@ export default function RootLayout({
         <MeProvider>
           <GamesProvider>
             <ClubsProvider>
+            <TournamentsProvider>
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
@@ -94,6 +96,7 @@ export default function RootLayout({
                 </OfflineProvider>
               </PlayersProvider>
             </MatchesProvider>
+            </TournamentsProvider>
             </ClubsProvider>
           </GamesProvider>
         </MeProvider>

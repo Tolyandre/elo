@@ -130,6 +130,11 @@ type MatchScore struct {
 	Score    float64 `json:"score"`
 }
 
+type MatchTournament struct {
+	MatchID      int32 `json:"match_id"`
+	TournamentID int32 `json:"tournament_id"`
+}
+
 type Player struct {
 	ID             int32       `json:"id"`
 	Name           string      `json:"name"`
@@ -150,6 +155,18 @@ type SkullKingTable struct {
 	ConnectedPlayerIds []int32     `json:"connected_player_ids"`
 	CreatedAt          time.Time   `json:"created_at"`
 	ExpiresAt          time.Time   `json:"expires_at"`
+}
+
+type Tournament struct {
+	ID        int32              `json:"id"`
+	Name      string             `json:"name"`
+	StartDate pgtype.Timestamptz `json:"start_date"`
+	EndDate   pgtype.Timestamptz `json:"end_date"`
+}
+
+type TournamentPlayerMembership struct {
+	TournamentID int32 `json:"tournament_id"`
+	PlayerID     int32 `json:"player_id"`
 }
 
 type User struct {

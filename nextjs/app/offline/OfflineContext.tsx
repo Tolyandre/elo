@@ -58,8 +58,8 @@ type  OfflineState = {
     isSyncing: boolean;
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
-    addPendingMatch: (m: { gameId: string; score: Record<string, number> }) => PendingMatch;
-    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string }) => void;
+    addPendingMatch: (m: { gameId: string; score: Record<string, number>; tournamentIds?: string[] }) => PendingMatch;
+    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[] }) => void;
     deletePendingMatch: (clientId: string) => void;
     addPendingPlayer: (name: string) => PendingPlayer;
     updatePendingPlayer: (clientId: string, name: string) => void;
@@ -71,7 +71,7 @@ type  OfflineState = {
      * Offline-aware match submission: posts to the server when online, queues a
      * pending match when offline or when the request fails at the network level.
      */
-    submitMatch: (payload: { game_id: string; score: Record<string, number> }) => Promise<SubmitMatchResult>;
+    submitMatch: (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }) => Promise<SubmitMatchResult>;
     syncNow: () => void;
 };
 
@@ -249,13 +249,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score }: { gameId: string; score: Record<string, number> }) => {
+        ({ gameId, score, tournamentIds }: { gameId: string; score: Record<string, number>; tournamentIds?: string[] }) => {
             const match: PendingMatch = {
                 clientId: newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 gameId,
                 score,
+                tournamentIds: tournamentIds ?? [],
             };
             mutateStore((s) => ({ ...s, matches: [...s.matches, match] }));
             return match;
@@ -264,7 +265,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string }) => {
+        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[] }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
@@ -274,6 +275,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                               gameId: patch.gameId,
                               score: patch.score,
                               createdAt: patch.createdAt ?? m.createdAt,
+                              tournamentIds: patch.tournamentIds ?? m.tournamentIds ?? [],
                               status: "pending",
                               error: undefined,
                           }
@@ -358,7 +360,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const submitMatch = useCallback(
-        async (payload: { game_id: string; score: Record<string, number> }): Promise<SubmitMatchResult> => {
+        async (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }): Promise<SubmitMatchResult> => {
             const referencesPending =
                 isOfflineId(payload.game_id) || Object.keys(payload.score).some(isOfflineId);
             // Skip the network attempt when effectively offline (no network or the
@@ -374,7 +376,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                     // network died mid-request — fall through to the offline queue
                 }
             }
-            const match = addPendingMatch({ gameId: payload.game_id, score: payload.score });
+            const match = addPendingMatch({ gameId: payload.game_id, score: payload.score, tournamentIds: payload.tournament_ids });
             return { kind: "offline", clientId: match.clientId };
         },
         [isOnline, addPendingMatch],

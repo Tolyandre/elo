@@ -140,6 +140,15 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 		return GetGameMatches400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
+	matchIDs := make([]int32, 0, len(matches))
+	for _, m := range matches {
+		matchIDs = append(matchIDs, int32(m.Id))
+	}
+	tournamentsByMatch, err := s.tournamentsByMatch(ctx, matchIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	result := make([]GameMatch, 0, len(matches))
 	for _, m := range matches {
 		players := make([]GameMatchPlayer, 0, len(m.Players))
@@ -162,6 +171,9 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 			gm.Date = &t
 		} else if t, ok := m.Date.(time.Time); ok {
 			gm.Date = &t
+		}
+		if tours := tournamentsByMatch[int(m.Id)]; len(tours) > 0 {
+			gm.Tournaments = &tours
 		}
 		result = append(result, gm)
 	}

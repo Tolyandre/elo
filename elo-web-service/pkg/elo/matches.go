@@ -37,11 +37,14 @@ type AddMatchOpts struct {
 	// max 30 days back) and Elo is recalculated from that date so later matches
 	// are settled correctly.
 	ClientDate bool
+	// TournamentIDs are the tournaments this match belongs to. The match is
+	// associated with each, and every match player is auto-enrolled into them.
+	TournamentIDs []int32
 }
 
 type IMatchService interface {
 	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
-	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error)
+	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time, tournamentIDs []int32) (db.Match, error)
 	RecalculateAllGameElo(ctx context.Context) error
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
@@ -141,6 +144,10 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 		}
 	}
 
+	if err := applyMatchTournaments(ctx, q, createdMatch.ID, opts.TournamentIDs, playerIDsOf(playerScores)); err != nil {
+		return db.Match{}, err
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return db.Match{}, fmt.Errorf("unable to commit tx: %v", err)
 	}
@@ -150,7 +157,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 // UpdateMatch updates an existing match and recalculates Elo ratings for all affected matches
 // Date cannot be null and cannot change more than 3 days
-func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time) (db.Match, error) {
+func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time, tournamentIDs []int32) (db.Match, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to begin tx: %v", err)
@@ -212,6 +219,16 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 
 	if err := s.recalculateEloFromDate(ctx, q, recalcStartDate); err != nil {
 		return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
+	}
+
+	// Replace tournament associations with the provided set (an association can be
+	// dropped when the date moves out of a tournament's window). Memberships are
+	// only ever added — editing a match never removes tournament members.
+	if err := q.DeleteMatchTournamentsByMatch(ctx, matchID); err != nil {
+		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %v", err)
+	}
+	if err := applyMatchTournaments(ctx, q, matchID, tournamentIDs, playerIDsOf(playerScores)); err != nil {
+		return db.Match{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -422,20 +439,20 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 
 // eloCalcResult holds per-player dual-track Elo/rating deltas and new values for one match.
 type eloCalcResult struct {
-	eloStaked       float64
-	eloEarned       float64
-	newGlobalElo    float64
-	ratingStaked    float64
-	ratingEarned    float64
-	newGlobalRating float64
-	newGlobalLeague string
-	gameEloStaked   float64
-	gameEloEarned   float64
-	newGameElo      float64
+	eloStaked        float64
+	eloEarned        float64
+	newGlobalElo     float64
+	ratingStaked     float64
+	ratingEarned     float64
+	newGlobalRating  float64
+	newGlobalLeague  string
+	gameEloStaked    float64
+	gameEloEarned    float64
+	newGameElo       float64
 	gameRatingStaked float64
 	gameRatingEarned float64
-	newGameRating   float64
-	newGameLeague   string
+	newGameRating    float64
+	newGameLeague    string
 }
 
 // isInNewbieLeague returns true if elo still exceeds rating by more than the amateur threshold.
@@ -692,3 +709,29 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 
 // sortPlayerIDs sorts player IDs numerically (for consistent locking order)
 func sortPlayerIDs(ids []int32) { slices.Sort(ids) }
+
+// playerIDsOf returns the keys of a player→score map as a slice.
+func playerIDsOf(playerScores map[int32]float64) []int32 {
+	ids := make([]int32, 0, len(playerScores))
+	for id := range playerScores {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// applyMatchTournaments associates the match with each tournament and auto-enrols
+// every match player into them. Memberships use ON CONFLICT DO NOTHING and are
+// never removed here (per ADR: editing a match never removes tournament members).
+func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID int32, tournamentIDs []int32, playerIDs []int32) error {
+	for _, tid := range tournamentIDs {
+		if err := q.AddMatchTournament(ctx, db.AddMatchTournamentParams{MatchID: matchID, TournamentID: tid}); err != nil {
+			return fmt.Errorf("associate match %d with tournament %d: %v", matchID, tid, err)
+		}
+		for _, pid := range playerIDs {
+			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tid, PlayerID: pid}); err != nil {
+				return fmt.Errorf("enrol player %d into tournament %d: %v", pid, tid, err)
+			}
+		}
+	}
+	return nil
+}

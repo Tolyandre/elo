@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
+import { useTournaments } from "../tournamentsContext";
 import { useOffline } from "../offline/OfflineContext";
 import { Match, updateMatchPromise } from "../api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -52,6 +53,8 @@ export function MatchFormAuthAlerts() {
 
 export function MatchForm({ editPending, editSaved }: { editPending?: PendingMatch; editSaved?: Match }) {
     const { players, playerDisplayName, loading } = usePlayers();
+    const { tournaments, activeTournaments } = useTournaments();
+    const { playerId: myPlayerId } = useMe();
     const { pendingPlayers, offline, isSyncing, submitMatch, updatePendingMatch } = useOffline();
     const isEdit = !!editPending || !!editSaved;
     // Block saving an offline (pending) edit while a sync is running — the sync
@@ -69,6 +72,10 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     // Persisted so the one-time prefill from the edited match survives a refresh
     // instead of clobbering the user's draft.
     const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
+    // Tournaments whose checkbox is ticked. The set submitted is this ∩ the
+    // tournaments active on the match date (checkboxes appear/disappear with date).
+    const [checkedTournamentIds, setCheckedTournamentIds] = useSessionStorage<string[]>(`match-form:${draftKey}:tournaments`, []);
+    const [tournamentsSeeded, setTournamentsSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:tournamentsSeeded`, false);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
@@ -120,6 +127,49 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         setSeeded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editPending, editSaved, loading, isEdit, seeded]);
+
+    // Tournaments active on the match date (now for a new match, the edited date
+    // otherwise). Their checkboxes appear/disappear as the date changes.
+    const relevantDate = useMemo(
+        () => (isEdit && editDate ? new Date(editDate) : new Date()),
+        [isEdit, editDate],
+    );
+    const activeTournamentsForDate = useMemo(
+        () => activeTournaments(relevantDate),
+        [activeTournaments, relevantDate],
+    );
+    // Only checked tournaments that are still active are submitted/shown.
+    const tournamentIdsToSubmit = useMemo(
+        () => checkedTournamentIds.filter((id) => activeTournamentsForDate.some((t) => t.id === id)),
+        [checkedTournamentIds, activeTournamentsForDate],
+    );
+
+    // Seed the checked set once: from the edited match, or (for a new match)
+    // default-check active tournaments the current user belongs to.
+    useEffect(() => {
+        if (tournamentsSeeded || loading) return;
+        if (editPending) {
+            setCheckedTournamentIds(editPending.tournamentIds ?? []);
+            setTournamentsSeeded(true);
+        } else if (editSaved) {
+            setCheckedTournamentIds(editSaved.tournaments.map((t) => t.id));
+            setTournamentsSeeded(true);
+        } else if (tournaments.length > 0) {
+            // Wait for tournaments to load before defaulting, so we don't lock in [].
+            const defaults = activeTournaments(new Date())
+                .filter((t) => myPlayerId != null && t.players.map(String).includes(myPlayerId))
+                .map((t) => t.id);
+            setCheckedTournamentIds(defaults);
+            setTournamentsSeeded(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tournamentsSeeded, loading, editPending, editSaved, tournaments, myPlayerId]);
+
+    const toggleTournament = (id: string, checked: boolean) => {
+        setCheckedTournamentIds(
+            checked ? [...new Set([...checkedTournamentIds, id])] : checkedTournamentIds.filter((t) => t !== id),
+        );
+    };
 
     const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
         if (gameId) setSelectedGameId(gameId);
@@ -180,6 +230,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     game_id: selectedGameId,
                     score,
                     date: new Date(editDate).toISOString(),
+                    tournament_ids: tournamentIdsToSubmit,
                 });
                 clearDraft();
                 invalidateMatches();
@@ -193,13 +244,14 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     gameId: selectedGameId,
                     score,
                     createdAt: new Date(editDate).toISOString(),
+                    tournamentIds: tournamentIdsToSubmit,
                 });
                 clearDraft();
                 router.push(`/matches/view?id=${encodeURIComponent(editPending.clientId)}`);
                 return;
             }
 
-            const result = await submitMatch({ game_id: selectedGameId, score });
+            const result = await submitMatch({ game_id: selectedGameId, score, tournament_ids: tournamentIdsToSubmit });
             setSuccess(true);
             clearDraft();
             if (result.kind === "online") {
@@ -268,9 +320,27 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 </label>
                 <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
             </div>
+            {activeTournamentsForDate.length > 0 && (
+                <div>
+                    <h2 className="font-semibold mb-2">Турниры:</h2>
+                    <div className="flex flex-col gap-2">
+                        {activeTournamentsForDate.map((t) => (
+                            <label key={t.id} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="h-4 w-4"
+                                    checked={checkedTournamentIds.includes(t.id)}
+                                    onChange={(e) => toggleTournament(t.id, e.target.checked)}
+                                />
+                                <span>{t.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} />
+                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} activeTournamentIds={tournamentIdsToSubmit} />
 
             </div>
             {participants.length > 0 && (

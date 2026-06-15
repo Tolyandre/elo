@@ -57,6 +57,8 @@ components:
     # Matches
     MatchPlayer:
       $ref: './matches.yaml#/MatchPlayer'
+    MatchTournament:
+      $ref: './matches.yaml#/MatchTournament'
     Match:
       $ref: './matches.yaml#/Match'
     MatchesPage:
@@ -65,6 +67,16 @@ components:
     # Clubs
     Club:
       $ref: './clubs.yaml#/Club'
+
+    # Tournaments
+    TournamentInput:
+      $ref: './tournaments.yaml#/TournamentInput'
+    Tournament:
+      $ref: './tournaments.yaml#/Tournament'
+    TournamentStatsPlayer:
+      $ref: './tournaments.yaml#/TournamentStatsPlayer'
+    TournamentStats:
+      $ref: './tournaments.yaml#/TournamentStats'
 
     # Settings
     Settings:
@@ -169,6 +181,14 @@ paths:
     $ref: './clubs.yaml#/ClubMembers'
   /clubs/{id}/members/{playerId}:
     $ref: './clubs.yaml#/ClubMemberItem'
+
+  # Tournaments
+  /tournaments:
+    $ref: './tournaments.yaml#/TournamentsCollection'
+  /tournaments/{id}:
+    $ref: './tournaments.yaml#/TournamentItem'
+  /tournaments/{id}/stats:
+    $ref: './tournaments.yaml#/TournamentStatsPath'
 
   # Settings
   /settings:

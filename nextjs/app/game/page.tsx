@@ -95,6 +95,7 @@ function GameWrapped() {
       date: gm.date,
       score,
       has_markets: false,
+      tournaments: gm.tournaments,
     };
   }
 

@@ -19,6 +19,8 @@ export type PendingMatch = PendingBase & {
     gameId: string;
     /** Keys are server player ids or clientIds of pending players. */
     score: Record<string, number>;
+    /** Server tournament ids this match belongs to (tournaments are never created offline). */
+    tournamentIds: string[];
 };
 
 export type OfflineStore = {

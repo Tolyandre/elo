@@ -7,6 +7,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { Match } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
 
 type MatchCardProps = {
@@ -121,6 +122,14 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
             </li>
           ))}
         </ul>
+
+        {match.tournaments.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1">
+            {match.tournaments.map((t) => (
+              <Badge key={t.id} variant="secondary">{t.name}</Badge>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

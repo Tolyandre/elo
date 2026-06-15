@@ -461,6 +461,9 @@ type GameMatch struct {
 	Date    *time.Time        `json:"date,omitempty"`
 	Id      int               `json:"id"`
 	Players []GameMatchPlayer `json:"players"`
+
+	// Tournaments Tournaments this match belongs to
+	Tournaments *[]MatchTournament `json:"tournaments,omitempty"`
 }
 
 // GameMatchPlayer defines model for GameMatchPlayer.
@@ -587,6 +590,9 @@ type Match struct {
 
 	// Score Map of player_id (string) to player score data
 	Score map[string]MatchPlayer `json:"score"`
+
+	// Tournaments Tournaments this match belongs to
+	Tournaments *[]MatchTournament `json:"tournaments,omitempty"`
 }
 
 // MatchPlayer Per-player data within a match (keyed by player_id in the score map)
@@ -595,6 +601,12 @@ type MatchPlayer struct {
 	RatingEarned float64 `json:"rating_earned"`
 	RatingStaked float64 `json:"rating_staked"`
 	Score        float64 `json:"score"`
+}
+
+// MatchTournament A tournament a match belongs to
+type MatchTournament struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // MatchWinnerParams defines model for MatchWinnerParams.
@@ -725,6 +737,42 @@ type SkullKingTableSummary struct {
 	GameState          SkullKingGameState `json:"game_state"`
 	HostUserId         int                `json:"host_user_id"`
 	Id                 string             `json:"id"`
+}
+
+// Tournament defines model for Tournament.
+type Tournament struct {
+	EndDate time.Time `json:"end_date"`
+	Id      string    `json:"id"`
+	Name    string    `json:"name"`
+
+	// Players List of participant player IDs (integers)
+	Players   []int     `json:"players"`
+	StartDate time.Time `json:"start_date"`
+}
+
+// TournamentInput defines model for TournamentInput.
+type TournamentInput struct {
+	EndDate time.Time `json:"end_date"`
+	Name    string    `json:"name"`
+
+	// PlayerIds Full desired set of participant player IDs
+	PlayerIds *[]int    `json:"player_ids,omitempty"`
+	StartDate time.Time `json:"start_date"`
+}
+
+// TournamentStats defines model for TournamentStats.
+type TournamentStats struct {
+	Players []TournamentStatsPlayer `json:"players"`
+}
+
+// TournamentStatsPlayer defines model for TournamentStatsPlayer.
+type TournamentStatsPlayer struct {
+	First        int `json:"first"`
+	Fourth       int `json:"fourth"`
+	MatchesCount int `json:"matches_count"`
+	PlayerId     int `json:"player_id"`
+	Second       int `json:"second"`
+	Third        int `json:"third"`
 }
 
 // User defines model for User.
@@ -889,6 +937,9 @@ type AddMatchJSONBody struct {
 
 	// Score Map of player_id (string) to numeric score
 	Score map[string]float64 `json:"score"`
+
+	// TournamentIds Optional tournament IDs this match belongs to. Every match player is auto-enrolled into each tournament.
+	TournamentIds *[]string `json:"tournament_ids,omitempty"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -898,6 +949,9 @@ type UpdateMatchJSONBody struct {
 
 	// Score Map of player_id (string) to numeric score
 	Score map[string]float64 `json:"score"`
+
+	// TournamentIds Tournament IDs this match belongs to. Associations are replaced with this set; players are enrolled but never un-enrolled.
+	TournamentIds *[]string `json:"tournament_ids,omitempty"`
 }
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
@@ -1027,6 +1081,12 @@ type SubmitSkullKingResultJSONRequestBody SubmitSkullKingResultJSONBody
 
 // UpdateSkullKingTableStateJSONRequestBody defines body for UpdateSkullKingTableState for application/json ContentType.
 type UpdateSkullKingTableStateJSONRequestBody UpdateSkullKingTableStateJSONBody
+
+// CreateTournamentJSONRequestBody defines body for CreateTournament for application/json ContentType.
+type CreateTournamentJSONRequestBody = TournamentInput
+
+// UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
+type UpdateTournamentJSONRequestBody = TournamentInput
 
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
@@ -1378,6 +1438,24 @@ type ServerInterface interface {
 	// Update game state (host only)
 	// (PATCH /skull-king/tables/{id}/state)
 	UpdateSkullKingTableState(c *gin.Context, id string)
+	// List all tournaments (newest start date first)
+	// (GET /tournaments)
+	ListTournaments(c *gin.Context)
+	// Create a new tournament
+	// (POST /tournaments)
+	CreateTournament(c *gin.Context)
+	// Delete a tournament (only when it has no participants)
+	// (DELETE /tournaments/{id})
+	DeleteTournament(c *gin.Context, id string)
+	// Get a tournament by ID
+	// (GET /tournaments/{id})
+	GetTournament(c *gin.Context, id string)
+	// Update a tournament's name, dates and participants
+	// (PUT /tournaments/{id})
+	UpdateTournament(c *gin.Context, id string)
+	// Per-player medal statistics for a tournament
+	// (GET /tournaments/{id}/stats)
+	GetTournamentStats(c *gin.Context, id string)
 	// List all users
 	// (GET /users)
 	ListUsers(c *gin.Context)
@@ -2556,6 +2634,134 @@ func (siw *ServerInterfaceWrapper) UpdateSkullKingTableState(c *gin.Context) {
 	siw.Handler.UpdateSkullKingTableState(c, id)
 }
 
+// ListTournaments operation middleware
+func (siw *ServerInterfaceWrapper) ListTournaments(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTournaments(c)
+}
+
+// CreateTournament operation middleware
+func (siw *ServerInterfaceWrapper) CreateTournament(c *gin.Context) {
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTournament(c)
+}
+
+// DeleteTournament operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTournament(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteTournament(c, id)
+}
+
+// GetTournament operation middleware
+func (siw *ServerInterfaceWrapper) GetTournament(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTournament(c, id)
+}
+
+// UpdateTournament operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTournament(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(CookieAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateTournament(c, id)
+}
+
+// GetTournamentStats operation middleware
+func (siw *ServerInterfaceWrapper) GetTournamentStats(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTournamentStats(c, id)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(c *gin.Context) {
 
@@ -2689,6 +2895,12 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/skull-king/tables/:id/join", wrapper.JoinSkullKingTable)
 	router.POST(options.BaseURL+"/skull-king/tables/:id/result", wrapper.SubmitSkullKingResult)
 	router.PATCH(options.BaseURL+"/skull-king/tables/:id/state", wrapper.UpdateSkullKingTableState)
+	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
+	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
+	router.DELETE(options.BaseURL+"/tournaments/:id", wrapper.DeleteTournament)
+	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
+	router.PUT(options.BaseURL+"/tournaments/:id", wrapper.UpdateTournament)
+	router.GET(options.BaseURL+"/tournaments/:id/stats", wrapper.GetTournamentStats)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 	router.POST(options.BaseURL+"/voice/parse", wrapper.ParseVoiceInput)
@@ -4711,6 +4923,276 @@ func (response UpdateSkullKingTableState404JSONResponse) VisitUpdateSkullKingTab
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListTournamentsRequestObject struct {
+}
+
+type ListTournamentsResponseObject interface {
+	VisitListTournamentsResponse(w http.ResponseWriter) error
+}
+
+type ListTournaments200JSONResponse struct {
+	Data   []Tournament `json:"data"`
+	Status string       `json:"status"`
+}
+
+func (response ListTournaments200JSONResponse) VisitListTournamentsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTournamentRequestObject struct {
+	Body *CreateTournamentJSONRequestBody
+}
+
+type CreateTournamentResponseObject interface {
+	VisitCreateTournamentResponse(w http.ResponseWriter) error
+}
+
+type CreateTournament200JSONResponse struct {
+	Data   Tournament `json:"data"`
+	Status string     `json:"status"`
+}
+
+func (response CreateTournament200JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTournament400JSONResponse ApiError
+
+func (response CreateTournament400JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTournament401JSONResponse ApiError
+
+func (response CreateTournament401JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTournament403JSONResponse ApiError
+
+func (response CreateTournament403JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateTournament409JSONResponse ApiError
+
+func (response CreateTournament409JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeleteTournamentResponseObject interface {
+	VisitDeleteTournamentResponse(w http.ResponseWriter) error
+}
+
+type DeleteTournament200JSONResponse ApiSuccessMessage
+
+func (response DeleteTournament200JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournament400JSONResponse ApiError
+
+func (response DeleteTournament400JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournament401JSONResponse ApiError
+
+func (response DeleteTournament401JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournament403JSONResponse ApiError
+
+func (response DeleteTournament403JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournament404JSONResponse ApiError
+
+func (response DeleteTournament404JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteTournament409JSONResponse ApiError
+
+func (response DeleteTournament409JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetTournamentResponseObject interface {
+	VisitGetTournamentResponse(w http.ResponseWriter) error
+}
+
+type GetTournament200JSONResponse struct {
+	Data   Tournament `json:"data"`
+	Status string     `json:"status"`
+}
+
+func (response GetTournament200JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTournament400JSONResponse ApiError
+
+func (response GetTournament400JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTournament404JSONResponse ApiError
+
+func (response GetTournament404JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournamentRequestObject struct {
+	Id   string `json:"id"`
+	Body *UpdateTournamentJSONRequestBody
+}
+
+type UpdateTournamentResponseObject interface {
+	VisitUpdateTournamentResponse(w http.ResponseWriter) error
+}
+
+type UpdateTournament200JSONResponse struct {
+	Data   Tournament `json:"data"`
+	Status string     `json:"status"`
+}
+
+func (response UpdateTournament200JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournament400JSONResponse ApiError
+
+func (response UpdateTournament400JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournament401JSONResponse ApiError
+
+func (response UpdateTournament401JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournament403JSONResponse ApiError
+
+func (response UpdateTournament403JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournament404JSONResponse ApiError
+
+func (response UpdateTournament404JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateTournament409JSONResponse ApiError
+
+func (response UpdateTournament409JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTournamentStatsRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetTournamentStatsResponseObject interface {
+	VisitGetTournamentStatsResponse(w http.ResponseWriter) error
+}
+
+type GetTournamentStats200JSONResponse struct {
+	Data   TournamentStats `json:"data"`
+	Status string          `json:"status"`
+}
+
+func (response GetTournamentStats200JSONResponse) VisitGetTournamentStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetTournamentStats400JSONResponse ApiError
+
+func (response GetTournamentStats400JSONResponse) VisitGetTournamentStatsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -5001,6 +5483,24 @@ type StrictServerInterface interface {
 	// Update game state (host only)
 	// (PATCH /skull-king/tables/{id}/state)
 	UpdateSkullKingTableState(ctx context.Context, request UpdateSkullKingTableStateRequestObject) (UpdateSkullKingTableStateResponseObject, error)
+	// List all tournaments (newest start date first)
+	// (GET /tournaments)
+	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
+	// Create a new tournament
+	// (POST /tournaments)
+	CreateTournament(ctx context.Context, request CreateTournamentRequestObject) (CreateTournamentResponseObject, error)
+	// Delete a tournament (only when it has no participants)
+	// (DELETE /tournaments/{id})
+	DeleteTournament(ctx context.Context, request DeleteTournamentRequestObject) (DeleteTournamentResponseObject, error)
+	// Get a tournament by ID
+	// (GET /tournaments/{id})
+	GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error)
+	// Update a tournament's name, dates and participants
+	// (PUT /tournaments/{id})
+	UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error)
+	// Per-player medal statistics for a tournament
+	// (GET /tournaments/{id}/stats)
+	GetTournamentStats(ctx context.Context, request GetTournamentStatsRequestObject) (GetTournamentStatsResponseObject, error)
 	// List all users
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -6546,6 +7046,180 @@ func (sh *strictHandler) UpdateSkullKingTableState(ctx *gin.Context, id string) 
 		ctx.Status(http.StatusInternalServerError)
 	} else if validResponse, ok := response.(UpdateSkullKingTableStateResponseObject); ok {
 		if err := validResponse.VisitUpdateSkullKingTableStateResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTournaments operation middleware
+func (sh *strictHandler) ListTournaments(ctx *gin.Context) {
+	var request ListTournamentsRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTournaments(ctx, request.(ListTournamentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTournaments")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(ListTournamentsResponseObject); ok {
+		if err := validResponse.VisitListTournamentsResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTournament operation middleware
+func (sh *strictHandler) CreateTournament(ctx *gin.Context) {
+	var request CreateTournamentRequestObject
+
+	var body CreateTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTournament(ctx, request.(CreateTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(CreateTournamentResponseObject); ok {
+		if err := validResponse.VisitCreateTournamentResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTournament operation middleware
+func (sh *strictHandler) DeleteTournament(ctx *gin.Context, id string) {
+	var request DeleteTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTournament(ctx, request.(DeleteTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(DeleteTournamentResponseObject); ok {
+		if err := validResponse.VisitDeleteTournamentResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTournament operation middleware
+func (sh *strictHandler) GetTournament(ctx *gin.Context, id string) {
+	var request GetTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTournament(ctx, request.(GetTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(GetTournamentResponseObject); ok {
+		if err := validResponse.VisitGetTournamentResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTournament operation middleware
+func (sh *strictHandler) UpdateTournament(ctx *gin.Context, id string) {
+	var request UpdateTournamentRequestObject
+
+	request.Id = id
+
+	var body UpdateTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.Status(http.StatusBadRequest)
+		ctx.Error(err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTournament(ctx, request.(UpdateTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(UpdateTournamentResponseObject); ok {
+		if err := validResponse.VisitUpdateTournamentResponse(ctx.Writer); err != nil {
+			ctx.Error(err)
+		}
+	} else if response != nil {
+		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTournamentStats operation middleware
+func (sh *strictHandler) GetTournamentStats(ctx *gin.Context, id string) {
+	var request GetTournamentStatsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTournamentStats(ctx, request.(GetTournamentStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTournamentStats")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		ctx.Error(err)
+		ctx.Status(http.StatusInternalServerError)
+	} else if validResponse, ok := response.(GetTournamentStatsResponseObject); ok {
+		if err := validResponse.VisitGetTournamentStatsResponse(ctx.Writer); err != nil {
 			ctx.Error(err)
 		}
 	} else if response != nil {

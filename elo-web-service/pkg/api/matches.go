@@ -96,7 +96,7 @@ func (a *API) UpdateMatch(c *gin.Context) {
 		return
 	}
 
-	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), gameID, playerScores, payload.Date)
+	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), gameID, playerScores, payload.Date, nil)
 	if err != nil {
 		matchErrorToHTTP(c, err)
 		return

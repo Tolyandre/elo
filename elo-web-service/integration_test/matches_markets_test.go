@@ -330,7 +330,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	snapshotB := latestRating(t, pool, playerB)
 
 	// 6. Trigger recalculation via UpdateMatch on M1 with identical data
-	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[int32]float64{playerA: 5, playerB: 5}, t1)
+	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[int32]float64{playerA: 5, playerB: 5}, t1, nil)
 	if err != nil {
 		t.Fatalf("UpdateMatch (recalc trigger): %v", err)
 	}
@@ -415,7 +415,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 
 	// 5. Move M2 to tPast (now-30min). This makes resolved_at = now-30min < placed_at (≈now).
 	// Bets fall in [now-30min, now+2h) → conflict must be returned.
-	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[int32]float64{playerA: 10, playerB: 2}, tPast)
+	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[int32]float64{playerA: 10, playerB: 2}, tPast, nil)
 	if err == nil {
 		t.Fatal("UpdateMatch: expected error, got nil")
 	}

@@ -15,8 +15,11 @@ type Querier interface {
 	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]AddGamesIfNotExistsRow, error)
+	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error)
 	AddSkullKingTablePlayer(ctx context.Context, arg AddSkullKingTablePlayerParams) (SkullKingTable, error)
+	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
+	CountTournamentMembers(ctx context.Context, tournamentID int32) (int32, error)
 	CreateClub(ctx context.Context, name string) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
@@ -25,6 +28,7 @@ type Querier interface {
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	CreateSkullKingTable(ctx context.Context, arg CreateSkullKingTableParams) (SkullKingTable, error)
+	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (int32, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	DeleteAllMatchScores(ctx context.Context) error
@@ -42,8 +46,10 @@ type Querier interface {
 	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID pgtype.Int4) error
 	DeleteMarket(ctx context.Context, id int32) error
 	DeleteMatchScores(ctx context.Context, matchID int32) error
+	DeleteMatchTournamentsByMatch(ctx context.Context, matchID int32) error
 	DeletePlayer(ctx context.Context, id int32) error
 	DeleteSkullKingTable(ctx context.Context, id pgtype.UUID) error
+	DeleteTournament(ctx context.Context, id int32) (Tournament, error)
 	DeleteUser(ctx context.Context, id int32) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID int32) ([]GetBetsAggregatedByOutcomeRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
@@ -100,6 +106,11 @@ type Querier interface {
 	GetSettlementDetails(ctx context.Context, marketID pgtype.Int4) ([]GetSettlementDetailsRow, error)
 	GetSkullKingTable(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
 	GetSkullKingTableForUpdate(ctx context.Context, id pgtype.UUID) (SkullKingTable, error)
+	GetTournament(ctx context.Context, id int32) ([]GetTournamentRow, error)
+	// HAVING guards the aggregate: with no matches it returns zero rows (ErrNoRows)
+	// instead of a (NULL, NULL) row that can't scan into the non-nullable time.Time.
+	GetTournamentMatchDateRange(ctx context.Context, tournamentID int32) (GetTournamentMatchDateRangeRow, error)
+	GetTournamentStats(ctx context.Context, tournamentID int32) ([]GetTournamentStatsRow, error)
 	GetUser(ctx context.Context, id int32) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error)
@@ -128,15 +139,19 @@ type Querier interface {
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListSkullKingTables(ctx context.Context) ([]SkullKingTable, error)
+	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
+	ListTournamentsByMatchIDs(ctx context.Context, matchIds []int32) ([]ListTournamentsByMatchIDsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 	// Only succeeds if current status = 'open'; the caller must check affected rows or
 	// fetch the market first to return a proper domain error.
 	LockMarketBetting(ctx context.Context, id int32) error
 	LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error)
+	PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error)
 	// Returns rating_after and elo_after ordered by date for the player graph.
 	RatingHistory(ctx context.Context, playerID int32) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
+	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
 	// Restores the pre-settlement status: betting_closed if the betting lock user event
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
@@ -148,6 +163,7 @@ type Querier interface {
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
 	UpdateSkullKingTableState(ctx context.Context, arg UpdateSkullKingTableStateParams) (SkullKingTable, error)
+	UpdateTournament(ctx context.Context, arg UpdateTournamentParams) (Tournament, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error

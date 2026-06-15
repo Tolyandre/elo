@@ -153,6 +153,14 @@ func main() {
 	router.POST("/clubs/:id/members", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.AddClubMember)
 	router.DELETE("/clubs/:id/members/:playerId", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.RemoveClubMember)
 
+	// Tournaments
+	router.GET("/tournaments", strictWrapper.ListTournaments)
+	router.GET("/tournaments/:id", strictWrapper.GetTournament)
+	router.GET("/tournaments/:id/stats", strictWrapper.GetTournamentStats)
+	router.POST("/tournaments", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateTournament)
+	router.PUT("/tournaments/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.UpdateTournament)
+	router.DELETE("/tournaments/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteTournament)
+
 	// Markets
 	router.GET("/markets", oauth2Handler.OptionalDeserializeUser(), strictWrapper.ListMarkets)
 	router.POST("/markets", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateMarket)

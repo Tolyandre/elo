@@ -11,6 +11,7 @@ import { useMe } from "@/app/meContext";
 import { useSettings } from "@/app/settingsContext";
 import { winsNeededForAmateur } from "@/app/eloCalculation";
 import { ClubSelect } from "@/components/club-select";
+import { useTournaments } from "@/app/tournamentsContext";
 import { RankIcon } from "@/components/rank-icon";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { Button } from "@/components/ui/button";
@@ -281,6 +282,21 @@ function PlayersTable() {
     );
 }
 
+function ActiveTournamentLinks() {
+    const { activeTournaments } = useTournaments();
+    const active = activeTournaments();
+    if (active.length === 0) return null;
+    return (
+        <div className="flex flex-col gap-1">
+            {active.map((t) => (
+                <Link key={t.id} href={`/tournament?id=${t.id}`} className="text-blue-600 underline font-medium">
+                    🏕️ {t.name}
+                </Link>
+            ))}
+        </div>
+    );
+}
+
 export default function PlayersPage() {
     return (
         <main className="max-w-sm mx-auto space-y-6">
@@ -288,6 +304,7 @@ export default function PlayersPage() {
                 title="Игроки"
                 action={<Button asChild size="sm"><Link href="/matches/new">Добавить партию</Link></Button>}
             />
+            <ActiveTournamentLinks />
             <LoadingOrError />
             <Suspense>
                 <PlayersTable />

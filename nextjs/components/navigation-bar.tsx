@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp } from "lucide-react"
+import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Tent } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -42,6 +42,13 @@ export function NavigationBar() {
                 <>
                   <TrendingUp className="inline-block mr-2 h-6 w-6 align-middle" />
                   Ставки
+                </>
+              } />
+
+              <ListItem href="/tournaments" title={
+                <>
+                  <Tent className="inline-block mr-2 h-6 w-6 align-middle" />
+                  Кемпы и турниры
                 </>
               } />
 

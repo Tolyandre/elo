@@ -35,4 +35,8 @@ export const PAGES = [
     "/players",
     "/settings",
     "/skull-king-game",
+    "/tournament",
+    "/tournaments",
+    "/tournaments/edit",
+    "/tournaments/new",
 ] as const;

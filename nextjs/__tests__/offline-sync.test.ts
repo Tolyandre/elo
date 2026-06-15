@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
-import { OfflineStore, idempotencyKeyOf } from '../lib/offline/types';
+import { OfflineStore, PendingMatch, idempotencyKeyOf } from '../lib/offline/types';
 
 const noopPersist = () => { };
 
-function makeStore(partial: Partial<OfflineStore>): OfflineStore {
-    return { games: [], players: [], matches: [], ...partial };
+type RawMatch = Omit<PendingMatch, 'tournamentIds'> & { tournamentIds?: string[] };
+
+function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineStore['players']; matches?: RawMatch[] }): OfflineStore {
+    return {
+        games: partial.games ?? [],
+        players: partial.players ?? [],
+        // tournamentIds defaults to [] so test fixtures can omit it.
+        matches: (partial.matches ?? []).map((m) => ({ ...m, tournamentIds: m.tournamentIds ?? [] })),
+    };
 }
 
 function okApi(): SyncApi & { calls: string[] } {
@@ -63,7 +70,26 @@ describe('syncOffline', () => {
             score: { '200': 10, '42': 5 },
             date: '2026-06-01T11:00:00Z',
             idempotency_key: idempotencyKeyOf('offline:m1'),
+            tournament_ids: [],
         });
+    });
+
+    it('forwards tournament_ids on a synced match', async () => {
+        const api = okApi();
+        const store = makeStore({
+            matches: [{
+                clientId: 'offline:m1',
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: '5',
+                score: { '1': 1, '2': 2 },
+                tournamentIds: ['7', '9'],
+            }],
+        });
+
+        await syncOffline(store, api, noopPersist);
+
+        expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ tournament_ids: ['7', '9'] }));
     });
 
     it('syncs in createdAt order', async () => {

@@ -14,6 +14,7 @@ type API struct {
 	MarketService         elo.IMarketService
 	CorrectionService     elo.ICorrectionService
 	ClubService           elo.IClubService
+	TournamentService     elo.ITournamentService
 	SkullKingTableService elo.ISkullKingTableService
 	SkullKingHub          *elo.SkullKingHub
 	CardRecognizer        ICardRecognizer
@@ -33,6 +34,7 @@ func New(pool *pgxpool.Pool) *API {
 		MarketService:         marketService,
 		CorrectionService:     elo.NewCorrectionService(pool),
 		ClubService:           elo.NewClubService(pool),
+		TournamentService:     elo.NewTournamentService(pool),
 		SkullKingHub:          skullKingHub,
 		SkullKingTableService: elo.NewSkullKingTableService(pool, skullKingHub),
 		CardRecognizer:        newCardRecognizer(),

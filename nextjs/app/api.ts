@@ -47,6 +47,9 @@ export type EloRank = components["schemas"]["EloRank"];
 export type Player = components["schemas"]["Player"];
 export type User = components["schemas"]["User"];
 export type Club = components["schemas"]["Club"];
+export type Tournament = components["schemas"]["Tournament"];
+export type TournamentStats = components["schemas"]["TournamentStats"];
+export type TournamentStatsPlayer = components["schemas"]["TournamentStatsPlayer"];
 export type GameList = components["schemas"]["GameList"];
 export type GameListItem = components["schemas"]["GameListItem"];
 export type Game = components["schemas"]["Game"];
@@ -79,6 +82,8 @@ export type PlayerScore = {
     ratingAfter?: number | null;
 };
 
+export type MatchTournament = components["schemas"]["MatchTournament"];
+
 export type Match = {
     id: number;
     game_id: string;
@@ -86,6 +91,7 @@ export type Match = {
     date: Date | null;
     score: Record<string, PlayerScore>;
     has_markets: boolean;
+    tournaments: MatchTournament[];
 };
 
 // date is a Date object
@@ -93,6 +99,7 @@ export type GameMatch = {
     id: number;
     date: Date | null;
     players: GameMatchPlayer[];
+    tournaments: MatchTournament[];
 };
 
 export type Status = {
@@ -136,6 +143,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         ),
         date: m.date ? new Date(m.date) : null,
         has_markets: m.has_markets,
+        tournaments: m.tournaments ?? [],
     };
 }
 
@@ -225,13 +233,13 @@ export async function getMatchByIdPromise(id: number): Promise<Match> {
     return mapMatch(data.data);
 }
 
-export async function addMatchPromise(payload: { game_id: string, score: Record<string, number>, date?: string, idempotency_key?: string }) {
+export async function addMatchPromise(payload: { game_id: string, score: Record<string, number>, date?: string, idempotency_key?: string, tournament_ids?: string[] }) {
     const { data, error } = await client.POST("/matches", { body: payload });
     if (error) throw error;
     return data.data;
 }
 
-export async function updateMatchPromise(matchId: number, payload: { game_id: string, score: Record<string, number>, date: string }) {
+export async function updateMatchPromise(matchId: number, payload: { game_id: string, score: Record<string, number>, date: string, tournament_ids?: string[] }) {
     const { data, error } = await client.PUT("/matches/{id}", {
         params: { path: { id: String(matchId) } },
         body: payload,
@@ -265,6 +273,7 @@ export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]
         id: m.id,
         date: m.date ? new Date(m.date) : null,
         players: m.players,
+        tournaments: m.tournaments ?? [],
     }));
 }
 
@@ -441,6 +450,45 @@ export async function removeClubMemberPromise(clubId: string, playerId: number) 
     });
     if (error) throw error;
     return data;
+}
+
+export async function listTournamentsPromise(): Promise<Tournament[]> {
+    const { data, error } = await client.GET("/tournaments");
+    if (error) throw error;
+    return data.data;
+}
+
+export async function getTournamentPromise(id: string): Promise<Tournament> {
+    const { data, error } = await client.GET("/tournaments/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
+}
+
+export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: number[] }): Promise<Tournament> {
+    const { data, error } = await client.POST("/tournaments", { body: payload });
+    if (error) throw error;
+    return data.data;
+}
+
+export async function updateTournamentPromise(id: string, payload: { name: string; start_date: string; end_date: string; player_ids: number[] }): Promise<Tournament> {
+    const { data, error } = await client.PUT("/tournaments/{id}", {
+        params: { path: { id } },
+        body: payload,
+    });
+    if (error) throw error;
+    return data.data;
+}
+
+export async function deleteTournamentPromise(id: string) {
+    const { data, error } = await client.DELETE("/tournaments/{id}", { params: { path: { id } } });
+    if (error) throw error;
+    return data;
+}
+
+export async function getTournamentStatsPromise(id: string): Promise<TournamentStats> {
+    const { data, error } = await client.GET("/tournaments/{id}/stats", { params: { path: { id } } });
+    if (error) throw error;
+    return data.data;
 }
 
 export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {

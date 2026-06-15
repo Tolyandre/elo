@@ -20,6 +20,7 @@ export type SyncApi = {
         score: Record<string, number>;
         date: string;
         idempotency_key: string;
+        tournament_ids: string[];
     }): Promise<SyncCallResult<{ id: number }>>;
 };
 
@@ -143,6 +144,7 @@ export async function syncOffline(
                 score: match.score,
                 date: clampToNow(match.createdAt, now()),
                 idempotency_key: idempotencyKeyOf(match.clientId),
+                tournament_ids: match.tournamentIds ?? [],
             });
         } catch {
             return finish(false, true);

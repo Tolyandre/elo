@@ -98,6 +98,11 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		}
 	}
 
+	tournamentsByMatch, err := s.tournamentsByMatch(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+
 	matchesSlice := buildMatchesResponse(matchesMap, order)
 	data := make([]Match, 0, len(matchesSlice))
 	for _, m := range matchesSlice {
@@ -110,14 +115,18 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 				RatingAfter:  p.RatingAfter,
 			}
 		}
-		data = append(data, Match{
+		match := Match{
 			Id:         m.Id,
 			GameId:     m.GameId,
 			GameName:   m.GameName,
 			Date:       m.Date,
 			Score:      score,
 			HasMarkets: m.HasMarkets,
-		})
+		}
+		if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
+			match.Tournaments = &ts
+		}
+		data = append(data, match)
 	}
 
 	var next *string
@@ -141,7 +150,10 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	}
 
 	date := time.Now()
-	opts := elo.AddMatchOpts{IdempotencyKey: uuidPtrToPg(request.Body.IdempotencyKey)}
+	opts := elo.AddMatchOpts{
+		IdempotencyKey: uuidPtrToPg(request.Body.IdempotencyKey),
+		TournamentIDs:  parseTournamentIDs(request.Body.TournamentIds),
+	}
 	if request.Body.Date != nil {
 		date = *request.Body.Date
 		opts.ClientDate = true
@@ -166,6 +178,40 @@ func addMatchError(err error) AddMatchResponseObject {
 	default:
 		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}
 	}
+}
+
+// parseTournamentIDs converts optional string tournament IDs to int32, skipping
+// any that fail to parse.
+func parseTournamentIDs(ids *[]string) []int32 {
+	if ids == nil || len(*ids) == 0 {
+		return nil
+	}
+	out := make([]int32, 0, len(*ids))
+	for _, s := range *ids {
+		if v, err := strconv.ParseInt(s, 10, 32); err == nil {
+			out = append(out, int32(v))
+		}
+	}
+	return out
+}
+
+// tournamentsByMatch returns, per match id, the tournaments it belongs to.
+func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []int32) (map[int][]MatchTournament, error) {
+	if len(matchIDs) == 0 {
+		return map[int][]MatchTournament{}, nil
+	}
+	rows, err := s.api.Queries.ListTournamentsByMatchIDs(ctx, matchIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int][]MatchTournament)
+	for _, r := range rows {
+		out[int(r.MatchID)] = append(out[int(r.MatchID)], MatchTournament{
+			Id:   strconv.Itoa(int(r.TournamentID)),
+			Name: r.TournamentName,
+		})
+	}
+	return out, nil
 }
 
 // uuidPtrToPg converts an optional request UUID to the nullable pgtype.UUID used by the domain.
@@ -228,6 +274,11 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		}
 	}
 
+	tournamentsByMatch, err := s.tournamentsByMatch(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+
 	result := buildMatchesResponse(matchesMap, order)
 	m := result[0]
 	score := make(map[string]MatchPlayer, len(m.Players))
@@ -240,17 +291,19 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		}
 	}
 
-	return GetMatchById200JSONResponse{
-		Status: "success",
-		Data: Match{
-			Id:         m.Id,
-			GameId:     m.GameId,
-			GameName:   m.GameName,
-			Date:       m.Date,
-			Score:      score,
-			HasMarkets: m.HasMarkets,
-		},
-	}, nil
+	match := Match{
+		Id:         m.Id,
+		GameId:     m.GameId,
+		GameName:   m.GameName,
+		Date:       m.Date,
+		Score:      score,
+		HasMarkets: m.HasMarkets,
+	}
+	if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
+		match.Tournaments = &ts
+	}
+
+	return GetMatchById200JSONResponse{Status: "success", Data: match}, nil
 }
 
 func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchRequestObject) (UpdateMatchResponseObject, error) {
@@ -264,7 +317,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 		return UpdateMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
-	_, err = s.api.MatchService.UpdateMatch(ctx, int32(matchID), gameID, playerScores, request.Body.Date)
+	_, err = s.api.MatchService.UpdateMatch(ctx, int32(matchID), gameID, playerScores, request.Body.Date, parseTournamentIDs(request.Body.TournamentIds))
 	if err != nil {
 		switch matchDomainError(err) {
 		case 400:
