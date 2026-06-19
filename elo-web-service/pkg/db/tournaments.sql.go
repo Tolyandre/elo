@@ -253,6 +253,47 @@ func (q *Queries) GetTournamentStats(ctx context.Context, tournamentID int32) ([
 	return items, nil
 }
 
+const listActiveTournamentsForPlayers = `-- name: ListActiveTournamentsForPlayers :many
+SELECT t.id
+FROM tournaments t
+WHERE t.start_date <= $1::timestamptz
+  AND $1::timestamptz <= t.end_date
+  AND NOT EXISTS (
+      SELECT 1 FROM unnest($2::int4[]) AS pid
+      WHERE NOT EXISTS (
+          SELECT 1 FROM tournament_player_membership tpm
+          WHERE tpm.tournament_id = t.id AND tpm.player_id = pid
+      )
+  )
+ORDER BY t.id
+`
+
+type ListActiveTournamentsForPlayersParams struct {
+	At        time.Time `json:"at"`
+	PlayerIds []int32   `json:"player_ids"`
+}
+
+// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
+func (q *Queries) ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listActiveTournamentsForPlayers, arg.At, arg.PlayerIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTournaments = `-- name: ListTournaments :many
 SELECT
     t.id AS tournament_id,

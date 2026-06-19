@@ -21,6 +21,8 @@ import {
 } from "@/app/api";
 import { useSkullKingSSE, useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
 import { useOffline } from "@/app/offline/OfflineContext";
+import { useTournamentSelection } from "@/hooks/useTournamentSelection";
+import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
@@ -509,6 +511,21 @@ export default function SkullKingGamePage() {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
 
+    // Tournament selection for the saved match. Mandatory tournaments (all players
+    // are members) are applied server-side; checked carries the host's explicit picks.
+    const [checkedTournamentIds, setCheckedTournamentIds] = useState<string[]>([]);
+    const tournamentDate = useMemo(() => new Date(), []);
+    const tournamentPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
+    const {
+        active: activeTournamentsForSave,
+        isMandatory: isTournamentMandatory,
+        idsToSubmit: tournamentIdsToSubmit,
+    } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
+    const toggleTournament = (id: string, checked: boolean) =>
+        setCheckedTournamentIds((prev) =>
+            checked ? [...new Set([...prev, id])] : prev.filter((t) => t !== id),
+        );
+
     // Reset bid reveal when round changes
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the per-round reveal toggle on round change
@@ -797,7 +814,11 @@ export default function SkullKingGamePage() {
             gameState.players.forEach((p, pi) => {
                 score[p.id] = playerTotal(gameState.rounds, pi, gameState.players.length);
             });
-            const result = await submitMatch({ game_id: gameId, score });
+            const result = await submitMatch({
+                game_id: gameId,
+                score,
+                tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
+            });
             if (result.kind === "online") {
                 invalidateMatches();
                 invalidatePlayers();
@@ -1414,6 +1435,12 @@ export default function SkullKingGamePage() {
                                     />
                                 </div>
                             )}
+                            <TournamentCheckboxes
+                                active={activeTournamentsForSave}
+                                checked={checkedTournamentIds}
+                                isMandatory={isTournamentMandatory}
+                                onToggle={toggleTournament}
+                            />
                             {saveError && (
                                 <p className="text-red-600 text-sm">{saveError}</p>
                             )}

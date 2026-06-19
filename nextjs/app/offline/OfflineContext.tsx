@@ -22,6 +22,7 @@ import {
     PendingMatch,
     PendingPlayer,
     emptyOfflineStore,
+    idempotencyKeyOf,
     isOfflineId,
     newOfflineId,
 } from "@/lib/offline/types";
@@ -58,7 +59,7 @@ type  OfflineState = {
     isSyncing: boolean;
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
-    addPendingMatch: (m: { gameId: string; score: Record<string, number>; tournamentIds?: string[] }) => PendingMatch;
+    addPendingMatch: (m: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string }) => PendingMatch;
     updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[] }) => void;
     deletePendingMatch: (clientId: string) => void;
     addPendingPlayer: (name: string) => PendingPlayer;
@@ -249,9 +250,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, tournamentIds }: { gameId: string; score: Record<string, number>; tournamentIds?: string[] }) => {
+        ({ gameId, score, tournamentIds, clientId }: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string }) => {
             const match: PendingMatch = {
-                clientId: newOfflineId(),
+                clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 gameId,
@@ -363,20 +364,25 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         async (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }): Promise<SubmitMatchResult> => {
             const referencesPending =
                 isOfflineId(payload.game_id) || Object.keys(payload.score).some(isOfflineId);
+            // Mint the client id (and its idempotency key) up front so the SAME key is
+            // used for the online attempt and any offline retry. If the request reaches
+            // the server but the response is lost mid-flight, the resync sends the same
+            // key and the server returns the already-created match instead of duplicating.
+            const clientId = newOfflineId();
             // Skip the network attempt when effectively offline (no network or the
             // server is known to be unreachable) so the action queues instantly
             // instead of hanging on a request that will time out.
             const canTryServer = isOnline && apiReachableRef.current !== false;
             if (canTryServer && !referencesPending) {
                 try {
-                    const result = await addMatchPromise(payload);
+                    const result = await addMatchPromise({ ...payload, idempotency_key: idempotencyKeyOf(clientId) });
                     return { kind: "online", id: result.id };
                 } catch (e) {
                     if (!isNetworkFailure(e)) throw e;
                     // network died mid-request — fall through to the offline queue
                 }
             }
-            const match = addPendingMatch({ gameId: payload.game_id, score: payload.score, tournamentIds: payload.tournament_ids });
+            const match = addPendingMatch({ clientId, gameId: payload.game_id, score: payload.score, tournamentIds: payload.tournament_ids });
             return { kind: "offline", clientId: match.clientId };
         },
         [isOnline, addPendingMatch],

@@ -115,6 +115,8 @@ type Querier interface {
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID int32) (MarketWinStreakParam, error)
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
+	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
+	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]int32, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)

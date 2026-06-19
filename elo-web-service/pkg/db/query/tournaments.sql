@@ -50,6 +50,21 @@ SELECT COUNT(*)::int AS member_count
 FROM tournament_player_membership
 WHERE tournament_id = $1;
 
+-- name: ListActiveTournamentsForPlayers :many
+-- Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
+SELECT t.id
+FROM tournaments t
+WHERE t.start_date <= sqlc.arg('at')::timestamptz
+  AND sqlc.arg('at')::timestamptz <= t.end_date
+  AND NOT EXISTS (
+      SELECT 1 FROM unnest(sqlc.arg('player_ids')::int4[]) AS pid
+      WHERE NOT EXISTS (
+          SELECT 1 FROM tournament_player_membership tpm
+          WHERE tpm.tournament_id = t.id AND tpm.player_id = pid
+      )
+  )
+ORDER BY t.id;
+
 -- name: AddMatchTournament :exec
 INSERT INTO match_tournament (match_id, tournament_id)
 VALUES ($1, $2)

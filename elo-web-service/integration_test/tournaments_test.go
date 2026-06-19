@@ -82,6 +82,92 @@ func TestTournamentStats(t *testing.T) {
 	}
 }
 
+// TestMatchAutoJoinsActiveTournament verifies the server-side invariant: a match
+// whose players are ALL members of a currently-running tournament auto-joins it even
+// when the client passes no tournament IDs; a match with an outside player does not;
+// and an explicit tournament ID still enrols non-members.
+func TestMatchAutoJoinsActiveTournament(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	a := createTestPlayer(t, pool, "AA")
+	b := createTestPlayer(t, pool, "AB")
+	c := createTestPlayer(t, pool, "AC")
+	gameID := createTestGame(t, pool, "AGame")
+
+	tSvc := elo.NewTournamentService(pool)
+	mSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	q := db.New(pool)
+
+	now := time.Now().Truncate(time.Second)
+	tour, err := tSvc.CreateTournament(ctx, "AutoCamp", now.Add(-time.Hour), now.Add(time.Hour), []int32{a, b})
+	if err != nil {
+		t.Fatalf("create tournament: %v", err)
+	}
+
+	matchTournamentIDs := func(matchID int32) []int32 {
+		rows, err := q.ListTournamentsByMatchIDs(ctx, []int32{matchID})
+		if err != nil {
+			t.Fatalf("list tournaments for match %d: %v", matchID, err)
+		}
+		ids := make([]int32, 0, len(rows))
+		for _, r := range rows {
+			ids = append(ids, r.TournamentID)
+		}
+		return ids
+	}
+	contains := func(ids []int32, want int32) bool {
+		for _, id := range ids {
+			if id == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	// All players are members → auto-joins despite empty AddMatchOpts.
+	m1, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, b: 5}, now.Add(-30*time.Minute), elo.AddMatchOpts{})
+	if err != nil {
+		t.Fatalf("add match 1: %v", err)
+	}
+	if ids := matchTournamentIDs(m1.ID); !contains(ids, tour.ID) {
+		t.Errorf("match with all members: tournaments = %v, want to include %d", ids, tour.ID)
+	}
+
+	// C is not a member → match must NOT auto-join.
+	m2, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, c: 5}, now.Add(-20*time.Minute), elo.AddMatchOpts{})
+	if err != nil {
+		t.Fatalf("add match 2: %v", err)
+	}
+	if ids := matchTournamentIDs(m2.ID); contains(ids, tour.ID) {
+		t.Errorf("match with outside player auto-joined %d unexpectedly: %v", tour.ID, ids)
+	}
+
+	// Explicit tournament ID still enrols the non-member C.
+	m3, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, c: 5}, now.Add(-10*time.Minute),
+		elo.AddMatchOpts{TournamentIDs: []int32{tour.ID}})
+	if err != nil {
+		t.Fatalf("add match 3: %v", err)
+	}
+	if ids := matchTournamentIDs(m3.ID); !contains(ids, tour.ID) {
+		t.Errorf("explicit tournament: tournaments = %v, want to include %d", ids, tour.ID)
+	}
+	rows, err := tSvc.GetTournament(ctx, tour.ID)
+	if err != nil {
+		t.Fatalf("get tournament: %v", err)
+	}
+	members := map[int32]bool{}
+	for _, r := range rows {
+		if r.PlayerID.Valid {
+			members[r.PlayerID.Int32] = true
+		}
+	}
+	if !members[c] {
+		t.Errorf("expected C enrolled via explicit tournament id, members = %v", members)
+	}
+}
+
 // TestTournamentUpdateValidations covers the three guard rails: removing a member
 // who played a match, narrowing dates past played matches, and deleting a non-empty
 // tournament.

@@ -9,6 +9,8 @@ import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
+import { useTournamentSelection } from "@/hooks/useTournamentSelection";
+import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { AuthWarning } from "@/components/auth-warning";
@@ -383,6 +385,21 @@ export default function ItsAWonderfulWorldPage() {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
 
+    // Tournament selection for the saved match. Mandatory tournaments (all players
+    // are members) are applied server-side; checked carries the host's explicit picks.
+    const [checkedTournamentIds, setCheckedTournamentIds] = useState<string[]>([]);
+    const tournamentDate = useMemo(() => new Date(), []);
+    const tournamentPlayerIds = useMemo(() => gameState.players.map(p => p.id), [gameState.players]);
+    const {
+        active: activeTournamentsForSave,
+        isMandatory: isTournamentMandatory,
+        idsToSubmit: tournamentIdsToSubmit,
+    } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
+    const toggleTournament = (id: string, checked: boolean) =>
+        setCheckedTournamentIds(prev =>
+            checked ? [...new Set([...prev, id])] : prev.filter(t => t !== id),
+        );
+
     const iawwGame = useMemo(
         () => games.find(g => g.name.toLowerCase().includes("эбм")),
         [games]
@@ -435,7 +452,11 @@ export default function ItsAWonderfulWorldPage() {
             gameState.players.forEach(p => {
                 score[p.id] = playerTotal(gameState, p.id);
             });
-            const result = await submitMatch({ game_id: gameId, score });
+            const result = await submitMatch({
+                game_id: gameId,
+                score,
+                tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
+            });
             localStorage.removeItem(LS_KEY);
             if (result.kind === "online") {
                 invalidateMatches();
@@ -519,6 +540,13 @@ export default function ItsAWonderfulWorldPage() {
                         />
                     </div>
                 )}
+
+                <TournamentCheckboxes
+                    active={activeTournamentsForSave}
+                    checked={checkedTournamentIds}
+                    isMandatory={isTournamentMandatory}
+                    onToggle={toggleTournament}
+                />
 
                 {saveError && <p className="text-sm text-red-600">{saveError}</p>}
 

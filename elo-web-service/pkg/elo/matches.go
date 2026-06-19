@@ -144,7 +144,12 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 		}
 	}
 
-	if err := applyMatchTournaments(ctx, q, createdMatch.ID, opts.TournamentIDs, playerIDsOf(playerScores)); err != nil {
+	playerIDs := playerIDsOf(playerScores)
+	tournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, opts.TournamentIDs)
+	if err != nil {
+		return db.Match{}, err
+	}
+	if err := applyMatchTournaments(ctx, q, createdMatch.ID, tournamentIDs, playerIDs); err != nil {
 		return db.Match{}, err
 	}
 
@@ -227,7 +232,12 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	if err := q.DeleteMatchTournamentsByMatch(ctx, matchID); err != nil {
 		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %v", err)
 	}
-	if err := applyMatchTournaments(ctx, q, matchID, tournamentIDs, playerIDsOf(playerScores)); err != nil {
+	playerIDs := playerIDsOf(playerScores)
+	mergedTournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, tournamentIDs)
+	if err != nil {
+		return db.Match{}, err
+	}
+	if err := applyMatchTournaments(ctx, q, matchID, mergedTournamentIDs, playerIDs); err != nil {
 		return db.Match{}, err
 	}
 
@@ -717,6 +727,37 @@ func playerIDsOf(playerScores map[int32]float64) []int32 {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+// mergeWithActiveTournaments unions the explicitly-requested tournament IDs with
+// every tournament active on the match date whose membership already contains all
+// match players. This enforces the invariant "if all players are members of a
+// currently-running tournament, the match belongs to it" for every save path
+// (forms, calculators, offline sync) without the client having to compute it.
+func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Time, playerIDs []int32, explicit []int32) ([]int32, error) {
+	auto, err := q.ListActiveTournamentsForPlayers(ctx, db.ListActiveTournamentsForPlayersParams{
+		At:        date,
+		PlayerIds: playerIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("auto-detect active tournaments: %v", err)
+	}
+
+	seen := make(map[int32]struct{}, len(explicit)+len(auto))
+	merged := make([]int32, 0, len(explicit)+len(auto))
+	for _, id := range explicit {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			merged = append(merged, id)
+		}
+	}
+	for _, id := range auto {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			merged = append(merged, id)
+		}
+	}
+	return merged, nil
 }
 
 // applyMatchTournaments associates the match with each tournament and auto-enrols
