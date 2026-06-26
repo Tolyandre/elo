@@ -3,6 +3,7 @@ package elo
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
@@ -12,6 +13,8 @@ type IClubService interface {
 	GetClub(ctx context.Context, id int32) ([]db.GetClubRow, error)
 	CreateClub(ctx context.Context, name string) (db.Club, error)
 	UpdateClub(ctx context.Context, id int32, name string) (db.Club, error)
+	// UpdateClubIcon sets (iconSvg non-nil) or clears (iconSvg nil) the club icon.
+	UpdateClubIcon(ctx context.Context, id int32, iconSvg *string) (db.Club, error)
 	DeleteClub(ctx context.Context, id int32) (db.Club, error)
 	AddMember(ctx context.Context, clubID, playerID int32) error
 	RemoveMember(ctx context.Context, clubID, playerID int32) error
@@ -39,6 +42,14 @@ func (s *ClubService) CreateClub(ctx context.Context, name string) (db.Club, err
 
 func (s *ClubService) UpdateClub(ctx context.Context, id int32, name string) (db.Club, error) {
 	return s.Queries.UpdateClubName(ctx, db.UpdateClubNameParams{ID: id, Name: name})
+}
+
+func (s *ClubService) UpdateClubIcon(ctx context.Context, id int32, iconSvg *string) (db.Club, error) {
+	icon := pgtype.Text{}
+	if iconSvg != nil {
+		icon = pgtype.Text{String: *iconSvg, Valid: true}
+	}
+	return s.Queries.UpdateClubIcon(ctx, db.UpdateClubIconParams{ID: id, IconSvg: icon})
 }
 
 func (s *ClubService) DeleteClub(ctx context.Context, id int32) (db.Club, error) {

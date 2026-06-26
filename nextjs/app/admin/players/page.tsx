@@ -8,6 +8,7 @@ import { LoginLink } from "@/components/login-link";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
+import { ClubIcons } from "@/components/player-name";
 import {
     Dialog,
     DialogContent,
@@ -205,7 +206,10 @@ export default function PlayersAdminPage() {
                                 <div key={player.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
+                                            <span className="inline-flex items-center gap-1">
+                                                <ClubIcons playerId={player.id} />
+                                                <Link className="underline font-medium" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
+                                            </span>
                                             <div className="text-sm text-muted-foreground flex items-center gap-1">
                                                 Рейтинг: {Math.round(player.rank.now.rating)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
@@ -263,7 +267,10 @@ export default function PlayersAdminPage() {
                                     {players.map((player) => (
                                         <tr key={player.id} className="align-top">
                                             <td className="px-4 py-2">
-                                                <Link className="underline" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
+                                                <span className="inline-flex items-center gap-1">
+                                                    <ClubIcons playerId={player.id} />
+                                                    <Link className="underline" href={`/matches?player=${player.id}`}>{playerDisplayName(player)}</Link>
+                                                </span>
                                             </td>
                                             <td className="px-4 py-2 text-sm text-muted-foreground">
                                                 {player.user_id ? userMap.get(player.user_id) : ""}

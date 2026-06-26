@@ -5,6 +5,7 @@ import { PageHeader } from "@/app/pageHeaderContext";
 import { createClubPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { useClubs } from "@/app/clubsContext";
+import { ClubIcon } from "@/components/club-icon";
 import { Button } from "@/components/ui/button";
 
 export default function ClubsAdminPage() {
@@ -60,6 +61,7 @@ export default function ClubsAdminPage() {
                     <div className="space-y-2">
                         {sortedClubs.map((club) => (
                             <div key={club.id} className="border rounded p-3 flex items-center gap-2">
+                                <ClubIcon club={club} />
                                 <Link href={`/admin/club?id=${club.id}`} className="font-medium underline">
                                     {clubDisplayName(club)}
                                 </Link>

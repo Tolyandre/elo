@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
 import { LoginLink } from "@/components/login-link";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
+import { ClubIcons } from "@/components/player-name";
 import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { VoiceInput } from "@/components/voice-input";
@@ -332,8 +333,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                         {participants.map((p) => (
                             <div key={p.id} className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="w-40">
-                                        <div>{p.name}</div>
+                                    <span className="w-40 flex items-center gap-1 min-w-0">
+                                        <ClubIcons playerId={p.id} />
+                                        <span className="truncate">{p.name}</span>
                                     </span>
                                     <input
                                         type="text"

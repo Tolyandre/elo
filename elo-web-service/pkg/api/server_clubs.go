@@ -4,16 +4,37 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
-func clubFromRows(id int, name string, geologistName *string, playerIDs []int) Club {
-	return Club{
-		Id:            strconv.Itoa(id),
-		Name:          name,
-		GeologistName: geologistName,
-		Players:       playerIDs,
+func textPtr(t pgtype.Text) *string {
+	if !t.Valid {
+		return nil
 	}
+	s := t.String
+	return &s
+}
+
+// clubFromGetRows builds a Club (with members and icon) from the LEFT-JOIN rows returned
+// by GetClub. rows must be non-empty.
+func clubFromGetRows(rows []db.GetClubRow) Club {
+	c := Club{
+		Id:      strconv.FormatInt(int64(rows[0].ClubID), 10),
+		Name:    rows[0].ClubName,
+		Players: []int{},
+	}
+	if rows[0].ClubGeologistName.Valid {
+		gn := rows[0].ClubGeologistName.String
+		c.GeologistName = &gn
+	}
+	c.IconSvg = textPtr(rows[0].ClubIconSvg)
+	for _, r := range rows {
+		if r.PlayerID.Valid {
+			c.Players = append(c.Players, int(r.PlayerID.Int32))
+		}
+	}
+	return c
 }
 
 func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) (ListClubsResponseObject, error) {
@@ -22,10 +43,6 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 		return nil, err
 	}
 
-	type entry struct {
-		club    Club
-		players []int
-	}
 	clubsMap := map[int32]*Club{}
 	order := []int32{}
 
@@ -40,6 +57,7 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 				gn := r.ClubGeologistName.String
 				c.GeologistName = &gn
 			}
+			c.IconSvg = textPtr(r.ClubIconSvg)
 			clubsMap[r.ClubID] = &c
 			order = append(order, r.ClubID)
 		}
@@ -70,22 +88,7 @@ func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject
 		return GetClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 	}
 
-	c := Club{
-		Id:      strconv.Itoa(idInt),
-		Name:    rows[0].ClubName,
-		Players: []int{},
-	}
-	if rows[0].ClubGeologistName.Valid {
-		gn := rows[0].ClubGeologistName.String
-		c.GeologistName = &gn
-	}
-	for _, r := range rows {
-		if r.PlayerID.Valid {
-			c.Players = append(c.Players, int(r.PlayerID.Int32))
-		}
-	}
-
-	return GetClub200JSONResponse{Status: "success", Data: c}, nil
+	return GetClub200JSONResponse{Status: "success", Data: clubFromGetRows(rows)}, nil
 }
 
 func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequestObject) (CreateClubResponseObject, error) {
@@ -111,6 +114,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 		gn := club.GeologistName.String
 		c.GeologistName = &gn
 	}
+	c.IconSvg = textPtr(club.IconSvg)
 
 	return CreateClub200JSONResponse{Status: "success", Data: c}, nil
 }
@@ -120,31 +124,60 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	if err != nil {
 		return PatchClub400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
 	}
+	if request.Body == nil {
+		return PatchClub400JSONResponse{Status: "fail", Message: "request body is required"}, nil
+	}
 
-	name := request.Body.Name
-	if name == "" {
+	updateName := request.Body.Name != nil
+	updateIcon := request.Body.IconSvg != nil
+	if !updateName && !updateIcon {
+		return PatchClub400JSONResponse{Status: "fail", Message: "nothing to update"}, nil
+	}
+
+	if updateName && *request.Body.Name == "" {
 		return PatchClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	club, err := s.api.ClubService.UpdateClub(ctx, int32(idInt), name)
-	if db.IsNoRows(err) {
-		return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+	// Validate the icon before touching the database so a bad icon never partially applies.
+	var iconArg *string
+	if updateIcon {
+		if cleaned, ok := clubIconText(*request.Body.IconSvg); ok {
+			sanitized, err := sanitizeClubIconSVG(cleaned)
+			if err != nil {
+				return PatchClub400JSONResponse{Status: "fail", Message: "invalid icon: " + err.Error()}, nil
+			}
+			iconArg = &sanitized
+		}
+		// otherwise iconArg stays nil → clear the icon
 	}
+
+	if updateName {
+		if _, err := s.api.ClubService.UpdateClub(ctx, int32(idInt), *request.Body.Name); err != nil {
+			if db.IsNoRows(err) {
+				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+			}
+			return nil, err
+		}
+	}
+
+	if updateIcon {
+		if _, err := s.api.ClubService.UpdateClubIcon(ctx, int32(idInt), iconArg); err != nil {
+			if db.IsNoRows(err) {
+				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+			}
+			return nil, err
+		}
+	}
+
+	rows, err := s.api.ClubService.GetClub(ctx, int32(idInt))
 	if err != nil {
 		return nil, err
 	}
-
-	c := Club{
-		Id:      strconv.Itoa(int(club.ID)),
-		Name:    club.Name,
-		Players: []int{},
-	}
-	if club.GeologistName.Valid {
-		gn := club.GeologistName.String
-		c.GeologistName = &gn
+	if len(rows) == 0 {
+		return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 	}
 
-	return PatchClub200JSONResponse{Status: "success", Data: c}, nil
+	return PatchClub200JSONResponse{Status: "success", Data: clubFromGetRows(rows)}, nil
 }
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {

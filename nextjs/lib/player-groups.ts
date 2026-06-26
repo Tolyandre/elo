@@ -1,12 +1,23 @@
-import { Club, Player, Tournament } from "@/app/api";
+import { Club, Match, Player, Tournament } from "@/app/api";
 
 /** Synthetic ID representing players not in any club. Never sent to the backend. */
 export const NO_CLUB_ID = "__no_club__";
 export const NO_CLUB_LABEL = "Без клуба";
+export const RECENT_LABEL = "Недавние";
+export const OTHER_TAB_LABEL = "Другие";
 
 type Group = {
   heading: string;
   options: { value: string; label: string }[];
+};
+
+/** A tab in the player picker: "Недавние", one per the current user's clubs, then "Другие". */
+export type PlayerTab = {
+  key: string;
+  label: string;
+  /** Set for club tabs so the trigger can render the club icon. */
+  club?: Club;
+  sections: Group[];
 };
 
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
@@ -87,4 +98,110 @@ export function buildPlayerGroups(
   }
 
   return groups;
+}
+
+/**
+ * Ids of the last `limit` distinct players that `myPlayerId` has played with (excluding
+ * self), most recent match first. Empty when there is no current player or no shared
+ * matches — the caller then omits the "Недавние" tab.
+ */
+export function recentCoPlayerIds(
+  matches: Pick<Match, "date" | "score">[] | undefined,
+  myPlayerId: string | undefined,
+  limit = 10,
+): string[] {
+  if (!myPlayerId || !matches) return [];
+  const sorted = [...matches]
+    .filter((m) => Object.keys(m.score).includes(myPlayerId))
+    .sort((a, b) => (a.date === b.date ? 0 : new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()));
+
+  const ids: string[] = [];
+  const seen = new Set<string>([myPlayerId]);
+  for (const m of sorted) {
+    for (const pid of Object.keys(m.score)) {
+      if (!seen.has(pid)) {
+        seen.add(pid);
+        ids.push(pid);
+        if (ids.length >= limit) return ids;
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Builds the tabbed player picker structure:
+ * 1. "Недавние" — recent co-players (omitted when empty)
+ * 2. one tab per active+checked tournament
+ * 3. one tab per club the current user's player belongs to
+ * 4. "Другие" — a section per remaining club, then a club-less section
+ */
+export function buildPlayerTabs(
+  players: Pick<Player, "id" | "name" | "geologist_name">[],
+  clubs: Club[],
+  recentPlayerIds: string[],
+  playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
+  clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string,
+  myPlayerId?: string,
+  tournaments: Pick<Tournament, "id" | "name" | "players">[] = [],
+): PlayerTab[] {
+  const tabs: PlayerTab[] = [];
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  const optionsFromIds = (ids: number[]) =>
+    ids
+      .map((pid) => byId.get(String(pid)))
+      .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)
+      .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))
+      .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
+
+  // 1. Recent — preserve recency order (not alphabetical)
+  const recentOptions = recentPlayerIds
+    .filter((id) => byId.has(id))
+    .map((id) => ({ value: id, label: playerDisplayName(byId.get(id)!) }));
+  if (recentOptions.length > 0) {
+    tabs.push({ key: "recent", label: RECENT_LABEL, sections: [{ heading: "", options: recentOptions }] });
+  }
+
+  // 2. Tournament tabs (alphabetical)
+  const sortedTournaments = [...tournaments].sort((a, b) => byName(a.name, b.name));
+  for (const tournament of sortedTournaments) {
+    const options = optionsFromIds(tournament.players);
+    if (options.length > 0) {
+      tabs.push({ key: `tournament:${tournament.id}`, label: tournament.name, sections: [{ heading: "", options }] });
+    }
+  }
+
+  // 3. The current user's clubs (alphabetical)
+  const isMyClub = (club: Club) => myPlayerId != null && club.players.map(String).includes(myPlayerId);
+  const myClubs = clubs.filter(isMyClub).sort((a, b) => byName(clubDisplayName(a), clubDisplayName(b)));
+  for (const club of myClubs) {
+    const options = optionsFromIds(club.players);
+    if (options.length > 0) {
+      tabs.push({ key: `club:${club.id}`, label: clubDisplayName(club), club, sections: [{ heading: "", options }] });
+    }
+  }
+
+  // 4. "Другие" — remaining clubs as sections, then club-less players
+  const otherSections: Group[] = [];
+  const otherClubs = clubs.filter((c) => !isMyClub(c)).sort((a, b) => byName(clubDisplayName(a), clubDisplayName(b)));
+  for (const club of otherClubs) {
+    const options = optionsFromIds(club.players);
+    if (options.length > 0) {
+      otherSections.push({ heading: clubDisplayName(club), options });
+    }
+  }
+  const clubPlayerIds = new Set(clubs.flatMap((c) => c.players.map(String)));
+  const noClub = players
+    .filter((p) => !clubPlayerIds.has(p.id))
+    .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))
+    .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
+  if (noClub.length > 0) {
+    otherSections.push({ heading: NO_CLUB_LABEL, options: noClub });
+  }
+  if (otherSections.length > 0) {
+    tabs.push({ key: "other", label: OTHER_TAB_LABEL, sections: otherSections });
+  }
+
+  return tabs;
 }

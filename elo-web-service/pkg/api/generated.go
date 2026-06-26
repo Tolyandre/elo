@@ -356,8 +356,11 @@ type ApiSuccessMessageStatus string
 // Club defines model for Club.
 type Club struct {
 	GeologistName *string `json:"geologist_name,omitempty"`
-	Id            string  `json:"id"`
-	Name          string  `json:"name"`
+
+	// IconSvg Sanitized SVG markup for the club icon, rendered via an img data-URI.
+	IconSvg *string `json:"icon_svg,omitempty"`
+	Id      string  `json:"id"`
+	Name    string  `json:"name"`
 
 	// Players List of player IDs (integers)
 	Players []int `json:"players"`
@@ -838,7 +841,8 @@ type CreateClubJSONBody struct {
 
 // PatchClubJSONBody defines parameters for PatchClub.
 type PatchClubJSONBody struct {
-	Name string `json:"name"`
+	IconSvg *string `json:"icon_svg,omitempty"`
+	Name    *string `json:"name,omitempty"`
 }
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.
@@ -1318,7 +1322,7 @@ type ServerInterface interface {
 	// Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(c *gin.Context, id string)
-	// Update club name
+	// Update a club (name and/or icon)
 	// (PATCH /clubs/{id})
 	PatchClub(c *gin.Context, id string)
 	// Add a player to a club
@@ -5363,7 +5367,7 @@ type StrictServerInterface interface {
 	// Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error)
-	// Update club name
+	// Update a club (name and/or icon)
 	// (PATCH /clubs/{id})
 	PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error)
 	// Add a player to a club

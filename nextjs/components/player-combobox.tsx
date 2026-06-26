@@ -11,13 +11,18 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { BottomSheet } from "@/components/ui/bottom-sheet"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
 import { useMe } from "@/app/meContext"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command"
-import { buildPlayerGroups } from "@/lib/player-groups"
+import { ClubIcon } from "@/components/club-icon"
+import { ClubIcons } from "@/components/player-name"
+import { buildPlayerTabs, recentCoPlayerIds, PlayerTab } from "@/lib/player-groups"
+
+type Option = { value: string; label: string }
 
 export function PlayerCombobox({
   value: controlledValue,
@@ -37,21 +42,24 @@ export function PlayerCombobox({
   const { players, playerDisplayName } = usePlayers()
   const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
+  const { playerId: myPlayerId } = useMe()
 
-  const recentPlayerIds = React.useMemo(() => (
-    Array.from(
-      new Set(
-        matches
-          ?.toSorted((a, b) => a.date == b.date ? 0 : (new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()))
-          ?.slice(0, 5)
-          .flatMap(m => Object.keys(m.score))
-      )
-    ).slice(0, 8)
-  ), [matches])
+  const recentPlayerIds = React.useMemo(
+    () => recentCoPlayerIds(matches, myPlayerId),
+    [matches, myPlayerId]
+  )
 
-  const groups = React.useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName),
-    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName]
+  const tabs = React.useMemo(
+    () => buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId),
+    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
+  )
+
+  // Flat, de-duplicated, name-sorted list used while searching (search spans all players).
+  const allOptions = React.useMemo<Option[]>(
+    () => [...players]
+      .sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }))
+      .map((p) => ({ value: p.id, label: playerDisplayName(p) })),
+    [players, playerDisplayName]
   )
 
   const handleSelect = (currentValue: string) => {
@@ -65,6 +73,10 @@ export function PlayerCombobox({
     setOpen(false)
   }
 
+  const selectedLabel = value
+    ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value })()
+    : "Игрок..."
+
   const trigger = (
     <Button
       type="button"
@@ -73,9 +85,7 @@ export function PlayerCombobox({
       aria-expanded={open}
       className="w-full justify-between"
     >
-      {value
-        ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value; })()
-        : "Игрок..."}
+      {selectedLabel}
       <ChevronsUpDown className="opacity-50" />
     </Button>
   )
@@ -85,7 +95,8 @@ export function PlayerCombobox({
   const content = (
     <PlayerCommand
       value={value}
-      groups={groups}
+      tabs={tabs}
+      allOptions={allOptions}
       onSelect={handleSelect}
       listClassName={mobileListClass}
       allowClear={allowClear}
@@ -105,9 +116,7 @@ export function PlayerCombobox({
           className="w-full justify-between"
           onClick={() => setOpen(true)}
         >
-          {value
-            ? (() => { const p = players.find((player) => player.id === value); return p ? playerDisplayName(p) : value; })()
-            : "Игрок..."}
+          {selectedLabel}
           <ChevronsUpDown className="opacity-50" />
         </Button>
         <BottomSheet open={open} onOpenChange={setOpen}>
@@ -137,18 +146,54 @@ export function PlayerCombobox({
 
 type PlayerCommandProps = {
   value: string
-  groups: { heading: string; options: { value: string; label: string }[] }[]
+  tabs: PlayerTab[]
+  allOptions: Option[]
   onSelect: (value: string) => void
   listClassName?: string
   allowClear?: boolean
   onClear?: () => void
 }
 
-function PlayerCommand({ value, groups, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
+function PlayerCommand({ value, tabs, allOptions, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
   const { playerId } = useMe()
+  const [search, setSearch] = React.useState("")
+  const [activeTab, setActiveTab] = React.useState<string | undefined>(tabs[0]?.key)
+
+  const activeKey = tabs.some((t) => t.key === activeTab) ? activeTab : tabs[0]?.key
+  const current = tabs.find((t) => t.key === activeKey)
+  const searching = search.trim().length > 0
+
+  const renderItem = (option: Option, keyPrefix: string) => (
+    <CommandItem
+      key={`${keyPrefix}-${option.value}`}
+      value={option.value}
+      keywords={[option.label]}
+      onSelect={onSelect}
+    >
+      <ClubIcons playerId={option.value} />
+      {option.value === playerId
+        ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{option.label}</span>
+        : option.label}
+      <Check className={cn("ml-auto", value === option.value ? "opacity-100" : "opacity-0")} />
+    </CommandItem>
+  )
+
   return (
     <Command className={listClassName ? "flex flex-col flex-1 min-h-0" : undefined}>
-      <CommandInput placeholder="Искать игрока..." className="h-9" />
+      <CommandInput placeholder="Искать игрока..." className="h-9" value={search} onValueChange={setSearch} />
+
+      {!searching && tabs.length > 1 && (
+        <Tabs value={activeKey} onValueChange={setActiveTab}>
+          <TabsList variant="line" className="w-full h-auto flex-wrap justify-start gap-1 px-1">
+            {tabs.map((tab) => (
+              <TabsTrigger key={tab.key} value={tab.key} className="flex-none shrink-0 gap-1 whitespace-nowrap">
+                {tab.club && <ClubIcon club={tab.club} />}
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
 
       <CommandList className={listClassName}>
         <CommandEmpty>Игрок не найден.</CommandEmpty>
@@ -161,31 +206,16 @@ function PlayerCommand({ value, groups, onSelect, listClassName, allowClear, onC
           </CommandGroup>
         )}
 
-        {groups.map((group, i) => (
-          <React.Fragment key={group.heading}>
-            {(i > 0 || (allowClear && value)) && <CommandSeparator />}
-            <CommandGroup heading={group.heading}>
-              {group.options.map((player) => (
-                <CommandItem
-                  key={`${group.heading}-${player.value}`}
-                  value={player.value}
-                  keywords={[player.label]}
-                  onSelect={onSelect}
-                >
-                  {player.value === playerId
-                    ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{player.label}</span>
-                    : player.label}
-                  <Check
-                    className={cn(
-                      "ml-auto",
-                      value === player.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </React.Fragment>
-        ))}
+        {searching
+          ? <CommandGroup>{allOptions.map((o) => renderItem(o, "search"))}</CommandGroup>
+          : current?.sections.map((section, i) => (
+            <React.Fragment key={section.heading || `s${i}`}>
+              {i > 0 && <CommandSeparator />}
+              <CommandGroup heading={section.heading || undefined}>
+                {section.options.map((o) => renderItem(o, `${activeKey}-${i}`))}
+              </CommandGroup>
+            </React.Fragment>
+          ))}
       </CommandList>
     </Command>
   )

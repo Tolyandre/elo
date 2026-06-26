@@ -9,6 +9,7 @@ import { PendingMatch } from "@/lib/offline/types";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
+import { ClubIcons } from "@/components/player-name";
 import { CloudOff } from "lucide-react";
 
 // Card for a match created offline and not yet synced: no Elo data, with a
@@ -78,6 +79,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                         <li key={p.playerId} className="flex items-center gap-2">
                             <div className="flex-1 min-w-0 flex items-center gap-1">
                                 <RankIcon rank={ranks[idx]} />
+                                <ClubIcons playerId={p.playerId} />
                                 <span className="truncate text-sm">{p.name}</span>
                             </div>
                             <div className="text-center text-2xl font-semibold w-12 flex-shrink-0">

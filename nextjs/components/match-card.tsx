@@ -9,6 +9,7 @@ import { Match } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
+import { ClubIcons } from "@/components/player-name";
 
 type MatchCardProps = {
   match: Match;
@@ -80,6 +81,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1 mb-1">
                   <RankIcon rank={ranks[idx]} />
+                  <ClubIcons playerId={p.playerId} />
                   {p.playerId === myPlayerId
                     ? <span className="truncate text-sm bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
                     : <span className="truncate text-sm">{p.name}</span>}

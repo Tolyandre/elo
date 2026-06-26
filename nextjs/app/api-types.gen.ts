@@ -214,7 +214,10 @@ export interface paths {
         delete: operations["DeleteClub"];
         options?: never;
         head?: never;
-        /** Update club name */
+        /**
+         * Update a club (name and/or icon)
+         * @description Partial update. A field that is omitted is left unchanged. For `icon_svg`, an empty string clears the icon; a non-empty value is validated server-side (must be an SVG with no scripts/event handlers/external references).
+         */
         patch: operations["PatchClub"];
         trace?: never;
     };
@@ -863,6 +866,8 @@ export interface components {
             id: string;
             name: string;
             geologist_name?: string | null;
+            /** @description Sanitized SVG markup for the club icon, rendered via an img data-URI. */
+            icon_svg?: string | null;
             /** @description List of player IDs (integers) */
             players: number[];
         };
@@ -2147,7 +2152,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    name: string;
+                    name?: string;
+                    icon_svg?: string | null;
                 };
             };
         };

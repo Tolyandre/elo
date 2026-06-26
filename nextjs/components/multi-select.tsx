@@ -27,6 +27,7 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { BottomSheet } from "./ui/bottom-sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
  * Animation types and configurations
@@ -109,6 +110,22 @@ interface MultiSelectGroup {
 }
 
 /**
+ * A tab partition of the options. When `tabs` is provided to MultiSelect, a tab bar is
+ * shown (while not searching) and only the active tab's groups are displayed. Searching
+ * hides the tabs and filters across the union of every tab's options.
+ */
+interface MultiSelectTab {
+	/** Stable key for the tab */
+	key: string;
+	/** Tab trigger text (used as a fallback when `labelNode` is absent) */
+	label: string;
+	/** Optional custom tab trigger content (e.g. an icon before the label) */
+	labelNode?: React.ReactNode;
+	/** Groups shown when this tab is active */
+	groups: MultiSelectGroup[];
+}
+
+/**
  * Props for MultiSelect component
  */
 interface MultiSelectProps
@@ -119,8 +136,15 @@ interface MultiSelectProps
 	VariantProps<typeof multiSelectVariants> {
 	/**
 	 * An array of option objects or groups to be displayed in the multi-select component.
+	 * Optional when `tabs` is provided.
 	 */
-	options: MultiSelectOption[] | MultiSelectGroup[];
+	options?: MultiSelectOption[] | MultiSelectGroup[];
+
+	/**
+	 * Optional tabbed partitioning of the options. When set, a tab bar is shown while not
+	 * searching and only the active tab's groups are displayed; searching spans all tabs.
+	 */
+	tabs?: MultiSelectTab[];
 	/**
 	 * Callback function triggered when the selected values change.
 	 * Receives an array of the new selected values.
@@ -323,7 +347,8 @@ export interface MultiSelectRef {
 export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 	(
 		{
-			options,
+			options: optionsProp = [],
+			tabs,
 			onValueChange,
 			variant,
 			defaultValue = [],
@@ -357,6 +382,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 		const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
 		const [isAnimating, setIsAnimating] = React.useState(false);
 		const [searchValue, setSearchValue] = React.useState("");
+		const [activeTab, setActiveTab] = React.useState<string | undefined>(tabs?.[0]?.key);
 
 		const [politeMessage, setPoliteMessage] = React.useState("");
 		const [assertiveMessage, setAssertiveMessage] = React.useState("");
@@ -391,6 +417,21 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 				return opts.length > 0 && "heading" in opts[0];
 			},
 			[]
+		);
+
+		// When tabs are provided, the union of all tabs' groups is the effective option set
+		// (used for search, select-all and value lookup); the per-tab partitioning only
+		// affects what is rendered while not searching.
+		const unionGroups = React.useMemo<MultiSelectGroup[]>(
+			() => (tabs ? tabs.flatMap((t) => t.groups) : []),
+			[tabs]
+		);
+		// Effective option set for search, select-all and value lookup. Callers using `tabs`
+		// may also pass `options` (e.g. a flat search list with proper headings); otherwise the
+		// union of all tabs is used.
+		const options = React.useMemo<MultiSelectOption[] | MultiSelectGroup[]>(
+			() => (optionsProp.length > 0 ? optionsProp : tabs ? unionGroups : optionsProp),
+			[tabs, unionGroups, optionsProp]
 		);
 
 		const arraysEqual = React.useCallback(
@@ -619,6 +660,20 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 					option.value.toLowerCase().includes(searchValue.toLowerCase())
 			);
 		}, [options, searchValue, searchable, isGroupedOptions]);
+
+		// Active tab key, guarded against a stale value when the tab set changes.
+		const activeKey =
+			tabs && tabs.some((t) => t.key === activeTab) ? activeTab : tabs?.[0]?.key;
+
+		// What the list actually renders: the active tab's groups while browsing with tabs,
+		// otherwise the (search-)filtered options.
+		const renderedOptions = React.useMemo<MultiSelectOption[] | MultiSelectGroup[]>(() => {
+			if (tabs && !searchValue) {
+				const t = tabs.find((x) => x.key === activeKey) ?? tabs[0];
+				return t ? t.groups : [];
+			}
+			return filteredOptions;
+		}, [tabs, searchValue, activeKey, filteredOptions]);
 
 		const handleInputKeyDown = (
 			event: React.KeyboardEvent<HTMLInputElement>
@@ -995,6 +1050,21 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 					Type to filter options. Use arrow keys to navigate results.
 				</div>
 			)}
+			{tabs && tabs.length > 1 && !searchValue && (
+				<Tabs value={activeKey} onValueChange={setActiveTab}>
+					<TabsList variant="line" className="w-full h-auto flex-wrap justify-start gap-1 px-1">
+						{tabs.map((tab) => (
+							<TabsTrigger
+								key={tab.key}
+								value={tab.key}
+								className="flex-none shrink-0 gap-1 whitespace-nowrap"
+							>
+								{tab.labelNode ?? tab.label}
+							</TabsTrigger>
+						))}
+					</TabsList>
+				</Tabs>
+			)}
 			<CommandList
 				className={cn(
 					screenSize === "mobile"
@@ -1040,8 +1110,8 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 						</CommandItem>
 					</CommandGroup>
 				)}
-				{isGroupedOptions(filteredOptions) ? (
-					filteredOptions.map((group) => (
+				{isGroupedOptions(renderedOptions) ? (
+					renderedOptions.map((group) => (
 						<CommandGroup key={group.heading} heading={group.heading}>
 							{group.options.map((option) => {
 								const isSelected = selectedValues.includes(
@@ -1085,7 +1155,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 					))
 				) : (
 					<CommandGroup>
-						{filteredOptions.map((option) => {
+						{renderedOptions.map((option) => {
 							const isSelected = selectedValues.includes(option.value);
 							return (
 								<CommandItem
@@ -1233,4 +1303,4 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 );
 
 MultiSelect.displayName = "MultiSelect";
-export type { MultiSelectOption, MultiSelectGroup, MultiSelectProps };
+export type { MultiSelectOption, MultiSelectGroup, MultiSelectTab, MultiSelectProps };

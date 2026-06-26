@@ -8,10 +8,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command"
 import { useClubs } from "@/app/clubsContext"
+import { ClubIcon } from "@/components/club-icon"
+import { Club } from "@/app/api"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { NO_CLUB_ID, NO_CLUB_LABEL } from "@/lib/player-groups"
 
-type ClubOption = { id: string; name: string }
+type ClubOption = { id: string; name: string; club?: Club }
 
 /** value = null means "all clubs" */
 export function ClubSelect({
@@ -27,7 +29,7 @@ export function ClubSelect({
 
   const options: ClubOption[] = React.useMemo(() => [
     ...[...clubs].sort((a, b) => clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" }))
-      .map(c => ({ id: c.id, name: clubDisplayName(c) })),
+      .map(c => ({ id: c.id, name: clubDisplayName(c), club: c })),
     { id: NO_CLUB_ID, name: NO_CLUB_LABEL },
   ], [clubs, clubDisplayName])
 
@@ -62,6 +64,7 @@ export function ClubSelect({
               onSelect={() => select(option.id)}
             >
               <Check className={cn("mr-2 h-4 w-4 shrink-0", value === option.id ? "opacity-100" : "opacity-0")} />
+              {option.club && <ClubIcon club={option.club} className="mr-1" />}
               {option.name}
             </CommandItem>
           ))}

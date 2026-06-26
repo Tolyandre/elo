@@ -23,6 +23,7 @@ type Club struct {
 	ID            int32       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
+	IconSvg       pgtype.Text `json:"icon_svg"`
 }
 
 type Correction struct {

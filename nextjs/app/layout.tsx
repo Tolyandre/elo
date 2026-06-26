@@ -37,7 +37,10 @@ export const metadata: Metadata = {
     description: "Отслеживайте Elo-рейтинг игроков в настольных играх.",
   },
   icons: {
-    icon: "favicon-st-patrick.ico",
+    icon: [
+      { url: "favicon.ico", sizes: "any" },
+      { url: "clover-icon-notext.svg", type: "image/svg+xml" },
+    ],
   },
   verification: {
     google: "WXW-hO-W47nHNwMROtsuNMdRKlQbIs4w4x8Jbutfw7Y",

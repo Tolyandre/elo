@@ -13,6 +13,7 @@ import { winsNeededForAmateur } from "@/app/eloCalculation";
 import { ClubSelect } from "@/components/club-select";
 import { useTournaments } from "@/app/tournamentsContext";
 import { RankIcon } from "@/components/rank-icon";
+import { ClubIcons } from "@/components/player-name";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/error-alert";
@@ -144,6 +145,7 @@ function PlayerRow({ player, ctx }: { player: Player; ctx: RowContext }) {
                 <RankChangeIndicator currentRank={displayRank} previousRank={previousRank} />
             </td>
             <td className="py-2 px-1 w-50">
+                <ClubIcons playerId={player.id} className="mr-1 align-text-bottom" />
                 <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
                 {matchesLeftForElite != null && matchesLeftForElite > 0 && (
                     <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} партий</span>

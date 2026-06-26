@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
+import { ClubIcons } from "@/components/player-name";
 
 export function statusLabel(status: Market["status"], resolutionOutcome?: string | null): string {
     if (status === "resolved") {
@@ -63,7 +64,10 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
                 const positive = delta >= 0;
                 return (
                     <div key={d.player_id} className="flex justify-between text-xs gap-2">
-                        <span className="text-muted-foreground">{d.player_name}</span>
+                        <span className="text-muted-foreground inline-flex items-center gap-1">
+                            <ClubIcons playerId={String(d.player_id)} />
+                            {d.player_name}
+                        </span>
                         <span className="flex gap-2 shrink-0">
                             <span className="text-muted-foreground">({d.staked.toFixed(1)} → {d.earned.toFixed(1)})</span>
                             <span className={`w-10 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>

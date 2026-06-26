@@ -41,6 +41,19 @@ export function isNetworkFailure(e: unknown): boolean {
     return e instanceof NetworkError || e instanceof TypeError;
 }
 
+/**
+ * Best-effort message from a thrown API error. The openapi-fetch helpers throw the parsed
+ * error body (`{ status, message }`, not an Error), so reading `.message` covers both that
+ * shape and real Error instances.
+ */
+export function apiErrorMessage(e: unknown, fallback: string): string {
+    if (e && typeof e === "object" && "message" in e) {
+        const m = (e as { message?: unknown }).message;
+        if (typeof m === "string" && m.length > 0) return m;
+    }
+    return fallback;
+}
+
 // ─── Re-exported schema types ─────────────────────────────────────────────────
 
 export type EloRank = components["schemas"]["EloRank"];
@@ -420,7 +433,10 @@ export async function createClubPromise(payload: { name: string }): Promise<Club
     return data.data;
 }
 
-export async function patchClubPromise(id: string, payload: { name: string }): Promise<Club> {
+export async function patchClubPromise(
+    id: string,
+    payload: { name?: string; icon_svg?: string | null },
+): Promise<Club> {
     const { data, error } = await client.PATCH("/clubs/{id}", {
         params: { path: { id } },
         body: payload,

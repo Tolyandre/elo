@@ -113,7 +113,11 @@ ClubItem:
   patch:
     operationId: PatchClub
     tags: [clubs]
-    summary: Update club name
+    summary: Update a club (name and/or icon)
+    description: >-
+      Partial update. A field that is omitted is left unchanged. For `icon_svg`,
+      an empty string clears the icon; a non-empty value is validated server-side
+      (must be an SVG with no scripts/event handlers/external references).
     security:
       - cookieAuth: []
     parameters:
@@ -131,7 +135,9 @@ ClubItem:
             properties:
               name:
                 type: string
-            required: [name]
+              icon_svg:
+                type: string
+                nullable: true
     responses:
       "200":
         description: Updated club
@@ -318,6 +324,10 @@ Club:
     geologist_name:
       type: string
       nullable: true
+    icon_svg:
+      type: string
+      nullable: true
+      description: Sanitized SVG markup for the club icon, rendered via an img data-URI.
     players:
       type: array
       items:
