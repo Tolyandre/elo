@@ -101,9 +101,11 @@ export function buildPlayerGroups(
 }
 
 /**
- * Ids of the last `limit` distinct players that `myPlayerId` has played with (excluding
- * self), most recent match first. Empty when there is no current player or no shared
- * matches — the caller then omits the "Недавние" tab.
+ * Ids for the "Недавние" list: the current player first, then the last `limit`
+ * distinct players they've played with (most recent match first). The current
+ * player is always included once they have at least one match of their own —
+ * they trivially qualify as "recent". Empty when there is no current player or
+ * no matches of theirs, in which case the caller omits the "Недавние" tab.
  */
 export function recentCoPlayerIds(
   matches: Pick<Match, "date" | "score">[] | undefined,
@@ -111,22 +113,24 @@ export function recentCoPlayerIds(
   limit = 10,
 ): string[] {
   if (!myPlayerId || !matches) return [];
-  const sorted = [...matches]
+  const myMatches = [...matches]
     .filter((m) => Object.keys(m.score).includes(myPlayerId))
     .sort((a, b) => (a.date === b.date ? 0 : new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()));
+  if (myMatches.length === 0) return [];
 
-  const ids: string[] = [];
+  const coPlayers: string[] = [];
   const seen = new Set<string>([myPlayerId]);
-  for (const m of sorted) {
+  for (const m of myMatches) {
     for (const pid of Object.keys(m.score)) {
       if (!seen.has(pid)) {
         seen.add(pid);
-        ids.push(pid);
-        if (ids.length >= limit) return ids;
+        coPlayers.push(pid);
       }
     }
+    if (coPlayers.length >= limit) break;
   }
-  return ids;
+  // Current user first, then their most recent distinct co-players.
+  return [myPlayerId, ...coPlayers.slice(0, limit)];
 }
 
 /**

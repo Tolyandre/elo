@@ -79,14 +79,16 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           {players.map((p, idx) => (
             <li key={p.playerId} className="flex items-center gap-2">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1 mb-1">
-                  <RankIcon rank={ranks[idx]} />
-                  <ClubIcons playerId={p.playerId} />
+                {/* Inline flow (not flex) so icons + name + rating wrap together and
+                    long names reclaim the full width under the icons. */}
+                <div className="mb-1 text-sm">
+                  <RankIcon rank={ranks[idx]} className="inline-block align-middle mr-1" />
+                  <ClubIcons playerId={p.playerId} className="align-middle mr-1" />
                   {p.playerId === myPlayerId
-                    ? <span className="truncate text-sm bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
-                    : <span className="truncate text-sm">{p.name}</span>}
+                    ? <span className="break-words align-middle bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
+                    : <span className="break-words align-middle">{p.name}</span>}
                   {p.ratingAfter != null && (
-                    <span className="text-xs text-muted-foreground shrink-0">{Math.round(p.ratingAfter)}</span>
+                    <span className="text-xs text-muted-foreground align-middle ml-1">{Math.round(p.ratingAfter)}</span>
                   )}
                 </div>
 

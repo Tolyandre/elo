@@ -77,10 +77,12 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                 <ul className="space-y-2">
                     {players.map((p, idx) => (
                         <li key={p.playerId} className="flex items-center gap-2">
-                            <div className="flex-1 min-w-0 flex items-center gap-1">
-                                <RankIcon rank={ranks[idx]} />
-                                <ClubIcons playerId={p.playerId} />
-                                <span className="truncate text-sm">{p.name}</span>
+                            {/* Inline flow (not flex) so icons + name wrap together and a
+                                long name reclaims the full width under the icons. */}
+                            <div className="flex-1 min-w-0 text-sm">
+                                <RankIcon rank={ranks[idx]} className="inline-block align-middle mr-1" />
+                                <ClubIcons playerId={p.playerId} className="align-middle mr-1" />
+                                <span className="break-words align-middle">{p.name}</span>
                             </div>
                             <div className="text-center text-2xl font-semibold w-12 flex-shrink-0">
                                 {p.score}

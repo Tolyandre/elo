@@ -46,27 +46,35 @@ const match = (date: string, ids: string[]) =>
     ({ date, score: Object.fromEntries(ids.map((id) => [id, {}])) }) as unknown as Pick<Match, "date" | "score">;
 
 describe("recentCoPlayerIds", () => {
-    it("returns distinct co-players of newest shared matches, excluding self", () => {
+    it("returns self first, then distinct co-players of newest shared matches", () => {
         const matches = [
             match("2024-01-03", ["me", "1", "2"]),
             match("2024-01-02", ["me", "2", "3"]),
             match("2024-01-01", ["x", "y"]), // not mine — ignored
         ];
-        expect(recentCoPlayerIds(matches, "me")).toEqual(["1", "2", "3"]);
+        expect(recentCoPlayerIds(matches, "me")).toEqual(["me", "1", "2", "3"]);
     });
 
-    it("respects the limit and orders by match recency", () => {
+    it("includes self even when their matches are solo", () => {
+        expect(recentCoPlayerIds([match("2024-01-01", ["me"])], "me")).toEqual(["me"]);
+    });
+
+    it("respects the co-player limit and orders by match recency", () => {
         const matches = [
             match("2024-01-04", ["me", "5"]),
             match("2024-01-03", ["me", "6"]),
             match("2024-01-02", ["me", "7"]),
             match("2024-01-01", ["me", "8"]),
         ];
-        expect(recentCoPlayerIds(matches, "me", 3)).toEqual(["5", "6", "7"]);
+        expect(recentCoPlayerIds(matches, "me", 3)).toEqual(["me", "5", "6", "7"]);
     });
 
     it("is empty without a current player", () => {
         expect(recentCoPlayerIds([match("2024-01-01", ["a", "b"])], undefined)).toEqual([]);
+    });
+
+    it("is empty when the current player has no matches", () => {
+        expect(recentCoPlayerIds([match("2024-01-01", ["a", "b"])], "me")).toEqual([]);
     });
 });
 
