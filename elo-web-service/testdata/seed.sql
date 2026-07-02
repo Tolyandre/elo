@@ -45,7 +45,7 @@ INSERT INTO match_scores (match_id, player_id, score) VALUES
 ON CONFLICT (match_id, player_id) DO NOTHING;
 
 -- global_arena_settlement: global Elo after each match (discriminator='match').
--- Migration convention: new_elo=new_rating, elo_*=rating_* (dual-track values identical for seeded data), league='amateur'.
+-- Convention: elo_after=rating_after, elo_*=rating_* (dual-track values identical for seeded data), league='amateur'.
 WITH base AS (
     SELECT m.date, ms.player_id, ms.match_id,
         CASE (ms.match_id, ms.player_id)
@@ -75,7 +75,7 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id WHERE ms.match_id IN (200, 201)
 )
 INSERT INTO global_arena_settlement
-    (date, player_id, new_rating, new_elo, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+    (date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
 SELECT date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
@@ -104,7 +104,7 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id WHERE ms.match_id = 202
 )
 INSERT INTO global_arena_settlement
-    (date, player_id, new_rating, new_elo, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+    (date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
 SELECT date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
@@ -140,7 +140,7 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id WHERE ms.match_id IN (200, 201)
 )
 INSERT INTO game_arena_settlement
-    (game_id, player_id, date, new_rating, new_elo, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+    (game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
 SELECT 50, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
@@ -168,7 +168,7 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id WHERE ms.match_id = 202
 )
 INSERT INTO game_arena_settlement
-    (game_id, player_id, date, new_rating, new_elo, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+    (game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
 SELECT 50, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
@@ -252,7 +252,7 @@ BEGIN
     -- Prev Elo at resolution date (after match 201, before match 202):
     --   Alice=1002.0534, Bob=1008.1226, Carol=989.8239
     INSERT INTO global_arena_settlement
-        (date, player_id, new_rating, new_elo, discriminator, market_id,
+        (date, player_id, rating_after, elo_after, discriminator, market_id,
          elo_staked, elo_earned, rating_staked, rating_earned, league)
     VALUES
         (NOW() - INTERVAL '7 days', 100,

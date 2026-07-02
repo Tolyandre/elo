@@ -1,11 +1,12 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChartContainer } from '@/components/ui/chart'
+import { RatingChart } from '@/components/rating-chart'
+import { findExtremes } from '@/lib/rating-chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
 import { PageHeader } from '@/app/pageHeaderContext'
@@ -111,13 +112,9 @@ function LoadingSkeleton() {
 }
 
 function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
-    const chartData = stats.rating_history.map(p => ({
-        date: formatDate(p.date),
-        rating: Math.round(p.rating),
-        elo: Math.round(p.elo),
-    }))
-
-    const current = chartData.length > 0 ? chartData[chartData.length - 1] : null
+    const history = stats.rating_history
+    const current = history.length > 0 ? history[history.length - 1] : null
+    const extremes = useMemo(() => findExtremes(history), [history])
 
     return (
         <div className="space-y-6 p-4 max-w-3xl mx-auto">
@@ -128,63 +125,24 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                     <div className="flex items-end justify-between gap-4">
                         <div>
                             <CardTitle className="text-sm font-medium text-muted-foreground mb-1">Рейтинг</CardTitle>
-                            {current && <p className="text-4xl font-bold leading-none">{current.rating}</p>}
+                            {current && <p className="text-4xl font-bold leading-none">{Math.round(current.rating)}</p>}
                         </div>
                         {current && (
                             <div className="text-right text-sm text-muted-foreground mb-0.5">
                                 <span>эло </span>
-                                <span className="font-medium text-foreground">{current.elo}</span>
+                                <span className="font-medium text-foreground">{Math.round(current.elo)}</span>
                             </div>
                         )}
                     </div>
+                    {extremes && (
+                        <div className="flex flex-wrap gap-1 pt-2 text-xs">
+                            <Badge variant="secondary">эло макс {extremes.eloMax.value} · {formatDate(extremes.eloMax.date)}</Badge>
+                            <Badge variant="secondary">эло мин {extremes.eloMin.value} · {formatDate(extremes.eloMin.date)}</Badge>
+                        </div>
+                    )}
                 </CardHeader>
                 <CardContent>
-                    {chartData.length === 0 ? (
-                        <p className="text-muted-foreground text-sm">Нет данных</p>
-                    ) : (
-                        <ChartContainer config={{
-                            rating: { label: 'Рейтинг', color: 'var(--chart-1)' },
-                            elo: { label: 'Эло', color: 'var(--chart-3)' },
-                        }}>
-                            <LineChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis
-                                    dataKey="date"
-                                    tick={{ fontSize: 11 }}
-                                    interval="preserveStartEnd"
-                                />
-                                <YAxis
-                                    domain={['auto', 'auto']}
-                                    tick={{ fontSize: 11 }}
-                                    width={55}
-                                />
-                                <Tooltip
-                                    formatter={(value, name) => [value, name === 'rating' ? 'Рейтинг' : 'Эло']}
-                                />
-                                <Legend
-                                    formatter={(name) => name === 'rating' ? 'Рейтинг' : 'Эло'}
-                                    wrapperStyle={{ fontSize: 12, paddingTop: 4 }}
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="elo"
-                                    stroke="var(--color-elo)"
-                                    strokeDasharray="5 3"
-                                    strokeWidth={1.0}
-                                    dot={false}
-                                    name="elo"
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="rating"
-                                    stroke="var(--color-rating)"
-                                    strokeWidth={2.5}
-                                    dot={false}
-                                    name="rating"
-                                />
-                            </LineChart>
-                        </ChartContainer>
-                    )}
+                    <RatingChart history={history} />
                 </CardContent>
             </Card>
 
