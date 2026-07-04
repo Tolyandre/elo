@@ -1,25 +1,32 @@
--- Squashed schema representing the state after all migrations through 030.
--- New databases run only this file. Existing databases at version 030 skip it automatically.
+-- Squashed schema representing the state after all migrations through 035.
+-- New databases run only this file. Existing databases at version 035 skip it automatically.
 
 CREATE TABLE clubs (
     id             SERIAL PRIMARY KEY,
     name           TEXT   NOT NULL,
-    geologist_name TEXT   NULL
+    geologist_name TEXT   NULL,
+    icon_svg       TEXT   NULL
 );
 
 CREATE TABLE games (
-    id   SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    idempotency_key UUID NULL,
     CONSTRAINT games_name_unique UNIQUE (name)
 );
 
+CREATE UNIQUE INDEX games_idempotency_key_unique ON games (idempotency_key);
+
 CREATE TABLE players (
-    id             SERIAL PRIMARY KEY,
-    name           TEXT  NOT NULL,
-    geologist_name TEXT  NULL,
-    bet_limit      FLOAT NOT NULL DEFAULT 0,
+    id              SERIAL PRIMARY KEY,
+    name            TEXT  NOT NULL,
+    geologist_name  TEXT  NULL,
+    bet_limit       FLOAT NOT NULL DEFAULT 0,
+    idempotency_key UUID  NULL,
     CONSTRAINT players_name_unique UNIQUE (name)
 );
+
+CREATE UNIQUE INDEX players_idempotency_key_unique ON players (idempotency_key);
 
 CREATE TABLE player_club_membership (
     club_id   INT NOT NULL,
@@ -30,11 +37,14 @@ CREATE TABLE player_club_membership (
 );
 
 CREATE TABLE matches (
-    id      SERIAL                   PRIMARY KEY,
-    date    TIMESTAMP WITH TIME ZONE NOT NULL,
-    game_id INT                      NOT NULL,
+    id              SERIAL                   PRIMARY KEY,
+    date            TIMESTAMP WITH TIME ZONE NOT NULL,
+    game_id         INT                      NOT NULL,
+    idempotency_key UUID                     NULL,
     FOREIGN KEY (game_id) REFERENCES games(id)
 );
+
+CREATE UNIQUE INDEX matches_idempotency_key_unique ON matches (idempotency_key);
 
 CREATE TABLE users (
     id                     SERIAL  NOT NULL PRIMARY KEY,
@@ -52,6 +62,30 @@ CREATE TABLE match_scores (
     PRIMARY KEY (match_id, player_id),
     FOREIGN KEY (match_id)  REFERENCES matches(id),
     FOREIGN KEY (player_id) REFERENCES players(id)
+);
+
+CREATE TABLE tournaments (
+    id         SERIAL PRIMARY KEY,
+    name       TEXT NOT NULL,
+    start_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_date   TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT tournaments_name_unique UNIQUE (name)
+);
+
+CREATE TABLE tournament_player_membership (
+    tournament_id INT NOT NULL,
+    player_id     INT NOT NULL,
+    PRIMARY KEY (tournament_id, player_id),
+    FOREIGN KEY (player_id)     REFERENCES players(id) ON DELETE CASCADE,
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
+);
+
+CREATE TABLE match_tournament (
+    match_id      INT NOT NULL,
+    tournament_id INT NOT NULL,
+    PRIMARY KEY (match_id, tournament_id),
+    FOREIGN KEY (match_id)      REFERENCES matches(id) ON DELETE CASCADE,
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
 );
 
 CREATE TABLE markets (
@@ -104,12 +138,14 @@ CREATE TABLE elo_settings (
     elo_const_d                  FLOAT NOT NULL,
     starting_elo                 FLOAT NOT NULL,
     win_reward                   FLOAT NOT NULL,
-    starting_rating              FLOAT NOT NULL DEFAULT 0,
-    newbie_league_goal           FLOAT NOT NULL DEFAULT 500,
     elite_league_matches_6months INT   NOT NULL DEFAULT 20,
     elite_league_matches_2months INT   NOT NULL DEFAULT 3,
-    rating_max_k                 FLOAT NOT NULL DEFAULT 64,
-    rating_k_tau                 FLOAT NOT NULL DEFAULT 100
+    newbie_league_earned_min     FLOAT NOT NULL DEFAULT 2,
+    newbie_league_earned_max     FLOAT NOT NULL DEFAULT 64,
+    newbie_league_earned_tau     FLOAT NOT NULL DEFAULT 100,
+    newbie_league_goal_gap       FLOAT NOT NULL DEFAULT 16,
+    starting_rating_global_arena FLOAT NOT NULL DEFAULT 0,
+    starting_rating_game_arena   FLOAT NOT NULL DEFAULT 900
 );
 
 CREATE TABLE skull_king_tables (
@@ -137,8 +173,8 @@ CREATE TABLE global_arena_settlement (
     id            SERIAL                   NOT NULL PRIMARY KEY,
     player_id     INT                      NOT NULL REFERENCES players(id),
     date          TIMESTAMP WITH TIME ZONE NOT NULL,
-    new_rating    FLOAT                    NOT NULL,
-    new_elo       FLOAT                    NOT NULL,
+    rating_after  FLOAT                    NOT NULL,
+    elo_after     FLOAT                    NOT NULL,
     discriminator TEXT                     NOT NULL CHECK (discriminator IN ('match', 'market', 'correction')),
     match_id      INT                      NULL REFERENCES matches(id),
     market_id     INT                      NULL REFERENCES markets(id),
@@ -168,8 +204,8 @@ CREATE TABLE game_arena_settlement (
     game_id       INT                      NOT NULL REFERENCES games(id),
     player_id     INT                      NOT NULL REFERENCES players(id),
     date          TIMESTAMP WITH TIME ZONE NOT NULL,
-    new_rating    FLOAT                    NOT NULL,
-    new_elo       FLOAT                    NOT NULL,
+    rating_after  FLOAT                    NOT NULL,
+    elo_after     FLOAT                    NOT NULL,
     discriminator TEXT                     NOT NULL CHECK (discriminator IN ('match')),
     match_id      INT                      NULL REFERENCES matches(id),
     elo_staked    FLOAT                    NOT NULL,
@@ -185,9 +221,11 @@ CREATE UNIQUE INDEX game_arena_settlement_match_unique
     WHERE match_id IS NOT NULL;
 
 -- Initial clubs
-INSERT INTO clubs (id, name) VALUES
-    (1, 'Синие люди'),
-    (2, 'Весёлые карточные игры');
+INSERT INTO clubs (id, name, icon_svg) VALUES
+    (1, 'Синие люди',
+     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M2 14 H3.6 L6.2 21.5 L9.2 4 H22" stroke="#1d4ed8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.8" cy="9.2" r="2.1" fill="#2563eb"/><path d="M14.4 11 L12 12.1 L11.7 13.6 L14.2 14 L12.6 21 L15.1 21 L15.8 17.4 L16.5 21 L19 21 L17.4 14 L19.9 13.6 L19.6 12.1 L17.2 11 Z" fill="#2563eb"/></svg>'),
+    (2, 'Весёлые карточные игры',
+     '<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="leafGrad" cx="50%" cy="38%" r="65%"><stop offset="0%" stop-color="#78d156"/><stop offset="55%" stop-color="#43a040"/><stop offset="100%" stop-color="#1d6527"/></radialGradient><linearGradient id="stemGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4ea540"/><stop offset="100%" stop-color="#2a6e2f"/></linearGradient><g id="leaf"><path d="M0,0 C0,0 -40,-35 -40,-60 C-40,-75 -25,-85 -10,-75 C-5,-72 0,-65 0,-60 C0,-65 5,-72 10,-75 C25,-85 40,-75 40,-60 C40,-35 0,0 0,0 Z" fill="url(#leafGrad)" stroke="#143f1c" stroke-width="3.5" stroke-linejoin="round"/><path d="M0,0 C0,0 -40,-35 -40,-60 C-40,-75 -25,-85 -10,-75 C-5,-72 0,-65 0,-60 C0,-65 5,-72 10,-75 C25,-85 40,-75 40,-60 C40,-35 0,0 0,0 Z" fill="none" stroke="#aae87b" stroke-width="2.4" opacity="0.5" transform="translate(0,-14) scale(0.62)"/><circle cx="0" cy="-56" r="8" fill="none" stroke="#c8f29a" stroke-width="2.4" opacity="0.5"/></g></defs><path d="M94,96 C92,118 92,150 96,176 L104,176 C108,150 108,118 106,96 Z" fill="url(#stemGrad)" stroke="#143f1c" stroke-width="3" stroke-linejoin="round"/><g transform="translate(100,92) scale(0.95)"><use href="#leaf" transform="rotate(0)"/><use href="#leaf" transform="rotate(120)"/><use href="#leaf" transform="rotate(240)"/></g></svg>');
 SELECT setval('clubs_id_seq', (SELECT MAX(id) FROM clubs));
 
 -- Authorized users
@@ -197,3 +235,22 @@ INSERT INTO users (allow_editing, google_oauth_user_id, google_oauth_user_name) 
 -- Default Elo constants (effective from the beginning of time)
 INSERT INTO elo_settings (effective_date, elo_const_k, elo_const_d, starting_elo, win_reward)
 VALUES ('-infinity'::timestamp, 32, 400, 1000, 1);
+
+-- Demo tournament for the 2026 Chelyabinsk camp + its members + back-filled matches.
+-- utc+5 == the +05 offset. Members are all players whose name starts with "(Кэмп)".
+WITH t AS (
+    INSERT INTO tournaments (name, start_date, end_date)
+    VALUES ('Челябинский игровой кэмп 2026',
+            '2026-06-15 00:00:00+05', '2026-06-21 23:59:00+05')
+    RETURNING id
+), members AS (
+    INSERT INTO tournament_player_membership (tournament_id, player_id)
+    SELECT t.id, p.id FROM t, players p WHERE p.name LIKE '(Кэмп)%'
+    RETURNING tournament_id, player_id
+)
+INSERT INTO match_tournament (match_id, tournament_id)
+SELECT DISTINCT m.id, t.id
+FROM t
+JOIN matches m ON m.date >= '2026-06-15 00:00:00+05' AND m.date <= '2026-06-21 23:59:00+05'
+JOIN match_scores ms ON ms.match_id = m.id
+JOIN members mem ON mem.tournament_id = t.id AND mem.player_id = ms.player_id;
