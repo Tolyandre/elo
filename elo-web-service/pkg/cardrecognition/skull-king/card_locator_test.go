@@ -1,4 +1,5 @@
-package skullking
+//go:build ignore
+package skull_king
 
 import (
 	"os"

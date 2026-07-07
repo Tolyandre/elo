@@ -1,4 +1,5 @@
-package skullking
+//go:build integration
+package skull_king
 
 import (
 	"embed"

@@ -5,12 +5,12 @@ package api
 import (
 	"log"
 
-	skullking "github.com/tolyandre/elo-web-service/pkg/cardrecognition/skull-king"
+	skull_king "github.com/tolyandre/elo-web-service/pkg/cardrecognition/skull-king"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 )
 
 type opencvRecognizer struct {
-	r *skullking.Recognizer
+	r *skull_king.Recognizer
 }
 
 func (o *opencvRecognizer) Recognize(data []byte) (CardRecognizeResult, error) {
@@ -22,11 +22,11 @@ func (o *opencvRecognizer) Recognize(data []byte) (CardRecognizeResult, error) {
 }
 
 func newCardRecognizer() ICardRecognizer {
-	recognizerCfg := skullking.DefaultConfig()
+	recognizerCfg := skull_king.DefaultConfig().(*skull_king.SkullKingConfig)
 	if cfg.Config.SkullKingConfidenceThreshold > 0 {
 		recognizerCfg.ConfidenceThreshold = cfg.Config.SkullKingConfidenceThreshold
 	}
-	recognizer, err := skullking.NewRecognizer(recognizerCfg)
+	recognizer, err := skull_king.NewRecognizer(recognizerCfg)
 	if err != nil {
 		log.Fatalf("failed to initialize card recognizer: %v", err)
 	}
