@@ -42,10 +42,9 @@ export const ClubsProvider = ({ children }: { children: ReactNode }) => {
     const map = new Map<string, Club[]>();
     for (const club of ordered) {
       for (const pid of club.players) {
-        const key = String(pid);
-        const list = map.get(key);
+        const list = map.get(pid);
         if (list) list.push(club);
-        else map.set(key, [club]);
+        else map.set(pid, [club]);
       }
     }
     return map;

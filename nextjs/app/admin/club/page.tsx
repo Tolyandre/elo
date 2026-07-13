@@ -127,8 +127,8 @@ function ClubAdminContent() {
         await saveIcon(text);
     }
 
-    async function toggleMember(playerId: number, isMember: boolean) {
-        const key = String(playerId);
+    async function toggleMember(playerId: string, isMember: boolean) {
+        const key = playerId;
         try {
             setMemberLoading((p) => ({ ...p, [key]: true }));
             if (isMember) {
@@ -238,7 +238,7 @@ function ClubAdminContent() {
                 ) : (
                     <div className="space-y-1">
                         {sortedPlayers.map((player) => {
-                            const isMember = memberSet.has(Number(player.id));
+                            const isMember = memberSet.has(player.id);
                             const isLoading = !!memberLoading[player.id];
                             return (
                                 <div key={player.id} className="flex items-center justify-between border rounded p-2">
@@ -249,7 +249,7 @@ function ClubAdminContent() {
                                     <Button
                                         variant={isMember ? "destructive" : "outline"}
                                         size="sm"
-                                        onClick={() => toggleMember(Number(player.id), isMember)}
+                                        onClick={() => toggleMember(player.id, isMember)}
                                         disabled={!canEdit || isLoading}
                                     >
                                         {isLoading ? "..." : isMember ? "Исключить" : "Добавить"}

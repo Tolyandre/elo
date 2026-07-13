@@ -28,19 +28,19 @@ func TestTournamentStats(t *testing.T) {
 	mSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
 	now := time.Now().Truncate(time.Second)
-	tour, err := tSvc.CreateTournament(ctx, "Camp", now.Add(-time.Hour), now.Add(time.Hour), nil)
+	tour, err := tSvc.CreateTournament(ctx, newID(t), "Camp", now.Add(-time.Hour), now.Add(time.Hour), nil)
 	if err != nil {
 		t.Fatalf("create tournament: %v", err)
 	}
 
 	// Match 1: A=10, B=10 (tie for 1st), C=5 (3rd, since RANK skips 2).
-	if _, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, b: 10, c: 5}, now.Add(-30*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []int32{tour.ID}}); err != nil {
+	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 10, c: 5}, now.Add(-30*time.Minute),
+		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match 1: %v", err)
 	}
 	// Match 2: A=10 (1st), B=5 (2nd), C=1 (3rd).
-	if _, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, b: 5, c: 1}, now.Add(-20*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []int32{tour.ID}}); err != nil {
+	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5, c: 1}, now.Add(-20*time.Minute),
+		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match 2: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestTournamentStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
-	byID := map[int32]db.GetTournamentStatsRow{}
+	byID := map[string]db.GetTournamentStatsRow{}
 	for _, r := range stats {
 		byID[r.PlayerID] = r
 	}
@@ -71,10 +71,10 @@ func TestTournamentStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get tournament: %v", err)
 	}
-	members := map[int32]bool{}
+	members := map[string]bool{}
 	for _, r := range rows {
-		if r.PlayerID.Valid {
-			members[r.PlayerID.Int32] = true
+		if r.PlayerID != nil {
+			members[*r.PlayerID] = true
 		}
 	}
 	if !members[a] || !members[b] || !members[c] {
@@ -101,23 +101,23 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 	q := db.New(pool)
 
 	now := time.Now().Truncate(time.Second)
-	tour, err := tSvc.CreateTournament(ctx, "AutoCamp", now.Add(-time.Hour), now.Add(time.Hour), []int32{a, b})
+	tour, err := tSvc.CreateTournament(ctx, newID(t), "AutoCamp", now.Add(-time.Hour), now.Add(time.Hour), []string{a, b})
 	if err != nil {
 		t.Fatalf("create tournament: %v", err)
 	}
 
-	matchTournamentIDs := func(matchID int32) []int32 {
-		rows, err := q.ListTournamentsByMatchIDs(ctx, []int32{matchID})
+	matchTournamentIDs := func(matchID string) []string {
+		rows, err := q.ListTournamentsByMatchIDs(ctx, []string{matchID})
 		if err != nil {
-			t.Fatalf("list tournaments for match %d: %v", matchID, err)
+			t.Fatalf("list tournaments for match %s: %v", matchID, err)
 		}
-		ids := make([]int32, 0, len(rows))
+		ids := make([]string, 0, len(rows))
 		for _, r := range rows {
 			ids = append(ids, r.TournamentID)
 		}
 		return ids
 	}
-	contains := func(ids []int32, want int32) bool {
+	contains := func(ids []string, want string) bool {
 		for _, id := range ids {
 			if id == want {
 				return true
@@ -127,40 +127,40 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 	}
 
 	// All players are members → auto-joins despite empty AddMatchOpts.
-	m1, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, b: 5}, now.Add(-30*time.Minute), elo.AddMatchOpts{})
+	m1, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5}, now.Add(-30*time.Minute), elo.AddMatchOpts{})
 	if err != nil {
 		t.Fatalf("add match 1: %v", err)
 	}
 	if ids := matchTournamentIDs(m1.ID); !contains(ids, tour.ID) {
-		t.Errorf("match with all members: tournaments = %v, want to include %d", ids, tour.ID)
+		t.Errorf("match with all members: tournaments = %v, want to include %s", ids, tour.ID)
 	}
 
 	// C is not a member → match must NOT auto-join.
-	m2, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, c: 5}, now.Add(-20*time.Minute), elo.AddMatchOpts{})
+	m2, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, c: 5}, now.Add(-20*time.Minute), elo.AddMatchOpts{})
 	if err != nil {
 		t.Fatalf("add match 2: %v", err)
 	}
 	if ids := matchTournamentIDs(m2.ID); contains(ids, tour.ID) {
-		t.Errorf("match with outside player auto-joined %d unexpectedly: %v", tour.ID, ids)
+		t.Errorf("match with outside player auto-joined %s unexpectedly: %v", tour.ID, ids)
 	}
 
 	// Explicit tournament ID still enrols the non-member C.
-	m3, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, c: 5}, now.Add(-10*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []int32{tour.ID}})
+	m3, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, c: 5}, now.Add(-10*time.Minute),
+		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}})
 	if err != nil {
 		t.Fatalf("add match 3: %v", err)
 	}
 	if ids := matchTournamentIDs(m3.ID); !contains(ids, tour.ID) {
-		t.Errorf("explicit tournament: tournaments = %v, want to include %d", ids, tour.ID)
+		t.Errorf("explicit tournament: tournaments = %v, want to include %s", ids, tour.ID)
 	}
 	rows, err := tSvc.GetTournament(ctx, tour.ID)
 	if err != nil {
 		t.Fatalf("get tournament: %v", err)
 	}
-	members := map[int32]bool{}
+	members := map[string]bool{}
 	for _, r := range rows {
-		if r.PlayerID.Valid {
-			members[r.PlayerID.Int32] = true
+		if r.PlayerID != nil {
+			members[*r.PlayerID] = true
 		}
 	}
 	if !members[c] {
@@ -186,24 +186,24 @@ func TestTournamentUpdateValidations(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	start := now.Add(-time.Hour)
 	end := now.Add(time.Hour)
-	tour, err := tSvc.CreateTournament(ctx, "Guarded", start, end, nil)
+	tour, err := tSvc.CreateTournament(ctx, newID(t), "Guarded", start, end, nil)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
 	matchTime := now.Add(-30 * time.Minute)
-	if _, err := mSvc.AddMatch(ctx, gameID, map[int32]float64{a: 10, b: 5}, matchTime,
-		elo.AddMatchOpts{TournamentIDs: []int32{tour.ID}}); err != nil {
+	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5}, matchTime,
+		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match: %v", err)
 	}
 
 	// Removing A (who played) must be rejected; keeping both is fine.
-	if _, err := tSvc.UpdateTournament(ctx, tour.ID, "Guarded", start, end, []int32{b}); !errors.Is(err, elo.ErrTournamentMemberHasMatches) {
+	if _, err := tSvc.UpdateTournament(ctx, tour.ID, "Guarded", start, end, []string{b}); !errors.Is(err, elo.ErrTournamentMemberHasMatches) {
 		t.Errorf("removing player with matches: got %v, want ErrTournamentMemberHasMatches", err)
 	}
 
 	// Narrowing the window past the match date must be rejected.
-	if _, err := tSvc.UpdateTournament(ctx, tour.ID, "Guarded", now.Add(-10*time.Minute), end, []int32{a, b}); !errors.Is(err, elo.ErrTournamentDatesNarrowEloRange) {
+	if _, err := tSvc.UpdateTournament(ctx, tour.ID, "Guarded", now.Add(-10*time.Minute), end, []string{a, b}); !errors.Is(err, elo.ErrTournamentDatesNarrowEloRange) {
 		t.Errorf("narrowing dates: got %v, want ErrTournamentDatesNarrowEloRange", err)
 	}
 
@@ -213,7 +213,7 @@ func TestTournamentUpdateValidations(t *testing.T) {
 	}
 
 	// An empty tournament can be deleted.
-	empty, err := tSvc.CreateTournament(ctx, "Empty", start, end, nil)
+	empty, err := tSvc.CreateTournament(ctx, newID(t), "Empty", start, end, nil)
 	if err != nil {
 		t.Fatalf("create empty: %v", err)
 	}

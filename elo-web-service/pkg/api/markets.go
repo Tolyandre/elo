@@ -1,10 +1,8 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,17 +11,17 @@ import (
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-// tryGetCurrentUserID returns the user ID from context if present, or 0, false.
-func tryGetCurrentUserID(ctx *gin.Context) (int32, bool) {
+// tryGetCurrentUserID returns the user ID from context if present.
+func tryGetCurrentUserID(ctx *gin.Context) (string, bool) {
 	val, exists := ctx.Get(CurrentUserKey)
 	if !exists {
-		return 0, false
+		return "", false
 	}
-	id, err := strconv.Atoi(val.(string))
-	if err != nil {
-		return 0, false
+	id, ok := val.(string)
+	if !ok {
+		return "", false
 	}
-	return int32(id), true
+	return id, true
 }
 
 type settlementDetailJson struct {
@@ -90,22 +88,12 @@ func setBettingClosedAt(m *marketPoolsJson, bca pgtype.Timestamptz) {
 }
 
 // buildMarketParamsFromRow builds the target_player_id and params JSON from a row that includes LEFT JOIN params columns.
-func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredPlayerIds []int32, mwGameIDs []int32, wsGameIDs []int32, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, interface{}) {
-	targetIDStr := fmt.Sprintf("%d", targetPlayerID)
-
+func buildMarketParamsFromRow(marketType string, targetPlayerID string, requiredPlayerIds []string, mwGameIDs []string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, interface{}) {
 	switch marketType {
 	case "match_winner":
-		reqIDs := make([]string, len(requiredPlayerIds))
-		for i, rid := range requiredPlayerIds {
-			reqIDs[i] = fmt.Sprintf("%d", rid)
-		}
-		gameIDStrs := make([]string, len(mwGameIDs))
-		for i, gid := range mwGameIDs {
-			gameIDStrs[i] = fmt.Sprintf("%d", gid)
-		}
-		return targetIDStr, matchWinnerParamsJson{
-			RequiredPlayerIDs: reqIDs,
-			GameIDs:           gameIDStrs,
+		return targetPlayerID, matchWinnerParamsJson{
+			RequiredPlayerIDs: requiredPlayerIds,
+			GameIDs:           mwGameIDs,
 		}
 	case "win_streak":
 		var maxL *int32
@@ -113,17 +101,13 @@ func buildMarketParamsFromRow(marketType string, targetPlayerID int32, requiredP
 			v := maxLosses.Int32
 			maxL = &v
 		}
-		wsGameIDStrs := make([]string, len(wsGameIDs))
-		for i, gid := range wsGameIDs {
-			wsGameIDStrs[i] = fmt.Sprintf("%d", gid)
-		}
-		return targetIDStr, winStreakParamsJson{
-			GameIDs:      wsGameIDStrs,
+		return targetPlayerID, winStreakParamsJson{
+			GameIDs:      wsGameIDs,
 			WinsRequired: winsRequired.Int32,
 			MaxLosses:    maxL,
 		}
 	}
-	return targetIDStr, nil
+	return targetPlayerID, nil
 }
 
 func (a *API) ListMarkets(c *gin.Context) {
@@ -142,7 +126,7 @@ func (a *API) ListMarkets(c *gin.Context) {
 		totalPool := r.YesPool + r.NoPool
 		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 		m := marketPoolsJson{
-			ID:             fmt.Sprintf("%d", r.ID),
+			ID:             r.ID,
 			MarketType:     r.MarketType,
 			Status:         r.Status,
 			YesPool:        r.YesPool,
@@ -178,11 +162,11 @@ func (a *API) ListMarkets(c *gin.Context) {
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
-				if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
+				if details, err := a.Queries.GetSettlementDetails(ctx, &r.ID); err == nil {
 					m.Settlement = make([]settlementDetailJson, len(details))
 					for i, d := range details {
 						m.Settlement[i] = settlementDetailJson{
-							PlayerID:   fmt.Sprintf("%d", d.PlayerID),
+							PlayerID:   d.PlayerID,
 							PlayerName: d.PlayerName,
 							Staked:     d.Staked,
 							Earned:     d.Earned,
@@ -218,13 +202,7 @@ func (a *API) ListMarkets(c *gin.Context) {
 func (a *API) GetMarket(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "invalid market id")
-		return
-	}
-	marketID := int32(id)
+	marketID := c.Param("id")
 
 	row, err := a.Queries.GetMarketWithPools(ctx, marketID)
 	if err != nil {
@@ -244,7 +222,7 @@ func (a *API) GetMarket(c *gin.Context) {
 	targetID, params := buildMarketParamsFromRow(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameIds, row.WsGameIds, row.WinsRequired, row.MaxLosses)
 	detail := marketDetailJson{
 		marketPoolsJson: marketPoolsJson{
-			ID:             fmt.Sprintf("%d", row.ID),
+			ID:             row.ID,
 			MarketType:     row.MarketType,
 			Status:         row.Status,
 			YesPool:        row.YesPool,
@@ -278,11 +256,11 @@ func (a *API) GetMarket(c *gin.Context) {
 		detail.ResolutionOutcome = &s
 	}
 	if row.Status == "resolved" {
-		if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err == nil {
+		if details, err := a.Queries.GetSettlementDetails(ctx, &marketID); err == nil {
 			detail.Settlement = make([]settlementDetailJson, len(details))
 			for i, d := range details {
 				detail.Settlement[i] = settlementDetailJson{
-					PlayerID:   fmt.Sprintf("%d", d.PlayerID),
+					PlayerID:   d.PlayerID,
 					PlayerName: d.PlayerName,
 					Staked:     d.Staked,
 					Earned:     d.Earned,
@@ -294,8 +272,8 @@ func (a *API) GetMarket(c *gin.Context) {
 	userID, hasUser := tryGetCurrentUserID(c)
 	if hasUser {
 		user, err := a.UserService.GetUserByID(ctx, userID)
-		if err == nil && user.PlayerID.Valid {
-			playerID := user.PlayerID.Int32
+		if err == nil && user.PlayerID != nil {
+			playerID := *user.PlayerID
 
 			myBets, err := a.Queries.GetPlayerBetsAggregatedForMarket(ctx, db.GetPlayerBetsAggregatedForMarketParams{
 				MarketID: marketID,
@@ -367,8 +345,7 @@ func (a *API) CreateMarket(c *gin.Context) {
 		return
 	}
 
-	targetPlayerID, err := strconv.ParseInt(payload.TargetPlayerID, 10, 32)
-	if err != nil {
+	if payload.TargetPlayerID == "" {
 		ErrorResponse(c, http.StatusBadRequest, "invalid target_player_id")
 		return
 	}
@@ -383,6 +360,7 @@ func (a *API) CreateMarket(c *gin.Context) {
 	}
 
 	params := elo.CreateMarketParams{
+		ID:         "",
 		MarketType: payload.MarketType,
 		StartsAt:   startsAt,
 		ClosesAt:   payload.ClosesAt,
@@ -391,28 +369,10 @@ func (a *API) CreateMarket(c *gin.Context) {
 
 	switch payload.MarketType {
 	case "match_winner":
-		requiredIDs := make([]int32, 0, len(payload.RequiredPlayerIDs))
-		for _, s := range payload.RequiredPlayerIDs {
-			pid, err := strconv.ParseInt(s, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "invalid required_player_id: "+s)
-				return
-			}
-			requiredIDs = append(requiredIDs, int32(pid))
-		}
-		gameIDs := make([]int32, 0, len(payload.GameIDs))
-		for _, s := range payload.GameIDs {
-			gid, err := strconv.ParseInt(s, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "invalid game_id: "+s)
-				return
-			}
-			gameIDs = append(gameIDs, int32(gid))
-		}
 		params.MatchWinner = &elo.MatchWinnerCreateParams{
-			TargetPlayerID:    int32(targetPlayerID),
-			RequiredPlayerIDs: requiredIDs,
-			GameIDs:           gameIDs,
+			TargetPlayerID:    payload.TargetPlayerID,
+			RequiredPlayerIDs: payload.RequiredPlayerIDs,
+			GameIDs:           payload.GameIDs,
 		}
 
 	case "win_streak":
@@ -420,18 +380,9 @@ func (a *API) CreateMarket(c *gin.Context) {
 			ErrorResponse(c, http.StatusBadRequest, "win_streak requires wins_required")
 			return
 		}
-		streakGameIDs := make([]int32, 0, len(payload.StreakGameIDs))
-		for _, s := range payload.StreakGameIDs {
-			gid, err := strconv.ParseInt(s, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "invalid streak_game_id: "+s)
-				return
-			}
-			streakGameIDs = append(streakGameIDs, int32(gid))
-		}
 		params.WinStreak = &elo.WinStreakCreateParams{
-			TargetPlayerID: int32(targetPlayerID),
-			GameIDs:        streakGameIDs,
+			TargetPlayerID: payload.TargetPlayerID,
+			GameIDs:        payload.StreakGameIDs,
 			WinsRequired:   *payload.WinsRequired,
 			MaxLosses:      payload.MaxLosses,
 		}
@@ -447,20 +398,15 @@ func (a *API) CreateMarket(c *gin.Context) {
 		return
 	}
 
-	SuccessCreatedDataResponse(c, gin.H{"id": fmt.Sprintf("%d", market.ID)})
+	SuccessCreatedDataResponse(c, gin.H{"id": market.ID})
 }
 
 func (a *API) DeleteMarket(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "invalid market id")
-		return
-	}
+	id := c.Param("id")
 
-	if err := a.MatchService.DeleteMarketAndRecalculate(ctx, int32(id)); err != nil {
+	if err := a.MatchService.DeleteMarketAndRecalculate(ctx, id); err != nil {
 		if err == elo.ErrMarketNotOpen {
 			ErrorResponse(c, http.StatusConflict, err.Error())
 			return
@@ -475,14 +421,9 @@ func (a *API) DeleteMarket(c *gin.Context) {
 func (a *API) GetMarketsByMatchID(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "invalid match id")
-		return
-	}
+	id := c.Param("id")
 
-	rows, err := a.Queries.ListMarketsByResolutionMatch(ctx, pgtype.Int4{Int32: int32(id), Valid: true})
+	rows, err := a.Queries.ListMarketsByResolutionMatch(ctx, &id)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -493,7 +434,7 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 		totalPool := r.YesPool + r.NoPool
 		targetID, params := buildMarketParamsFromRow(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
 		m := marketPoolsJson{
-			ID:             fmt.Sprintf("%d", r.ID),
+			ID:             r.ID,
 			MarketType:     r.MarketType,
 			Status:         r.Status,
 			YesPool:        r.YesPool,
@@ -525,11 +466,11 @@ func (a *API) GetMarketsByMatchID(c *gin.Context) {
 			m.ResolutionOutcome = &s
 		}
 		if r.Status == "resolved" {
-			if details, err := a.Queries.GetSettlementDetails(ctx, pgtype.Int4{Int32: r.ID, Valid: true}); err == nil {
+			if details, err := a.Queries.GetSettlementDetails(ctx, &r.ID); err == nil {
 				m.Settlement = make([]settlementDetailJson, len(details))
 				for i, d := range details {
 					m.Settlement[i] = settlementDetailJson{
-						PlayerID:   fmt.Sprintf("%d", d.PlayerID),
+						PlayerID:   d.PlayerID,
 						PlayerName: d.PlayerName,
 						Staked:     d.Staked,
 						Earned:     d.Earned,
@@ -551,17 +492,12 @@ func (a *API) PlaceBet(c *gin.Context) {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-	if !user.PlayerID.Valid {
+	if user.PlayerID == nil {
 		ErrorResponse(c, http.StatusForbidden, "у вас нет привязанного игрока")
 		return
 	}
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "invalid market id")
-		return
-	}
+	id := c.Param("id")
 
 	var body struct {
 		Outcome string  `json:"outcome" binding:"required"`
@@ -580,7 +516,7 @@ func (a *API) PlaceBet(c *gin.Context) {
 		return
 	}
 
-	if err := a.MarketService.PlaceBet(ctx, int32(id), user.PlayerID.Int32, body.Outcome, body.Amount); err != nil {
+	if err := a.MarketService.PlaceBet(ctx, "", id, *user.PlayerID, body.Outcome, body.Amount); err != nil {
 		switch err {
 		case elo.ErrBetLimitExceeded:
 			ErrorResponse(c, http.StatusUnprocessableEntity, err.Error())
@@ -598,12 +534,7 @@ func (a *API) PlaceBet(c *gin.Context) {
 func (a *API) PatchMarket(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	idStr := c.Param("id")
-	id, err := strconv.ParseInt(idStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "invalid market id")
-		return
-	}
+	id := c.Param("id")
 
 	var body struct {
 		Status string `json:"status" binding:"required"`
@@ -615,7 +546,7 @@ func (a *API) PatchMarket(c *gin.Context) {
 
 	switch body.Status {
 	case "betting_closed":
-		if err := a.MarketService.LockMarketBetting(ctx, int32(id)); err != nil {
+		if err := a.MarketService.LockMarketBetting(ctx, id); err != nil {
 			if err == elo.ErrMarketNotOpen {
 				ErrorResponse(c, http.StatusConflict, err.Error())
 				return

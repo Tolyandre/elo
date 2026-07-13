@@ -3,9 +3,9 @@ package elo
 // MatchWinnerCondition is a pure, DB-free evaluation of the match_winner market condition.
 // It is constructed from DB rows in the handler and evaluated against a MatchInfo.
 type MatchWinnerCondition struct {
-	TargetPlayerID    int32
-	RequiredPlayerIDs []int32
-	GameIDs           []int32
+	TargetPlayerID    string
+	RequiredPlayerIDs []string
+	GameIDs           []string
 }
 
 // Evaluate returns (resolved, outcome) where outcome is OutcomeYes or OutcomeNo.
@@ -14,7 +14,7 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 	if !window.Contains(match.Match.Date.Time) {
 		return false, ""
 	}
-	if len(c.GameIDs) > 0 && !containsInt32(c.GameIDs, match.Match.GameID) {
+	if len(c.GameIDs) > 0 && !containsString(c.GameIDs, match.Match.GameID) {
 		return false, ""
 	}
 	for _, req := range c.RequiredPlayerIDs {
@@ -31,7 +31,7 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 	return true, OutcomeNo
 }
 
-func containsInt32(slice []int32, v int32) bool {
+func containsString(slice []string, v string) bool {
 	for _, s := range slice {
 		if s == v {
 			return true

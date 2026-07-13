@@ -1,6 +1,6 @@
 -- name: CreateCorrection :one
-INSERT INTO corrections (player_id, discriminator, diff)
-VALUES ($1, $2, $3) RETURNING *;
+INSERT INTO corrections (id, player_id, discriminator, diff)
+VALUES ($1, $2, $3, $4) RETURNING *;
 
 -- name: GetCorrectionsFromDate :many
 SELECT * FROM corrections WHERE date >= $1 ORDER BY date ASC, id ASC;
@@ -29,16 +29,16 @@ SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
 FROM corrections c
 JOIN players p ON p.id = c.player_id
 WHERE
-  (sqlc.narg('player_id')::int4 IS NULL OR c.player_id = sqlc.narg('player_id')::int4)
+  (sqlc.narg('player_id')::uuid IS NULL OR c.player_id = sqlc.narg('player_id')::uuid)
   AND (
     sqlc.narg('cursor_date')::timestamptz IS NULL
     OR c.date < sqlc.narg('cursor_date')::timestamptz
   )
   AND (
-    sqlc.narg('club_id')::int4 IS NULL
+    sqlc.narg('club_id')::uuid IS NULL
     OR EXISTS (
       SELECT 1 FROM player_club_membership pcm
-      WHERE pcm.club_id = sqlc.narg('club_id')::int4
+      WHERE pcm.club_id = sqlc.narg('club_id')::uuid
         AND pcm.player_id = c.player_id
     )
   )

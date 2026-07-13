@@ -7,51 +7,48 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addGame = `-- name: AddGame :one
-INSERT INTO games (name, idempotency_key)
+INSERT INTO games (id, name)
 VALUES ($1, $2)
-ON CONFLICT (idempotency_key)
-DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
-RETURNING id, name, idempotency_key
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+RETURNING id, name
 `
 
 type AddGameParams struct {
-	Name           string      `json:"name"`
-	IdempotencyKey pgtype.UUID `json:"idempotency_key"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) {
-	row := q.db.QueryRow(ctx, addGame, arg.Name, arg.IdempotencyKey)
+	row := q.db.QueryRow(ctx, addGame, arg.ID, arg.Name)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name, &i.IdempotencyKey)
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 
 const addGamesIfNotExists = `-- name: AddGamesIfNotExists :many
-INSERT INTO games (name)
-SELECT unnest($1::text[]) AS name
+INSERT INTO games (id, name)
+SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name
 ON CONFLICT (name) DO NOTHING
 RETURNING id, name
 `
 
-type AddGamesIfNotExistsRow struct {
-	ID   int32  `json:"id"`
-	Name string `json:"name"`
+type AddGamesIfNotExistsParams struct {
+	Column1 []string `json:"column_1"`
+	Column2 []string `json:"column_2"`
 }
 
-func (q *Queries) AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([]AddGamesIfNotExistsRow, error) {
-	rows, err := q.db.Query(ctx, addGamesIfNotExists, dollar_1)
+func (q *Queries) AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error) {
+	rows, err := q.db.Query(ctx, addGamesIfNotExists, arg.Column1, arg.Column2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AddGamesIfNotExistsRow{}
+	items := []Game{}
 	for rows.Next() {
-		var i AddGamesIfNotExistsRow
+		var i Game
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
@@ -66,37 +63,37 @@ func (q *Queries) AddGamesIfNotExists(ctx context.Context, dollar_1 []string) ([
 const deleteGame = `-- name: DeleteGame :one
 DELETE FROM games
 WHERE id = $1
-RETURNING id, name, idempotency_key
+RETURNING id, name
 `
 
-func (q *Queries) DeleteGame(ctx context.Context, id int32) (Game, error) {
+func (q *Queries) DeleteGame(ctx context.Context, id string) (Game, error) {
 	row := q.db.QueryRow(ctx, deleteGame, id)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name, &i.IdempotencyKey)
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 
 const getGameByID = `-- name: GetGameByID :one
-SELECT id, name, idempotency_key FROM games
+SELECT id, name FROM games
 WHERE id = $1
 `
 
-func (q *Queries) GetGameByID(ctx context.Context, id int32) (Game, error) {
+func (q *Queries) GetGameByID(ctx context.Context, id string) (Game, error) {
 	row := q.db.QueryRow(ctx, getGameByID, id)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name, &i.IdempotencyKey)
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 
 const getGameByName = `-- name: GetGameByName :one
-SELECT id, name, idempotency_key FROM games
+SELECT id, name FROM games
 WHERE name = $1
 `
 
 func (q *Queries) GetGameByName(ctx context.Context, name string) (Game, error) {
 	row := q.db.QueryRow(ctx, getGameByName, name)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name, &i.IdempotencyKey)
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 
@@ -112,7 +109,7 @@ ORDER BY MAX(m.date) DESC
 `
 
 type ListGamesOrderedByLastPlayedRow struct {
-	ID           int32  `json:"id"`
+	ID           string `json:"id"`
 	Name         string `json:"name"`
 	TotalMatches int64  `json:"total_matches"`
 }
@@ -141,17 +138,17 @@ const updateGameName = `-- name: UpdateGameName :one
 UPDATE games
 SET name = $2
 WHERE id = $1
-RETURNING id, name, idempotency_key
+RETURNING id, name
 `
 
 type UpdateGameNameParams struct {
-	ID   int32  `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
 func (q *Queries) UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error) {
 	row := q.db.QueryRow(ctx, updateGameName, arg.ID, arg.Name)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name, &i.IdempotencyKey)
+	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }

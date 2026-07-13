@@ -8,15 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
-
-func newIdempotencyKey() pgtype.UUID {
-	return pgtype.UUID{Bytes: uuid.New(), Valid: true}
-}
 
 // TestAddMatch_BackdatedRecalculatesLaterMatches verifies that inserting a match with a
 // client-supplied date between two existing matches replays Elo from that date, changing
@@ -37,10 +31,10 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
-	if _, err := svc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 5}, t1, elo.AddMatchOpts{}); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t1, elo.AddMatchOpts{}); err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
-	if _, err := svc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 5}, t2, elo.AddMatchOpts{}); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t2, elo.AddMatchOpts{}); err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
@@ -51,8 +45,8 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 	beforeB := latestElo(t, pool, playerB)
 
 	// Backdated offline match with the opposite outcome must change the replayed history.
-	created, err := svc.AddMatch(ctx, gameID, map[int32]float64{playerA: 1, playerB: 10}, tBackdated,
-		elo.AddMatchOpts{ClientDate: true, IdempotencyKey: newIdempotencyKey()})
+	created, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 1, playerB: 10}, tBackdated,
+		elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if err != nil {
 		t.Fatalf("backdated AddMatch: %v", err)
 	}
@@ -70,9 +64,9 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 	}
 
 	// All three matches must have settlements for both players.
-	for _, pid := range []int32{playerA, playerB} {
+	for _, pid := range []string{playerA, playerB} {
 		if rows := playerRatingRows(t, pool, pid); len(rows) != 3 {
-			t.Errorf("player %d: expected 3 settlement rows, got %d", pid, len(rows))
+			t.Errorf("player %s: expected 3 settlement rows, got %d", pid, len(rows))
 		}
 	}
 }
@@ -89,25 +83,25 @@ func TestAddMatch_IdempotencyKeyDeduplicates(t *testing.T) {
 	gameID := createTestGame(t, pool, "Splendor")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	key := newIdempotencyKey()
+	key := newID(t)
 	date := time.Now().Add(-time.Hour)
-	opts := elo.AddMatchOpts{ClientDate: true, IdempotencyKey: key}
+	opts := elo.AddMatchOpts{ClientDate: true, ID: key}
 
-	first, err := svc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 5}, date, opts)
+	first, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, date, opts)
 	if err != nil {
 		t.Fatalf("first AddMatch: %v", err)
 	}
-	second, err := svc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 5}, date, opts)
+	second, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, date, opts)
 	if err != nil {
 		t.Fatalf("second AddMatch: %v", err)
 	}
 	if first.ID != second.ID {
-		t.Errorf("retry created a new match: first=%d second=%d", first.ID, second.ID)
+		t.Errorf("retry created a new match: first=%s second=%s", first.ID, second.ID)
 	}
 
-	for _, pid := range []int32{playerA, playerB} {
+	for _, pid := range []string{playerA, playerB} {
 		if rows := playerRatingRows(t, pool, pid); len(rows) != 1 {
-			t.Errorf("player %d: expected 1 settlement row after retry, got %d", pid, len(rows))
+			t.Errorf("player %s: expected 1 settlement row after retry, got %d", pid, len(rows))
 		}
 	}
 }
@@ -123,7 +117,7 @@ func TestAddMatch_ClientDateValidation(t *testing.T) {
 	gameID := createTestGame(t, pool, "Azul")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	scores := map[int32]float64{playerA: 10, playerB: 5}
+	scores := map[string]float64{playerA: 10, playerB: 5}
 
 	_, err := svc.AddMatch(ctx, gameID, scores, time.Now().Add(time.Hour), elo.AddMatchOpts{ClientDate: true})
 	if !errors.Is(err, elo.ErrMatchDateOutOfRange) {
@@ -146,36 +140,36 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 	playerSvc := elo.NewPlayerService(pool)
 	gameSvc := elo.NewGameService(pool)
 
-	playerKey := newIdempotencyKey()
-	p1, err := playerSvc.CreatePlayer(ctx, "Оффлайн Игрок", playerKey)
+	playerKey := newID(t)
+	p1, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок")
 	if err != nil {
 		t.Fatalf("first CreatePlayer: %v", err)
 	}
-	p2, err := playerSvc.CreatePlayer(ctx, "Оффлайн Игрок", playerKey)
+	p2, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок")
 	if err != nil {
 		t.Fatalf("retry CreatePlayer: %v", err)
 	}
 	if p1.ID != p2.ID {
-		t.Errorf("player retry created a duplicate: first=%d second=%d", p1.ID, p2.ID)
+		t.Errorf("player retry created a duplicate: first=%s second=%s", p1.ID, p2.ID)
 	}
 	// Same name with a different key must still hit the name unique constraint.
-	if _, err := playerSvc.CreatePlayer(ctx, "Оффлайн Игрок", newIdempotencyKey()); !db.IsUniqueViolation(err) {
+	if _, err := playerSvc.CreatePlayer(ctx, newID(t), "Оффлайн Игрок"); !db.IsUniqueViolation(err) {
 		t.Errorf("duplicate name with new key: expected unique violation, got %v", err)
 	}
 
-	gameKey := newIdempotencyKey()
-	g1, err := gameSvc.AddGame(ctx, "Оффлайн Игра", gameKey)
+	gameKey := newID(t)
+	g1, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра")
 	if err != nil {
 		t.Fatalf("first AddGame: %v", err)
 	}
-	g2, err := gameSvc.AddGame(ctx, "Оффлайн Игра", gameKey)
+	g2, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра")
 	if err != nil {
 		t.Fatalf("retry AddGame: %v", err)
 	}
 	if g1.ID != g2.ID {
-		t.Errorf("game retry created a duplicate: first=%d second=%d", g1.ID, g2.ID)
+		t.Errorf("game retry created a duplicate: first=%s second=%s", g1.ID, g2.ID)
 	}
-	if _, err := gameSvc.AddGame(ctx, "Оффлайн Игра", newIdempotencyKey()); !db.IsUniqueViolation(err) {
+	if _, err := gameSvc.AddGame(ctx, newID(t), "Оффлайн Игра"); !db.IsUniqueViolation(err) {
 		t.Errorf("duplicate game name with new key: expected unique violation, got %v", err)
 	}
 }
@@ -197,18 +191,19 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match for bet limits.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[int32]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), elo.AddMatchOpts{}); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), elo.AddMatchOpts{}); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   now.Add(-time.Hour),
 		ClosesAt:   now.Add(24 * time.Hour),
 		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    playerA,
-			RequiredPlayerIDs: []int32{playerB},
+			RequiredPlayerIDs: []string{playerB},
 		},
 	})
 	if err != nil {
@@ -216,22 +211,22 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	// Bets placed now.
-	if err := marketSvc.PlaceBet(ctx, market.ID, playerA, "yes", 10); err != nil {
+	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, market.ID, playerB, "no", 10); err != nil {
+	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 
 	// Resolve the market with a match well after the bets.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), elo.AddMatchOpts{}); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), elo.AddMatchOpts{}); err != nil {
 		t.Fatalf("resolving AddMatch: %v", err)
 	}
 
 	// A backdated offline match qualifying for the market before the bets were placed
 	// would move resolved_at earlier than placed_at — must be rejected.
-	_, err = matchSvc.AddMatch(ctx, gameID, map[int32]float64{playerA: 10, playerB: 2}, now.Add(-30*time.Minute),
-		elo.AddMatchOpts{ClientDate: true, IdempotencyKey: newIdempotencyKey()})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(-30*time.Minute),
+		elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if err == nil {
 		t.Fatal("backdated AddMatch: expected conflict error, got nil")
 	}

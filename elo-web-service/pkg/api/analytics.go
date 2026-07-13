@@ -2,26 +2,19 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elopkg "github.com/tolyandre/elo-web-service/pkg/elo"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const eloResetMaxPoints = 100
 
 func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetRequestObject) (GetEloResetResponseObject, error) {
-	selectedSet := map[int32]bool{}
-	var playerIDs []int32
-	for _, s := range request.Params.PlayerId {
-		id, err := strconv.Atoi(s)
-		if err != nil || id <= 0 {
-			return GetEloReset400JSONResponse{Status: "fail", Message: fmt.Sprintf("invalid player_id: %s", s)}, nil
-		}
-		pid := int32(id)
+	selectedSet := map[string]bool{}
+	var playerIDs []string
+	for _, pid := range request.Params.PlayerId {
 		if !selectedSet[pid] {
 			selectedSet[pid] = true
 			playerIDs = append(playerIDs, pid)
@@ -42,13 +35,13 @@ func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetReque
 	}
 
 	type matchEntry struct {
-		matchID      int32
+		matchID      string
 		date         time.Time
 		rows         []db.ListMatchesForEloResetRow
 		hasSelPlayer bool
 	}
-	var matchOrder []int32
-	matchByID := map[int32]*matchEntry{}
+	var matchOrder []string
+	matchByID := map[string]*matchEntry{}
 	for _, row := range rows {
 		if _, ok := matchByID[row.MatchID]; !ok {
 			matchByID[row.MatchID] = &matchEntry{matchID: row.MatchID, date: row.Date.Time}
@@ -100,7 +93,7 @@ func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetReque
 
 		hypElos := map[string]float64{}
 		for _, pid := range playerIDs {
-			hypElos[strconv.Itoa(int(pid))] = startingElo
+			hypElos[pid] = startingElo
 		}
 
 		for _, m := range relevant {
@@ -111,7 +104,7 @@ func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetReque
 			scoresStr := map[string]float64{}
 			fr := m.rows[0]
 			for _, row := range m.rows {
-				pid := strconv.Itoa(int(row.PlayerID))
+				pid := row.PlayerID
 				scoresStr[pid] = row.Score
 				if selectedSet[row.PlayerID] {
 					prevEloStr[pid] = hypElos[pid]
@@ -124,7 +117,7 @@ func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetReque
 			newElos := elopkg.CalculateNewElo(prevEloStr, fr.StartingElo, scoresStr, fr.EloConstK, fr.EloConstD, fr.WinReward)
 			for _, row := range m.rows {
 				if selectedSet[row.PlayerID] {
-					pid := strconv.Itoa(int(row.PlayerID))
+					pid := row.PlayerID
 					hypElos[pid] = newElos[pid]
 				}
 			}
@@ -137,13 +130,13 @@ func (s *StrictServer) GetEloReset(ctx context.Context, request GetEloResetReque
 		series = append(series, EloResetSeriesPoint{ResetDate: resetPoint.UTC(), Players: snap})
 	}
 
-	seen := map[int32]bool{}
+	seen := map[string]bool{}
 	var players []EloResetPlayerInfo
 	for _, row := range rows {
 		if selectedSet[row.PlayerID] && !seen[row.PlayerID] {
 			seen[row.PlayerID] = true
 			players = append(players, EloResetPlayerInfo{
-				Id:   strconv.Itoa(int(row.PlayerID)),
+				Id:   row.PlayerID,
 				Name: row.PlayerName,
 			})
 		}

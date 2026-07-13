@@ -33,9 +33,11 @@ SkullKingTables:
           schema:
             type: object
             properties:
+              id:
+                $ref: './common.yaml#/ULID'
               game_state:
                 $ref: '#/SkullKingGameState'
-            required: [game_state]
+            required: [id, game_state]
     responses:
       "201":
         description: Table created
@@ -434,13 +436,13 @@ SkullKingTableSummary:
     id:
       type: string
     host_user_id:
-      type: integer
+      type: string
     game_state:
       $ref: '#/SkullKingGameState'
     connected_player_ids:
       type: array
       items:
-        type: integer
+        type: string
     created_at:
       type: string
       format: date-time

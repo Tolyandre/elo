@@ -22,15 +22,13 @@ import {
     PendingMatch,
     PendingPlayer,
     emptyOfflineStore,
-    idempotencyKeyOf,
-    isOfflineId,
     newOfflineId,
 } from "@/lib/offline/types";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 const STORAGE_KEY = "offline-pending-v1";
 
-export type SubmitMatchResult = { kind: "online"; id: number } | { kind: "offline"; clientId: string };
+export type SubmitMatchResult = { id: string };
 
 type  OfflineState = {
     pendingMatches: PendingMatch[];
@@ -105,7 +103,7 @@ const syncApi: SyncApi = {
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
     },
-    async addMatch(body): Promise<SyncCallResult<{ id: number }>> {
+    async addMatch(body): Promise<SyncCallResult<{ id: string }>> {
         const { data, error, response } = await client.POST("/matches", { body });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
@@ -362,12 +360,19 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const submitMatch = useCallback(
         async (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }): Promise<SubmitMatchResult> => {
+            // A pending game/player referenced by this match hasn't been synced to
+            // the server yet — don't attempt a network call that would 400. Queue
+            // directly so the match goes out after its dependencies in the next sync.
+            const currentStore = storeRef.current;
+            const pendingGameIds = new Set(currentStore.games.map((g) => g.clientId));
+            const pendingPlayerIds = new Set(currentStore.players.map((p) => p.clientId));
             const referencesPending =
-                isOfflineId(payload.game_id) || Object.keys(payload.score).some(isOfflineId);
-            // Mint the client id (and its idempotency key) up front so the SAME key is
-            // used for the online attempt and any offline retry. If the request reaches
-            // the server but the response is lost mid-flight, the resync sends the same
-            // key and the server returns the already-created match instead of duplicating.
+                pendingGameIds.has(payload.game_id) ||
+                Object.keys(payload.score).some((k) => pendingPlayerIds.has(k));
+            // Mint the final UUIDv7 id up front so the SAME id is used for the online
+            // attempt and any offline retry. If the request reaches the server but
+            // the response is lost mid-flight, the resync sends the same id and the
+            // server returns the already-created match instead of duplicating.
             const clientId = newOfflineId();
             // Skip the network attempt when effectively offline (no network or the
             // server is known to be unreachable) so the action queues instantly
@@ -375,15 +380,15 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             const canTryServer = isOnline && apiReachableRef.current !== false;
             if (canTryServer && !referencesPending) {
                 try {
-                    const result = await addMatchPromise({ ...payload, idempotency_key: idempotencyKeyOf(clientId) });
-                    return { kind: "online", id: result.id };
+                    await addMatchPromise({ ...payload, id: clientId });
+                    return { id: clientId };
                 } catch (e) {
                     if (!isNetworkFailure(e)) throw e;
                     // network died mid-request — fall through to the offline queue
                 }
             }
             const match = addPendingMatch({ clientId, gameId: payload.game_id, score: payload.score, tournamentIds: payload.tournament_ids });
-            return { kind: "offline", clientId: match.clientId };
+            return { id: match.clientId };
         },
         [isOnline, addPendingMatch],
     );

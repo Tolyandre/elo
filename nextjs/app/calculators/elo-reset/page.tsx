@@ -61,7 +61,7 @@ export default function EloResetPage() {
         const club = clubs.find(c => c.id === CLUB_ID)
         if (club && club.players.length > 0) {
             // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the selection from the club once loaded
-            setPlayerIds(club.players.map(String))
+            setPlayerIds(club.players)
         }
     }, [clubs, playerIds.length])
 

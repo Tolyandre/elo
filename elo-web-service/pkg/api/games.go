@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -85,12 +84,7 @@ func (a *API) GetGame(c *gin.Context) {
 }
 
 func (a *API) PatchGame(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid game id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
 	var body struct {
 		Name string `json:"name"`
@@ -101,7 +95,7 @@ func (a *API) PatchGame(c *gin.Context) {
 		return
 	}
 
-	game, err := a.GameService.UpdateGameName(c.Request.Context(), int32(idInt), body.Name)
+	game, err := a.GameService.UpdateGameName(c.Request.Context(), id, body.Name)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("game not found: %w", err))
 		return
@@ -115,7 +109,7 @@ func (a *API) PatchGame(c *gin.Context) {
 		Id   string `json:"id"`
 		Name string `json:"name"`
 	}{
-		Id:   strconv.Itoa(int(game.ID)),
+		Id:   game.ID,
 		Name: game.Name,
 	}
 
@@ -133,7 +127,7 @@ func (a *API) GetGameMatches(c *gin.Context) {
 	}
 
 	type gameMatchJson struct {
-		Id      int32                 `json:"id"`
+		Id      string                `json:"id"`
 		Date    *time.Time            `json:"date"`
 		Players []gameMatchPlayerJson `json:"players"`
 	}
@@ -183,14 +177,9 @@ func (a *API) RecalculateGameElo(c *gin.Context) {
 }
 
 func (a *API) DeleteGame(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid game id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
-	_, err = a.GameService.DeleteGame(c.Request.Context(), int32(idInt))
+	_, err := a.GameService.DeleteGame(c.Request.Context(), id)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("game not found: %w", err))
 		return

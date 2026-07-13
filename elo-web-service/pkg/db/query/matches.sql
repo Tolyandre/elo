@@ -1,11 +1,8 @@
 -- name: CreateMatch :one
-INSERT INTO matches (date, game_id, idempotency_key)
+INSERT INTO matches (id, date, game_id)
 VALUES ($1, $2, $3)
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
 RETURNING *;
-
--- name: GetMatchByIdempotencyKey :one
-SELECT * FROM matches
-WHERE idempotency_key = $1;
 
 -- name: UpsertMatchScore :exec
 INSERT INTO match_scores (match_id, player_id, score)
@@ -116,17 +113,17 @@ WITH paginated_matches AS (
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
-        (sqlc.narg('game_id')::int4 IS NULL OR m.game_id = sqlc.narg('game_id')::int4)
-        AND (sqlc.narg('player_id')::int4 IS NULL OR ms.player_id = sqlc.narg('player_id')::int4)
+        (sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid)
+        AND (sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid)
         AND (
             sqlc.narg('cursor_date')::timestamptz IS NULL
             OR m.date < sqlc.narg('cursor_date')::timestamptz
         )
         AND (
-            sqlc.narg('club_id')::int4 IS NULL
+            sqlc.narg('club_id')::uuid IS NULL
             OR EXISTS (
                 SELECT 1 FROM player_club_membership pcm
-                WHERE pcm.club_id = sqlc.narg('club_id')::int4
+                WHERE pcm.club_id = sqlc.narg('club_id')::uuid
                 AND pcm.player_id = ms.player_id
             )
         )

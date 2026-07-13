@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -80,11 +79,7 @@ func renewCookieIfNeeded(ctx *gin.Context, userID string, expiry time.Time) {
 	if time.Until(expiry) >= ttl/2 {
 		return
 	}
-	id, err := strconv.ParseInt(userID, 10, 32)
-	if err != nil {
-		return
-	}
-	newToken, err := CreateJwt(ttl, int32(id), cfg.Config.CookieJwtSecret)
+	newToken, err := CreateJwt(ttl, userID, cfg.Config.CookieJwtSecret)
 	if err != nil {
 		return
 	}

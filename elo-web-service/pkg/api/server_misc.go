@@ -42,7 +42,7 @@ func (s *StrictServer) ParseVoiceInput(ctx context.Context, request ParseVoiceIn
 	playerIDs := make(map[string]struct{}, len(players))
 	var playerLines strings.Builder
 	for _, p := range players {
-		id := fmt.Sprintf("%d", p.ID)
+		id := p.ID
 		playerIDs[id] = struct{}{}
 		if p.GeologistName.Valid && p.GeologistName.String != "" {
 			fmt.Fprintf(&playerLines, "- %q -> %q (alias: %q)\n", id, p.Name, p.GeologistName.String)

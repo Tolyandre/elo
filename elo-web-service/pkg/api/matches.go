@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,7 +28,7 @@ type matchPlayerJson struct {
 }
 
 type matchJson struct {
-	Id         int                        `json:"id"`
+	Id         string                     `json:"id"`
 	GameId     string                     `json:"game_id"`
 	GameName   string                     `json:"game_name"`
 	Date       time.Time                  `json:"date"`
@@ -37,24 +36,22 @@ type matchJson struct {
 	HasMarkets bool                       `json:"has_markets"`
 }
 
-// parseMatchScores converts string-keyed game/player IDs to int32.
-func parseMatchScores(gameIDStr string, scores map[string]float64) (int32, map[int32]float64, error) {
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 32)
-	if err != nil {
-		return 0, nil, fmt.Errorf("invalid game_id: %s", gameIDStr)
+// parseMatchScores validates that the game_id and player_ids are present.
+func parseMatchScores(gameIDStr string, scores map[string]float64) (string, map[string]float64, error) {
+	if gameIDStr == "" {
+		return "", nil, fmt.Errorf("invalid game_id: %s", gameIDStr)
 	}
-	playerScores := make(map[int32]float64, len(scores))
+	playerScores := make(map[string]float64, len(scores))
 	for k, v := range scores {
-		pid, err := strconv.ParseInt(k, 10, 32)
-		if err != nil {
-			return 0, nil, fmt.Errorf("invalid player_id: %s", k)
+		if k == "" {
+			return "", nil, fmt.Errorf("invalid player_id: %s", k)
 		}
-		playerScores[int32(pid)] = v
+		playerScores[k] = v
 	}
-	return int32(gameID), playerScores, nil
+	return gameIDStr, playerScores, nil
 }
 
-func (p updateMatchJson) toDomain() (int32, map[int32]float64, error) {
+func (p updateMatchJson) toDomain() (string, map[string]float64, error) {
 	return parseMatchScores(p.GameId, p.Score)
 }
 
@@ -77,12 +74,7 @@ func matchErrorToHTTP(c *gin.Context, err error) {
 }
 
 func (a *API) UpdateMatch(c *gin.Context) {
-	matchIDStr := c.Param("id")
-	matchID, err := strconv.ParseInt(matchIDStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "Invalid match id: "+matchIDStr)
-		return
-	}
+	matchID := c.Param("id")
 
 	var payload updateMatchJson
 	if err := c.ShouldBindJSON(&payload); err != nil {
@@ -96,7 +88,7 @@ func (a *API) UpdateMatch(c *gin.Context) {
 		return
 	}
 
-	_, err = a.MatchService.UpdateMatch(c.Request.Context(), int32(matchID), gameID, playerScores, payload.Date, nil)
+	_, err = a.MatchService.UpdateMatch(c.Request.Context(), matchID, gameID, playerScores, payload.Date, nil)
 	if err != nil {
 		matchErrorToHTTP(c, err)
 		return
@@ -108,69 +100,51 @@ func (a *API) UpdateMatch(c *gin.Context) {
 // matchCursor is the continuation token encoded as base64 JSON.
 // It embeds all search parameters so the client doesn't need to repeat them.
 type matchCursor struct {
-	GameID   *int32 `json:"game_id,omitempty"`
-	PlayerID *int32 `json:"player_id,omitempty"`
-	ClubID   *int32 `json:"club_id,omitempty"`
-	NoClub   bool   `json:"no_club,omitempty"`
-	Date     string `json:"date"` // RFC3339Nano — date of the last returned match
+	GameID   *string `json:"game_id,omitempty"`
+	PlayerID *string `json:"player_id,omitempty"`
+	ClubID   *string `json:"club_id,omitempty"`
+	NoClub   bool    `json:"no_club,omitempty"`
+	Date     string  `json:"date"` // RFC3339Nano — date of the last returned match
 }
 
-func encodeMatchCursor(gameID pgtype.Int4, playerID pgtype.Int4, clubID pgtype.Int4, noClub bool, date time.Time) string {
+func encodeMatchCursor(gameID *string, playerID *string, clubID *string, noClub bool, date time.Time) string {
 	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano), NoClub: noClub}
-	if gameID.Valid {
-		c.GameID = &gameID.Int32
-	}
-	if playerID.Valid {
-		c.PlayerID = &playerID.Int32
-	}
-	if clubID.Valid {
-		c.ClubID = &clubID.Int32
-	}
+	c.GameID = gameID
+	c.PlayerID = playerID
+	c.ClubID = clubID
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
 // decodeMatchCursor returns gameID, playerID, clubID, noClub, cursorDate decoded from the token.
-func decodeMatchCursor(token string) (pgtype.Int4, pgtype.Int4, pgtype.Int4, bool, pgtype.Timestamptz, error) {
+func decodeMatchCursor(token string) (*string, *string, *string, bool, pgtype.Timestamptz, error) {
 	b, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
 	var c matchCursor
 	if err := json.Unmarshal(b, &c); err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
 	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return pgtype.Int4{}, pgtype.Int4{}, pgtype.Int4{}, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
-	var gameID pgtype.Int4
-	if c.GameID != nil {
-		gameID = pgtype.Int4{Int32: *c.GameID, Valid: true}
-	}
-	var playerID pgtype.Int4
-	if c.PlayerID != nil {
-		playerID = pgtype.Int4{Int32: *c.PlayerID, Valid: true}
-	}
-	var clubID pgtype.Int4
-	if c.ClubID != nil {
-		clubID = pgtype.Int4{Int32: *c.ClubID, Valid: true}
-	}
-	return gameID, playerID, clubID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	return c.GameID, c.PlayerID, c.ClubID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
 // ordered match groups. Returns the matches map and ID-ordered slice.
 type tempMatch struct {
-	Id         int
+	Id         string
 	GameId     string
 	GameName   string
 	Date       time.Time
-	Players    map[int32]matchPlayerJson
+	Players    map[string]matchPlayerJson
 	HasMarkets bool
 }
 
-func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matchJson {
+func buildMatchesResponse(matchesMap map[string]*tempMatch, order []string) []matchJson {
 	matchesJson := make([]matchJson, 0, len(order))
 	for _, mid := range order {
 		tm := matchesMap[mid]
@@ -183,7 +157,7 @@ func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matc
 			HasMarkets: tm.HasMarkets,
 		}
 		for pid, playerData := range tm.Players {
-			m.Players[strconv.Itoa(int(pid))] = playerData
+			m.Players[pid] = playerData
 		}
 		matchesJson = append(matchesJson, m)
 	}
@@ -191,9 +165,9 @@ func buildMatchesResponse(matchesMap map[int32]*tempMatch, order []int32) []matc
 }
 
 func (a *API) ListMatches(c *gin.Context) {
-	var gameID pgtype.Int4
-	var playerID pgtype.Int4
-	var clubID pgtype.Int4
+	var gameID *string
+	var playerID *string
+	var clubID *string
 	var noClub bool
 	var cursorDate pgtype.Timestamptz
 
@@ -208,39 +182,24 @@ func (a *API) ListMatches(c *gin.Context) {
 	} else {
 		// Initial mode: read search params from query string.
 		if gStr := c.Query("game_id"); gStr != "" {
-			g, err := strconv.ParseInt(gStr, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "Invalid game_id")
-				return
-			}
-			gameID = pgtype.Int4{Int32: int32(g), Valid: true}
+			gameID = &gStr
 		}
 		if pStr := c.Query("player_id"); pStr != "" {
-			p, err := strconv.ParseInt(pStr, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "Invalid player_id")
-				return
-			}
-			playerID = pgtype.Int4{Int32: int32(p), Valid: true}
+			playerID = &pStr
 		}
 		if cStr := c.Query("club_id"); cStr == "__no_club__" {
 			noClub = true
 		} else if cStr != "" {
-			cl, err := strconv.ParseInt(cStr, 10, 32)
-			if err != nil {
-				ErrorResponse(c, http.StatusBadRequest, "Invalid club_id")
-				return
-			}
-			clubID = pgtype.Int4{Int32: int32(cl), Valid: true}
+			clubID = &cStr
 		}
 	}
 
 	// Parse page size (always from query string).
 	limit := int32(30)
 	if lStr := c.Query("limit"); lStr != "" {
-		l, err := strconv.ParseInt(lStr, 10, 32)
-		if err == nil && l > 0 && l <= 100 {
-			limit = int32(l)
+		var l int32
+		if _, err := fmt.Sscanf(lStr, "%d", &l); err == nil && l > 0 && l <= 100 {
+			limit = l
 		}
 	}
 
@@ -257,17 +216,17 @@ func (a *API) ListMatches(c *gin.Context) {
 		return
 	}
 
-	matchesMap := make(map[int32]*tempMatch)
-	order := make([]int32, 0)
+	matchesMap := make(map[string]*tempMatch)
+	order := make([]string, 0)
 
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:         int(r.MatchID),
-				GameId:     strconv.Itoa(int(r.GameID)),
+				Id:         r.MatchID,
+				GameId:     r.GameID,
 				GameName:   r.GameName,
 				Date:       r.Date.Time,
-				Players:    make(map[int32]matchPlayerJson),
+				Players:    make(map[string]matchPlayerJson),
 				HasMarkets: r.HasMarkets,
 			}
 			order = append(order, r.MatchID)
@@ -304,14 +263,9 @@ func (a *API) ListMatches(c *gin.Context) {
 }
 
 func (a *API) GetMatchById(c *gin.Context) {
-	matchIDStr := c.Param("id")
-	matchID, err := strconv.ParseInt(matchIDStr, 10, 32)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, "Invalid match id: "+matchIDStr)
-		return
-	}
+	matchID := c.Param("id")
 
-	rows, err := a.Queries.GetMatchWithPlayers(c.Request.Context(), int32(matchID))
+	rows, err := a.Queries.GetMatchWithPlayers(c.Request.Context(), matchID)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -321,16 +275,16 @@ func (a *API) GetMatchById(c *gin.Context) {
 		return
 	}
 
-	matchesMap := make(map[int32]*tempMatch)
-	order := make([]int32, 0)
+	matchesMap := make(map[string]*tempMatch)
+	order := make([]string, 0)
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:       int(r.MatchID),
-				GameId:   strconv.Itoa(int(r.GameID)),
+				Id:       r.MatchID,
+				GameId:   r.GameID,
 				GameName: r.GameName,
 				Date:     r.Date.Time,
-				Players:  make(map[int32]matchPlayerJson),
+				Players:  make(map[string]matchPlayerJson),
 			}
 			order = append(order, r.MatchID)
 		}

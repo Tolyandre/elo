@@ -12,18 +12,24 @@ import (
 )
 
 const createCorrection = `-- name: CreateCorrection :one
-INSERT INTO corrections (player_id, discriminator, diff)
-VALUES ($1, $2, $3) RETURNING id, player_id, discriminator, diff, date
+INSERT INTO corrections (id, player_id, discriminator, diff)
+VALUES ($1, $2, $3, $4) RETURNING id, player_id, discriminator, diff, date
 `
 
 type CreateCorrectionParams struct {
-	PlayerID      int32   `json:"player_id"`
+	ID            string  `json:"id"`
+	PlayerID      string  `json:"player_id"`
 	Discriminator string  `json:"discriminator"`
 	Diff          float64 `json:"diff"`
 }
 
 func (q *Queries) CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error) {
-	row := q.db.QueryRow(ctx, createCorrection, arg.PlayerID, arg.Discriminator, arg.Diff)
+	row := q.db.QueryRow(ctx, createCorrection,
+		arg.ID,
+		arg.PlayerID,
+		arg.Discriminator,
+		arg.Diff,
+	)
 	var i Correction
 	err := row.Scan(
 		&i.ID,
@@ -89,9 +95,9 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalStateBeforeCorrectionParams struct {
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	CorrectionID pgtype.Int4        `json:"correction_id"`
+	CorrectionID *string            `json:"correction_id"`
 }
 
 type GetPlayerLatestGlobalStateBeforeCorrectionRow struct {
@@ -115,16 +121,16 @@ SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
 FROM corrections c
 JOIN players p ON p.id = c.player_id
 WHERE
-  ($1::int4 IS NULL OR c.player_id = $1::int4)
+  ($1::uuid IS NULL OR c.player_id = $1::uuid)
   AND (
     $2::timestamptz IS NULL
     OR c.date < $2::timestamptz
   )
   AND (
-    $3::int4 IS NULL
+    $3::uuid IS NULL
     OR EXISTS (
       SELECT 1 FROM player_club_membership pcm
-      WHERE pcm.club_id = $3::int4
+      WHERE pcm.club_id = $3::uuid
         AND pcm.player_id = c.player_id
     )
   )
@@ -140,16 +146,16 @@ LIMIT $5::int4
 `
 
 type ListCorrectionsPaginatedParams struct {
-	PlayerID   pgtype.Int4        `json:"player_id"`
+	PlayerID   *string            `json:"player_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	ClubID     pgtype.Int4        `json:"club_id"`
+	ClubID     *string            `json:"club_id"`
 	NoClub     pgtype.Bool        `json:"no_club"`
 	Limit      int32              `json:"limit"`
 }
 
 type ListCorrectionsPaginatedRow struct {
-	ID         int32              `json:"id"`
-	PlayerID   int32              `json:"player_id"`
+	ID         string             `json:"id"`
+	PlayerID   string             `json:"player_id"`
 	Diff       float64            `json:"diff"`
 	Date       pgtype.Timestamptz `json:"date"`
 	PlayerName string             `json:"player_name"`
@@ -202,11 +208,11 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByCorrectionParams struct {
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	RatingAfter  float64            `json:"rating_after"`
 	EloAfter     float64            `json:"elo_after"`
-	CorrectionID pgtype.Int4        `json:"correction_id"`
+	CorrectionID *string            `json:"correction_id"`
 	RatingStaked float64            `json:"rating_staked"`
 	RatingEarned float64            `json:"rating_earned"`
 	League       string             `json:"league"`

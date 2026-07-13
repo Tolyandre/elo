@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 
 type IUserService interface {
-	GetUserByID(ctx context.Context, id int32) (*db.User, error)
-	CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (int32, error)
+	GetUserByID(ctx context.Context, id string) (*db.User, error)
+	CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (string, error)
 	ListUsers(ctx context.Context) ([]db.User, error)
-	AllowEditing(ctx context.Context, userID int32, allow bool) error
-	SetUserPlayer(ctx context.Context, userID int32, playerID *int32) error
+	AllowEditing(ctx context.Context, userID string, allow bool) error
+	SetUserPlayer(ctx context.Context, userID string, playerID *string) error
 }
 
 type UserService struct {
@@ -39,7 +39,7 @@ func (s *UserService) ListUsers(ctx context.Context) ([]db.User, error) {
 	return users, nil
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, id int32) (*db.User, error) {
+func (s *UserService) GetUserByID(ctx context.Context, id string) (*db.User, error) {
 	user, err := s.Queries.GetUser(ctx, id)
 	if err != nil {
 		return nil, err
@@ -47,11 +47,10 @@ func (s *UserService) GetUserByID(ctx context.Context, id int32) (*db.User, erro
 	return &user, nil
 }
 
-func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (int32, error) {
+func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (string, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return 0, err
-
+		return "", err
 	}
 
 	defer tx.Rollback(ctx)
@@ -60,25 +59,30 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 	user, err := q.GetUserByGoogleOAuthUserID(ctx, googleOauthUserId)
 
 	if db.IsNoRows(err) {
+		newID, err := uuid.NewV7()
+		if err != nil {
+			return "", fmt.Errorf("generate user id: %w", err)
+		}
 		userId, err := q.CreateUser(ctx, db.CreateUserParams{
+			ID:                  newID.String(),
 			AllowEditing:        false,
 			GoogleOauthUserID:   googleOauthUserId,
 			GoogleOauthUserName: googleOauthUserName,
 		})
 
 		if err != nil {
-			return 0, err
+			return "", err
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return 0, err
+			return "", err
 		}
 
 		return userId, nil
 	}
 
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	if user.GoogleOauthUserName != googleOauthUserName {
@@ -88,11 +92,11 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 		})
 
 		if err != nil {
-			return 0, err
+			return "", err
 		}
 
 		if err := tx.Commit(ctx); err != nil {
-			return 0, err
+			return "", err
 		}
 		return user.ID, nil
 	}
@@ -100,21 +104,17 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 	return user.ID, nil
 }
 
-func (s *UserService) AllowEditing(ctx context.Context, userID int32, allow bool) error {
+func (s *UserService) AllowEditing(ctx context.Context, userID string, allow bool) error {
 	return s.Queries.UpdateUserAllowEditing(ctx, db.UpdateUserAllowEditingParams{
 		ID:           userID,
 		AllowEditing: allow,
 	})
 }
 
-func (s *UserService) SetUserPlayer(ctx context.Context, userID int32, playerID *int32) error {
-	var pid pgtype.Int4
-	if playerID != nil {
-		pid = pgtype.Int4{Int32: *playerID, Valid: true}
-	}
+func (s *UserService) SetUserPlayer(ctx context.Context, userID string, playerID *string) error {
 	err := s.Queries.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{
 		ID:       userID,
-		PlayerID: pid,
+		PlayerID: playerID,
 	})
 	if err != nil {
 		if db.IsUniqueViolation(err) {

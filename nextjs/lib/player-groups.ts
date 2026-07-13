@@ -43,9 +43,9 @@ export function buildPlayerGroups(
 
   const byId = new Map(players.map((p) => [p.id, p]));
 
-  const optionsFromIds = (ids: number[]) =>
+  const optionsFromIds = (ids: string[]) =>
     ids
-      .map((pid) => byId.get(String(pid)))
+      .map((pid) => byId.get(pid))
       .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)
       .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))
       .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
@@ -73,7 +73,7 @@ export function buildPlayerGroups(
   }
 
   // 3. Per club (alphabetical by display name), current user's clubs first
-  const isMyClub = (club: Club) => myPlayerId != null && club.players.map(String).includes(myPlayerId);
+  const isMyClub = (club: Club) => myPlayerId != null && club.players.includes(myPlayerId);
   const sortedClubs = [...clubs].sort((a, b) => {
     const mine = Number(isMyClub(b)) - Number(isMyClub(a));
     return mine !== 0 ? mine : byName(clubDisplayName(a), clubDisplayName(b));
@@ -87,7 +87,7 @@ export function buildPlayerGroups(
   }
 
   // 4. No club
-  const clubPlayerIds = new Set(clubs.flatMap((c) => c.players.map(String)));
+  const clubPlayerIds = new Set(clubs.flatMap((c) => c.players));
   const noClub = players
     .filter((p) => !clubPlayerIds.has(p.id))
     .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))
@@ -152,9 +152,9 @@ export function buildPlayerTabs(
   const tabs: PlayerTab[] = [];
   const byId = new Map(players.map((p) => [p.id, p]));
 
-  const optionsFromIds = (ids: number[]) =>
+  const optionsFromIds = (ids: string[]) =>
     ids
-      .map((pid) => byId.get(String(pid)))
+      .map((pid) => byId.get(pid))
       .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)
       .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))
       .map((p) => ({ value: p.id, label: playerDisplayName(p) }));
@@ -177,7 +177,7 @@ export function buildPlayerTabs(
   }
 
   // 3. The current user's clubs (alphabetical)
-  const isMyClub = (club: Club) => myPlayerId != null && club.players.map(String).includes(myPlayerId);
+  const isMyClub = (club: Club) => myPlayerId != null && club.players.includes(myPlayerId);
   const myClubs = clubs.filter(isMyClub).sort((a, b) => byName(clubDisplayName(a), clubDisplayName(b)));
   for (const club of myClubs) {
     const options = optionsFromIds(club.players);
@@ -195,7 +195,7 @@ export function buildPlayerTabs(
       otherSections.push({ heading: clubDisplayName(club), options });
     }
   }
-  const clubPlayerIds = new Set(clubs.flatMap((c) => c.players.map(String)));
+  const clubPlayerIds = new Set(clubs.flatMap((c) => c.players));
   const noClub = players
     .filter((p) => !clubPlayerIds.has(p.id))
     .sort((a, b) => byName(playerDisplayName(a), playerDisplayName(b)))

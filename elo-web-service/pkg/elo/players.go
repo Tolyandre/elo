@@ -24,15 +24,15 @@ type Player struct {
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
-	CreatePlayer(ctx context.Context, name string, idempotencyKey pgtype.UUID) (db.Player, error)
-	UpdatePlayer(ctx context.Context, id int32, name string) (db.Player, error)
-	DeletePlayer(ctx context.Context, id int32) error
-	GetPlayer(ctx context.Context, id int32) (db.Player, error)
+	CreatePlayer(ctx context.Context, id string, name string) (db.Player, error)
+	UpdatePlayer(ctx context.Context, id string, name string) (db.Player, error)
+	DeletePlayer(ctx context.Context, id string) error
+	GetPlayer(ctx context.Context, id string) (db.Player, error)
 	ListPlayers(ctx context.Context) ([]db.Player, error)
 	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
-	RatingHistory(ctx context.Context, playerID int32) ([]db.RatingHistoryRow, error)
-	GetPlayerGameStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameStatsRow, error)
-	GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameEloStatsRow, error)
+	RatingHistory(ctx context.Context, playerID string) ([]db.RatingHistoryRow, error)
+	GetPlayerGameStats(ctx context.Context, playerID string) ([]db.GetPlayerGameStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, playerID string) ([]db.GetPlayerGameEloStatsRow, error)
 }
 
 type PlayerService struct {
@@ -151,7 +151,7 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 		}
 
 		players = append(players, Player{
-			ID:                        fmt.Sprintf("%d", r.ID),
+			ID:                        r.ID,
 			Elo:                       ratingVal, // displayed rating used for ranking
 			League:                    league,
 			Name:                      r.Name,
@@ -199,25 +199,23 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	return players, nil
 }
 
-// CreatePlayer creates a player. A valid idempotencyKey makes the call retryable:
-// a repeated insert with the same key returns the existing row instead of failing.
-func (s *PlayerService) CreatePlayer(ctx context.Context, name string, idempotencyKey pgtype.UUID) (db.Player, error) {
+func (s *PlayerService) CreatePlayer(ctx context.Context, id string, name string) (db.Player, error) {
 	return s.Queries.CreatePlayer(ctx, db.CreatePlayerParams{
-		Name:           name,
-		GeologistName:  pgtype.Text{Valid: false},
-		IdempotencyKey: idempotencyKey,
+		ID:            id,
+		Name:          name,
+		GeologistName: pgtype.Text{Valid: false},
 	})
 }
 
-func (s *PlayerService) UpdatePlayer(ctx context.Context, id int32, name string) (db.Player, error) {
+func (s *PlayerService) UpdatePlayer(ctx context.Context, id string, name string) (db.Player, error) {
 	return s.Queries.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: id, Name: name})
 }
 
-func (s *PlayerService) DeletePlayer(ctx context.Context, id int32) error {
+func (s *PlayerService) DeletePlayer(ctx context.Context, id string) error {
 	return s.Queries.DeletePlayer(ctx, id)
 }
 
-func (s *PlayerService) GetPlayer(ctx context.Context, id int32) (db.Player, error) {
+func (s *PlayerService) GetPlayer(ctx context.Context, id string) (db.Player, error) {
 	return s.Queries.GetPlayer(ctx, id)
 }
 
@@ -229,14 +227,14 @@ func (s *PlayerService) ListPlayerUserLinks(ctx context.Context) ([]db.ListPlaye
 	return s.Queries.ListPlayerUserLinks(ctx)
 }
 
-func (s *PlayerService) RatingHistory(ctx context.Context, playerID int32) ([]db.RatingHistoryRow, error) {
+func (s *PlayerService) RatingHistory(ctx context.Context, playerID string) ([]db.RatingHistoryRow, error) {
 	return s.Queries.RatingHistory(ctx, playerID)
 }
 
-func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameStatsRow, error) {
+func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID string) ([]db.GetPlayerGameStatsRow, error) {
 	return s.Queries.GetPlayerGameStats(ctx, playerID)
 }
 
-func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]db.GetPlayerGameEloStatsRow, error) {
+func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID string) ([]db.GetPlayerGameEloStatsRow, error) {
 	return s.Queries.GetPlayerGameEloStats(ctx, playerID)
 }

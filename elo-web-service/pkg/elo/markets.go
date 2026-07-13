@@ -14,10 +14,11 @@ import (
 
 
 type CreateMarketParams struct {
+	ID         string
 	MarketType string
 	StartsAt   time.Time
 	ClosesAt   time.Time
-	CreatedBy  int32
+	CreatedBy  string
 
 	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
 	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
@@ -25,11 +26,11 @@ type CreateMarketParams struct {
 
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
-	PlaceBet(ctx context.Context, marketID int32, playerID int32, outcome string, amount float64) error
+	PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, amount float64) error
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
 	// Must be called within an active transaction (q is transactional).
-	TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID int32) error
+	TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID string) error
 
 	// UnsettleMarketsFromDate resets markets that were resolved by matches on/after fromDate.
 	// Must be called within an active transaction.
@@ -37,7 +38,7 @@ type IMarketService interface {
 
 	// SettleMarket applies parimutuel payout for the given market and outcome.
 	// OutcomeCancelled returns all stakes. Must be called within an active transaction.
-	SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error
+	SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 	ExpireOverdueMarkets(ctx context.Context) error
@@ -50,7 +51,7 @@ type IMarketService interface {
 	// LockMarketBetting stops new bets from being placed on an open market.
 	// This is a user event: betting_closed_at is persisted and never cleared
 	// during recalculation. Returns ErrMarketNotOpen if the market is not 'open'.
-	LockMarketBetting(ctx context.Context, marketID int32) error
+	LockMarketBetting(ctx context.Context, marketID string) error
 
 	// ScheduleNextExpiry sets a timer for the next market expiry.
 	ScheduleNextExpiry(ctx context.Context)
@@ -85,6 +86,7 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	q := s.Queries.WithTx(tx)
 
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
+		ID:         params.ID,
 		MarketType: params.MarketType,
 		StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
 		ClosesAt:   pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
@@ -107,7 +109,7 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	return market, nil
 }
 
-func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID int32, outcome string, amount float64) error {
+func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, amount float64) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -143,6 +145,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID i
 	}
 
 	if _, err := q.InsertBet(ctx, db.InsertBetParams{
+		ID:       id,
 		MarketID: marketID,
 		PlayerID: playerID,
 		Outcome:  outcome,
@@ -156,19 +159,19 @@ func (s *MarketService) PlaceBet(ctx context.Context, marketID int32, playerID i
 
 // TriggerResolutionForMatch checks all open markets and resolves them if the given match satisfies their conditions.
 // Must be called within an active transaction (q is transactional Queries).
-func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID int32) error {
+func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID string) error {
 	match, err := q.GetMatch(ctx, matchID)
 	if err != nil {
-		return fmt.Errorf("get match %d: %w", matchID, err)
+		return fmt.Errorf("get match %s: %w", matchID, err)
 	}
 
 	scores, err := q.GetMatchScoresForMatch(ctx, matchID)
 	if err != nil {
-		return fmt.Errorf("get scores for match %d: %w", matchID, err)
+		return fmt.Errorf("get scores for match %s: %w", matchID, err)
 	}
 
-	participantSet := make(map[int32]bool)
-	playerScoreMap := make(map[int32]float64)
+	participantSet := make(map[string]bool)
+	playerScoreMap := make(map[string]float64)
 	maxScore := -1e18
 	for _, s := range scores {
 		participantSet[s.PlayerID] = true
@@ -204,11 +207,11 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
 	for _, marketID := range marketIDs {
-		if err := q.DeleteGlobalArenaSettlementByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
-			return fmt.Errorf("delete global arena settlement for market %d: %w", marketID, err)
+		if err := q.DeleteGlobalArenaSettlementByMarket(ctx, &marketID); err != nil {
+			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
 		}
 		if err := q.UnsettleMarket(ctx, marketID); err != nil {
-			return fmt.Errorf("unsettle market %d: %w", marketID, err)
+			return fmt.Errorf("unsettle market %s: %w", marketID, err)
 		}
 	}
 	return nil
@@ -216,17 +219,17 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 
 // SettleMarket applies parimutuel payout and updates the market status.
 // Must be called within an active transaction.
-func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error {
+func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error {
 	rows, err := q.GetBetsAggregatedByOutcome(ctx, marketID)
 	if err != nil {
-		return fmt.Errorf("get bets for market %d: %w", marketID, err)
+		return fmt.Errorf("get bets for market %s: %w", marketID, err)
 	}
 
 	type playerData struct {
 		totalStaked    float64
 		winningOutcome float64
 	}
-	players := make(map[int32]*playerData)
+	players := make(map[string]*playerData)
 	totalPool := 0.0
 	winningPool := 0.0
 
@@ -252,7 +255,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	earned := make(map[int32]float64)
+	earned := make(map[string]float64)
 	for pid, pd := range players {
 		if winningPool == 0 {
 			earned[pid] = pd.totalStaked
@@ -261,7 +264,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	allPlayerIDs := make([]int32, 0, len(players))
+	allPlayerIDs := make([]string, 0, len(players))
 	for pid := range players {
 		allPlayerIDs = append(allPlayerIDs, pid)
 	}
@@ -332,20 +335,20 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			Date:         resolvedAtTz,
 			RatingAfter:  newRating,
 			EloAfter:     newElo,
-			MarketID:     pgtype.Int4{Int32: marketID, Valid: true},
+			MarketID:     &marketID,
 			EloStaked:    eloStaked,
 			EloEarned:    eloEarned,
 			RatingStaked: ratingStaked,
 			RatingEarned: ratingEarned,
 			League:       newLeague,
 		}); err != nil {
-			return fmt.Errorf("upsert global arena settlement for player %d: %w", pid, err)
+			return fmt.Errorf("upsert global arena settlement for player %s: %w", pid, err)
 		}
 	}
 
-	resMatchID := pgtype.Int4{}
+	var resMatchID *string
 	if resolutionMatchID != nil {
-		resMatchID = pgtype.Int4{Int32: *resolutionMatchID, Valid: true}
+		resMatchID = resolutionMatchID
 	}
 	resolutionOutcome := pgtype.Text{}
 	if !isCancelled {
@@ -358,7 +361,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		ResolutionMatchID: resMatchID,
 		ResolutionOutcome: resolutionOutcome,
 	}); err != nil {
-		return fmt.Errorf("resolve market %d: %w", marketID, err)
+		return fmt.Errorf("resolve market %s: %w", marketID, err)
 	}
 
 	if err := RecalculateBetLimits(ctx, q, allPlayerIDs); err != nil {
@@ -370,7 +373,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 
 // LockMarketBetting stops accepting new bets on an open market (user event).
 // betting_closed_at is stored permanently and never cleared during recalculation.
-func (s *MarketService) LockMarketBetting(ctx context.Context, marketID int32) error {
+func (s *MarketService) LockMarketBetting(ctx context.Context, marketID string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

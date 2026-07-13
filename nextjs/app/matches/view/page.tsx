@@ -26,7 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { isOfflineId } from "@/lib/offline/types";
 
 export default function MatchViewPage() {
   return (
@@ -39,9 +38,19 @@ export default function MatchViewPage() {
 function MatchViewPageWrapped() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
+  const { pendingMatches, ready } = useOffline();
 
   if (!id) return <NotFound />;
-  if (isOfflineId(id)) return <PendingMatchView clientId={id} />;
+  // Before the store hydrates we can't tell a pending match from a saved one, so
+  // wait — otherwise a pending match would flash the saved-match fetch (and 404).
+  if (!ready) {
+    return (
+      <main className="max-w-sm mx-auto p-4">
+        <p className="text-center">Загрузка...</p>
+      </main>
+    );
+  }
+  if (pendingMatches.some((m) => m.clientId === id)) return <PendingMatchView clientId={id} />;
   return <SavedMatchView matchId={id} />;
 }
 
@@ -103,14 +112,14 @@ function SavedMatchView({ matchId }: { matchId: string }) {
   const fetchedRef = React.useRef(false);
   const [relatedMarkets, setRelatedMarkets] = useState<Market[]>([]);
 
-  const matchFromContext = matches.find((m) => m.id.toString() === matchId) ?? null;
+  const matchFromContext = matches.find((m) => m.id === matchId) ?? null;
 
   // Fetch from API only once context is done loading and match still not found
   useEffect(() => {
     if (matchFromContext || fetchedRef.current || contextLoading) return;
     fetchedRef.current = true;
     setFetchLoading(true);
-    getMatchByIdPromise(Number(matchId))
+    getMatchByIdPromise(matchId)
       .then(setMatchFromApi)
       .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
       .finally(() => setFetchLoading(false));
@@ -120,7 +129,7 @@ function SavedMatchView({ matchId }: { matchId: string }) {
   const loading = (contextLoading && !matchFromContext) || fetchLoading;
 
   useEffect(() => {
-    getMarketsByMatchIdPromise(Number(matchId))
+    getMarketsByMatchIdPromise(matchId)
       .then((data) => setRelatedMarkets(data ?? []))
       .catch(() => {});
   }, [matchId]);
@@ -150,7 +159,7 @@ function SavedMatchView({ matchId }: { matchId: string }) {
     <main className="max-w-sm mx-auto p-4 space-y-4">
       <BackButton />
 
-      <PageHeader title="Просмотр партии" action={<EditAction id={match.id.toString()} />} />
+      <PageHeader title="Просмотр партии" action={<EditAction id={match.id} />} />
 
       <Card>
         <CardContent>

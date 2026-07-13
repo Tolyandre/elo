@@ -359,7 +359,7 @@ export default function SkullKingGamePage() {
     const { games } = useGames();
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
-    const { submitMatch } = useOffline();
+    const { submitMatch, offline } = useOffline();
     const router = useRouter();
 
     const [gameState, setGameStateRaw] = useLocalStorage<GameState>(LS_KEY, initialState);
@@ -376,7 +376,7 @@ export default function SkullKingGamePage() {
     // SSE subscription for all table participants (host + connected players).
     // Skip the optimistic placeholder tableId "" set before the API call resolves.
     const sseTable = useSkullKingSSE(tableSession?.tableId || null);
-    const [connectedPlayerIds, setConnectedPlayerIds] = useState<number[]>([]);
+    const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
 
     // Loading state for server interactions
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -742,7 +742,7 @@ export default function SkullKingGamePage() {
 
     async function startResultEntry() {
         const firstDisconnected = gameState.players.findIndex(
-            (p) => !connectedPlayerIds.some(id => String(id) === p.id)
+            (p) => !connectedPlayerIds.some(id => id === p.id)
         );
         const startIndex = firstDisconnected >= 0 ? firstDisconnected : 0;
         await doPhaseTransition({ ...gameState, phase: "result-entry", currentPlayerIndex: startIndex });
@@ -770,7 +770,7 @@ export default function SkullKingGamePage() {
             syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" });
         } else {
             const needsResult = (i: number) => (newRounds[roundIndex][i]?.actual ?? null) === null;
-            const isConnected = (i: number) => connectedPlayerIds.some(id => String(id) === players[i].id);
+            const isConnected = (i: number) => connectedPlayerIds.some(id => id === players[i].id);
             const findNext = (candidates: number[]) => {
                 if (candidates.length === 0) return null;
                 return candidates.find(i => i > playerIndex) ?? candidates[0];
@@ -819,7 +819,9 @@ export default function SkullKingGamePage() {
                 score,
                 tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
             });
-            if (result.kind === "online") {
+            // The match was either saved on the server or queued offline; either way
+            // its id is final. The view page shows the pending or saved card by id.
+            if (!offline) {
                 invalidateMatches();
                 invalidatePlayers();
                 // Delete server table if in table mode
@@ -829,12 +831,7 @@ export default function SkullKingGamePage() {
             }
             localStorage.removeItem(LS_KEY);
             setTableSession(null);
-            if (result.kind === "online") {
-                router.push(`/matches/view?id=${result.id}`);
-            } else {
-                // Saved offline — the pending card is at the top of the match list.
-                router.push("/matches");
-            }
+            router.push(`/matches/view?id=${result.id}`);
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));
         } finally {
@@ -1164,7 +1161,7 @@ export default function SkullKingGamePage() {
                                 />
                                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm mt-1">
                                     {players.map((p, pi) => {
-                                        if (!connectedPlayerIds.some(id => String(id) === p.id)) return null;
+                                        if (!connectedPlayerIds.some(id => id === p.id)) return null;
                                         const hasBid = !!rounds[currentRound - 1]?.[pi];
                                         return (
                                             <div key={pi} className="flex items-center gap-1">
@@ -1185,7 +1182,7 @@ export default function SkullKingGamePage() {
                         const allBid = players.length > 0 &&
                             roundData.slice(0, players.length).every(e => e != null);
                         const connectedNotBid = players.filter((p, pi) =>
-                            connectedPlayerIds.some(id => String(id) === p.id) && !roundData[pi]
+                            connectedPlayerIds.some(id => id === p.id) && !roundData[pi]
                         );
                         async function performForceTransition() {
                             if (allBid) {

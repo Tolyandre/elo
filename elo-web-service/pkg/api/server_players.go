@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -31,10 +29,10 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 	if err != nil {
 		return nil, err
 	}
-	playerUserMap := make(map[int32]string, len(userLinks))
+	playerUserMap := make(map[string]string, len(userLinks))
 	for _, link := range userLinks {
-		if link.PlayerID.Valid {
-			playerUserMap[link.PlayerID.Int32] = fmt.Sprintf("%d", link.UserID)
+		if link.PlayerID != nil {
+			playerUserMap[*link.PlayerID] = link.UserID
 		}
 	}
 
@@ -42,7 +40,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 	if err != nil {
 		return nil, err
 	}
-	geologistNameMap := make(map[int32]string, len(dbPlayers))
+	geologistNameMap := make(map[string]string, len(dbPlayers))
 	for _, dp := range dbPlayers {
 		if dp.GeologistName.Valid {
 			geologistNameMap[dp.ID] = dp.GeologistName.String
@@ -56,13 +54,11 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 
 		var userID *string
 		var geologistName *string
-		if idInt, err := strconv.Atoi(p.ID); err == nil {
-			if uid, ok := playerUserMap[int32(idInt)]; ok {
-				userID = &uid
-			}
-			if gn, ok := geologistNameMap[int32(idInt)]; ok {
-				geologistName = &gn
-			}
+		if uid, ok := playerUserMap[p.ID]; ok {
+			userID = &uid
+		}
+		if gn, ok := geologistNameMap[p.ID]; ok {
+			geologistName = &gn
 		}
 
 		var matchesLeftForElite *int
@@ -118,7 +114,7 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 		return CreatePlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.CreatePlayer(ctx, name, uuidPtrToPg(request.Body.IdempotencyKey))
+	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreatePlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
@@ -129,24 +125,19 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 	return CreatePlayer200JSONResponse{
 		Status: "success",
 		Data: PlayerRef{
-			Id:   strconv.Itoa(int(player.ID)),
+			Id:   player.ID,
 			Name: player.Name,
 		},
 	}, nil
 }
 
 func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerRequestObject) (PatchPlayerResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return PatchPlayer400JSONResponse{Status: "fail", Message: "invalid player id"}, nil
-	}
-
 	name := request.Body.Name
 	if name == "" {
 		return PatchPlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.UpdatePlayer(ctx, int32(idInt), name)
+	player, err := s.api.PlayerService.UpdatePlayer(ctx, request.Id, name)
 	if db.IsNoRows(err) {
 		return PatchPlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
 	}
@@ -160,19 +151,14 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 	return PatchPlayer200JSONResponse{
 		Status: "success",
 		Data: PlayerRef{
-			Id:   strconv.Itoa(int(player.ID)),
+			Id:   player.ID,
 			Name: player.Name,
 		},
 	}, nil
 }
 
 func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerRequestObject) (DeletePlayerResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return DeletePlayer400JSONResponse{Status: "fail", Message: "invalid player id"}, nil
-	}
-
-	err = s.api.PlayerService.DeletePlayer(ctx, int32(idInt))
+	err := s.api.PlayerService.DeletePlayer(ctx, request.Id)
 	if db.IsNoRows(err) {
 		return DeletePlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
 	}
@@ -187,11 +173,7 @@ func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerReq
 }
 
 func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStatsRequestObject) (GetPlayerStatsResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return GetPlayerStats400JSONResponse{Status: "fail", Message: "invalid player id"}, nil
-	}
-	playerID := int32(idInt)
+	playerID := request.Id
 
 	player, err := s.api.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {

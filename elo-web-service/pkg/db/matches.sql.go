@@ -12,26 +12,22 @@ import (
 )
 
 const createMatch = `-- name: CreateMatch :one
-INSERT INTO matches (date, game_id, idempotency_key)
+INSERT INTO matches (id, date, game_id)
 VALUES ($1, $2, $3)
-RETURNING id, date, game_id, idempotency_key
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+RETURNING id, date, game_id
 `
 
 type CreateMatchParams struct {
-	Date           pgtype.Timestamptz `json:"date"`
-	GameID         int32              `json:"game_id"`
-	IdempotencyKey pgtype.UUID        `json:"idempotency_key"`
+	ID     string             `json:"id"`
+	Date   pgtype.Timestamptz `json:"date"`
+	GameID string             `json:"game_id"`
 }
 
 func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error) {
-	row := q.db.QueryRow(ctx, createMatch, arg.Date, arg.GameID, arg.IdempotencyKey)
+	row := q.db.QueryRow(ctx, createMatch, arg.ID, arg.Date, arg.GameID)
 	var i Match
-	err := row.Scan(
-		&i.ID,
-		&i.Date,
-		&i.GameID,
-		&i.IdempotencyKey,
-	)
+	err := row.Scan(&i.ID, &i.Date, &i.GameID)
 	return i, err
 }
 
@@ -58,7 +54,7 @@ DELETE FROM match_scores
 WHERE match_id = $1
 `
 
-func (q *Queries) DeleteMatchScores(ctx context.Context, matchID int32) error {
+func (q *Queries) DeleteMatchScores(ctx context.Context, matchID string) error {
 	_, err := q.db.Exec(ctx, deleteMatchScores, matchID)
 	return err
 }
@@ -69,7 +65,7 @@ FROM matches m
 WHERE m.game_id = $1
 `
 
-func (q *Queries) GetCountMatchesByGame(ctx context.Context, gameID int32) (int64, error) {
+func (q *Queries) GetCountMatchesByGame(ctx context.Context, gameID string) (int64, error) {
 	row := q.db.QueryRow(ctx, getCountMatchesByGame, gameID)
 	var total_matches int64
 	err := row.Scan(&total_matches)
@@ -77,37 +73,15 @@ func (q *Queries) GetCountMatchesByGame(ctx context.Context, gameID int32) (int6
 }
 
 const getMatch = `-- name: GetMatch :one
-SELECT id, date, game_id, idempotency_key FROM matches
+SELECT id, date, game_id FROM matches
 WHERE id = $1
 FOR UPDATE
 `
 
-func (q *Queries) GetMatch(ctx context.Context, id int32) (Match, error) {
+func (q *Queries) GetMatch(ctx context.Context, id string) (Match, error) {
 	row := q.db.QueryRow(ctx, getMatch, id)
 	var i Match
-	err := row.Scan(
-		&i.ID,
-		&i.Date,
-		&i.GameID,
-		&i.IdempotencyKey,
-	)
-	return i, err
-}
-
-const getMatchByIdempotencyKey = `-- name: GetMatchByIdempotencyKey :one
-SELECT id, date, game_id, idempotency_key FROM matches
-WHERE idempotency_key = $1
-`
-
-func (q *Queries) GetMatchByIdempotencyKey(ctx context.Context, idempotencyKey pgtype.UUID) (Match, error) {
-	row := q.db.QueryRow(ctx, getMatchByIdempotencyKey, idempotencyKey)
-	var i Match
-	err := row.Scan(
-		&i.ID,
-		&i.Date,
-		&i.GameID,
-		&i.IdempotencyKey,
-	)
+	err := row.Scan(&i.ID, &i.Date, &i.GameID)
 	return i, err
 }
 
@@ -118,11 +92,11 @@ WHERE match_id = $1
 `
 
 type GetMatchScoresForMatchRow struct {
-	PlayerID int32   `json:"player_id"`
+	PlayerID string  `json:"player_id"`
 	Score    float64 `json:"score"`
 }
 
-func (q *Queries) GetMatchScoresForMatch(ctx context.Context, matchID int32) ([]GetMatchScoresForMatchRow, error) {
+func (q *Queries) GetMatchScoresForMatch(ctx context.Context, matchID string) ([]GetMatchScoresForMatchRow, error) {
 	rows, err := q.db.Query(ctx, getMatchScoresForMatch, matchID)
 	if err != nil {
 		return nil, err
@@ -174,11 +148,11 @@ ORDER BY s.score DESC
 `
 
 type GetMatchWithPlayersRow struct {
-	MatchID      int32              `json:"match_id"`
+	MatchID      string             `json:"match_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	GameID       int32              `json:"game_id"`
+	GameID       string             `json:"game_id"`
 	GameName     string             `json:"game_name"`
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
 	RatingStaked pgtype.Float8      `json:"rating_staked"`
@@ -187,7 +161,7 @@ type GetMatchWithPlayersRow struct {
 	PrevRating   interface{}        `json:"prev_rating"`
 }
 
-func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatchWithPlayersRow, error) {
+func (q *Queries) GetMatchWithPlayers(ctx context.Context, id string) ([]GetMatchWithPlayersRow, error) {
 	rows, err := q.db.Query(ctx, getMatchWithPlayers, id)
 	if err != nil {
 		return nil, err
@@ -220,7 +194,7 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, id int32) ([]GetMatch
 }
 
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
-SELECT m.id, m.date, m.game_id, m.idempotency_key
+SELECT m.id, m.date, m.game_id
 FROM matches m
 WHERE m.date >= $1
 ORDER BY m.date ASC, m.id ASC
@@ -235,12 +209,7 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 	items := []Match{}
 	for rows.Next() {
 		var i Match
-		if err := rows.Scan(
-			&i.ID,
-			&i.Date,
-			&i.GameID,
-			&i.IdempotencyKey,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.Date, &i.GameID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -272,10 +241,10 @@ ORDER BY s.score DESC
 `
 
 type ListMatchResultsRow struct {
-	MatchID      int32              `json:"match_id"`
+	MatchID      string             `json:"match_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	GameName     string             `json:"game_name"`
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
 	RatingStaked pgtype.Float8      `json:"rating_staked"`
@@ -283,7 +252,7 @@ type ListMatchResultsRow struct {
 	RatingAfter  interface{}        `json:"rating_after"`
 }
 
-func (q *Queries) ListMatchResults(ctx context.Context, id int32) ([]ListMatchResultsRow, error) {
+func (q *Queries) ListMatchResults(ctx context.Context, id string) ([]ListMatchResultsRow, error) {
 	rows, err := q.db.Query(ctx, listMatchResults, id)
 	if err != nil {
 		return nil, err
@@ -345,11 +314,11 @@ ORDER BY m.date DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersRow struct {
-	MatchID      int32              `json:"match_id"`
+	MatchID      string             `json:"match_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	GameID       int32              `json:"game_id"`
+	GameID       string             `json:"game_id"`
 	GameName     string             `json:"game_name"`
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
 	RatingStaked pgtype.Float8      `json:"rating_staked"`
@@ -434,11 +403,11 @@ ORDER BY m.date ASC, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameRow struct {
-	MatchID      int32              `json:"match_id"`
+	MatchID      string             `json:"match_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	GameID       int32              `json:"game_id"`
+	GameID       string             `json:"game_id"`
 	GameName     string             `json:"game_name"`
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
 	RatingStaked pgtype.Float8      `json:"rating_staked"`
@@ -451,7 +420,7 @@ type ListMatchesWithPlayersByGameRow struct {
 	WinReward    float64            `json:"win_reward"`
 }
 
-func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id int32) ([]ListMatchesWithPlayersByGameRow, error) {
+func (q *Queries) ListMatchesWithPlayersByGame(ctx context.Context, id string) ([]ListMatchesWithPlayersByGameRow, error) {
 	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGame, id)
 	if err != nil {
 		return nil, err
@@ -493,17 +462,17 @@ WITH paginated_matches AS (
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
-        ($1::int4 IS NULL OR m.game_id = $1::int4)
-        AND ($2::int4 IS NULL OR ms.player_id = $2::int4)
+        ($1::uuid IS NULL OR m.game_id = $1::uuid)
+        AND ($2::uuid IS NULL OR ms.player_id = $2::uuid)
         AND (
             $3::timestamptz IS NULL
             OR m.date < $3::timestamptz
         )
         AND (
-            $4::int4 IS NULL
+            $4::uuid IS NULL
             OR EXISTS (
                 SELECT 1 FROM player_club_membership pcm
-                WHERE pcm.club_id = $4::int4
+                WHERE pcm.club_id = $4::uuid
                 AND pcm.player_id = ms.player_id
             )
         )
@@ -548,20 +517,20 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersPaginatedParams struct {
-	GameID     pgtype.Int4        `json:"game_id"`
-	PlayerID   pgtype.Int4        `json:"player_id"`
+	GameID     *string            `json:"game_id"`
+	PlayerID   *string            `json:"player_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	ClubID     pgtype.Int4        `json:"club_id"`
+	ClubID     *string            `json:"club_id"`
 	NoClub     pgtype.Bool        `json:"no_club"`
 	Limit      int32              `json:"limit"`
 }
 
 type ListMatchesWithPlayersPaginatedRow struct {
-	MatchID      int32              `json:"match_id"`
+	MatchID      string             `json:"match_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	GameID       int32              `json:"game_id"`
+	GameID       string             `json:"game_id"`
 	GameName     string             `json:"game_name"`
-	PlayerID     int32              `json:"player_id"`
+	PlayerID     string             `json:"player_id"`
 	PlayerName   string             `json:"player_name"`
 	Score        float64            `json:"score"`
 	RatingStaked pgtype.Float8      `json:"rating_staked"`
@@ -618,9 +587,9 @@ WHERE id = $1
 `
 
 type UpdateMatchParams struct {
-	ID     int32              `json:"id"`
+	ID     string             `json:"id"`
 	Date   pgtype.Timestamptz `json:"date"`
-	GameID int32              `json:"game_id"`
+	GameID string             `json:"game_id"`
 }
 
 func (q *Queries) UpdateMatch(ctx context.Context, arg UpdateMatchParams) error {
@@ -636,8 +605,8 @@ DO UPDATE SET score = EXCLUDED.score
 `
 
 type UpsertMatchScoreParams struct {
-	MatchID  int32   `json:"match_id"`
-	PlayerID int32   `json:"player_id"`
+	MatchID  string  `json:"match_id"`
+	PlayerID string  `json:"player_id"`
 	Score    float64 `json:"score"`
 }
 

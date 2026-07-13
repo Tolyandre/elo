@@ -51,16 +51,16 @@ func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 
 // MatchPrevState bundles all per-player prior state needed to compute one match's settlements.
 type MatchPrevState struct {
-	Elo        map[int32]float64 // true global Elo before this match
-	GameElo    map[int32]float64 // true game Elo before this match
-	Rating     map[int32]float64 // display global rating before this match
-	GameRating map[int32]float64 // display game rating before this match
-	League     map[int32]string  // global league before this match ("newbie"/"amateur"/"elite")
-	GameLeague map[int32]string  // game league before this match ("newbie"/"amateur")
+	Elo        map[string]float64 // true global Elo before this match
+	GameElo    map[string]float64 // true game Elo before this match
+	Rating     map[string]float64 // display global rating before this match
+	GameRating map[string]float64 // display game rating before this match
+	League     map[string]string  // global league before this match ("newbie"/"amateur"/"elite")
+	GameLeague map[string]string  // game league before this match ("newbie"/"amateur")
 
 	// Elite promotion match counts for the match date (includes the current match).
-	Count6M map[int32]int // matches in last 6 months
-	Count2M map[int32]int // matches in last 2 months
+	Count6M map[string]int // matches in last 6 months
+	Count2M map[string]int // matches in last 2 months
 
 	Settings EloSettings
 }
@@ -70,8 +70,8 @@ type MatchPrevState struct {
 type EloCalcFunc func(
 	ctx context.Context,
 	q *db.Queries,
-	matchID, gameID int32,
-	playerScores map[int32]float64,
+	matchID, gameID string,
+	playerScores map[string]float64,
 	state MatchPrevState,
 ) error
 

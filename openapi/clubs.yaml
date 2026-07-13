@@ -33,9 +33,11 @@ ClubsCollection:
           schema:
             type: object
             properties:
+              id:
+                $ref: './common.yaml#/ULID'
               name:
                 type: string
-            required: [name]
+            required: [id, name]
     responses:
       "200":
         description: Created club
@@ -240,7 +242,7 @@ ClubMembers:
             type: object
             properties:
               player_id:
-                type: integer
+                type: string
             required: [player_id]
     responses:
       "200":
@@ -331,6 +333,6 @@ Club:
     players:
       type: array
       items:
-        type: integer
-      description: List of player IDs (integers)
+        type: string
+      description: List of player IDs
   required: [id, name, players]

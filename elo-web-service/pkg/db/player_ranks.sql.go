@@ -40,7 +40,7 @@ ORDER BY latest_elo.rating_after DESC NULLS LAST, p.name
 `
 
 type ListPlayersWithStatsRow struct {
-	ID     int32       `json:"id"`
+	ID     string      `json:"id"`
 	Name   string      `json:"name"`
 	Rating interface{} `json:"rating"`
 	Elo    interface{} `json:"elo"`

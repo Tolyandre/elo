@@ -374,7 +374,7 @@ export default function ItsAWonderfulWorldPage() {
     const me = useMe();
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
-    const { submitMatch } = useOffline();
+    const { submitMatch, offline } = useOffline();
     const router = useRouter();
 
     const [gameState, setGameState] = useLocalStorage<GameState>(LS_KEY, INITIAL);
@@ -458,14 +458,13 @@ export default function ItsAWonderfulWorldPage() {
                 tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
             });
             localStorage.removeItem(LS_KEY);
-            if (result.kind === "online") {
+            // The match was either saved on the server or queued offline; either way
+            // its id is final. The view page shows the pending or saved card by id.
+            if (!offline) {
                 invalidateMatches();
                 invalidatePlayers();
-                router.push(`/matches/view?id=${result.id}`);
-            } else {
-                // Saved offline — the pending card is at the top of the match list.
-                router.push("/matches");
             }
+            router.push(`/matches/view?id=${result.id}`);
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));
         } finally {

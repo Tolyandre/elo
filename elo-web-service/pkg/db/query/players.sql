@@ -1,8 +1,7 @@
 -- name: CreatePlayer :one
-INSERT INTO players (name, geologist_name, idempotency_key)
+INSERT INTO players (id, name, geologist_name)
 VALUES ($1, $2, $3)
-ON CONFLICT (idempotency_key)
-DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
 RETURNING *;
 
 -- name: GetPlayer :one
@@ -17,8 +16,8 @@ ORDER BY name;
 DELETE FROM players WHERE id = $1;
 
 -- name: AddPlayersIfNotExists :many
-INSERT INTO players (name)
-SELECT unnest($1::text[]) AS name
+INSERT INTO players (id, name)
+SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name
 ON CONFLICT (name) DO NOTHING
 RETURNING id, name;
 

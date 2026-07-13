@@ -11,15 +11,15 @@ import (
 
 type matchWinnerHandler struct{}
 
-func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID int32, params CreateMarketParams) error {
+func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error {
 	p := params.MatchWinner
 	requiredIDs := p.RequiredPlayerIDs
 	if requiredIDs == nil {
-		requiredIDs = []int32{}
+		requiredIDs = []string{}
 	}
 	gameIDs := p.GameIDs
 	if gameIDs == nil {
-		gameIDs = []int32{}
+		gameIDs = []string{}
 	}
 	return q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
 		MarketID:          marketID,
@@ -56,7 +56,7 @@ func (t *matchWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, match M
 
 		resolutionMatchID := match.Match.ID
 		if err := settle(ctx, q, m.ID, outcome, match.Match.Date.Time, &resolutionMatchID); err != nil {
-			return fmt.Errorf("settle match_winner market %d: %w", m.ID, err)
+			return fmt.Errorf("settle match_winner market %s: %w", m.ID, err)
 		}
 	}
 	return nil
@@ -69,7 +69,7 @@ func (t *matchWinnerTrigger) OnTimeExpiry(ctx context.Context, q *db.Queries, cu
 	}
 	for _, m := range markets {
 		if err := settle(ctx, q, m.ID, OutcomeCancelled, m.ClosesAt.Time, nil); err != nil {
-			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
+			return fmt.Errorf("cancel overdue match_winner market %s: %w", m.ID, err)
 		}
 	}
 	return nil
@@ -82,7 +82,7 @@ func (t *matchWinnerTrigger) OnOverdue(ctx context.Context, q *db.Queries, settl
 	}
 	for _, m := range markets {
 		if err := settle(ctx, q, m.ID, OutcomeCancelled, m.ClosesAt.Time, nil); err != nil {
-			return fmt.Errorf("cancel overdue match_winner market %d: %w", m.ID, err)
+			return fmt.Errorf("cancel overdue match_winner market %s: %w", m.ID, err)
 		}
 	}
 	return nil

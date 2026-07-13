@@ -7,25 +7,29 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (allow_editing, google_oauth_user_id, google_oauth_user_name)
-VALUES ($1, $2, $3)
+INSERT INTO users (id, allow_editing, google_oauth_user_id, google_oauth_user_name)
+VALUES ($1, $2, $3, $4)
 RETURNING id
 `
 
 type CreateUserParams struct {
+	ID                  string `json:"id"`
 	AllowEditing        bool   `json:"allow_editing"`
 	GoogleOauthUserID   string `json:"google_oauth_user_id"`
 	GoogleOauthUserName string `json:"google_oauth_user_name"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (int32, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.AllowEditing, arg.GoogleOauthUserID, arg.GoogleOauthUserName)
-	var id int32
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (string, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.ID,
+		arg.AllowEditing,
+		arg.GoogleOauthUserID,
+		arg.GoogleOauthUserName,
+	)
+	var id string
 	err := row.Scan(&id)
 	return id, err
 }
@@ -35,7 +39,7 @@ DELETE FROM users
 WHERE id = $1
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id int32) error {
+func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, deleteUser, id)
 	return err
 }
@@ -51,7 +55,7 @@ FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUser(ctx context.Context, id int32) (User, error) {
+func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 	row := q.db.QueryRow(ctx, getUser, id)
 	var i User
 	err := row.Scan(
@@ -131,8 +135,8 @@ WHERE id = $1
 `
 
 type UpdateUserAllowEditingParams struct {
-	ID           int32 `json:"id"`
-	AllowEditing bool  `json:"allow_editing"`
+	ID           string `json:"id"`
+	AllowEditing bool   `json:"allow_editing"`
 }
 
 func (q *Queries) UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error {
@@ -147,7 +151,7 @@ WHERE id = $1
 `
 
 type UpdateUserNameParams struct {
-	ID                  int32  `json:"id"`
+	ID                  string `json:"id"`
 	GoogleOauthUserName string `json:"google_oauth_user_name"`
 }
 
@@ -161,8 +165,8 @@ UPDATE users SET player_id = $2 WHERE id = $1
 `
 
 type UpdateUserPlayerIDParams struct {
-	ID       int32       `json:"id"`
-	PlayerID pgtype.Int4 `json:"player_id"`
+	ID       string  `json:"id"`
+	PlayerID *string `json:"player_id"`
 }
 
 func (q *Queries) UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error {

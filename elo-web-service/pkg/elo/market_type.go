@@ -10,13 +10,13 @@ import (
 // MatchInfo holds derived match data for market resolution evaluation.
 type MatchInfo struct {
 	Match          db.Match
-	ParticipantSet map[int32]bool
-	PlayerScoreMap map[int32]float64
+	ParticipantSet map[string]bool
+	PlayerScoreMap map[string]float64
 	MaxScore       float64
 }
 
 // SettleFunc settles a market with a given outcome within an active transaction.
-type SettleFunc func(ctx context.Context, q *db.Queries, marketID int32, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *int32) error
+type SettleFunc func(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
 
 // ResolutionTrigger describes when and how markets of a given type are resolved.
 // Implementations must be safe to call as no-ops when the trigger type does not respond
@@ -38,7 +38,7 @@ type ResolutionTrigger interface {
 // MarketTypeHandler encapsulates all type-specific behavior for a market type.
 type MarketTypeHandler interface {
 	// CreateParams stores type-specific parameters in the DB within a transaction.
-	CreateParams(ctx context.Context, q *db.Queries, marketID int32, params CreateMarketParams) error
+	CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error
 
 	// ResolutionTrigger returns the strategy that decides when and how markets of
 	// this type are resolved. Called once per handler; the result may be cached.
@@ -53,15 +53,15 @@ var marketTypeHandlers = map[string]MarketTypeHandler{
 
 // MatchWinnerCreateParams holds creation parameters for a match_winner market.
 type MatchWinnerCreateParams struct {
-	TargetPlayerID    int32
-	RequiredPlayerIDs []int32
-	GameIDs           []int32
+	TargetPlayerID    string
+	RequiredPlayerIDs []string
+	GameIDs           []string
 }
 
 // WinStreakCreateParams holds creation parameters for a win_streak market.
 type WinStreakCreateParams struct {
-	TargetPlayerID int32
-	GameIDs        []int32
+	TargetPlayerID string
+	GameIDs        []string
 	WinsRequired   int32
 	MaxLosses      *int32
 }

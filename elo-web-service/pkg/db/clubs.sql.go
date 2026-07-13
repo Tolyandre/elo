@@ -18,8 +18,8 @@ ON CONFLICT DO NOTHING
 `
 
 type AddClubMemberParams struct {
-	ClubID   int32 `json:"club_id"`
-	PlayerID int32 `json:"player_id"`
+	ClubID   string `json:"club_id"`
+	PlayerID string `json:"player_id"`
 }
 
 func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
@@ -28,13 +28,18 @@ func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) er
 }
 
 const createClub = `-- name: CreateClub :one
-INSERT INTO clubs (name)
-VALUES ($1)
+INSERT INTO clubs (id, name)
+VALUES ($1, $2)
 RETURNING id, name, geologist_name, icon_svg
 `
 
-func (q *Queries) CreateClub(ctx context.Context, name string) (Club, error) {
-	row := q.db.QueryRow(ctx, createClub, name)
+type CreateClubParams struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, error) {
+	row := q.db.QueryRow(ctx, createClub, arg.ID, arg.Name)
 	var i Club
 	err := row.Scan(
 		&i.ID,
@@ -51,7 +56,7 @@ WHERE id = $1
 RETURNING id, name, geologist_name, icon_svg
 `
 
-func (q *Queries) DeleteClub(ctx context.Context, id int32) (Club, error) {
+func (q *Queries) DeleteClub(ctx context.Context, id string) (Club, error) {
 	row := q.db.QueryRow(ctx, deleteClub, id)
 	var i Club
 	err := row.Scan(
@@ -76,14 +81,14 @@ WHERE c.id = $1
 `
 
 type GetClubRow struct {
-	ClubID            int32       `json:"club_id"`
+	ClubID            string      `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
 	ClubIconSvg       pgtype.Text `json:"club_icon_svg"`
-	PlayerID          pgtype.Int4 `json:"player_id"`
+	PlayerID          *string     `json:"player_id"`
 }
 
-func (q *Queries) GetClub(ctx context.Context, id int32) ([]GetClubRow, error) {
+func (q *Queries) GetClub(ctx context.Context, id string) ([]GetClubRow, error) {
 	rows, err := q.db.Query(ctx, getClub, id)
 	if err != nil {
 		return nil, err
@@ -121,11 +126,11 @@ LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
 `
 
 type ListClubsRow struct {
-	ClubID            int32       `json:"club_id"`
+	ClubID            string      `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
 	ClubIconSvg       pgtype.Text `json:"club_icon_svg"`
-	PlayerID          pgtype.Int4 `json:"player_id"`
+	PlayerID          *string     `json:"player_id"`
 }
 
 func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
@@ -160,8 +165,8 @@ WHERE club_id = $1 AND player_id = $2
 `
 
 type RemoveClubMemberParams struct {
-	ClubID   int32 `json:"club_id"`
-	PlayerID int32 `json:"player_id"`
+	ClubID   string `json:"club_id"`
+	PlayerID string `json:"player_id"`
 }
 
 func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error {
@@ -177,7 +182,7 @@ RETURNING id, name, geologist_name, icon_svg
 `
 
 type UpdateClubIconParams struct {
-	ID      int32       `json:"id"`
+	ID      string      `json:"id"`
 	IconSvg pgtype.Text `json:"icon_svg"`
 }
 
@@ -201,7 +206,7 @@ RETURNING id, name, geologist_name, icon_svg
 `
 
 type UpdateClubNameParams struct {
-	ID   int32  `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 

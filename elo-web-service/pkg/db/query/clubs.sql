@@ -20,8 +20,8 @@ LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
 WHERE c.id = $1;
 
 -- name: CreateClub :one
-INSERT INTO clubs (name)
-VALUES ($1)
+INSERT INTO clubs (id, name)
+VALUES ($1, $2)
 RETURNING id, name, geologist_name, icon_svg;
 
 -- name: UpdateClubName :one

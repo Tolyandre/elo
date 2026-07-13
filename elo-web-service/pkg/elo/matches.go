@@ -30,32 +30,31 @@ func NewMatchService(pool *pgxpool.Pool, marketService IMarketService) IMatchSer
 
 // AddMatchOpts carries optional behaviour for AddMatch, used by offline sync.
 type AddMatchOpts struct {
-	// IdempotencyKey deduplicates retries: when set and a match with this key
-	// already exists, AddMatch returns it without creating anything.
-	IdempotencyKey pgtype.UUID
+	// ID is the client-generated ULID used as the primary key and idempotency key.
+	ID string
 	// ClientDate marks the date as client-supplied: it is validated (no future,
 	// max 30 days back) and Elo is recalculated from that date so later matches
 	// are settled correctly.
 	ClientDate bool
 	// TournamentIDs are the tournaments this match belongs to. The match is
 	// associated with each, and every match player is auto-enrolled into them.
-	TournamentIDs []int32
+	TournamentIDs []string
 }
 
 type IMatchService interface {
-	AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
-	UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time, tournamentIDs []int32) (db.Match, error)
+	AddMatch(ctx context.Context, gameID string, playerScores map[string]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
+	UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, tournamentIDs []string) (db.Match, error)
 	RecalculateAllGameElo(ctx context.Context) error
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
-	DeleteMarketAndRecalculate(ctx context.Context, marketID int32) error
+	DeleteMarketAndRecalculate(ctx context.Context, marketID string) error
 }
 
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
-func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores map[int32]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
+func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores map[string]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
 	if len(playerScores) < 2 {
 		return db.Match{}, ErrTooFewPlayers
 	}
@@ -76,30 +75,16 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 	q := s.Queries.WithTx(tx)
 
-	if opts.IdempotencyKey.Valid {
-		existing, err := q.GetMatchByIdempotencyKey(ctx, opts.IdempotencyKey)
-		if err == nil {
-			return existing, nil
-		}
-		if !db.IsNoRows(err) {
-			return db.Match{}, fmt.Errorf("get match by idempotency key: %v", err)
-		}
-	}
-
 	dt := pgtype.Timestamptz{Time: date, Valid: true}
 
 	// create match (foreign key will validate game_id exists)
+	// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		Date:           dt,
-		GameID:         gameID,
-		IdempotencyKey: opts.IdempotencyKey,
+		ID:    opts.ID,
+		Date:  dt,
+		GameID: gameID,
 	})
 	if err != nil {
-		// Concurrent retry with the same idempotency key: return the winner's match.
-		if opts.IdempotencyKey.Valid && db.IsUniqueViolation(err) {
-			_ = tx.Rollback(ctx)
-			return s.Queries.GetMatchByIdempotencyKey(ctx, opts.IdempotencyKey)
-		}
 		return db.Match{}, fmt.Errorf("unable to create match: %v", err)
 	}
 
@@ -112,7 +97,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 				PlayerID: playerID,
 				Score:    score,
 			}); err != nil {
-				return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
+				return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %v", playerID, err)
 			}
 		}
 
@@ -126,7 +111,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 			return db.Match{}, err
 		}
 
-		playerIDs := make([]int32, 0, len(playerScores))
+		playerIDs := make([]string, 0, len(playerScores))
 		for playerID := range playerScores {
 			playerIDs = append(playerIDs, playerID)
 		}
@@ -162,7 +147,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID int32, playerScores 
 
 // UpdateMatch updates an existing match and recalculates Elo ratings for all affected matches
 // Date cannot be null and cannot change more than 3 days
-func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID int32, playerScores map[int32]float64, date time.Time, tournamentIDs []int32) (db.Match, error) {
+func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, tournamentIDs []string) (db.Match, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to begin tx: %v", err)
@@ -200,11 +185,11 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	// Delete old scores and settlements to handle player list changes.
 	// Explicit deletes are required because global_arena_settlement and game_arena_settlement
 	// reference matches(id), not match_scores, so there is no cascade from match_scores.
-	if err = q.DeleteGlobalArenaSettlementByMatch(ctx, pgtype.Int4{Int32: matchID, Valid: true}); err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete global arena settlement for match %d: %v", matchID, err)
+	if err = q.DeleteGlobalArenaSettlementByMatch(ctx, &matchID); err != nil {
+		return db.Match{}, fmt.Errorf("unable to delete global arena settlement for match %s: %v", matchID, err)
 	}
-	if err = q.DeleteGameArenaSettlementByMatch(ctx, pgtype.Int4{Int32: matchID, Valid: true}); err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete game arena settlement for match %d: %v", matchID, err)
+	if err = q.DeleteGameArenaSettlementByMatch(ctx, &matchID); err != nil {
+		return db.Match{}, fmt.Errorf("unable to delete game arena settlement for match %s: %v", matchID, err)
 	}
 	err = q.DeleteMatchScores(ctx, matchID)
 	if err != nil {
@@ -218,7 +203,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 			Score:    score,
 		})
 		if err != nil {
-			return db.Match{}, fmt.Errorf("unable to insert match score for player %d: %v", playerID, err)
+			return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %v", playerID, err)
 		}
 	}
 
@@ -249,7 +234,6 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID int32, gameID in
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to fetch updated match: %v", matchID)
 	}
-
 	return updatedMatch, nil
 }
 
@@ -275,7 +259,7 @@ func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
 
 // DeleteMarketAndRecalculate hard-deletes an open market and recalculates Elo
 // from the market's created_at date. Everything runs in a single transaction.
-func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID int32) error {
+func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -294,12 +278,12 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 
 	createdAt := market.CreatedAt.Time
 
-	if err := q.DeleteGlobalArenaSettlementByMarket(ctx, pgtype.Int4{Int32: marketID, Valid: true}); err != nil {
-		return fmt.Errorf("delete global arena settlement for market %d: %w", marketID, err)
+	if err := q.DeleteGlobalArenaSettlementByMarket(ctx, &marketID); err != nil {
+		return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
 	}
 
 	if err := q.DeleteMarket(ctx, marketID); err != nil {
-		return fmt.Errorf("delete market %d: %w", marketID, err)
+		return fmt.Errorf("delete market %s: %w", marketID, err)
 	}
 
 	if err := s.recalculateEloFromDate(ctx, q, createdAt); err != nil {
@@ -322,7 +306,7 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 
 // lockAndGetPrevElos locks players in sorted order and returns all prior state
 // needed to compute dual-track (elo + rating) and league settlements.
-func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (MatchPrevState, error) {
+func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[string]float64) (MatchPrevState, error) {
 	settingsRow, err := q.GetEloSettingsForDate(ctx, match.Date)
 	if err != nil {
 		return MatchPrevState{}, fmt.Errorf("get elo settings: %w", err)
@@ -330,18 +314,18 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 	settings := EloSettingsFromDB(settingsRow)
 
 	state := MatchPrevState{
-		Elo:        make(map[int32]float64),
-		GameElo:    make(map[int32]float64),
-		Rating:     make(map[int32]float64),
-		GameRating: make(map[int32]float64),
-		League:     make(map[int32]string),
-		GameLeague: make(map[int32]string),
-		Count6M:    make(map[int32]int),
-		Count2M:    make(map[int32]int),
+		Elo:        make(map[string]float64),
+		GameElo:    make(map[string]float64),
+		Rating:     make(map[string]float64),
+		GameRating: make(map[string]float64),
+		League:     make(map[string]string),
+		GameLeague: make(map[string]string),
+		Count6M:    make(map[string]int),
+		Count2M:    make(map[string]int),
 		Settings:   settings,
 	}
 
-	playerIDs := make([]int32, 0, len(playerScores))
+	playerIDs := make([]string, 0, len(playerScores))
 	for playerID := range playerScores {
 		playerIDs = append(playerIDs, playerID)
 	}
@@ -354,13 +338,13 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 	for _, playerID := range playerIDs {
 		_, err = q.LockPlayerForEloCalculation(ctx, playerID)
 		if err != nil {
-			return MatchPrevState{}, fmt.Errorf("unable to lock player %d: %v", playerID, err)
+			return MatchPrevState{}, fmt.Errorf("unable to lock player %s: %v", playerID, err)
 		}
 
 		prevGlobalElo, err := q.GetPlayerLatestGlobalEloBeforeMatch(ctx, db.GetPlayerLatestGlobalEloBeforeMatchParams{
 			PlayerID: playerID,
 			Date:     matchDate,
-			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
+			MatchID:  &match.ID,
 		})
 		if err != nil {
 			state.Elo[playerID] = settings.StartingElo
@@ -372,7 +356,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			PlayerID: playerID,
 			GameID:   match.GameID,
 			Date:     matchDate,
-			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
+			MatchID:  &match.ID,
 		})
 		if err != nil {
 			state.GameElo[playerID] = settings.StartingElo
@@ -383,7 +367,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 		prevGlobalRating, err := q.GetPlayerLatestGlobalRatingBeforeMatch(ctx, db.GetPlayerLatestGlobalRatingBeforeMatchParams{
 			PlayerID: playerID,
 			Date:     matchDate,
-			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
+			MatchID:  &match.ID,
 		})
 		if err != nil {
 			state.Rating[playerID] = settings.StartingRatingGlobal
@@ -397,7 +381,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 			PlayerID: playerID,
 			GameID:   match.GameID,
 			Date:     matchDate,
-			MatchID:  pgtype.Int4{Int32: match.ID, Valid: true},
+			MatchID:  &match.ID,
 		})
 		if err != nil {
 			state.GameRating[playerID] = settings.StartingRatingGame
@@ -551,78 +535,63 @@ func determineGameLeague(prev string, newRating, newElo float64, s EloSettings) 
 
 // buildEloResults computes the dual-track (elo + rating) settlement for every player in the match.
 // Pure calculation — no DB writes.
-func buildEloResults(playerScores map[int32]float64, state MatchPrevState) map[int32]eloCalcResult {
+func buildEloResults(playerScores map[string]float64, state MatchPrevState) map[string]eloCalcResult {
 	s := state.Settings
 
-	prevEloStr := make(map[string]float64, len(state.Elo))
-	prevGameEloStr := make(map[string]float64, len(state.GameElo))
-	playerScoresStr := make(map[string]float64, len(playerScores))
-	for id, v := range state.Elo {
-		prevEloStr[fmt.Sprintf("%d", id)] = v
-	}
-	for id, v := range state.GameElo {
-		prevGameEloStr[fmt.Sprintf("%d", id)] = v
-	}
-	for id, v := range playerScores {
-		playerScoresStr[fmt.Sprintf("%d", id)] = v
-	}
+	newGlobalElos := CalculateNewElo(state.Elo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
+	newGameElos := CalculateNewElo(state.GameElo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
+	absoluteLoserScore := GetAsboluteLoserScore(playerScores)
 
-	newGlobalElos := CalculateNewElo(prevEloStr, s.StartingElo, playerScoresStr, s.K, s.D, s.WinReward)
-	newGameElos := CalculateNewElo(prevGameEloStr, s.StartingElo, playerScoresStr, s.K, s.D, s.WinReward)
-	absoluteLoserScore := GetAsboluteLoserScore(playerScoresStr)
-
-	results := make(map[int32]eloCalcResult, len(playerScores))
+	results := make(map[string]eloCalcResult, len(playerScores))
 	for id, score := range playerScores {
-		idStr := fmt.Sprintf("%d", id)
-
 		// Global elo track
-		eloStaked := -s.K * WinExpectation(state.Elo[id], playerScoresStr, s.StartingElo, prevEloStr, s.D)
-		eloEarned := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		eloStaked := -s.K * WinExpectation(state.Elo[id], playerScores, s.StartingElo, state.Elo, s.D)
+		eloEarned := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 
 		// Global rating track: player's own rating replaces their elo in WinExpectation;
 		// earned is scaled by gap between true elo and display rating (ADR-03).
-		prevEloForRating := make(map[string]float64, len(prevEloStr))
-		for k, v := range prevEloStr {
+		prevEloForRating := make(map[string]float64, len(state.Elo))
+		for k, v := range state.Elo {
 			prevEloForRating[k] = v
 		}
-		prevEloForRating[idStr] = state.Rating[id]
+		prevEloForRating[id] = state.Rating[id]
 
-		ratingStakedRaw := -s.K * WinExpectation(state.Rating[id], playerScoresStr, s.StartingElo, prevEloForRating, s.D)
+		ratingStakedRaw := -s.K * WinExpectation(state.Rating[id], playerScores, s.StartingElo, prevEloForRating, s.D)
 		ratingStaked := scaleRatingStaked(ratingStakedRaw, state.Elo[id], state.Rating[id], s)
-		ratingEarnedRaw := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		ratingEarnedRaw := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 		ratingEarned := scaleRatingEarned(ratingEarnedRaw, state.Elo[id], state.Rating[id], s)
 		newGlobalRating := state.Rating[id] + ratingStaked + ratingEarned
-		newGlobalLeague := determineGlobalLeague(state.League[id], newGlobalRating, newGlobalElos[idStr], state.Count6M[id], state.Count2M[id], s)
+		newGlobalLeague := determineGlobalLeague(state.League[id], newGlobalRating, newGlobalElos[id], state.Count6M[id], state.Count2M[id], s)
 
 		// Game elo track
-		gameEloStaked := -s.K * WinExpectation(state.GameElo[id], playerScoresStr, s.StartingElo, prevGameEloStr, s.D)
-		gameEloEarned := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		gameEloStaked := -s.K * WinExpectation(state.GameElo[id], playerScores, s.StartingElo, state.GameElo, s.D)
+		gameEloEarned := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 
 		// Game rating track: same earned-scaling approach as global rating track.
-		prevGameEloForRating := make(map[string]float64, len(prevGameEloStr))
-		for k, v := range prevGameEloStr {
+		prevGameEloForRating := make(map[string]float64, len(state.GameElo))
+		for k, v := range state.GameElo {
 			prevGameEloForRating[k] = v
 		}
-		prevGameEloForRating[idStr] = state.GameRating[id]
+		prevGameEloForRating[id] = state.GameRating[id]
 
-		gameRatingStakedRaw := -s.K * WinExpectation(state.GameRating[id], playerScoresStr, s.StartingElo, prevGameEloForRating, s.D)
+		gameRatingStakedRaw := -s.K * WinExpectation(state.GameRating[id], playerScores, s.StartingElo, prevGameEloForRating, s.D)
 		gameRatingStaked := scaleRatingStaked(gameRatingStakedRaw, state.GameElo[id], state.GameRating[id], s)
-		gameRatingEarnedRaw := s.K * NormalizedScore(score, playerScoresStr, absoluteLoserScore, s.WinReward)
+		gameRatingEarnedRaw := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 		gameRatingEarned := scaleRatingEarned(gameRatingEarnedRaw, state.GameElo[id], state.GameRating[id], s)
 		newGameRating := state.GameRating[id] + gameRatingStaked + gameRatingEarned
-		newGameLeague := determineGameLeague(state.GameLeague[id], newGameRating, newGameElos[idStr], s)
+		newGameLeague := determineGameLeague(state.GameLeague[id], newGameRating, newGameElos[id], s)
 
 		results[id] = eloCalcResult{
 			eloStaked:        eloStaked,
 			eloEarned:        eloEarned,
-			newGlobalElo:     newGlobalElos[idStr],
+			newGlobalElo:     newGlobalElos[id],
 			ratingStaked:     ratingStaked,
 			ratingEarned:     ratingEarned,
 			newGlobalRating:  newGlobalRating,
 			newGlobalLeague:  newGlobalLeague,
 			gameEloStaked:    gameEloStaked,
 			gameEloEarned:    gameEloEarned,
-			newGameElo:       newGameElos[idStr],
+			newGameElo:       newGameElos[id],
 			gameRatingStaked: gameRatingStaked,
 			gameRatingEarned: gameRatingEarned,
 			newGameRating:    newGameRating,
@@ -634,7 +603,7 @@ func buildEloResults(playerScores map[int32]float64, state MatchPrevState) map[i
 
 // calculateAndStoreEloWithScores inserts match_scores then upserts both settlement tables.
 // Used by AddMatch to write scores and Elo for a brand-new match.
-func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, state MatchPrevState) error {
+func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db.Queries, matchID string, gameID string, playerScores map[string]float64, state MatchPrevState) error {
 	results := buildEloResults(playerScores, state)
 
 	for playerID, score := range playerScores {
@@ -644,10 +613,10 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			PlayerID: playerID,
 			Score:    score,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert match score for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert match score for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
-			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
+			MatchID:      &matchID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGlobalRating,
 			EloAfter:     r.newGlobalElo,
@@ -657,10 +626,10 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			RatingEarned: r.ratingEarned,
 			League:       r.newGlobalLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert global arena settlement for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
-			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
+			MatchID:      &matchID,
 			GameID:       gameID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGameRating,
@@ -671,7 +640,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			RatingEarned: r.gameRatingEarned,
 			League:       r.newGameLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert game arena settlement for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert game arena settlement for player %s: %v", playerID, err)
 		}
 	}
 
@@ -680,13 +649,13 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 
 // calculateAndUpdateElo upserts settlement records without touching match_scores.
 // Used by recalculation paths where scores already exist.
-func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries, matchID int32, gameID int32, playerScores map[int32]float64, state MatchPrevState) error {
+func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries, matchID string, gameID string, playerScores map[string]float64, state MatchPrevState) error {
 	results := buildEloResults(playerScores, state)
 
 	for playerID := range playerScores {
 		r := results[playerID]
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
-			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
+			MatchID:      &matchID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGlobalRating,
 			EloAfter:     r.newGlobalElo,
@@ -696,10 +665,10 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			RatingEarned: r.ratingEarned,
 			League:       r.newGlobalLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert global arena settlement for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
-			MatchID:      pgtype.Int4{Int32: matchID, Valid: true},
+			MatchID:      &matchID,
 			GameID:       gameID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGameRating,
@@ -710,7 +679,7 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			RatingEarned: r.gameRatingEarned,
 			League:       r.newGameLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert game arena settlement for player %d: %v", playerID, err)
+			return fmt.Errorf("unable to upsert game arena settlement for player %s: %v", playerID, err)
 		}
 	}
 
@@ -718,11 +687,11 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 }
 
 // sortPlayerIDs sorts player IDs numerically (for consistent locking order)
-func sortPlayerIDs(ids []int32) { slices.Sort(ids) }
+func sortPlayerIDs(ids []string) { slices.Sort(ids) }
 
 // playerIDsOf returns the keys of a player→score map as a slice.
-func playerIDsOf(playerScores map[int32]float64) []int32 {
-	ids := make([]int32, 0, len(playerScores))
+func playerIDsOf(playerScores map[string]float64) []string {
+	ids := make([]string, 0, len(playerScores))
 	for id := range playerScores {
 		ids = append(ids, id)
 	}
@@ -734,7 +703,7 @@ func playerIDsOf(playerScores map[int32]float64) []int32 {
 // match players. This enforces the invariant "if all players are members of a
 // currently-running tournament, the match belongs to it" for every save path
 // (forms, calculators, offline sync) without the client having to compute it.
-func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Time, playerIDs []int32, explicit []int32) ([]int32, error) {
+func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Time, playerIDs []string, explicit []string) ([]string, error) {
 	auto, err := q.ListActiveTournamentsForPlayers(ctx, db.ListActiveTournamentsForPlayersParams{
 		At:        date,
 		PlayerIds: playerIDs,
@@ -743,8 +712,8 @@ func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Ti
 		return nil, fmt.Errorf("auto-detect active tournaments: %v", err)
 	}
 
-	seen := make(map[int32]struct{}, len(explicit)+len(auto))
-	merged := make([]int32, 0, len(explicit)+len(auto))
+	seen := make(map[string]struct{}, len(explicit)+len(auto))
+	merged := make([]string, 0, len(explicit)+len(auto))
 	for _, id := range explicit {
 		if _, ok := seen[id]; !ok {
 			seen[id] = struct{}{}
@@ -763,14 +732,14 @@ func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Ti
 // applyMatchTournaments associates the match with each tournament and auto-enrols
 // every match player into them. Memberships use ON CONFLICT DO NOTHING and are
 // never removed here (per ADR: editing a match never removes tournament members).
-func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID int32, tournamentIDs []int32, playerIDs []int32) error {
+func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID string, tournamentIDs []string, playerIDs []string) error {
 	for _, tid := range tournamentIDs {
 		if err := q.AddMatchTournament(ctx, db.AddMatchTournamentParams{MatchID: matchID, TournamentID: tid}); err != nil {
-			return fmt.Errorf("associate match %d with tournament %d: %v", matchID, tid, err)
+			return fmt.Errorf("associate match %s with tournament %s: %v", matchID, tid, err)
 		}
 		for _, pid := range playerIDs {
 			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tid, PlayerID: pid}); err != nil {
-				return fmt.Errorf("enrol player %d into tournament %d: %v", pid, tid, err)
+				return fmt.Errorf("enrol player %s into tournament %s: %v", pid, tid, err)
 			}
 		}
 	}

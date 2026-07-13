@@ -28,8 +28,8 @@ FROM users
 WHERE id = $1;
 
 -- name: CreateUser :one
-INSERT INTO users (allow_editing, google_oauth_user_id, google_oauth_user_name)
-VALUES ($1, $2, $3)
+INSERT INTO users (id, allow_editing, google_oauth_user_id, google_oauth_user_name)
+VALUES ($1, $2, $3, $4)
 RETURNING id;
 
 -- name: UpdateUserName :exec

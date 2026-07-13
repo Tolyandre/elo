@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -45,7 +44,7 @@ type GameMatchPlayer struct {
 }
 
 type GameMatch struct {
-	Id      int32
+	Id      string
 	Date    interface{} // pgtype.Timestamptz
 	Players []GameMatchPlayer
 }
@@ -54,9 +53,9 @@ type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
 	GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error)
 	GetGameMatches(ctx context.Context, id string) ([]GameMatch, error)
-	DeleteGame(ctx context.Context, id int32) (*db.Game, error)
-	UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error)
-	AddGame(ctx context.Context, name string, idempotencyKey pgtype.UUID) (*db.Game, error)
+	DeleteGame(ctx context.Context, id string) (*db.Game, error)
+	UpdateGameName(ctx context.Context, id string, name string) (*db.Game, error)
+	AddGame(ctx context.Context, id, name string) (*db.Game, error)
 }
 
 type GameService struct {
@@ -80,7 +79,7 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 	gameList := make([]GameTitles, 0, len(rows))
 	for _, r := range rows {
 		gameList = append(gameList, GameTitles{
-			Id:           fmt.Sprintf("%d", r.ID),
+			Id:           r.ID,
 			Name:         r.Name,
 			TotalMatches: int(r.TotalMatches),
 		})
@@ -90,19 +89,14 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 }
 
 func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error) {
-	gid, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid game id: %v", err)
-	}
-
 	// Read latest game rating per player from DB (display rating + league)
-	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, int32(gid))
+	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve game rating from db: %v", err)
 	}
 
 	// Get total match count for the game
-	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, int32(gid))
+	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get match count: %v", err)
 	}
@@ -114,7 +108,7 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	}
 	gameName := id
 	for _, g := range gameRows {
-		if int32(g.ID) == int32(gid) {
+		if g.ID == id {
 			gameName = g.Name
 			break
 		}
@@ -135,7 +129,7 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 		}
 
 		players = append(players, GamePlayerStat{
-			Id:                        fmt.Sprintf("%d", r.PlayerID),
+			Id:                        r.PlayerID,
 			Elo:                       r.GameRatingAfter,
 			League:                    r.League,
 			WinsNeededForAmateurLower: winsLower,
@@ -185,19 +179,14 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 }
 
 func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatch, error) {
-	gid, err := strconv.Atoi(id)
-	if err != nil {
-		return nil, fmt.Errorf("invalid game id: %v", err)
-	}
-
-	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, int32(gid))
+	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve game matches from db: %v", err)
 	}
 
 	// Group rows by match (already ordered ASC by date/id)
-	matchMap := make(map[int32]*GameMatch)
-	order := make([]int32, 0)
+	matchMap := make(map[string]*GameMatch)
+	order := make([]string, 0)
 
 	for _, r := range rows {
 		if _, ok := matchMap[r.MatchID]; !ok {
@@ -211,7 +200,7 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 		}
 
 		matchMap[r.MatchID].Players = append(matchMap[r.MatchID].Players, GameMatchPlayer{
-			Id:           fmt.Sprintf("%d", r.PlayerID),
+			Id:           r.PlayerID,
 			Name:         r.PlayerName,
 			Score:        r.Score,
 			RatingStaked: r.GameRatingStaked.Float64,
@@ -228,7 +217,7 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 	return result, nil
 }
 
-func (s *GameService) DeleteGame(ctx context.Context, id int32) (*db.Game, error) {
+func (s *GameService) DeleteGame(ctx context.Context, id string) (*db.Game, error) {
 	g, err := s.Queries.DeleteGame(ctx, id)
 	if err != nil {
 		return nil, err
@@ -236,7 +225,7 @@ func (s *GameService) DeleteGame(ctx context.Context, id int32) (*db.Game, error
 	return &g, nil
 }
 
-func (s *GameService) UpdateGameName(ctx context.Context, id int32, name string) (*db.Game, error) {
+func (s *GameService) UpdateGameName(ctx context.Context, id string, name string) (*db.Game, error) {
 	g, err := s.Queries.UpdateGameName(ctx, db.UpdateGameNameParams{
 		ID:   id,
 		Name: name,
@@ -247,12 +236,10 @@ func (s *GameService) UpdateGameName(ctx context.Context, id int32, name string)
 	return &g, nil
 }
 
-// AddGame creates a game. A valid idempotencyKey makes the call retryable:
-// a repeated insert with the same key returns the existing row instead of failing.
-func (s *GameService) AddGame(ctx context.Context, name string, idempotencyKey pgtype.UUID) (*db.Game, error) {
+func (s *GameService) AddGame(ctx context.Context, id, name string) (*db.Game, error) {
 	g, err := s.Queries.AddGame(ctx, db.AddGameParams{
-		Name:           name,
-		IdempotencyKey: idempotencyKey,
+		ID:   id,
+		Name: name,
 	})
 	if err != nil {
 		return nil, err

@@ -21,8 +21,8 @@ LEFT JOIN tournament_player_membership tpm ON tpm.tournament_id = t.id
 WHERE t.id = $1;
 
 -- name: CreateTournament :one
-INSERT INTO tournaments (name, start_date, end_date)
-VALUES ($1, $2, $3)
+INSERT INTO tournaments (id, name, start_date, end_date)
+VALUES ($1, $2, $3, $4)
 RETURNING id, name, start_date, end_date;
 
 -- name: UpdateTournament :one
@@ -57,7 +57,7 @@ FROM tournaments t
 WHERE t.start_date <= sqlc.arg('at')::timestamptz
   AND sqlc.arg('at')::timestamptz <= t.end_date
   AND NOT EXISTS (
-      SELECT 1 FROM unnest(sqlc.arg('player_ids')::int4[]) AS pid
+      SELECT 1 FROM unnest(sqlc.arg('player_ids')::uuid[]) AS pid
       WHERE NOT EXISTS (
           SELECT 1 FROM tournament_player_membership tpm
           WHERE tpm.tournament_id = t.id AND tpm.player_id = pid
@@ -81,7 +81,7 @@ SELECT
     t.name AS tournament_name
 FROM match_tournament mt
 JOIN tournaments t ON t.id = mt.tournament_id
-WHERE mt.match_id = ANY(sqlc.arg('match_ids')::int4[])
+WHERE mt.match_id = ANY(sqlc.arg('match_ids')::uuid[])
 ORDER BY t.name;
 
 -- name: GetTournamentMatchDateRange :one

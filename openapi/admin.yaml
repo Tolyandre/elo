@@ -19,8 +19,10 @@ AdminPlayerCorrections:
         application/json:
           schema:
             type: object
-            required: [discriminator, diff]
+            required: [id, discriminator, diff]
             properties:
+              id:
+                $ref: './common.yaml#/ULID'
               discriminator:
                 type: string
                 enum: [correction]
@@ -93,7 +95,7 @@ Correction:
   type: object
   properties:
     id:
-      type: integer
+      type: string
     player_id:
       type: string
     player_name:

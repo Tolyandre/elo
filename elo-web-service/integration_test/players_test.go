@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -92,7 +93,12 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 func createTestUser(t *testing.T, pool *pgxpool.Pool, allowEditing bool) string {
 	t.Helper()
 	queries := db.New(pool)
+	uid, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate user id: %v", err)
+	}
 	userID, err := queries.CreateUser(context.Background(), db.CreateUserParams{
+		ID:                  uid.String(),
 		AllowEditing:        allowEditing,
 		GoogleOauthUserID:   "test-user-001",
 		GoogleOauthUserName: "Test User",
@@ -166,8 +172,13 @@ func TestCreateAndListPlayer(t *testing.T) {
 	token := createTestUser(t, pool, true /* allow_editing */)
 	router := setupRouter(pool)
 
-	// POST /players
-	req := httptest.NewRequest(http.MethodPost, "/players", strings.NewReader(`{"name":"Alice"}`))
+	// POST /players — include client-generated ULID (UUIDv7) as the id/idempotency key.
+	uid, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate player id: %v", err)
+	}
+	body := `{"id":"` + uid.String() + `","name":"Alice"}`
+	req := httptest.NewRequest(http.MethodPost, "/players", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()

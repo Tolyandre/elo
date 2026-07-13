@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
 	strictgin "github.com/oapi-codegen/runtime/strictmiddleware/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
@@ -362,15 +361,15 @@ type Club struct {
 	Id      string  `json:"id"`
 	Name    string  `json:"name"`
 
-	// Players List of player IDs (integers)
-	Players []int `json:"players"`
+	// Players List of player IDs
+	Players []string `json:"players"`
 }
 
 // Correction defines model for Correction.
 type Correction struct {
 	Date       time.Time `json:"date"`
 	Diff       float64   `json:"diff"`
-	Id         int       `json:"id"`
+	Id         string    `json:"id"`
 	PlayerId   string    `json:"player_id"`
 	PlayerName string    `json:"player_name"`
 }
@@ -462,7 +461,7 @@ type GameListItem struct {
 // GameMatch defines model for GameMatch.
 type GameMatch struct {
 	Date    *time.Time        `json:"date,omitempty"`
-	Id      int               `json:"id"`
+	Id      string            `json:"id"`
 	Players []GameMatchPlayer `json:"players"`
 
 	// Tournaments Tournaments this match belongs to
@@ -589,7 +588,7 @@ type Match struct {
 	GameId     string    `json:"game_id"`
 	GameName   string    `json:"game_name"`
 	HasMarkets bool      `json:"has_markets"`
-	Id         int       `json:"id"`
+	Id         string    `json:"id"`
 
 	// Score Map of player_id (string) to player score data
 	Score map[string]MatchPlayer `json:"score"`
@@ -734,11 +733,11 @@ type SkullKingRoundEntry struct {
 
 // SkullKingTableSummary defines model for SkullKingTableSummary.
 type SkullKingTableSummary struct {
-	ConnectedPlayerIds []int              `json:"connected_player_ids"`
+	ConnectedPlayerIds []string           `json:"connected_player_ids"`
 	CreatedAt          time.Time          `json:"created_at"`
 	ExpiresAt          time.Time          `json:"expires_at"`
 	GameState          SkullKingGameState `json:"game_state"`
-	HostUserId         int                `json:"host_user_id"`
+	HostUserId         string             `json:"host_user_id"`
 	Id                 string             `json:"id"`
 }
 
@@ -748,18 +747,21 @@ type Tournament struct {
 	Id      string    `json:"id"`
 	Name    string    `json:"name"`
 
-	// Players List of participant player IDs (integers)
-	Players   []int     `json:"players"`
+	// Players List of participant player IDs
+	Players   []string  `json:"players"`
 	StartDate time.Time `json:"start_date"`
 }
 
 // TournamentInput defines model for TournamentInput.
 type TournamentInput struct {
 	EndDate time.Time `json:"end_date"`
-	Name    string    `json:"name"`
+
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id   ULID   `json:"id"`
+	Name string `json:"name"`
 
 	// PlayerIds Full desired set of participant player IDs
-	PlayerIds *[]int    `json:"player_ids,omitempty"`
+	PlayerIds *[]string `json:"player_ids,omitempty"`
 	StartDate time.Time `json:"start_date"`
 }
 
@@ -770,13 +772,16 @@ type TournamentStats struct {
 
 // TournamentStatsPlayer defines model for TournamentStatsPlayer.
 type TournamentStatsPlayer struct {
-	First        int `json:"first"`
-	Fourth       int `json:"fourth"`
-	MatchesCount int `json:"matches_count"`
-	PlayerId     int `json:"player_id"`
-	Second       int `json:"second"`
-	Third        int `json:"third"`
+	First        int    `json:"first"`
+	Fourth       int    `json:"fourth"`
+	MatchesCount int    `json:"matches_count"`
+	PlayerId     string `json:"player_id"`
+	Second       int    `json:"second"`
+	Third        int    `json:"third"`
 }
+
+// ULID Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+type ULID = string
 
 // User defines model for User.
 type User struct {
@@ -809,6 +814,9 @@ type WinStreakParams struct {
 type CreatePlayerCorrectionJSONBody struct {
 	Diff          float32                                     `json:"diff"`
 	Discriminator CreatePlayerCorrectionJSONBodyDiscriminator `json:"discriminator"`
+
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id ULID `json:"id"`
 }
 
 // CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
@@ -836,6 +844,8 @@ type AuthOAuth2CallbackParams struct {
 
 // CreateClubJSONBody defines parameters for CreateClub.
 type CreateClubJSONBody struct {
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id   ULID   `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -847,7 +857,7 @@ type PatchClubJSONBody struct {
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.
 type AddClubMemberJSONBody struct {
-	PlayerId int `json:"player_id"`
+	PlayerId string `json:"player_id"`
 }
 
 // ListCorrectionsParams defines parameters for ListCorrections.
@@ -867,9 +877,9 @@ type ListCorrectionsParams struct {
 
 // CreateGameJSONBody defines parameters for CreateGame.
 type CreateGameJSONBody struct {
-	// IdempotencyKey Optional idempotency key generated by the client. A repeated request with the same key returns the already-created game instead of creating a duplicate.
-	IdempotencyKey *openapi_types.UUID `json:"idempotency_key,omitempty"`
-	Name           string              `json:"name"`
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id   ULID   `json:"id"`
+	Name string `json:"name"`
 }
 
 // PatchGameJSONBody defines parameters for PatchGame.
@@ -879,8 +889,11 @@ type PatchGameJSONBody struct {
 
 // CreateMarketJSONBody defines parameters for CreateMarket.
 type CreateMarketJSONBody struct {
-	ClosesAt          time.Time                      `json:"closes_at"`
-	GameIds           *[]string                      `json:"game_ids,omitempty"`
+	ClosesAt time.Time `json:"closes_at"`
+	GameIds  *[]string `json:"game_ids,omitempty"`
+
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id                ULID                           `json:"id"`
 	MarketType        CreateMarketJSONBodyMarketType `json:"market_type"`
 	MaxLosses         *int                           `json:"max_losses,omitempty"`
 	RequiredPlayerIds *[]string                      `json:"required_player_ids,omitempty"`
@@ -905,7 +918,10 @@ type PatchMarketJSONBodyStatus string
 
 // PlaceBetJSONBody defines parameters for PlaceBet.
 type PlaceBetJSONBody struct {
-	Amount  float64                 `json:"amount"`
+	Amount float64 `json:"amount"`
+
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id      ULID                    `json:"id"`
 	Outcome PlaceBetJSONBodyOutcome `json:"outcome"`
 }
 
@@ -936,8 +952,8 @@ type AddMatchJSONBody struct {
 	Date   *time.Time `json:"date,omitempty"`
 	GameId string     `json:"game_id"`
 
-	// IdempotencyKey Optional idempotency key generated by the client. A repeated request with the same key returns the already-created match instead of creating a duplicate.
-	IdempotencyKey *openapi_types.UUID `json:"idempotency_key,omitempty"`
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id ULID `json:"id"`
 
 	// Score Map of player_id (string) to numeric score
 	Score map[string]float64 `json:"score"`
@@ -960,9 +976,9 @@ type UpdateMatchJSONBody struct {
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
 type CreatePlayerJSONBody struct {
-	// IdempotencyKey Optional idempotency key generated by the client. A repeated request with the same key returns the already-created player instead of creating a duplicate.
-	IdempotencyKey *openapi_types.UUID `json:"idempotency_key,omitempty"`
-	Name           string              `json:"name"`
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id   ULID   `json:"id"`
+	Name string `json:"name"`
 }
 
 // PatchPlayerJSONBody defines parameters for PatchPlayer.
@@ -994,6 +1010,9 @@ type ParseSkullKingCardImageJSONBody struct {
 // CreateSkullKingTableJSONBody defines parameters for CreateSkullKingTable.
 type CreateSkullKingTableJSONBody struct {
 	GameState SkullKingGameState `json:"game_state"`
+
+	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	Id ULID `json:"id"`
 }
 
 // SubmitSkullKingBidJSONBody defines parameters for SubmitSkullKingBid.
@@ -4024,7 +4043,7 @@ type AddMatchResponseObject interface {
 
 type AddMatch200JSONResponse struct {
 	Data struct {
-		Id int `json:"id"`
+		Id string `json:"id"`
 	} `json:"data"`
 	Status string `json:"status"`
 }

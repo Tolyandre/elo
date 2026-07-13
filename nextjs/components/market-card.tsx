@@ -65,7 +65,7 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
                 return (
                     <div key={d.player_id} className="flex justify-between text-xs gap-2">
                         <span className="text-muted-foreground inline-flex items-center gap-1">
-                            <ClubIcons playerId={String(d.player_id)} />
+                            <ClubIcons playerId={d.player_id} />
                             {d.player_name}
                         </span>
                         <span className="flex gap-2 shrink-0">

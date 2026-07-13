@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	db "github.com/tolyandre/elo-web-service/pkg/db"
 )
@@ -56,9 +54,9 @@ type SkullKingEntry struct {
 // SkullKingTableSummary is the public representation sent to clients.
 type SkullKingTableSummary struct {
 	ID                 string             `json:"id"`
-	HostUserID         int32              `json:"host_user_id"`
+	HostUserID         string             `json:"host_user_id"`
 	GameState          SkullKingGameState `json:"game_state"`
-	ConnectedPlayerIDs []int32            `json:"connected_player_ids"`
+	ConnectedPlayerIDs []string           `json:"connected_player_ids"`
 	CreatedAt          time.Time          `json:"created_at"`
 	ExpiresAt          time.Time          `json:"expires_at"`
 }
@@ -73,13 +71,13 @@ type sseEvent struct {
 
 type ISkullKingTableService interface {
 	ListTables(ctx context.Context) ([]SkullKingTableSummary, error)
-	CreateTable(ctx context.Context, hostUserID int32, initialState json.RawMessage) (SkullKingTableSummary, error)
+	CreateTable(ctx context.Context, id string, hostUserID string, initialState json.RawMessage) (SkullKingTableSummary, error)
 	GetTable(ctx context.Context, tableID string) (SkullKingTableSummary, error)
-	UpdateTableState(ctx context.Context, tableID string, hostUserID int32, newState json.RawMessage) (SkullKingTableSummary, error)
-	JoinTable(ctx context.Context, tableID string, playerID int32) (SkullKingTableSummary, error)
-	SubmitBid(ctx context.Context, tableID string, playerID int32, bid int) (SkullKingTableSummary, error)
-	SubmitResult(ctx context.Context, tableID string, playerID int32, actual int, bonus int) (SkullKingTableSummary, error)
-	DeleteTable(ctx context.Context, tableID string, hostUserID int32) error
+	UpdateTableState(ctx context.Context, tableID string, hostUserID string, newState json.RawMessage) (SkullKingTableSummary, error)
+	JoinTable(ctx context.Context, tableID string, playerID string) (SkullKingTableSummary, error)
+	SubmitBid(ctx context.Context, tableID string, playerID string, bid int) (SkullKingTableSummary, error)
+	SubmitResult(ctx context.Context, tableID string, playerID string, actual int, bonus int) (SkullKingTableSummary, error)
+	DeleteTable(ctx context.Context, tableID string, hostUserID string) error
 	DeleteExpiredTables(ctx context.Context) error
 	ScheduleNextCleanup(ctx context.Context)
 }
@@ -104,19 +102,11 @@ func NewSkullKingTableService(pool *pgxpool.Pool, hub *SkullKingHub) ISkullKingT
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-func parseUUID(s string) (pgtype.UUID, error) {
-	u, err := uuid.Parse(s)
-	if err != nil {
-		return pgtype.UUID{}, fmt.Errorf("invalid table id: %w", err)
+func parseID(s string) (string, error) {
+	if _, err := uuid.Parse(s); err != nil {
+		return "", fmt.Errorf("invalid table id: %w", err)
 	}
-	return pgtype.UUID{Bytes: u, Valid: true}, nil
-}
-
-func uuidToString(u pgtype.UUID) string {
-	if !u.Valid {
-		return ""
-	}
-	return uuid.UUID(u.Bytes).String()
+	return s, nil
 }
 
 func toTableSummary(row db.SkullKingTable) (SkullKingTableSummary, error) {
@@ -125,7 +115,7 @@ func toTableSummary(row db.SkullKingTable) (SkullKingTableSummary, error) {
 		return SkullKingTableSummary{}, fmt.Errorf("corrupt game state: %w", err)
 	}
 	return SkullKingTableSummary{
-		ID:                 uuidToString(row.ID),
+		ID:                 row.ID,
 		HostUserID:         row.HostUserID,
 		GameState:          gs,
 		ConnectedPlayerIDs: row.ConnectedPlayerIds,
@@ -154,8 +144,8 @@ func (s *SkullKingTableService) broadcastLobby() {
 
 // findPlayerIndex returns the index of the player with the given app player ID
 // (stored as a string in GameState.Players[].ID), or -1 if not found.
-func findPlayerIndex(players []SkullKingPlayer, playerID int32) int {
-	target := strconv.Itoa(int(playerID))
+func findPlayerIndex(players []SkullKingPlayer, playerID string) int {
+	target := playerID
 	for i, p := range players {
 		if p.ID == target {
 			return i
@@ -182,8 +172,9 @@ func (s *SkullKingTableService) ListTables(ctx context.Context) ([]SkullKingTabl
 	return result, nil
 }
 
-func (s *SkullKingTableService) CreateTable(ctx context.Context, hostUserID int32, initialState json.RawMessage) (SkullKingTableSummary, error) {
+func (s *SkullKingTableService) CreateTable(ctx context.Context, id string, hostUserID string, initialState json.RawMessage) (SkullKingTableSummary, error) {
 	row, err := s.Queries.CreateSkullKingTable(ctx, db.CreateSkullKingTableParams{
+		ID:         id,
 		HostUserID: hostUserID,
 		GameState:  []byte(initialState),
 	})
@@ -201,7 +192,7 @@ func (s *SkullKingTableService) CreateTable(ctx context.Context, hostUserID int3
 }
 
 func (s *SkullKingTableService) GetTable(ctx context.Context, tableID string) (SkullKingTableSummary, error) {
-	pgID, err := parseUUID(tableID)
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return SkullKingTableSummary{}, ErrTableNotFound
 	}
@@ -215,8 +206,8 @@ func (s *SkullKingTableService) GetTable(ctx context.Context, tableID string) (S
 	return toTableSummary(row)
 }
 
-func (s *SkullKingTableService) UpdateTableState(ctx context.Context, tableID string, hostUserID int32, newState json.RawMessage) (SkullKingTableSummary, error) {
-	pgID, err := parseUUID(tableID)
+func (s *SkullKingTableService) UpdateTableState(ctx context.Context, tableID string, hostUserID string, newState json.RawMessage) (SkullKingTableSummary, error) {
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return SkullKingTableSummary{}, ErrTableNotFound
 	}
@@ -246,8 +237,8 @@ func (s *SkullKingTableService) UpdateTableState(ctx context.Context, tableID st
 	return summary, nil
 }
 
-func (s *SkullKingTableService) JoinTable(ctx context.Context, tableID string, playerID int32) (SkullKingTableSummary, error) {
-	pgID, err := parseUUID(tableID)
+func (s *SkullKingTableService) JoinTable(ctx context.Context, tableID string, playerID string) (SkullKingTableSummary, error) {
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return SkullKingTableSummary{}, ErrTableNotFound
 	}
@@ -282,8 +273,8 @@ func (s *SkullKingTableService) JoinTable(ctx context.Context, tableID string, p
 
 // ─── Bid / Result submission ──────────────────────────────────────────────────
 
-func (s *SkullKingTableService) SubmitBid(ctx context.Context, tableID string, playerID int32, bid int) (SkullKingTableSummary, error) {
-	pgID, err := parseUUID(tableID)
+func (s *SkullKingTableService) SubmitBid(ctx context.Context, tableID string, playerID string, bid int) (SkullKingTableSummary, error) {
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return SkullKingTableSummary{}, ErrTableNotFound
 	}
@@ -364,8 +355,8 @@ func (s *SkullKingTableService) SubmitBid(ctx context.Context, tableID string, p
 	return summary, nil
 }
 
-func (s *SkullKingTableService) SubmitResult(ctx context.Context, tableID string, playerID int32, actual int, bonus int) (SkullKingTableSummary, error) {
-	pgID, err := parseUUID(tableID)
+func (s *SkullKingTableService) SubmitResult(ctx context.Context, tableID string, playerID string, actual int, bonus int) (SkullKingTableSummary, error) {
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return SkullKingTableSummary{}, ErrTableNotFound
 	}
@@ -448,8 +439,8 @@ func (s *SkullKingTableService) SubmitResult(ctx context.Context, tableID string
 	return summary, nil
 }
 
-func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string, hostUserID int32) error {
-	pgID, err := parseUUID(tableID)
+func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string, hostUserID string) error {
+	pgID, err := parseID(tableID)
 	if err != nil {
 		return ErrTableNotFound
 	}

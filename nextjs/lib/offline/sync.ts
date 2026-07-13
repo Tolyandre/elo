@@ -3,8 +3,6 @@ import {
     PendingGame,
     PendingMatch,
     PendingPlayer,
-    idempotencyKeyOf,
-    isOfflineId,
 } from "./types";
 
 // API calls return a discriminated result for HTTP errors and THROW only on
@@ -13,15 +11,15 @@ import {
 export type SyncCallResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
 
 export type SyncApi = {
-    createGame(body: { name: string; idempotency_key: string }): Promise<SyncCallResult<{ id: string }>>;
-    createPlayer(body: { name: string; idempotency_key: string }): Promise<SyncCallResult<{ id: string }>>;
+    createGame(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
+    createPlayer(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
     addMatch(body: {
+        id: string;
         game_id: string;
         score: Record<string, number>;
         date: string;
-        idempotency_key: string;
         tournament_ids: string[];
-    }): Promise<SyncCallResult<{ id: number }>>;
+    }): Promise<SyncCallResult<{ id: string }>>;
 };
 
 export type SyncOutcome = {
@@ -33,28 +31,6 @@ export type SyncOutcome = {
     /** Number of items successfully written to the server. */
     syncedCount: number;
 };
-
-/** Replaces a synced entity's clientId with its server id in all pending matches. */
-function rewriteMatchRefs(matches: PendingMatch[], clientId: string, serverId: string): PendingMatch[] {
-    return matches.map((m) => {
-        let changed = false;
-        let gameId = m.gameId;
-        if (gameId === clientId) {
-            gameId = serverId;
-            changed = true;
-        }
-        const score: Record<string, number> = {};
-        for (const [pid, points] of Object.entries(m.score)) {
-            if (pid === clientId) {
-                score[serverId] = points;
-                changed = true;
-            } else {
-                score[pid] = points;
-            }
-        }
-        return changed ? { ...m, gameId, score } : m;
-    });
-}
 
 function byCreatedAt<T extends { createdAt: string }>(a: T, b: T): number {
     return a.createdAt.localeCompare(b.createdAt);
@@ -68,8 +44,8 @@ function clampToNow(iso: string, now: Date): string {
 
 /**
  * Pushes pending games, then players, then matches (each in creation order) to the server.
- * Match payloads reference server ids: synced games/players rewrite their clientId in the
- * remaining matches immediately, so partial runs keep the store consistent.
+ * Pending games/players already carry their final UUIDv7 id, which is sent as the `id`
+ * field of each create request — no clientId rewriting is needed.
  *
  * `persist` is called after every state change so progress survives interruption.
  */
@@ -108,7 +84,7 @@ export async function syncOffline(
             markSyncing(update, store, kind, item.clientId);
             let result: SyncCallResult<{ id: string }>;
             try {
-                const body = { name: item.name, idempotency_key: idempotencyKeyOf(item.clientId) };
+                const body = { id: item.clientId, name: item.name };
                 result = kind === "games" ? await api.createGame(body) : await api.createPlayer(body);
             } catch {
                 return finish(false, true);
@@ -118,7 +94,6 @@ export async function syncOffline(
                 update({
                     ...store,
                     [kind]: store[kind].filter((g) => g.clientId !== item.clientId),
-                    matches: rewriteMatchRefs(store.matches, item.clientId, result.data.id),
                 });
             } else if (result.status === 401) {
                 return finish(true, false);
@@ -130,20 +105,14 @@ export async function syncOffline(
 
     // 3. Matches.
     for (const match of [...store.matches]) {
-        const unresolved = [match.gameId, ...Object.keys(match.score)].filter(isOfflineId);
-        if (unresolved.length > 0) {
-            markError(update, store, "matches", match.clientId, "зависит от несинхронизированной записи");
-            continue;
-        }
-
         markSyncing(update, store, "matches", match.clientId);
-        let result: SyncCallResult<{ id: number }>;
+        let result: SyncCallResult<{ id: string }>;
         try {
             result = await api.addMatch({
+                id: match.clientId,
                 game_id: match.gameId,
                 score: match.score,
                 date: clampToNow(match.createdAt, now()),
-                idempotency_key: idempotencyKeyOf(match.clientId),
                 tournament_ids: match.tournamentIds ?? [],
             });
         } catch {

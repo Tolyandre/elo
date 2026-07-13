@@ -3,13 +3,11 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
 import { useMatches } from "../MatchesContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, getMatchByIdPromise } from "../../api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
-import { isOfflineId } from "@/lib/offline/types";
 import { MatchForm, MatchFormAuthAlerts } from "../MatchForm";
 
 export default function MatchEditPage() {
@@ -32,24 +30,16 @@ function MatchEditPageWrapped() {
         if (!id) router.replace("/matches/new");
     }, [id, router]);
 
-    const isOffline = !!id && isOfflineId(id);
-    const isSaved = !!id && !isOfflineId(id);
-
     // Offline (pending) target — wait for the store to hydrate before deciding.
-    const editPending = isOffline && ready ? pendingMatches.find((m) => m.clientId === id) : undefined;
+    const editPending = ready ? pendingMatches.find((m) => m.clientId === id) : undefined;
+    const isSaved = !!id && ready && !editPending;
 
-    // If the pending match we're editing gets synced (removed) mid-edit, leave the
-    // now-orphaned form instead of silently falling back to a blank "new match".
-    const editPendingVanished = isOffline && ready && !editPending;
-    useEffect(() => {
-        if (editPendingVanished) {
-            toast("Партия синхронизирована");
-            router.replace("/matches");
-        }
-    }, [editPendingVanished, router]);
+    // If the pending match we're editing gets synced (removed) mid-edit, the same
+    // UUID now exists on the server, so fall through to the saved-match path below
+    // rather than dead-ending the form.
 
     // Saved target — context first, then API (same pattern as the detail page).
-    const matchFromContext = isSaved ? matches.find((m) => m.id.toString() === id) ?? null : null;
+    const matchFromContext = isSaved ? matches.find((m) => m.id === id) ?? null : null;
     const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
     const [fetchLoading, setFetchLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -58,7 +48,7 @@ function MatchEditPageWrapped() {
         if (!isSaved || matchFromContext || fetchedRef.current || matchesLoading) return;
         fetchedRef.current = true;
         setFetchLoading(true);
-        getMatchByIdPromise(Number(id))
+        getMatchByIdPromise(id)
             .then(setMatchFromApi)
             .catch((e) => setFetchError(e.message ?? "Неизвестная ошибка"))
             .finally(() => setFetchLoading(false));
@@ -84,7 +74,7 @@ function MatchEditPageWrapped() {
                     <AlertCircleIcon />
                     <AlertDescription>Ошибка: {fetchError}</AlertDescription>
                 </Alert>
-            ) : (isSaved && !editSaved && (fetchLoading || matchesLoading)) || (isOffline && !ready) || editPendingVanished ? (
+            ) : (isSaved && !editSaved && (fetchLoading || matchesLoading)) || (!ready && !!id) ? (
                 <p className="text-center">Загрузка...</p>
             ) : (
                 // When ?id= points to a pending match that no longer exists (already

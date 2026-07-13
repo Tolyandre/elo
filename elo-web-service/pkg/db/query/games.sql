@@ -1,6 +1,6 @@
 -- name: AddGamesIfNotExists :many
-INSERT INTO games (name)
-SELECT unnest($1::text[]) AS name
+INSERT INTO games (id, name)
+SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name
 ON CONFLICT (name) DO NOTHING
 RETURNING id, name;
 
@@ -26,10 +26,9 @@ WHERE id = $1
 RETURNING *;
 
 -- name: AddGame :one
-INSERT INTO games (name, idempotency_key)
+INSERT INTO games (id, name)
 VALUES ($1, $2)
-ON CONFLICT (idempotency_key)
-DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
 RETURNING *;
 
 -- name: GetGameByName :one

@@ -19,8 +19,8 @@ ON CONFLICT DO NOTHING
 `
 
 type AddMatchTournamentParams struct {
-	MatchID      int32 `json:"match_id"`
-	TournamentID int32 `json:"tournament_id"`
+	MatchID      string `json:"match_id"`
+	TournamentID string `json:"tournament_id"`
 }
 
 func (q *Queries) AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error {
@@ -35,8 +35,8 @@ ON CONFLICT DO NOTHING
 `
 
 type AddTournamentMemberParams struct {
-	TournamentID int32 `json:"tournament_id"`
-	PlayerID     int32 `json:"player_id"`
+	TournamentID string `json:"tournament_id"`
+	PlayerID     string `json:"player_id"`
 }
 
 func (q *Queries) AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error {
@@ -50,7 +50,7 @@ FROM tournament_player_membership
 WHERE tournament_id = $1
 `
 
-func (q *Queries) CountTournamentMembers(ctx context.Context, tournamentID int32) (int32, error) {
+func (q *Queries) CountTournamentMembers(ctx context.Context, tournamentID string) (int32, error) {
 	row := q.db.QueryRow(ctx, countTournamentMembers, tournamentID)
 	var member_count int32
 	err := row.Scan(&member_count)
@@ -58,19 +58,25 @@ func (q *Queries) CountTournamentMembers(ctx context.Context, tournamentID int32
 }
 
 const createTournament = `-- name: CreateTournament :one
-INSERT INTO tournaments (name, start_date, end_date)
-VALUES ($1, $2, $3)
+INSERT INTO tournaments (id, name, start_date, end_date)
+VALUES ($1, $2, $3, $4)
 RETURNING id, name, start_date, end_date
 `
 
 type CreateTournamentParams struct {
+	ID        string             `json:"id"`
 	Name      string             `json:"name"`
 	StartDate pgtype.Timestamptz `json:"start_date"`
 	EndDate   pgtype.Timestamptz `json:"end_date"`
 }
 
 func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error) {
-	row := q.db.QueryRow(ctx, createTournament, arg.Name, arg.StartDate, arg.EndDate)
+	row := q.db.QueryRow(ctx, createTournament,
+		arg.ID,
+		arg.Name,
+		arg.StartDate,
+		arg.EndDate,
+	)
 	var i Tournament
 	err := row.Scan(
 		&i.ID,
@@ -86,7 +92,7 @@ DELETE FROM match_tournament
 WHERE match_id = $1
 `
 
-func (q *Queries) DeleteMatchTournamentsByMatch(ctx context.Context, matchID int32) error {
+func (q *Queries) DeleteMatchTournamentsByMatch(ctx context.Context, matchID string) error {
 	_, err := q.db.Exec(ctx, deleteMatchTournamentsByMatch, matchID)
 	return err
 }
@@ -97,7 +103,7 @@ WHERE id = $1
 RETURNING id, name, start_date, end_date
 `
 
-func (q *Queries) DeleteTournament(ctx context.Context, id int32) (Tournament, error) {
+func (q *Queries) DeleteTournament(ctx context.Context, id string) (Tournament, error) {
 	row := q.db.QueryRow(ctx, deleteTournament, id)
 	var i Tournament
 	err := row.Scan(
@@ -122,14 +128,14 @@ WHERE t.id = $1
 `
 
 type GetTournamentRow struct {
-	TournamentID   int32              `json:"tournament_id"`
+	TournamentID   string             `json:"tournament_id"`
 	TournamentName string             `json:"tournament_name"`
 	StartDate      pgtype.Timestamptz `json:"start_date"`
 	EndDate        pgtype.Timestamptz `json:"end_date"`
-	PlayerID       pgtype.Int4        `json:"player_id"`
+	PlayerID       *string            `json:"player_id"`
 }
 
-func (q *Queries) GetTournament(ctx context.Context, id int32) ([]GetTournamentRow, error) {
+func (q *Queries) GetTournament(ctx context.Context, id string) ([]GetTournamentRow, error) {
 	rows, err := q.db.Query(ctx, getTournament, id)
 	if err != nil {
 		return nil, err
@@ -172,7 +178,7 @@ type GetTournamentMatchDateRangeRow struct {
 
 // HAVING guards the aggregate: with no matches it returns zero rows (ErrNoRows)
 // instead of a (NULL, NULL) row that can't scan into the non-nullable time.Time.
-func (q *Queries) GetTournamentMatchDateRange(ctx context.Context, tournamentID int32) (GetTournamentMatchDateRangeRow, error) {
+func (q *Queries) GetTournamentMatchDateRange(ctx context.Context, tournamentID string) (GetTournamentMatchDateRangeRow, error) {
 	row := q.db.QueryRow(ctx, getTournamentMatchDateRange, tournamentID)
 	var i GetTournamentMatchDateRangeRow
 	err := row.Scan(&i.MinDate, &i.MaxDate)
@@ -216,7 +222,7 @@ ORDER BY first_count DESC, second_count DESC, third_count DESC, fourth_count DES
 `
 
 type GetTournamentStatsRow struct {
-	PlayerID     int32  `json:"player_id"`
+	PlayerID     string `json:"player_id"`
 	PlayerName   string `json:"player_name"`
 	MatchesCount int32  `json:"matches_count"`
 	FirstCount   int32  `json:"first_count"`
@@ -225,7 +231,7 @@ type GetTournamentStatsRow struct {
 	FourthCount  int32  `json:"fourth_count"`
 }
 
-func (q *Queries) GetTournamentStats(ctx context.Context, tournamentID int32) ([]GetTournamentStatsRow, error) {
+func (q *Queries) GetTournamentStats(ctx context.Context, tournamentID string) ([]GetTournamentStatsRow, error) {
 	rows, err := q.db.Query(ctx, getTournamentStats, tournamentID)
 	if err != nil {
 		return nil, err
@@ -259,7 +265,7 @@ FROM tournaments t
 WHERE t.start_date <= $1::timestamptz
   AND $1::timestamptz <= t.end_date
   AND NOT EXISTS (
-      SELECT 1 FROM unnest($2::int4[]) AS pid
+      SELECT 1 FROM unnest($2::uuid[]) AS pid
       WHERE NOT EXISTS (
           SELECT 1 FROM tournament_player_membership tpm
           WHERE tpm.tournament_id = t.id AND tpm.player_id = pid
@@ -270,19 +276,19 @@ ORDER BY t.id
 
 type ListActiveTournamentsForPlayersParams struct {
 	At        time.Time `json:"at"`
-	PlayerIds []int32   `json:"player_ids"`
+	PlayerIds []string  `json:"player_ids"`
 }
 
 // Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
-func (q *Queries) ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]int32, error) {
+func (q *Queries) ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, listActiveTournamentsForPlayers, arg.At, arg.PlayerIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int32{}
+	items := []string{}
 	for rows.Next() {
-		var id int32
+		var id string
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -307,11 +313,11 @@ ORDER BY t.start_date DESC, t.id DESC
 `
 
 type ListTournamentsRow struct {
-	TournamentID   int32              `json:"tournament_id"`
+	TournamentID   string             `json:"tournament_id"`
 	TournamentName string             `json:"tournament_name"`
 	StartDate      pgtype.Timestamptz `json:"start_date"`
 	EndDate        pgtype.Timestamptz `json:"end_date"`
-	PlayerID       pgtype.Int4        `json:"player_id"`
+	PlayerID       *string            `json:"player_id"`
 }
 
 func (q *Queries) ListTournaments(ctx context.Context) ([]ListTournamentsRow, error) {
@@ -347,17 +353,17 @@ SELECT
     t.name AS tournament_name
 FROM match_tournament mt
 JOIN tournaments t ON t.id = mt.tournament_id
-WHERE mt.match_id = ANY($1::int4[])
+WHERE mt.match_id = ANY($1::uuid[])
 ORDER BY t.name
 `
 
 type ListTournamentsByMatchIDsRow struct {
-	MatchID        int32  `json:"match_id"`
-	TournamentID   int32  `json:"tournament_id"`
+	MatchID        string `json:"match_id"`
+	TournamentID   string `json:"tournament_id"`
 	TournamentName string `json:"tournament_name"`
 }
 
-func (q *Queries) ListTournamentsByMatchIDs(ctx context.Context, matchIds []int32) ([]ListTournamentsByMatchIDsRow, error) {
+func (q *Queries) ListTournamentsByMatchIDs(ctx context.Context, matchIds []string) ([]ListTournamentsByMatchIDsRow, error) {
 	rows, err := q.db.Query(ctx, listTournamentsByMatchIDs, matchIds)
 	if err != nil {
 		return nil, err
@@ -387,8 +393,8 @@ SELECT EXISTS (
 `
 
 type PlayerHasMatchInTournamentParams struct {
-	TournamentID int32 `json:"tournament_id"`
-	PlayerID     int32 `json:"player_id"`
+	TournamentID string `json:"tournament_id"`
+	PlayerID     string `json:"player_id"`
 }
 
 func (q *Queries) PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error) {
@@ -404,8 +410,8 @@ WHERE tournament_id = $1 AND player_id = $2
 `
 
 type RemoveTournamentMemberParams struct {
-	TournamentID int32 `json:"tournament_id"`
-	PlayerID     int32 `json:"player_id"`
+	TournamentID string `json:"tournament_id"`
+	PlayerID     string `json:"player_id"`
 }
 
 func (q *Queries) RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error {
@@ -421,7 +427,7 @@ RETURNING id, name, start_date, end_date
 `
 
 type UpdateTournamentParams struct {
-	ID        int32              `json:"id"`
+	ID        string             `json:"id"`
 	Name      string             `json:"name"`
 	StartDate pgtype.Timestamptz `json:"start_date"`
 	EndDate   pgtype.Timestamptz `json:"end_date"`

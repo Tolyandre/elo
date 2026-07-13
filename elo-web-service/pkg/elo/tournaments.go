@@ -12,15 +12,15 @@ import (
 
 type ITournamentService interface {
 	ListTournaments(ctx context.Context) ([]db.ListTournamentsRow, error)
-	GetTournament(ctx context.Context, id int32) ([]db.GetTournamentRow, error)
-	CreateTournament(ctx context.Context, name string, start, end time.Time, playerIDs []int32) (db.Tournament, error)
+	GetTournament(ctx context.Context, id string) ([]db.GetTournamentRow, error)
+	CreateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error)
 	// UpdateTournament replaces a tournament's name, dates and full member set in one
 	// transaction. It rejects narrowing the dates past already-played matches and
 	// removing a member who has played a match in the tournament.
-	UpdateTournament(ctx context.Context, id int32, name string, start, end time.Time, playerIDs []int32) (db.Tournament, error)
+	UpdateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error)
 	// DeleteTournament removes a tournament only when it has no members.
-	DeleteTournament(ctx context.Context, id int32) (db.Tournament, error)
-	GetStats(ctx context.Context, id int32) ([]db.GetTournamentStatsRow, error)
+	DeleteTournament(ctx context.Context, id string) (db.Tournament, error)
+	GetStats(ctx context.Context, id string) ([]db.GetTournamentStatsRow, error)
 }
 
 type TournamentService struct {
@@ -36,15 +36,15 @@ func (s *TournamentService) ListTournaments(ctx context.Context) ([]db.ListTourn
 	return s.Queries.ListTournaments(ctx)
 }
 
-func (s *TournamentService) GetTournament(ctx context.Context, id int32) ([]db.GetTournamentRow, error) {
+func (s *TournamentService) GetTournament(ctx context.Context, id string) ([]db.GetTournamentRow, error) {
 	return s.Queries.GetTournament(ctx, id)
 }
 
-func (s *TournamentService) GetStats(ctx context.Context, id int32) ([]db.GetTournamentStatsRow, error) {
+func (s *TournamentService) GetStats(ctx context.Context, id string) ([]db.GetTournamentStatsRow, error) {
 	return s.Queries.GetTournamentStats(ctx, id)
 }
 
-func (s *TournamentService) CreateTournament(ctx context.Context, name string, start, end time.Time, playerIDs []int32) (db.Tournament, error) {
+func (s *TournamentService) CreateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("unable to begin tx: %v", err)
@@ -53,6 +53,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, name string, s
 	q := s.Queries.WithTx(tx)
 
 	created, err := q.CreateTournament(ctx, db.CreateTournamentParams{
+		ID:        id,
 		Name:      name,
 		StartDate: pgtype.Timestamptz{Time: start, Valid: true},
 		EndDate:   pgtype.Timestamptz{Time: end, Valid: true},
@@ -62,7 +63,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, name string, s
 	}
 	for _, pid := range playerIDs {
 		if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: created.ID, PlayerID: pid}); err != nil {
-			return db.Tournament{}, fmt.Errorf("add member %d: %v", pid, err)
+			return db.Tournament{}, fmt.Errorf("add member %s: %v", pid, err)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -71,7 +72,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, name string, s
 	return created, nil
 }
 
-func (s *TournamentService) UpdateTournament(ctx context.Context, id int32, name string, start, end time.Time, playerIDs []int32) (db.Tournament, error) {
+func (s *TournamentService) UpdateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("unable to begin tx: %v", err)
@@ -95,18 +96,18 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id int32, name
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("get tournament: %v", err)
 	}
-	desired := make(map[int32]bool, len(playerIDs))
+	desired := make(map[string]bool, len(playerIDs))
 	for _, pid := range playerIDs {
 		desired[pid] = true
 	}
-	currentSet := make(map[int32]bool)
+	currentSet := make(map[string]bool)
 	for _, r := range current {
-		if !r.PlayerID.Valid {
+		if r.PlayerID == nil {
 			continue
 		}
-		currentSet[r.PlayerID.Int32] = true
-		if !desired[r.PlayerID.Int32] {
-			hasMatch, err := q.PlayerHasMatchInTournament(ctx, db.PlayerHasMatchInTournamentParams{TournamentID: id, PlayerID: r.PlayerID.Int32})
+		currentSet[*r.PlayerID] = true
+		if !desired[*r.PlayerID] {
+			hasMatch, err := q.PlayerHasMatchInTournament(ctx, db.PlayerHasMatchInTournamentParams{TournamentID: id, PlayerID: *r.PlayerID})
 			if err != nil {
 				return db.Tournament{}, fmt.Errorf("check player matches: %v", err)
 			}
@@ -131,14 +132,14 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id int32, name
 	for pid := range desired {
 		if !currentSet[pid] {
 			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
-				return db.Tournament{}, fmt.Errorf("add member %d: %v", pid, err)
+				return db.Tournament{}, fmt.Errorf("add member %s: %v", pid, err)
 			}
 		}
 	}
 	for pid := range currentSet {
 		if !desired[pid] {
 			if err := q.RemoveTournamentMember(ctx, db.RemoveTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
-				return db.Tournament{}, fmt.Errorf("remove member %d: %v", pid, err)
+				return db.Tournament{}, fmt.Errorf("remove member %s: %v", pid, err)
 			}
 		}
 	}
@@ -149,7 +150,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id int32, name
 	return updated, nil
 }
 
-func (s *TournamentService) DeleteTournament(ctx context.Context, id int32) (db.Tournament, error) {
+func (s *TournamentService) DeleteTournament(ctx context.Context, id string) (db.Tournament, error) {
 	count, err := s.Queries.CountTournamentMembers(ctx, id)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("count members: %v", err)

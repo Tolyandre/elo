@@ -31,10 +31,15 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 	}
 
 	var body struct {
+		Id        string          `json:"id"`
 		GameState json.RawMessage `json:"game_state"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	if body.Id == "" {
+		ErrorResponse(c, http.StatusBadRequest, "id is required")
 		return
 	}
 	if len(body.GameState) == 0 {
@@ -44,7 +49,7 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 
 	_ = playerID // host player_id is embedded in game_state; we use userID for ownership
 
-	table, err := a.SkullKingTableService.CreateTable(c.Request.Context(), userID, body.GameState)
+	table, err := a.SkullKingTableService.CreateTable(c.Request.Context(), body.Id, userID, body.GameState)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return

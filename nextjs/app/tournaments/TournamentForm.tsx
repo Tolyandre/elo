@@ -42,7 +42,7 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
     const [name, setName] = useState(existing?.name ?? "");
     const [startDate, setStartDate] = useState(existing ? toDatetimeLocal(existing.start_date) : "");
     const [endDate, setEndDate] = useState(existing ? toDatetimeLocal(existing.end_date) : "");
-    const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.players.map(String) : []);
+    const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.players : []);
     const [submitting, setSubmitting] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);
@@ -64,7 +64,7 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
                 name: name.trim(),
                 start_date: new Date(startDate).toISOString(),
                 end_date: new Date(endDate).toISOString(),
-                player_ids: playerIds.map(Number),
+                player_ids: playerIds,
             };
             if (existing) {
                 await updateTournamentPromise(existing.id, payload);

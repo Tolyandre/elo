@@ -8,8 +8,6 @@ package db
 import (
 	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const addSkullKingTablePlayer = `-- name: AddSkullKingTablePlayer :one
@@ -20,7 +18,7 @@ RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expire
 `
 
 type AddSkullKingTablePlayerParams struct {
-	ID          pgtype.UUID `json:"id"`
+	ID          string      `json:"id"`
 	ArrayAppend interface{} `json:"array_append"`
 }
 
@@ -39,18 +37,19 @@ func (q *Queries) AddSkullKingTablePlayer(ctx context.Context, arg AddSkullKingT
 }
 
 const createSkullKingTable = `-- name: CreateSkullKingTable :one
-INSERT INTO skull_king_tables (host_user_id, game_state)
-VALUES ($1, $2)
+INSERT INTO skull_king_tables (id, host_user_id, game_state)
+VALUES ($1, $2, $3)
 RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expires_at
 `
 
 type CreateSkullKingTableParams struct {
-	HostUserID int32  `json:"host_user_id"`
+	ID         string `json:"id"`
+	HostUserID string `json:"host_user_id"`
 	GameState  []byte `json:"game_state"`
 }
 
 func (q *Queries) CreateSkullKingTable(ctx context.Context, arg CreateSkullKingTableParams) (SkullKingTable, error) {
-	row := q.db.QueryRow(ctx, createSkullKingTable, arg.HostUserID, arg.GameState)
+	row := q.db.QueryRow(ctx, createSkullKingTable, arg.ID, arg.HostUserID, arg.GameState)
 	var i SkullKingTable
 	err := row.Scan(
 		&i.ID,
@@ -76,7 +75,7 @@ const deleteSkullKingTable = `-- name: DeleteSkullKingTable :exec
 DELETE FROM skull_king_tables WHERE id = $1
 `
 
-func (q *Queries) DeleteSkullKingTable(ctx context.Context, id pgtype.UUID) error {
+func (q *Queries) DeleteSkullKingTable(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, deleteSkullKingTable, id)
 	return err
 }
@@ -96,7 +95,7 @@ const getSkullKingTable = `-- name: GetSkullKingTable :one
 SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at FROM skull_king_tables WHERE id = $1
 `
 
-func (q *Queries) GetSkullKingTable(ctx context.Context, id pgtype.UUID) (SkullKingTable, error) {
+func (q *Queries) GetSkullKingTable(ctx context.Context, id string) (SkullKingTable, error) {
 	row := q.db.QueryRow(ctx, getSkullKingTable, id)
 	var i SkullKingTable
 	err := row.Scan(
@@ -114,7 +113,7 @@ const getSkullKingTableForUpdate = `-- name: GetSkullKingTableForUpdate :one
 SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at FROM skull_king_tables WHERE id = $1 FOR UPDATE
 `
 
-func (q *Queries) GetSkullKingTableForUpdate(ctx context.Context, id pgtype.UUID) (SkullKingTable, error) {
+func (q *Queries) GetSkullKingTableForUpdate(ctx context.Context, id string) (SkullKingTable, error) {
 	row := q.db.QueryRow(ctx, getSkullKingTableForUpdate, id)
 	var i SkullKingTable
 	err := row.Scan(
@@ -164,8 +163,8 @@ UPDATE skull_king_tables SET game_state = $2 WHERE id = $1 RETURNING id, host_us
 `
 
 type UpdateSkullKingTableStateParams struct {
-	ID        pgtype.UUID `json:"id"`
-	GameState []byte      `json:"game_state"`
+	ID        string `json:"id"`
+	GameState []byte `json:"game_state"`
 }
 
 func (q *Queries) UpdateSkullKingTableState(ctx context.Context, arg UpdateSkullKingTableStateParams) (SkullKingTable, error) {

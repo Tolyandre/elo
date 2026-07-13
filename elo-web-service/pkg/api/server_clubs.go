@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -20,9 +19,9 @@ func textPtr(t pgtype.Text) *string {
 // by GetClub. rows must be non-empty.
 func clubFromGetRows(rows []db.GetClubRow) Club {
 	c := Club{
-		Id:      strconv.FormatInt(int64(rows[0].ClubID), 10),
+		Id:      rows[0].ClubID,
 		Name:    rows[0].ClubName,
-		Players: []int{},
+		Players: []string{},
 	}
 	if rows[0].ClubGeologistName.Valid {
 		gn := rows[0].ClubGeologistName.String
@@ -30,8 +29,8 @@ func clubFromGetRows(rows []db.GetClubRow) Club {
 	}
 	c.IconSvg = textPtr(rows[0].ClubIconSvg)
 	for _, r := range rows {
-		if r.PlayerID.Valid {
-			c.Players = append(c.Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			c.Players = append(c.Players, *r.PlayerID)
 		}
 	}
 	return c
@@ -43,15 +42,15 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 		return nil, err
 	}
 
-	clubsMap := map[int32]*Club{}
-	order := []int32{}
+	clubsMap := map[string]*Club{}
+	order := []string{}
 
 	for _, r := range rows {
 		if _, ok := clubsMap[r.ClubID]; !ok {
 			c := Club{
-				Id:      strconv.FormatInt(int64(r.ClubID), 10),
+				Id:      r.ClubID,
 				Name:    r.ClubName,
-				Players: []int{},
+				Players: []string{},
 			}
 			if r.ClubGeologistName.Valid {
 				gn := r.ClubGeologistName.String
@@ -61,8 +60,8 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 			clubsMap[r.ClubID] = &c
 			order = append(order, r.ClubID)
 		}
-		if r.PlayerID.Valid {
-			clubsMap[r.ClubID].Players = append(clubsMap[r.ClubID].Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			clubsMap[r.ClubID].Players = append(clubsMap[r.ClubID].Players, *r.PlayerID)
 		}
 	}
 
@@ -75,12 +74,7 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 }
 
 func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return GetClub400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
-	}
-
-	rows, err := s.api.ClubService.GetClub(ctx, int32(idInt))
+	rows, err := s.api.ClubService.GetClub(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +91,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 		return CreateClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	club, err := s.api.ClubService.CreateClub(ctx, name)
+	club, err := s.api.ClubService.CreateClub(ctx, request.Body.Id, name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreateClub409JSONResponse{Status: "fail", Message: "club with this name already exists"}, nil
@@ -106,9 +100,9 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 	}
 
 	c := Club{
-		Id:      strconv.Itoa(int(club.ID)),
+		Id:      club.ID,
 		Name:    club.Name,
-		Players: []int{},
+		Players: []string{},
 	}
 	if club.GeologistName.Valid {
 		gn := club.GeologistName.String
@@ -120,10 +114,6 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 }
 
 func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return PatchClub400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
-	}
 	if request.Body == nil {
 		return PatchClub400JSONResponse{Status: "fail", Message: "request body is required"}, nil
 	}
@@ -152,7 +142,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateName {
-		if _, err := s.api.ClubService.UpdateClub(ctx, int32(idInt), *request.Body.Name); err != nil {
+		if _, err := s.api.ClubService.UpdateClub(ctx, request.Id, *request.Body.Name); err != nil {
 			if db.IsNoRows(err) {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
@@ -161,7 +151,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateIcon {
-		if _, err := s.api.ClubService.UpdateClubIcon(ctx, int32(idInt), iconArg); err != nil {
+		if _, err := s.api.ClubService.UpdateClubIcon(ctx, request.Id, iconArg); err != nil {
 			if db.IsNoRows(err) {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
@@ -169,7 +159,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		}
 	}
 
-	rows, err := s.api.ClubService.GetClub(ctx, int32(idInt))
+	rows, err := s.api.ClubService.GetClub(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -181,12 +171,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 }
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return DeleteClub400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
-	}
-
-	_, err = s.api.ClubService.DeleteClub(ctx, int32(idInt))
+	_, err := s.api.ClubService.DeleteClub(ctx, request.Id)
 	if db.IsNoRows(err) {
 		return DeleteClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 	}
@@ -201,17 +186,12 @@ func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequest
 }
 
 func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberRequestObject) (AddClubMemberResponseObject, error) {
-	clubID, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return AddClubMember400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
-	}
-
 	playerID := request.Body.PlayerId
-	if playerID == 0 {
+	if playerID == "" {
 		return AddClubMember400JSONResponse{Status: "fail", Message: "player_id is required"}, nil
 	}
 
-	err = s.api.ClubService.AddMember(ctx, int32(clubID), int32(playerID))
+	err := s.api.ClubService.AddMember(ctx, request.Id, playerID)
 	if err != nil {
 		if db.IsForeignKeyViolation(err) {
 			return AddClubMember400JSONResponse{Status: "fail", Message: "club or player not found"}, nil
@@ -223,17 +203,7 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 }
 
 func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error) {
-	clubID, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return RemoveClubMember400JSONResponse{Status: "fail", Message: "invalid club id"}, nil
-	}
-
-	playerID, err := strconv.Atoi(request.PlayerId)
-	if err != nil {
-		return RemoveClubMember400JSONResponse{Status: "fail", Message: "invalid player id"}, nil
-	}
-
-	err = s.api.ClubService.RemoveMember(ctx, int32(clubID), int32(playerID))
+	err := s.api.ClubService.RemoveMember(ctx, request.Id, request.PlayerId)
 	if err != nil {
 		return nil, err
 	}

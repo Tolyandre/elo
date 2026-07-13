@@ -1,9 +1,11 @@
 // Pending entities created while offline, stored in localStorage until synced.
 
+import { uuidv7 } from "uuidv7";
+
 export type SyncStatus = "pending" | "syncing" | "error";
 
 type PendingBase = {
-    /** Local id "offline:<uuid>"; the uuid part is sent as idempotency_key on sync. */
+    /** Final UUIDv7 id; used both as the local id and the server `id` on sync. */
     clientId: string;
     /** ISO time of offline creation; becomes the match `date` on sync. */
     createdAt: string;
@@ -29,19 +31,8 @@ export type OfflineStore = {
     matches: PendingMatch[];
 };
 
-export const OFFLINE_ID_PREFIX = "offline:";
-
-export function isOfflineId(id: string): boolean {
-    return id.startsWith(OFFLINE_ID_PREFIX);
-}
-
 export function newOfflineId(): string {
-    return OFFLINE_ID_PREFIX + crypto.randomUUID();
-}
-
-/** The server-side idempotency key is the uuid part of the local id. */
-export function idempotencyKeyOf(clientId: string): string {
-    return clientId.slice(OFFLINE_ID_PREFIX.length);
+    return uuidv7();
 }
 
 export function emptyOfflineStore(): OfflineStore {

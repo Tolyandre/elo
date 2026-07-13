@@ -3,8 +3,8 @@ import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "../lib/pl
 import type { Club, Match, Player, Tournament } from "../app/api";
 
 const player = (id: string, name: string) => ({ id, name, geologist_name: null }) as Pick<Player, "id" | "name" | "geologist_name">;
-const club = (id: string, name: string, players: number[]) => ({ id, name, players, geologist_name: null }) as Club;
-const tournament = (name: string, players: number[]) => ({ name, players }) as Pick<Tournament, "name" | "players">;
+const club = (id: string, name: string, players: string[]) => ({ id, name, players, geologist_name: null }) as Club;
+const tournament = (name: string, players: string[]) => ({ name, players }) as Pick<Tournament, "name" | "players">;
 
 const name = (p: { name: string }) => p.name;
 
@@ -13,10 +13,10 @@ describe("buildPlayerGroups", () => {
 
     it("orders sections: recent, tournaments (alpha), clubs (mine first), no club", () => {
         const clubs = [
-            club("z", "Zeta", [4]), // Dave — the current user's club
-            club("a", "Alpha", [2]), // Bob — not the user's club
+            club("z", "Zeta", ["4"]), // Dave — the current user's club
+            club("a", "Alpha", ["2"]), // Bob — not the user's club
         ];
-        const tournaments = [tournament("Beta camp", [1, 3]), tournament("Alpha camp", [2])];
+        const tournaments = [tournament("Beta camp", ["1", "3"]), tournament("Alpha camp", ["2"])];
 
         const groups = buildPlayerGroups(players, clubs, ["1"], name, name, tournaments, "4");
 
@@ -31,7 +31,7 @@ describe("buildPlayerGroups", () => {
     });
 
     it("includes a tournament's participants in its section", () => {
-        const groups = buildPlayerGroups(players, [], [], name, name, [tournament("Camp", [1, 3])], undefined);
+        const groups = buildPlayerGroups(players, [], [], name, name, [tournament("Camp", ["1", "3"])], undefined);
         const camp = groups.find((g) => g.heading === "Camp");
         expect(camp?.options.map((o) => o.value)).toEqual(["1", "3"]);
     });
@@ -83,10 +83,10 @@ describe("buildPlayerTabs", () => {
 
     it("orders tabs: recent, tournaments, my clubs, then Другие", () => {
         const clubs = [
-            club("z", "Zeta", [4]), // Dave — the current user's club
-            club("a", "Alpha", [2]), // Bob — other club
+            club("z", "Zeta", ["4"]), // Dave — the current user's club
+            club("a", "Alpha", ["2"]), // Bob — other club
         ];
-        const tournaments = [tournament("Camp", [1, 3])] as Pick<Tournament, "id" | "name" | "players">[];
+        const tournaments = [tournament("Camp", ["1", "3"])] as Pick<Tournament, "id" | "name" | "players">[];
         const tabs = buildPlayerTabs(players, clubs, ["1"], name, name, "4", tournaments);
 
         expect(tabs.map((t) => t.label)).toEqual(["Недавние", "Camp", "Zeta", "Другие"]);

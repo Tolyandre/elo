@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 type ICorrectionService interface {
-	CreateGlobalArenaRatingCorrection(ctx context.Context, playerID int32, diff float64) error
+	CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error
 }
 
 type CorrectionService struct {
@@ -22,7 +21,7 @@ func NewCorrectionService(pool *pgxpool.Pool) ICorrectionService {
 	return &CorrectionService{Pool: pool}
 }
 
-func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, playerID int32, diff float64) error {
+func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -32,6 +31,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	q := db.New(tx)
 
 	correction, err := q.CreateCorrection(ctx, db.CreateCorrectionParams{
+		ID:            id,
 		PlayerID:      playerID,
 		Discriminator: "correction",
 		Diff:          diff,
@@ -49,7 +49,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	prevRow, err := q.GetPlayerLatestGlobalStateBeforeCorrection(ctx, db.GetPlayerLatestGlobalStateBeforeCorrectionParams{
 		PlayerID:     playerID,
 		Date:         correction.Date,
-		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
+		CorrectionID: &correction.ID,
 	})
 
 	var prevRating, prevElo float64
@@ -74,7 +74,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 		Date:         correction.Date,
 		RatingAfter:  newRating,
 		EloAfter:     prevElo,
-		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
+		CorrectionID: &correction.ID,
 		RatingStaked: ratingStaked,
 		RatingEarned: ratingEarned,
 		League:       league,
@@ -104,14 +104,14 @@ func determineCorrectionLeague(prev string, newRating, prevElo float64, s EloSet
 func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.Correction) error {
 	settingsRow, err := q.GetEloSettingsForDate(ctx, correction.Date)
 	if err != nil {
-		return fmt.Errorf("get elo settings for correction %d: %w", correction.ID, err)
+		return fmt.Errorf("get elo settings for correction %s: %w", correction.ID, err)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
 	prevRow, err := q.GetPlayerLatestGlobalStateBeforeCorrection(ctx, db.GetPlayerLatestGlobalStateBeforeCorrectionParams{
 		PlayerID:     correction.PlayerID,
 		Date:         correction.Date,
-		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
+		CorrectionID: &correction.ID,
 	})
 
 	var prevRating, prevElo float64
@@ -136,7 +136,7 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 		Date:         correction.Date,
 		RatingAfter:  newRating,
 		EloAfter:     prevElo,
-		CorrectionID: pgtype.Int4{Int32: correction.ID, Valid: true},
+		CorrectionID: &correction.ID,
 		RatingStaked: ratingStaked,
 		RatingEarned: ratingEarned,
 		League:       league,

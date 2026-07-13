@@ -13,9 +13,9 @@ var testWindow = TimeWindow{
 	ClosesAt: time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC),
 }
 
-func makeMatch(date time.Time, gameID int32, participants map[int32]float64) MatchInfo {
-	scores := make(map[int32]float64, len(participants))
-	pset := make(map[int32]bool, len(participants))
+func makeMatch(date time.Time, gameID string, participants map[string]float64) MatchInfo {
+	scores := make(map[string]float64, len(participants))
+	pset := make(map[string]bool, len(participants))
 	maxScore := -1.0
 	for pid, score := range participants {
 		scores[pid] = score
@@ -61,12 +61,12 @@ func TestTimeWindow_Contains(t *testing.T) {
 func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	inWindow := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 	outOfWindow := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-	gameID := int32(1)
-	otherGameID := int32(2)
+	gameID := "game-1"
+	otherGameID := "game-2"
 
 	t.Run("resolved_yes when target has max score", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10"}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
 		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q, want true/yes", resolved, outcome)
@@ -74,8 +74,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("resolved_no when target does not have max score", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 3, 20: 5})
+		cond := MatchWinnerCondition{TargetPlayerID: "10"}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 3, "20": 5})
 		resolved, outcome := cond.Evaluate(match, testWindow)
 		if !resolved || outcome != OutcomeNo {
 			t.Errorf("got resolved=%v outcome=%q, want true/no", resolved, outcome)
@@ -83,8 +83,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when match date outside window", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10}
-		match := makeMatch(outOfWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10"}
+		match := makeMatch(outOfWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
 			t.Error("expected not resolved for match outside window")
@@ -92,8 +92,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when game_id does not match", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, GameIDs: []int32{gameID}}
-		match := makeMatch(inWindow, otherGameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10", GameIDs: []string{gameID}}
+		match := makeMatch(inWindow, otherGameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
 			t.Error("expected not resolved for wrong game")
@@ -101,8 +101,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("resolved when game_id matches", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, GameIDs: []int32{gameID}}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10", GameIDs: []string{gameID}}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
 		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)
@@ -110,8 +110,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when target not in match", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 99}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "99"}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
 			t.Error("expected not resolved when target absent")
@@ -119,8 +119,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when required player absent", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, RequiredPlayerIDs: []int32{30}}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10", RequiredPlayerIDs: []string{"30"}}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
 			t.Error("expected not resolved when required player absent")
@@ -128,8 +128,8 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("resolved when required player present", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerID: 10, RequiredPlayerIDs: []int32{20}}
-		match := makeMatch(inWindow, gameID, map[int32]float64{10: 5, 20: 3})
+		cond := MatchWinnerCondition{TargetPlayerID: "10", RequiredPlayerIDs: []string{"20"}}
+		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, outcome := cond.Evaluate(match, testWindow)
 		if !resolved || outcome != OutcomeYes {
 			t.Errorf("got resolved=%v outcome=%q", resolved, outcome)

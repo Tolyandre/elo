@@ -1,6 +1,6 @@
 -- name: CreateSkullKingTable :one
-INSERT INTO skull_king_tables (host_user_id, game_state)
-VALUES ($1, $2)
+INSERT INTO skull_king_tables (id, host_user_id, game_state)
+VALUES ($1, $2, $3)
 RETURNING *;
 
 -- name: GetSkullKingTable :one

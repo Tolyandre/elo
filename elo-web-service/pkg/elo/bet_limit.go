@@ -18,7 +18,7 @@ func CalcBetLimit(playerElo float64, settings EloSettings) float64 {
 
 // RecalculateBetLimits updates bet_limit for the given players using current Elo settings.
 // Must be called within a transaction (q is a transactional *db.Queries).
-func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []int32) error {
+func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []string) error {
 	if len(playerIDs) == 0 {
 		return nil
 	}

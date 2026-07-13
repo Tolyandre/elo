@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -80,7 +78,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 		return CreateGame400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	game, err := s.api.GameService.AddGame(ctx, name, uuidPtrToPg(request.Body.IdempotencyKey))
+	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreateGame409JSONResponse{Status: "fail", Message: "game with this name already exists"}, nil
@@ -89,18 +87,13 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 	}
 
 	resp := CreateGame200JSONResponse{Status: "success"}
-	resp.Data.Id = strconv.Itoa(int(game.ID))
+	resp.Data.Id = game.ID
 	resp.Data.Name = game.Name
 	return resp, nil
 }
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return PatchGame400JSONResponse{Status: "fail", Message: fmt.Sprintf("invalid game id: %v", err)}, nil
-	}
-
-	game, err := s.api.GameService.UpdateGameName(ctx, int32(idInt), request.Body.Name)
+	game, err := s.api.GameService.UpdateGameName(ctx, request.Id, request.Body.Name)
 	if db.IsNoRows(err) {
 		return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
 	}
@@ -109,18 +102,13 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 	}
 
 	resp := PatchGame200JSONResponse{Status: "success"}
-	resp.Data.Id = strconv.Itoa(int(game.ID))
+	resp.Data.Id = game.ID
 	resp.Data.Name = game.Name
 	return resp, nil
 }
 
 func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequestObject) (DeleteGameResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return DeleteGame400JSONResponse{Status: "fail", Message: fmt.Sprintf("invalid game id: %v", err)}, nil
-	}
-
-	_, err = s.api.GameService.DeleteGame(ctx, int32(idInt))
+	_, err := s.api.GameService.DeleteGame(ctx, request.Id)
 	if db.IsNoRows(err) {
 		return DeleteGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
 	}
@@ -140,9 +128,9 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 		return GetGameMatches400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
-	matchIDs := make([]int32, 0, len(matches))
+	matchIDs := make([]string, 0, len(matches))
 	for _, m := range matches {
-		matchIDs = append(matchIDs, int32(m.Id))
+		matchIDs = append(matchIDs, m.Id)
 	}
 	tournamentsByMatch, err := s.tournamentsByMatch(ctx, matchIDs)
 	if err != nil {
@@ -163,7 +151,7 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 			})
 		}
 		gm := GameMatch{
-			Id:      int(m.Id),
+			Id:      m.Id,
 			Players: players,
 		}
 		if ts, ok := m.Date.(pgtype.Timestamptz); ok && ts.Valid {
@@ -172,7 +160,7 @@ func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatche
 		} else if t, ok := m.Date.(time.Time); ok {
 			gm.Date = &t
 		}
-		if tours := tournamentsByMatch[int(m.Id)]; len(tours) > 0 {
+		if tours := tournamentsByMatch[m.Id]; len(tours) > 0 {
 			gm.Tournaments = &tours
 		}
 		result = append(result, gm)

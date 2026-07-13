@@ -59,7 +59,7 @@ function TournamentContent() {
                     </thead>
                     <tbody>
                         {players.map((p) => {
-                            const player = playerMap.get(String(p.player_id));
+                            const player = playerMap.get(p.player_id);
                             const name = player ? playerDisplayName(player) : "Unknown";
                             return (
                                 <tr key={p.player_id} className="border-t">

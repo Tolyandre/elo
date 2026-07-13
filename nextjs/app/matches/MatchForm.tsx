@@ -249,14 +249,13 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             const result = await submitMatch({ game_id: selectedGameId, score, tournament_ids: tournamentIdsToSubmit });
             setSuccess(true);
             clearDraft();
-            if (result.kind === "online") {
+            // The match was either saved on the server or queued offline; either way
+            // its id is final. The view page shows the pending or saved card by id.
+            if (!offline) {
                 invalidateMatches();
                 invalidatePlayers();
-                router.push(`/matches/view?id=${result.id}`);
-            } else {
-                // Saved locally — the pending card is shown at the top of the match list.
-                router.push("/matches");
             }
+            router.push(`/matches/view?id=${result.id}`);
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {

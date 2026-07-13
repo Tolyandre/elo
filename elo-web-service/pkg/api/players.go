@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -58,10 +57,10 @@ func (a *API) ListPlayers(c *gin.Context) {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-	playerUserMap := make(map[int32]string, len(userLinks))
+	playerUserMap := make(map[string]string, len(userLinks))
 	for _, link := range userLinks {
-		if link.PlayerID.Valid {
-			playerUserMap[link.PlayerID.Int32] = fmt.Sprintf("%d", link.UserID)
+		if link.PlayerID != nil {
+			playerUserMap[*link.PlayerID] = link.UserID
 		}
 	}
 
@@ -70,7 +69,7 @@ func (a *API) ListPlayers(c *gin.Context) {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-	geologistNameMap := make(map[int32]string, len(dbPlayers))
+	geologistNameMap := make(map[string]string, len(dbPlayers))
 	for _, dp := range dbPlayers {
 		if dp.GeologistName.Valid {
 			geologistNameMap[dp.ID] = dp.GeologistName.String
@@ -84,13 +83,11 @@ func (a *API) ListPlayers(c *gin.Context) {
 
 		var userID *string
 		var geologistName *string
-		if idInt, err := strconv.Atoi(p.ID); err == nil {
-			if uid, ok := playerUserMap[int32(idInt)]; ok {
-				userID = &uid
-			}
-			if gn, ok := geologistNameMap[int32(idInt)]; ok {
-				geologistName = &gn
-			}
+		if uid, ok := playerUserMap[p.ID]; ok {
+			userID = &uid
+		}
+		if gn, ok := geologistNameMap[p.ID]; ok {
+			geologistName = &gn
 		}
 
 		var matchesLeftForElite *int
@@ -158,13 +155,7 @@ type playerStatsJson struct {
 func (a *API) GetPlayerStats(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid player id: %w", err))
-		return
-	}
-	playerID := int32(idInt)
+	playerID := c.Param("id")
 
 	player, err := a.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {
@@ -259,12 +250,7 @@ func findPlayer(players []elo.Player, id string) *elo.Player {
 }
 
 func (a *API) PatchPlayer(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid player id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
 	var body struct {
 		Name string `json:"name"`
@@ -280,7 +266,7 @@ func (a *API) PatchPlayer(c *gin.Context) {
 		return
 	}
 
-	player, err := a.PlayerService.UpdatePlayer(c.Request.Context(), int32(idInt), body.Name)
+	player, err := a.PlayerService.UpdatePlayer(c.Request.Context(), id, body.Name)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("player not found: %w", err))
 		return
@@ -298,7 +284,7 @@ func (a *API) PatchPlayer(c *gin.Context) {
 		Id   string `json:"id"`
 		Name string `json:"name"`
 	}{
-		Id:   strconv.Itoa(int(player.ID)),
+		Id:   player.ID,
 		Name: player.Name,
 	}
 
@@ -306,14 +292,9 @@ func (a *API) PatchPlayer(c *gin.Context) {
 }
 
 func (a *API) DeletePlayer(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid player id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
-	err = a.PlayerService.DeletePlayer(c.Request.Context(), int32(idInt))
+	err := a.PlayerService.DeletePlayer(c.Request.Context(), id)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("player not found: %w", err))
 		return

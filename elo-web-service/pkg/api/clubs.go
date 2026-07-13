@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -13,7 +12,7 @@ type clubJson struct {
 	Id            string  `json:"id"`
 	Name          string  `json:"name"`
 	GeologistName *string `json:"geologist_name,omitempty"`
-	Players       []int   `json:"players"`
+	Players       []string `json:"players"`
 }
 
 func (a *API) ListClubs(c *gin.Context) {
@@ -24,14 +23,14 @@ func (a *API) ListClubs(c *gin.Context) {
 		return
 	}
 
-	clubsMap := map[int32]*clubJson{}
+	clubsMap := map[string]*clubJson{}
 	for _, r := range rows {
 		cj, ok := clubsMap[r.ClubID]
 		if !ok {
 			cj = &clubJson{
-				Id:      strconv.FormatInt(int64(r.ClubID), 10),
+				Id:      r.ClubID,
 				Name:    r.ClubName,
-				Players: []int{},
+				Players: []string{},
 			}
 			if r.ClubGeologistName.Valid {
 				cj.GeologistName = &r.ClubGeologistName.String
@@ -39,8 +38,8 @@ func (a *API) ListClubs(c *gin.Context) {
 			clubsMap[r.ClubID] = cj
 		}
 
-		if r.PlayerID.Valid {
-			cj.Players = append(cj.Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			cj.Players = append(cj.Players, *r.PlayerID)
 		}
 	}
 
@@ -53,14 +52,9 @@ func (a *API) ListClubs(c *gin.Context) {
 }
 
 func (a *API) GetClub(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid club id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
-	rows, err := a.ClubService.GetClub(c.Request.Context(), int32(idInt))
+	rows, err := a.ClubService.GetClub(c.Request.Context(), id)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -72,16 +66,16 @@ func (a *API) GetClub(c *gin.Context) {
 	}
 
 	cj := &clubJson{
-		Id:      strconv.Itoa(idInt),
+		Id:      id,
 		Name:    rows[0].ClubName,
-		Players: []int{},
+		Players: []string{},
 	}
 	if rows[0].ClubGeologistName.Valid {
 		cj.GeologistName = &rows[0].ClubGeologistName.String
 	}
 	for _, r := range rows {
-		if r.PlayerID.Valid {
-			cj.Players = append(cj.Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			cj.Players = append(cj.Players, *r.PlayerID)
 		}
 	}
 
@@ -103,7 +97,7 @@ func (a *API) CreateClub(c *gin.Context) {
 		return
 	}
 
-	club, err := a.ClubService.CreateClub(c.Request.Context(), body.Name)
+	club, err := a.ClubService.CreateClub(c.Request.Context(), "", body.Name)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			ErrorResponse(c, http.StatusConflict, fmt.Errorf("club with this name already exists"))
@@ -114,9 +108,9 @@ func (a *API) CreateClub(c *gin.Context) {
 	}
 
 	cj := clubJson{
-		Id:      strconv.Itoa(int(club.ID)),
+		Id:      club.ID,
 		Name:    club.Name,
-		Players: []int{},
+		Players: []string{},
 	}
 	if club.GeologistName.Valid {
 		cj.GeologistName = &club.GeologistName.String
@@ -125,12 +119,7 @@ func (a *API) CreateClub(c *gin.Context) {
 }
 
 func (a *API) PatchClub(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid club id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
 	var body struct {
 		Name string `json:"name"`
@@ -146,7 +135,7 @@ func (a *API) PatchClub(c *gin.Context) {
 		return
 	}
 
-	club, err := a.ClubService.UpdateClub(c.Request.Context(), int32(idInt), body.Name)
+	club, err := a.ClubService.UpdateClub(c.Request.Context(), id, body.Name)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("club not found"))
 		return
@@ -157,9 +146,9 @@ func (a *API) PatchClub(c *gin.Context) {
 	}
 
 	pj := clubJson{
-		Id:      strconv.Itoa(int(club.ID)),
+		Id:      club.ID,
 		Name:    club.Name,
-		Players: []int{},
+		Players: []string{},
 	}
 	if club.GeologistName.Valid {
 		pj.GeologistName = &club.GeologistName.String
@@ -168,14 +157,9 @@ func (a *API) PatchClub(c *gin.Context) {
 }
 
 func (a *API) DeleteClub(c *gin.Context) {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid club id: %w", err))
-		return
-	}
+	id := c.Param("id")
 
-	_, err = a.ClubService.DeleteClub(c.Request.Context(), int32(idInt))
+	_, err := a.ClubService.DeleteClub(c.Request.Context(), id)
 	if db.IsNoRows(err) {
 		ErrorResponse(c, http.StatusNotFound, fmt.Errorf("club not found"))
 		return
@@ -193,15 +177,10 @@ func (a *API) DeleteClub(c *gin.Context) {
 }
 
 func (a *API) AddClubMember(c *gin.Context) {
-	idStr := c.Param("id")
-	clubId, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid club id: %w", err))
-		return
-	}
+	clubId := c.Param("id")
 
 	var body struct {
-		PlayerId int32 `json:"player_id"`
+		PlayerId string `json:"player_id"`
 	}
 
 	if err := c.BindJSON(&body); err != nil {
@@ -209,12 +188,12 @@ func (a *API) AddClubMember(c *gin.Context) {
 		return
 	}
 
-	if body.PlayerId == 0 {
+	if body.PlayerId == "" {
 		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("player_id is required"))
 		return
 	}
 
-	err = a.ClubService.AddMember(c.Request.Context(), int32(clubId), body.PlayerId)
+	err := a.ClubService.AddMember(c.Request.Context(), clubId, body.PlayerId)
 	if err != nil {
 		if db.IsForeignKeyViolation(err) {
 			ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("club or player not found"))
@@ -228,21 +207,10 @@ func (a *API) AddClubMember(c *gin.Context) {
 }
 
 func (a *API) RemoveClubMember(c *gin.Context) {
-	idStr := c.Param("id")
-	clubId, err := strconv.Atoi(idStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid club id: %w", err))
-		return
-	}
+	clubId := c.Param("id")
+	playerId := c.Param("playerId")
 
-	playerIdStr := c.Param("playerId")
-	playerId, err := strconv.Atoi(playerIdStr)
-	if err != nil {
-		ErrorResponse(c, http.StatusBadRequest, fmt.Errorf("invalid player id: %w", err))
-		return
-	}
-
-	err = a.ClubService.RemoveMember(c.Request.Context(), int32(clubId), int32(playerId))
+	err := a.ClubService.RemoveMember(c.Request.Context(), clubId, playerId)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return

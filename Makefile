@@ -12,18 +12,14 @@ generate-ts-api:
 generate-api: generate-go-api generate-ts-api
 
 ## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
-# dev-up:
-# 	docker compose up -d --wait postgres mock-oauth2
-# 	cd elo-web-service && go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
-# 	docker compose run --rm seed
 dev-up:
-	docker compose up -d postgres mock-oauth2 && podman wait --condition=healthy postgres
-	cd elo-web-service && go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
+	docker compose up -d --wait postgres mock-oauth2
+	cd elo-web-service && CGO_ENABLED=0 go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 	docker compose run --rm seed
 
 ## Stop all dev dependencies
 dev-down:
-	docker compose down
+	docker compose down -v
 
 ## Re-apply seed data (idempotent — safe to run multiple times)
 dev-seed:
@@ -31,7 +27,7 @@ dev-seed:
 
 ## Re-apply migrations (same code path as production)
 dev-migrate:
-	cd elo-web-service && go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
+	cd elo-web-service && CGO_ENABLED=0 go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 
 ## Run the backend (loads secrets from .env.docker)
 backend-run:

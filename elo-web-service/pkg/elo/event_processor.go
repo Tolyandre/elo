@@ -13,14 +13,14 @@ import (
 // Events with the same date are ordered by ID ascending.
 type UserEvent interface {
 	UserEventDate() time.Time
-	UserEventID() int32
+	UserEventID() string
 }
 
 // MatchEvent wraps a db.Match as a UserEvent.
 type MatchEvent struct{ db.Match }
 
 func (e MatchEvent) UserEventDate() time.Time { return e.Date.Time }
-func (e MatchEvent) UserEventID() int32       { return e.ID }
+func (e MatchEvent) UserEventID() string     { return e.ID }
 
 // Settlement is a derived computation triggered by a user event.
 type Settlement interface {
@@ -42,21 +42,21 @@ type EventProcessor struct {
 func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
-	matchID int32,
-	gameID int32,
-	playerScores map[int32]float64,
+	matchID string,
+	gameID string,
+	playerScores map[string]float64,
 	state MatchPrevState,
 	matchDate time.Time,
 	eloCalcFn EloCalcFunc,
 ) error {
 	// Steps 1 & 2: Calculate and store/update rating + game_elo
 	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, state); err != nil {
-		return fmt.Errorf("elo calc for match %d: %w", matchID, err)
+		return fmt.Errorf("elo calc for match %s: %w", matchID, err)
 	}
 
 	// Steps 3 & 4: Match-triggered market resolution (SettleMarket applies rating inside)
 	if err := p.MarketService.TriggerResolutionForMatch(ctx, q, matchID); err != nil {
-		return fmt.Errorf("market resolution for match %d: %w", matchID, err)
+		return fmt.Errorf("market resolution for match %s: %w", matchID, err)
 	}
 
 	// Steps 5 & 6: Time-based market expiry up to this match's date
@@ -74,7 +74,7 @@ func (p *EventProcessor) RecalculateFrom(
 	q *db.Queries,
 	startDate time.Time,
 	calcAndUpdateElo EloCalcFunc,
-	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[int32]float64) (MatchPrevState, error),
+	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[string]float64) (MatchPrevState, error),
 ) error {
 	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
 	// whether recalculation moves any market's resolution to an earlier time.
@@ -104,7 +104,7 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("get corrections from date %v: %w", startDate, err)
 	}
 
-	allAffectedPlayers := make(map[int32]bool)
+	allAffectedPlayers := make(map[string]bool)
 
 	// Merge matches and corrections in date order. On the same date, matches come first.
 	mi, ci := 0, 0
@@ -118,10 +118,10 @@ func (p *EventProcessor) RecalculateFrom(
 
 			matchScores, err := q.GetMatchScoresForMatch(ctx, match.ID)
 			if err != nil {
-				return fmt.Errorf("get scores for match %d: %w", match.ID, err)
+				return fmt.Errorf("get scores for match %s: %w", match.ID, err)
 			}
 
-			playerScores := make(map[int32]float64)
+			playerScores := make(map[string]float64)
 			for _, ms := range matchScores {
 				playerScores[ms.PlayerID] = ms.Score
 				allAffectedPlayers[ms.PlayerID] = true
@@ -129,7 +129,7 @@ func (p *EventProcessor) RecalculateFrom(
 
 			state, err := lockAndGetPrevElos(ctx, q, match, playerScores)
 			if err != nil {
-				return fmt.Errorf("lock/get prev elos for match %d: %w", match.ID, err)
+				return fmt.Errorf("lock/get prev elos for match %s: %w", match.ID, err)
 			}
 
 			if err := p.processMatchSettlements(ctx, q, match.ID, match.GameID, playerScores,
@@ -141,13 +141,13 @@ func (p *EventProcessor) RecalculateFrom(
 			ci++
 
 			if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
-				return fmt.Errorf("apply correction %d: %w", correction.ID, err)
+				return fmt.Errorf("apply correction %s: %w", correction.ID, err)
 			}
 			allAffectedPlayers[correction.PlayerID] = true
 		}
 	}
 
-	affectedIDs := make([]int32, 0, len(allAffectedPlayers))
+	affectedIDs := make([]string, 0, len(allAffectedPlayers))
 	for pid := range allAffectedPlayers {
 		affectedIDs = append(affectedIDs, pid)
 	}
@@ -178,7 +178,7 @@ func validateUserEventsAgainstNewResolutions(
 		}
 		newResolvedAt, err := q.GetMarketResolvedAt(ctx, old.ID)
 		if err != nil {
-			return fmt.Errorf("get new resolved_at for market %d: %w", old.ID, err)
+			return fmt.Errorf("get new resolved_at for market %s: %w", old.ID, err)
 		}
 		if !newResolvedAt.Valid {
 			// Market was not re-settled (no qualifying match in replayed range).
@@ -196,11 +196,11 @@ func validateUserEventsAgainstNewResolutions(
 			PlacedAt_2: pgtype.Timestamptz{Time: old.ResolvedAt.Time, Valid: true},
 		})
 		if err != nil {
-			return fmt.Errorf("check bets for market %d: %w", old.ID, err)
+			return fmt.Errorf("check bets for market %s: %w", old.ID, err)
 		}
 		if len(bets) > 0 {
 			b := bets[0]
-			return fmt.Errorf("%w: market_id=%d player_id=%d (bet placed after new resolution time)",
+			return fmt.Errorf("%w: market_id=%s player_id=%s (bet placed after new resolution time)",
 				ErrHistoryChangeConflict, old.ID, b.PlayerID)
 		}
 
@@ -209,7 +209,7 @@ func validateUserEventsAgainstNewResolutions(
 		if old.BettingClosedAt.Valid &&
 			!old.BettingClosedAt.Time.Before(newResolvedAt.Time) &&
 			old.BettingClosedAt.Time.Before(old.ResolvedAt.Time) {
-			return fmt.Errorf("%w: market_id=%d (betting was locked after new resolution time)",
+			return fmt.Errorf("%w: market_id=%s (betting was locked after new resolution time)",
 				ErrHistoryChangeConflictBettingLock, old.ID)
 		}
 	}

@@ -21,6 +21,8 @@ components:
       $ref: './common.yaml#/ApiError'
     ApiSuccessMessage:
       $ref: './common.yaml#/ApiSuccessMessage'
+    ULID:
+      $ref: './common.yaml#/ULID'
 
     # Players
     EloRank:

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
@@ -15,22 +14,22 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 		return nil, err
 	}
 
-	tournamentsMap := map[int32]*Tournament{}
-	order := []int32{}
+	tournamentsMap := map[string]*Tournament{}
+	order := []string{}
 	for _, r := range rows {
 		if _, ok := tournamentsMap[r.TournamentID]; !ok {
 			t := Tournament{
-				Id:        strconv.FormatInt(int64(r.TournamentID), 10),
+				Id:        r.TournamentID,
 				Name:      r.TournamentName,
 				StartDate: r.StartDate.Time,
 				EndDate:   r.EndDate.Time,
-				Players:   []int{},
+				Players:   []string{},
 			}
 			tournamentsMap[r.TournamentID] = &t
 			order = append(order, r.TournamentID)
 		}
-		if r.PlayerID.Valid {
-			tournamentsMap[r.TournamentID].Players = append(tournamentsMap[r.TournamentID].Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			tournamentsMap[r.TournamentID].Players = append(tournamentsMap[r.TournamentID].Players, *r.PlayerID)
 		}
 	}
 
@@ -43,12 +42,7 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 }
 
 func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return GetTournament400JSONResponse{Status: "fail", Message: "invalid tournament id"}, nil
-	}
-
-	rows, err := s.api.TournamentService.GetTournament(ctx, int32(idInt))
+	rows, err := s.api.TournamentService.GetTournament(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -57,15 +51,15 @@ func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentR
 	}
 
 	t := Tournament{
-		Id:        strconv.Itoa(idInt),
+		Id:        request.Id,
 		Name:      rows[0].TournamentName,
 		StartDate: rows[0].StartDate.Time,
 		EndDate:   rows[0].EndDate.Time,
-		Players:   []int{},
+		Players:   []string{},
 	}
 	for _, r := range rows {
-		if r.PlayerID.Valid {
-			t.Players = append(t.Players, int(r.PlayerID.Int32))
+		if r.PlayerID != nil {
+			t.Players = append(t.Players, *r.PlayerID)
 		}
 	}
 
@@ -82,7 +76,7 @@ func (s *StrictServer) CreateTournament(ctx context.Context, request CreateTourn
 
 	playerIDs := tournamentPlayerIDs(request.Body.PlayerIds)
 
-	tournament, err := s.api.TournamentService.CreateTournament(ctx, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
+	tournament, err := s.api.TournamentService.CreateTournament(ctx, request.Body.Id, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return CreateTournament409JSONResponse{Status: "fail", Message: "tournament with this name already exists"}, nil
@@ -94,10 +88,6 @@ func (s *StrictServer) CreateTournament(ctx context.Context, request CreateTourn
 }
 
 func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return UpdateTournament400JSONResponse{Status: "fail", Message: "invalid tournament id"}, nil
-	}
 	if request.Body.Name == "" {
 		return UpdateTournament400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
@@ -107,7 +97,7 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 
 	playerIDs := tournamentPlayerIDs(request.Body.PlayerIds)
 
-	tournament, err := s.api.TournamentService.UpdateTournament(ctx, int32(idInt), request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
+	tournament, err := s.api.TournamentService.UpdateTournament(ctx, request.Id, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrTournamentMemberHasMatches), errors.Is(err, elo.ErrTournamentDatesNarrowEloRange):
@@ -125,12 +115,7 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 }
 
 func (s *StrictServer) DeleteTournament(ctx context.Context, request DeleteTournamentRequestObject) (DeleteTournamentResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return DeleteTournament400JSONResponse{Status: "fail", Message: "invalid tournament id"}, nil
-	}
-
-	_, err = s.api.TournamentService.DeleteTournament(ctx, int32(idInt))
+	_, err := s.api.TournamentService.DeleteTournament(ctx, request.Id)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrTournamentHasMembers):
@@ -146,12 +131,7 @@ func (s *StrictServer) DeleteTournament(ctx context.Context, request DeleteTourn
 }
 
 func (s *StrictServer) GetTournamentStats(ctx context.Context, request GetTournamentStatsRequestObject) (GetTournamentStatsResponseObject, error) {
-	idInt, err := strconv.Atoi(request.Id)
-	if err != nil {
-		return GetTournamentStats400JSONResponse{Status: "fail", Message: "invalid tournament id"}, nil
-	}
-
-	rows, err := s.api.TournamentService.GetStats(ctx, int32(idInt))
+	rows, err := s.api.TournamentService.GetStats(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +139,7 @@ func (s *StrictServer) GetTournamentStats(ctx context.Context, request GetTourna
 	players := make([]TournamentStatsPlayer, 0, len(rows))
 	for _, r := range rows {
 		players = append(players, TournamentStatsPlayer{
-			PlayerId:     int(r.PlayerID),
+			PlayerId:     r.PlayerID,
 			MatchesCount: int(r.MatchesCount),
 			First:        int(r.FirstCount),
 			Second:       int(r.SecondCount),
@@ -171,29 +151,21 @@ func (s *StrictServer) GetTournamentStats(ctx context.Context, request GetTourna
 	return GetTournamentStats200JSONResponse{Status: "success", Data: TournamentStats{Players: players}}, nil
 }
 
-// tournamentPlayerIDs converts the optional request player IDs to int32.
-func tournamentPlayerIDs(ids *[]int) []int32 {
+// tournamentPlayerIDs returns the dereferenced slice of player IDs.
+func tournamentPlayerIDs(ids *[]string) []string {
 	if ids == nil {
 		return nil
 	}
-	out := make([]int32, 0, len(*ids))
-	for _, p := range *ids {
-		out = append(out, int32(p))
-	}
-	return out
+	return *ids
 }
 
 // tournamentToAPI maps a db.Tournament plus a known player set to the API model.
-func tournamentToAPI(t db.Tournament, playerIDs []int32) Tournament {
-	players := make([]int, 0, len(playerIDs))
-	for _, p := range playerIDs {
-		players = append(players, int(p))
-	}
+func tournamentToAPI(t db.Tournament, playerIDs []string) Tournament {
 	return Tournament{
-		Id:        strconv.Itoa(int(t.ID)),
+		Id:        t.ID,
 		Name:      t.Name,
 		StartDate: t.StartDate.Time,
 		EndDate:   t.EndDate.Time,
-		Players:   players,
+		Players:   playerIDs,
 	}
 }

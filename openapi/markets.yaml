@@ -41,6 +41,8 @@ MarketsCollection:
           schema:
             type: object
             properties:
+              id:
+                $ref: './common.yaml#/ULID'
               market_type:
                 type: string
                 enum: [match_winner, win_streak]
@@ -72,7 +74,7 @@ MarketsCollection:
               max_losses:
                 type: integer
                 nullable: true
-            required: [market_type, closes_at, target_player_id]
+            required: [market_type, closes_at, target_player_id, id]
     responses:
       "201":
         description: Market created
@@ -263,6 +265,8 @@ MarketBets:
           schema:
             type: object
             properties:
+              id:
+                $ref: './common.yaml#/ULID'
               outcome:
                 type: string
                 enum: [yes, no]
@@ -271,7 +275,7 @@ MarketBets:
                 format: double
                 minimum: 0
                 exclusiveMinimum: true
-            required: [outcome, amount]
+            required: [id, outcome, amount]
     responses:
       "201":
         description: Bet placed

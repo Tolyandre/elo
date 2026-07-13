@@ -1,6 +1,6 @@
 -- name: CreateMarket :one
-INSERT INTO markets (market_type, starts_at, closes_at, created_by)
-VALUES ($1, $2, $3, $4)
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at;
 
 -- name: CreateMatchWinnerParams :exec
@@ -143,8 +143,8 @@ WHERE market_id = $1
   AND placed_at < $3;
 
 -- name: InsertBet :one
-INSERT INTO bets (market_id, player_id, outcome, amount)
-VALUES ($1, $2, $3, $4)
+INSERT INTO bets (id, market_id, player_id, outcome, amount)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, placed_at;
 
 -- name: GetPlayerReservedAmount :one
@@ -242,6 +242,6 @@ JOIN (
     GROUP BY match_id
 ) max_scores ON max_scores.match_id = ms.match_id
 WHERE ms.player_id = $1
-    AND m.game_id = ANY($2::int[])
+    AND m.game_id = ANY($2::uuid[])
     AND m.date >= $3
     AND m.date <= $4;

@@ -17,3 +17,11 @@ ApiSuccessMessage:
     message:
       type: string
   required: [status, message]
+
+ULID:
+  type: string
+  description: >-
+    Client-generated UUIDv7 (standard 36-char UUID, time-ordered and
+    lexicographically sortable). The client generates this on create; it serves
+    as both the primary key and the idempotency key. A repeated request with the
+    same id returns the already-created entity.

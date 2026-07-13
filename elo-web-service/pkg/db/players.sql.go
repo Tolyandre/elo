@@ -12,19 +12,24 @@ import (
 )
 
 const addPlayersIfNotExists = `-- name: AddPlayersIfNotExists :many
-INSERT INTO players (name)
-SELECT unnest($1::text[]) AS name
+INSERT INTO players (id, name)
+SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name
 ON CONFLICT (name) DO NOTHING
 RETURNING id, name
 `
 
+type AddPlayersIfNotExistsParams struct {
+	Column1 []string `json:"column_1"`
+	Column2 []string `json:"column_2"`
+}
+
 type AddPlayersIfNotExistsRow struct {
-	ID   int32  `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-func (q *Queries) AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) ([]AddPlayersIfNotExistsRow, error) {
-	rows, err := q.db.Query(ctx, addPlayersIfNotExists, dollar_1)
+func (q *Queries) AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error) {
+	rows, err := q.db.Query(ctx, addPlayersIfNotExists, arg.Column1, arg.Column2)
 	if err != nil {
 		return nil, err
 	}
@@ -44,28 +49,26 @@ func (q *Queries) AddPlayersIfNotExists(ctx context.Context, dollar_1 []string) 
 }
 
 const createPlayer = `-- name: CreatePlayer :one
-INSERT INTO players (name, geologist_name, idempotency_key)
+INSERT INTO players (id, name, geologist_name)
 VALUES ($1, $2, $3)
-ON CONFLICT (idempotency_key)
-DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
-RETURNING id, name, geologist_name, bet_limit, idempotency_key
+ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
+RETURNING id, name, geologist_name, bet_limit
 `
 
 type CreatePlayerParams struct {
-	Name           string      `json:"name"`
-	GeologistName  pgtype.Text `json:"geologist_name"`
-	IdempotencyKey pgtype.UUID `json:"idempotency_key"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	GeologistName pgtype.Text `json:"geologist_name"`
 }
 
 func (q *Queries) CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error) {
-	row := q.db.QueryRow(ctx, createPlayer, arg.Name, arg.GeologistName, arg.IdempotencyKey)
+	row := q.db.QueryRow(ctx, createPlayer, arg.ID, arg.Name, arg.GeologistName)
 	var i Player
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.GeologistName,
 		&i.BetLimit,
-		&i.IdempotencyKey,
 	)
 	return i, err
 }
@@ -74,17 +77,17 @@ const deletePlayer = `-- name: DeletePlayer :exec
 DELETE FROM players WHERE id = $1
 `
 
-func (q *Queries) DeletePlayer(ctx context.Context, id int32) error {
+func (q *Queries) DeletePlayer(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, deletePlayer, id)
 	return err
 }
 
 const getPlayer = `-- name: GetPlayer :one
-SELECT id, name, geologist_name, bet_limit, idempotency_key FROM players
+SELECT id, name, geologist_name, bet_limit FROM players
 WHERE id = $1
 `
 
-func (q *Queries) GetPlayer(ctx context.Context, id int32) (Player, error) {
+func (q *Queries) GetPlayer(ctx context.Context, id string) (Player, error) {
 	row := q.db.QueryRow(ctx, getPlayer, id)
 	var i Player
 	err := row.Scan(
@@ -92,13 +95,12 @@ func (q *Queries) GetPlayer(ctx context.Context, id int32) (Player, error) {
 		&i.Name,
 		&i.GeologistName,
 		&i.BetLimit,
-		&i.IdempotencyKey,
 	)
 	return i, err
 }
 
 const getPlayerByName = `-- name: GetPlayerByName :one
-SELECT id, name, geologist_name, bet_limit, idempotency_key FROM players
+SELECT id, name, geologist_name, bet_limit FROM players
 WHERE name = $1
 `
 
@@ -110,7 +112,6 @@ func (q *Queries) GetPlayerByName(ctx context.Context, name string) (Player, err
 		&i.Name,
 		&i.GeologistName,
 		&i.BetLimit,
-		&i.IdempotencyKey,
 	)
 	return i, err
 }
@@ -135,7 +136,7 @@ type GetPlayerGameEloStatsRow struct {
 	EloEarned float64 `json:"elo_earned"`
 }
 
-func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID int32) ([]GetPlayerGameEloStatsRow, error) {
+func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID string) ([]GetPlayerGameEloStatsRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameEloStats, playerID)
 	if err != nil {
 		return nil, err
@@ -182,7 +183,7 @@ type GetPlayerGameStatsRow struct {
 	Wins         int32  `json:"wins"`
 }
 
-func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID int32) ([]GetPlayerGameStatsRow, error) {
+func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID string) ([]GetPlayerGameStatsRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
 	if err != nil {
 		return nil, err
@@ -212,8 +213,8 @@ SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL
 `
 
 type ListPlayerUserLinksRow struct {
-	PlayerID pgtype.Int4 `json:"player_id"`
-	UserID   int32       `json:"user_id"`
+	PlayerID *string `json:"player_id"`
+	UserID   string  `json:"user_id"`
 }
 
 func (q *Queries) ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error) {
@@ -237,7 +238,7 @@ func (q *Queries) ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLink
 }
 
 const listPlayers = `-- name: ListPlayers :many
-SELECT id, name, geologist_name, bet_limit, idempotency_key FROM players
+SELECT id, name, geologist_name, bet_limit FROM players
 ORDER BY name
 `
 
@@ -255,7 +256,6 @@ func (q *Queries) ListPlayers(ctx context.Context) ([]Player, error) {
 			&i.Name,
 			&i.GeologistName,
 			&i.BetLimit,
-			&i.IdempotencyKey,
 		); err != nil {
 			return nil, err
 		}
@@ -271,9 +271,9 @@ const lockPlayerForEloCalculation = `-- name: LockPlayerForEloCalculation :one
 SELECT id FROM players WHERE id = $1 FOR UPDATE
 `
 
-func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id int32) (int32, error) {
+func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id string) (string, error) {
 	row := q.db.QueryRow(ctx, lockPlayerForEloCalculation, id)
-	var id_2 int32
+	var id_2 string
 	err := row.Scan(&id_2)
 	return id_2, err
 }
@@ -282,11 +282,11 @@ const updatePlayer = `-- name: UpdatePlayer :one
 UPDATE players
 SET name = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, bet_limit, idempotency_key
+RETURNING id, name, geologist_name, bet_limit
 `
 
 type UpdatePlayerParams struct {
-	ID   int32  `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -298,7 +298,6 @@ func (q *Queries) UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Pla
 		&i.Name,
 		&i.GeologistName,
 		&i.BetLimit,
-		&i.IdempotencyKey,
 	)
 	return i, err
 }

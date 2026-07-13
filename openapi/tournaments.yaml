@@ -255,6 +255,8 @@ TournamentStatsPath:
 TournamentInput:
   type: object
   properties:
+    id:
+      $ref: './common.yaml#/ULID'
     name:
       type: string
     start_date:
@@ -266,9 +268,9 @@ TournamentInput:
     player_ids:
       type: array
       items:
-        type: integer
+        type: string
       description: Full desired set of participant player IDs
-  required: [name, start_date, end_date]
+  required: [id, name, start_date, end_date]
 
 Tournament:
   type: object
@@ -286,15 +288,15 @@ Tournament:
     players:
       type: array
       items:
-        type: integer
-      description: List of participant player IDs (integers)
+        type: string
+      description: List of participant player IDs
   required: [id, name, start_date, end_date, players]
 
 TournamentStatsPlayer:
   type: object
   properties:
     player_id:
-      type: integer
+      type: string
     matches_count:
       type: integer
     first:

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,13 +23,13 @@ func (a *OAUTH2) GetMe(ctx *gin.Context) {
 	}
 
 	var playerID *string
-	if user.PlayerID.Valid {
-		s := fmt.Sprintf("%d", user.PlayerID.Int32)
+	if user.PlayerID != nil {
+		s := *user.PlayerID
 		playerID = &s
 	}
 
 	api.SuccessDataResponse(ctx, userJson{
-		Id:       fmt.Sprintf("%d", user.ID),
+		Id:       user.ID,
 		Name:     user.GoogleOauthUserName,
 		CanEdit:  user.AllowEditing,
 		PlayerID: playerID,
@@ -52,17 +51,7 @@ func (a *OAUTH2) PatchMe(ctx *gin.Context) {
 		return
 	}
 
-	var playerID *int32
-	if body.PlayerID != nil {
-		var pid int32
-		if _, err := fmt.Sscanf(*body.PlayerID, "%d", &pid); err != nil {
-			api.ErrorResponse(ctx, http.StatusBadRequest, fmt.Errorf("invalid player_id"))
-			return
-		}
-		playerID = &pid
-	}
-
-	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, playerID); err != nil {
+	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, body.PlayerID); err != nil {
 		if err.Error() == "player already linked to another user" {
 			api.ErrorResponse(ctx, http.StatusConflict, err)
 			return
