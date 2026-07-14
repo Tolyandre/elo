@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -50,7 +52,8 @@ SELECT
     allow_editing,
     google_oauth_user_id,
     google_oauth_user_name,
-    player_id
+    player_id,
+    legacy_int_id
 FROM users
 WHERE id = $1
 `
@@ -64,6 +67,7 @@ func (q *Queries) GetUser(ctx context.Context, id string) (User, error) {
 		&i.GoogleOauthUserID,
 		&i.GoogleOauthUserName,
 		&i.PlayerID,
+		&i.LegacyIntID,
 	)
 	return i, err
 }
@@ -74,7 +78,8 @@ SELECT
     allow_editing,
     google_oauth_user_id,
     google_oauth_user_name,
-    player_id
+    player_id,
+    legacy_int_id
 FROM users
 WHERE google_oauth_user_id = $1
 `
@@ -88,6 +93,35 @@ func (q *Queries) GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUse
 		&i.GoogleOauthUserID,
 		&i.GoogleOauthUserName,
 		&i.PlayerID,
+		&i.LegacyIntID,
+	)
+	return i, err
+}
+
+const getUserByLegacyIntID = `-- name: GetUserByLegacyIntID :one
+SELECT
+    id,
+    allow_editing,
+    google_oauth_user_id,
+    google_oauth_user_name,
+    player_id,
+    legacy_int_id
+FROM users
+WHERE legacy_int_id = $1
+`
+
+// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
+// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
+func (q *Queries) GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByLegacyIntID, legacyIntID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.AllowEditing,
+		&i.GoogleOauthUserID,
+		&i.GoogleOauthUserName,
+		&i.PlayerID,
+		&i.LegacyIntID,
 	)
 	return i, err
 }
@@ -98,7 +132,8 @@ SELECT
     allow_editing,
     google_oauth_user_id,
     google_oauth_user_name,
-    player_id
+    player_id,
+    legacy_int_id
 FROM users
 `
 
@@ -117,6 +152,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.GoogleOauthUserID,
 			&i.GoogleOauthUserName,
 			&i.PlayerID,
+			&i.LegacyIntID,
 		); err != nil {
 			return nil, err
 		}

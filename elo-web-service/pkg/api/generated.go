@@ -361,8 +361,8 @@ type Club struct {
 	Id      string  `json:"id"`
 	Name    string  `json:"name"`
 
-	// Players List of player IDs
-	Players []string `json:"players"`
+	// PlayerIds List of player IDs
+	PlayerIds []string `json:"player_ids"`
 }
 
 // Correction defines model for Correction.
@@ -747,8 +747,8 @@ type Tournament struct {
 	Id      string    `json:"id"`
 	Name    string    `json:"name"`
 
-	// Players List of participant player IDs
-	Players   []string  `json:"players"`
+	// PlayerIds List of participant player IDs
+	PlayerIds []string  `json:"player_ids"`
 	StartDate time.Time `json:"start_date"`
 }
 
@@ -756,7 +756,7 @@ type Tournament struct {
 type TournamentInput struct {
 	EndDate time.Time `json:"end_date"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   ULID   `json:"id"`
 	Name string `json:"name"`
 
@@ -780,7 +780,7 @@ type TournamentStatsPlayer struct {
 	Third        int    `json:"third"`
 }
 
-// ULID Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+// ULID Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 type ULID = string
 
 // User defines model for User.
@@ -815,7 +815,7 @@ type CreatePlayerCorrectionJSONBody struct {
 	Diff          float32                                     `json:"diff"`
 	Discriminator CreatePlayerCorrectionJSONBodyDiscriminator `json:"discriminator"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id ULID `json:"id"`
 }
 
@@ -844,7 +844,7 @@ type AuthOAuth2CallbackParams struct {
 
 // CreateClubJSONBody defines parameters for CreateClub.
 type CreateClubJSONBody struct {
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   ULID   `json:"id"`
 	Name string `json:"name"`
 }
@@ -877,7 +877,7 @@ type ListCorrectionsParams struct {
 
 // CreateGameJSONBody defines parameters for CreateGame.
 type CreateGameJSONBody struct {
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   ULID   `json:"id"`
 	Name string `json:"name"`
 }
@@ -892,7 +892,7 @@ type CreateMarketJSONBody struct {
 	ClosesAt time.Time `json:"closes_at"`
 	GameIds  *[]string `json:"game_ids,omitempty"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id                ULID                           `json:"id"`
 	MarketType        CreateMarketJSONBodyMarketType `json:"market_type"`
 	MaxLosses         *int                           `json:"max_losses,omitempty"`
@@ -920,7 +920,7 @@ type PatchMarketJSONBodyStatus string
 type PlaceBetJSONBody struct {
 	Amount float64 `json:"amount"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id      ULID                    `json:"id"`
 	Outcome PlaceBetJSONBodyOutcome `json:"outcome"`
 }
@@ -952,7 +952,7 @@ type AddMatchJSONBody struct {
 	Date   *time.Time `json:"date,omitempty"`
 	GameId string     `json:"game_id"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id ULID `json:"id"`
 
 	// Score Map of player_id (string) to numeric score
@@ -976,7 +976,7 @@ type UpdateMatchJSONBody struct {
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
 type CreatePlayerJSONBody struct {
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   ULID   `json:"id"`
 	Name string `json:"name"`
 }
@@ -1011,7 +1011,7 @@ type ParseSkullKingCardImageJSONBody struct {
 type CreateSkullKingTableJSONBody struct {
 	GameState SkullKingGameState `json:"game_state"`
 
-	// Id Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity.
+	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id ULID `json:"id"`
 }
 

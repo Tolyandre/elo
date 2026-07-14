@@ -3,12 +3,13 @@ package elo
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
-
 
 type IUserService interface {
 	GetUserByID(ctx context.Context, id string) (*db.User, error)
@@ -39,8 +40,29 @@ func (s *UserService) ListUsers(ctx context.Context) ([]db.User, error) {
 	return users, nil
 }
 
+// GetUserByID resolves a user from the JWT "sub" claim. It tries the UUID lookup
+// first (the normal post-migration path). If the id isn't a valid UUID, it
+// falls back to the legacy SERIAL int id (ADR-08), so old JWT tokens that still
+// carry a bare int (e.g. "1") keep working until all tokens are rotated.
 func (s *UserService) GetUserByID(ctx context.Context, id string) (*db.User, error) {
-	user, err := s.Queries.GetUser(ctx, id)
+	// Fast path: the id is a UUID (the common case for current JWTs).
+	if _, err := uuid.Parse(id); err == nil {
+		user, err := s.Queries.GetUser(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return &user, nil
+	}
+
+	// Fallback: the id is a bare int from a pre-migration JWT token.
+	intID, err := strconv.ParseInt(id, 10, 32)
+	if err != nil {
+		// Not a UUID and not an int — return the original lookup error for a
+		// meaningful "not found" rather than a misleading parse failure.
+		_, _ = s.Queries.GetUser(ctx, id)
+		return nil, fmt.Errorf("invalid user id %q", id)
+	}
+	user, err := s.Queries.GetUserByLegacyIntID(ctx, pgtype.Int4{Int32: int32(intID), Valid: true})
 	if err != nil {
 		return nil, err
 	}

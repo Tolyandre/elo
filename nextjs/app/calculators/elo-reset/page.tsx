@@ -59,9 +59,9 @@ export default function EloResetPage() {
     useEffect(() => {
         if (playerIds.length > 0) return
         const club = clubs.find(c => c.id === CLUB_ID)
-        if (club && club.players.length > 0) {
+        if (club && club.player_ids.length > 0) {
             // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the selection from the club once loaded
-            setPlayerIds(club.players)
+            setPlayerIds(club.player_ids)
         }
     }, [clubs, playerIds.length])
 

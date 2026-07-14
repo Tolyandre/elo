@@ -80,8 +80,8 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 	// create match (foreign key will validate game_id exists)
 	// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		ID:    opts.ID,
-		Date:  dt,
+		ID:     opts.ID,
+		Date:   dt,
 		GameID: gameID,
 	})
 	if err != nil {
@@ -616,6 +616,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			return fmt.Errorf("unable to upsert match score for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
+			ID:           newSettlementID(),
 			MatchID:      &matchID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGlobalRating,
@@ -629,6 +630,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
+			ID:           newSettlementID(),
 			MatchID:      &matchID,
 			GameID:       gameID,
 			PlayerID:     playerID,
@@ -655,6 +657,7 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 	for playerID := range playerScores {
 		r := results[playerID]
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
+			ID:           newSettlementID(),
 			MatchID:      &matchID,
 			PlayerID:     playerID,
 			RatingAfter:  r.newGlobalRating,
@@ -668,6 +671,7 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
+			ID:           newSettlementID(),
 			MatchID:      &matchID,
 			GameID:       gameID,
 			PlayerID:     playerID,

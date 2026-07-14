@@ -1,6 +1,7 @@
 // Pending entities created while offline, stored in localStorage until synced.
 
 import { uuidv7 } from "uuidv7";
+import { encodeId } from "../id";
 
 export type SyncStatus = "pending" | "syncing" | "error";
 
@@ -32,7 +33,7 @@ export type OfflineStore = {
 };
 
 export function newOfflineId(): string {
-    return uuidv7();
+    return encodeId(uuidv7());
 }
 
 export function emptyOfflineStore(): OfflineStore {

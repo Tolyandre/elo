@@ -66,7 +66,7 @@ export default function ClubsAdminPage() {
                                     {clubDisplayName(club)}
                                 </Link>
                                 <span className="text-sm text-muted-foreground">
-                                    ({club.players.length} {club.players.length === 1 ? "игрок" : "игроков"})
+                                    ({club.player_ids.length} {club.player_ids.length === 1 ? "игрок" : "игроков"})
                                 </span>
                             </div>
                         ))}

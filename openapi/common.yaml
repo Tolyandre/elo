@@ -21,7 +21,8 @@ ApiSuccessMessage:
 ULID:
   type: string
   description: >-
-    Client-generated UUIDv7 (standard 36-char UUID, time-ordered and
-    lexicographically sortable). The client generates this on create; it serves
-    as both the primary key and the idempotency key. A repeated request with the
-    same id returns the already-created entity.
+    Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin
+    alphabet — no 0/O/I/l). The client generates this on create; it serves as
+    both the primary key and the idempotency key. A repeated request with the same
+    id returns the already-created entity. The backend also accepts the standard
+    36-char canonical UUID form for backward compatibility.

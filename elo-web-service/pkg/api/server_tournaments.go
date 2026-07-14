@@ -23,13 +23,13 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 				Name:      r.TournamentName,
 				StartDate: r.StartDate.Time,
 				EndDate:   r.EndDate.Time,
-				Players:   []string{},
+				PlayerIds: []string{},
 			}
 			tournamentsMap[r.TournamentID] = &t
 			order = append(order, r.TournamentID)
 		}
 		if r.PlayerID != nil {
-			tournamentsMap[r.TournamentID].Players = append(tournamentsMap[r.TournamentID].Players, *r.PlayerID)
+			tournamentsMap[r.TournamentID].PlayerIds = append(tournamentsMap[r.TournamentID].PlayerIds, *r.PlayerID)
 		}
 	}
 
@@ -55,11 +55,11 @@ func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentR
 		Name:      rows[0].TournamentName,
 		StartDate: rows[0].StartDate.Time,
 		EndDate:   rows[0].EndDate.Time,
-		Players:   []string{},
+		PlayerIds: []string{},
 	}
 	for _, r := range rows {
 		if r.PlayerID != nil {
-			t.Players = append(t.Players, *r.PlayerID)
+			t.PlayerIds = append(t.PlayerIds, *r.PlayerID)
 		}
 	}
 
@@ -166,6 +166,6 @@ func tournamentToAPI(t db.Tournament, playerIDs []string) Tournament {
 		Name:      t.Name,
 		StartDate: t.StartDate.Time,
 		EndDate:   t.EndDate.Time,
-		Players:   playerIDs,
+		PlayerIds: playerIDs,
 	}
 }

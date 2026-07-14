@@ -195,9 +195,9 @@ func (q *Queries) ListCorrectionsPaginated(ctx context.Context, arg ListCorrecti
 
 const upsertGlobalArenaSettlementByCorrection = `-- name: UpsertGlobalArenaSettlementByCorrection :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, rating_after, elo_after, discriminator, correction_id,
+    (id, player_id, date, rating_after, elo_after, discriminator, correction_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, 'correction', $5, 0, 0, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, 'correction', $6, 0, 0, $7, $8, $9)
 ON CONFLICT (correction_id, player_id) WHERE correction_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
@@ -208,6 +208,7 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByCorrectionParams struct {
+	ID           string             `json:"id"`
 	PlayerID     string             `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	RatingAfter  float64            `json:"rating_after"`
@@ -220,6 +221,7 @@ type UpsertGlobalArenaSettlementByCorrectionParams struct {
 
 func (q *Queries) UpsertGlobalArenaSettlementByCorrection(ctx context.Context, arg UpsertGlobalArenaSettlementByCorrectionParams) error {
 	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByCorrection,
+		arg.ID,
 		arg.PlayerID,
 		arg.Date,
 		arg.RatingAfter,

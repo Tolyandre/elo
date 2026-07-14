@@ -110,10 +110,10 @@ function computeRanks(players: Player[], period: "now" | Period): Map<string, nu
 function filterByClub(players: Player[], selectedClubId: string | null, clubs: Club[]): Player[] {
     if (selectedClubId === null) return players;
     if (selectedClubId === NO_CLUB_ID) {
-        const allClubPlayerIds = new Set(clubs.flatMap(c => c.players));
+        const allClubPlayerIds = new Set(clubs.flatMap(c => c.player_ids));
         return players.filter(p => !allClubPlayerIds.has(p.id));
     }
-    const clubPlayerIds = new Set(clubs.find(c => c.id === selectedClubId)?.players ?? []);
+    const clubPlayerIds = new Set(clubs.find(c => c.id === selectedClubId)?.player_ids ?? []);
     return players.filter(p => clubPlayerIds.has(p.id));
 }
 

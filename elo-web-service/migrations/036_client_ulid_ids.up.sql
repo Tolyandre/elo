@@ -57,6 +57,17 @@ ALTER TABLE corrections                 ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE global_arena_settlement     ALTER COLUMN id DROP DEFAULT;
 ALTER TABLE game_arena_settlement       ALTER COLUMN id DROP DEFAULT;
 
+-- ─── Preserve legacy SERIAL int id for JWT fallback ──────────────────────────
+-- Existing JWT tokens carry the old SERIAL int user id as the "sub" claim (e.g.
+-- "1"). After users.id becomes UUID below, those tokens can no longer resolve a
+-- user. We capture the old int into legacy_int_id NOW (while id is still
+-- INTEGER) so GetUserByID can fall back to it until all tokens rotate. New users
+-- created post-migration have legacy_int_id = NULL (their JWTs carry UUIDs).
+-- See ADR-08. Removable once the JWT TTL expires for all sessions.
+ALTER TABLE users ADD COLUMN legacy_int_id INTEGER;
+UPDATE users SET legacy_int_id = id;
+CREATE UNIQUE INDEX users_legacy_int_id_idx ON users (legacy_int_id);
+
 -- ─── Alter primary-key id columns to UUID ────────────────────────────────────
 ALTER TABLE clubs                       ALTER COLUMN id TYPE UUID USING int_to_uuid(id);
 ALTER TABLE games                       ALTER COLUMN id TYPE UUID USING int_to_uuid(id);

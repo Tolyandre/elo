@@ -9,10 +9,10 @@ import (
 )
 
 type clubJson struct {
-	Id            string  `json:"id"`
-	Name          string  `json:"name"`
-	GeologistName *string `json:"geologist_name,omitempty"`
-	Players       []string `json:"players"`
+	Id            string   `json:"id"`
+	Name          string   `json:"name"`
+	GeologistName *string  `json:"geologist_name,omitempty"`
+	PlayerIds     []string `json:"player_ids"`
 }
 
 func (a *API) ListClubs(c *gin.Context) {
@@ -28,9 +28,9 @@ func (a *API) ListClubs(c *gin.Context) {
 		cj, ok := clubsMap[r.ClubID]
 		if !ok {
 			cj = &clubJson{
-				Id:      r.ClubID,
-				Name:    r.ClubName,
-				Players: []string{},
+				Id:        r.ClubID,
+				Name:      r.ClubName,
+				PlayerIds: []string{},
 			}
 			if r.ClubGeologistName.Valid {
 				cj.GeologistName = &r.ClubGeologistName.String
@@ -39,7 +39,7 @@ func (a *API) ListClubs(c *gin.Context) {
 		}
 
 		if r.PlayerID != nil {
-			cj.Players = append(cj.Players, *r.PlayerID)
+			cj.PlayerIds = append(cj.PlayerIds, *r.PlayerID)
 		}
 	}
 
@@ -66,16 +66,16 @@ func (a *API) GetClub(c *gin.Context) {
 	}
 
 	cj := &clubJson{
-		Id:      id,
-		Name:    rows[0].ClubName,
-		Players: []string{},
+		Id:        id,
+		Name:      rows[0].ClubName,
+		PlayerIds: []string{},
 	}
 	if rows[0].ClubGeologistName.Valid {
 		cj.GeologistName = &rows[0].ClubGeologistName.String
 	}
 	for _, r := range rows {
 		if r.PlayerID != nil {
-			cj.Players = append(cj.Players, *r.PlayerID)
+			cj.PlayerIds = append(cj.PlayerIds, *r.PlayerID)
 		}
 	}
 
@@ -108,9 +108,9 @@ func (a *API) CreateClub(c *gin.Context) {
 	}
 
 	cj := clubJson{
-		Id:      club.ID,
-		Name:    club.Name,
-		Players: []string{},
+		Id:        club.ID,
+		Name:      club.Name,
+		PlayerIds: []string{},
 	}
 	if club.GeologistName.Valid {
 		cj.GeologistName = &club.GeologistName.String
@@ -146,9 +146,9 @@ func (a *API) PatchClub(c *gin.Context) {
 	}
 
 	pj := clubJson{
-		Id:      club.ID,
-		Name:    club.Name,
-		Players: []string{},
+		Id:        club.ID,
+		Name:      club.Name,
+		PlayerIds: []string{},
 	}
 	if club.GeologistName.Valid {
 		pj.GeologistName = &club.GeologistName.String

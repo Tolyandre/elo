@@ -1,9 +1,26 @@
 package elo
 
 import (
+	"fmt"
 	"maps"
 	"math"
+
+	"github.com/google/uuid"
 )
+
+// newSettlementID mints a server-generated UUIDv7 for settlement rows.
+// Settlement ids are server-generated (ADR-06 §"server-generated ids"): the
+// client never supplies them. UUIDv7 keeps them lexicographically sortable by
+// creation time, which the settlement-ordering queries (ORDER BY date, id)
+// rely on for the equal-date tie-break (ADR-01 §22).
+func newSettlementID() string {
+	id, err := uuid.NewV7()
+	if err != nil {
+		// uuid.NewV7 only fails on crypto/rand read errors, which are fatal.
+		panic(fmt.Sprintf("generate settlement id: %v", err))
+	}
+	return id.String()
+}
 
 func WinExpectation(currentElo float64, playersScore map[string]float64, startingElo float64,
 	prevElo map[string]float64, elo_const_d float64) float64 {

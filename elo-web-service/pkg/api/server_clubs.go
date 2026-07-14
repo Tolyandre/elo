@@ -19,9 +19,9 @@ func textPtr(t pgtype.Text) *string {
 // by GetClub. rows must be non-empty.
 func clubFromGetRows(rows []db.GetClubRow) Club {
 	c := Club{
-		Id:      rows[0].ClubID,
-		Name:    rows[0].ClubName,
-		Players: []string{},
+		Id:        rows[0].ClubID,
+		Name:      rows[0].ClubName,
+		PlayerIds: []string{},
 	}
 	if rows[0].ClubGeologistName.Valid {
 		gn := rows[0].ClubGeologistName.String
@@ -30,7 +30,7 @@ func clubFromGetRows(rows []db.GetClubRow) Club {
 	c.IconSvg = textPtr(rows[0].ClubIconSvg)
 	for _, r := range rows {
 		if r.PlayerID != nil {
-			c.Players = append(c.Players, *r.PlayerID)
+			c.PlayerIds = append(c.PlayerIds, *r.PlayerID)
 		}
 	}
 	return c
@@ -48,9 +48,9 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 	for _, r := range rows {
 		if _, ok := clubsMap[r.ClubID]; !ok {
 			c := Club{
-				Id:      r.ClubID,
-				Name:    r.ClubName,
-				Players: []string{},
+				Id:        r.ClubID,
+				Name:      r.ClubName,
+				PlayerIds: []string{},
 			}
 			if r.ClubGeologistName.Valid {
 				gn := r.ClubGeologistName.String
@@ -61,7 +61,7 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 			order = append(order, r.ClubID)
 		}
 		if r.PlayerID != nil {
-			clubsMap[r.ClubID].Players = append(clubsMap[r.ClubID].Players, *r.PlayerID)
+			clubsMap[r.ClubID].PlayerIds = append(clubsMap[r.ClubID].PlayerIds, *r.PlayerID)
 		}
 	}
 
@@ -100,9 +100,9 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 	}
 
 	c := Club{
-		Id:      club.ID,
-		Name:    club.Name,
-		Players: []string{},
+		Id:        club.ID,
+		Name:      club.Name,
+		PlayerIds: []string{},
 	}
 	if club.GeologistName.Valid {
 		gn := club.GeologistName.String

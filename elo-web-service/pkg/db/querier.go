@@ -112,6 +112,9 @@ type Querier interface {
 	GetTournamentStats(ctx context.Context, tournamentID string) ([]GetTournamentStatsRow, error)
 	GetUser(ctx context.Context, id string) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
+	// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
+	// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
+	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID string) (MarketWinStreakParam, error)
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
 	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.

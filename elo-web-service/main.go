@@ -56,6 +56,12 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// ID codec: wrap the response writer so JSON responses carry short Base58 ids,
+	// and rewrite incoming short ids (path, query, body) to canonical form for
+	// handlers and Postgres. See pkg/api/idcodec_middleware.go.
+	router.Use(api.EncodeIDsMiddleware())
+	router.Use(api.DecodeIDsMiddleware())
+
 	router.OPTIONS("/matches", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

@@ -285,12 +285,12 @@ Tournament:
     end_date:
       type: string
       format: date-time
-    players:
+    player_ids:
       type: array
       items:
         type: string
       description: List of participant player IDs
-  required: [id, name, start_date, end_date, players]
+  required: [id, name, start_date, end_date, player_ids]
 
 TournamentStatsPlayer:
   type: object

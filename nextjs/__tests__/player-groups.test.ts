@@ -3,8 +3,8 @@ import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "../lib/pl
 import type { Club, Match, Player, Tournament } from "../app/api";
 
 const player = (id: string, name: string) => ({ id, name, geologist_name: null }) as Pick<Player, "id" | "name" | "geologist_name">;
-const club = (id: string, name: string, players: string[]) => ({ id, name, players, geologist_name: null }) as Club;
-const tournament = (name: string, players: string[]) => ({ name, players }) as Pick<Tournament, "name" | "players">;
+const club = (id: string, name: string, playerIds: string[]) => ({ id, name, player_ids: playerIds, geologist_name: null }) as Club;
+const tournament = (name: string, playerIds: string[]) => ({ name, player_ids: playerIds }) as Pick<Tournament, "name" | "player_ids">;
 
 const name = (p: { name: string }) => p.name;
 
@@ -86,7 +86,7 @@ describe("buildPlayerTabs", () => {
             club("z", "Zeta", ["4"]), // Dave — the current user's club
             club("a", "Alpha", ["2"]), // Bob — other club
         ];
-        const tournaments = [tournament("Camp", ["1", "3"])] as Pick<Tournament, "id" | "name" | "players">[];
+        const tournaments = [tournament("Camp", ["1", "3"])] as Pick<Tournament, "id" | "name" | "player_ids">[];
         const tabs = buildPlayerTabs(players, clubs, ["1"], name, name, "4", tournaments);
 
         expect(tabs.map((t) => t.label)).toEqual(["Недавние", "Camp", "Zeta", "Другие"]);

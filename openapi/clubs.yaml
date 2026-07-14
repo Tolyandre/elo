@@ -330,9 +330,9 @@ Club:
       type: string
       nullable: true
       description: Sanitized SVG markup for the club icon, rendered via an img data-URI.
-    players:
+    player_ids:
       type: array
       items:
         type: string
       description: List of player IDs
-  required: [id, name, players]
+  required: [id, name, player_ids]

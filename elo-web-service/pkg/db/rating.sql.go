@@ -569,9 +569,9 @@ func (q *Queries) RatingHistory(ctx context.Context, playerID string) ([]RatingH
 
 const upsertGameArenaSettlementByMatch = `-- name: UpsertGameArenaSettlementByMatch :exec
 INSERT INTO game_arena_settlement
-    (game_id, player_id, date, rating_after, elo_after, discriminator, match_id,
+    (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, $3, m.date, $4, $5, 'match', $1, $6, $7, $8, $9, $10
+SELECT $2, $3, $4, m.date, $5, $6, 'match', $1, $7, $8, $9, $10, $11
 FROM matches m WHERE m.id = $1
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
@@ -586,6 +586,7 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 
 type UpsertGameArenaSettlementByMatchParams struct {
 	MatchID      *string `json:"match_id"`
+	ID           string  `json:"id"`
 	GameID       string  `json:"game_id"`
 	PlayerID     string  `json:"player_id"`
 	RatingAfter  float64 `json:"rating_after"`
@@ -600,6 +601,7 @@ type UpsertGameArenaSettlementByMatchParams struct {
 func (q *Queries) UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error {
 	_, err := q.db.Exec(ctx, upsertGameArenaSettlementByMatch,
 		arg.MatchID,
+		arg.ID,
 		arg.GameID,
 		arg.PlayerID,
 		arg.RatingAfter,
@@ -615,9 +617,9 @@ func (q *Queries) UpsertGameArenaSettlementByMatch(ctx context.Context, arg Upse
 
 const upsertGlobalArenaSettlementByMatch = `-- name: UpsertGlobalArenaSettlementByMatch :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, rating_after, elo_after, discriminator, match_id,
+    (id, player_id, date, rating_after, elo_after, discriminator, match_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, m.date, $3, $4, 'match', $1, $5, $6, $7, $8, $9
+SELECT $2, $3, m.date, $4, $5, 'match', $1, $6, $7, $8, $9, $10
 FROM matches m WHERE m.id = $1
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
@@ -632,6 +634,7 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 
 type UpsertGlobalArenaSettlementByMatchParams struct {
 	MatchID      *string `json:"match_id"`
+	ID           string  `json:"id"`
 	PlayerID     string  `json:"player_id"`
 	RatingAfter  float64 `json:"rating_after"`
 	EloAfter     float64 `json:"elo_after"`
@@ -645,6 +648,7 @@ type UpsertGlobalArenaSettlementByMatchParams struct {
 func (q *Queries) UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error {
 	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByMatch,
 		arg.MatchID,
+		arg.ID,
 		arg.PlayerID,
 		arg.RatingAfter,
 		arg.EloAfter,

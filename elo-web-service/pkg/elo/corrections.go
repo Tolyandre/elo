@@ -70,6 +70,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
 
 	if err := q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
+		ID:           newSettlementID(),
 		PlayerID:     playerID,
 		Date:         correction.Date,
 		RatingAfter:  newRating,
@@ -132,6 +133,7 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
 
 	return q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
+		ID:           newSettlementID(),
 		PlayerID:     correction.PlayerID,
 		Date:         correction.Date,
 		RatingAfter:  newRating,

@@ -722,7 +722,7 @@ export interface components {
             status: "success";
             message: string;
         };
-        /** @description Client-generated UUIDv7 (standard 36-char UUID, time-ordered and lexicographically sortable). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. */
+        /** @description Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility. */
         ULID: string;
         EloRank: {
             /** Format: double */
@@ -871,7 +871,7 @@ export interface components {
             /** @description Sanitized SVG markup for the club icon, rendered via an img data-URI. */
             icon_svg?: string | null;
             /** @description List of player IDs */
-            players: string[];
+            player_ids: string[];
         };
         TournamentInput: {
             id: components["schemas"]["ULID"];
@@ -891,7 +891,7 @@ export interface components {
             /** Format: date-time */
             end_date: string;
             /** @description List of participant player IDs */
-            players: string[];
+            player_ids: string[];
         };
         TournamentStatsPlayer: {
             player_id: string;

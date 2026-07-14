@@ -12,7 +12,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
-
 type CreateMarketParams struct {
 	ID         string
 	MarketType string
@@ -331,6 +330,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		newLeague := determineGlobalLeague(prevLeague, newRating, newElo, int(count6M), int(count2M), settings)
 
 		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
+			ID:           newSettlementID(),
 			PlayerID:     pid,
 			Date:         resolvedAtTz,
 			RatingAfter:  newRating,

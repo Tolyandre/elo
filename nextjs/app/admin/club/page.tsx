@@ -133,10 +133,10 @@ function ClubAdminContent() {
             setMemberLoading((p) => ({ ...p, [key]: true }));
             if (isMember) {
                 await removeClubMemberPromise(clubId, playerId);
-                setClub((prev) => prev ? { ...prev, players: prev.players.filter((id) => id !== playerId) } : prev);
+                setClub((prev) => prev ? { ...prev, player_ids: prev.player_ids.filter((id) => id !== playerId) } : prev);
             } else {
                 await addClubMemberPromise(clubId, playerId);
-                setClub((prev) => prev ? { ...prev, players: [...prev.players, playerId] } : prev);
+                setClub((prev) => prev ? { ...prev, player_ids: [...prev.player_ids, playerId] } : prev);
             }
             invalidateClubs();
         } catch {
@@ -158,7 +158,7 @@ function ClubAdminContent() {
         return <main className="p-4"><p>Клуб не найден.</p></main>;
     }
 
-    const memberSet = new Set(club.players);
+    const memberSet = new Set(club.player_ids);
     const sortedPlayers = [...players].sort((a, b) =>
         playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" })
     );
@@ -231,7 +231,7 @@ function ClubAdminContent() {
 
             <section>
                 <h2 className="text-lg font-medium mb-3">
-                    Игроки клуба ({club.players.length})
+                    Игроки клуба ({club.player_ids.length})
                 </h2>
                 {sortedPlayers.length === 0 ? (
                     <p>Нет игроков</p>

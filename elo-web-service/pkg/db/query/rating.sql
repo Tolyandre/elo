@@ -7,9 +7,9 @@ ORDER BY gas.date;
 
 -- name: UpsertGlobalArenaSettlementByMatch :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, rating_after, elo_after, discriminator, match_id,
+    (id, player_id, date, rating_after, elo_after, discriminator, match_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, m.date, $3, $4, 'match', $1, $5, $6, $7, $8, $9
+SELECT $2, $3, m.date, $4, $5, 'match', $1, $6, $7, $8, $9, $10
 FROM matches m WHERE m.id = $1
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
@@ -23,9 +23,9 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 
 -- name: UpsertGameArenaSettlementByMatch :exec
 INSERT INTO game_arena_settlement
-    (game_id, player_id, date, rating_after, elo_after, discriminator, match_id,
+    (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, $3, m.date, $4, $5, 'match', $1, $6, $7, $8, $9, $10
+SELECT $2, $3, $4, m.date, $5, $6, 'match', $1, $7, $8, $9, $10, $11
 FROM matches m WHERE m.id = $1
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,

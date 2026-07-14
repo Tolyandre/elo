@@ -2,6 +2,7 @@ import createClient, { type Middleware } from "openapi-fetch";
 import type { components, paths } from "./api-types.gen";
 import { toast } from "sonner";
 import { uuidv7 } from "uuidv7";
+import { encodeId } from "../lib/id";
 
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
 if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
@@ -40,6 +41,20 @@ export class NetworkError extends Error {
 /** True for errors meaning "request never reached the server" (fetch rejects with TypeError). */
 export function isNetworkFailure(e: unknown): boolean {
     return e instanceof NetworkError || e instanceof TypeError;
+}
+
+/**
+ * Throws a proper Error carrying the server's message from an openapi-fetch error body.
+ * openapi-fetch returns the parsed error object (`{ status, message }`) rather than an
+ * Error instance; throwing it verbatim makes `instanceof Error` fail and produces
+ * "[object Object]" in catch blocks. This wraps it so `.message` works everywhere.
+ */
+export function throwApiError(error: unknown): never {
+    if (error && typeof error === "object" && "message" in error) {
+        const m = (error as { message?: unknown }).message;
+        if (typeof m === "string" && m.length > 0) throw new Error(m);
+    }
+    throw new Error("Request failed");
 }
 
 /**
@@ -187,7 +202,7 @@ export async function pingApiPromise(timeoutMs = 8000): Promise<boolean> {
 
 export async function getPlayersPromise(): Promise<Player[]> {
     const { data, error } = await client.GET("/players");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -211,7 +226,7 @@ export async function getMatchesPagePromise(params?: {
     if (params?.limit) query.limit = params.limit;
 
     const { data, error } = await client.GET("/matches", { params: { query } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return { items: data.data.map(mapMatch), next: data.next ?? null };
 }
 
@@ -228,7 +243,7 @@ export async function getCorrectionsPagePromise(params?: {
         if (params?.club_id) query.club_id = params.club_id;
     }
     const { data, error } = await client.GET("/corrections", { params: { query } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return {
         items: data.data.map(c => ({
             id: c.id,
@@ -243,13 +258,13 @@ export async function getCorrectionsPagePromise(params?: {
 
 export async function getMatchByIdPromise(id: string): Promise<Match> {
     const { data, error } = await client.GET("/matches/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return mapMatch(data.data);
 }
 
 export async function addMatchPromise(payload: { id: string, game_id: string, score: Record<string, number>, date?: string, tournament_ids?: string[] }) {
     const { data, error } = await client.POST("/matches", { body: payload });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -258,31 +273,31 @@ export async function updateMatchPromise(matchId: string, payload: { game_id: st
         params: { path: { id: matchId } },
         body: payload,
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function getSettingsPromise(): Promise<components["schemas"]["Settings"]> {
     const { data, error } = await client.GET("/settings");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getGamesPromise(): Promise<GameList> {
     const { data, error } = await client.GET("/games");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getGamePromise(id: string): Promise<Game> {
     const { data, error } = await client.GET("/games/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]> {
     const { data, error } = await client.GET("/games/{id}/matches", { params: { path: { id: gameId } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data.map(m => ({
         id: m.id,
         date: m.date ? new Date(m.date) : null,
@@ -296,19 +311,19 @@ export async function patchGamePromise(id: string, payload: { name: string }) {
         params: { path: { id } },
         body: payload,
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function deleteGamePromise(id: string) {
     const { data, error } = await client.DELETE("/games/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function createGamePromise(payload: { name: string }) {
-    const { data, error } = await client.POST("/games", { body: { id: uuidv7(), ...payload } });
-    if (error) throw error;
+    const { data, error } = await client.POST("/games", { body: { id: encodeId(uuidv7()), ...payload } });
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -362,19 +377,19 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
 
 export async function logout(): Promise<Status> {
     const { data, error } = await client.POST("/auth/logout");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data as Status;
 }
 
 export async function listUsersPromise(): Promise<User[]> {
     const { data, error } = await client.GET("/users");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function patchMePromise(payload: { player_id: string | null }) {
     const { error } = await client.PATCH("/auth/me", { body: payload });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function patchUserPromise(userId: string, payload: { can_edit: boolean }) {
@@ -382,13 +397,13 @@ export async function patchUserPromise(userId: string, payload: { can_edit: bool
         params: { path: { userId } },
         body: payload,
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function createPlayerPromise(payload: { name: string }) {
-    const { data, error } = await client.POST("/players", { body: { id: uuidv7(), ...payload } });
-    if (error) throw error;
+    const { data, error } = await client.POST("/players", { body: { id: encodeId(uuidv7()), ...payload } });
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -397,40 +412,40 @@ export async function patchPlayerPromise(playerId: string, payload: { name: stri
         params: { path: { id: playerId } },
         body: payload,
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function deletePlayerPromise(playerId: string) {
     const { data, error } = await client.DELETE("/players/{id}", { params: { path: { id: playerId } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function createPlayerCorrectionPromise(playerId: string, diff: number) {
     const { data, error } = await client.POST("/admin/players/{id}/corrections", {
         params: { path: { id: playerId } },
-        body: { id: uuidv7(), discriminator: "correction", diff },
+        body: { id: encodeId(uuidv7()), discriminator: "correction", diff },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function listClubsPromise(): Promise<Club[]> {
     const { data, error } = await client.GET("/clubs");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getClubPromise(id: string): Promise<Club> {
     const { data, error } = await client.GET("/clubs/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function createClubPromise(payload: { name: string }): Promise<Club> {
-    const { data, error } = await client.POST("/clubs", { body: { id: uuidv7(), ...payload } });
-    if (error) throw error;
+    const { data, error } = await client.POST("/clubs", { body: { id: encodeId(uuidv7()), ...payload } });
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -442,13 +457,13 @@ export async function patchClubPromise(
         params: { path: { id } },
         body: payload,
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function deleteClubPromise(id: string) {
     const { data, error } = await client.DELETE("/clubs/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
@@ -457,7 +472,7 @@ export async function addClubMemberPromise(clubId: string, playerId: string) {
         params: { path: { id: clubId } },
         body: { player_id: playerId },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
@@ -465,25 +480,25 @@ export async function removeClubMemberPromise(clubId: string, playerId: string) 
     const { data, error } = await client.DELETE("/clubs/{id}/members/{playerId}", {
         params: { path: { id: clubId, playerId } },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function listTournamentsPromise(): Promise<Tournament[]> {
     const { data, error } = await client.GET("/tournaments");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getTournamentPromise(id: string): Promise<Tournament> {
     const { data, error } = await client.GET("/tournaments/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: string[] }): Promise<Tournament> {
-    const { data, error } = await client.POST("/tournaments", { body: { id: uuidv7(), ...payload } });
-    if (error) throw error;
+    const { data, error } = await client.POST("/tournaments", { body: { id: encodeId(uuidv7()), ...payload } });
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -492,25 +507,25 @@ export async function updateTournamentPromise(id: string, payload: { name: strin
         params: { path: { id } },
         body: { id, ...payload },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function deleteTournamentPromise(id: string) {
     const { data, error } = await client.DELETE("/tournaments/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data;
 }
 
 export async function getTournamentStatsPromise(id: string): Promise<TournamentStats> {
     const { data, error } = await client.GET("/tournaments/{id}/stats", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {
     const { data, error } = await client.GET("/settings/all");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -522,25 +537,25 @@ export async function createSettingsPromise(payload: {
     win_reward: number;
 }): Promise<void> {
     const { error } = await client.POST("/settings", { body: payload });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function deleteSettingsPromise(effectiveDate: string): Promise<void> {
     const { error } = await client.DELETE("/settings", {
         body: { effective_date: effectiveDate },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function getMarketsPromise(): Promise<{ active: Market[]; closed: Market[] }> {
     const { data, error } = await client.GET("/markets");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
     const { data, error } = await client.GET("/markets/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -557,19 +572,19 @@ export async function createMarketPromise(payload: {
 }): Promise<{ id: string }> {
     const { data, error } = await client.POST("/markets", {
         body: {
-            id: uuidv7(),
+            id: encodeId(uuidv7()),
             ...payload,
             starts_at: payload.starts_at ?? undefined,
             wins_required: payload.wins_required ?? undefined,
         },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function deleteMarketPromise(id: string): Promise<void> {
     const { error } = await client.DELETE("/markets/{id}", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function closeMarketBettingPromise(id: string): Promise<void> {
@@ -577,34 +592,34 @@ export async function closeMarketBettingPromise(id: string): Promise<void> {
         params: { path: { id } },
         body: { status: "betting_closed" },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function getMarketsByMatchIdPromise(matchId: string): Promise<Market[]> {
     const { data, error } = await client.GET("/matches/{id}/markets", {
         params: { path: { id: matchId } },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data ?? [];
 }
 
 export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', amount: number): Promise<void> {
     const { error } = await client.POST("/markets/{id}/bets", {
         params: { path: { id: marketId } },
-        body: { id: uuidv7(), outcome, amount },
+        body: { id: encodeId(uuidv7()), outcome, amount },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {
     const { data, error } = await client.GET("/players/{id}/stats", { params: { path: { id } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
     const { data, error } = await client.POST("/voice/parse", { body: { text } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -612,7 +627,7 @@ export async function parseSkullKingCardImagePromise(imageBase64: string): Promi
     const { data, error } = await client.POST("/skull-king/parse-card-image", {
         body: { image: imageBase64 },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -620,19 +635,19 @@ export async function parseSkullKingCardImagePromise(imageBase64: string): Promi
 
 export async function listSkullKingTablesPromise(): Promise<SkullKingTableSummary[]> {
     const { data, error } = await client.GET("/skull-king/tables");
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function createSkullKingTablePromise(gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.POST("/skull-king/tables", { body: { id: uuidv7(), game_state: gameState } });
-    if (error) throw error;
+    const { data, error } = await client.POST("/skull-king/tables", { body: { id: encodeId(uuidv7()), game_state: gameState } });
+    if (error) throwApiError(error);
     return data.data;
 }
 
 export async function getSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
     const { data, error } = await client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -641,7 +656,7 @@ export async function updateSkullKingTableStatePromise(tableId: string, gameStat
         params: { path: { id: tableId } },
         body: { game_state: gameState },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -649,7 +664,7 @@ export async function joinSkullKingTablePromise(tableId: string): Promise<SkullK
     const { data, error } = await client.POST("/skull-king/tables/{id}/join", {
         params: { path: { id: tableId } },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -658,7 +673,7 @@ export async function submitSkullKingBidPromise(tableId: string, bid: number): P
         params: { path: { id: tableId } },
         body: { bid },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -667,7 +682,7 @@ export async function submitSkullKingResultPromise(tableId: string, actual: numb
         params: { path: { id: tableId } },
         body: { actual, bonus },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }
 
@@ -675,7 +690,7 @@ export async function deleteSkullKingTablePromise(tableId: string): Promise<void
     const { error } = await client.DELETE("/skull-king/tables/{id}", {
         params: { path: { id: tableId } },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
 }
 
 // ─── Elo Reset ────────────────────────────────────────────────────────────────
@@ -688,6 +703,6 @@ export async function getEloResetPromise(playerIds: string[], calcDate: string):
     const { data, error } = await client.GET("/analytics/elo-reset", {
         params: { query: { player_id: playerIds, calc_date: calcDate } },
     });
-    if (error) throw error;
+    if (error) throwApiError(error);
     return data.data;
 }

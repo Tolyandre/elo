@@ -168,9 +168,10 @@ type TournamentPlayerMembership struct {
 }
 
 type User struct {
-	ID                  string  `json:"id"`
-	AllowEditing        bool    `json:"allow_editing"`
-	GoogleOauthUserID   string  `json:"google_oauth_user_id"`
-	GoogleOauthUserName string  `json:"google_oauth_user_name"`
-	PlayerID            *string `json:"player_id"`
+	ID                  string      `json:"id"`
+	AllowEditing        bool        `json:"allow_editing"`
+	GoogleOauthUserID   string      `json:"google_oauth_user_id"`
+	GoogleOauthUserName string      `json:"google_oauth_user_name"`
+	PlayerID            *string     `json:"player_id"`
+	LegacyIntID         pgtype.Int4 `json:"legacy_int_id"`
 }

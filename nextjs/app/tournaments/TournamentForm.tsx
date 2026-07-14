@@ -42,7 +42,7 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
     const [name, setName] = useState(existing?.name ?? "");
     const [startDate, setStartDate] = useState(existing ? toDatetimeLocal(existing.start_date) : "");
     const [endDate, setEndDate] = useState(existing ? toDatetimeLocal(existing.end_date) : "");
-    const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.players : []);
+    const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.player_ids : []);
     const [submitting, setSubmitting] = useState(false);
     const [deleteOpen, setDeleteOpen] = useState(false);
     const [deleting, setDeleting] = useState(false);

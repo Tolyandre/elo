@@ -77,6 +77,11 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	a := mainapi.New(pool)
 	o := apioauth2.New(pool)
 
+	// Mirror main.go: wrap the response writer (short ids out) and decode
+	// incoming short ids (canonical in) before handlers run.
+	r.Use(mainapi.EncodeIDsMiddleware())
+	r.Use(mainapi.DecodeIDsMiddleware())
+
 	strictWrapper := &mainapi.ServerInterfaceWrapper{
 		Handler: mainapi.NewStrictHandler(mainapi.NewStrictServer(a, o), nil),
 	}

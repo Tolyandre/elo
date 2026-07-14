@@ -13,9 +13,9 @@ DELETE FROM global_arena_settlement WHERE date >= $1;
 
 -- name: UpsertGlobalArenaSettlementByCorrection :exec
 INSERT INTO global_arena_settlement
-    (player_id, date, rating_after, elo_after, discriminator, correction_id,
+    (id, player_id, date, rating_after, elo_after, discriminator, correction_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, 'correction', $5, 0, 0, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, 'correction', $6, 0, 0, $7, $8, $9)
 ON CONFLICT (correction_id, player_id) WHERE correction_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
