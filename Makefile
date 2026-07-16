@@ -56,9 +56,11 @@ copy-prod-db-to-stage:
 integration-test-colima:
 	DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock" \
 	TESTCONTAINERS_RYUK_DISABLED=true \
+	CGO_ENABLED=0 \
 	go test -C elo-web-service -tags integration ./integration_test/ -v
 
 integration-test-podman:
 	DOCKER_HOST=unix:///run/user/1000/podman/podman.sock \
 	TESTCONTAINERS_RYUK_DISABLED=true \
+	CGO_ENABLED=0 \
 	go test -C elo-web-service -tags integration ./integration_test/ -v

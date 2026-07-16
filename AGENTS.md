@@ -23,7 +23,7 @@ Use `direnv allow` from the repo root to enter the Nix dev shell.
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
-- `make integration-test-podman` or `make integration-test-colima`: run backend integration tests.
+- `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. Podman runs via `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock`; in sandboxed environments (e.g. vscode.fhs) the socket must be reachable.
 - `nix flake check`: evaluate Nix outputs and integration checks.
 
 ## Coding Style & Naming Conventions
