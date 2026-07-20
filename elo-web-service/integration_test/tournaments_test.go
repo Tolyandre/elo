@@ -35,12 +35,12 @@ func TestTournamentStats(t *testing.T) {
 
 	// Match 1: A=10, B=10 (tie for 1st), C=5 (3rd, since RANK skips 2).
 	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 10, c: 5}, now.Add(-30*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
+		elo.AddMatchOpts{ID: newID(t), TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match 1: %v", err)
 	}
 	// Match 2: A=10 (1st), B=5 (2nd), C=1 (3rd).
 	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5, c: 1}, now.Add(-20*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
+		elo.AddMatchOpts{ID: newID(t), TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match 2: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 	}
 
 	// All players are members → auto-joins despite empty AddMatchOpts.
-	m1, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5}, now.Add(-30*time.Minute), elo.AddMatchOpts{})
+	m1, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5}, now.Add(-30*time.Minute), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("add match 1: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 	}
 
 	// C is not a member → match must NOT auto-join.
-	m2, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, c: 5}, now.Add(-20*time.Minute), elo.AddMatchOpts{})
+	m2, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, c: 5}, now.Add(-20*time.Minute), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("add match 2: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 
 	// Explicit tournament ID still enrols the non-member C.
 	m3, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, c: 5}, now.Add(-10*time.Minute),
-		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}})
+		elo.AddMatchOpts{ID: newID(t), TournamentIDs: []string{tour.ID}})
 	if err != nil {
 		t.Fatalf("add match 3: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestTournamentUpdateValidations(t *testing.T) {
 
 	matchTime := now.Add(-30 * time.Minute)
 	if _, err := mSvc.AddMatch(ctx, gameID, map[string]float64{a: 10, b: 5}, matchTime,
-		elo.AddMatchOpts{TournamentIDs: []string{tour.ID}}); err != nil {
+		elo.AddMatchOpts{ID: newID(t), TournamentIDs: []string{tour.ID}}); err != nil {
 		t.Fatalf("add match: %v", err)
 	}
 

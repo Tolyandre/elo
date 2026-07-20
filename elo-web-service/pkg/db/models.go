@@ -5,6 +5,7 @@
 package db
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -118,9 +119,12 @@ type MarketWinStreakParam struct {
 }
 
 type Match struct {
-	ID     string             `json:"id"`
-	Date   pgtype.Timestamptz `json:"date"`
-	GameID string             `json:"game_id"`
+	ID                      string             `json:"id"`
+	Date                    pgtype.Timestamptz `json:"date"`
+	GameID                  string             `json:"game_id"`
+	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
+	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
+	CalculatorData          json.RawMessage    `json:"calculator_data"`
 }
 
 type MatchScore struct {
@@ -147,12 +151,12 @@ type PlayerClubMembership struct {
 }
 
 type SkullKingTable struct {
-	ID                 string    `json:"id"`
-	HostUserID         string    `json:"host_user_id"`
-	GameState          []byte    `json:"game_state"`
-	ConnectedPlayerIds []string  `json:"connected_player_ids"`
-	CreatedAt          time.Time `json:"created_at"`
-	ExpiresAt          time.Time `json:"expires_at"`
+	ID                 string          `json:"id"`
+	HostUserID         string          `json:"host_user_id"`
+	GameState          json.RawMessage `json:"game_state"`
+	ConnectedPlayerIds []string        `json:"connected_player_ids"`
+	CreatedAt          time.Time       `json:"created_at"`
+	ExpiresAt          time.Time       `json:"expires_at"`
 }
 
 type Tournament struct {

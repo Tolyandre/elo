@@ -74,3 +74,6 @@ recognition/**/*.pyc
 # generated service worker (built by @serwist/next during pnpm build)
 nextjs/public/sw.js
 nextjs/public/sw.js.map
+
+# zcode plans
+.zcode

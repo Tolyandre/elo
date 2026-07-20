@@ -70,7 +70,13 @@ type  OfflineState = {
      * Offline-aware match submission: posts to the server when online, queues a
      * pending match when offline or when the request fails at the network level.
      */
-    submitMatch: (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }) => Promise<SubmitMatchResult>;
+    submitMatch: (payload: {
+        game_id: string;
+        score: Record<string, number>;
+        tournament_ids?: string[];
+        calculator_kind?: string | null;
+        calculator_data?: Record<string, never> | null;
+    }) => Promise<SubmitMatchResult>;
     syncNow: () => void;
 };
 
@@ -359,7 +365,17 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const submitMatch = useCallback(
-        async (payload: { game_id: string; score: Record<string, number>; tournament_ids?: string[] }): Promise<SubmitMatchResult> => {
+        async (payload: {
+            game_id: string;
+            score: Record<string, number>;
+            tournament_ids?: string[];
+            // Optional calculator state. Only forwarded on the online path:
+            // when a calculator-originated match is queued offline the
+            // intermediate data is dropped (matches today's behaviour — see
+            // ADR-09). The match itself is still queued and synced.
+            calculator_kind?: string | null;
+            calculator_data?: Record<string, never> | null;
+        }): Promise<SubmitMatchResult> => {
             // A pending game/player referenced by this match hasn't been synced to
             // the server yet — don't attempt a network call that would 400. Queue
             // directly so the match goes out after its dependencies in the next sync.

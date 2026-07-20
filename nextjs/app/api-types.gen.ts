@@ -857,6 +857,10 @@ export interface components {
             has_markets: boolean;
             /** @description Tournaments this match belongs to */
             tournaments?: components["schemas"]["MatchTournament"][];
+            /** @description Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form. */
+            calculator_kind?: string | null;
+            /** @description Intermediate calculator state. Present only when calculator_kind is non-null. Opaque at the OpenAPI layer; see pkg/calculator for the per-kind JSON Schemas. */
+            calculator_data?: Record<string, never> | null;
         };
         MatchesPage: {
             status: string;
@@ -1728,6 +1732,10 @@ export interface operations {
                     date?: string;
                     /** @description Optional tournament IDs this match belongs to. Every match player is auto-enrolled into each tournament. */
                     tournament_ids?: string[];
+                    /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form. */
+                    calculator_kind?: string | null;
+                    /** @description Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id" so the idcodec middleware rewrites ids at the HTTP boundary. */
+                    calculator_data?: Record<string, never> | null;
                 };
             };
         };
@@ -1848,6 +1856,10 @@ export interface operations {
                     date: string;
                     /** @description Tournament IDs this match belongs to. Associations are replaced with this set; players are enrolled but never un-enrolled. */
                     tournament_ids?: string[];
+                    /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match. */
+                    calculator_kind?: string | null;
+                    /** @description Intermediate calculator state. Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Required when calculator_kind is non-null. */
+                    calculator_data?: Record<string, never> | null;
                 };
             };
         };

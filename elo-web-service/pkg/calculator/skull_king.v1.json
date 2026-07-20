@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/calculator/skull-king.v1.json",
+  "title": "Skull King calculator state (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "players", "current_round", "current_player_index", "rounds"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "players": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["player_id", "name"],
+        "properties": {
+          "player_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "current_round": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "current_player_index": { "type": "integer", "minimum": 0 },
+    "rounds": {
+      "type": "array",
+      "description": "rounds[roundIndex][playerIndex] — positional; player identity comes from players[].player_id at the matching index.",
+      "items": {
+        "type": "array",
+        "items": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["bid", "bonus"],
+              "properties": {
+                "bid": { "type": "integer", "minimum": 0 },
+                "actual": { "type": ["integer", "null"], "minimum": 0 },
+                "bonus": { "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "fallback_game_id": { "type": ["string", "null"] }
+  }
+}

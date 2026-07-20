@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -59,12 +60,13 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:         r.MatchID,
-				GameId:     r.GameID,
-				GameName:   r.GameName,
-				Date:       r.Date.Time,
-				Players:    make(map[string]matchPlayerJson),
-				HasMarkets: r.HasMarkets,
+				Id:             r.MatchID,
+				GameId:         r.GameID,
+				GameName:       r.GameName,
+				Date:           r.Date.Time,
+				Players:        make(map[string]matchPlayerJson),
+				HasMarkets:     r.HasMarkets,
+				CalculatorKind: r.CalculatorKind,
 			}
 			order = append(order, r.MatchID)
 		}
@@ -108,6 +110,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
 			match.Tournaments = &ts
 		}
+		if m.CalculatorKind.Valid {
+			kind := m.CalculatorKind.String
+			match.CalculatorKind = &kind
+		}
 		data = append(data, match)
 	}
 
@@ -139,6 +145,16 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	if request.Body.Date != nil {
 		date = *request.Body.Date
 		opts.ClientDate = true
+	}
+
+	// Calculator state (optional). When present, validate the document against
+	// the per-kind JSON Schema before anything touches the DB.
+	if request.Body.CalculatorKind != nil {
+		calc, cerr := buildCalculatorInput(*request.Body.CalculatorKind, request.Body.CalculatorData)
+		if cerr != nil {
+			return AddMatch400JSONResponse{Status: "fail", Message: cerr.Error()}, nil
+		}
+		opts.Calculator = calc
 	}
 
 	match, err := s.api.MatchService.AddMatch(ctx, gameID, playerScores, date, opts)
@@ -216,11 +232,13 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
-				Id:       r.MatchID,
-				GameId:   r.GameID,
-				GameName: r.GameName,
-				Date:     r.Date.Time,
-				Players:  make(map[string]matchPlayerJson),
+				Id:             r.MatchID,
+				GameId:         r.GameID,
+				GameName:       r.GameName,
+				Date:           r.Date.Time,
+				Players:        make(map[string]matchPlayerJson),
+				CalculatorKind: r.CalculatorKind,
+				CalculatorData: r.CalculatorData,
 			}
 			order = append(order, r.MatchID)
 		}
@@ -264,6 +282,16 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 	if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
 		match.Tournaments = &ts
 	}
+	if m.CalculatorKind.Valid {
+		kind := m.CalculatorKind.String
+		match.CalculatorKind = &kind
+		if len(m.CalculatorData) > 0 {
+			var data map[string]interface{}
+			if err := json.Unmarshal(m.CalculatorData, &data); err == nil {
+				match.CalculatorData = &data
+			}
+		}
+	}
 
 	return GetMatchById200JSONResponse{Status: "success", Data: match}, nil
 }
@@ -274,7 +302,24 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 		return UpdateMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
-	_, err = s.api.MatchService.UpdateMatch(ctx, request.Id, gameID, playerScores, request.Body.Date, derefStringSlice(request.Body.TournamentIds))
+	opts := elo.UpdateMatchOpts{
+		TournamentIDs: derefStringSlice(request.Body.TournamentIds),
+	}
+	// A non-nil calculator_kind in the body means "set/replace"; a body that
+	// explicitly sends calculator_kind: null means "clear". Because the field
+	// is `*string` (pointer), we can only tell the two apart when the client
+	// sends the key — which the JSON encoder guarantees by setting the pointer.
+	// When the key is entirely absent the pointer stays nil and we leave the
+	// existing columns untouched.
+	if request.Body.CalculatorKind != nil {
+		calc, cerr := buildCalculatorUpdate(*request.Body.CalculatorKind, request.Body.CalculatorData)
+		if cerr != nil {
+			return UpdateMatch400JSONResponse{Status: "fail", Message: cerr.Error()}, nil
+		}
+		opts.Calculator = calc
+	}
+
+	_, err = s.api.MatchService.UpdateMatch(ctx, request.Id, gameID, playerScores, request.Body.Date, opts)
 	if err != nil {
 		switch matchDomainError(err) {
 		case 400:

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/calculator/iaww.v1.json",
+  "title": "It's a Wonderful World calculator state (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "players", "direct_vp", "multipliers"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "players": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["player_id", "name"],
+        "properties": {
+          "player_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "direct_vp": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["player_id", "value"],
+        "properties": {
+          "player_id": { "type": "string", "minLength": 1 },
+          "value": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "multipliers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["row_id", "player_id", "coeff", "count"],
+        "properties": {
+          "row_id": { "type": "string", "minLength": 1 },
+          "player_id": { "type": "string", "minLength": 1 },
+          "coeff": { "type": "integer" },
+          "count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "fallback_game_id": { "type": ["string", "null"] }
+  }
+}

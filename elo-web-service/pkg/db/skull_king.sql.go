@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -43,9 +44,9 @@ RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expire
 `
 
 type CreateSkullKingTableParams struct {
-	ID         string `json:"id"`
-	HostUserID string `json:"host_user_id"`
-	GameState  []byte `json:"game_state"`
+	ID         string          `json:"id"`
+	HostUserID string          `json:"host_user_id"`
+	GameState  json.RawMessage `json:"game_state"`
 }
 
 func (q *Queries) CreateSkullKingTable(ctx context.Context, arg CreateSkullKingTableParams) (SkullKingTable, error) {
@@ -163,8 +164,8 @@ UPDATE skull_king_tables SET game_state = $2 WHERE id = $1 RETURNING id, host_us
 `
 
 type UpdateSkullKingTableStateParams struct {
-	ID        string `json:"id"`
-	GameState []byte `json:"game_state"`
+	ID        string          `json:"id"`
+	GameState json.RawMessage `json:"game_state"`
 }
 
 func (q *Queries) UpdateSkullKingTableState(ctx context.Context, arg UpdateSkullKingTableStateParams) (SkullKingTable, error) {

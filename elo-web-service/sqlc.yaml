@@ -22,3 +22,10 @@ sql:
             go_type:
               type: "string"
               pointer: true
+          # JSONB columns are scanned as raw bytes; the handler parses/validates
+          # the document against a per-calculator-kind JSON schema (pkg/calculator).
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+          - db_type: "jsonb"
+            nullable: true
+            go_type: "encoding/json.RawMessage"

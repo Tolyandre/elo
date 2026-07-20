@@ -10,7 +10,7 @@ import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise } from "
 import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Edit2, ArrowLeft, Trash2 } from "lucide-react";
+import { AlertCircle, Edit2, ArrowLeft, Trash2, ClipboardEdit } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
@@ -86,18 +86,24 @@ function NotFound() {
   );
 }
 
-function EditAction({ id, disabled = false }: { id: string; disabled?: boolean }) {
+function EditAction({ id, disabled = false, viaCalculator = false }: { id: string; disabled?: boolean; viaCalculator?: boolean }) {
+  // Both calculator-backed and plain matches edit at /matches/edit; the edit
+  // page dispatches to the calculator UI or the generic form based on
+  // calculator_kind. The icon differs so the user can tell from the list/view
+  // which editor will open.
+  const Icon = viaCalculator ? ClipboardEdit : Edit2;
+  const label = viaCalculator ? "Открыть в калькуляторе" : "Редактировать";
   if (disabled) {
     return (
-      <Button variant="outline" disabled aria-label="Редактировать">
-        <Edit2 className="h-4 w-4" />
+      <Button variant="outline" disabled aria-label={label}>
+        <Icon className="h-4 w-4" />
       </Button>
     );
   }
   return (
     <Button asChild variant="outline">
-      <Link href={`/matches/edit?id=${encodeURIComponent(id)}`} aria-label="Редактировать">
-        <Edit2 className="h-4 w-4" />
+      <Link href={`/matches/edit?id=${encodeURIComponent(id)}`} aria-label={label}>
+        <Icon className="h-4 w-4" />
       </Link>
     </Button>
   );
@@ -159,7 +165,7 @@ function SavedMatchView({ matchId }: { matchId: string }) {
     <main className="max-w-sm mx-auto p-4 space-y-4">
       <BackButton />
 
-      <PageHeader title="Просмотр партии" action={<EditAction id={match.id} />} />
+      <PageHeader title="Просмотр партии" action={<EditAction id={match.id} viaCalculator={!!match.calculator_kind} />} />
 
       <Card>
         <CardContent>

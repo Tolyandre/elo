@@ -25,6 +25,21 @@ func newID(t *testing.T) string {
 	return id.String()
 }
 
+// newMatchOpts returns AddMatchOpts pre-filled with a fresh client-generated
+// match id (ULID). Required since migration 036 made matches.id a UUID with no
+// default; the domain service no longer auto-assigns one. Callers can still
+// layer on extra fields (TournamentIDs, Calculator, …) via a spread:
+//
+//	opts := newMatchOpts(t); opts.TournamentIDs = []string{tour.ID}
+//
+// or pass overrides inline:
+//
+//	newMatchOpts(t) // plain
+func newMatchOpts(t *testing.T) elo.AddMatchOpts {
+	t.Helper()
+	return elo.AddMatchOpts{ID: newID(t)}
+}
+
 // createTestPlayer inserts a player and returns its ID.
 func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) string {
 	t.Helper()
@@ -129,7 +144,7 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	gameID := createTestGame(t, pool, "Catan")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	_, err := svc.AddMatch(ctx, gameID, map[string]float64{p1: 10, p2: 5, p3: 1}, time.Now(), elo.AddMatchOpts{})
+	_, err := svc.AddMatch(ctx, gameID, map[string]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -167,7 +182,7 @@ func TestAddMatch_EloOrderPreserved(t *testing.T) {
 	gameID := createTestGame(t, pool, "Chess")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	_, err := svc.AddMatch(ctx, gameID, map[string]float64{winner: 10, loser: 1}, time.Now(), elo.AddMatchOpts{})
+	_, err := svc.AddMatch(ctx, gameID, map[string]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -211,7 +226,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Give players enough bet limit by adding a warm-up match first
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), elo.AddMatchOpts{})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -226,7 +241,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Add a match where playerA wins (higher score)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), elo.AddMatchOpts{})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch (trigger): %v", err)
 	}
@@ -300,7 +315,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. M1
-	m1, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, elo.AddMatchOpts{})
+	m1, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
@@ -331,13 +346,13 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	}
 
 	// 3. M2 triggers market resolution (playerA wins)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, t2, elo.AddMatchOpts{})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
 	// 4. M3 after settlement
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 7, playerB: 8}, t3, elo.AddMatchOpts{})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M3 AddMatch: %v", err)
 	}
@@ -347,7 +362,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	snapshotB := latestRating(t, pool, playerB)
 
 	// 6. Trigger recalculation via UpdateMatch on M1 with identical data
-	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, nil)
+	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, elo.UpdateMatchOpts{})
 	if err != nil {
 		t.Fatalf("UpdateMatch (recalc trigger): %v", err)
 	}
@@ -396,7 +411,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. Warm-up match: gives players a bet limit of K/(1+1) ≈ 16.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, tWarmup, elo.AddMatchOpts{})
+	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, tWarmup, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -426,14 +441,14 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	}
 
 	// 4. M2 with a future domain date triggers resolution; resolved_at = tFuture > placed_at ✓.
-	m2, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, tFuture, elo.AddMatchOpts{})
+	m2, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, tFuture, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
 	// 5. Move M2 to tPast (now-30min). This makes resolved_at = now-30min < placed_at (≈now).
 	// Bets fall in [now-30min, now+2h) → conflict must be returned.
-	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[string]float64{playerA: 10, playerB: 2}, tPast, nil)
+	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[string]float64{playerA: 10, playerB: 2}, tPast, elo.UpdateMatchOpts{})
 	if err == nil {
 		t.Fatal("UpdateMatch: expected error, got nil")
 	}
@@ -464,7 +479,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match (before market creation) to initialise bet limits.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), elo.AddMatchOpts{})
+	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up match: %v", err)
 	}
@@ -495,7 +510,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	}
 
 	// Add a match whose date is past closes_at — ExpireMarketsAtDate cancels the market.
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 6, playerB: 4}, tMatch, elo.AddMatchOpts{})
+	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 6, playerB: 4}, tMatch, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch after expiry: %v", err)
 	}

@@ -584,11 +584,16 @@ type MarketDetailStatus string
 
 // Match defines model for Match.
 type Match struct {
-	Date       time.Time `json:"date"`
-	GameId     string    `json:"game_id"`
-	GameName   string    `json:"game_name"`
-	HasMarkets bool      `json:"has_markets"`
-	Id         string    `json:"id"`
+	// CalculatorData Intermediate calculator state. Present only when calculator_kind is non-null. Opaque at the OpenAPI layer; see pkg/calculator for the per-kind JSON Schemas.
+	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
+
+	// CalculatorKind Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form.
+	CalculatorKind *string   `json:"calculator_kind,omitempty"`
+	Date           time.Time `json:"date"`
+	GameId         string    `json:"game_id"`
+	GameName       string    `json:"game_name"`
+	HasMarkets     bool      `json:"has_markets"`
+	Id             string    `json:"id"`
 
 	// Score Map of player_id (string) to player score data
 	Score map[string]MatchPlayer `json:"score"`
@@ -948,6 +953,12 @@ type ListMatchesParams struct {
 
 // AddMatchJSONBody defines parameters for AddMatch.
 type AddMatchJSONBody struct {
+	// CalculatorData Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id" so the idcodec middleware rewrites ids at the HTTP boundary.
+	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
+
+	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form.
+	CalculatorKind *string `json:"calculator_kind,omitempty"`
+
 	// Date Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
 	Date   *time.Time `json:"date,omitempty"`
 	GameId string     `json:"game_id"`
@@ -964,8 +975,13 @@ type AddMatchJSONBody struct {
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
 type UpdateMatchJSONBody struct {
-	Date   time.Time `json:"date"`
-	GameId string    `json:"game_id"`
+	// CalculatorData Intermediate calculator state. Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Required when calculator_kind is non-null.
+	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
+
+	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match.
+	CalculatorKind *string   `json:"calculator_kind,omitempty"`
+	Date           time.Time `json:"date"`
+	GameId         string    `json:"game_id"`
 
 	// Score Map of player_id (string) to numeric score
 	Score map[string]float64 `json:"score"`

@@ -88,9 +88,16 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 
 	r.GET("/ping", strictWrapper.GetPing)
 	r.GET("/players", strictWrapper.ListPlayers)
+	r.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
 	r.POST("/players", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreatePlayer)
 	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)
 	r.DELETE("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeletePlayer)
+	// Matches: needed by the calculator-data idcodec roundtrip test and any
+	// future match-level integration test.
+	r.GET("/matches", strictWrapper.ListMatches)
+	r.GET("/matches/:id", strictWrapper.GetMatchById)
+	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
+	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
 	return r
 }
 

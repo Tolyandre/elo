@@ -26,6 +26,10 @@ func main() {
 			log.Fatalf("migrations failed: %v", err)
 			os.Exit(1)
 		}
+		if err := db.MigrateCalculatorData(context.Background(), cfg.MigrateDBDSN); err != nil {
+			log.Fatalf("calculator data migration failed: %v", err)
+			os.Exit(1)
+		}
 		log.Println("migrations applied; exiting as --migrate-db-dsn was provided")
 		return
 	}
@@ -35,12 +39,27 @@ func main() {
 			log.Fatalf("migrations failed: %v", err)
 			os.Exit(1)
 		}
+		// Data migrations use the same DSN the schema migration just touched.
+		if dsn, err := db.BuildDSN(); err == nil {
+			if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
+				log.Fatalf("calculator data migration failed: %v", err)
+				os.Exit(1)
+			}
+		}
 		log.Println("migrations applied; exiting as --migrate-db was provided")
 		return
 	}
 
 	pool := initDbConnectionPool()
 	defer pool.Close()
+	// Run in-process data migrations (calculator schema upgrades, etc.) on every
+	// normal boot too. No-op when nothing is out of date.
+	if dsn, err := db.BuildDSN(); err == nil {
+		if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
+			log.Fatalf("calculator data migration failed: %v", err)
+			os.Exit(1)
+		}
+	}
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
 

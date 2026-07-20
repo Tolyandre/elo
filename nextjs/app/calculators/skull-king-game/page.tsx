@@ -19,6 +19,13 @@ import {
     SkullKingRoundEntry as RoundEntry,
     SkullKingTableSummary,
 } from "@/app/api";
+import {
+    GameTable,
+    EditCellDialog,
+    BidButtons,
+    playerTotal, findNextUnfilled, initialState, TOTAL_ROUNDS,
+} from "@/components/calculators/skull-king";
+import { toStorage as skToStorage } from "@/components/calculators/skull-king/storage";
 import { useSkullKingSSE, useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { useTournamentSelection } from "@/hooks/useTournamentSelection";
@@ -28,12 +35,6 @@ import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
 import { AuthWarning } from "@/components/auth-warning";
 import {
     AlertDialog,
@@ -63,293 +64,8 @@ const TABLE_SESSION_KEY = "skull-king-game/table-session";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TOTAL_ROUNDS = 10;
 const LS_KEY = "skull-king-game/state";
-
-const initialState: GameState = {
-    phase: "setup",
-    players: [],
-    currentRound: 1,
-    currentPlayerIndex: 0,
-    rounds: [],
-};
-
-// ─── Scoring ─────────────────────────────────────────────────────────────────
-
-function calcRoundScore(entry: RoundEntry, roundNumber: number, playerCount: number): number {
-    if (entry.actual == null) return 0;
-    const { bid, actual, bonus } = entry;
-    const zeroBase = (playerCount >= 8 && roundNumber >= 9) ? 8 : roundNumber;
-    if (actual === bid) {
-        return (bid === 0 ? zeroBase * 10 : actual * 20) + bonus;
-    }
-    if (bid === 0) {
-        return zeroBase * -10;
-    }
-    return Math.abs(bid - actual) * -10;
-}
-
-function playerTotal(
-    rounds: (RoundEntry | null)[][],
-    playerIndex: number,
-    playerCount: number
-): number {
-    return rounds.reduce((sum, round, ri) => {
-        const entry = round[playerIndex];
-        if (!entry) return sum;
-        return sum + calcRoundScore(entry, ri + 1, playerCount);
-    }, 0);
-}
-
-// Returns the next index (wrapping) where isFilled(index) is false, or null if all filled.
-function findNextUnfilled(from: number, count: number, isFilled: (i: number) => boolean): number | null {
-    for (let i = 1; i < count; i++) {
-        const idx = (from + i) % count;
-        if (!isFilled(idx)) return idx;
-    }
-    return null;
-}
-
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function BidButtons({
-    roundNumber,
-    selected,
-    onSelect,
-    compact = false,
-    disabled = false,
-}: {
-    roundNumber: number;
-    selected: number | null;
-    onSelect: (n: number) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}) {
-    return (
-        <div className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2 md:gap-3"}`}>
-            {Array.from({ length: roundNumber + 1 }, (_, i) => (
-                <Button
-                    key={i}
-                    variant={selected === i ? "default" : "outline"}
-                    size={compact ? "default" : "lg"}
-                    disabled={disabled}
-                    className={compact
-                        ? "h-10 min-w-10 md:h-12 md:min-w-12 md:text-lg lg:h-14 lg:min-w-14 lg:text-xl"
-                        : "w-14 h-14 text-xl md:w-16 md:h-16 md:text-2xl lg:w-20 lg:h-20 lg:text-3xl"
-                    }
-                    onClick={() => onSelect(i)}
-                >
-                    {i}
-                </Button>
-            ))}
-        </div>
-    );
-}
-
-function GameTable({
-    state,
-    onCellClick,
-    maskedRoundIndex,
-    hideTotalPlayerIndices,
-    planRoundIndex,
-}: {
-    state: GameState;
-    onCellClick?: (roundIndex: number, playerIndex: number) => void;
-    maskedRoundIndex?: number;
-    hideTotalPlayerIndices?: number[];
-    planRoundIndex?: number;
-}) {
-    const { players, rounds } = state;
-    const lastRoundIndex = rounds.length - 1;
-    const clickable = !!onCellClick;
-
-    const totals = players.map((_, pi) =>
-        rounds.reduce((sum, round, ri) => {
-            const entry = round[pi];
-            if (!entry || entry.actual === null) return sum;
-            return sum + calcRoundScore(entry, ri + 1, players.length);
-        }, 0)
-    );
-
-    const headerCells = (
-        <>
-            <th className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center bg-muted min-w-12 md:min-w-16"></th>
-            {players.map((p) => (
-                <th key={p.id} className="border border-border px-1 py-0.5 md:px-2 md:py-1.5 text-center bg-muted min-w-[2.5rem] sm:min-w-20 md:min-w-24">
-                    <span className="inline-block [writing-mode:vertical-lr] rotate-180 sm:[writing-mode:horizontal-tb] sm:rotate-0 sm:max-w-none truncate">
-                        {p.name}
-                    </span>
-                </th>
-            ))}
-        </>
-    );
-
-    return (
-        <div className="overflow-x-auto max-w-full">
-            <table className="border-collapse text-sm md:text-base">
-                <thead>
-                    <tr>{headerCells}</tr>
-                </thead>
-                <tbody>
-                    {rounds.map((round, ri) => {
-                        const isLastRound = ri === lastRoundIndex;
-                        return (
-                            <tr key={ri}>
-                                <td className="border border-border px-2 py-0.5 md:px-3 md:py-1.5 text-center font-medium bg-muted/50">
-                                    {ri + 1}
-                                </td>
-                                {players.map((_, pi) => {
-                                    const entry = round[pi];
-                                    if (!entry) return <td key={pi} className="border border-border px-2 py-0.5" />;
-                                    const isMasked = maskedRoundIndex !== undefined && ri === maskedRoundIndex;
-                                    const isClickable = clickable && !isMasked;
-                                    const score = !isMasked && entry.actual !== null
-                                        ? calcRoundScore(entry, ri + 1, players.length)
-                                        : null;
-                                    const scoreDisplay = score !== null
-                                        ? entry.bonus > 0
-                                            ? `${score - entry.bonus > 0 ? "+" : ""}${score - entry.bonus}+${entry.bonus}`
-                                            : `${score > 0 ? "+" : ""}${score}`
-                                        : null;
-                                    const scalePct = isLastRound ? 1 : 0.75;
-                                    const isPlanCell = planRoundIndex !== undefined && ri === planRoundIndex && entry.actual === null;
-                                    return (
-                                        <td
-                                            key={pi}
-                                            className={`border border-border px-1 py-0.5 md:px-3 md:py-1.5 text-center ${isPlanCell ? "" : "[container-type:inline-size]"} ${isClickable ? "cursor-pointer hover:bg-accent" : ""}`}
-                                            onClick={() => isClickable && onCellClick!(ri, pi)}
-                                        >
-                                            {isPlanCell ? (
-                                                <span className="text-base md:text-lg font-bold tabular-nums">{isMasked ? "?" : entry.bid}</span>
-                                            ) : (
-                                                <div className="flex flex-col items-center leading-tight">
-                                                    <span className="text-muted-foreground text-center whitespace-nowrap" style={{ fontSize: `clamp(${6 * scalePct}px, ${6 * scalePct}cqi, ${12 * scalePct}px)` }}>
-                                                        {entry.actual !== null ? entry.actual : ""}/{isMasked ? "?" : entry.bid}
-                                                    </span>
-                                                    <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-red-600" : "text-green-700"}`} style={{ fontSize: `clamp(${6 * scalePct}px, ${7 * scalePct}cqi, ${14 * scalePct}px)` }}>
-                                                        {scoreDisplay ?? ""}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        );
-                    })}
-                    {/* Repeated header row before totals for easy reading */}
-                    {rounds.length > 0 && (
-                        <tr>{headerCells}</tr>
-                    )}
-                    {/* Totals row */}
-                    {rounds.length > 0 && (
-                        <tr className="bg-muted/50">
-                            <td className="border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold">Σ</td>
-                            {totals.map((total, pi) => {
-                                const isHidden = hideTotalPlayerIndices?.includes(pi);
-                                return (
-                                    <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold ${isHidden ? "text-muted-foreground" : total < 0 ? "text-red-600" : "text-green-700"}`}>
-                                        {isHidden ? "—" : total}
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-function EditCellDialog({
-    open,
-    onClose,
-    roundIndex,
-    playerIndex,
-    state,
-    onSave,
-}: {
-    open: boolean;
-    onClose: () => void;
-    roundIndex: number;
-    playerIndex: number;
-    state: GameState;
-    onSave: (roundIndex: number, playerIndex: number, entry: RoundEntry) => void;
-}) {
-    const roundNumber = roundIndex + 1;
-    const playerName = state.players[playerIndex]?.name ?? "";
-    const original = state.rounds[roundIndex]?.[playerIndex] ?? { bid: 0, actual: null, bonus: 0 };
-
-    const [bid, setBid] = useState(original.bid);
-    const [actual, setActual] = useState<number | null>(original.actual ?? null);
-    const [bonus, setBonus] = useState(original.bonus);
-
-    // Reset on open
-    React.useEffect(() => {
-        if (open) {
-            /* eslint-disable react-hooks/set-state-in-effect -- sync dialog fields from props when it opens */
-            setBid(original.bid);
-            setActual(original.actual ?? null);
-            setBonus(original.bonus);
-            /* eslint-enable react-hooks/set-state-in-effect */
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, roundIndex, playerIndex]);
-
-    const bonusApplicable = actual !== null && actual === bid;
-
-    function handleSave() {
-        onSave(roundIndex, playerIndex, {
-            bid,
-            actual,
-            bonus: bonusApplicable ? bonus : 0,
-        });
-        onClose();
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>
-                        Раунд {roundNumber} — {playerName}
-                    </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                    <div>
-                        <p className="text-sm font-medium mb-2">План (взяток):</p>
-                        <BidButtons roundNumber={roundNumber} selected={bid} onSelect={setBid} compact />
-                    </div>
-                    <div>
-                        <p className="text-sm font-medium mb-2">Факт (взяток):</p>
-                        <BidButtons
-                            roundNumber={roundNumber}
-                            selected={actual}
-                            onSelect={(i) => { setActual(i); if (i !== bid) setBonus(0); }}
-                            compact
-                        />
-                    </div>
-                    {bonusApplicable && (
-                        <div>
-                            <p className="text-sm font-medium mb-2">Бонус: <span className="text-xl md:text-2xl font-semibold">{bonus}</span></p>
-                            <div className="flex flex-wrap gap-2">
-                                {[10, 20, 30, 40].map((b) => (
-                                    <Button key={b} variant="outline" className="md:h-12 md:min-w-[3.5rem] md:text-base lg:h-14 lg:min-w-[4rem] lg:text-lg" onClick={() => setBonus((v) => v + b)}>
-                                        +{b}
-                                    </Button>
-                                ))}
-                                <Button variant="ghost" className="md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={() => setBonus(0)}>
-                                    Сбросить
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                    <Button className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg" onClick={handleSave}>Сохранить</Button>
-                </div>
-            </DialogContent>
-        </Dialog>
-    );
-}
+const CALCULATOR_KIND = "skull-king";
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
@@ -818,6 +534,8 @@ export default function SkullKingGamePage() {
                 game_id: gameId,
                 score,
                 tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
+                calculator_kind: CALCULATOR_KIND,
+                calculator_data: skToStorage(gameState) as unknown as Record<string, never>,
             });
             // The match was either saved on the server or queued offline; either way
             // its id is final. The view page shows the pending or saved card by id.

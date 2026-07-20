@@ -28,12 +28,16 @@ type matchPlayerJson struct {
 }
 
 type matchJson struct {
-	Id         string                     `json:"id"`
-	GameId     string                     `json:"game_id"`
-	GameName   string                     `json:"game_name"`
-	Date       time.Time                  `json:"date"`
-	Players    map[string]matchPlayerJson `json:"score"`
-	HasMarkets bool                       `json:"has_markets"`
+	Id             string                     `json:"id"`
+	GameId         string                     `json:"game_id"`
+	GameName       string                     `json:"game_name"`
+	Date           time.Time                  `json:"date"`
+	Players        map[string]matchPlayerJson `json:"score"`
+	HasMarkets     bool                       `json:"has_markets"`
+	CalculatorKind pgtype.Text                `json:"-"`
+	// CalculatorData is omitted on the list path (the paginated query does not
+	// select it to avoid pulling large JSONB for every list row).
+	CalculatorData json.RawMessage `json:"-"`
 }
 
 // parseMatchScores validates that the game_id and player_ids are present.
@@ -88,7 +92,7 @@ func (a *API) UpdateMatch(c *gin.Context) {
 		return
 	}
 
-	_, err = a.MatchService.UpdateMatch(c.Request.Context(), matchID, gameID, playerScores, payload.Date, nil)
+	_, err = a.MatchService.UpdateMatch(c.Request.Context(), matchID, gameID, playerScores, payload.Date, elo.UpdateMatchOpts{})
 	if err != nil {
 		matchErrorToHTTP(c, err)
 		return
@@ -136,12 +140,16 @@ func decodeMatchCursor(token string) (*string, *string, *string, bool, pgtype.Ti
 // groupMatchRows converts a slice of rows (each row = one player in a match) into
 // ordered match groups. Returns the matches map and ID-ordered slice.
 type tempMatch struct {
-	Id         string
-	GameId     string
-	GameName   string
-	Date       time.Time
-	Players    map[string]matchPlayerJson
-	HasMarkets bool
+	Id             string
+	GameId         string
+	GameName       string
+	Date           time.Time
+	Players        map[string]matchPlayerJson
+	HasMarkets     bool
+	CalculatorKind pgtype.Text
+	// CalculatorData is only populated on the GetMatchById path; the paginated
+	// list query deliberately omits the (potentially large) JSONB column.
+	CalculatorData json.RawMessage
 }
 
 func buildMatchesResponse(matchesMap map[string]*tempMatch, order []string) []matchJson {
@@ -149,12 +157,14 @@ func buildMatchesResponse(matchesMap map[string]*tempMatch, order []string) []ma
 	for _, mid := range order {
 		tm := matchesMap[mid]
 		m := matchJson{
-			Id:         tm.Id,
-			GameId:     tm.GameId,
-			GameName:   tm.GameName,
-			Date:       tm.Date,
-			Players:    make(map[string]matchPlayerJson, len(tm.Players)),
-			HasMarkets: tm.HasMarkets,
+			Id:             tm.Id,
+			GameId:         tm.GameId,
+			GameName:       tm.GameName,
+			Date:           tm.Date,
+			Players:        make(map[string]matchPlayerJson, len(tm.Players)),
+			HasMarkets:     tm.HasMarkets,
+			CalculatorKind: tm.CalculatorKind,
+			CalculatorData: tm.CalculatorData,
 		}
 		for pid, playerData := range tm.Players {
 			m.Players[pid] = playerData

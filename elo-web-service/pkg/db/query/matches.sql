@@ -1,6 +1,6 @@
 -- name: CreateMatch :one
-INSERT INTO matches (id, date, game_id)
-VALUES ($1, $2, $3)
+INSERT INTO matches (id, date, game_id, calculator_kind, calculator_schema_version, calculator_data)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
 RETURNING *;
 
@@ -109,7 +109,7 @@ ORDER BY m.date ASC, m.id ASC, s.score DESC;
 
 -- name: ListMatchesWithPlayersPaginated :many
 WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
@@ -142,6 +142,7 @@ SELECT
     pm.date,
     g.id AS game_id,
     g.name AS game_name,
+    pm.calculator_kind AS calculator_kind,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -172,6 +173,8 @@ SELECT
     m.date,
     g.id AS game_id,
     g.name AS game_name,
+    m.calculator_kind AS calculator_kind,
+    m.calculator_data AS calculator_data,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -203,7 +206,11 @@ FOR UPDATE;
 
 -- name: UpdateMatch :exec
 UPDATE matches
-SET date = $2, game_id = $3
+SET date = $2,
+    game_id = $3,
+    calculator_kind = $4,
+    calculator_schema_version = $5,
+    calculator_data = $6
 WHERE id = $1;
 
 -- name: GetMatchesFromDate :many

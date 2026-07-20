@@ -31,10 +31,10 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
-	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t1, elo.AddMatchOpts{}); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t1, newMatchOpts(t)); err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
-	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t2, elo.AddMatchOpts{}); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t2, newMatchOpts(t)); err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
@@ -119,12 +119,12 @@ func TestAddMatch_ClientDateValidation(t *testing.T) {
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 	scores := map[string]float64{playerA: 10, playerB: 5}
 
-	_, err := svc.AddMatch(ctx, gameID, scores, time.Now().Add(time.Hour), elo.AddMatchOpts{ClientDate: true})
+	_, err := svc.AddMatch(ctx, gameID, scores, time.Now().Add(time.Hour), elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if !errors.Is(err, elo.ErrMatchDateOutOfRange) {
 		t.Errorf("future date: expected ErrMatchDateOutOfRange, got %v", err)
 	}
 
-	_, err = svc.AddMatch(ctx, gameID, scores, time.Now().Add(-31*24*time.Hour), elo.AddMatchOpts{ClientDate: true})
+	_, err = svc.AddMatch(ctx, gameID, scores, time.Now().Add(-31*24*time.Hour), elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if !errors.Is(err, elo.ErrMatchDateOutOfRange) {
 		t.Errorf("31 days ago: expected ErrMatchDateOutOfRange, got %v", err)
 	}
@@ -191,7 +191,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match for bet limits.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), elo.AddMatchOpts{}); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -219,7 +219,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	// Resolve the market with a match well after the bets.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), elo.AddMatchOpts{}); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("resolving AddMatch: %v", err)
 	}
 

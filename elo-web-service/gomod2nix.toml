@@ -325,6 +325,10 @@ schema = 3
     version = 'v0.11.0'
     hash = 'sha256-PUX8dzJtkD8YDZFNqpHnl4qgb0tE1W/DLnL7V+/d1z4='
 
+  [mod.'github.com/santhosh-tekuri/jsonschema/v6']
+    version = 'v6.0.2'
+    hash = 'sha256-rPRYeV00NRyt6rb+gFJRK1K4TlVxy92cocRK/X9Wef4='
+
   [mod.'github.com/shirou/gopsutil/v4']
     version = 'v4.25.6'
     hash = 'sha256-NC57OD+e8fJLy73QBMy5cuDa2l2beZf9kKi8mGPsCVw='

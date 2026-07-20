@@ -121,6 +121,10 @@ export type Match = {
     score: Record<string, PlayerScore>;
     has_markets: boolean;
     tournaments: MatchTournament[];
+    /** Set when the match was created via a calculator; selects the calculator UI in history mode. */
+    calculator_kind?: string | null;
+    /** Intermediate calculator state (opaque to the API layer). */
+    calculator_data?: Record<string, unknown> | null;
 };
 
 // date is a Date object
@@ -173,6 +177,10 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         date: m.date ? new Date(m.date) : null,
         has_markets: m.has_markets,
         tournaments: m.tournaments ?? [],
+        // idcodec middleware already rewrote player ids inside calculator_data to
+        // short form on the way out, so no client-side transformation is needed.
+        calculator_kind: m.calculator_kind ?? null,
+        calculator_data: (m.calculator_data as Record<string, unknown> | null) ?? null,
     };
 }
 
@@ -262,13 +270,28 @@ export async function getMatchByIdPromise(id: string): Promise<Match> {
     return mapMatch(data.data);
 }
 
-export async function addMatchPromise(payload: { id: string, game_id: string, score: Record<string, number>, date?: string, tournament_ids?: string[] }) {
+export async function addMatchPromise(payload: {
+    id: string;
+    game_id: string;
+    score: Record<string, number>;
+    date?: string;
+    tournament_ids?: string[];
+    calculator_kind?: string | null;
+    calculator_data?: Record<string, never> | null;
+}) {
     const { data, error } = await client.POST("/matches", { body: payload });
     if (error) throwApiError(error);
     return data.data;
 }
 
-export async function updateMatchPromise(matchId: string, payload: { game_id: string, score: Record<string, number>, date: string, tournament_ids?: string[] }) {
+export async function updateMatchPromise(matchId: string, payload: {
+    game_id: string;
+    score: Record<string, number>;
+    date: string;
+    tournament_ids?: string[];
+    calculator_kind?: string | null;
+    calculator_data?: Record<string, never> | null;
+}) {
     const { data, error } = await client.PUT("/matches/{id}", {
         params: { path: { id: matchId } },
         body: payload,

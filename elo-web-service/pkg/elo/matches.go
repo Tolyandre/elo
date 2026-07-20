@@ -2,6 +2,7 @@ package elo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -39,17 +40,70 @@ type AddMatchOpts struct {
 	// TournamentIDs are the tournaments this match belongs to. The match is
 	// associated with each, and every match player is auto-enrolled into them.
 	TournamentIDs []string
+	// Calculator optionally attaches the intermediate state of the calculator
+	// that produced this match. Already validated by the caller (handler);
+	// stored verbatim alongside the match.
+	Calculator *CalculatorInput
+}
+
+// CalculatorInput is the validated calculator state attached to a new match.
+type CalculatorInput struct {
+	Kind string
+	// Version is the schema_version recorded for this document. The handler
+	// looks it up from pkg/calculator's registry; the service does not interpret it.
+	Version int
+	Data    json.RawMessage
+}
+
+// UpdateMatchOpts carries optional behaviour for UpdateMatch.
+type UpdateMatchOpts struct {
+	TournamentIDs []string
+	// Calculator controls how the match's calculator columns are rewritten:
+	//   - nil            → leave existing calculator columns untouched
+	//   - &CalculatorUpdate{Kind: nil} → clear calculator columns (set to NULL)
+	//   - &CalculatorUpdate{Kind: &k, Data: d} → replace with validated document
+	Calculator *CalculatorUpdate
+}
+
+// CalculatorUpdate describes a change to a match's calculator columns.
+type CalculatorUpdate struct {
+	// Kind is nil to clear the columns; non-nil with Data to replace.
+	Kind    *string
+	Version int
+	Data    json.RawMessage
 }
 
 type IMatchService interface {
 	AddMatch(ctx context.Context, gameID string, playerScores map[string]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
-	UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, tournamentIDs []string) (db.Match, error)
+	UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
 	RecalculateAllGameElo(ctx context.Context) error
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
 	DeleteMarketAndRecalculate(ctx context.Context, marketID string) error
+}
+
+// calculatorColumns builds the three sqlc params fields for calculator columns
+// from a CalculatorInput (or returns the all-NULL form when input is nil).
+func calculatorColumns(c *CalculatorInput) (pgtype.Text, pgtype.Int4, json.RawMessage) {
+	if c == nil {
+		return pgtype.Text{}, pgtype.Int4{}, nil
+	}
+	return pgtype.Text{String: c.Kind, Valid: true},
+		pgtype.Int4{Int32: int32(c.Version), Valid: true},
+		c.Data
+}
+
+// calculatorColumnsFromUpdate resolves the new column values from an update
+// instruction. Returns the all-NULL form when the update clears the columns.
+func calculatorColumnsFromUpdate(u *CalculatorUpdate) (pgtype.Text, pgtype.Int4, json.RawMessage) {
+	if u == nil || u.Kind == nil {
+		return pgtype.Text{}, pgtype.Int4{}, nil
+	}
+	return pgtype.Text{String: *u.Kind, Valid: true},
+		pgtype.Int4{Int32: int32(u.Version), Valid: true},
+		u.Data
 }
 
 // AddMatch adds a single match with Elo calculations
@@ -77,12 +131,17 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 
 	dt := pgtype.Timestamptz{Time: date, Valid: true}
 
+	calcKind, calcVer, calcData := calculatorColumns(opts.Calculator)
+
 	// create match (foreign key will validate game_id exists)
 	// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
-		ID:     opts.ID,
-		Date:   dt,
-		GameID: gameID,
+		ID:                      opts.ID,
+		Date:                    dt,
+		GameID:                  gameID,
+		CalculatorKind:          calcKind,
+		CalculatorSchemaVersion: calcVer,
+		CalculatorData:          calcData,
 	})
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to create match: %v", err)
@@ -147,7 +206,11 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 
 // UpdateMatch updates an existing match and recalculates Elo ratings for all affected matches
 // Date cannot be null and cannot change more than 3 days
-func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, tournamentIDs []string) (db.Match, error) {
+//
+// When opts.Calculator is nil the match's calculator columns are left untouched;
+// when it is &CalculatorUpdate{Kind: nil} they are cleared; otherwise they are
+// replaced with the validated document.
+func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to begin tx: %v", err)
@@ -173,12 +236,21 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 		recalcStartDate = existingMatch.Date.Time
 	}
 
-	err = q.UpdateMatch(ctx, db.UpdateMatchParams{
-		ID:     matchID,
-		Date:   pgtype.Timestamptz{Time: date, Valid: true},
-		GameID: gameID,
-	})
-	if err != nil {
+	updateParams := db.UpdateMatchParams{
+		ID:                      matchID,
+		Date:                    pgtype.Timestamptz{Time: date, Valid: true},
+		GameID:                  gameID,
+		CalculatorKind:          existingMatch.CalculatorKind,
+		CalculatorSchemaVersion: existingMatch.CalculatorSchemaVersion,
+		CalculatorData:          existingMatch.CalculatorData,
+	}
+	if opts.Calculator != nil {
+		k, v, d := calculatorColumnsFromUpdate(opts.Calculator)
+		updateParams.CalculatorKind = k
+		updateParams.CalculatorSchemaVersion = v
+		updateParams.CalculatorData = d
+	}
+	if err = q.UpdateMatch(ctx, updateParams); err != nil {
 		return db.Match{}, fmt.Errorf("unable to update match: %v", err)
 	}
 
@@ -218,7 +290,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %v", err)
 	}
 	playerIDs := playerIDsOf(playerScores)
-	mergedTournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, tournamentIDs)
+	mergedTournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, opts.TournamentIDs)
 	if err != nil {
 		return db.Match{}, err
 	}

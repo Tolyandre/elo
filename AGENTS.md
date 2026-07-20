@@ -5,7 +5,10 @@
 This repository contains a Go backend, Next.js frontend, OpenAPI specs, and deployment tooling.
 
 - `elo-web-service/`: Go service, migrations, generated API code, config, and integration tests in `integration_test/`.
+  - `pkg/calculator/`: registry of game calculators (Skull King, IAWW). Each kind has an embedded JSON Schema, a `schema_version`, and a set of Go migrators for upgrading older stored documents. `MigrateData` and the startup step `pkg/db.MigrateCalculatorData` keep stored `matches.calculator_data` at the current version. See ADR-09.
+  - `pkg/db/`: sqlc-generated queries + `migrations.go` (schema migrations) and `migrate_data.go` (in-process data migrations run on startup).
 - `nextjs/`: Next.js app using the App Router. UI components live in `components/`, routes in `app/`, and Vitest tests in `__tests__/`.
+  - `components/calculators/<kind>/`: reusable calculator UI for both the live calculator pages and the saved-match calculator editor (the `/matches/edit` route dispatches to it when the match has `calculator_kind`). Each kind ships `scoring.tsx` (pure scoring + types), `storage.ts` (normalized stored shape + `toStorage`/`fromStorage`), and presentational components. Storage shape convention: every player reference lives under a `*_id` key (never as an object key) so the backend idcodec middleware rewrites ids automatically. See ADR-09.
 - `openapi/`: source API specifications. Update these before regenerating API clients/server bindings.
 - `nix/`, `flake.nix`, `flake.lock`: Nix development and deployment definitions.
 - `recognition/`: Python/OpenCV card recognition tools and datasets.
@@ -20,6 +23,7 @@ Use `direnv allow` from the repo root to enter the Nix dev shell.
 - `make frontend-run`: run the Next.js dev server.
 - `make dev-down`: stop local Docker Compose dependencies.
 - `make generate-api`: regenerate Go and TypeScript API code after editing `openapi/`.
+- `gomod2nix generate` (run inside `elo-web-service/`): regenerate `gomod2nix.toml` after **any** change to `go.mod` (adding/upgrading a dependency via `go get`). Nix builds the Go service with `-mod=vendor` from `gomod2nix.toml`, so an out-of-date manifest breaks `nix build` / `nix flake check` even though `go build ./...` works. Always commit `go.mod`, `go.sum`, and `gomod2nix.toml` together.
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
