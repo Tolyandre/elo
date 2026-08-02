@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
@@ -78,7 +79,7 @@ func (s *StrictServer) CreateTournament(ctx context.Context, request CreateTourn
 
 	tournament, err := s.api.TournamentService.CreateTournament(ctx, request.Body.Id, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
 	if err != nil {
-		if db.IsUniqueViolation(err) {
+		if domainStatusCode(err) == http.StatusConflict {
 			return CreateTournament409JSONResponse{Status: "fail", Message: "tournament with this name already exists"}, nil
 		}
 		return nil, err
@@ -99,12 +100,16 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 
 	tournament, err := s.api.TournamentService.UpdateTournament(ctx, request.Id, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
 	if err != nil {
-		switch {
-		case errors.Is(err, elo.ErrTournamentMemberHasMatches), errors.Is(err, elo.ErrTournamentDatesNarrowEloRange):
-			return UpdateTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case db.IsUniqueViolation(err):
+		switch domainStatusCode(err) {
+		case http.StatusConflict:
+			// Business conflict (member has matches / date range too narrow) takes
+			// precedence over the generic uniqueness message when the error carries
+			// a domain sentinel.
+			if isTournamentDomainConflict(err) {
+				return UpdateTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			}
 			return UpdateTournament409JSONResponse{Status: "fail", Message: "tournament with this name already exists"}, nil
-		case db.IsNoRows(err):
+		case http.StatusNotFound:
 			return UpdateTournament404JSONResponse{Status: "fail", Message: "tournament not found"}, nil
 		default:
 			return nil, err
@@ -117,10 +122,10 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 func (s *StrictServer) DeleteTournament(ctx context.Context, request DeleteTournamentRequestObject) (DeleteTournamentResponseObject, error) {
 	_, err := s.api.TournamentService.DeleteTournament(ctx, request.Id)
 	if err != nil {
-		switch {
-		case errors.Is(err, elo.ErrTournamentHasMembers):
+		switch domainStatusCode(err) {
+		case http.StatusConflict:
 			return DeleteTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case db.IsNoRows(err):
+		case http.StatusNotFound:
 			return DeleteTournament404JSONResponse{Status: "fail", Message: "tournament not found"}, nil
 		default:
 			return nil, err
@@ -157,6 +162,15 @@ func tournamentPlayerIDs(ids *[]string) []string {
 		return nil
 	}
 	return *ids
+}
+
+// isTournamentDomainConflict reports whether err is one of the tournament
+// business-rule conflicts (carrying a domain sentinel), as opposed to a plain
+// uniqueness violation. Both map to 409 via domainStatusCode, but the business
+// conflict carries an explanatory Russian message we want to surface verbatim.
+func isTournamentDomainConflict(err error) bool {
+	return errors.Is(err, elo.ErrTournamentMemberHasMatches) ||
+		errors.Is(err, elo.ErrTournamentDatesNarrowEloRange)
 }
 
 // tournamentToAPI maps a db.Tournament plus a known player set to the API model.

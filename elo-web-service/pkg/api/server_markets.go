@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"time"
 
@@ -11,54 +13,61 @@ import (
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-// buildTypedMarketParams converts raw DB columns to the typed Market_Params union.
-func buildTypedMarketParams(marketType string, targetPlayerID string, requiredPlayerIds []string, mwGameIDs []string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *Market_Params) {
+// marketParams is the base (non-pointer) type constraint: both Market_Params and
+// MarketDetail_Params expose the same discriminator-setting methods on their
+// pointer receivers. The pointer type is modeled separately (paramsFiller) so
+// buildTypedParams can allocate a fresh value via new(T) and call the
+// pointer-receiver methods on its address.
+type marketParams interface {
+	Market_Params | MarketDetail_Params
+}
+
+// paramsFiller is the pointer-receiver method set shared by *Market_Params and
+// *MarketDetail_Params.
+type paramsFiller[T any] interface {
+	*T
+	FromMatchWinnerParams(v MatchWinnerParams) error
+	FromWinStreakParams(v WinStreakParams) error
+}
+
+// buildTypedParams converts raw DB columns to the typed params union. It is
+// generic over the two generated response shapes (Market_Params and
+// MarketDetail_Params), which previously had two identical copy-pasted builders.
+// A fresh T is allocated and its address (P) is returned; FromMatchWinnerParams
+// and FromWinStreakParams have pointer receivers and dereference the receiver,
+// so a nil pointer would panic — a previous version used `var p P` and crashed
+// at runtime on GET /markets.
+func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targetPlayerID string, requiredPlayerIds []string, mwGameIDs []string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, P) {
+	p := P(new(T))
 	switch marketType {
 	case "match_winner":
 		gameIDStrs := mwGameIDs
-		p := &Market_Params{}
 		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: requiredPlayerIds, GameIds: &gameIDStrs})
-		return targetPlayerID, p
 	case "win_streak":
 		var maxL *int
 		if maxLosses.Valid {
 			v := int(maxLosses.Int32)
 			maxL = &v
 		}
-		p := &Market_Params{}
 		_ = p.FromWinStreakParams(WinStreakParams{
 			GameIds:      wsGameIDs,
 			WinsRequired: int(winsRequired.Int32),
 			MaxLosses:    maxL,
 		})
-		return targetPlayerID, p
+	default:
+		return targetPlayerID, nil
 	}
-	return targetPlayerID, nil
+	return targetPlayerID, p
+}
+
+// buildTypedMarketParams converts raw DB columns to the typed Market_Params union.
+func buildTypedMarketParams(marketType string, targetPlayerID string, requiredPlayerIds []string, mwGameIDs []string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *Market_Params) {
+	return buildTypedParams[Market_Params, *Market_Params](marketType, targetPlayerID, requiredPlayerIds, mwGameIDs, wsGameIDs, winsRequired, maxLosses)
 }
 
 // buildTypedMarketDetailParams same as above but for MarketDetail_Params.
 func buildTypedMarketDetailParams(marketType string, targetPlayerID string, requiredPlayerIds []string, mwGameIDs []string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) (string, *MarketDetail_Params) {
-	switch marketType {
-	case "match_winner":
-		gameIDStrs := mwGameIDs
-		p := &MarketDetail_Params{}
-		_ = p.FromMatchWinnerParams(MatchWinnerParams{RequiredPlayerIds: requiredPlayerIds, GameIds: &gameIDStrs})
-		return targetPlayerID, p
-	case "win_streak":
-		var maxL *int
-		if maxLosses.Valid {
-			v := int(maxLosses.Int32)
-			maxL = &v
-		}
-		p := &MarketDetail_Params{}
-		_ = p.FromWinStreakParams(WinStreakParams{
-			GameIds:      wsGameIDs,
-			WinsRequired: int(winsRequired.Int32),
-			MaxLosses:    maxL,
-		})
-		return targetPlayerID, p
-	}
-	return targetPlayerID, nil
+	return buildTypedParams[MarketDetail_Params, *MarketDetail_Params](marketType, targetPlayerID, requiredPlayerIds, mwGameIDs, wsGameIDs, winsRequired, maxLosses)
 }
 
 func convertSettlement(details []db.GetSettlementDetailsRow) *[]SettlementDetail {
@@ -75,7 +84,7 @@ func convertSettlement(details []db.GetSettlementDetailsRow) *[]SettlementDetail
 }
 
 func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObject) (ListMarketsResponseObject, error) {
-	rows, err := s.api.Queries.ListMarketsWithPools(ctx)
+	rows, err := s.api.MarketService.ListMarketsWithPools(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -98,36 +107,13 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 			TargetPlayerId: targetID,
 			Params:         params,
 		}
-		if r.StartsAt.Valid {
-			t := r.StartsAt.Time
-			m.StartsAt = &t
-		}
-		if r.ClosesAt.Valid {
-			t := r.ClosesAt.Time
-			m.ClosesAt = &t
-		}
-		if r.CreatedAt.Valid {
-			t := r.CreatedAt.Time
-			m.CreatedAt = &t
-		}
-		if r.ResolvedAt.Valid {
-			t := r.ResolvedAt.Time
-			m.ResolvedAt = &t
-		}
-		if r.BettingClosedAt.Valid {
-			t := r.BettingClosedAt.Time
-			m.BettingClosedAt = &t
-		}
-		if r.ResolutionOutcome.Valid {
-			v := r.ResolutionOutcome.String
-			m.ResolutionOutcome = &v
-		}
+		applyMarketTimes(&m, r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.ResolutionOutcome)
 
 		if r.Status == "open" || r.Status == "betting_closed" {
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
-				if details, err := s.api.Queries.GetSettlementDetails(ctx, &r.ID); err == nil {
+				if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
 					m.Settlement = convertSettlement(details)
 				}
 			}
@@ -162,14 +148,14 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestObject) (GetMarketResponseObject, error) {
 	marketID := request.Id
 
-	row, err := s.api.Queries.GetMarketWithPools(ctx, marketID)
+	row, err := s.api.MarketService.GetMarketWithPools(ctx, marketID)
 	if err != nil {
 		return GetMarket404JSONResponse{Status: "fail", Message: "market not found"}, nil
 	}
 
 	if (row.Status == "open" || row.Status == "betting_closed") && row.ClosesAt.Valid && row.ClosesAt.Time.Before(time.Now()) {
 		_ = s.api.MarketService.ExpireOverdueMarkets(ctx)
-		row, err = s.api.Queries.GetMarketWithPools(ctx, marketID)
+		row, err = s.api.MarketService.GetMarketWithPools(ctx, marketID)
 		if err != nil {
 			return nil, err
 		}
@@ -189,85 +175,132 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		TargetPlayerId: targetID,
 		Params:         params,
 	}
-	if row.StartsAt.Valid {
-		t := row.StartsAt.Time
-		detail.StartsAt = &t
-	}
-	if row.ClosesAt.Valid {
-		t := row.ClosesAt.Time
-		detail.ClosesAt = &t
-	}
-	if row.CreatedAt.Valid {
-		t := row.CreatedAt.Time
-		detail.CreatedAt = &t
-	}
-	if row.ResolvedAt.Valid {
-		t := row.ResolvedAt.Time
-		detail.ResolvedAt = &t
-	}
-	if row.BettingClosedAt.Valid {
-		t := row.BettingClosedAt.Time
-		detail.BettingClosedAt = &t
-	}
+	applyMarketDetailTimes(&detail, row.StartsAt, row.ClosesAt, row.CreatedAt, row.ResolvedAt, row.BettingClosedAt)
 	if row.ResolutionOutcome.Valid {
 		v := row.ResolutionOutcome.String
 		detail.ResolutionOutcome = &v
 	}
 	if row.Status == "resolved" {
-		if details, err := s.api.Queries.GetSettlementDetails(ctx, &marketID); err == nil {
+		if details, err := s.api.MarketService.GetSettlementDetails(ctx, &marketID); err == nil {
 			detail.Settlement = convertSettlement(details)
 		}
 	}
 
-	// Per-player fields when authenticated
-	ginCtx := ginCtxFromContext(ctx)
-	if ginCtx != nil {
-		userID, hasUser := tryGetCurrentUserID(ginCtx)
-		if hasUser {
-			user, err := s.api.UserService.GetUserByID(ctx, userID)
-			if err == nil && user.PlayerID != nil {
-				playerID := *user.PlayerID
-
-				myBets, err := s.api.Queries.GetPlayerBetsAggregatedForMarket(ctx, db.GetPlayerBetsAggregatedForMarketParams{
-					MarketID: marketID,
-					PlayerID: playerID,
-				})
-				if err == nil {
-					var myYes, myNo float64
-					for _, b := range myBets {
-						if b.Outcome == "yes" {
-							myYes = b.TotalAmount
-						} else {
-							myNo = b.TotalAmount
-						}
-					}
-					detail.MyYesStaked = &myYes
-					detail.MyNoStaked = &myNo
-
-					var projYes, projNo float64
-					if row.YesPool > 0 {
-						projYes = (myYes / row.YesPool) * totalPool
-					}
-					if row.NoPool > 0 {
-						projNo = (myNo / row.NoPool) * totalPool
-					}
-					detail.ProjectedYesReward = &projYes
-					detail.ProjectedNoReward = &projNo
-				}
-
-				reserved, err := s.api.Queries.GetPlayerReservedAmount(ctx, playerID)
-				if err == nil {
-					detail.Reserved = &reserved
-				}
-				limit, err := s.api.Queries.GetPlayerBetLimit(ctx, playerID)
-				if err == nil {
-					detail.BetLimit = &limit
-				}
-			}
-		}
-	}
+	s.enrichMarketDetailForPlayer(ctx, &detail, marketID, totalPool, row.YesPool, row.NoPool)
 
 	return GetMarket200JSONResponse{Status: "success", Data: detail}, nil
+}
+
+// enrichMarketDetailForPlayer fills the per-player projection fields (staked,
+// projected reward, reserved, bet limit) when the caller is authenticated with
+// a linked player. Failures of the individual reads are non-fatal: a missing
+// field simply stays nil, matching the prior inline behavior.
+func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID string, totalPool, yesPool, noPool float64) {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return
+	}
+	userID, hasUser := tryGetCurrentUserID(ginCtx)
+	if !hasUser {
+		return
+	}
+	user, err := s.api.UserService.GetUserByID(ctx, userID)
+	if err != nil || user.PlayerID == nil {
+		return
+	}
+	playerID := *user.PlayerID
+
+	myBets, err := s.api.MarketService.GetPlayerBetsAggregatedForMarket(ctx, db.GetPlayerBetsAggregatedForMarketParams{
+		MarketID: marketID,
+		PlayerID: playerID,
+	})
+	if err == nil {
+		var myYes, myNo float64
+		for _, b := range myBets {
+			if b.Outcome == "yes" {
+				myYes = b.TotalAmount
+			} else {
+				myNo = b.TotalAmount
+			}
+		}
+		detail.MyYesStaked = &myYes
+		detail.MyNoStaked = &myNo
+
+		var projYes, projNo float64
+		if yesPool > 0 {
+			projYes = (myYes / yesPool) * totalPool
+		}
+		if noPool > 0 {
+			projNo = (myNo / noPool) * totalPool
+		}
+		detail.ProjectedYesReward = &projYes
+		detail.ProjectedNoReward = &projNo
+	}
+
+	if reserved, err := s.api.MarketService.GetPlayerReservedAmount(ctx, playerID); err == nil {
+		detail.Reserved = &reserved
+	}
+	if limit, err := s.api.MarketService.GetPlayerBetLimit(ctx, playerID); err == nil {
+		detail.BetLimit = &limit
+	}
+}
+
+// applyMarketTimes copies the optional timestamp/outcome columns onto a Market,
+// niling out any that are NULL. Mirrors applyMarketDetailTimes for the list-shape
+// Market type; the same field set was previously duplicated in ListMarkets and
+// GetMarketsByMatchId.
+func applyMarketTimes(m *Market, startsAt, closesAt, createdAt, resolvedAt, bettingClosedAt pgtype.Timestamptz, resolutionOutcome pgtype.Text) {
+	if startsAt.Valid {
+		t := startsAt.Time
+		m.StartsAt = &t
+	}
+	if closesAt.Valid {
+		t := closesAt.Time
+		m.ClosesAt = &t
+	}
+	if createdAt.Valid {
+		t := createdAt.Time
+		m.CreatedAt = &t
+	}
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		m.ResolvedAt = &t
+	}
+	if bettingClosedAt.Valid {
+		t := bettingClosedAt.Time
+		m.BettingClosedAt = &t
+	}
+	if resolutionOutcome.Valid {
+		v := resolutionOutcome.String
+		m.ResolutionOutcome = &v
+	}
+}
+
+// applyMarketDetailTimes copies the optional timestamp columns from the row onto
+// the MarketDetail, niling out any that are NULL. Centralized here because the
+// same 6-field pattern was repeated across ListMarkets, GetMarket, and
+// GetMarketsByMatchId.
+func applyMarketDetailTimes(d *MarketDetail, startsAt, closesAt, createdAt, resolvedAt, bettingClosedAt pgtype.Timestamptz) {
+	if startsAt.Valid {
+		t := startsAt.Time
+		d.StartsAt = &t
+	}
+	if closesAt.Valid {
+		t := closesAt.Time
+		d.ClosesAt = &t
+	}
+	if createdAt.Valid {
+		t := createdAt.Time
+		d.CreatedAt = &t
+	}
+	if resolvedAt.Valid {
+		t := resolvedAt.Time
+		d.ResolvedAt = &t
+	}
+	if bettingClosedAt.Valid {
+		t := bettingClosedAt.Time
+		d.BettingClosedAt = &t
+	}
 }
 
 func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketRequestObject) (CreateMarketResponseObject, error) {
@@ -278,6 +311,9 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return CreateMarket401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+		}
 		return nil, err
 	}
 
@@ -360,7 +396,7 @@ func (s *StrictServer) PatchMarket(ctx context.Context, request PatchMarketReque
 	switch string(request.Body.Status) {
 	case "betting_closed":
 		if err := s.api.MarketService.LockMarketBetting(ctx, request.Id); err != nil {
-			if err == elo.ErrMarketNotOpen {
+			if errors.Is(err, elo.ErrMarketNotOpen) {
 				return PatchMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
 			}
 			return nil, err
@@ -373,7 +409,7 @@ func (s *StrictServer) PatchMarket(ctx context.Context, request PatchMarketReque
 
 func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketRequestObject) (DeleteMarketResponseObject, error) {
 	if err := s.api.MatchService.DeleteMarketAndRecalculate(ctx, request.Id); err != nil {
-		if err == elo.ErrMarketNotOpen {
+		if errors.Is(err, elo.ErrMarketNotOpen) {
 			return DeleteMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		}
 		return nil, err
@@ -390,10 +426,13 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return PlaceBet401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+		}
 		return nil, err
 	}
 	if user.PlayerID == nil {
-		return PlaceBet403JSONResponse{Status: "fail", Message: "у вас нет привязанного игрока"}, nil
+		return PlaceBet403JSONResponse{Status: "fail", Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
 	}
 
 	body := request.Body
@@ -402,10 +441,10 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	}
 
 	if err := s.api.MarketService.PlaceBet(ctx, body.Id, request.Id, *user.PlayerID, string(body.Outcome), body.Amount); err != nil {
-		switch err {
-		case elo.ErrBetLimitExceeded:
+		switch {
+		case errors.Is(err, elo.ErrBetLimitExceeded):
 			return PlaceBet422JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case elo.ErrMarketNotOpen:
+		case errors.Is(err, elo.ErrMarketNotOpen):
 			return PlaceBet409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err
@@ -418,7 +457,7 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarketsByMatchIdRequestObject) (GetMarketsByMatchIdResponseObject, error) {
 	id := request.Id
 
-	rows, err := s.api.Queries.ListMarketsByResolutionMatch(ctx, &id)
+	rows, err := s.api.MarketService.ListMarketsByResolutionMatch(ctx, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -439,32 +478,9 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 			TargetPlayerId: targetID,
 			Params:         params,
 		}
-		if r.StartsAt.Valid {
-			t := r.StartsAt.Time
-			m.StartsAt = &t
-		}
-		if r.ClosesAt.Valid {
-			t := r.ClosesAt.Time
-			m.ClosesAt = &t
-		}
-		if r.CreatedAt.Valid {
-			t := r.CreatedAt.Time
-			m.CreatedAt = &t
-		}
-		if r.ResolvedAt.Valid {
-			t := r.ResolvedAt.Time
-			m.ResolvedAt = &t
-		}
-		if r.BettingClosedAt.Valid {
-			t := r.BettingClosedAt.Time
-			m.BettingClosedAt = &t
-		}
-		if r.ResolutionOutcome.Valid {
-			v := r.ResolutionOutcome.String
-			m.ResolutionOutcome = &v
-		}
+		applyMarketTimes(&m, r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.ResolutionOutcome)
 		if r.Status == "resolved" {
-			if details, err := s.api.Queries.GetSettlementDetails(ctx, &r.ID); err == nil {
+			if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
 				m.Settlement = convertSettlement(details)
 			}
 		}

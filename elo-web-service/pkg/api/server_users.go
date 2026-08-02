@@ -2,8 +2,7 @@ package api
 
 import (
 	"context"
-
-	"github.com/tolyandre/elo-web-service/pkg/db"
+	"net/http"
 )
 
 func (s *StrictServer) ListUsers(ctx context.Context, _ ListUsersRequestObject) (ListUsersResponseObject, error) {
@@ -35,10 +34,10 @@ func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestOb
 	}
 
 	user, err := s.api.UserService.GetUserByID(ctx, request.UserId)
-	if db.IsNoRows(err) {
-		return PatchUser404JSONResponse{Status: "fail", Message: "user not found"}, nil
-	}
 	if err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return PatchUser404JSONResponse{Status: "fail", Message: "user not found"}, nil
+		}
 		return nil, err
 	}
 

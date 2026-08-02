@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,7 +42,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		limit = int32(*params.Limit)
 	}
 
-	rows, err := s.api.Queries.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
+	rows, err := s.api.MatchService.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
 		GameID:     gameID,
 		PlayerID:   playerID,
 		ClubID:     clubID,
@@ -159,7 +159,7 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 
 	match, err := s.api.MatchService.AddMatch(ctx, gameID, playerScores, date, opts)
 	if err != nil {
-		return addMatchError(err), nil
+		return addMatchError(err)
 	}
 
 	resp := AddMatch200JSONResponse{Status: "success"}
@@ -167,14 +167,17 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	return resp, nil
 }
 
-func addMatchError(err error) AddMatchResponseObject {
-	switch matchDomainError(err) {
-	case 400:
-		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}
-	case 409:
-		return AddMatch409JSONResponse{Status: "fail", Message: err.Error()}
+// addMatchError maps a MatchService error to an AddMatch response. Domain
+// errors produce the appropriate 4xx typed body; genuine internal failures
+// surface as 500 via errorMiddleware (previously they were masked as 400).
+func addMatchError(err error) (AddMatchResponseObject, error) {
+	switch domainStatusCode(err) {
+	case http.StatusBadRequest:
+		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+	case http.StatusConflict:
+		return AddMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
 	default:
-		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}
+		return nil, err
 	}
 }
 
@@ -191,7 +194,7 @@ func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []string
 	if len(matchIDs) == 0 {
 		return map[string][]MatchTournament{}, nil
 	}
-	rows, err := s.api.Queries.ListTournamentsByMatchIDs(ctx, matchIDs)
+	rows, err := s.api.MatchService.ListTournamentsByMatchIDs(ctx, matchIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -205,21 +208,8 @@ func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []string
 	return out, nil
 }
 
-func matchDomainError(err error) int {
-	switch {
-	case errors.Is(err, elo.ErrTooFewPlayers), errors.Is(err, elo.ErrDateChangeTooLarge), errors.Is(err, elo.ErrMatchDateOutOfRange), db.IsForeignKeyViolation(err):
-		return 400
-	case errors.Is(err, elo.ErrHistoryChangeConflict), errors.Is(err, elo.ErrHistoryChangeConflictBettingLock):
-		return 409
-	case errors.Is(err, elo.ErrMatchNotFound):
-		return 404
-	default:
-		return 500
-	}
-}
-
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
-	rows, err := s.api.Queries.GetMatchWithPlayers(ctx, request.Id)
+	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -321,12 +311,12 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 
 	_, err = s.api.MatchService.UpdateMatch(ctx, request.Id, gameID, playerScores, request.Body.Date, opts)
 	if err != nil {
-		switch matchDomainError(err) {
-		case 400:
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
 			return UpdateMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case 404:
+		case http.StatusNotFound:
 			return UpdateMatch404JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case 409:
+		case http.StatusConflict:
 			return UpdateMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err

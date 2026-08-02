@@ -9,23 +9,23 @@ import (
 )
 
 func (s *StrictServer) GetSettings(ctx context.Context, _ GetSettingsRequestObject) (GetSettingsResponseObject, error) {
-	settings, err := s.api.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	settings, err := s.api.EloSettingsService.GetForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
 	if err != nil {
 		return nil, err
 	}
 	return GetSettings200JSONResponse{
 		Status: "success",
 		Data: Settings{
-			EloConstK:                  settings.EloConstK,
-			EloConstD:                  settings.EloConstD,
-			StartingElo:                settings.StartingElo,
-			WinReward:                  settings.WinReward,
-			NewbieLeagueEarnedMin:      settings.NewbieLeagueEarnedMin,
-			NewbieLeagueEarnedMax:      settings.NewbieLeagueEarnedMax,
-			NewbieLeagueEarnedTau:      settings.NewbieLeagueEarnedTau,
-			NewbieLeagueGoalGap:        settings.NewbieLeagueGoalGap,
-			StartingRatingGlobalArena:  settings.StartingRatingGlobalArena,
-			StartingRatingGameArena:    settings.StartingRatingGameArena,
+			EloConstK:                 settings.EloConstK,
+			EloConstD:                 settings.EloConstD,
+			StartingElo:               settings.StartingElo,
+			WinReward:                 settings.WinReward,
+			NewbieLeagueEarnedMin:     settings.NewbieLeagueEarnedMin,
+			NewbieLeagueEarnedMax:     settings.NewbieLeagueEarnedMax,
+			NewbieLeagueEarnedTau:     settings.NewbieLeagueEarnedTau,
+			NewbieLeagueGoalGap:       settings.NewbieLeagueGoalGap,
+			StartingRatingGlobalArena: settings.StartingRatingGlobalArena,
+			StartingRatingGameArena:   settings.StartingRatingGameArena,
 			EliteLeagueMatches6months: int(settings.EliteLeagueMatches6months),
 			EliteLeagueMatches2months: int(settings.EliteLeagueMatches2months),
 		},
@@ -33,7 +33,7 @@ func (s *StrictServer) GetSettings(ctx context.Context, _ GetSettingsRequestObje
 }
 
 func (s *StrictServer) ListAllSettings(ctx context.Context, _ ListAllSettingsRequestObject) (ListAllSettingsResponseObject, error) {
-	rows, err := s.api.Queries.ListEloSettings(ctx)
+	rows, err := s.api.EloSettingsService.List(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -69,25 +69,25 @@ func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSetting
 	}
 
 	// Preserve league-related fields not exposed in the admin UI by copying from current settings.
-	latest, err := s.api.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	latest, err := s.api.EloSettingsService.GetForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
 	if err != nil {
 		return nil, err
 	}
 
-	err = s.api.Queries.CreateEloSettings(ctx, db.CreateEloSettingsParams{
-		EffectiveDate:               pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
-		EloConstK:                   payload.EloConstK,
-		EloConstD:                   payload.EloConstD,
-		StartingElo:                 payload.StartingElo,
-		WinReward:                   payload.WinReward,
-		NewbieLeagueEarnedMin:       latest.NewbieLeagueEarnedMin,
-		NewbieLeagueEarnedMax:       latest.NewbieLeagueEarnedMax,
-		NewbieLeagueEarnedTau:       latest.NewbieLeagueEarnedTau,
-		NewbieLeagueGoalGap:         latest.NewbieLeagueGoalGap,
-		StartingRatingGlobalArena:   latest.StartingRatingGlobalArena,
-		StartingRatingGameArena:     latest.StartingRatingGameArena,
-		EliteLeagueMatches6months:   latest.EliteLeagueMatches6months,
-		EliteLeagueMatches2months:   latest.EliteLeagueMatches2months,
+	err = s.api.EloSettingsService.Create(ctx, db.CreateEloSettingsParams{
+		EffectiveDate:             pgtype.Timestamptz{Time: payload.EffectiveDate, Valid: true},
+		EloConstK:                 payload.EloConstK,
+		EloConstD:                 payload.EloConstD,
+		StartingElo:               payload.StartingElo,
+		WinReward:                 payload.WinReward,
+		NewbieLeagueEarnedMin:     latest.NewbieLeagueEarnedMin,
+		NewbieLeagueEarnedMax:     latest.NewbieLeagueEarnedMax,
+		NewbieLeagueEarnedTau:     latest.NewbieLeagueEarnedTau,
+		NewbieLeagueGoalGap:       latest.NewbieLeagueGoalGap,
+		StartingRatingGlobalArena: latest.StartingRatingGlobalArena,
+		StartingRatingGameArena:   latest.StartingRatingGameArena,
+		EliteLeagueMatches6months: latest.EliteLeagueMatches6months,
+		EliteLeagueMatches2months: latest.EliteLeagueMatches2months,
 	})
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (s *StrictServer) DeleteSettings(ctx context.Context, request DeleteSetting
 		return DeleteSettings400JSONResponse{Status: "fail", Message: "can only delete future settings"}, nil
 	}
 
-	err := s.api.Queries.DeleteEloSettings(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
+	err := s.api.EloSettingsService.Delete(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
 	if err != nil {
 		return nil, err
 	}

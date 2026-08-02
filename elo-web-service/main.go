@@ -22,29 +22,15 @@ func main() {
 
 	// --migrate-db-dsn: run migrations against an explicit DSN, no full config required.
 	if cfg.MigrateDBDSN != "" {
-		if err := db.MigrateUpWithDSN(cfg.MigrateDBDSN); err != nil {
-			log.Fatalf("migrations failed: %v", err)
-			os.Exit(1)
-		}
-		if err := db.MigrateCalculatorData(context.Background(), cfg.MigrateDBDSN); err != nil {
-			log.Fatalf("calculator data migration failed: %v", err)
-			os.Exit(1)
-		}
+		runMigrations(cfg.MigrateDBDSN, true)
 		log.Println("migrations applied; exiting as --migrate-db-dsn was provided")
 		return
 	}
 
 	if cfg.MigrateDB {
-		if err := db.MigrateUp(); err != nil {
-			log.Fatalf("migrations failed: %v", err)
-			os.Exit(1)
-		}
-		// Data migrations use the same DSN the schema migration just touched.
+		// --migrate-db: apply schema migrations via the configured DSN, then exit.
 		if dsn, err := db.BuildDSN(); err == nil {
-			if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
-				log.Fatalf("calculator data migration failed: %v", err)
-				os.Exit(1)
-			}
+			runMigrations(dsn, true)
 		}
 		log.Println("migrations applied; exiting as --migrate-db was provided")
 		return
@@ -55,10 +41,7 @@ func main() {
 	// Run in-process data migrations (calculator schema upgrades, etc.) on every
 	// normal boot too. No-op when nothing is out of date.
 	if dsn, err := db.BuildDSN(); err == nil {
-		if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
-			log.Fatalf("calculator data migration failed: %v", err)
-			os.Exit(1)
-		}
+		runMigrations(dsn, false)
 	}
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
@@ -109,45 +92,56 @@ func main() {
 		Handler: api.NewStrictHandler(api.NewStrictServer(apiHandler, oauth2Handler), []api.StrictMiddlewareFunc{errorMiddleware}),
 	}
 
+	// editorAuth returns the standard editor-gated middleware chain (valid
+	// session + editor permission) used across all write routes.
+	editorAuth := func() []gin.HandlerFunc {
+		return []gin.HandlerFunc{oauth2Handler.DeserializeUser(), apiHandler.RequireEditor()}
+	}
+	// playerAuth is the player-gated chain (valid session + linked player) used
+	// by the Skull King live-table routes.
+	playerAuth := func() []gin.HandlerFunc {
+		return []gin.HandlerFunc{oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID()}
+	}
+
 	router.GET("/ping", strictWrapper.GetPing)
 
 	// Players
 	router.GET("/players", strictWrapper.ListPlayers)
 	router.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
-	router.POST("/players", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreatePlayer)
-	router.PATCH("/players/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchPlayer)
-	router.DELETE("/players/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeletePlayer)
+	router.POST("/players", append(editorAuth(), strictWrapper.CreatePlayer)...)
+	router.PATCH("/players/:id", append(editorAuth(), strictWrapper.PatchPlayer)...)
+	router.DELETE("/players/:id", append(editorAuth(), strictWrapper.DeletePlayer)...)
 
 	// Users
 	router.GET("/users", strictWrapper.ListUsers)
-	router.PATCH("/users/:userId", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchUser)
+	router.PATCH("/users/:userId", append(editorAuth(), strictWrapper.PatchUser)...)
 
 	// Matches
 	router.GET("/matches", strictWrapper.ListMatches)
-	router.POST("/matches", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.AddMatch)
+	router.POST("/matches", append(editorAuth(), strictWrapper.AddMatch)...)
 	router.GET("/matches/:id", strictWrapper.GetMatchById)
 	router.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
-	router.PUT("/matches/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.UpdateMatch)
+	router.PUT("/matches/:id", append(editorAuth(), strictWrapper.UpdateMatch)...)
 
 	// Settings
 	router.GET("/settings", strictWrapper.GetSettings)
 	router.GET("/settings/all", strictWrapper.ListAllSettings)
-	router.POST("/settings", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateSettings)
-	router.DELETE("/settings", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteSettings)
+	router.POST("/settings", append(editorAuth(), strictWrapper.CreateSettings)...)
+	router.DELETE("/settings", append(editorAuth(), strictWrapper.DeleteSettings)...)
 
 	// Games
 	router.GET("/games", strictWrapper.ListGames)
 	router.GET("/games/:id", strictWrapper.GetGame)
 	router.GET("/games/:id/matches", strictWrapper.GetGameMatches)
-	router.DELETE("/games/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteGame)
-	router.PATCH("/games/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchGame)
-	router.POST("/games", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateGame)
+	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)
+	router.PATCH("/games/:id", append(editorAuth(), strictWrapper.PatchGame)...)
+	router.POST("/games", append(editorAuth(), strictWrapper.CreateGame)...)
 	router.POST("/admin/recalculate-game-elo", strictWrapper.RecalculateGameElo)
-	router.POST("/admin/players/:id/corrections", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreatePlayerCorrection)
+	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
 	router.GET("/corrections", strictWrapper.ListCorrections)
 
 	// Voice
-	router.POST("/voice/parse", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.ParseVoiceInput)
+	router.POST("/voice/parse", append(editorAuth(), strictWrapper.ParseVoiceInput)...)
 
 	// Skull King calculator
 	router.POST("/skull-king/parse-card-image", apiHandler.ParseSkullKingCardImage)
@@ -155,13 +149,13 @@ func main() {
 	// Skull King game tables
 	sk := router.Group("/skull-king/tables")
 	sk.GET("", apiHandler.ListSkullKingTables)
-	sk.POST("", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.CreateSkullKingTable)
+	sk.POST("", append(playerAuth(), apiHandler.CreateSkullKingTable)...)
 	sk.GET("/:id", apiHandler.GetSkullKingTable)
-	sk.PATCH("/:id/state", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.UpdateSkullKingTableState)
-	sk.POST("/:id/join", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.JoinSkullKingTable)
-	sk.POST("/:id/bid", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.SubmitSkullKingBid)
-	sk.POST("/:id/result", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.SubmitSkullKingResult)
-	sk.DELETE("/:id", oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID(), apiHandler.DeleteSkullKingTable)
+	sk.PATCH("/:id/state", append(playerAuth(), apiHandler.UpdateSkullKingTableState)...)
+	sk.POST("/:id/join", append(playerAuth(), apiHandler.JoinSkullKingTable)...)
+	sk.POST("/:id/bid", append(playerAuth(), apiHandler.SubmitSkullKingBid)...)
+	sk.POST("/:id/result", append(playerAuth(), apiHandler.SubmitSkullKingResult)...)
+	sk.DELETE("/:id", append(playerAuth(), apiHandler.DeleteSkullKingTable)...)
 	sk.GET("/:id/events", apiHandler.SkullKingTableEvents)
 	// Lobby SSE — separate path to avoid colliding with the /:id wildcard above
 	router.GET("/skull-king/lobby/events", apiHandler.SkullKingLobbyEvents)
@@ -172,26 +166,26 @@ func main() {
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)
-	router.POST("/clubs", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateClub)
-	router.PATCH("/clubs/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchClub)
-	router.DELETE("/clubs/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteClub)
-	router.POST("/clubs/:id/members", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.AddClubMember)
-	router.DELETE("/clubs/:id/members/:playerId", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.RemoveClubMember)
+	router.POST("/clubs", append(editorAuth(), strictWrapper.CreateClub)...)
+	router.PATCH("/clubs/:id", append(editorAuth(), strictWrapper.PatchClub)...)
+	router.DELETE("/clubs/:id", append(editorAuth(), strictWrapper.DeleteClub)...)
+	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
+	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)
 
 	// Tournaments
 	router.GET("/tournaments", strictWrapper.ListTournaments)
 	router.GET("/tournaments/:id", strictWrapper.GetTournament)
 	router.GET("/tournaments/:id/stats", strictWrapper.GetTournamentStats)
-	router.POST("/tournaments", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateTournament)
-	router.PUT("/tournaments/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.UpdateTournament)
-	router.DELETE("/tournaments/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteTournament)
+	router.POST("/tournaments", append(editorAuth(), strictWrapper.CreateTournament)...)
+	router.PUT("/tournaments/:id", append(editorAuth(), strictWrapper.UpdateTournament)...)
+	router.DELETE("/tournaments/:id", append(editorAuth(), strictWrapper.DeleteTournament)...)
 
 	// Markets
 	router.GET("/markets", oauth2Handler.OptionalDeserializeUser(), strictWrapper.ListMarkets)
-	router.POST("/markets", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.CreateMarket)
+	router.POST("/markets", append(editorAuth(), strictWrapper.CreateMarket)...)
 	router.GET("/markets/:id", oauth2Handler.OptionalDeserializeUser(), strictWrapper.GetMarket)
-	router.PATCH("/markets/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.PatchMarket)
-	router.DELETE("/markets/:id", oauth2Handler.DeserializeUser(), apiHandler.RequireEditor(), strictWrapper.DeleteMarket)
+	router.PATCH("/markets/:id", append(editorAuth(), strictWrapper.PatchMarket)...)
+	router.DELETE("/markets/:id", append(editorAuth(), strictWrapper.DeleteMarket)...)
 	router.POST("/markets/:id/bets", oauth2Handler.DeserializeUser(), strictWrapper.PlaceBet)
 
 	// Auth (delegated to oauth2Handler via StrictServer stubs)
@@ -203,6 +197,23 @@ func main() {
 	authRouter.PATCH("/me", oauth2Handler.DeserializeUser(), oauth2Handler.PatchMe)
 
 	log.Fatal(router.Run(cfg.Config.Address))
+}
+
+// runMigrations applies schema (when runSchema is true) and calculator data
+// migrations against dsn, exiting the process on failure. Schema migrations are
+// only run in the --migrate-db / --migrate-db-dsn one-shot modes; normal boot
+// runs only the idempotent in-process data migration.
+func runMigrations(dsn string, runSchema bool) {
+	if runSchema {
+		if err := db.MigrateUpWithDSN(dsn); err != nil {
+			log.Fatalf("migrations failed: %v", err)
+			os.Exit(1)
+		}
+	}
+	if err := db.MigrateCalculatorData(context.Background(), dsn); err != nil {
+		log.Fatalf("calculator data migration failed: %v", err)
+		os.Exit(1)
+	}
 }
 
 func initDbConnectionPool() *pgxpool.Pool {

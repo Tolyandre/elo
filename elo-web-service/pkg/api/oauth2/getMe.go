@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
 type userJson struct {
@@ -52,7 +54,7 @@ func (a *OAUTH2) PatchMe(ctx *gin.Context) {
 	}
 
 	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, body.PlayerID); err != nil {
-		if err.Error() == "player already linked to another user" {
+		if errors.Is(err, elo.ErrPlayerAlreadyLinked) {
 			api.ErrorResponse(ctx, http.StatusConflict, err)
 			return
 		}

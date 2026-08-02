@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"fmt"
 )
 
 func (s *StrictServer) CreatePlayerCorrection(ctx context.Context, request CreatePlayerCorrectionRequestObject) (CreatePlayerCorrectionResponseObject, error) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
-		return nil, nil
+		// Previously this returned (nil, nil), silently dropping the failure as a
+		// 200 with an empty body. Surface it as a real internal error instead.
+		return nil, fmt.Errorf("gin context not available")
 	}
 
 	if _, err := MustGetCurrentUser(ginCtx, s.api.UserService); err != nil {

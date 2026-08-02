@@ -11,14 +11,22 @@ import (
 
 type ICorrectionService interface {
 	CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error
+	ListCorrectionsPaginated(ctx context.Context, arg db.ListCorrectionsPaginatedParams) ([]db.ListCorrectionsPaginatedRow, error)
 }
 
 type CorrectionService struct {
-	Pool *pgxpool.Pool
+	Queries *db.Queries
+	Pool    *pgxpool.Pool
 }
 
 func NewCorrectionService(pool *pgxpool.Pool) ICorrectionService {
-	return &CorrectionService{Pool: pool}
+	return &CorrectionService{Queries: db.New(pool), Pool: pool}
+}
+
+// ListCorrectionsPaginated exposes the paginated corrections read behind the
+// service boundary so handlers do not call *db.Queries directly.
+func (s *CorrectionService) ListCorrectionsPaginated(ctx context.Context, arg db.ListCorrectionsPaginatedParams) ([]db.ListCorrectionsPaginatedRow, error) {
+	return s.Queries.ListCorrectionsPaginated(ctx, arg)
 }
 
 func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error {
@@ -26,7 +34,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := db.New(tx)
 

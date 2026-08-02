@@ -51,10 +51,12 @@ func NewPlayerService(pool *pgxpool.Pool) IPlayerService {
 // the directed gap (elo − rating) to NewbieLeagueGoalGap, assuming the player wins every match.
 //
 // Lower bound: elo stays fixed (only rating grows).
-//   n_lower = ∫ dg / Δ_win(g),  Δ_win(g) = earnedMax(g) − K·E(g)
+//
+//	n_lower = ∫ dg / Δ_win(g),  Δ_win(g) = earnedMax(g) − K·E(g)
 //
 // Upper bound: elo also grows ≈ K/2 per win (2-player equal-elo approximation, conservative).
-//   n_upper = ∫ dg / (Δ_win(g) − K/2)
+//
+//	n_upper = ∫ dg / (Δ_win(g) − K/2)
 //
 // E(g) = 1/(1+10^(g/D)): 2-player win expectation at rating gap g.
 func calcWinsNeededForAmateur(gap float64, s EloSettings) (lower, upper int) {
@@ -105,13 +107,13 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 
 	settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: ref, Valid: true})
 	if err != nil {
-		return nil, fmt.Errorf("unable to get elo settings: %v", err)
+		return nil, fmt.Errorf("unable to get elo settings: %w", err)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
 	rows, err := s.Queries.ListPlayersWithStats(ctx, dt)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve players from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve players from db: %w", err)
 	}
 
 	players := make([]Player, 0, len(rows))

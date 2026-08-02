@@ -82,6 +82,16 @@ type IMatchService interface {
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
 	DeleteMarketAndRecalculate(ctx context.Context, marketID string) error
+
+	// ListMatchesForEloReset feeds the analytics elo-reset replay (see
+	// ComputeEloReset). Exposed on the interface so the API handler does not
+	// touch *db.Queries directly.
+	ListMatchesForEloReset(ctx context.Context, calcDate time.Time) ([]db.ListMatchesForEloResetRow, error)
+
+	// Read-side queries used by the match list/detail handlers.
+	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
+	GetMatchWithPlayers(ctx context.Context, id string) ([]db.GetMatchWithPlayersRow, error)
+	ListTournamentsByMatchIDs(ctx context.Context, matchIDs []string) ([]db.ListTournamentsByMatchIDsRow, error)
 }
 
 // calculatorColumns builds the three sqlc params fields for calculator columns
@@ -121,7 +131,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to begin tx: %v", err)
+		return db.Match{}, fmt.Errorf("unable to begin tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -144,7 +154,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 		CalculatorData:          calcData,
 	})
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to create match: %v", err)
+		return db.Match{}, fmt.Errorf("unable to create match: %w", err)
 	}
 
 	if opts.ClientDate {
@@ -156,7 +166,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 				PlayerID: playerID,
 				Score:    score,
 			}); err != nil {
-				return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %v", playerID, err)
+				return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
 			}
 		}
 
@@ -184,7 +194,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 		}
 
 		if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
-			return db.Match{}, fmt.Errorf("recalculate bet limits: %v", err)
+			return db.Match{}, fmt.Errorf("recalculate bet limits: %w", err)
 		}
 	}
 
@@ -198,7 +208,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return db.Match{}, fmt.Errorf("unable to commit tx: %v", err)
+		return db.Match{}, fmt.Errorf("unable to commit tx: %w", err)
 	}
 
 	return createdMatch, nil
@@ -213,7 +223,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID string, playerScores
 func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID string, playerScores map[string]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to begin tx: %v", err)
+		return db.Match{}, fmt.Errorf("unable to begin tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -251,21 +261,21 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 		updateParams.CalculatorData = d
 	}
 	if err = q.UpdateMatch(ctx, updateParams); err != nil {
-		return db.Match{}, fmt.Errorf("unable to update match: %v", err)
+		return db.Match{}, fmt.Errorf("unable to update match: %w", err)
 	}
 
 	// Delete old scores and settlements to handle player list changes.
 	// Explicit deletes are required because global_arena_settlement and game_arena_settlement
 	// reference matches(id), not match_scores, so there is no cascade from match_scores.
 	if err = q.DeleteGlobalArenaSettlementByMatch(ctx, &matchID); err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete global arena settlement for match %s: %v", matchID, err)
+		return db.Match{}, fmt.Errorf("unable to delete global arena settlement for match %s: %w", matchID, err)
 	}
 	if err = q.DeleteGameArenaSettlementByMatch(ctx, &matchID); err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete game arena settlement for match %s: %v", matchID, err)
+		return db.Match{}, fmt.Errorf("unable to delete game arena settlement for match %s: %w", matchID, err)
 	}
 	err = q.DeleteMatchScores(ctx, matchID)
 	if err != nil {
-		return db.Match{}, fmt.Errorf("unable to delete old match scores: %v", err)
+		return db.Match{}, fmt.Errorf("unable to delete old match scores: %w", err)
 	}
 
 	for playerID, score := range playerScores {
@@ -275,7 +285,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 			Score:    score,
 		})
 		if err != nil {
-			return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %v", playerID, err)
+			return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
 		}
 	}
 
@@ -287,7 +297,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 	// dropped when the date moves out of a tournament's window). Memberships are
 	// only ever added — editing a match never removes tournament members.
 	if err := q.DeleteMatchTournamentsByMatch(ctx, matchID); err != nil {
-		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %v", err)
+		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %w", err)
 	}
 	playerIDs := playerIDsOf(playerScores)
 	mergedTournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, opts.TournamentIDs)
@@ -299,7 +309,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return db.Match{}, fmt.Errorf("unable to commit tx: %v", err)
+		return db.Match{}, fmt.Errorf("unable to commit tx: %w", err)
 	}
 
 	updatedMatch, err := s.Queries.GetMatch(ctx, matchID)
@@ -314,7 +324,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID string, gameID s
 func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("unable to begin tx: %v", err)
+		return fmt.Errorf("unable to begin tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -410,7 +420,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 	for _, playerID := range playerIDs {
 		_, err = q.LockPlayerForEloCalculation(ctx, playerID)
 		if err != nil {
-			return MatchPrevState{}, fmt.Errorf("unable to lock player %s: %v", playerID, err)
+			return MatchPrevState{}, fmt.Errorf("unable to lock player %s: %w", playerID, err)
 		}
 
 		prevGlobalElo, err := q.GetPlayerLatestGlobalEloBeforeMatch(ctx, db.GetPlayerLatestGlobalEloBeforeMatchParams{
@@ -612,7 +622,7 @@ func buildEloResults(playerScores map[string]float64, state MatchPrevState) map[
 
 	newGlobalElos := CalculateNewElo(state.Elo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
 	newGameElos := CalculateNewElo(state.GameElo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
-	absoluteLoserScore := GetAsboluteLoserScore(playerScores)
+	absoluteLoserScore := GetAbsoluteLoserScore(playerScores)
 
 	results := make(map[string]eloCalcResult, len(playerScores))
 	for id, score := range playerScores {
@@ -685,7 +695,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			PlayerID: playerID,
 			Score:    score,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert match score for player %s: %v", playerID, err)
+			return fmt.Errorf("unable to upsert match score for player %s: %w", playerID, err)
 		}
 		if err := q.UpsertGlobalArenaSettlementByMatch(ctx, db.UpsertGlobalArenaSettlementByMatchParams{
 			ID:           newSettlementID(),
@@ -699,7 +709,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			RatingEarned: r.ratingEarned,
 			League:       r.newGlobalLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %s: %w", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
 			ID:           newSettlementID(),
@@ -714,7 +724,7 @@ func (s *MatchService) calculateAndStoreEloWithScores(ctx context.Context, q *db
 			RatingEarned: r.gameRatingEarned,
 			League:       r.newGameLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert game arena settlement for player %s: %v", playerID, err)
+			return fmt.Errorf("unable to upsert game arena settlement for player %s: %w", playerID, err)
 		}
 	}
 
@@ -740,7 +750,7 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			RatingEarned: r.ratingEarned,
 			League:       r.newGlobalLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert global arena settlement for player %s: %v", playerID, err)
+			return fmt.Errorf("unable to upsert global arena settlement for player %s: %w", playerID, err)
 		}
 		if err := q.UpsertGameArenaSettlementByMatch(ctx, db.UpsertGameArenaSettlementByMatchParams{
 			ID:           newSettlementID(),
@@ -755,7 +765,7 @@ func (s *MatchService) calculateAndUpdateElo(ctx context.Context, q *db.Queries,
 			RatingEarned: r.gameRatingEarned,
 			League:       r.newGameLeague,
 		}); err != nil {
-			return fmt.Errorf("unable to upsert game arena settlement for player %s: %v", playerID, err)
+			return fmt.Errorf("unable to upsert game arena settlement for player %s: %w", playerID, err)
 		}
 	}
 
@@ -785,7 +795,7 @@ func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Ti
 		PlayerIds: playerIDs,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("auto-detect active tournaments: %v", err)
+		return nil, fmt.Errorf("auto-detect active tournaments: %w", err)
 	}
 
 	seen := make(map[string]struct{}, len(explicit)+len(auto))
@@ -811,11 +821,11 @@ func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Ti
 func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID string, tournamentIDs []string, playerIDs []string) error {
 	for _, tid := range tournamentIDs {
 		if err := q.AddMatchTournament(ctx, db.AddMatchTournamentParams{MatchID: matchID, TournamentID: tid}); err != nil {
-			return fmt.Errorf("associate match %s with tournament %s: %v", matchID, tid, err)
+			return fmt.Errorf("associate match %s with tournament %s: %w", matchID, tid, err)
 		}
 		for _, pid := range playerIDs {
 			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tid, PlayerID: pid}); err != nil {
-				return fmt.Errorf("enrol player %s into tournament %s: %v", pid, tid, err)
+				return fmt.Errorf("enrol player %s into tournament %s: %w", pid, tid, err)
 			}
 		}
 	}

@@ -283,7 +283,7 @@ func (s *SkullKingTableService) SubmitBid(ctx context.Context, tableID string, p
 	if err != nil {
 		return SkullKingTableSummary{}, err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := s.Queries.WithTx(tx)
 	row, err := q.GetSkullKingTableForUpdate(ctx, pgID)
@@ -365,7 +365,7 @@ func (s *SkullKingTableService) SubmitResult(ctx context.Context, tableID string
 	if err != nil {
 		return SkullKingTableSummary{}, err
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := s.Queries.WithTx(tx)
 	row, err := q.GetSkullKingTableForUpdate(ctx, pgID)

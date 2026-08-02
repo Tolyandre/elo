@@ -2,9 +2,8 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"time"
-
-	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObject) (ListPlayersResponseObject, error) {
@@ -87,9 +86,9 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 					Rating:                    p.Elo,
 					League:                    EloRankLeague(p.League),
 					Rank:                      p.Rank,
-					MatchesLeftForElite:        matchesLeftForElite,
-					WinsNeededForAmateur:       winsNeededForAmateur,
-					WinsNeededForAmateurUpper:  winsNeededForAmateurUpper,
+					MatchesLeftForElite:       matchesLeftForElite,
+					WinsNeededForAmateur:      winsNeededForAmateur,
+					WinsNeededForAmateurUpper: winsNeededForAmateurUpper,
 				},
 				DayAgo: EloRank{
 					Rating: dayAgo.Elo,
@@ -116,7 +115,7 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 
 	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name)
 	if err != nil {
-		if db.IsUniqueViolation(err) {
+		if domainStatusCode(err) == http.StatusConflict {
 			return CreatePlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
 		}
 		return nil, err
@@ -138,13 +137,13 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 	}
 
 	player, err := s.api.PlayerService.UpdatePlayer(ctx, request.Id, name)
-	if db.IsNoRows(err) {
+	switch {
+	case err == nil:
+	case domainStatusCode(err) == http.StatusNotFound:
 		return PatchPlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
-	}
-	if err != nil {
-		if db.IsUniqueViolation(err) {
-			return PatchPlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
-		}
+	case domainStatusCode(err) == http.StatusConflict:
+		return PatchPlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
+	default:
 		return nil, err
 	}
 
@@ -159,13 +158,13 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 
 func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerRequestObject) (DeletePlayerResponseObject, error) {
 	err := s.api.PlayerService.DeletePlayer(ctx, request.Id)
-	if db.IsNoRows(err) {
+	switch {
+	case err == nil:
+	case domainStatusCode(err) == http.StatusNotFound:
 		return DeletePlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
-	}
-	if err != nil {
-		if db.IsForeignKeyViolation(err) {
-			return DeletePlayer400JSONResponse{Status: "fail", Message: "cannot delete player with matches"}, nil
-		}
+	case domainStatusCode(err) == http.StatusBadRequest:
+		return DeletePlayer400JSONResponse{Status: "fail", Message: "cannot delete player with matches"}, nil
+	default:
 		return nil, err
 	}
 
@@ -177,7 +176,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 
 	player, err := s.api.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {
-		if db.IsNoRows(err) {
+		if domainStatusCode(err) == http.StatusNotFound {
 			return GetPlayerStats404JSONResponse{Status: "fail", Message: "player not found"}, nil
 		}
 		return nil, err
@@ -255,4 +254,3 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		},
 	}, nil
 }
-

@@ -12,18 +12,7 @@ import (
 
 func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var token string
-		cookie, err := ctx.Cookie(cfg.Config.CookieName)
-
-		authorizationHeader := ctx.Request.Header.Get("Authorization")
-		fields := strings.Fields(authorizationHeader)
-
-		if len(fields) != 0 && fields[0] == "Bearer" {
-			token = fields[1]
-		} else if err == nil {
-			token = cookie
-		}
-
+		token := extractToken(ctx)
 		if token == "" {
 			ctx.Abort()
 			api.ErrorResponse(ctx, http.StatusUnauthorized, "You are not logged in")
@@ -48,21 +37,8 @@ func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 // If authenticated, sets CurrentUserKey in context. Otherwise continues without it.
 func (a *OAUTH2) OptionalDeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var token string
-		cookie, err := ctx.Cookie(cfg.Config.CookieName)
-
-		authorizationHeader := ctx.Request.Header.Get("Authorization")
-		fields := strings.Fields(authorizationHeader)
-
-		if len(fields) != 0 && fields[0] == "Bearer" {
-			token = fields[1]
-		} else if err == nil {
-			token = cookie
-		}
-
-		if token != "" {
-			userID, expiry, err := ValidateToken(token, cfg.Config.CookieJwtSecret)
-			if err == nil {
+		if token := extractToken(ctx); token != "" {
+			if userID, expiry, err := ValidateToken(token, cfg.Config.CookieJwtSecret); err == nil {
 				renewCookieIfNeeded(ctx, userID, expiry)
 				ctx.Set(api.CurrentUserKey, userID)
 			}
@@ -70,6 +46,19 @@ func (a *OAUTH2) OptionalDeserializeUser() gin.HandlerFunc {
 
 		ctx.Next()
 	}
+}
+
+// extractToken pulls the bearer/cookie auth token from the request, preferring
+// the Authorization: Bearer header and falling back to the auth cookie. Returns
+// "" when no token is present.
+func extractToken(ctx *gin.Context) string {
+	if fields := strings.Fields(ctx.Request.Header.Get("Authorization")); len(fields) != 0 && fields[0] == "Bearer" {
+		return fields[1]
+	}
+	if cookie, err := ctx.Cookie(cfg.Config.CookieName); err == nil {
+		return cookie
+	}
+	return ""
 }
 
 // renewCookieIfNeeded issues a fresh cookie when less than half the TTL remains,

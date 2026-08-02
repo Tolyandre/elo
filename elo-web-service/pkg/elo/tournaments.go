@@ -47,7 +47,7 @@ func (s *TournamentService) GetStats(ctx context.Context, id string) ([]db.GetTo
 func (s *TournamentService) CreateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return db.Tournament{}, fmt.Errorf("unable to begin tx: %v", err)
+		return db.Tournament{}, fmt.Errorf("unable to begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Queries.WithTx(tx)
@@ -63,11 +63,11 @@ func (s *TournamentService) CreateTournament(ctx context.Context, id string, nam
 	}
 	for _, pid := range playerIDs {
 		if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: created.ID, PlayerID: pid}); err != nil {
-			return db.Tournament{}, fmt.Errorf("add member %s: %v", pid, err)
+			return db.Tournament{}, fmt.Errorf("add member %s: %w", pid, err)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return db.Tournament{}, fmt.Errorf("commit tx: %v", err)
+		return db.Tournament{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return created, nil
 }
@@ -75,7 +75,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, id string, nam
 func (s *TournamentService) UpdateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return db.Tournament{}, fmt.Errorf("unable to begin tx: %v", err)
+		return db.Tournament{}, fmt.Errorf("unable to begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Queries.WithTx(tx)
@@ -83,7 +83,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	// New dates must still cover every already-played match in the tournament.
 	dateRange, err := q.GetTournamentMatchDateRange(ctx, id)
 	if err != nil && !db.IsNoRows(err) {
-		return db.Tournament{}, fmt.Errorf("get tournament match date range: %v", err)
+		return db.Tournament{}, fmt.Errorf("get tournament match date range: %w", err)
 	}
 	if err == nil { // there are matches
 		if start.After(dateRange.MinDate) || end.Before(dateRange.MaxDate) {
@@ -94,7 +94,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	// A removed member must not have played any match in the tournament.
 	current, err := q.GetTournament(ctx, id)
 	if err != nil {
-		return db.Tournament{}, fmt.Errorf("get tournament: %v", err)
+		return db.Tournament{}, fmt.Errorf("get tournament: %w", err)
 	}
 	desired := make(map[string]bool, len(playerIDs))
 	for _, pid := range playerIDs {
@@ -109,7 +109,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 		if !desired[*r.PlayerID] {
 			hasMatch, err := q.PlayerHasMatchInTournament(ctx, db.PlayerHasMatchInTournamentParams{TournamentID: id, PlayerID: *r.PlayerID})
 			if err != nil {
-				return db.Tournament{}, fmt.Errorf("check player matches: %v", err)
+				return db.Tournament{}, fmt.Errorf("check player matches: %w", err)
 			}
 			if hasMatch {
 				return db.Tournament{}, ErrTournamentMemberHasMatches
@@ -132,20 +132,20 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	for pid := range desired {
 		if !currentSet[pid] {
 			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
-				return db.Tournament{}, fmt.Errorf("add member %s: %v", pid, err)
+				return db.Tournament{}, fmt.Errorf("add member %s: %w", pid, err)
 			}
 		}
 	}
 	for pid := range currentSet {
 		if !desired[pid] {
 			if err := q.RemoveTournamentMember(ctx, db.RemoveTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
-				return db.Tournament{}, fmt.Errorf("remove member %s: %v", pid, err)
+				return db.Tournament{}, fmt.Errorf("remove member %s: %w", pid, err)
 			}
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return db.Tournament{}, fmt.Errorf("commit tx: %v", err)
+		return db.Tournament{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return updated, nil
 }
@@ -153,7 +153,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 func (s *TournamentService) DeleteTournament(ctx context.Context, id string) (db.Tournament, error) {
 	count, err := s.Queries.CountTournamentMembers(ctx, id)
 	if err != nil {
-		return db.Tournament{}, fmt.Errorf("count members: %v", err)
+		return db.Tournament{}, fmt.Errorf("count members: %w", err)
 	}
 	if count > 0 {
 		return db.Tournament{}, ErrTournamentHasMembers

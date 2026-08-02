@@ -2,10 +2,10 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
 func (s *StrictServer) RecalculateGameElo(ctx context.Context, _ RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error) {
@@ -80,7 +80,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 
 	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name)
 	if err != nil {
-		if db.IsUniqueViolation(err) {
+		if domainStatusCode(err) == http.StatusConflict {
 			return CreateGame409JSONResponse{Status: "fail", Message: "game with this name already exists"}, nil
 		}
 		return nil, err
@@ -94,10 +94,10 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
 	game, err := s.api.GameService.UpdateGameName(ctx, request.Id, request.Body.Name)
-	if db.IsNoRows(err) {
-		return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
-	}
 	if err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
+		}
 		return nil, err
 	}
 
@@ -109,13 +109,13 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 
 func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequestObject) (DeleteGameResponseObject, error) {
 	_, err := s.api.GameService.DeleteGame(ctx, request.Id)
-	if db.IsNoRows(err) {
+	switch {
+	case err == nil:
+	case domainStatusCode(err) == http.StatusNotFound:
 		return DeleteGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
-	}
-	if err != nil {
-		if db.IsForeignKeyViolation(err) {
-			return DeleteGame400JSONResponse{Status: "fail", Message: "cannot delete game with matches"}, nil
-		}
+	case domainStatusCode(err) == http.StatusBadRequest:
+		return DeleteGame400JSONResponse{Status: "fail", Message: "cannot delete game with matches"}, nil
+	default:
 		return nil, err
 	}
 

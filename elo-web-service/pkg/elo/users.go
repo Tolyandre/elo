@@ -75,7 +75,7 @@ func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthU
 		return "", err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.Queries.WithTx(tx)
 
 	user, err := q.GetUserByGoogleOAuthUserID(ctx, googleOauthUserId)
@@ -140,7 +140,7 @@ func (s *UserService) SetUserPlayer(ctx context.Context, userID string, playerID
 	})
 	if err != nil {
 		if db.IsUniqueViolation(err) {
-			return fmt.Errorf("player already linked to another user")
+			return ErrPlayerAlreadyLinked
 		}
 		return err
 	}

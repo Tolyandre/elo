@@ -54,6 +54,16 @@ type IMarketService interface {
 
 	// ScheduleNextExpiry sets a timer for the next market expiry.
 	ScheduleNextExpiry(ctx context.Context)
+
+	// --- read-side queries used by the market handlers ---------------------
+
+	ListMarketsWithPools(ctx context.Context) ([]db.ListMarketsWithPoolsRow, error)
+	GetMarketWithPools(ctx context.Context, id string) (db.GetMarketWithPoolsRow, error)
+	GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error)
+	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error)
+	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error)
+	GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error)
+	GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error)
 }
 
 type MarketService struct {
@@ -68,6 +78,37 @@ func NewMarketService(pool *pgxpool.Pool) IMarketService {
 		Queries: db.New(pool),
 		Pool:    pool,
 	}
+}
+
+// --- read-side queries. These delegate to *db.Queries so the market handlers
+// go through the service boundary instead of holding *db.Queries directly. ---
+
+func (s *MarketService) ListMarketsWithPools(ctx context.Context) ([]db.ListMarketsWithPoolsRow, error) {
+	return s.Queries.ListMarketsWithPools(ctx)
+}
+
+func (s *MarketService) GetMarketWithPools(ctx context.Context, id string) (db.GetMarketWithPoolsRow, error) {
+	return s.Queries.GetMarketWithPools(ctx, id)
+}
+
+func (s *MarketService) GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error) {
+	return s.Queries.GetSettlementDetails(ctx, marketID)
+}
+
+func (s *MarketService) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error) {
+	return s.Queries.ListMarketsByResolutionMatch(ctx, resolutionMatchID)
+}
+
+func (s *MarketService) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error) {
+	return s.Queries.GetPlayerBetsAggregatedForMarket(ctx, arg)
+}
+
+func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error) {
+	return s.Queries.GetPlayerReservedAmount(ctx, playerID)
+}
+
+func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error) {
+	return s.Queries.GetPlayerBetLimit(ctx, playerID)
 }
 
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {

@@ -73,7 +73,7 @@ func NewGameService(pool *pgxpool.Pool) IGameService {
 func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error) {
 	rows, err := s.Queries.ListGamesOrderedByLastPlayed(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve games from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve games from db: %w", err)
 	}
 
 	gameList := make([]GameTitles, 0, len(rows))
@@ -92,19 +92,19 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	// Read latest game rating per player from DB (display rating + league)
 	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve game rating from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve game rating from db: %w", err)
 	}
 
 	// Get total match count for the game
 	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get match count: %v", err)
+		return nil, fmt.Errorf("unable to get match count: %w", err)
 	}
 
 	// Get game name from the games list (reuse existing query)
 	gameRows, err := s.Queries.ListGamesOrderedByLastPlayed(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get game name: %v", err)
+		return nil, fmt.Errorf("unable to get game name: %w", err)
 	}
 	gameName := id
 	for _, g := range gameRows {
@@ -116,7 +116,7 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 
 	settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
 	if err != nil {
-		return nil, fmt.Errorf("unable to get elo settings: %v", err)
+		return nil, fmt.Errorf("unable to get elo settings: %w", err)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
@@ -181,7 +181,7 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatch, error) {
 	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve game matches from db: %v", err)
+		return nil, fmt.Errorf("unable to retrieve game matches from db: %w", err)
 	}
 
 	// Group rows by match (already ordered ASC by date/id)

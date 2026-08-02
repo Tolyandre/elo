@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -93,7 +94,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 
 	club, err := s.api.ClubService.CreateClub(ctx, request.Body.Id, name)
 	if err != nil {
-		if db.IsUniqueViolation(err) {
+		if domainStatusCode(err) == http.StatusConflict {
 			return CreateClub409JSONResponse{Status: "fail", Message: "club with this name already exists"}, nil
 		}
 		return nil, err
@@ -143,16 +144,19 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 
 	if updateName {
 		if _, err := s.api.ClubService.UpdateClub(ctx, request.Id, *request.Body.Name); err != nil {
-			if db.IsNoRows(err) {
+			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
+			// PatchClub's OpenAPI response only defines 200/400/401/403/404 — there
+			// is no 409, so a name uniqueness violation falls through to 500 via
+			// errorMiddleware (same behavior as before the refactor).
 			return nil, err
 		}
 	}
 
 	if updateIcon {
 		if _, err := s.api.ClubService.UpdateClubIcon(ctx, request.Id, iconArg); err != nil {
-			if db.IsNoRows(err) {
+			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
 			return nil, err
@@ -172,13 +176,13 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
 	_, err := s.api.ClubService.DeleteClub(ctx, request.Id)
-	if db.IsNoRows(err) {
+	switch {
+	case err == nil:
+	case domainStatusCode(err) == http.StatusNotFound:
 		return DeleteClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
-	}
-	if err != nil {
-		if db.IsForeignKeyViolation(err) {
-			return DeleteClub400JSONResponse{Status: "fail", Message: "cannot delete club with members"}, nil
-		}
+	case domainStatusCode(err) == http.StatusBadRequest:
+		return DeleteClub400JSONResponse{Status: "fail", Message: "cannot delete club with members"}, nil
+	default:
 		return nil, err
 	}
 
@@ -193,7 +197,10 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 
 	err := s.api.ClubService.AddMember(ctx, request.Id, playerID)
 	if err != nil {
-		if db.IsForeignKeyViolation(err) {
+		// OpenAPI only defines 200/400/401/403 for AddClubMember, so a duplicate
+		// (club_id, player_id) membership (unique violation) has no 409 in the
+		// contract and still falls through to 500 via errorMiddleware.
+		if domainStatusCode(err) == http.StatusBadRequest {
 			return AddClubMember400JSONResponse{Status: "fail", Message: "club or player not found"}, nil
 		}
 		return nil, err

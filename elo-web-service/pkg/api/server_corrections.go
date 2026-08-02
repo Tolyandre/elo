@@ -75,7 +75,7 @@ func (s *StrictServer) ListCorrections(ctx context.Context, request ListCorrecti
 		limit = int32(*params.Limit)
 	}
 
-	rows, err := s.api.Queries.ListCorrectionsPaginated(ctx, db.ListCorrectionsPaginatedParams{
+	rows, err := s.api.CorrectionService.ListCorrectionsPaginated(ctx, db.ListCorrectionsPaginatedParams{
 		PlayerID:   playerID,
 		ClubID:     clubID,
 		NoClub:     pgtype.Bool{Bool: noClub, Valid: noClub},

@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -55,7 +57,7 @@ func sanitizeClubIconSVG(s string) (string, error) {
 	for {
 		tok, err := dec.Token()
 		if err != nil {
-			if err.Error() == "EOF" {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			return "", fmt.Errorf("icon is not well-formed XML: %w", err)

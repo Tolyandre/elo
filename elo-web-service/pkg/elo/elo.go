@@ -54,7 +54,7 @@ func NormalizedScore(currentScore float64, playersScore map[string]float64, abso
 	return score
 }
 
-func GetAsboluteLoserScore(playersScore map[string]float64) float64 {
+func GetAbsoluteLoserScore(playersScore map[string]float64) float64 {
 	var minSet = false
 	var min float64 = 0
 	for _, s := range playersScore {
@@ -74,7 +74,7 @@ func CalculateNewElo(previousElo map[string]float64, startingElo float64, score 
 	newElo := make(map[string]float64)
 	maps.Copy(newElo, previousElo)
 
-	absoluteLoserScore := GetAsboluteLoserScore(score)
+	absoluteLoserScore := GetAbsoluteLoserScore(score)
 
 	// for every player in this match calculate new elo
 	for pid, sc := range score {

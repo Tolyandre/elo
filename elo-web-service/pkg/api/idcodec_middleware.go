@@ -232,21 +232,31 @@ func (w *encodingResponseWriter) decide() {
 }
 
 func (w *encodingResponseWriter) WriteHeader(code int) {
-	// Defer the decision; just remember the code. The real header is written
-	// either by the inherited WriteHeader (passthrough path, from Write below)
-	// or in finalize (buffering path).
+	// Remember the latest code for finalize() (buffering path). We also forward
+	// to the embedded gin responseWriter's WriteHeader so gin's internal status
+	// field stays in sync — WITHOUT sending bytes (gin's WriteHeader only stores
+	// the code; it sends on WriteHeaderNow). This matters for panic recovery:
+	// gin's Recovery middleware (registered OUTSIDE this wrapper) calls
+	// c.AbortWithStatus(500), which reaches WriteHeader(500) here. If we don't
+	// forward, gin's status stays at the default 200 and the recovery 500 is
+	// silently lost, leaving the client with an implicit 200 + empty body.
 	w.deferred = code
 	w.hasDeferred = true
+	w.ResponseWriter.WriteHeader(code) // updates gin's stored status; does NOT write to the wire
 	if w.decided && !w.buffering {
-		w.ResponseWriter.WriteHeader(code)
+		// Passthrough path is already committed: send the header for real now.
+		w.ResponseWriter.WriteHeaderNow()
 	}
 }
 
 // WriteHeaderNow is invoked by gin's render layer to flush the status header.
-// We must defer this until decide() has run (i.e. until the first Write), so
-// here we only forward it once we've committed to the passthrough path.
+// We forward it to the real writer whenever we are NOT buffering JSON: for the
+// passthrough path this is the normal commit, and crucially it is also the path
+// gin's Recovery middleware takes when it calls c.AbortWithStatus(500) after a
+// handler panic. A previous version gated this on w.decided, which suppressed
+// the recovery 500 and left the client with an implicit 200 + empty body.
 func (w *encodingResponseWriter) WriteHeaderNow() {
-	if w.decided && !w.buffering {
+	if !w.buffering {
 		w.ResponseWriter.WriteHeaderNow()
 	}
 }

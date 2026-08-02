@@ -16,7 +16,26 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
 
 ## Build, Test, and Development Commands
 
-Use `direnv allow` from the repo root to enter the Nix dev shell.
+### Entering the dev environment (read first)
+
+The project's reproducible toolchain comes from the Nix flake devShell, defined in `flake.nix` (`devShells.<system>.default`). `direnv allow` loads it in an interactive shell, but **agents have no direnv hook** — enter it explicitly by wrapping every project command:
+
+```bash
+# Run any project command wrapped like this:
+nix develop .# --command bash -lc '<command>'
+# Example:
+nix develop .# --command bash -lc 'make integration-test-podman'
+```
+
+What's where:
+
+- **Provided by the devShell** (absent or version-different on ambient PATH): the pinned `go`, `gcc`/`pkg-config`/`opencv` (the CGO toolchain for `pkg/cardrecognition`), `sqlc`, `gomod2nix`, `gopls`. `make` is also reachable inside the devShell (pulled in transitively, not declared in `buildInputs`).
+- **From the ambient system PATH, not the flake**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; the flake does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm`.
+- **Not a standalone binary**: `oapi-codegen` runs via `go generate` (`make generate-go-api` → `go generate ./pkg/api/...`), so it's built on demand from `go.mod` — no binary needs to be on PATH.
+
+If a Nix build of the CGO code is unavailable (no compiler/libs), build and test with `CGO_ENABLED=0`; the `pkg/cardrecognition` cgo code is `//go:build integration`-gated with a `!cgo` fallback, so the non-integration build still works.
+
+Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are unset in the ambient environment, but the Makefile targets set `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` explicitly. That user-scoped podman socket must exist and be reachable; `podman ps` is the quick reachability check.
 
 - `make dev-up`: start Postgres and mock OAuth, run migrations, and seed local data.
 - `make backend-run`: run the Go backend with Docker-oriented config.
@@ -27,7 +46,7 @@ Use `direnv allow` from the repo root to enter the Nix dev shell.
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
-- `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. Podman runs via `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock`; in sandboxed environments (e.g. vscode.fhs) the socket must be reachable.
+- `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. These spin up Postgres via testcontainers; see "Entering the dev environment" above for the `DOCKER_HOST`/socket details and the `nix develop` wrapping.
 - `nix flake check`: evaluate Nix outputs and integration checks.
 
 ## Coding Style & Naming Conventions

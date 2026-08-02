@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -63,60 +64,15 @@ func ReadConfiguration() {
 	viper.SetEnvPrefix("ELO_WEB_SERVICE")
 	viper.AutomaticEnv()
 
-	// for some reason AutomaticEnv does not bind to the environment variables. We need to do it manually
-	if err := viper.BindEnv("address", "ELO_WEB_SERVICE_ADDRESS"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_ADDRESS: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_client_id", "ELO_WEB_SERVICE_OAUTH2_CLIENT_ID"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_CLIENT_ID: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_client_secret", "ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_token_uri", "ELO_WEB_SERVICE_OAUTH2_TOKEN_URI"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_TOKEN_URI: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_auth_uri", "ELO_WEB_SERVICE_OAUTH2_AUTH_URI"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_AUTH_URI: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_redirect_uri", "ELO_WEB_SERVICE_OAUTH2_REDIRECT_URI"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_REDIRECT_URI: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_userinfo_uri", "ELO_WEB_SERVICE_OAUTH2_USERINFO_URI"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_USERINFO_URI: %v", err)
-	}
-	if err := viper.BindEnv("oauth2_scopes", "ELO_WEB_SERVICE_OAUTH2_SCOPES"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OAUTH2_SCOPES: %v", err)
-	}
-	if err := viper.BindEnv("cookie_jwt_secret", "ELO_WEB_SERVICE_COOKIE_JWT_SECRET"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_JWT_SECRET: %v", err)
-	}
-	if err := viper.BindEnv("cookie_ttl_seconds", "ELO_WEB_SERVICE_COOKIE_TTL_SECONDS"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_TTL_SECONDS: %v", err)
-	}
-	if err := viper.BindEnv("cookie_name", "ELO_WEB_SERVICE_COOKIE_NAME"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_COOKIE_NAME: %v", err)
-	}
-	if err := viper.BindEnv("frontend_uri", "ELO_WEB_SERVICE_FRONTEND_URI"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_FRONTEND_URI: %v", err)
-	}
-	if err := viper.BindEnv("postgres_dsn", "ELO_WEB_SERVICE_POSTGRES_DSN"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_POSTGRES_DSN: %v", err)
-	}
-	if err := viper.BindEnv("postgres_password", "ELO_WEB_SERVICE_POSTGRES_PASSWORD"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_POSTGRES_PASSWORD: %v", err)
-	}
-	if err := viper.BindEnv("ollama_base_url", "ELO_WEB_SERVICE_OLLAMA_BASE_URL"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OLLAMA_BASE_URL: %v", err)
-	}
-	if err := viper.BindEnv("ollama_model", "ELO_WEB_SERVICE_OLLAMA_MODEL"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OLLAMA_MODEL: %v", err)
-	}
-	if err := viper.BindEnv("ollama_vision_model", "ELO_WEB_SERVICE_OLLAMA_VISION_MODEL"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_OLLAMA_VISION_MODEL: %v", err)
-	}
-	if err := viper.BindEnv("skull_king_confidence_threshold", "ELO_WEB_SERVICE_SKULL_KING_CONFIDENCE_THRESHOLD"); err != nil {
-		log.Fatalf("failed to bind env ELO_WEB_SERVICE_SKULL_KING_CONFIDENCE_THRESHOLD: %v", err)
+	// Bind every mapstructure key to its ELO_WEB_SERVICE_<KEY> env var. Viper's
+	// AutomaticEnv does not pick up keys absent from the config file, so we bind
+	// them explicitly. The same key table drives the required-field validation
+	// below, keeping the two in sync (previously they were two separate
+	// hand-maintained lists that drifted).
+	for _, key := range configKeys {
+		if err := viper.BindEnv(key, "ELO_WEB_SERVICE_"+strings.ToUpper(key)); err != nil {
+			log.Fatalf("failed to bind env ELO_WEB_SERVICE_%s: %v", strings.ToUpper(key), err)
+		}
 	}
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -139,39 +95,13 @@ func ReadConfiguration() {
 		Config.CookieName = "elo-web-service-token"
 	}
 
-	// Validate that all config fields are non-empty (at least a non-empty string)
+	// Validate that required string fields are non-empty.
 	var missing []string
-	if Config.Address == "" {
-		missing = append(missing, "address")
+	for _, key := range requiredKeys {
+		if viper.GetString(key) == "" {
+			missing = append(missing, key)
+		}
 	}
-	if Config.Oauth2ClientId == "" {
-		missing = append(missing, "oauth2_client_id")
-	}
-	if Config.Oauth2ClientSecret == "" {
-		missing = append(missing, "oauth2_client_secret")
-	}
-	if Config.Oauth2TokenUri == "" {
-		missing = append(missing, "oauth2_token_uri")
-	}
-	if Config.Oauth2AuthUri == "" {
-		missing = append(missing, "oauth2_auth_uri")
-	}
-	if Config.Oauth2RedirectUri == "" {
-		missing = append(missing, "oauth2_redirect_uri")
-	}
-	if Config.Oauth2UserinfoUri == "" {
-		missing = append(missing, "oauth2_userinfo_uri")
-	}
-	if Config.CookieJwtSecret == "" {
-		missing = append(missing, "cookie_jwt_secret")
-	}
-	if Config.FrontendUri == "" {
-		missing = append(missing, "frontend_uri")
-	}
-	if Config.PostgresDSN == "" {
-		missing = append(missing, "postgres_dsn")
-	}
-
 	if len(missing) > 0 {
 		log.Fatalf("missing required configuration values: %v", missing)
 		os.Exit(1)
@@ -181,4 +111,44 @@ func ReadConfiguration() {
 		log.Fatalf("cookie_ttl_seconds must be at least 300 seconds")
 		os.Exit(1)
 	}
+}
+
+// configKeys is the complete set of mapstructure keys for the Configuration
+// struct, in declaration order. Every key binds to an ELO_WEB_SERVICE_<KEY>
+// environment variable.
+var configKeys = []string{
+	"address",
+	"oauth2_client_id",
+	"oauth2_client_secret",
+	"oauth2_token_uri",
+	"oauth2_auth_uri",
+	"oauth2_redirect_uri",
+	"oauth2_userinfo_uri",
+	"oauth2_scopes",
+	"cookie_jwt_secret",
+	"cookie_ttl_seconds",
+	"cookie_name",
+	"frontend_uri",
+	"postgres_dsn",
+	"postgres_password",
+	"ollama_base_url",
+	"ollama_model",
+	"ollama_vision_model",
+	"skull_king_confidence_threshold",
+}
+
+// requiredKeys are the string fields that must be non-empty at startup. Note
+// this is a subset of configKeys: cookie_name/oauth2_scopes/postgres_password
+// and the ollama/skull-king tuning knobs are intentionally optional.
+var requiredKeys = []string{
+	"address",
+	"oauth2_client_id",
+	"oauth2_client_secret",
+	"oauth2_token_uri",
+	"oauth2_auth_uri",
+	"oauth2_redirect_uri",
+	"oauth2_userinfo_uri",
+	"cookie_jwt_secret",
+	"frontend_uri",
+	"postgres_dsn",
 }
