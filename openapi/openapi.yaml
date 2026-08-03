@@ -114,14 +114,6 @@ components:
     CorrectionsPage:
       $ref: './admin.yaml#/CorrectionsPage'
 
-    # Analytics
-    EloResetPlayerInfo:
-      $ref: './analytics.yaml#/EloResetPlayerInfo'
-    EloResetSeriesPoint:
-      $ref: './analytics.yaml#/EloResetSeriesPoint'
-    EloResetResult:
-      $ref: './analytics.yaml#/EloResetResult'
-
     # Skull King
     SkullKingPlayer:
       $ref: './skull-king.yaml#/SkullKingPlayer'
@@ -221,10 +213,6 @@ paths:
     $ref: './auth.yaml#/AuthLogout'
   /auth/me:
     $ref: './auth.yaml#/AuthMe'
-
-  # Analytics
-  /analytics/elo-reset:
-    $ref: './analytics.yaml#/EloResetPath'
 
   # Corrections
   /corrections:

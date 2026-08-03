@@ -83,11 +83,6 @@ type IMatchService interface {
 	// market is already resolved or cancelled.
 	DeleteMarketAndRecalculate(ctx context.Context, marketID string) error
 
-	// ListMatchesForEloReset feeds the analytics elo-reset replay (see
-	// ComputeEloReset). Exposed on the interface so the API handler does not
-	// touch *db.Queries directly.
-	ListMatchesForEloReset(ctx context.Context, calcDate time.Time) ([]db.ListMatchesForEloResetRow, error)
-
 	// Read-side queries used by the match list/detail handlers.
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
 	GetMatchWithPlayers(ctx context.Context, id string) ([]db.GetMatchWithPlayersRow, error)
@@ -830,4 +825,21 @@ func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID string, t
 		}
 	}
 	return nil
+}
+
+// ListMatchesWithPlayersPaginated is the paginated match-list read for the
+// ListMatches handler.
+func (s *MatchService) ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error) {
+	return s.Queries.ListMatchesWithPlayersPaginated(ctx, arg)
+}
+
+// GetMatchWithPlayers is the single-match read for the GetMatchById handler.
+func (s *MatchService) GetMatchWithPlayers(ctx context.Context, id string) ([]db.GetMatchWithPlayersRow, error) {
+	return s.Queries.GetMatchWithPlayers(ctx, id)
+}
+
+// ListTournamentsByMatchIDs returns the tournament memberships for a set of
+// matches; used by both the list and detail handlers.
+func (s *MatchService) ListTournamentsByMatchIDs(ctx context.Context, matchIDs []string) ([]db.ListTournamentsByMatchIDsRow, error) {
+	return s.Queries.ListTournamentsByMatchIDs(ctx, matchIDs)
 }

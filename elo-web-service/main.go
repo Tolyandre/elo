@@ -160,9 +160,6 @@ func main() {
 	// Lobby SSE — separate path to avoid colliding with the /:id wildcard above
 	router.GET("/skull-king/lobby/events", apiHandler.SkullKingLobbyEvents)
 
-	// Analytics
-	router.GET("/analytics/elo-reset", strictWrapper.GetEloReset)
-
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)

@@ -502,23 +502,6 @@ export interface paths {
         patch: operations["PatchMe"];
         trace?: never;
     };
-    "/analytics/elo-reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Simulate Elo if reset to starting_elo at various past dates */
-        get: operations["GetEloReset"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/corrections": {
         parameters: {
             query?: never;
@@ -1033,21 +1016,6 @@ export interface components {
             data: components["schemas"]["Correction"][];
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
-        };
-        EloResetPlayerInfo: {
-            id: string;
-            name: string;
-        };
-        EloResetSeriesPoint: {
-            /** Format: date-time */
-            reset_date: string;
-            players: {
-                [key: string]: number;
-            };
-        };
-        EloResetResult: {
-            series: components["schemas"]["EloResetSeriesPoint"][];
-            players: components["schemas"]["EloResetPlayerInfo"][];
         };
         SkullKingPlayer: {
             id: string;
@@ -3355,43 +3323,6 @@ export interface operations {
             };
             /** @description Player already linked to another user */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    GetEloReset: {
-        parameters: {
-            query: {
-                /** @description Player IDs to include in the simulation */
-                player_id: string[];
-                /** @description Calculation date (defaults to now) */
-                calc_date?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Elo reset simulation result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["EloResetResult"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -402,24 +402,6 @@ type EloRank struct {
 // EloRankLeague defines model for EloRank.League.
 type EloRankLeague string
 
-// EloResetPlayerInfo defines model for EloResetPlayerInfo.
-type EloResetPlayerInfo struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
-}
-
-// EloResetResult defines model for EloResetResult.
-type EloResetResult struct {
-	Players []EloResetPlayerInfo  `json:"players"`
-	Series  []EloResetSeriesPoint `json:"series"`
-}
-
-// EloResetSeriesPoint defines model for EloResetSeriesPoint.
-type EloResetSeriesPoint struct {
-	Players   map[string]float64 `json:"players"`
-	ResetDate time.Time          `json:"reset_date"`
-}
-
 // EloSettingEntry defines model for EloSettingEntry.
 type EloSettingEntry struct {
 	// EffectiveDate RFC3339 date or "-infinity"
@@ -826,15 +808,6 @@ type CreatePlayerCorrectionJSONBody struct {
 
 // CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
 type CreatePlayerCorrectionJSONBodyDiscriminator string
-
-// GetEloResetParams defines parameters for GetEloReset.
-type GetEloResetParams struct {
-	// PlayerId Player IDs to include in the simulation
-	PlayerId []string `form:"player_id" json:"player_id"`
-
-	// CalcDate Calculation date (defaults to now)
-	CalcDate *time.Time `form:"calc_date,omitempty" json:"calc_date,omitempty"`
-}
 
 // PatchMeJSONBody defines parameters for PatchMe.
 type PatchMeJSONBody struct {
@@ -1327,9 +1300,6 @@ type ServerInterface interface {
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(c *gin.Context)
-	// Simulate Elo if reset to starting_elo at various past dates
-	// (GET /analytics/elo-reset)
-	GetEloReset(c *gin.Context, params GetEloResetParams)
 	// Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(c *gin.Context)
@@ -1552,47 +1522,6 @@ func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
 	}
 
 	siw.Handler.RecalculateGameElo(c)
-}
-
-// GetEloReset operation middleware
-func (siw *ServerInterfaceWrapper) GetEloReset(c *gin.Context) {
-
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetEloResetParams
-
-	// ------------- Required query parameter "player_id" -------------
-
-	if paramValue := c.Query("player_id"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Query argument player_id is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "calc_date" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "calc_date", c.Request.URL.Query(), &params.CalcDate, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter calc_date: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetEloReset(c, params)
 }
 
 // AuthLogin operation middleware
@@ -2884,7 +2813,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.POST(options.BaseURL+"/admin/players/:id/corrections", wrapper.CreatePlayerCorrection)
 	router.POST(options.BaseURL+"/admin/recalculate-game-elo", wrapper.RecalculateGameElo)
-	router.GET(options.BaseURL+"/analytics/elo-reset", wrapper.GetEloReset)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.AuthLogout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetMe)
@@ -3002,35 +2930,6 @@ type RecalculateGameElo500JSONResponse ApiError
 func (response RecalculateGameElo500JSONResponse) VisitRecalculateGameEloResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetEloResetRequestObject struct {
-	Params GetEloResetParams
-}
-
-type GetEloResetResponseObject interface {
-	VisitGetEloResetResponse(w http.ResponseWriter) error
-}
-
-type GetEloReset200JSONResponse struct {
-	Data   EloResetResult `json:"data"`
-	Status string         `json:"status"`
-}
-
-func (response GetEloReset200JSONResponse) VisitGetEloResetResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-
-	return json.NewEncoder(w).Encode(response)
-}
-
-type GetEloReset400JSONResponse ApiError
-
-func (response GetEloReset400JSONResponse) VisitGetEloResetResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5372,9 +5271,6 @@ type StrictServerInterface interface {
 	// Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(ctx context.Context, request RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error)
-	// Simulate Elo if reset to starting_elo at various past dates
-	// (GET /analytics/elo-reset)
-	GetEloReset(ctx context.Context, request GetEloResetRequestObject) (GetEloResetResponseObject, error)
 	// Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(ctx context.Context, request AuthLoginRequestObject) (AuthLoginResponseObject, error)
@@ -5616,33 +5512,6 @@ func (sh *strictHandler) RecalculateGameElo(ctx *gin.Context) {
 		ctx.Status(http.StatusInternalServerError)
 	} else if validResponse, ok := response.(RecalculateGameEloResponseObject); ok {
 		if err := validResponse.VisitRecalculateGameEloResponse(ctx.Writer); err != nil {
-			ctx.Error(err)
-		}
-	} else if response != nil {
-		ctx.Error(fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetEloReset operation middleware
-func (sh *strictHandler) GetEloReset(ctx *gin.Context, params GetEloResetParams) {
-	var request GetEloResetRequestObject
-
-	request.Params = params
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetEloReset(ctx, request.(GetEloResetRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetEloReset")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		ctx.Error(err)
-		ctx.Status(http.StatusInternalServerError)
-	} else if validResponse, ok := response.(GetEloResetResponseObject); ok {
-		if err := validResponse.VisitGetEloResetResponse(ctx.Writer); err != nil {
 			ctx.Error(err)
 		}
 	} else if response != nil {

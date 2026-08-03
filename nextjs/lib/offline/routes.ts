@@ -15,7 +15,6 @@ export const PAGES = [
     "/admin/users",
     "/calculators",
     "/calculators/chess-clock",
-    "/calculators/elo-reset",
     "/calculators/skull-king",
     "/calculators/skull-king-game",
     "/calculators/st-patrick",

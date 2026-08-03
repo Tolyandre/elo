@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Skull, Crosshair, Globe, Activity, Timer } from "lucide-react"
+import { Skull, Crosshair, Globe, Timer } from "lucide-react"
 
 const items = [
   {
@@ -16,11 +16,6 @@ const items = [
     href: "/calculators/st-patrick",
     icon: <Crosshair className="h-6 w-6" />,
     title: "Охота на змей",
-  },
-  {
-    href: "/calculators/elo-reset",
-    icon: <Activity className="h-6 w-6" />,
-    title: "Сходимость Эло",
   },
   {
     href: "/its-a-wonderful-world",
