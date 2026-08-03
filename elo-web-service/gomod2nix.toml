@@ -82,8 +82,8 @@ schema = 3
     hash = 'sha256-iK/V/jJc+borzqMeqLY+38Qcts2KhywpsTk95++hImE='
 
   [mod.'github.com/dprotaso/go-yit']
-    version = 'v0.0.0-20260623150633-6f1ed93922d1'
-    hash = 'sha256-ha/dhMkiPUHkTnBl6vG+0Lza/QPTP4E2m5MMDHc0zWM='
+    version = 'v0.0.0-20220510233725-9ba8df137936'
+    hash = 'sha256-fswb9R29XT7W2mdZyyF5WOnSmPEyyH+mG36tbsgT89w='
 
   [mod.'github.com/ebitengine/purego']
     version = 'v0.10.0'

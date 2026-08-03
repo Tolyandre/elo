@@ -855,11 +855,7 @@ export interface components {
             id: string;
             name: string;
             geologist_name?: string | null;
-            /**
-             * @description Key into the frontend's built-in club icon set (e.g. "clover"). Null
-             *     means the club has no icon. The icon itself is a version-controlled
-             *     static SVG in the frontend.
-             */
+            /** @description Key into the frontend's built-in club icon set (e.g. "clover"). Null means the club has no icon. The icon itself is a version-controlled static SVG in the frontend. */
             icon?: string | null;
             /** @description List of player IDs */
             player_ids: string[];
