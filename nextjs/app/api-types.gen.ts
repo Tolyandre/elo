@@ -216,7 +216,7 @@ export interface paths {
         head?: never;
         /**
          * Update a club (name and/or icon)
-         * @description Partial update. A field that is omitted is left unchanged. For `icon_svg`, an empty string clears the icon; a non-empty value is validated server-side (must be an SVG with no scripts/event handlers/external references).
+         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters).
          */
         patch: operations["PatchClub"];
         trace?: never;
@@ -855,8 +855,12 @@ export interface components {
             id: string;
             name: string;
             geologist_name?: string | null;
-            /** @description Sanitized SVG markup for the club icon, rendered via an img data-URI. */
-            icon_svg?: string | null;
+            /**
+             * @description Key into the frontend's built-in club icon set (e.g. "clover"). Null
+             *     means the club has no icon. The icon itself is a version-controlled
+             *     static SVG in the frontend.
+             */
+            icon?: string | null;
             /** @description List of player IDs */
             player_ids: string[];
         };
@@ -2125,7 +2129,7 @@ export interface operations {
             content: {
                 "application/json": {
                     name?: string;
-                    icon_svg?: string | null;
+                    icon?: string;
                 };
             };
         };

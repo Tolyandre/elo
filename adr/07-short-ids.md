@@ -33,7 +33,7 @@ The transformation happens entirely at the HTTP boundary via two gin middlewares
 
 `DecodeIDsMiddleware` (inbound) rewrites short ids in path params (`id`, `userId`, `playerId`), query params (`*_id`), and JSON request bodies to canonical form before handlers run. `EncodeIDsMiddleware` (outbound) wraps the response writer and rewrites canonical ids in JSON responses to short form. Both are **key-aware**: only values under keys named `id`/`*_id`/`*_ids`, and the keys of `score`, are touched. Opaque values like the `next` pagination cursor (a base64 blob) are left alone.
 
-Non-JSON responses bypass the buffer entirely: SSE streams (`text/event-stream` for Skull-King table state), SVG club icons, and redirects pass through verbatim, and `Flush()`/`Hijack()` are delegated to the underlying writer so streaming keeps working.
+Non-JSON responses bypass the buffer entirely: SSE streams (`text/event-stream` for Skull-King table state) and redirects pass through verbatim, and `Flush()`/`Hijack()` are delegated to the underlying writer so streaming keeps working.
 
 ### Frontend
 

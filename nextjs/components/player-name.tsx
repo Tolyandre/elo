@@ -5,6 +5,7 @@ import { Player } from "@/app/api";
 import { useClubs } from "@/app/clubsContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ClubIcon } from "@/components/club-icon";
+import { isValidClubIcon } from "@/lib/club-icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,7 +15,7 @@ import { cn } from "@/lib/utils";
  */
 export function ClubIcons({ playerId, className }: { playerId: string; className?: string }) {
   const { clubsForPlayer } = useClubs();
-  const clubs = clubsForPlayer(playerId).filter((c) => c.icon_svg);
+  const clubs = clubsForPlayer(playerId).filter((c) => isValidClubIcon(c.icon));
   if (clubs.length === 0) return null;
   return (
     <span className={cn("inline-flex items-center gap-0.5 shrink-0", className)}>

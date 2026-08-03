@@ -474,7 +474,7 @@ export async function createClubPromise(payload: { name: string }): Promise<Club
 
 export async function patchClubPromise(
     id: string,
-    payload: { name?: string; icon_svg?: string | null },
+    payload: { name?: string; icon?: string },
 ): Promise<Club> {
     const { data, error } = await client.PATCH("/clubs/{id}", {
         params: { path: { id } },

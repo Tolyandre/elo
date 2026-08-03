@@ -1,5 +1,5 @@
 "use client"
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -24,8 +24,9 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ClubIcon } from "@/components/club-icon";
 import { ClubIcons } from "@/components/player-name";
+import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
+import { cn } from "@/lib/utils";
 
 export default function ClubAdminPage() {
     return (
@@ -57,7 +58,6 @@ function ClubAdminContent() {
 
     const [iconLoading, setIconLoading] = useState(false);
     const [iconError, setIconError] = useState<string | null>(null);
-    const iconInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (!clubId) return;
@@ -98,33 +98,18 @@ function ClubAdminContent() {
         }
     }
 
-    async function saveIcon(iconSvg: string) {
+    async function setIcon(icon: string) {
         try {
             setIconError(null);
             setIconLoading(true);
-            const updated = await patchClubPromise(clubId, { icon_svg: iconSvg });
-            setClub((prev) => prev ? { ...prev, icon_svg: updated.icon_svg } : prev);
+            const updated = await patchClubPromise(clubId, { icon });
+            setClub((prev) => prev ? { ...prev, icon: updated.icon } : prev);
             invalidateClubs();
         } catch (e) {
             setIconError(apiErrorMessage(e, "Не удалось сохранить иконку"));
         } finally {
             setIconLoading(false);
         }
-    }
-
-    async function onPickIcon(file: File | undefined) {
-        if (iconInputRef.current) iconInputRef.current.value = "";
-        if (!file) return;
-        if (file.size > 32 * 1024) {
-            setIconError("Файл слишком большой (максимум 32 КБ).");
-            return;
-        }
-        const text = await file.text();
-        if (!text.includes("<svg")) {
-            setIconError("Это не похоже на SVG-файл.");
-            return;
-        }
-        await saveIcon(text);
     }
 
     async function toggleMember(playerId: string, isMember: boolean) {
@@ -193,38 +178,38 @@ function ClubAdminContent() {
 
             <section className="mb-8">
                 <h2 className="text-lg font-medium mb-3">Иконка клуба</h2>
-                <div className="flex items-center gap-3 flex-wrap">
-                    <span className="inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30">
-                        {club.icon_svg
-                            ? <ClubIcon club={club} className="h-8 w-8" />
-                            : <span className="text-xs text-muted-foreground">нет</span>}
-                    </span>
-                    <input
-                        ref={iconInputRef}
-                        type="file"
-                        accept=".svg,image/svg+xml"
-                        className="hidden"
-                        onChange={(e) => onPickIcon(e.target.files?.[0])}
-                    />
-                    <Button
-                        variant="secondary"
-                        onClick={() => iconInputRef.current?.click()}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => setIcon("")}
                         disabled={!canEdit || iconLoading}
+                        className={cn(
+                            "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30 text-xs text-muted-foreground",
+                            !isValidClubIcon(club.icon) && "ring-2 ring-blue-500 border-blue-500",
+                        )}
+                        title="Без иконки"
                     >
-                        {iconLoading ? "Загрузка..." : "Загрузить SVG"}
-                    </Button>
-                    {club.icon_svg && (
-                        <Button
-                            variant="outline"
-                            onClick={() => saveIcon("")}
+                        нет
+                    </button>
+                    {CLUB_ICONS.map(({ key, label }) => (
+                        <button
+                            key={key}
+                            type="button"
+                            onClick={() => setIcon(key)}
                             disabled={!canEdit || iconLoading}
+                            className={cn(
+                                "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30",
+                                club.icon === key && "ring-2 ring-blue-500 border-blue-500",
+                            )}
+                            title={label}
                         >
-                            Убрать
-                        </Button>
-                    )}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={clubIconSrc(key)} alt={label} className="h-8 w-8" />
+                        </button>
+                    ))}
                 </div>
                 <p className="text-sm text-muted-foreground mt-2">
-                    Только векторный формат (SVG), до 32 КБ. Иконка отображается перед названием клуба и перед именами его игроков.
+                    Выберите одну из встроенных иконок. Иконка отображается перед названием клуба и перед именами его игроков.
                 </p>
                 {iconError && <p className="text-sm text-red-600 mt-1">{iconError}</p>}
             </section>

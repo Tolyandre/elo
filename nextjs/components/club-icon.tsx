@@ -1,32 +1,29 @@
-"use client";
-
-import * as React from "react";
 import { Club } from "@/app/api";
 import { useClubs } from "@/app/clubsContext";
+import { isValidClubIcon, clubIconSrc } from "@/lib/club-icons";
 import { cn } from "@/lib/utils";
 
 /**
- * Renders a club's icon as an inline image. The SVG is delivered as a data-URI through an
- * <img> tag, which never executes embedded scripts — so untrusted SVG cannot run JS here.
- * Renders nothing when the club has no icon.
+ * Renders a club's built-in icon. The icon is a version-controlled static SVG
+ * in `public/club-icons/<key>.svg`, keyed off `club.icon`. Renders nothing
+ * when the club has no icon or the key is not in the built-in set.
  */
 export function ClubIcon({
   club,
   className,
 }: {
-  club: Pick<Club, "name" | "geologist_name" | "icon_svg">;
+  club: Pick<Club, "name" | "geologist_name" | "icon">;
   className?: string;
 }) {
   const { clubDisplayName } = useClubs();
-  if (!club.icon_svg) return null;
-  const src = `data:image/svg+xml;utf8,${encodeURIComponent(club.icon_svg)}`;
+  if (!isValidClubIcon(club.icon)) return null;
   const name = clubDisplayName(club);
   return (
-    // Inline data-URI SVG: <img> (not next/image) is deliberate — it renders the icon
-    // without executing any embedded script, and a data URI cannot be optimized anyway.
+    // Static SVG asset served by file (not next/image): it can't be optimized
+    // under `output: export` and is already a tiny vector file.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={clubIconSrc(club.icon)}
       alt={name}
       title={name}
       aria-hidden={false}

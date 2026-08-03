@@ -13,8 +13,8 @@ type IClubService interface {
 	GetClub(ctx context.Context, id string) ([]db.GetClubRow, error)
 	CreateClub(ctx context.Context, id, name string) (db.Club, error)
 	UpdateClub(ctx context.Context, id string, name string) (db.Club, error)
-	// UpdateClubIcon sets (iconSvg non-nil) or clears (iconSvg nil) the club icon.
-	UpdateClubIcon(ctx context.Context, id string, iconSvg *string) (db.Club, error)
+	// UpdateClubIcon sets (icon non-nil) or clears (icon nil) the club's icon key.
+	UpdateClubIcon(ctx context.Context, id string, icon *string) (db.Club, error)
 	DeleteClub(ctx context.Context, id string) (db.Club, error)
 	AddMember(ctx context.Context, clubID, playerID string) error
 	RemoveMember(ctx context.Context, clubID, playerID string) error
@@ -44,12 +44,12 @@ func (s *ClubService) UpdateClub(ctx context.Context, id string, name string) (d
 	return s.Queries.UpdateClubName(ctx, db.UpdateClubNameParams{ID: id, Name: name})
 }
 
-func (s *ClubService) UpdateClubIcon(ctx context.Context, id string, iconSvg *string) (db.Club, error) {
-	icon := pgtype.Text{}
-	if iconSvg != nil {
-		icon = pgtype.Text{String: *iconSvg, Valid: true}
+func (s *ClubService) UpdateClubIcon(ctx context.Context, id string, icon *string) (db.Club, error) {
+	iconText := pgtype.Text{}
+	if icon != nil {
+		iconText = pgtype.Text{String: *icon, Valid: true}
 	}
-	return s.Queries.UpdateClubIcon(ctx, db.UpdateClubIconParams{ID: id, IconSvg: icon})
+	return s.Queries.UpdateClubIcon(ctx, db.UpdateClubIconParams{ID: id, Icon: iconText})
 }
 
 func (s *ClubService) DeleteClub(ctx context.Context, id string) (db.Club, error) {

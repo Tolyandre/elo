@@ -28,7 +28,7 @@ func clubFromGetRows(rows []db.GetClubRow) Club {
 		gn := rows[0].ClubGeologistName.String
 		c.GeologistName = &gn
 	}
-	c.IconSvg = textPtr(rows[0].ClubIconSvg)
+	c.Icon = textPtr(rows[0].ClubIcon)
 	for _, r := range rows {
 		if r.PlayerID != nil {
 			c.PlayerIds = append(c.PlayerIds, *r.PlayerID)
@@ -57,7 +57,7 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 				gn := r.ClubGeologistName.String
 				c.GeologistName = &gn
 			}
-			c.IconSvg = textPtr(r.ClubIconSvg)
+			c.Icon = textPtr(r.ClubIcon)
 			clubsMap[r.ClubID] = &c
 			order = append(order, r.ClubID)
 		}
@@ -109,7 +109,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 		gn := club.GeologistName.String
 		c.GeologistName = &gn
 	}
-	c.IconSvg = textPtr(club.IconSvg)
+	c.Icon = textPtr(club.Icon)
 
 	return CreateClub200JSONResponse{Status: "success", Data: c}, nil
 }
@@ -120,7 +120,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	updateName := request.Body.Name != nil
-	updateIcon := request.Body.IconSvg != nil
+	updateIcon := request.Body.Icon != nil
 	if !updateName && !updateIcon {
 		return PatchClub400JSONResponse{Status: "fail", Message: "nothing to update"}, nil
 	}
@@ -129,17 +129,20 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		return PatchClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	// Validate the icon before touching the database so a bad icon never partially applies.
+	// Validate the icon key before touching the database so a bad key never partially applies.
+	// An empty string clears the icon; a non-empty value is a built-in icon key.
 	var iconArg *string
 	if updateIcon {
-		if cleaned, ok := clubIconText(*request.Body.IconSvg); ok {
-			sanitized, err := sanitizeClubIconSVG(cleaned)
+		iconValue := *request.Body.Icon
+		if iconValue == "" {
+			iconArg = nil
+		} else {
+			validated, err := validateClubIconKey(iconValue)
 			if err != nil {
 				return PatchClub400JSONResponse{Status: "fail", Message: "invalid icon: " + err.Error()}, nil
 			}
-			iconArg = &sanitized
+			iconArg = &validated
 		}
-		// otherwise iconArg stays nil → clear the icon
 	}
 
 	if updateName {

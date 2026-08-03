@@ -356,10 +356,12 @@ type ApiSuccessMessageStatus string
 type Club struct {
 	GeologistName *string `json:"geologist_name,omitempty"`
 
-	// IconSvg Sanitized SVG markup for the club icon, rendered via an img data-URI.
-	IconSvg *string `json:"icon_svg,omitempty"`
-	Id      string  `json:"id"`
-	Name    string  `json:"name"`
+	// Icon Key into the frontend's built-in club icon set (e.g. "clover"). Null
+	// means the club has no icon. The icon itself is a version-controlled
+	// static SVG in the frontend.
+	Icon *string `json:"icon,omitempty"`
+	Id   string  `json:"id"`
+	Name string  `json:"name"`
 
 	// PlayerIds List of player IDs
 	PlayerIds []string `json:"player_ids"`
@@ -829,8 +831,8 @@ type CreateClubJSONBody struct {
 
 // PatchClubJSONBody defines parameters for PatchClub.
 type PatchClubJSONBody struct {
-	IconSvg *string `json:"icon_svg,omitempty"`
-	Name    *string `json:"name,omitempty"`
+	Icon *string `json:"icon,omitempty"`
+	Name *string `json:"name,omitempty"`
 }
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.

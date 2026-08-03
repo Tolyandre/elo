@@ -117,9 +117,10 @@ ClubItem:
     tags: [clubs]
     summary: Update a club (name and/or icon)
     description: >-
-      Partial update. A field that is omitted is left unchanged. For `icon_svg`,
-      an empty string clears the icon; a non-empty value is validated server-side
-      (must be an SVG with no scripts/event handlers/external references).
+      Partial update. A field that is omitted is left unchanged. For `icon`,
+      an empty string clears the icon; a non-empty value is a key into the
+      frontend's built-in icon set and is validated server-side (lowercase
+      kebab-case, 1-32 characters).
     security:
       - cookieAuth: []
     parameters:
@@ -137,9 +138,8 @@ ClubItem:
             properties:
               name:
                 type: string
-              icon_svg:
+              icon:
                 type: string
-                nullable: true
     responses:
       "200":
         description: Updated club
@@ -326,10 +326,13 @@ Club:
     geologist_name:
       type: string
       nullable: true
-    icon_svg:
+    icon:
       type: string
       nullable: true
-      description: Sanitized SVG markup for the club icon, rendered via an img data-URI.
+      description: >-
+        Key into the frontend's built-in club icon set (e.g. "clover"). Null
+        means the club has no icon. The icon itself is a version-controlled
+        static SVG in the frontend.
     player_ids:
       type: array
       items:

@@ -30,7 +30,7 @@ func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) er
 const createClub = `-- name: CreateClub :one
 INSERT INTO clubs (id, name)
 VALUES ($1, $2)
-RETURNING id, name, geologist_name, icon_svg
+RETURNING id, name, geologist_name, icon
 `
 
 type CreateClubParams struct {
@@ -45,7 +45,7 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 		&i.ID,
 		&i.Name,
 		&i.GeologistName,
-		&i.IconSvg,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -53,7 +53,7 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 const deleteClub = `-- name: DeleteClub :one
 DELETE FROM clubs
 WHERE id = $1
-RETURNING id, name, geologist_name, icon_svg
+RETURNING id, name, geologist_name, icon
 `
 
 func (q *Queries) DeleteClub(ctx context.Context, id string) (Club, error) {
@@ -63,7 +63,7 @@ func (q *Queries) DeleteClub(ctx context.Context, id string) (Club, error) {
 		&i.ID,
 		&i.Name,
 		&i.GeologistName,
-		&i.IconSvg,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -73,7 +73,7 @@ SELECT
     c.id AS club_id,
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
-    c.icon_svg AS club_icon_svg,
+    c.icon AS club_icon,
     pcm.player_id AS player_id
 FROM clubs c
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
@@ -84,7 +84,7 @@ type GetClubRow struct {
 	ClubID            string      `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
-	ClubIconSvg       pgtype.Text `json:"club_icon_svg"`
+	ClubIcon          pgtype.Text `json:"club_icon"`
 	PlayerID          *string     `json:"player_id"`
 }
 
@@ -101,7 +101,7 @@ func (q *Queries) GetClub(ctx context.Context, id string) ([]GetClubRow, error) 
 			&i.ClubID,
 			&i.ClubName,
 			&i.ClubGeologistName,
-			&i.ClubIconSvg,
+			&i.ClubIcon,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -119,7 +119,7 @@ SELECT
     c.id AS club_id,
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
-    c.icon_svg AS club_icon_svg,
+    c.icon AS club_icon,
     pcm.player_id AS player_id
 FROM clubs c
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
@@ -129,7 +129,7 @@ type ListClubsRow struct {
 	ClubID            string      `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
-	ClubIconSvg       pgtype.Text `json:"club_icon_svg"`
+	ClubIcon          pgtype.Text `json:"club_icon"`
 	PlayerID          *string     `json:"player_id"`
 }
 
@@ -146,7 +146,7 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 			&i.ClubID,
 			&i.ClubName,
 			&i.ClubGeologistName,
-			&i.ClubIconSvg,
+			&i.ClubIcon,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -176,24 +176,24 @@ func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberPara
 
 const updateClubIcon = `-- name: UpdateClubIcon :one
 UPDATE clubs
-SET icon_svg = $2
+SET icon = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon_svg
+RETURNING id, name, geologist_name, icon
 `
 
 type UpdateClubIconParams struct {
-	ID      string      `json:"id"`
-	IconSvg pgtype.Text `json:"icon_svg"`
+	ID   string      `json:"id"`
+	Icon pgtype.Text `json:"icon"`
 }
 
 func (q *Queries) UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error) {
-	row := q.db.QueryRow(ctx, updateClubIcon, arg.ID, arg.IconSvg)
+	row := q.db.QueryRow(ctx, updateClubIcon, arg.ID, arg.Icon)
 	var i Club
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.GeologistName,
-		&i.IconSvg,
+		&i.Icon,
 	)
 	return i, err
 }
@@ -202,7 +202,7 @@ const updateClubName = `-- name: UpdateClubName :one
 UPDATE clubs
 SET name = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon_svg
+RETURNING id, name, geologist_name, icon
 `
 
 type UpdateClubNameParams struct {
@@ -217,7 +217,7 @@ func (q *Queries) UpdateClubName(ctx context.Context, arg UpdateClubNameParams) 
 		&i.ID,
 		&i.Name,
 		&i.GeologistName,
-		&i.IconSvg,
+		&i.Icon,
 	)
 	return i, err
 }
