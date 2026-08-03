@@ -153,7 +153,7 @@ export function ConvergenceChart() {
                 <div />
                 <div className="space-y-2">
                     <Label>D (масштаб Elo): {effD}</Label>
-                    <Slider min={100} max={1000} step={10} value={[effD]}
+                    <Slider min={100} max={1200} step={10} value={[effD]}
                         onValueChange={([v]) => setD(v)} />
                 </div>
                 <div className="space-y-2">

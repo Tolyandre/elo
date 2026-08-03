@@ -14,6 +14,7 @@ import (
 // calling *db.Queries directly.
 type IEloSettingsService interface {
 	GetForDate(ctx context.Context, t pgtype.Timestamptz) (db.GetEloSettingsForDateRow, error)
+	GetLatest(ctx context.Context) (db.GetLatestEloSettingsRow, error)
 	List(ctx context.Context) ([]db.ListEloSettingsRow, error)
 	Create(ctx context.Context, arg db.CreateEloSettingsParams) error
 	Delete(ctx context.Context, t pgtype.Timestamptz) error
@@ -30,6 +31,11 @@ func NewEloSettingsService(pool *pgxpool.Pool) *EloSettingsService {
 // GetForDate returns the effective elo settings row for the given timestamp.
 func (s *EloSettingsService) GetForDate(ctx context.Context, t pgtype.Timestamptz) (db.GetEloSettingsForDateRow, error) {
 	return s.Queries.GetEloSettingsForDate(ctx, t)
+}
+
+// GetLatest returns the newest elo settings entry overall (including future-scheduled).
+func (s *EloSettingsService) GetLatest(ctx context.Context) (db.GetLatestEloSettingsRow, error) {
+	return s.Queries.GetLatestEloSettings(ctx)
 }
 
 // List returns every elo settings entry, oldest first.

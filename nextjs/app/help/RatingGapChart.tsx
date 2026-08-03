@@ -91,7 +91,7 @@ export function RatingGapChart() {
                 </div>
                 <div className="space-y-2">
                     <Label>D (масштаб Elo): {effD}</Label>
-                    <Slider min={100} max={1000} step={10}
+                    <Slider min={100} max={1200} step={10}
                         value={[effD]}
                         onValueChange={([v]) => setD(v)} />
                 </div>

@@ -68,8 +68,9 @@ func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSetting
 		return CreateSettings400JSONResponse{Status: "fail", Message: "effective_date must be in the future"}, nil
 	}
 
-	// Preserve league-related fields not exposed in the admin UI by copying from current settings.
-	latest, err := s.api.EloSettingsService.GetForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	// Preserve league-related fields not exposed in the admin UI by copying from the newest
+	// settings row overall (including any future-scheduled entry).
+	latest, err := s.api.EloSettingsService.GetLatest(ctx)
 	if err != nil {
 		return nil, err
 	}

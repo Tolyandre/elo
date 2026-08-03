@@ -117,7 +117,7 @@ export function EloCalculator() {
                 <div className="space-y-2">
                     <Label>Коэффициент D = {dVal}</Label>
                     <Slider
-                        min={100} max={800} step={10}
+                        min={100} max={1200} step={10}
                         value={[dVal]}
                         onValueChange={([v]) => setValue("d", v)}
                     />

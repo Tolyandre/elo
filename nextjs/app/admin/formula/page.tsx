@@ -66,7 +66,17 @@ export default function FormulaAdminPage() {
     function load() {
         setLoading(true);
         listAllSettingsPromise()
-            .then(setEntries)
+            .then((rows) => {
+                setEntries(rows);
+                // Prefill editable fields from the latest row (list is newest-first).
+                if (rows.length > 0) {
+                    const latest = rows[0];
+                    setFormK(String(latest.elo_const_k));
+                    setFormD(String(latest.elo_const_d));
+                    setFormStartingElo(String(latest.starting_elo));
+                    setFormWinReward(String(latest.win_reward));
+                }
+            })
             .catch(() => { })
             .finally(() => setLoading(false));
     }
@@ -208,7 +218,7 @@ export default function FormulaAdminPage() {
                                     value={formD}
                                     step="1"
                                     min="100"
-                                    max="800"
+                                    max="1200"
                                     onChange={(e) => setFormD(e.target.value)}
                                     required
                                 />
