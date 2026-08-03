@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
@@ -23,6 +25,21 @@ import (
 // ---------------------------------------------------------------------------
 
 const CurrentUserKey = "currentUser"
+
+// CanonicalizeUserID resolves a JWT "sub" claim to the canonical UUID form.
+// Post-migration JWTs already carry a UUID and pass through unchanged. Stale
+// pre-migration JWTs carry a bare SERIAL int (e.g. "1"); it is mapped via the
+// deterministic int_to_uuid scheme from migration 036 / ADR-08 so it resolves to
+// the backfilled users.id. Removable once all legacy JWTs have rotated.
+func CanonicalizeUserID(id string) string {
+	if _, err := uuid.Parse(id); err == nil {
+		return id
+	}
+	if n, err := strconv.ParseInt(id, 10, 32); err == nil {
+		return fmt.Sprintf("00000000-0000-0000-0000-%012x", uint32(n))
+	}
+	return id // let downstream reject it
+}
 
 func MustGetCurrentUserId(ctx *gin.Context) (string, error) {
 	userID := ctx.MustGet(CurrentUserKey)

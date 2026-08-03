@@ -173,6 +173,9 @@ func (s *SkullKingTableService) ListTables(ctx context.Context) ([]SkullKingTabl
 }
 
 func (s *SkullKingTableService) CreateTable(ctx context.Context, id string, hostUserID string, initialState json.RawMessage) (SkullKingTableSummary, error) {
+	if _, err := parseID(id); err != nil {
+		return SkullKingTableSummary{}, fmt.Errorf("invalid table id: %w", err)
+	}
 	row, err := s.Queries.CreateSkullKingTable(ctx, db.CreateSkullKingTableParams{
 		ID:         id,
 		HostUserID: hostUserID,

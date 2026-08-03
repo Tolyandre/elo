@@ -26,6 +26,11 @@ func (a *OAUTH2) DeserializeUser() gin.HandlerFunc {
 			return
 		}
 
+		// Resolve a stale pre-migration JWT "sub" (a bare SERIAL int like "1")
+		// to its canonical UUID before anything reads it, so renewed cookies
+		// embed the canonical UUID and CurrentUserKey always holds one (ADR-08).
+		userID = api.CanonicalizeUserID(userID)
+
 		renewCookieIfNeeded(ctx, userID, expiry)
 
 		ctx.Set(api.CurrentUserKey, userID)
@@ -39,6 +44,7 @@ func (a *OAUTH2) OptionalDeserializeUser() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if token := extractToken(ctx); token != "" {
 			if userID, expiry, err := ValidateToken(token, cfg.Config.CookieJwtSecret); err == nil {
+				userID = api.CanonicalizeUserID(userID)
 				renewCookieIfNeeded(ctx, userID, expiry)
 				ctx.Set(api.CurrentUserKey, userID)
 			}
