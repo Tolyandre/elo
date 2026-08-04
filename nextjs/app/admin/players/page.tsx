@@ -1,7 +1,7 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, isNetworkFailure, User } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, isNetworkFailure } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { LoginLink } from "@/components/login-link";
@@ -9,17 +9,23 @@ import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
 import { ClubIcons } from "@/components/player-name";
+import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import {
     Dialog,
     DialogContent,
-    DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
+    DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Edit2 } from "lucide-react";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
+
+type DeleteTarget = { id: string; name: string };
+type RenameTarget = { id: string; name: string };
+type CorrectionTarget = { id: string; rating: number };
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
@@ -27,22 +33,19 @@ export default function PlayersAdminPage() {
     const { pendingPlayers, offline, addPendingPlayer, updatePendingPlayer, deletePendingPlayer } = useOffline();
     const [newName, setNewName] = useState<string>("");
     const [adding, setAdding] = useState(false);
-    const [renameOpen, setRenameOpen] = useState(false);
-    const [deleteOpen, setDeleteOpen] = useState(false);
-    const [correctionOpen, setCorrectionOpen] = useState(false);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [selectedName, setSelectedName] = useState<string>("");
-    const [selectedRating, setSelectedRating] = useState<number>(0);
+    const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
+    const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null);
     const [correctionValue, setCorrectionValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
-    const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
 
-    useEffect(() => {
-        listUsersPromise().then((users: User[]) => {
-            setUserMap(new Map(users.map(u => [u.id, u.name])));
-        }).catch(() => {});
-    }, []);
+    const { data: users } = useAsyncResource(listUsersPromise);
+    const userMap = new Map((users ?? []).map(u => [u.id, u.name]));
+
+    const del = useConfirmAction(async (p: DeleteTarget) => {
+        await deletePlayerPromise(p.id);
+        invalidatePlayers();
+    });
 
     // Sort players alphabetically for admin view
     const sortedPlayers = [...playersFromContext].sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }));
@@ -53,44 +56,22 @@ export default function PlayersAdminPage() {
         : sortedPlayers.filter(p => playerDisplayName(p).toLowerCase().includes(newName.toLowerCase()));
 
     function openRename(id: string, name: string) {
-        setSelectedId(id);
-        setSelectedName(name);
+        setRenameTarget({ id, name });
         setRenameValue(name);
-        setRenameOpen(true);
     }
 
     async function confirmRename() {
-        if (!selectedId) return;
-        const newName = renameValue?.trim();
-        if (!newName || newName === selectedName) {
-            setRenameOpen(false);
+        if (!renameTarget) return;
+        const next = renameValue?.trim();
+        if (!next || next === renameTarget.name) {
+            setRenameTarget(null);
             return;
         }
         try {
             setActionLoading(true);
-            await patchPlayerPromise(selectedId, { name: newName });
+            await patchPlayerPromise(renameTarget.id, { name: next });
             invalidatePlayers();
-            setRenameOpen(false);
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setActionLoading(false);
-        }
-    }
-
-    function openDelete(id: string, name: string) {
-        setSelectedId(id);
-        setSelectedName(name);
-        setDeleteOpen(true);
-    }
-
-    async function confirmDelete() {
-        if (!selectedId) return;
-        try {
-            setActionLoading(true);
-            await deletePlayerPromise(selectedId);
-            invalidatePlayers();
-            setDeleteOpen(false);
+            setRenameTarget(null);
         } catch {
             // toast shown by API helper
         } finally {
@@ -99,21 +80,19 @@ export default function PlayersAdminPage() {
     }
 
     function openCorrection(id: string, rating: number) {
-        setSelectedId(id);
-        setSelectedRating(Math.round(rating));
+        setCorrectionTarget({ id, rating: Math.round(rating) });
         setCorrectionValue("");
-        setCorrectionOpen(true);
     }
 
     async function confirmCorrection() {
-        if (!selectedId) return;
+        if (!correctionTarget) return;
         const diff = parseInt(correctionValue, 10);
         if (isNaN(diff)) return;
         try {
             setActionLoading(true);
-            await createPlayerCorrectionPromise(selectedId, diff);
+            await createPlayerCorrectionPromise(correctionTarget.id, diff);
             invalidatePlayers();
-            setCorrectionOpen(false);
+            setCorrectionTarget(null);
         } catch {
             // toast shown by API helper
         } finally {
@@ -240,7 +219,7 @@ export default function PlayersAdminPage() {
                                             <Button
                                                 variant="destructive"
                                                 size="sm"
-                                                onClick={() => openDelete(player.id, player.name)}
+                                                onClick={() => del.trigger({ id: player.id, name: player.name })}
                                                 disabled={!canEdit}
                                             >
                                                 Delete
@@ -304,7 +283,7 @@ export default function PlayersAdminPage() {
                                                     <Button
                                                         variant="destructive"
                                                         size="sm"
-                                                        onClick={() => openDelete(player.id, player.name)}
+                                                        onClick={() => del.trigger({ id: player.id, name: player.name })}
                                                         disabled={!canEdit}
                                                     >
                                                         Delete
@@ -320,60 +299,56 @@ export default function PlayersAdminPage() {
                 )}
             </section>
             {/* Rename dialog */}
-            <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Переименовать игрока</DialogTitle>
-                        <DialogDescription>Введите новое имя для игрока.</DialogDescription>
-                    </DialogHeader>
-                    <div className="mt-2">
-                        <input
-                            className="w-full rounded border p-2"
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            aria-label="New player name"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={actionLoading}>Отмена</Button>
-                        <Button onClick={confirmRename} disabled={actionLoading}>
-                            {actionLoading ? "Сохранение..." : "Сохранить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialogWithContent
+                open={renameTarget !== null}
+                onOpenChange={(o) => { if (!o) setRenameTarget(null); }}
+                title="Переименовать игрока"
+                description="Введите новое имя для игрока."
+                confirmText="Сохранить"
+                loading={actionLoading}
+                onConfirm={confirmRename}
+            >
+                <div className="mt-2">
+                    <input
+                        className="w-full rounded border p-2"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        aria-label="New player name"
+                    />
+                </div>
+            </ConfirmDialogWithContent>
 
             {/* Delete confirm dialog */}
-            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить игрока</DialogTitle>
-                        <DialogDescription>Вы уверены, что хотите удалить игрока «{selectedName}»? Это действие нельзя отменить.</DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Отмена</Button>
-                        <Button variant="destructive" onClick={confirmDelete} disabled={actionLoading}>
-                            {actionLoading ? "Удаление..." : "Удалить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить игрока"
+                description={del.target ? <>Вы уверены, что хотите удалить игрока «{del.target.name}»? Это действие нельзя отменить.</> : undefined}
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
 
             {/* Correction dialog */}
-            <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
+            <Dialog open={correctionTarget !== null} onOpenChange={(o) => { if (!o) setCorrectionTarget(null); }}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Корректировка рейтинга</DialogTitle>
-                        <DialogDescription>Текущий рейтинг: {selectedRating}</DialogDescription>
+                        {correctionTarget && (
+                            <DialogDescription>Текущий рейтинг: {correctionTarget.rating}</DialogDescription>
+                        )}
                     </DialogHeader>
                     <div className="flex flex-col gap-3 mt-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => setCorrectionValue(String(-selectedRating))}
-                            disabled={actionLoading}
-                        >
-                            Обнулить (−{selectedRating})
-                        </Button>
+                        {correctionTarget && (
+                            <Button
+                                variant="outline"
+                                onClick={() => setCorrectionValue(String(-correctionTarget.rating))}
+                                disabled={actionLoading}
+                            >
+                                Обнулить (−{correctionTarget.rating})
+                            </Button>
+                        )}
                         <div className="flex gap-2 items-center">
                             <input
                                 type="number"
@@ -394,7 +369,7 @@ export default function PlayersAdminPage() {
                         </div>
                     </div>
                     <DialogFooter className="mt-2">
-                        <Button variant="outline" onClick={() => setCorrectionOpen(false)} disabled={actionLoading}>Отмена</Button>
+                        <Button variant="outline" onClick={() => setCorrectionTarget(null)} disabled={actionLoading}>Отмена</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

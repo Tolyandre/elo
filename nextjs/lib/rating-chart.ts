@@ -1,5 +1,7 @@
 // Pure helpers for the player rating chart (no React). Covered by __tests__/rating-chart.test.ts.
 
+import { formatDate, formatTime } from "./datetime";
+
 export type RatingPoint = { date: string; rating: number; elo: number }
 
 export type ChartPoint = { ts: number; label: string; rating: number; elo: number }
@@ -13,12 +15,11 @@ export type Extremes = { eloMax: Extreme; eloMin: Extreme; ratingMax: Extreme }
 const DOWNSAMPLE_THRESHOLD = 150
 
 function dayLabel(d: Date) {
-    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+    return formatDate(d)
 }
 
 function matchLabel(d: Date) {
-    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-    return `${dayLabel(d)} ${time}`
+    return `${dayLabel(d)} ${formatTime(d)}`
 }
 
 /** Strips the time suffix from a match-granularity label; day labels pass through unchanged. */

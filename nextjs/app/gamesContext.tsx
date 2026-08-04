@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { GameListItem, getGamesPromise } from "./api";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type GamesContextType = {
   games: GameListItem[];
@@ -11,20 +12,9 @@ type GamesContextType = {
 const GamesContext = createContext<GamesContextType | undefined>(undefined);
 
 export const GamesProvider = ({ children }: { children: ReactNode }) => {
-  const [games, setGames] = useState<GameListItem[]>([]);
-  const [stamp, setStamp] = useState<number>(0);
+  const { data, invalidate } = useAsyncResource(getGamesPromise);
 
-  useEffect(() => {
-    let cancelled = false;
-    getGamesPromise().then((data) => {
-      if (!cancelled) setGames(data.games);
-    });
-    return () => { cancelled = true; };
-  }, [stamp]);
-
-  const invalidate = () => {
-    setStamp((s) => s + 1);
-  };
+  const games = data?.games ?? [];
 
   return (
     <GamesContext.Provider value={{ games, invalidate }}>

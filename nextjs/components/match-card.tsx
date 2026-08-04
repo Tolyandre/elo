@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
+import { formatDateTime } from "@/lib/datetime";
 
 type MatchCardProps = {
   match: Match;
@@ -68,7 +69,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           </Link>
           {match.date && (
             <span className="text-muted-foreground text-sm">
-              {match.date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              {formatDateTime(match.date)}
             </span>
           )}
         </CardTitle>

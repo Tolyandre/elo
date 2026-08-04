@@ -1,7 +1,8 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
 import { Tournament, listTournamentsPromise } from "./api";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type TournamentsContextType = {
   tournaments: Tournament[];
@@ -13,16 +14,8 @@ type TournamentsContextType = {
 const TournamentsContext = createContext<TournamentsContextType | undefined>(undefined);
 
 export const TournamentsProvider = ({ children }: { children: ReactNode }) => {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [stamp, setStamp] = useState(0);
-
-  // Preloaded on mount (and cached by the service worker) so offline match entry
-  // can still tag matches with a tournament.
-  useEffect(() => {
-    listTournamentsPromise().then(setTournaments).catch(() => {});
-  }, [stamp]);
-
-  const invalidate = () => setStamp((s) => s + 1);
+  const { data, invalidate } = useAsyncResource(listTournamentsPromise);
+  const tournaments = useMemo(() => data ?? [], [data]);
 
   const activeTournaments = useCallback(
     (date: Date = new Date()): Tournament[] => {

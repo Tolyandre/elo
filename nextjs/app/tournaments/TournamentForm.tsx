@@ -15,14 +15,7 @@ import { useOffline } from "@/app/offline/OfflineContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { CloudOff } from "lucide-react";
 
 function toDatetimeLocal(iso: string): string {
@@ -44,9 +37,13 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
     const [endDate, setEndDate] = useState(existing ? toDatetimeLocal(existing.end_date) : "");
     const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.player_ids : []);
     const [submitting, setSubmitting] = useState(false);
-    const [deleteOpen, setDeleteOpen] = useState(false);
-    const [deleting, setDeleting] = useState(false);
     const [error, setError] = useState("");
+
+    const del = useConfirmAction(async (t: Tournament) => {
+        await deleteTournamentPromise(t.id);
+        invalidate();
+        router.push("/tournaments");
+    });
 
     const canSubmit = name.trim() !== "" && startDate !== "" && endDate !== "" && !submitting && canEdit && !offline;
 
@@ -82,19 +79,6 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
             setError(err instanceof Error ? err.message : String(err));
         } finally {
             setSubmitting(false);
-        }
-    }
-
-    async function confirmDelete() {
-        if (!existing) return;
-        setDeleting(true);
-        try {
-            await deleteTournamentPromise(existing.id);
-            invalidate();
-            router.push("/tournaments");
-        } catch {
-            setDeleting(false);
-            setDeleteOpen(false);
         }
     }
 
@@ -157,28 +141,22 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
                     {submitting ? "Сохранение..." : isEdit ? "Сохранить изменения" : "Создать турнир"}
                 </Button>
                 {isEdit && (
-                    <Button type="button" variant="destructive" onClick={() => setDeleteOpen(true)} disabled={!canEdit || offline}>
+                    <Button type="button" variant="destructive" onClick={() => del.trigger(existing)} disabled={!canEdit || offline}>
                         Удалить турнир
                     </Button>
                 )}
             </div>
 
-            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить турнир</DialogTitle>
-                        <DialogDescription>
-                            Удалить турнир можно только если в нём нет участников. Сначала уберите всех участников.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>Отмена</Button>
-                        <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
-                            {deleting ? "Удаление..." : "Удалить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить турнир"
+                description="Удалить турнир можно только если в нём нет участников. Сначала уберите всех участников."
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
         </form>
     );
 }

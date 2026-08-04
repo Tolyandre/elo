@@ -2,13 +2,12 @@
 import { Correction } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatDateTime } from "@/lib/datetime";
 
 export function CorrectionCard({ correction }: { correction: Correction }) {
     const positive = correction.diff >= 0;
     const diffLabel = `${positive ? "+" : ""}${correction.diff.toFixed(1)}`;
-    const date = correction.date
-        ? correction.date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-        : null;
+    const date = correction.date ? formatDateTime(correction.date) : null;
 
     return (
         <Card>

@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { EditCellDialog, GameTable, playerTotal, TOTAL_ROUNDS } from "@/components/calculators/skull-king";
-import { fromStorage, toStorage } from "@/components/calculators/skull-king/storage";
+import { EditCellDialog, GameTable, TOTAL_ROUNDS } from "@/components/calculators/skull-king";
+import { fromStorage } from "@/components/calculators/skull-king/storage";
 import type { SkullKingStorage } from "@/components/calculators/skull-king/storage";
 import type { GameState, RoundEntry } from "@/components/calculators/skull-king";
 
@@ -22,11 +22,11 @@ export function SkullKingHistory({
     readOnly,
     onStateChange,
 }: {
-    storage: SkullKingStorage;
+    storage: Record<string, unknown>;
     readOnly: boolean;
-    onStateChange: (state: GameState) => void;
+    onStateChange: (state: unknown) => void;
 }) {
-    const [state, setState] = useState<GameState>(() => fromStorage(storage));
+    const [state, setState] = useState<GameState>(() => fromStorage(storage as unknown as SkullKingStorage));
     const [editCell, setEditCell] = useState<{ round: number; player: number } | null>(null);
 
     function handleSaveCell(roundIndex: number, playerIndex: number, entry: RoundEntry) {
@@ -60,15 +60,3 @@ export function SkullKingHistory({
     );
 }
 
-/** Build the score map from the in-memory state for the UpdateMatch call. */
-export function skullKingScoreFromState(state: GameState): Record<string, number> {
-    const score: Record<string, number> = {};
-    state.players.forEach((p, pi) => {
-        score[p.id] = playerTotal(state.rounds, pi, state.players.length);
-    });
-    return score;
-}
-
-export function skullKingToStorage(state: GameState): SkullKingStorage {
-    return toStorage(state);
-}

@@ -5,13 +5,8 @@ import { Check, ChevronsUpDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { BottomSheet } from "@/components/ui/bottom-sheet"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
@@ -104,43 +99,13 @@ export function PlayerCombobox({
     />
   )
 
-  // 📱 MOBILE — BottomSheet
-  if (isMobile) {
-    return (
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-          onClick={() => setOpen(true)}
-        >
-          {selectedLabel}
-          <ChevronsUpDown className="opacity-50" />
-        </Button>
-        <BottomSheet open={open} onOpenChange={setOpen}>
-          <div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            {content}
-          </div>
-        </BottomSheet>
-      </>
-    )
-  }
-
-  // 🖥 DESKTOP — Popover
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
-        side="bottom"
-        align="start"
-        avoidCollisions={false}
-      >
-        {content}
-      </PopoverContent>
-    </Popover>
+    <ResponsiveCommandPopover
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      content={content}
+    />
   )
 }
 

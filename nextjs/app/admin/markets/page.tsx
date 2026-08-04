@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { Market, getMarketsPromise, deleteMarketPromise, closeMarketBettingPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -11,65 +11,25 @@ import { MarketCard } from "@/components/market-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getMarketTitle } from "@/app/market/marketTypes";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 export default function AdminMarketsPage() {
     const me = useMe();
     const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [deleteTarget, setDeleteTarget] = useState<Market | null>(null);
-    const [deleting, setDeleting] = useState(false);
-    const [closeBettingTarget, setCloseBettingTarget] = useState<Market | null>(null);
-    const [closingBetting, setClosingBetting] = useState(false);
+    const { data: marketsData, loading, error, invalidate } = useAsyncResource(async () => (await getMarketsPromise()).active);
+    const markets = marketsData ?? [];
 
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-        setLoading(true);
-        getMarketsPromise()
-            .then((data) => setMarkets(data.active))
-            .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-            .finally(() => setLoading(false));
-    }, []);
+    const closeBetting = useConfirmAction(async (m: Market) => {
+        await closeMarketBettingPromise(m.id);
+        invalidate();
+    });
 
-    async function confirmDelete() {
-        if (!deleteTarget) return;
-        setDeleting(true);
-        try {
-            await deleteMarketPromise(deleteTarget.id);
-            setMarkets((prev) => prev.filter((m) => m.id !== deleteTarget.id));
-            setDeleteTarget(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-        } finally {
-            setDeleting(false);
-        }
-    }
-
-    async function confirmCloseBetting() {
-        if (!closeBettingTarget) return;
-        setClosingBetting(true);
-        try {
-            await closeMarketBettingPromise(closeBettingTarget.id);
-            setMarkets((prev) =>
-                prev.map((m) => m.id === closeBettingTarget.id ? { ...m, status: 'betting_closed' as const } : m)
-            );
-            setCloseBettingTarget(null);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : String(e));
-        } finally {
-            setClosingBetting(false);
-        }
-    }
+    const del = useConfirmAction(async (m: Market) => {
+        await deleteMarketPromise(m.id);
+        invalidate();
+    });
 
     return (
         <main className="p-4 max-w-sm mx-auto space-y-4">
@@ -102,7 +62,7 @@ export default function AdminMarketsPage() {
                                     variant="outline"
                                     size="sm"
                                     className="w-full"
-                                    onClick={() => setCloseBettingTarget(market)}
+                                    onClick={() => closeBetting.trigger(market)}
                                 >
                                     Закрыть ставки
                                 </Button>
@@ -111,7 +71,7 @@ export default function AdminMarketsPage() {
                                 variant="destructive"
                                 size="sm"
                                 className="w-full"
-                                onClick={() => setDeleteTarget(market)}
+                                onClick={() => del.trigger(market)}
                             >
                                 Удалить рынок
                             </Button>
@@ -120,44 +80,29 @@ export default function AdminMarketsPage() {
                 </div>
             ))}
 
-            <Dialog open={!!closeBettingTarget} onOpenChange={(open) => { if (!open) setCloseBettingTarget(null); }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Закрыть приём ставок?</DialogTitle>
-                        <DialogDescription>
-                            На рынок «{closeBettingTarget ? getMarketTitle(closeBettingTarget, players, games, playerDisplayName) : ""}» больше нельзя будет поставить новые ставки. Рынок ещё не разрешён и может быть разрешён или отменён позднее.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setCloseBettingTarget(null)} disabled={closingBetting}>
-                            Назад
-                        </Button>
-                        <Button onClick={confirmCloseBetting} disabled={closingBetting}>
-                            {closingBetting ? "Закрытие..." : "Закрыть ставки"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={closeBetting.open}
+                onOpenChange={closeBetting.onOpenChange}
+                title="Закрыть приём ставок?"
+                description={closeBetting.target ? <>На рынок «{getMarketTitle(closeBetting.target, players, games, playerDisplayName)}» больше нельзя будет поставить новые ставки. Рынок ещё не разрешён и может быть разрешён или отменён позднее.</> : undefined}
+                cancelText="Назад"
+                confirmText="Закрыть ставки"
+                loading={closeBetting.pending}
+                onConfirm={closeBetting.confirm}
+            />
 
-            <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить рынок?</DialogTitle>
-                        <DialogDescription>
-                            «{deleteTarget ? getMarketTitle(deleteTarget, players, games, playerDisplayName) : ""}» будет удалён безвозвратно. Все ставки будут аннулированы, рейтинг будет пересчитан.
-                            Это действие необратимо.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-                            Назад
-                        </Button>
-                        <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
-                            {deleting ? "Удаление..." : "Удалить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить рынок?"
+                description={del.target ? <>«{getMarketTitle(del.target, players, games, playerDisplayName)}» будет удалён безвозвратно. Все ставки будут аннулированы, рейтинг будет пересчитан.
+                    Это действие необратимо.</> : undefined}
+                cancelText="Назад"
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
         </main>
     );
 }

@@ -7,6 +7,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
 import { ClubIcons } from "@/components/player-name";
+import { formatDateTime } from "@/lib/datetime";
 
 export function statusLabel(status: Market["status"], resolutionOutcome?: string | null): string {
     if (status === "resolved") {
@@ -92,7 +93,7 @@ export function MarketCard({ market, className }: { market: Market; className?: 
         : isBettingClosed
             ? (market.betting_closed_at ?? market.closes_at)
             : market.resolved_at;
-    const date = dateValue ? new Date(dateValue).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+    const date = dateValue ? formatDateTime(dateValue) : null;
     const dateLabel = isOpen ? "Закрывается"
         : isBettingClosed ? "Ставки закрыты"
         : market.status === "cancelled" ? "Отменён"

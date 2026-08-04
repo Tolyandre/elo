@@ -1,20 +1,14 @@
 "use client"
-import { GameList, getGamesPromise } from "@/app/api";
+import { getGamesPromise } from "@/app/api";
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 export default function AllGamesList() {
-  const [games, setGames] = useState<GameList | null>(null);
+  const { data: games, loading } = useAsyncResource(getGamesPromise);
 
-  useEffect(() => {
-    getGamesPromise()
-      .then((data) => {
-        setGames(data);
-      });
-  }, []);
-
-  if (!games) {
+  if (loading || !games) {
     return (
       <main className="space-y-8 max-w-sm mx-auto">
         <PageHeader title="Игры" />
@@ -42,4 +36,3 @@ export default function AllGamesList() {
     </main>
   );
 }
-

@@ -5,6 +5,7 @@ export {
     playerTotal,
     findNextUnfilled,
     initialState,
+    scoreFromState,
     TOTAL_ROUNDS,
 } from "./scoring";
 export type { GameState, RoundEntry } from "./scoring";

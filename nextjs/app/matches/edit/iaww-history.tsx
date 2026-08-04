@@ -2,9 +2,8 @@
 
 import React, { useState } from "react";
 import { ScoringTable } from "@/components/calculators/iaww/scoring-table";
-import { playerTotal } from "@/components/calculators/iaww/scoring";
 import { EditDialog } from "@/components/calculators/iaww/edit-dialog";
-import { fromStorage, toStorage } from "@/components/calculators/iaww/storage";
+import { fromStorage } from "@/components/calculators/iaww/storage";
 import type { IAWWStorage } from "@/components/calculators/iaww/storage";
 import type { CellValue, EditTarget, GameState } from "@/components/calculators/iaww/scoring";
 
@@ -20,11 +19,11 @@ export function IawwHistory({
     readOnly,
     onStateChange,
 }: {
-    storage: IAWWStorage;
+    storage: Record<string, unknown>;
     readOnly: boolean;
-    onStateChange: (state: GameState) => void;
+    onStateChange: (state: unknown) => void;
 }) {
-    const [state, setState] = useState<GameState>(() => fromStorage(storage));
+    const [state, setState] = useState<GameState>(() => fromStorage(storage as unknown as IAWWStorage));
     const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
     function handleSaveCell(target: EditTarget, value: number | CellValue) {
@@ -62,14 +61,3 @@ export function IawwHistory({
     );
 }
 
-export function iawwScoreFromState(state: GameState): Record<string, number> {
-    const score: Record<string, number> = {};
-    state.players.forEach(p => {
-        score[p.id] = playerTotal(state, p.id);
-    });
-    return score;
-}
-
-export function iawwToStorage(state: GameState): IAWWStorage {
-    return toStorage(state);
-}

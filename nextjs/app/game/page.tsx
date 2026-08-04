@@ -1,8 +1,8 @@
 "use client"
-import { Game, GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
+import { GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useSearchParams } from "next/navigation";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { useSettings } from "@/app/settingsContext";
@@ -12,6 +12,7 @@ import { PendingMatchCard } from "@/components/pending-match-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOffline } from "@/app/offline/OfflineContext";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /game?id=<GAME_ID>
@@ -27,11 +28,16 @@ function GameWrapped() {
   const searchParams = useSearchParams()
   const id = searchParams.get('id')
 
-  const [game, setGame] = useState<Game | null>(null);
-  const [loadingGame, setLoadingGame] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [gameMatches, setGameMatches] = useState<GameMatch[]>([]);
-  const [loadingMatches, setLoadingMatches] = useState(true);
+  const { data: game, loading: loadingGame, error } = useAsyncResource(
+    () => (id ? getGamePromise(id) : Promise.reject(new Error('no id'))),
+    [id],
+  );
+  const { data: gameMatchesData, loading: loadingMatches } = useAsyncResource(
+    () => (id ? getGameMatchesPromise(id) : Promise.resolve([] as GameMatch[])),
+    [id],
+  );
+
+  const gameMatches = gameMatchesData ?? [];
   const { players: allPlayers } = usePlayers();
   const { roundToInteger } = useMe();
   const { pendingMatches } = useOffline();
@@ -42,30 +48,6 @@ function GameWrapped() {
     startingElo - startingRatingGameArena,
     newbieLeagueGoalGap, eloConstK, newbieLeagueEarnedMax, newbieLeagueEarnedTau, eloConstD
   );
-
-  useEffect(() => {
-    if (!id) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-    setLoadingGame(true);
-    setError(null);
-    getGamePromise(id)
-      .then((data) => {
-        setGame(data);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Не удалось загрузить игру"))
-      .finally(() => setLoadingGame(false));
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-    setLoadingMatches(true);
-    getGameMatchesPromise(id)
-      .then((data) => {
-        setGameMatches(data);
-      })
-      .finally(() => setLoadingMatches(false));
-  }, [id]);
 
   if (!id) {
     return (

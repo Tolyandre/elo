@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { listUsersPromise, patchUserPromise, User } from "../../api";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -15,38 +15,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 export default function AdminUsersPage() {
   const { id: currentUserId } = useMe();
-  const [users, setUsers] = useState<User[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { data: users, loading, error, invalidate } = useAsyncResource(listUsersPromise);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const [selfRevokeTarget, setSelfRevokeTarget] = useState<User | null>(null);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-    setLoading(true);
-    listUsersPromise()
-      .then((data) => setUsers(data))
-      .catch((e) => {
-        console.error(e);
-        setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => setLoading(false));
-  }, []);
 
   async function applyToggle(userId: string, newValue: boolean) {
     setSavingIds((p) => ({ ...p, [userId]: true }));
-    setError(null);
+    setToggleError(null);
     try {
       await patchUserPromise(userId, { can_edit: newValue });
-      setUsers((prev) =>
-        prev ? prev.map((u) => (u.id === userId ? { ...u, can_edit: newValue } : u)) : prev
-      );
+      invalidate();
     } catch (e) {
       console.error(e);
-      setError(e instanceof Error ? e.message : String(e));
+      setToggleError(e instanceof Error ? e.message : String(e));
     } finally {
       setSavingIds((p) => ({ ...p, [userId]: false }));
     }
@@ -79,6 +65,10 @@ export default function AdminUsersPage() {
 
       {error && (
         <p className="text-sm text-destructive mb-4">{error}</p>
+      )}
+
+      {toggleError && (
+        <p className="text-sm text-destructive mb-4">{toggleError}</p>
       )}
 
       {!loading && users && users.length === 0 && <p>Пользователей нет</p>}

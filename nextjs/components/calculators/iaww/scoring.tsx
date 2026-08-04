@@ -81,6 +81,15 @@ export function playerTotal(state: GameState, playerId: string): number {
         .reduce((sum, row) => sum + cellVP(state.multipliers[row.id]?.[playerId]), direct);
 }
 
+/** Build the score map from the in-memory state (one entry per player). */
+export function scoreFromState(state: GameState): Record<string, number> {
+    const score: Record<string, number> = {};
+    state.players.forEach(p => {
+        score[p.id] = playerTotal(state, p.id);
+    });
+    return score;
+}
+
 export type EditTarget =
     | { kind: "direct"; playerId: string }
     | { kind: "multiplier"; rowId: string; playerId: string };

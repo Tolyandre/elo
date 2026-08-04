@@ -15,14 +15,7 @@ import {
 import { useClubs } from "@/app/clubsContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { ClubIcons } from "@/components/player-name";
 import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
@@ -51,13 +44,16 @@ function ClubAdminContent() {
     const [renameValue, setRenameValue] = useState("");
     const [renameLoading, setRenameLoading] = useState(false);
 
-    const [deleteOpen, setDeleteOpen] = useState(false);
-    const [deleteLoading, setDeleteLoading] = useState(false);
-
     const [memberLoading, setMemberLoading] = useState<Record<string, boolean>>({});
 
     const [iconLoading, setIconLoading] = useState(false);
     const [iconError, setIconError] = useState<string | null>(null);
+
+    const del = useConfirmAction<boolean>(async () => {
+        await deleteClubPromise(clubId);
+        invalidateClubs();
+        router.push("/admin/clubs");
+    });
 
     useEffect(() => {
         if (!clubId) return;
@@ -83,18 +79,6 @@ function ClubAdminContent() {
             // toast shown by API helper
         } finally {
             setRenameLoading(false);
-        }
-    }
-
-    async function confirmDelete() {
-        try {
-            setDeleteLoading(true);
-            await deleteClubPromise(clubId);
-            invalidateClubs();
-            router.push("/admin/clubs");
-        } catch {
-            setDeleteLoading(false);
-            setDeleteOpen(false);
         }
     }
 
@@ -169,7 +153,7 @@ function ClubAdminContent() {
                 </Button>
                 <Button
                     variant="destructive"
-                    onClick={() => setDeleteOpen(true)}
+                    onClick={() => del.trigger(true)}
                     disabled={!canEdit}
                 >
                     Удалить клуб
@@ -247,51 +231,37 @@ function ClubAdminContent() {
             </section>
 
             {/* Rename dialog */}
-            <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Переименовать клуб</DialogTitle>
-                        <DialogDescription>Введите новое название клуба.</DialogDescription>
-                    </DialogHeader>
-                    <div className="mt-2">
-                        <input
-                            className="w-full rounded border p-2"
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); }}
-                            aria-label="New club name"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={renameLoading}>
-                            Отмена
-                        </Button>
-                        <Button onClick={confirmRename} disabled={renameLoading}>
-                            {renameLoading ? "Сохранение..." : "Сохранить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialogWithContent
+                open={renameOpen}
+                onOpenChange={setRenameOpen}
+                title="Переименовать клуб"
+                description="Введите новое название клуба."
+                confirmText="Сохранить"
+                loading={renameLoading}
+                onConfirm={confirmRename}
+            >
+                <div className="mt-2">
+                    <input
+                        className="w-full rounded border p-2"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); }}
+                        aria-label="New club name"
+                    />
+                </div>
+            </ConfirmDialogWithContent>
 
             {/* Delete confirm dialog */}
-            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить клуб</DialogTitle>
-                        <DialogDescription>
-                            Вы уверены, что хотите удалить клуб &quot;{club.name}&quot;?
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleteLoading}>
-                            Отмена
-                        </Button>
-                        <Button variant="destructive" onClick={confirmDelete} disabled={deleteLoading}>
-                            {deleteLoading ? "Удаление..." : "Удалить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить клуб"
+                description={club ? <>Вы уверены, что хотите удалить клуб &quot;{club.name}&quot;?</> : undefined}
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
         </main>
     );
 }

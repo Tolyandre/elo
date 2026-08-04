@@ -1,8 +1,9 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from "react";
+import { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
 import { Club, listClubsPromise } from "./api";
 import { useMe } from "./meContext";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type ClubsContextType = {
   clubs: Club[];
@@ -15,16 +16,10 @@ type ClubsContextType = {
 const ClubsContext = createContext<ClubsContextType | undefined>(undefined);
 
 export const ClubsProvider = ({ children }: { children: ReactNode }) => {
-  const [clubs, setClubs] = useState<Club[]>([]);
-  const [stamp, setStamp] = useState(0);
+    const { data, invalidate } = useAsyncResource(listClubsPromise);
+    const clubs = useMemo(() => data ?? [], [data]);
 
-  const { geologistMode } = useMe();
-
-  useEffect(() => {
-    listClubsPromise().then(setClubs).catch(() => {});
-  }, [stamp]);
-
-  const invalidate = () => setStamp((s) => s + 1);
+    const { geologistMode } = useMe();
 
   const clubDisplayName = useCallback(
     (club: Pick<Club, "name" | "geologist_name">): string => {

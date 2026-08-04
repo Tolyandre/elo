@@ -14,12 +14,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { BottomSheet } from "@/components/ui/bottom-sheet"
+import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
 import { useGames } from "@/app/gamesContext"
 import { createGamePromise, isNetworkFailure } from "@/app/api"
 import { useMatches } from "@/app/matches/MatchesContext"
@@ -176,37 +171,12 @@ export function GameCombobox({
     </Command>
   )
 
-  // 📱 MOBILE — BottomSheet
-  if (isMobile) {
-    return (
-      <>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-          onClick={() => setOpen(true)}
-        >
-          {value ? displayName(value) : "Игра..."}
-          <ChevronsUpDown className="opacity-50" />
-        </Button>
-        <BottomSheet open={open} onOpenChange={setOpen}>
-          <div className="px-4 pb-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-            {content}
-          </div>
-        </BottomSheet>
-      </>
-    )
-  }
-
-  // 🖥 DESKTOP — Popover
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-        {content}
-      </PopoverContent>
-    </Popover>
+    <ResponsiveCommandPopover
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      content={content}
+    />
   )
 }

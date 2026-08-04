@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
 import { CloudOff } from "lucide-react";
+import { formatDateTime } from "@/lib/datetime";
 
 // Card for a match created offline and not yet synced: no Elo data, with a
 // status badge. When `clickable`, it opens the match detail page where edit and
@@ -55,7 +56,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                 <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
                     <span>{gameName}</span>
                     <span className="text-muted-foreground text-sm font-normal">
-                        {createdAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                        {formatDateTime(createdAt)}
                     </span>
                 </CardTitle>
                 <div className="flex items-center flex-wrap gap-2">

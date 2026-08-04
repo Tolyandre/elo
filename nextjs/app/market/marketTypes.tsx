@@ -2,6 +2,7 @@ import React from "react";
 import { MatchWinnerParams, Market, WinStreakParams } from "@/app/api";
 import { GameListItem } from "@/app/api";
 import { Player } from "@/app/api";
+import { formatDateTime } from "@/lib/datetime";
 
 export type MarketResolutionDescription = {
     yes: React.ReactNode;
@@ -21,11 +22,9 @@ const H = ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
 );
 
-const fmt = (d: string) => new Date(d).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-
 function buildPeriodNode(market: Market): React.ReactNode | null {
-    const startsAt = market.starts_at ? fmt(market.starts_at) : null;
-    const closesAt = market.closes_at ? fmt(market.closes_at) : null;
+    const startsAt = market.starts_at ? formatDateTime(market.starts_at) : null;
+    const closesAt = market.closes_at ? formatDateTime(market.closes_at) : null;
     if (startsAt && closesAt) return <>с <H>{startsAt}</H> по <H>{closesAt}</H></>;
     if (closesAt) return <>до <H>{closesAt}</H></>;
     return null;

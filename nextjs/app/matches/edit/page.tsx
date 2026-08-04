@@ -15,12 +15,7 @@ import { AuthWarning } from "@/components/auth-warning";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-import { SkullKingHistory, skullKingScoreFromState, skullKingToStorage } from "./skull-king-history";
-import { IawwHistory, iawwScoreFromState, iawwToStorage } from "./iaww-history";
-import type { SkullKingStorage } from "@/components/calculators/skull-king/storage";
-import type { IAWWStorage } from "@/components/calculators/iaww/storage";
-import type { GameState as SKGameState } from "@/components/calculators/skull-king";
-import type { GameState as IawwGameState } from "@/components/calculators/iaww/scoring";
+import { getCalculator, type CalculatorState } from "@/components/calculators/registry";
 
 export default function MatchEditPage() {
     return (
@@ -167,27 +162,17 @@ function CalculatorEdit({
     invalidatePlayers: () => void;
 }) {
     const kind = match.calculator_kind!;
+    const adapter = getCalculator(kind);
     const data = (match.calculator_data ?? {}) as Record<string, unknown>;
-    const [skState, setSkState] = useState<SKGameState | null>(null);
-    const [iawwState, setIawwState] = useState<IawwGameState | null>(null);
+    const [state, setState] = useState<CalculatorState | null>(null);
     const [saving, setSaving] = useState(false);
 
     async function handleSave() {
+        if (!adapter || state === null) return;
         setSaving(true);
         try {
-            let score: Record<string, number>;
-            let calcData: Record<string, never>;
-            if (kind === "skull-king") {
-                if (!skState) return;
-                score = skullKingScoreFromState(skState);
-                calcData = skullKingToStorage(skState) as unknown as Record<string, never>;
-            } else if (kind === "iaww") {
-                if (!iawwState) return;
-                score = iawwScoreFromState(iawwState);
-                calcData = iawwToStorage(iawwState) as unknown as Record<string, never>;
-            } else {
-                return;
-            }
+            const score = adapter.scoreFromState(state);
+            const calcData = adapter.toStorage(state) as Record<string, never>;
             await updateMatchPromise(match.id, {
                 game_id: match.game_id,
                 score,
@@ -206,11 +191,7 @@ function CalculatorEdit({
         }
     }
 
-    const title = kind === "skull-king"
-        ? "Skull King — редактирование"
-        : kind === "iaww"
-            ? "Этот Безумный Мир — редактирование"
-            : "Редактирование партии";
+    const title = adapter?.editTitle ?? "Редактирование партии";
 
     return (
         <main className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
@@ -226,21 +207,13 @@ function CalculatorEdit({
                 </Alert>
             )}
 
-            {kind === "skull-king" && (
-                <SkullKingHistory
-                    storage={data as unknown as SkullKingStorage}
+            {adapter ? (
+                <adapter.History
+                    storage={data}
                     readOnly={readOnly}
-                    onStateChange={setSkState}
+                    onStateChange={setState}
                 />
-            )}
-            {kind === "iaww" && (
-                <IawwHistory
-                    storage={data as unknown as IAWWStorage}
-                    readOnly={readOnly}
-                    onStateChange={setIawwState}
-                />
-            )}
-            {kind !== "skull-king" && kind !== "iaww" && (
+            ) : (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription>
@@ -249,7 +222,7 @@ function CalculatorEdit({
                 </Alert>
             )}
 
-            {!readOnly && (kind === "skull-king" || kind === "iaww") && (
+            {!readOnly && adapter && (
                 <Button className="w-full" disabled={saving} onClick={handleSave}>
                     {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Сохранение…</>) : "Сохранить изменения"}
                 </Button>

@@ -55,3 +55,12 @@ export const initialState: GameState = {
     currentPlayerIndex: 0,
     rounds: [],
 };
+
+/** Build the score map from the in-memory state (one entry per player). */
+export function scoreFromState(state: GameState): Record<string, number> {
+    const score: Record<string, number> = {};
+    state.players.forEach((p, pi) => {
+        score[p.id] = playerTotal(state.rounds, pi, state.players.length);
+    });
+    return score;
+}

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
@@ -249,47 +250,7 @@ export default function SkullKingGamePage() {
     }, [gameState.currentRound]);
 
     // Wake lock
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wakeLockRef = React.useRef<any>(null);
-    const [wakeLockEnabled, setWakeLockEnabled] = useState(false);
-    const wakeLockSupported = typeof window !== "undefined" && "wakeLock" in navigator;
-
-    const acquireWakeLock = useCallback(async () => {
-        if (!wakeLockSupported) return;
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const sentinel = await (navigator as any).wakeLock.request("screen");
-            wakeLockRef.current = sentinel;
-            setWakeLockEnabled(true);
-            sentinel.addEventListener("release", () => {
-                setWakeLockEnabled(false);
-                wakeLockRef.current = null;
-            });
-        } catch {
-            setWakeLockEnabled(false);
-        }
-    }, [wakeLockSupported]);
-
-    async function toggleWakeLock() {
-        if (wakeLockEnabled) {
-            await wakeLockRef.current?.release();
-        } else {
-            await acquireWakeLock();
-        }
-    }
-
-    useEffect(() => {
-        if (!wakeLockEnabled) return;
-        const onVisibilityChange = () => {
-            if (document.visibilityState === "visible") acquireWakeLock();
-        };
-        document.addEventListener("visibilitychange", onVisibilityChange);
-        return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-    }, [wakeLockEnabled, acquireWakeLock]);
-
-    useEffect(() => {
-        return () => { wakeLockRef.current?.release(); };
-    }, []);
+    const { supported: wakeLockSupported, enabled: wakeLockEnabled, toggle: toggleWakeLock } = useWakeLock();
 
     const skullKingGame = useMemo(
         () => games.find((g) => g.name.toLowerCase().includes("skull king")),

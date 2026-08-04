@@ -11,6 +11,23 @@ if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
 
 export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
+/** Mint a client-side id: a UUIDv7 encoded as a short Base58 string. */
+function newId(): string {
+    return encodeId(uuidv7());
+}
+
+/**
+ * Unwrap an openapi-fetch response, throwing a proper Error on failure.
+ * openapi-fetch returns `{ data, error }` rather than throwing; this collapses
+ * the repeated `if (error) throwApiError(error); return data.data` boilerplate.
+ * Returns the success body (the full envelope); callers read `.data` etc. off it.
+ */
+async function unwrap<D>(promise: Promise<{ data?: D; error?: unknown }>): Promise<D> {
+    const { data, error } = await promise;
+    if (error) throwApiError(error);
+    return data as D;
+}
+
 // ─── openapi-fetch client ─────────────────────────────────────────────────────
 
 const errorToastMiddleware: Middleware = {
@@ -209,9 +226,7 @@ export async function pingApiPromise(timeoutMs = 8000): Promise<boolean> {
 }
 
 export async function getPlayersPromise(): Promise<Player[]> {
-    const { data, error } = await client.GET("/players");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/players"))).data;
 }
 
 export async function getMatchesPagePromise(params?: {
@@ -233,8 +248,7 @@ export async function getMatchesPagePromise(params?: {
     }
     if (params?.limit) query.limit = params.limit;
 
-    const { data, error } = await client.GET("/matches", { params: { query } });
-    if (error) throwApiError(error);
+    const data = await unwrap(client.GET("/matches", { params: { query } }));
     return { items: data.data.map(mapMatch), next: data.next ?? null };
 }
 
@@ -250,8 +264,7 @@ export async function getCorrectionsPagePromise(params?: {
         if (params?.player_id) query.player_id = params.player_id;
         if (params?.club_id) query.club_id = params.club_id;
     }
-    const { data, error } = await client.GET("/corrections", { params: { query } });
-    if (error) throwApiError(error);
+    const data = await unwrap(client.GET("/corrections", { params: { query } }));
     return {
         items: data.data.map(c => ({
             id: c.id,
@@ -265,9 +278,7 @@ export async function getCorrectionsPagePromise(params?: {
 }
 
 export async function getMatchByIdPromise(id: string): Promise<Match> {
-    const { data, error } = await client.GET("/matches/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return mapMatch(data.data);
+    return mapMatch((await unwrap(client.GET("/matches/{id}", { params: { path: { id } } }))).data);
 }
 
 export async function addMatchPromise(payload: {
@@ -279,9 +290,7 @@ export async function addMatchPromise(payload: {
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
-    const { data, error } = await client.POST("/matches", { body: payload });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/matches", { body: payload }))).data;
 }
 
 export async function updateMatchPromise(matchId: string, payload: {
@@ -292,35 +301,27 @@ export async function updateMatchPromise(matchId: string, payload: {
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
-    const { data, error } = await client.PUT("/matches/{id}", {
+    const data = await unwrap(client.PUT("/matches/{id}", {
         params: { path: { id: matchId } },
         body: payload,
-    });
-    if (error) throwApiError(error);
+    }));
     return data;
 }
 
 export async function getSettingsPromise(): Promise<components["schemas"]["Settings"]> {
-    const { data, error } = await client.GET("/settings");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/settings"))).data;
 }
 
 export async function getGamesPromise(): Promise<GameList> {
-    const { data, error } = await client.GET("/games");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/games"))).data;
 }
 
 export async function getGamePromise(id: string): Promise<Game> {
-    const { data, error } = await client.GET("/games/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/games/{id}", { params: { path: { id } } }))).data;
 }
 
 export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]> {
-    const { data, error } = await client.GET("/games/{id}/matches", { params: { path: { id: gameId } } });
-    if (error) throwApiError(error);
+    const data = await unwrap(client.GET("/games/{id}/matches", { params: { path: { id: gameId } } }));
     return data.data.map(m => ({
         id: m.id,
         date: m.date ? new Date(m.date) : null,
@@ -330,24 +331,15 @@ export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]
 }
 
 export async function patchGamePromise(id: string, payload: { name: string }) {
-    const { data, error } = await client.PATCH("/games/{id}", {
-        params: { path: { id } },
-        body: payload,
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.PATCH("/games/{id}", { params: { path: { id } }, body: payload }))).data;
 }
 
 export async function deleteGamePromise(id: string) {
-    const { data, error } = await client.DELETE("/games/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data;
+    return unwrap(client.DELETE("/games/{id}", { params: { path: { id } } }));
 }
 
 export async function createGamePromise(payload: { name: string }) {
-    const { data, error } = await client.POST("/games", { body: { id: encodeId(uuidv7()), ...payload } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/games", { body: { id: newId(), ...payload } }))).data;
 }
 
 export async function getMePromise(): Promise<User | undefined> {
@@ -399,157 +391,114 @@ export async function oauth2Callback(params?: Record<string, string | string[]>)
 }
 
 export async function logout(): Promise<Status> {
-    const { data, error } = await client.POST("/auth/logout");
-    if (error) throwApiError(error);
-    return data as Status;
+    return unwrap(client.POST("/auth/logout")) as Promise<Status>;
 }
 
 export async function listUsersPromise(): Promise<User[]> {
-    const { data, error } = await client.GET("/users");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/users"))).data;
 }
 
 export async function patchMePromise(payload: { player_id: string | null }) {
-    const { error } = await client.PATCH("/auth/me", { body: payload });
-    if (error) throwApiError(error);
+    await unwrap(client.PATCH("/auth/me", { body: payload }));
 }
 
 export async function patchUserPromise(userId: string, payload: { can_edit: boolean }) {
-    const { data, error } = await client.PATCH("/users/{userId}", {
+    return (await unwrap(client.PATCH("/users/{userId}", {
         params: { path: { userId } },
         body: payload,
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function createPlayerPromise(payload: { name: string }) {
-    const { data, error } = await client.POST("/players", { body: { id: encodeId(uuidv7()), ...payload } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/players", { body: { id: newId(), ...payload } }))).data;
 }
 
 export async function patchPlayerPromise(playerId: string, payload: { name: string }) {
-    const { data, error } = await client.PATCH("/players/{id}", {
+    return (await unwrap(client.PATCH("/players/{id}", {
         params: { path: { id: playerId } },
         body: payload,
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function deletePlayerPromise(playerId: string) {
-    const { data, error } = await client.DELETE("/players/{id}", { params: { path: { id: playerId } } });
-    if (error) throwApiError(error);
-    return data;
+    return unwrap(client.DELETE("/players/{id}", { params: { path: { id: playerId } } }));
 }
 
 export async function createPlayerCorrectionPromise(playerId: string, diff: number) {
-    const { data, error } = await client.POST("/admin/players/{id}/corrections", {
+    return unwrap(client.POST("/admin/players/{id}/corrections", {
         params: { path: { id: playerId } },
-        body: { id: encodeId(uuidv7()), discriminator: "correction", diff },
-    });
-    if (error) throwApiError(error);
-    return data;
+        body: { id: newId(), discriminator: "correction", diff },
+    }));
 }
 
 export async function listClubsPromise(): Promise<Club[]> {
-    const { data, error } = await client.GET("/clubs");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/clubs"))).data;
 }
 
 export async function getClubPromise(id: string): Promise<Club> {
-    const { data, error } = await client.GET("/clubs/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/clubs/{id}", { params: { path: { id } } }))).data;
 }
 
 export async function createClubPromise(payload: { name: string }): Promise<Club> {
-    const { data, error } = await client.POST("/clubs", { body: { id: encodeId(uuidv7()), ...payload } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/clubs", { body: { id: newId(), ...payload } }))).data;
 }
 
 export async function patchClubPromise(
     id: string,
     payload: { name?: string; icon?: string },
 ): Promise<Club> {
-    const { data, error } = await client.PATCH("/clubs/{id}", {
+    return (await unwrap(client.PATCH("/clubs/{id}", {
         params: { path: { id } },
         body: payload,
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function deleteClubPromise(id: string) {
-    const { data, error } = await client.DELETE("/clubs/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data;
+    return unwrap(client.DELETE("/clubs/{id}", { params: { path: { id } } }));
 }
 
 export async function addClubMemberPromise(clubId: string, playerId: string) {
-    const { data, error } = await client.POST("/clubs/{id}/members", {
+    return unwrap(client.POST("/clubs/{id}/members", {
         params: { path: { id: clubId } },
         body: { player_id: playerId },
-    });
-    if (error) throwApiError(error);
-    return data;
+    }));
 }
 
 export async function removeClubMemberPromise(clubId: string, playerId: string) {
-    const { data, error } = await client.DELETE("/clubs/{id}/members/{playerId}", {
+    return unwrap(client.DELETE("/clubs/{id}/members/{playerId}", {
         params: { path: { id: clubId, playerId } },
-    });
-    if (error) throwApiError(error);
-    return data;
+    }));
 }
 
 export async function listTournamentsPromise(): Promise<Tournament[]> {
-    const { data, error } = await client.GET("/tournaments");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/tournaments"))).data;
 }
 
 export async function getTournamentPromise(id: string): Promise<Tournament> {
-    const { data, error } = await client.GET("/tournaments/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/tournaments/{id}", { params: { path: { id } } }))).data;
 }
 
 export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: string[] }): Promise<Tournament> {
-    const { data, error } = await client.POST("/tournaments", { body: { id: encodeId(uuidv7()), ...payload } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/tournaments", { body: { id: newId(), ...payload } }))).data;
 }
 
 export async function updateTournamentPromise(id: string, payload: { name: string; start_date: string; end_date: string; player_ids: string[] }): Promise<Tournament> {
-    const { data, error } = await client.PUT("/tournaments/{id}", {
+    return (await unwrap(client.PUT("/tournaments/{id}", {
         params: { path: { id } },
         body: { id, ...payload },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function deleteTournamentPromise(id: string) {
-    const { data, error } = await client.DELETE("/tournaments/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data;
+    return unwrap(client.DELETE("/tournaments/{id}", { params: { path: { id } } }));
 }
 
 export async function getTournamentStatsPromise(id: string): Promise<TournamentStats> {
-    const { data, error } = await client.GET("/tournaments/{id}/stats", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/tournaments/{id}/stats", { params: { path: { id } } }))).data;
 }
 
 export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {
-    const { data, error } = await client.GET("/settings/all");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/settings/all"))).data;
 }
 
 export async function createSettingsPromise(payload: {
@@ -559,27 +508,21 @@ export async function createSettingsPromise(payload: {
     starting_elo: number;
     win_reward: number;
 }): Promise<void> {
-    const { error } = await client.POST("/settings", { body: payload });
-    if (error) throwApiError(error);
+    await unwrap(client.POST("/settings", { body: payload }));
 }
 
 export async function deleteSettingsPromise(effectiveDate: string): Promise<void> {
-    const { error } = await client.DELETE("/settings", {
+    await unwrap(client.DELETE("/settings", {
         body: { effective_date: effectiveDate },
-    });
-    if (error) throwApiError(error);
+    }));
 }
 
 export async function getMarketsPromise(): Promise<{ active: Market[]; closed: Market[] }> {
-    const { data, error } = await client.GET("/markets");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/markets"))).data;
 }
 
 export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
-    const { data, error } = await client.GET("/markets/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/markets/{id}", { params: { path: { id } } }))).data;
 }
 
 export async function createMarketPromise(payload: {
@@ -593,125 +536,97 @@ export async function createMarketPromise(payload: {
     wins_required?: number | null;
     max_losses?: number | null;
 }): Promise<{ id: string }> {
-    const { data, error } = await client.POST("/markets", {
+    return (await unwrap(client.POST("/markets", {
         body: {
-            id: encodeId(uuidv7()),
+            id: newId(),
             ...payload,
             starts_at: payload.starts_at ?? undefined,
             wins_required: payload.wins_required ?? undefined,
         },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function deleteMarketPromise(id: string): Promise<void> {
-    const { error } = await client.DELETE("/markets/{id}", { params: { path: { id } } });
-    if (error) throwApiError(error);
+    await unwrap(client.DELETE("/markets/{id}", { params: { path: { id } } }));
 }
 
 export async function closeMarketBettingPromise(id: string): Promise<void> {
-    const { error } = await client.PATCH("/markets/{id}", {
+    await unwrap(client.PATCH("/markets/{id}", {
         params: { path: { id } },
         body: { status: "betting_closed" },
-    });
-    if (error) throwApiError(error);
+    }));
 }
 
 export async function getMarketsByMatchIdPromise(matchId: string): Promise<Market[]> {
-    const { data, error } = await client.GET("/matches/{id}/markets", {
+    return (await unwrap(client.GET("/matches/{id}/markets", {
         params: { path: { id: matchId } },
-    });
-    if (error) throwApiError(error);
-    return data.data ?? [];
+    }))).data ?? [];
 }
 
 export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', amount: number): Promise<void> {
-    const { error } = await client.POST("/markets/{id}/bets", {
+    await unwrap(client.POST("/markets/{id}/bets", {
         params: { path: { id: marketId } },
-        body: { id: encodeId(uuidv7()), outcome, amount },
-    });
-    if (error) throwApiError(error);
+        body: { id: newId(), outcome, amount },
+    }));
 }
 
 export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {
-    const { data, error } = await client.GET("/players/{id}/stats", { params: { path: { id } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/players/{id}/stats", { params: { path: { id } } }))).data;
 }
 
 export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
-    const { data, error } = await client.POST("/voice/parse", { body: { text } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/voice/parse", { body: { text } }))).data;
 }
 
 export async function parseSkullKingCardImagePromise(imageBase64: string): Promise<SkullKingCardImageResult> {
-    const { data, error } = await client.POST("/skull-king/parse-card-image", {
+    return (await unwrap(client.POST("/skull-king/parse-card-image", {
         body: { image: imageBase64 },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 // ─── Skull King table API ─────────────────────────────────────────────────────
 
 export async function listSkullKingTablesPromise(): Promise<SkullKingTableSummary[]> {
-    const { data, error } = await client.GET("/skull-king/tables");
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/skull-king/tables"))).data;
 }
 
 export async function createSkullKingTablePromise(gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.POST("/skull-king/tables", { body: { id: encodeId(uuidv7()), game_state: gameState } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.POST("/skull-king/tables", { body: { id: newId(), game_state: gameState } }))).data;
 }
 
 export async function getSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } });
-    if (error) throwApiError(error);
-    return data.data;
+    return (await unwrap(client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } }))).data;
 }
 
 export async function updateSkullKingTableStatePromise(tableId: string, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.PATCH("/skull-king/tables/{id}/state", {
+    return (await unwrap(client.PATCH("/skull-king/tables/{id}/state", {
         params: { path: { id: tableId } },
         body: { game_state: gameState },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function joinSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.POST("/skull-king/tables/{id}/join", {
+    return (await unwrap(client.POST("/skull-king/tables/{id}/join", {
         params: { path: { id: tableId } },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function submitSkullKingBidPromise(tableId: string, bid: number): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.POST("/skull-king/tables/{id}/bid", {
+    return (await unwrap(client.POST("/skull-king/tables/{id}/bid", {
         params: { path: { id: tableId } },
         body: { bid },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function submitSkullKingResultPromise(tableId: string, actual: number, bonus: number): Promise<SkullKingTableSummary> {
-    const { data, error } = await client.POST("/skull-king/tables/{id}/result", {
+    return (await unwrap(client.POST("/skull-king/tables/{id}/result", {
         params: { path: { id: tableId } },
         body: { actual, bonus },
-    });
-    if (error) throwApiError(error);
-    return data.data;
+    }))).data;
 }
 
 export async function deleteSkullKingTablePromise(tableId: string): Promise<void> {
-    const { error } = await client.DELETE("/skull-king/tables/{id}", {
+    await unwrap(client.DELETE("/skull-king/tables/{id}", {
         params: { path: { id: tableId } },
-    });
-    if (error) throwApiError(error);
+    }));
 }

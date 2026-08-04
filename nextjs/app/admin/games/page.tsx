@@ -9,17 +9,11 @@ import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-
-} from "@/components/ui/dialog";
+import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+
+type GameRow = { id: string; name: string };
 
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
@@ -27,12 +21,13 @@ export default function GamesAdminPage() {
     const { pendingGames, offline, addPendingGame, updatePendingGame, deletePendingGame } = useOffline();
     const [newName, setNewName] = useState<string>("");
     const [adding, setAdding] = useState(false);
-    const [renameOpen, setRenameOpen] = useState(false);
-    const [deleteOpen, setDeleteOpen] = useState(false);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [selectedName, setSelectedName] = useState<string>("");
+    const [renameTarget, setRenameTarget] = useState<GameRow | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
-    const [actionLoading, setActionLoading] = useState(false);
+
+    const del = useConfirmAction(async (g: GameRow) => {
+        await deleteGamePromise(g.id);
+        invalidateGames();
+    });
 
     // Sort games alphabetically for admin view
     const sortedGames = [...gamesFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
@@ -42,49 +37,24 @@ export default function GamesAdminPage() {
         ? sortedGames.filter(g => g.name.toLowerCase().includes(newName.toLowerCase()))
         : sortedGames;
 
-    function openRename(id: string, name: string) {
-        setSelectedId(id);
-        setSelectedName(name);
-        setRenameValue(name);
-        setRenameOpen(true);
+    function openRename(row: GameRow) {
+        setRenameTarget(row);
+        setRenameValue(row.name);
     }
 
     async function confirmRename() {
-        if (!selectedId) return;
-        const newName = renameValue?.trim();
-        if (!newName || newName === selectedName) {
-            setRenameOpen(false);
+        if (!renameTarget) return;
+        const next = renameValue?.trim();
+        if (!next || next === renameTarget.name) {
+            setRenameTarget(null);
             return;
         }
         try {
-            setActionLoading(true);
-            await patchGamePromise(selectedId, { name: newName });
+            await patchGamePromise(renameTarget.id, { name: next });
             invalidateGames();
-            setRenameOpen(false);
+            setRenameTarget(null);
         } catch {
             // toast shown by API helper
-        } finally {
-            setActionLoading(false);
-        }
-    }
-
-    function openDelete(id: string, name: string) {
-        setSelectedId(id);
-        setSelectedName(name);
-        setDeleteOpen(true);
-    }
-
-    async function confirmDelete() {
-        if (!selectedId) return;
-        try {
-            setActionLoading(true);
-            await deleteGamePromise(selectedId);
-            invalidateGames();
-            setDeleteOpen(false);
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setActionLoading(false);
         }
     }
 
@@ -180,7 +150,7 @@ export default function GamesAdminPage() {
                                             <Button
                                                 variant="secondary"
                                                 size="sm"
-                                                onClick={() => openRename(game.id, game.name)}
+                                                onClick={() => openRename(game)}
                                                 disabled={!canEdit}
                                             >
                                                 Rename
@@ -188,7 +158,7 @@ export default function GamesAdminPage() {
                                             <Button
                                                 variant="destructive"
                                                 size="sm"
-                                                onClick={() => openDelete(game.id, game.name)}
+                                                onClick={() => del.trigger(game)}
                                                 disabled={!canEdit}
                                             >
                                                 Delete
@@ -221,7 +191,7 @@ export default function GamesAdminPage() {
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
-                                                        onClick={() => openRename(game.id, game.name)}
+                                                        onClick={() => openRename(game)}
                                                         disabled={!canEdit}
                                                     >
                                                         Rename
@@ -229,7 +199,7 @@ export default function GamesAdminPage() {
                                                     <Button
                                                         variant="destructive"
                                                         size="sm"
-                                                        onClick={() => openDelete(game.id, game.name)}
+                                                        onClick={() => del.trigger(game)}
                                                         disabled={!canEdit}
                                                     >
                                                         Delete
@@ -245,44 +215,35 @@ export default function GamesAdminPage() {
                 )}
             </section>
             {/* Rename dialog */}
-            <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Переименовать игру</DialogTitle>
-                        <DialogDescription>Введите новое имя для игры.</DialogDescription>
-                    </DialogHeader>
-                    <div className="mt-2">
-                        <input
-                            className="w-full rounded border p-2"
-                            value={renameValue}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            aria-label="New game name"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={actionLoading}>Отмена</Button>
-                        <Button onClick={confirmRename} disabled={actionLoading}>
-                            {actionLoading ? "Сохранение..." : "Сохранить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialogWithContent
+                open={renameTarget !== null}
+                onOpenChange={(o) => { if (!o) setRenameTarget(null); }}
+                title="Переименовать игру"
+                description="Введите новое имя для игры."
+                confirmText="Сохранить"
+                onConfirm={confirmRename}
+            >
+                <div className="mt-2">
+                    <input
+                        className="w-full rounded border p-2"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        aria-label="New game name"
+                    />
+                </div>
+            </ConfirmDialogWithContent>
 
             {/* Delete confirm dialog */}
-            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Удалить игру</DialogTitle>
-                        <DialogDescription>Вы уверены, что хотите удалить игру «{selectedName}»? Это действие нельзя отменить.</DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={actionLoading}>Отмена</Button>
-                        <Button variant="destructive" onClick={confirmDelete} disabled={actionLoading}>
-                            {actionLoading ? "Удаление..." : "Удалить"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить игру"
+                description={del.target ? <>Вы уверены, что хотите удалить игру «{del.target.name}»? Это действие нельзя отменить.</> : undefined}
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
         </main>
     );
 }

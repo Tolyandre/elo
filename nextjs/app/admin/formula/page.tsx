@@ -13,14 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
+import { formatDateTimeLong } from "@/lib/datetime";
 
 function formatDate(dateStr: string): string {
     if (dateStr === "-infinity") return "Начальная";
     try {
-        return new Date(dateStr).toLocaleDateString("ru-RU", {
-            year: "numeric", month: "long", day: "numeric",
-            hour: "2-digit", minute: "2-digit",
-        });
+        return formatDateTimeLong(dateStr);
     } catch {
         return dateStr;
     }
@@ -55,6 +54,17 @@ export default function FormulaAdminPage() {
     const [loading, setLoading] = useState(true);
     const [deletingDate, setDeletingDate] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
+    const [validationError, setValidationError] = useState<string | null>(null);
+
+    const del = useConfirmAction(async (effectiveDate: string) => {
+        setDeletingDate(effectiveDate);
+        try {
+            await deleteSettingsPromise(effectiveDate);
+            load();
+        } finally {
+            setDeletingDate(null);
+        }
+    });
 
     // Form state
     const [formDate, setFormDate] = useState("");
@@ -81,14 +91,13 @@ export default function FormulaAdminPage() {
             .finally(() => setLoading(false));
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load() sets a loading flag before async fetch
     useEffect(() => { load(); }, []);
 
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         const winRewardVal = parseFloat(formWinReward);
         if (isNaN(winRewardVal) || winRewardVal < 0.1 || winRewardVal > 5) {
-            alert("WinReward должен быть от 0.1 до 5");
+            setValidationError("WinReward должен быть от 0.1 до 5");
             return;
         }
         try {
@@ -106,19 +115,6 @@ export default function FormulaAdminPage() {
             // toast shown by API helper
         } finally {
             setCreating(false);
-        }
-    }
-
-    async function handleDelete(effectiveDate: string) {
-        if (!confirm("Удалить запланированную настройку?")) return;
-        try {
-            setDeletingDate(effectiveDate);
-            await deleteSettingsPromise(effectiveDate);
-            load();
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setDeletingDate(null);
         }
     }
 
@@ -310,7 +306,7 @@ export default function FormulaAdminPage() {
                                                         <Button
                                                             variant="destructive"
                                                             size="sm"
-                                                            onClick={() => handleDelete(entry.effective_date)}
+                                                            onClick={() => del.trigger(entry.effective_date)}
                                                             disabled={deletingDate === entry.effective_date}
                                                         >
                                                             {deletingDate === entry.effective_date ? "Удаление..." : "Удалить"}
@@ -354,7 +350,7 @@ export default function FormulaAdminPage() {
                                                 <Button
                                                     variant="destructive"
                                                     size="sm"
-                                                    onClick={() => handleDelete(entry.effective_date)}
+                                                    onClick={() => del.trigger(entry.effective_date)}
                                                     disabled={deletingDate === entry.effective_date}
                                                     className="shrink-0"
                                                 >
@@ -379,6 +375,26 @@ export default function FormulaAdminPage() {
                     </CardContent>
                 </Card>
             )}
+
+            <ConfirmDialog
+                open={validationError !== null}
+                onOpenChange={(o) => { if (!o) setValidationError(null); }}
+                title="Проверка ввода"
+                description={validationError ?? ""}
+                confirmText="Понятно"
+                cancelText="Закрыть"
+                onConfirm={() => setValidationError(null)}
+            />
+            <ConfirmDialog
+                open={del.open}
+                onOpenChange={del.onOpenChange}
+                title="Удалить настройку"
+                description="Удалить запланированную настройку?"
+                confirmText="Удалить"
+                confirmVariant="destructive"
+                loading={del.pending}
+                onConfirm={del.confirm}
+            />
         </main>
     );
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,11 +11,8 @@ import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMat
 import { useMe } from '@/app/meContext'
 import { PageHeader } from '@/app/pageHeaderContext'
 import { ErrorAlert } from '@/components/error-alert'
-
-function formatDate(iso: string) {
-    const d = new Date(iso)
-    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
+import { formatDate } from '@/lib/datetime'
+import { useAsyncResource } from '@/hooks/useAsyncResource'
 
 function formatElo(value: number, roundToInteger: boolean) {
     if (roundToInteger) {
@@ -156,20 +153,10 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 function PlayerPageContent() {
     const searchParams = useSearchParams()
     const id = searchParams.get('id')
-    const [stats, setStats] = useState<PlayerStats | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
-
-    useEffect(() => {
-        /* eslint-disable react-hooks/set-state-in-effect -- loading indicator around async fetch */
-        if (!id) { setLoading(false); return }
-        setLoading(true)
-        setError(null)
-        /* eslint-enable react-hooks/set-state-in-effect */
-        getPlayerStatsPromise(id)
-            .then(data => { setStats(data); setLoading(false) })
-            .catch(e => { setError(e instanceof Error ? e.message : String(e)); setLoading(false) })
-    }, [id])
+    const { data: stats, loading, error } = useAsyncResource(
+        () => (id ? getPlayerStatsPromise(id) : Promise.reject(new Error('no id'))),
+        [id],
+    )
 
     if (!id) return <div className="p-6 text-muted-foreground">Игрок не указан</div>
     if (loading) return <LoadingSkeleton />

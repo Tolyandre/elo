@@ -1,5 +1,5 @@
 "use client"
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { MarketDetail, getMarketByIdPromise, placeBetPromise } from "@/app/api";
@@ -7,6 +7,7 @@ import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ResolutionDescription } from "@/components/resolution-description";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: number; earned: number; totalStaked: number }) {
     const positive = net >= 0;
@@ -89,17 +90,12 @@ function MarketPageContent() {
     const id = searchParams.get("id") ?? "";
     const me = useMe();
 
-    const [market, setMarket] = useState<MarketDetail | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { data: market, loading, invalidate } = useAsyncResource(
+        () => (id ? getMarketByIdPromise(id) : Promise.reject(new Error('no id'))),
+        [id],
+    );
     const [bettingYes, setBettingYes] = useState(false);
     const [bettingNo, setBettingNo] = useState(false);
-
-    useEffect(() => {
-        if (!id) return;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-        setLoading(true);
-        getMarketByIdPromise(id).then(setMarket).finally(() => setLoading(false));
-    }, [id]);
 
     if (loading || !market) {
         return (
@@ -125,8 +121,7 @@ function MarketPageContent() {
         else setBettingNo(true);
         try {
             await placeBetPromise(id, outcome, 1);
-            const updated = await getMarketByIdPromise(id);
-            setMarket(updated);
+            invalidate();
         } finally {
             if (outcome === "yes") setBettingYes(false);
             else setBettingNo(false);

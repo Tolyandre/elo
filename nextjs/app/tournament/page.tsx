@@ -1,13 +1,14 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { Tournament, TournamentStats, getTournamentPromise, getTournamentStatsPromise } from "@/app/api";
+import { getTournamentPromise, getTournamentStatsPromise } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { RankIcon } from "@/components/rank-icon";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 function TournamentContent() {
     const searchParams = useSearchParams();
@@ -15,18 +16,14 @@ function TournamentContent() {
     const { canEdit } = useMe();
     const { playerMap, playerDisplayName } = usePlayers();
 
-    const [tournament, setTournament] = useState<Tournament | null>(null);
-    const [stats, setStats] = useState<TournamentStats | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!id) return;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-        setLoading(true);
-        Promise.all([getTournamentPromise(id), getTournamentStatsPromise(id)])
-            .then(([t, s]) => { setTournament(t); setStats(s); })
-            .finally(() => setLoading(false));
+    const { data, loading } = useAsyncResource(async () => {
+        if (!id) throw new Error("no id");
+        const [t, s] = await Promise.all([getTournamentPromise(id), getTournamentStatsPromise(id)]);
+        return { tournament: t, stats: s };
     }, [id]);
+
+    const tournament = data?.tournament ?? null;
+    const stats = data?.stats ?? null;
 
     if (!id) return <p>Не указан ID турнира.</p>;
     if (loading) return <p>Загрузка...</p>;

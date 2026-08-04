@@ -1,15 +1,14 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
 import { getPlayersPromise, Player } from "../api";
 import { useMe } from "../meContext";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type PlayersContextType = {
     players: Player[];
     playerMap: Map<string, Player>;
     playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string;
-
-    // TODO https://nextjs.org/docs/app/getting-started/updating-data#showing-a-pending-state
     loading: boolean;
     error: string | null;
     invalidate: () => void;
@@ -21,35 +20,19 @@ export function PlayersProvider({ children
 }: {
     children: ReactNode
 }) {
-    const [players, setPlayers] = useState<Player[]>([]);
-    const [playerMap, setPlayerMap] = useState<Map<string, Player>>(new Map());
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [stamp, setStamp] = useState<number>(0);
+    const { data, loading, error, invalidate } = useAsyncResource(async () => {
+        const data = await getPlayersPromise();
+        return [...data].sort((a, b) => (a.rank.now.rank ?? Number.MAX_VALUE) - (b.rank.now.rank ?? Number.MAX_VALUE));
+    });
+
+    const players = useMemo(() => data ?? [], [data]);
 
     const { geologistMode } = useMe();
 
-    useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-        setLoading(true);
-        getPlayersPromise()
-            .then((data) => {
-                const sorted = [...data].sort((a, b) => (a.rank.now.rank ?? Number.MAX_VALUE) - (b.rank.now.rank ?? Number.MAX_VALUE));
-                setPlayers(sorted);
-                const map = new Map(sorted.map(p => [p.id, p]));
-                setPlayerMap(map);
-                setLoading(false);
-                return sorted;
-            })
-            .catch((err) => {
-                setError(err.message);
-                setLoading(false);
-            });
-    }, [stamp]);
-
-    const invalidate = () => {
-        setStamp((s) => s + 1);
-    };
+    const playerMap = useMemo(
+        () => new Map(players.map(p => [p.id, p])),
+        [players],
+    );
 
     const playerDisplayName = useCallback(
         (player: Pick<Player, "name" | "geologist_name">): string => {
