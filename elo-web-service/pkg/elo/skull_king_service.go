@@ -77,7 +77,7 @@ type ISkullKingTableService interface {
 	JoinTable(ctx context.Context, tableID string, playerID string) (SkullKingTableSummary, error)
 	SubmitBid(ctx context.Context, tableID string, playerID string, bid int) (SkullKingTableSummary, error)
 	SubmitResult(ctx context.Context, tableID string, playerID string, actual int, bonus int) (SkullKingTableSummary, error)
-	DeleteTable(ctx context.Context, tableID string, hostUserID string) error
+	DeleteTable(ctx context.Context, tableID string, hostUserID string, savedMatchID string) error
 	DeleteExpiredTables(ctx context.Context) error
 	ScheduleNextCleanup(ctx context.Context)
 }
@@ -126,6 +126,20 @@ func toTableSummary(row db.SkullKingTable) (SkullKingTableSummary, error) {
 
 func (s *SkullKingTableService) broadcast(tableID string, summary SkullKingTableSummary) {
 	payload, err := json.Marshal(sseEvent{Type: "state", Data: summary})
+	if err != nil {
+		return
+	}
+	s.Hub.Broadcast(tableID, payload)
+}
+
+// broadcastSavedMatch tells table subscribers that the host saved the match,
+// carrying the new match id so connected players can redirect to it.
+// Sent before the table row is deleted so currently-connected clients receive it.
+func (s *SkullKingTableService) broadcastSavedMatch(tableID, matchID string) {
+	payload, err := json.Marshal(sseEvent{
+		Type: "saved",
+		Data: map[string]string{"match_id": matchID},
+	})
 	if err != nil {
 		return
 	}
@@ -442,7 +456,7 @@ func (s *SkullKingTableService) SubmitResult(ctx context.Context, tableID string
 	return summary, nil
 }
 
-func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string, hostUserID string) error {
+func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string, hostUserID string, savedMatchID string) error {
 	pgID, err := parseID(tableID)
 	if err != nil {
 		return ErrTableNotFound
@@ -456,6 +470,11 @@ func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID string,
 	}
 	if row.HostUserID != hostUserID {
 		return ErrNotTableHost
+	}
+	// If the host saved the match, tell connected players which match to open
+	// before tearing down the table (and thus the SSE channel).
+	if savedMatchID != "" {
+		s.broadcastSavedMatch(tableID, savedMatchID)
 	}
 	if err := s.Queries.DeleteSkullKingTable(ctx, pgID); err != nil {
 		return err

@@ -3,8 +3,15 @@
 import { useEffect, useState } from "react";
 import { EloWebServiceBaseUrl, SkullKingTableSummary } from "@/app/api";
 
-export function useSkullKingSSE(tableId: string | null): SkullKingTableSummary | null {
+export type SkullKingSSE = {
+    table: SkullKingTableSummary | null;
+    /** Set when the host saves the match — connected players redirect to it. */
+    savedMatchId: string | null;
+};
+
+export function useSkullKingSSE(tableId: string | null): SkullKingSSE {
     const [state, setState] = useState<SkullKingTableSummary | null>(null);
+    const [savedMatchId, setSavedMatchId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!tableId) return;
@@ -19,6 +26,8 @@ export function useSkullKingSSE(tableId: string | null): SkullKingTableSummary |
                 const parsed = JSON.parse(event.data);
                 if (parsed.type === "state" && parsed.data) {
                     setState(parsed.data);
+                } else if (parsed.type === "saved" && parsed.data?.match_id) {
+                    setSavedMatchId(parsed.data.match_id as string);
                 }
             } catch {
                 // ignore malformed events
@@ -34,7 +43,7 @@ export function useSkullKingSSE(tableId: string | null): SkullKingTableSummary |
         };
     }, [tableId]);
 
-    return state;
+    return { table: state, savedMatchId };
 }
 
 /**

@@ -92,7 +92,7 @@ export default function SkullKingGamePage() {
 
     // SSE subscription for all table participants (host + connected players).
     // Skip the optimistic placeholder tableId "" set before the API call resolves.
-    const sseTable = useSkullKingSSE(tableSession?.tableId || null);
+    const { table: sseTable, savedMatchId: sseSavedMatchId } = useSkullKingSSE(tableSession?.tableId || null);
     const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
 
     // Loading state for server interactions
@@ -129,6 +129,18 @@ export default function SkullKingGamePage() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sseTable]);
+
+    // Connected player: when the host saves the match, the server broadcasts a
+    // "saved" event carrying the new match id. Redirect to that match's view
+    // page and tear down the local session. Host handles its own redirect in
+    // saveGame(), so this effect is a no-op for the host.
+    useEffect(() => {
+        if (!sseSavedMatchId || tableSession?.isHost !== false) return;
+        localStorage.removeItem(LS_KEY);
+        setTableSession(null);
+        router.push(`/matches/view?id=${sseSavedMatchId}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sseSavedMatchId]);
 
     // Auto-advance to round-complete when all results are filled (triggered via SSE in table mode)
     useEffect(() => {
@@ -503,9 +515,12 @@ export default function SkullKingGamePage() {
             if (!offline) {
                 invalidateMatches();
                 invalidatePlayers();
-                // Delete server table if in table mode
+                // Delete server table if in table mode. Pass the saved match id so
+                // the backend can broadcast a "saved" event to connected players
+                // before tearing down the table (online path only — offline queued
+                // matches have no server table yet).
                 if (tableSession?.tableId) {
-                    try { await deleteSkullKingTablePromise(tableSession.tableId); } catch { /* ignore */ }
+                    try { await deleteSkullKingTablePromise(tableSession.tableId, result.id); } catch { /* ignore */ }
                 }
             }
             localStorage.removeItem(LS_KEY);
@@ -584,7 +599,9 @@ export default function SkullKingGamePage() {
                 }
             />
 
-            <AuthWarning />
+            {/* Only the host can save; a connected player can't, so the auth
+                warning is irrelevant for them. */}
+            {isHost && <AuthWarning />}
 
             {/* ── SETUP ──────────────────────────────────────── */}
             {phase === "setup" && (

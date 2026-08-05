@@ -3621,7 +3621,10 @@ export interface operations {
     };
     DeleteSkullKingTable: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when abandoning/resetting a game (no broadcast). */
+                match_id?: string;
+            };
             header?: never;
             path: {
                 id: string;

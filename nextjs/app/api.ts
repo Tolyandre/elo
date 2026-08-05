@@ -625,8 +625,11 @@ export async function submitSkullKingResultPromise(tableId: string, actual: numb
     }))).data;
 }
 
-export async function deleteSkullKingTablePromise(tableId: string): Promise<void> {
+export async function deleteSkullKingTablePromise(tableId: string, matchId?: string): Promise<void> {
     await unwrap(client.DELETE("/skull-king/tables/{id}", {
-        params: { path: { id: tableId } },
+        params: {
+            path: { id: tableId },
+            ...(matchId ? { query: { match_id: matchId } } : {}),
+        },
     }));
 }

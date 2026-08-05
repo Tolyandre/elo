@@ -106,6 +106,16 @@ SkullKingTableItem:
         required: true
         schema:
           type: string
+      - name: match_id
+        in: query
+        required: false
+        description: >
+          When provided, the server broadcasts a `saved` SSE event carrying this
+          match id to the table's subscribers before deleting the table, so
+          connected players can be redirected to the saved match. Omitted by the
+          host when abandoning/resetting a game (no broadcast).
+        schema:
+          type: string
     responses:
       "204":
         description: Table deleted

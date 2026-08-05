@@ -198,7 +198,11 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 		return
 	}
 
-	if err := a.SkullKingTableService.DeleteTable(c.Request.Context(), tableID, userID); err != nil {
+	// When the host saved the match, the client passes its id so the service
+	// can broadcast a "saved" event to connected players before teardown.
+	savedMatchID := c.Query("match_id")
+
+	if err := a.SkullKingTableService.DeleteTable(c.Request.Context(), tableID, userID, savedMatchID); err != nil {
 		if errors.Is(err, elo.ErrTableNotFound) {
 			ErrorResponse(c, http.StatusNotFound, "table not found")
 			return

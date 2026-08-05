@@ -1000,6 +1000,12 @@ type CreateSkullKingTableJSONBody struct {
 	Id ULID `json:"id"`
 }
 
+// DeleteSkullKingTableParams defines parameters for DeleteSkullKingTable.
+type DeleteSkullKingTableParams struct {
+	// MatchId When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when abandoning/resetting a game (no broadcast).
+	MatchId *string `form:"match_id,omitempty" json:"match_id,omitempty"`
+}
+
 // SubmitSkullKingBidJSONBody defines parameters for SubmitSkullKingBid.
 type SubmitSkullKingBidJSONBody struct {
 	Bid int `json:"bid"`
@@ -1427,7 +1433,7 @@ type ServerInterface interface {
 	CreateSkullKingTable(c *gin.Context)
 	// DeleteSkullKingTable Delete a Skull King table (host only)
 	// (DELETE /skull-king/tables/{id})
-	DeleteSkullKingTable(c *gin.Context, id string)
+	DeleteSkullKingTable(c *gin.Context, id string, params DeleteSkullKingTableParams)
 	// GetSkullKingTable Get a Skull King table by ID
 	// (GET /skull-king/tables/{id})
 	GetSkullKingTable(c *gin.Context, id string)
@@ -2436,6 +2442,17 @@ func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSkullKingTableParams
+
+	// ------------- Optional query parameter "match_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "match_id", c.Request.URL.Query(), &params.MatchId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter match_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -2443,7 +2460,7 @@ func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteSkullKingTable(c, id)
+	siw.Handler.DeleteSkullKingTable(c, id, params)
 }
 
 // GetSkullKingTable operation middleware
@@ -5277,7 +5294,8 @@ func (response CreateSkullKingTable401JSONResponse) VisitCreateSkullKingTableRes
 }
 
 type DeleteSkullKingTableRequestObject struct {
-	Id string `json:"id"`
+	Id     string `json:"id"`
+	Params DeleteSkullKingTableParams
 }
 
 type DeleteSkullKingTableResponseObject interface {
@@ -7697,10 +7715,11 @@ func (sh *strictHandler) CreateSkullKingTable(ctx *gin.Context) {
 }
 
 // DeleteSkullKingTable operation middleware
-func (sh *strictHandler) DeleteSkullKingTable(ctx *gin.Context, id string) {
+func (sh *strictHandler) DeleteSkullKingTable(ctx *gin.Context, id string, params DeleteSkullKingTableParams) {
 	var request DeleteSkullKingTableRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteSkullKingTable(ctx, request.(DeleteSkullKingTableRequestObject))
