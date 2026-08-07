@@ -37,14 +37,18 @@ const serwist = new Serwist({
         {
             // Cacheable API reads: try the network, fall back to the last seen
             // response so player/game/match lists render offline. Excludes /ping
-            // (must reflect real API state), auth and SSE.
+            // (must reflect real API state), auth, SSE, and the live Skull King
+            // table endpoints (their state mutates constantly during a game and
+            // a stale snapshot from the NetworkFirst timeout is worse than no
+            // data — they fall through to the NetworkOnly rule below).
             matcher: ({ url, request }) =>
                 apiBase !== "" &&
                 request.method === "GET" &&
                 url.href.startsWith(`${apiBase}/`) &&
                 !url.pathname.endsWith("/ping") &&
                 !url.pathname.includes("/auth/") &&
-                !url.pathname.endsWith("/events"),
+                !url.pathname.endsWith("/events") &&
+                !url.pathname.includes("/skull-king/tables"),
             handler: new NetworkFirst({
                 cacheName: "elo-api",
                 networkTimeoutSeconds: 4,

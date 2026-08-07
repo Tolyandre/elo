@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
@@ -248,6 +249,13 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
+	// Heartbeat keeps the connection alive across proxies/NAT/VPNs that would
+	// otherwise reap an idle stream. Sent as an SSE comment frame (: heartbeat\n\n),
+	// which EventSource ignores but the bytes keep the TCP path warm and let us
+	// detect a dead client promptly (the Flush errors into ctx cancellation).
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
 	clientGone := ctx.Done()
 	for {
 		select {
@@ -258,6 +266,9 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 				return
 			}
 			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
+			c.Writer.Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
 			c.Writer.Flush()
 		}
 	}
@@ -290,6 +301,11 @@ func (a *API) SkullKingLobbyEvents(c *gin.Context) {
 		c.Writer.Flush()
 	}
 
+	// Heartbeat keeps the connection alive across proxies/NAT/VPNs that would
+	// otherwise reap an idle stream. See SkullKingTableEvents for details.
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
 	clientGone := ctx.Done()
 	for {
 		select {
@@ -300,6 +316,9 @@ func (a *API) SkullKingLobbyEvents(c *gin.Context) {
 				return
 			}
 			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
+			c.Writer.Flush()
+		case <-heartbeat.C:
+			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
 			c.Writer.Flush()
 		}
 	}
