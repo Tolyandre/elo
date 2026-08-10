@@ -13,12 +13,15 @@ export type SyncCallResult<T> = { ok: true; data: T } | { ok: false; status: num
 export type SyncApi = {
     createGame(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
     createPlayer(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
+    addClubMember(body: { club_id: string; player_id: string }): Promise<SyncCallResult<null>>;
     addMatch(body: {
         id: string;
         game_id: string;
         score: Record<string, number>;
         date: string;
         tournament_ids: string[];
+        calculator_kind?: string | null;
+        calculator_data?: Record<string, unknown> | null;
     }): Promise<SyncCallResult<{ id: string }>>;
 };
 
@@ -78,28 +81,68 @@ export async function syncOffline(
         return { store, authRequired, aborted, syncedCount };
     };
 
-    // 1. Games, 2. Players — identical handling.
-    for (const kind of ["games", "players"] as const) {
-        for (const item of [...store[kind]]) {
-            markSyncing(update, store, kind, item.clientId);
-            let result: SyncCallResult<{ id: string }>;
+    // 1. Games.
+    for (const item of [...store.games]) {
+        markSyncing(update, store, "games", item.clientId);
+        let result: SyncCallResult<{ id: string }>;
+        try {
+            result = await api.createGame({ id: item.clientId, name: item.name });
+        } catch {
+            return finish(false, true);
+        }
+        if (result.ok) {
+            syncedCount++;
+            update({ ...store, games: store.games.filter((g) => g.clientId !== item.clientId) });
+        } else if (result.status === 401) {
+            return finish(true, false);
+        } else {
+            markError(update, store, "games", item.clientId, result.message);
+        }
+    }
+
+    // 2. Players — create, then apply club memberships. The player create is
+    // idempotent on id and AddClubMember is ON CONFLICT DO NOTHING, so a network
+    // failure after either step is safe to retry: re-running resends the same
+    // player id (a no-op upsert) and re-adds the same memberships (no-ops).
+    for (const item of [...store.players]) {
+        markSyncing(update, store, "players", item.clientId);
+        let result: SyncCallResult<{ id: string }>;
+        try {
+            result = await api.createPlayer({ id: item.clientId, name: item.name });
+        } catch {
+            return finish(false, true);
+        }
+        if (!result.ok) {
+            if (result.status === 401) return finish(true, false);
+            markError(update, store, "players", item.clientId, result.message);
+            continue;
+        }
+        syncedCount++;
+        // Apply memberships before removing the player so a failure here leaves
+        // the player pending (retryable) rather than silently losing clubs.
+        const clubIds = item.clubIds ?? [];
+        let membershipError: string | null = null;
+        for (const clubId of clubIds) {
+            let clubResult: SyncCallResult<null>;
             try {
-                const body = { id: item.clientId, name: item.name };
-                result = kind === "games" ? await api.createGame(body) : await api.createPlayer(body);
+                clubResult = await api.addClubMember({ club_id: clubId, player_id: item.clientId });
             } catch {
+                // Network died mid-membership — keep the player pending so the
+                // remaining clubs are retried on the next sync.
                 return finish(false, true);
             }
-            if (result.ok) {
-                syncedCount++;
-                update({
-                    ...store,
-                    [kind]: store[kind].filter((g) => g.clientId !== item.clientId),
-                });
-            } else if (result.status === 401) {
-                return finish(true, false);
-            } else {
-                markError(update, store, kind, item.clientId, result.message);
+            if (!clubResult.ok) {
+                if (clubResult.status === 401) return finish(true, false);
+                membershipError = clubResult.message;
             }
+        }
+        if (membershipError) {
+            // A server-rejected membership (e.g. club deleted offline) — surface
+            // it but still drop the player only if there were no other pending
+            // memberships to retry. Keep the player so the error is visible.
+            markError(update, store, "players", item.clientId, membershipError);
+        } else {
+            update({ ...store, players: store.players.filter((p) => p.clientId !== item.clientId) });
         }
     }
 
@@ -114,6 +157,8 @@ export async function syncOffline(
                 score: match.score,
                 date: clampToNow(match.createdAt, now()),
                 tournament_ids: match.tournamentIds ?? [],
+                calculator_kind: match.calculatorKind ?? null,
+                calculator_data: match.calculatorData ?? null,
             });
         } catch {
             return finish(false, true);

@@ -99,6 +99,17 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         return found ? playerDisplayName(found) : "Unknown";
     };
 
+    // Display name for a participant, resolved at render time from the current
+    // players/pending context (with the stored snapshot as a last-resort
+    // fallback). Render-time resolution matters because a freshly-created player
+    // is added to the selection before the players re-fetch lands — resolving
+    // from current context means the name self-heals once the fetch completes,
+    // instead of staying stuck on the "Unknown" snapshot taken at selection.
+    const participantName = (p: Participant): string => {
+        const resolved = resolvePlayerName(p.id);
+        return resolved === "Unknown" ? p.name : resolved;
+    };
+
     // Prefill once from the match being edited (after players are known). `seeded`
     // is persisted, so on a later refresh the saved draft is used as-is.
     useEffect(() => {
@@ -334,7 +345,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                                 <div className="flex items-center gap-2">
                                     <span className="w-40 flex items-center gap-1 min-w-0">
                                         <ClubIcons playerId={p.id} />
-                                        <span className="truncate">{p.name}</span>
+                                        <span className="truncate">{participantName(p)}</span>
                                     </span>
                                     <input
                                         type="text"

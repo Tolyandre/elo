@@ -15,6 +15,7 @@ import { useGames } from "../gamesContext";
 import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
 import { usePlayers } from "../players/PlayersContext";
+import { useClubs } from "../clubsContext";
 import { SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
 import {
     OfflineStore,
@@ -58,9 +59,9 @@ type  OfflineState = {
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
     addPendingMatch: (m: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string }) => PendingMatch;
-    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[] }) => void;
+    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => void;
     deletePendingMatch: (clientId: string) => void;
-    addPendingPlayer: (name: string) => PendingPlayer;
+    addPendingPlayer: (name: string, clubIds?: string[]) => PendingPlayer;
     updatePendingPlayer: (clientId: string, name: string) => void;
     deletePendingPlayer: (clientId: string) => void;
     addPendingGame: (name: string) => PendingGame;
@@ -85,7 +86,31 @@ const OfflineContext = createContext<OfflineState | undefined>(undefined);
 function loadStore(): OfflineStore {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return { ...emptyOfflineStore(), ...JSON.parse(raw) };
+        if (!raw) return emptyOfflineStore();
+        const parsed = JSON.parse(raw) as Partial<OfflineStore>;
+        // Backfill fields added after the initial offline store version, so
+        // older localStorage entries don't break the sync engine or UI. Parse
+        // loosely (the on-disk shape may predate these fields) then default.
+        const rawPlayers = (parsed.players ?? []) as Array<Partial<PendingPlayer>>;
+        const players: PendingPlayer[] = rawPlayers.map((p) => ({
+            clientId: p.clientId!,
+            createdAt: p.createdAt!,
+            status: p.status ?? "pending",
+            name: p.name!,
+            clubIds: p.clubIds ?? [],
+        }));
+        const rawMatches = (parsed.matches ?? []) as Array<Partial<PendingMatch>>;
+        const matches: PendingMatch[] = rawMatches.map((m) => ({
+            clientId: m.clientId!,
+            createdAt: m.createdAt!,
+            status: m.status ?? "pending",
+            gameId: m.gameId!,
+            score: m.score!,
+            tournamentIds: m.tournamentIds ?? [],
+            calculatorKind: m.calculatorKind ?? null,
+            calculatorData: m.calculatorData ?? null,
+        }));
+        return { games: parsed.games ?? [], players, matches };
     } catch {
         // corrupted store — start fresh
     }
@@ -109,8 +134,22 @@ const syncApi: SyncApi = {
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
     },
+    async addClubMember({ club_id, player_id }): Promise<SyncCallResult<null>> {
+        const { error, response } = await client.POST("/clubs/{id}/members", {
+            params: { path: { id: club_id } },
+            body: { player_id },
+        });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
+    },
     async addMatch(body): Promise<SyncCallResult<{ id: string }>> {
-        const { data, error, response } = await client.POST("/matches", { body });
+        // The generated POST /matches body type narrows calculator_data to
+        // Record<string, never> (an openapi-fetch artifact); the sync engine
+        // carries the opaque calculator payload as Record<string, unknown>.
+        const { data, error, response } = await client.POST("/matches", {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            body: body as any,
+        });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
     },
@@ -144,6 +183,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
     const { invalidate: invalidateGames } = useGames();
+    const { invalidate: invalidateClubs } = useClubs();
 
     // localStorage is unavailable during static export rendering — hydrate after mount.
     useEffect(() => {
@@ -184,13 +224,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                     invalidateMatches();
                     invalidatePlayers();
                     invalidateGames();
+                    invalidateClubs();
                 }
             })
             .finally(() => {
                 syncInProgressRef.current = false;
                 setIsSyncing(false);
             });
-    }, [invalidateGames, invalidateMatches, invalidatePlayers]);
+    }, [invalidateGames, invalidateMatches, invalidatePlayers, invalidateClubs]);
 
     // Sync is driven solely by the API health probe below: a fresh `pingApiPromise`
     // success is the single automatic trigger, so we never start a sync while the
@@ -254,7 +295,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, tournamentIds, clientId }: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string }) => {
+        ({ gameId, score, tournamentIds, clientId, calculatorKind, calculatorData }: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             const match: PendingMatch = {
                 clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
@@ -262,6 +303,8 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 gameId,
                 score,
                 tournamentIds: tournamentIds ?? [],
+                calculatorKind: calculatorKind ?? null,
+                calculatorData: calculatorData ?? null,
             };
             mutateStore((s) => ({ ...s, matches: [...s.matches, match] }));
             return match;
@@ -270,7 +313,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[] }) => {
+        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
@@ -281,6 +324,8 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                               score: patch.score,
                               createdAt: patch.createdAt ?? m.createdAt,
                               tournamentIds: patch.tournamentIds ?? m.tournamentIds ?? [],
+                              calculatorKind: patch.calculatorKind !== undefined ? patch.calculatorKind : m.calculatorKind,
+                              calculatorData: patch.calculatorData !== undefined ? patch.calculatorData : m.calculatorData,
                               status: "pending",
                               error: undefined,
                           }
@@ -299,12 +344,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const addPendingPlayer = useCallback(
-        (name: string) => {
+        (name: string, clubIds: string[] = []) => {
             const player: PendingPlayer = {
                 clientId: newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 name,
+                clubIds,
             };
             mutateStore((s) => ({ ...s, players: [...s.players, player] }));
             return player;
@@ -369,10 +415,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             game_id: string;
             score: Record<string, number>;
             tournament_ids?: string[];
-            // Optional calculator state. Only forwarded on the online path:
-            // when a calculator-originated match is queued offline the
-            // intermediate data is dropped (matches today's behaviour — see
-            // ADR-09). The match itself is still queued and synced.
+            // Optional calculator state (e.g. Skull King round breakdown). Forwarded
+            // on both the online path and the offline queue so the calculator detail
+            // survives an offline save and is restored when the match is synced.
             calculator_kind?: string | null;
             calculator_data?: Record<string, never> | null;
         }): Promise<SubmitMatchResult> => {
@@ -403,7 +448,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                     // network died mid-request — fall through to the offline queue
                 }
             }
-            const match = addPendingMatch({ clientId, gameId: payload.game_id, score: payload.score, tournamentIds: payload.tournament_ids });
+            const match = addPendingMatch({
+                clientId,
+                gameId: payload.game_id,
+                score: payload.score,
+                tournamentIds: payload.tournament_ids,
+                calculatorKind: payload.calculator_kind,
+                calculatorData: payload.calculator_data,
+            });
             return { id: match.clientId };
         },
         [isOnline, addPendingMatch],

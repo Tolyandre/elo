@@ -230,7 +230,7 @@ function PendingMatchView({ clientId }: { clientId: string }) {
 
       <PageHeader
         title="Просмотр партии"
-        action={canEdit ? <EditAction id={clientId} disabled={isSyncing} /> : undefined}
+        action={canEdit ? <EditAction id={clientId} disabled={isSyncing} viaCalculator={!!match.calculatorKind} /> : undefined}
       />
 
       <PendingMatchCard match={match} />

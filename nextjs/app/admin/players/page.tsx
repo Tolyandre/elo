@@ -1,7 +1,7 @@
 "use client"
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerPromise, createPlayerCorrectionPromise, listUsersPromise, isNetworkFailure } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, createPlayerCorrectionPromise, listUsersPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { LoginLink } from "@/components/login-link";
@@ -9,6 +9,7 @@ import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
 import { ClubIcons } from "@/components/player-name";
+import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import {
     Dialog,
@@ -30,14 +31,40 @@ type CorrectionTarget = { id: string; rating: number };
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
-    const { pendingPlayers, offline, addPendingPlayer, updatePendingPlayer, deletePendingPlayer } = useOffline();
-    const [newName, setNewName] = useState<string>("");
-    const [adding, setAdding] = useState(false);
+    const { pendingPlayers, updatePendingPlayer, deletePendingPlayer } = useOffline();
+    const [nameQuery, setNameQuery] = useState<string>("");
     const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
     const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null);
     const [correctionValue, setCorrectionValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
+
+    // The single name field doubles as a search filter over existing players
+    // (so the user sees whether a player with that name already exists) and as
+    // the prefill for the add-player confirmation dialog.
+    const [addOpen, setAddOpen] = useState(false);
+    const [adding, setAdding] = useState(false);
+    const addFormRef = useRef<AddPlayerFormHandle>(null);
+
+    function openAddDialog() {
+        const trimmed = nameQuery.trim();
+        if (!trimmed) return;
+        setAddOpen(true);
+    }
+
+    async function confirmAdd() {
+        if (adding) return;
+        setAdding(true);
+        try {
+            const result = await addFormRef.current?.submit();
+            if (result?.created) {
+                setAddOpen(false);
+                setNameQuery("");
+            }
+        } finally {
+            setAdding(false);
+        }
+    }
 
     const { data: users } = useAsyncResource(listUsersPromise);
     const userMap = new Map((users ?? []).map(u => [u.id, u.name]));
@@ -50,10 +77,10 @@ export default function PlayersAdminPage() {
     // Sort players alphabetically for admin view
     const sortedPlayers = [...playersFromContext].sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }));
 
-    // Filter players by search term
-    const players = newName.trim() === ""
+    // Filter players by the name query (the same field used to add a player)
+    const players = nameQuery.trim() === ""
         ? sortedPlayers
-        : sortedPlayers.filter(p => playerDisplayName(p).toLowerCase().includes(newName.toLowerCase()));
+        : sortedPlayers.filter(p => playerDisplayName(p).toLowerCase().includes(nameQuery.toLowerCase()));
 
     function openRename(id: string, name: string) {
         setRenameTarget({ id, name });
@@ -119,41 +146,18 @@ export default function PlayersAdminPage() {
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <input
                     className="border rounded p-2 flex-1"
-                    placeholder="Имя игрока"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="Имя игрока (поиск / добавление)"
+                    value={nameQuery}
+                    onChange={(e) => setNameQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); openAddDialog(); } }}
+                    aria-label="Имя игрока"
                 />
                 <div className="w-full sm:w-auto">
                     <Button
-                        onClick={async () => {
-                            if (adding || !newName || newName.trim() === "") return;
-                            const name = newName.trim();
-                            if (offline) {
-                                addPendingPlayer(name);
-                                setNewName("");
-                                return;
-                            }
-                            setAdding(true);
-                            try {
-                                await createPlayerPromise({ name });
-                                invalidatePlayers();
-                                setNewName("");
-                            } catch (e) {
-                                if (isNetworkFailure(e)) {
-                                    // network died mid-request — queue the player offline instead
-                                    addPendingPlayer(name);
-                                    setNewName("");
-                                }
-                                // HTTP errors: toast already shown
-                            } finally {
-                                setAdding(false);
-                            }
-                        }}
-                        disabled={!canEdit || adding}
-                        aria-busy={adding}
+                        onClick={openAddDialog}
+                        disabled={!canEdit || !nameQuery.trim()}
                     >
-                        {adding && <Spinner className="size-4" />}
-                        {offline ? "Добавить офлайн" : "Добавить"}
+                        Добавить
                     </Button>
                 </div>
             </div>
@@ -169,7 +173,7 @@ export default function PlayersAdminPage() {
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">
                     Список игроков
-                    {newName.trim() !== "" && (
+                    {nameQuery.trim() !== "" && (
                         <span className="text-sm font-normal text-muted-foreground ml-2">
                             (найдено: {players.length} из {sortedPlayers.length})
                         </span>
@@ -298,6 +302,35 @@ export default function PlayersAdminPage() {
                     </>
                 )}
             </section>
+            {/* Add player confirmation dialog: name pre-filled from the inline
+                field, clubs selectable. Saving creates the player (online or
+                queued offline with the chosen clubs). */}
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Новый игрок</DialogTitle>
+                        <DialogDescription>
+                            Проверьте имя и при необходимости выберите клубы.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <AddPlayerForm
+                        ref={addFormRef}
+                        hideSubmit
+                        initialName={nameQuery}
+                        autoFocus
+                    />
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
+                            Отмена
+                        </Button>
+                        <Button onClick={confirmAdd} disabled={adding} aria-busy={adding}>
+                            {adding && <Spinner className="size-4" />}
+                            Сохранить
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Rename dialog */}
             <ConfirmDialogWithContent
                 open={renameTarget !== null}

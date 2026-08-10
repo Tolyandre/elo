@@ -14,7 +14,15 @@ type PendingBase = {
     error?: string;
 };
 
-export type PendingPlayer = PendingBase & { name: string };
+export type PendingPlayer = PendingBase & {
+    name: string;
+    /**
+     * Server club ids the player should be added to once they exist on the server.
+     * Memberships are applied (POST /clubs/{id}/members) right after the player
+     * is created during sync. Empty for players created before this field existed.
+     */
+    clubIds: string[];
+};
 export type PendingGame = PendingBase & { name: string };
 
 export type PendingMatch = PendingBase & {
@@ -24,6 +32,13 @@ export type PendingMatch = PendingBase & {
     score: Record<string, number>;
     /** Server tournament ids this match belongs to (tournaments are never created offline). */
     tournamentIds: string[];
+    /**
+     * Calculator state captured when the match was created from a calculator
+     * (e.g. Skull King). Forwarded on sync so the round-by-round breakdown
+     * survives an offline save — see ADR-09.
+     */
+    calculatorKind?: string | null;
+    calculatorData?: Record<string, unknown> | null;
 };
 
 export type OfflineStore = {

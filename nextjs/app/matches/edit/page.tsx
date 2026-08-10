@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 import { getCalculator, type CalculatorState } from "@/components/calculators/registry";
+import { PendingMatch } from "@/lib/offline/types";
 
 export default function MatchEditPage() {
     return (
@@ -40,8 +41,9 @@ function MatchEditPageWrapped() {
     }, [id, router]);
 
     // Offline (pending) target — wait for the store to hydrate before deciding.
-    // Pending matches are never calculator-backed (calculator_data is not queued
-    // offline — see ADR-09), so the pending path always uses MatchForm.
+    // Pending matches may now be calculator-backed (calculator_data is queued
+    // offline), so a calculator-backed pending match routes to the calculator
+    // editor instead of the generic form.
     const editPending = ready ? pendingMatches.find((m) => m.clientId === id) : undefined;
     const isSaved = !!id && ready && !editPending;
 
@@ -85,6 +87,19 @@ function MatchEditPageWrapped() {
     const fetchLoading = needsDetail && !editSaved && !fetchError;
 
     if (!id) return null;
+
+    // ── Calculator-backed pending match: dispatch to the pending calculator ──
+    // editor. Saves go through updatePendingMatch (carrying the recomputed
+    // calculator_data) instead of updateMatchPromise.
+    if (editPending?.calculatorKind) {
+        return (
+            <PendingCalculatorEdit
+                match={editPending}
+                readOnly={!me.canEdit}
+                onSaved={() => router.push(`/matches/view?id=${editPending.clientId}`)}
+            />
+        );
+    }
 
     // ── Calculator-backed saved match: dispatch to the calculator editor. ────
     // The calculator UI is the single source of truth for scores here — every
@@ -182,6 +197,90 @@ function CalculatorEdit({
             });
             invalidateMatches();
             invalidatePlayers();
+            toast.success("Партия обновлена");
+            onSaved();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    const title = adapter?.editTitle ?? "Редактирование партии";
+
+    return (
+        <main className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
+            <AuthWarning />
+            <PageHeader title={title} />
+            {readOnly && (
+                <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Только просмотр</AlertTitle>
+                    <AlertDescription>
+                        У вас нет прав на редактирование — изменения нельзя сохранить.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {adapter ? (
+                <adapter.History
+                    storage={data}
+                    readOnly={readOnly}
+                    onStateChange={setState}
+                />
+            ) : (
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                        Неизвестный тип калькулятора: {kind}
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            {!readOnly && adapter && (
+                <Button className="w-full" disabled={saving} onClick={handleSave}>
+                    {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Сохранение…</>) : "Сохранить изменения"}
+                </Button>
+            )}
+        </main>
+    );
+}
+
+// PendingCalculatorEdit is the offline counterpart of CalculatorEdit: it
+// re-opens the calculator state captured when the match was queued offline so
+// the round/cell breakdown can be tweaked. Saving recomputes score from the
+// calculator state and writes both back to the pending store via
+// updatePendingMatch (carrying the recomputed calculator_data).
+function PendingCalculatorEdit({
+    match,
+    readOnly,
+    onSaved,
+}: {
+    match: PendingMatch;
+    readOnly: boolean;
+    onSaved: () => void;
+}) {
+    const { updatePendingMatch } = useOffline();
+    const kind = match.calculatorKind!;
+    const adapter = getCalculator(kind);
+    const data = (match.calculatorData ?? {}) as Record<string, unknown>;
+    const [state, setState] = useState<CalculatorState | null>(null);
+    const [saving, setSaving] = useState(false);
+
+    async function handleSave() {
+        if (!adapter || state === null) return;
+        setSaving(true);
+        try {
+            const score = adapter.scoreFromState(state);
+            const calcData = adapter.toStorage(state) as Record<string, unknown>;
+            updatePendingMatch(match.clientId, {
+                gameId: match.gameId,
+                score,
+                createdAt: match.createdAt,
+                tournamentIds: match.tournamentIds ?? [],
+                calculatorKind: kind,
+                calculatorData: calcData,
+            });
             toast.success("Партия обновлена");
             onSaved();
         } catch (err) {

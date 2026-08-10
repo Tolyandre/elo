@@ -71,6 +71,11 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                             не сохранено
                         </Badge>
                     )}
+                    {match.calculatorKind && (
+                        <Badge variant="outline">
+                            калькулятор
+                        </Badge>
+                    )}
                 </div>
             </CardHeader>
 

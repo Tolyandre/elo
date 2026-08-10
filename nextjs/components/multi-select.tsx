@@ -223,6 +223,13 @@ interface MultiSelectProps
 	emptyIndicator?: React.ReactNode;
 
 	/**
+	 * Content rendered below the empty state, but ONLY when a search returns no
+	 * matches (search text is non-empty and nothing matches). Receives the
+	 * current search text — e.g. to offer "Create '<search>'".
+	 */
+	emptyFooter?: (search: string) => React.ReactNode;
+
+	/**
 	 * If true, allows the component to grow and shrink with its content.
 	 * If false, uses fixed width behavior.
 	 * Optional, defaults to false.
@@ -362,6 +369,7 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 			hideSelectAll = false,
 			searchable = true,
 			emptyIndicator,
+			emptyFooter,
 			autoSize = false,
 			singleLine = false,
 			popoverClassName,
@@ -1065,16 +1073,33 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 					</TabsList>
 				</Tabs>
 			)}
-			<CommandList
-				className={cn(
-					screenSize === "mobile"
-						? "flex-1 min-h-0 overflow-y-auto max-h-none"
-						: "max-h-[40vh] overflow-y-auto multiselect-scrollbar",
-					"overscroll-behavior-y-contain"
-				)}>
-				<CommandEmpty>
-					{emptyIndicator || "No results found."}
-				</CommandEmpty>{" "}
+				<CommandList
+					className={cn(
+						screenSize === "mobile"
+							? "flex-1 min-h-0 overflow-y-auto max-h-none"
+							: "max-h-[40vh] overflow-y-auto multiselect-scrollbar",
+						"overscroll-behavior-y-contain"
+					)}>
+					{emptyFooter ? (
+						// When an emptyFooter is provided, take over the empty state so the
+						// "create <search>" affordance can be rendered alongside the message.
+						// cmdk's CommandEmpty only mounts when no CommandItems match, so the
+						// footer is gated on the same condition by rendering inside it.
+						<CommandEmpty>
+							{emptyIndicator}
+							<div
+								className="mt-2"
+								onPointerDown={(e) => e.stopPropagation()}
+								onClick={(e) => e.stopPropagation()}
+							>
+								{emptyFooter(searchValue)}
+							</div>
+						</CommandEmpty>
+					) : (
+						<CommandEmpty>
+							{emptyIndicator || "No results found."}
+						</CommandEmpty>
+					)}{" "}
 				{!hideSelectAll && !searchValue && (
 					<CommandGroup>
 						<CommandItem
@@ -1216,8 +1241,8 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 						</CommandItem>
 					</div>
 				</CommandGroup> */}
-			</CommandList>
-		</Command>);
+				</CommandList>
+			</Command>);
 
 		return (
 			<>

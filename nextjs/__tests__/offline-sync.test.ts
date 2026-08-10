@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
-import { OfflineStore, PendingMatch } from '../lib/offline/types';
+import { OfflineStore, PendingMatch, PendingPlayer } from '../lib/offline/types';
 
 const noopPersist = () => { };
 
@@ -11,7 +11,7 @@ function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineSt
     return {
         games: partial.games ?? [],
         players: partial.players ?? [],
-        // tournamentIds defaults to [] so test fixtures can omit it.
+        // tournamentIds/clubIds default to [] so test fixtures can omit them.
         matches: (partial.matches ?? []).map((m) => ({ ...m, tournamentIds: m.tournamentIds ?? [] })),
     };
 }
@@ -28,6 +28,10 @@ function okApi(): SyncApi & { calls: string[] } {
             calls.push(`player:${body.name}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: string }>;
         }),
+        addClubMember: vi.fn(async ({ club_id, player_id }) => {
+            calls.push(`club:${club_id}:${player_id}`);
+            return { ok: true, data: null } as SyncCallResult<null>;
+        }),
         addMatch: vi.fn(async (body) => {
             calls.push(`match:${body.game_id}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: string }>;
@@ -37,7 +41,8 @@ function okApi(): SyncApi & { calls: string[] } {
 
 const pendingGame = (clientId: string, name: string, createdAt = '2026-06-01T10:00:00Z') =>
     ({ clientId, name, createdAt, status: 'pending' as const });
-const pendingPlayer = pendingGame;
+const pendingPlayer = (clientId: string, name: string, createdAt = '2026-06-01T10:00:00Z', clubIds: string[] = []): PendingPlayer =>
+    ({ clientId, name, createdAt, status: 'pending', clubIds });
 
 // A stable server-side game/player that a pending match can reference.
 const SERVER_GAME_ID = '018f6b00-0000-7000-8000-000000000005';
@@ -78,6 +83,8 @@ describe('syncOffline', () => {
             score: { [playerId]: 10, [SERVER_PLAYER_ID]: 5 },
             date: '2026-06-01T11:00:00Z',
             tournament_ids: [],
+            calculator_kind: null,
+            calculator_data: null,
         });
     });
 
@@ -216,5 +223,134 @@ describe('syncOffline', () => {
         // markSyncing + removal per item → final snapshot has an empty store
         expect(snapshots[snapshots.length - 1]).toBe(0);
         expect(snapshots.length).toBeGreaterThanOrEqual(4);
+    });
+
+    describe('club memberships', () => {
+        it('adds the player to each chosen club after creating them, in order', async () => {
+            const api = okApi();
+            const playerId = uuidv7();
+            const clubA = uuidv7();
+            const clubB = uuidv7();
+            const store = makeStore({
+                players: [pendingPlayer(playerId, 'Вася', '2026-06-01T10:00:00Z', [clubA, clubB])],
+            });
+
+            const outcome = await syncOffline(store, api, noopPersist);
+
+            expect(outcome.store.players).toHaveLength(0);
+            expect(api.createPlayer).toHaveBeenCalledWith({ id: playerId, name: 'Вася' });
+            expect(api.addClubMember).toHaveBeenCalledTimes(2);
+            // Memberships are applied in the declared order, using the player's
+            // final id (their clientId), after the create succeeds.
+            expect(api.addClubMember).toHaveBeenNthCalledWith(1, { club_id: clubA, player_id: playerId });
+            expect(api.addClubMember).toHaveBeenNthCalledWith(2, { club_id: clubB, player_id: playerId });
+        });
+
+        it('keeps the player pending and visible when one membership is HTTP-rejected', async () => {
+            const api = okApi();
+            const playerId = uuidv7();
+            const clubA = uuidv7();
+            const clubB = uuidv7();
+            api.addClubMember = vi.fn(async ({ club_id }) =>
+                club_id === clubA
+                    ? { ok: false as const, status: 403, message: 'forbidden' }
+                    : { ok: true as const, data: null });
+
+            const store = makeStore({
+                players: [pendingPlayer(playerId, 'Вася', '2026-06-01T10:00:00Z', [clubA, clubB])],
+            });
+
+            const outcome = await syncOffline(store, api, noopPersist);
+
+            // Player create + the second membership succeeded, but the player is
+            // NOT removed from the store because a membership errored — so the
+            // error is surfaced and the user can retry / fix it.
+            expect(api.createPlayer).toHaveBeenCalledTimes(1);
+            expect(api.addClubMember).toHaveBeenCalledTimes(2);
+            expect(outcome.store.players).toHaveLength(1);
+            expect(outcome.store.players[0]).toMatchObject({ status: 'error', error: 'forbidden' });
+        });
+
+        it('aborts on a membership network failure, leaving the player pending for retry', async () => {
+            const api = okApi();
+            const playerId = uuidv7();
+            const clubA = uuidv7();
+            api.addClubMember = vi.fn(async () => { throw new TypeError('fetch failed'); });
+
+            const store = makeStore({
+                players: [pendingPlayer(playerId, 'Вася', '2026-06-01T10:00:00Z', [clubA])],
+            });
+
+            const outcome = await syncOffline(store, api, noopPersist);
+
+            expect(outcome.aborted).toBe(true);
+            // Player stayed pending — re-sync will recreate (idempotent) and
+            // re-add the membership (ON CONFLICT DO NOTHING).
+            expect(outcome.store.players).toHaveLength(1);
+            expect(outcome.store.players[0].status).toBe('pending');
+        });
+
+        it('stops and reports authRequired on a 401 during membership add', async () => {
+            const api = okApi();
+            const playerId = uuidv7();
+            const clubA = uuidv7();
+            api.addClubMember = vi.fn(async () => ({ ok: false as const, status: 401, message: 'unauthorized' }));
+
+            const store = makeStore({
+                players: [pendingPlayer(playerId, 'Вася', '2026-06-01T10:00:00Z', [clubA])],
+            });
+
+            const outcome = await syncOffline(store, api, noopPersist);
+
+            expect(outcome.authRequired).toBe(true);
+            expect(outcome.store.players[0].status).toBe('pending');
+        });
+    });
+
+    describe('calculator_data', () => {
+        it('forwards calculator_kind and calculator_data on a synced match', async () => {
+            const api = okApi();
+            const matchId = uuidv7();
+            const calcData = { rounds: [{ scores: [10, 5] }] };
+            const store = makeStore({
+                matches: [{
+                    clientId: matchId,
+                    createdAt: '2026-06-01T11:00:00Z',
+                    status: 'pending',
+                    gameId: SERVER_GAME_ID,
+                    score: { '1': 10, '2': 5 },
+                    calculatorKind: 'skull-king',
+                    calculatorData: calcData,
+                }],
+            });
+
+            await syncOffline(store, api, noopPersist);
+
+            expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({
+                calculator_kind: 'skull-king',
+                calculator_data: calcData,
+            }));
+        });
+
+        it('sends null calculator fields when the match has none', async () => {
+            const api = okApi();
+            const matchId = uuidv7();
+            const store = makeStore({
+                matches: [{
+                    clientId: matchId,
+                    createdAt: '2026-06-01T11:00:00Z',
+                    status: 'pending',
+                    gameId: SERVER_GAME_ID,
+                    score: { '1': 1, '2': 2 },
+                }],
+            });
+
+            await syncOffline(store, api, noopPersist);
+
+            expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({
+                calculator_kind: null,
+                calculator_data: null,
+            }));
+        });
     });
 });

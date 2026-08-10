@@ -1,7 +1,7 @@
 "use client"
 
 import { usePlayers } from "@/app/players/PlayersContext"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./multi-select"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
@@ -11,6 +11,18 @@ import { useOffline } from "@/app/offline/OfflineContext"
 import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "@/lib/player-groups"
 import { ClubIcon } from "@/components/club-icon"
 import { ClubIcons } from "@/components/player-name"
+import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form"
+import { UserPlus } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 
 export function PlayerMultiSelect({
   value: controlledValue,
@@ -26,7 +38,7 @@ export function PlayerMultiSelect({
   const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
   const { tournaments } = useTournaments()
-  const { playerId: myPlayerId } = useMe()
+  const { playerId: myPlayerId, canEdit } = useMe()
   const { pendingPlayers } = useOffline()
 
   // "Недавние" = the last players from my own most recent matches.
@@ -89,19 +101,98 @@ export function PlayerMultiSelect({
     onChange?.(currentValue);
   }
 
-  return <MultiSelect
-    options={searchGroups}
-    tabs={tabs}
-    allowDuplicateValues={true}
-    responsive={{
-      mobile: { maxCount: 10, hideIcons: false, compactMode: true },
-      tablet: { maxCount: 10, hideIcons: false, compactMode: false },
-      desktop: { maxCount: 10, hideIcons: false, compactMode: false },
-    }}
-    placeholder="Выберите игроков"
-    searchPlaceholder="Искать игрока..."
-    hideSelectAll={true}
-    onValueChange={handleSelect}
-    maxCount={10}
-    defaultValue={controlledValue} />
+  // Inline "create player": shown as a button under the empty search state.
+  // Clicking it opens a confirmation dialog (name pre-filled with the search,
+  // clubs selectable); on confirm the player is created and auto-selected.
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState("")
+  const [creating, setCreating] = useState(false)
+  const formRef = useRef<AddPlayerFormHandle>(null)
+
+  const openCreate = useCallback((search: string) => {
+    setCreateName(search)
+    setCreateOpen(true)
+  }, [])
+
+  const handleCreated = useCallback((playerId: string) => {
+    if (controlledValue.includes(playerId)) return
+    onChange?.([...controlledValue, playerId])
+  }, [controlledValue, onChange])
+
+  async function confirmCreate() {
+    if (creating) return
+    setCreating(true)
+    try {
+      const result = await formRef.current?.submit()
+      if (result?.created) {
+        setCreateOpen(false)
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const emptyFooter = useCallback((search: string) => {
+    if (!canEdit || !search.trim()) return null
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full justify-center"
+        onClick={() => openCreate(search)}
+      >
+        <UserPlus className="size-4" />
+        Добавить «{search.trim()}»
+      </Button>
+    )
+  }, [canEdit, openCreate])
+
+  return (
+    <>
+      <MultiSelect
+        options={searchGroups}
+        tabs={tabs}
+        allowDuplicateValues={true}
+        responsive={{
+          mobile: { maxCount: 10, hideIcons: false, compactMode: true },
+          tablet: { maxCount: 10, hideIcons: false, compactMode: false },
+          desktop: { maxCount: 10, hideIcons: false, compactMode: false },
+        }}
+        placeholder="Выберите игроков"
+        searchPlaceholder="Искать игрока..."
+        hideSelectAll={true}
+        onValueChange={handleSelect}
+        maxCount={10}
+        defaultValue={controlledValue}
+        emptyFooter={emptyFooter}
+      />
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Новый игрок</DialogTitle>
+            <DialogDescription>
+              Проверьте имя и при необходимости выберите клубы.
+            </DialogDescription>
+          </DialogHeader>
+          <AddPlayerForm
+            ref={formRef}
+            hideSubmit
+            initialName={createName}
+            autoFocus
+            onCreated={handleCreated}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Отмена
+            </Button>
+            <Button onClick={confirmCreate} disabled={creating} aria-busy={creating}>
+              {creating && <Spinner className="size-4" />}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }
