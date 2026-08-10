@@ -458,10 +458,20 @@ type GameMatchPlayer struct {
 
 // GameMatchStat defines model for GameMatchStat.
 type GameMatchStat struct {
-	GameId       string `json:"game_id"`
-	GameName     string `json:"game_name"`
-	MatchesCount int    `json:"matches_count"`
-	Wins         int    `json:"wins"`
+	// BronzeCount Number of 3rd-place (bronze medal) finishes in this game.
+	BronzeCount int    `json:"bronze_count"`
+	GameId      string `json:"game_id"`
+	GameName    string `json:"game_name"`
+
+	// GoldCount Number of 1st-place (gold medal) finishes in this game.
+	GoldCount    int `json:"gold_count"`
+	MatchesCount int `json:"matches_count"`
+
+	// NormalizedScore Sum of normalized scores (Σ elo_earned / K) across the player's matches in this game. A win contributes 1, a loss 0, ties and middle places a fractional share.
+	NormalizedScore float64 `json:"normalized_score"`
+
+	// SilverCount Number of 2nd-place (silver medal) finishes in this game.
+	SilverCount int `json:"silver_count"`
 }
 
 // GamePlayer defines model for GamePlayer.

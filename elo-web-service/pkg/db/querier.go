@@ -80,6 +80,14 @@ type Querier interface {
 	GetPlayerGameEloStats(ctx context.Context, playerID string) ([]GetPlayerGameEloStatsRow, error)
 	// Counts game-specific matches a player participated in within [from_date, to_date].
 	GetPlayerGameMatchCountInPeriod(ctx context.Context, arg GetPlayerGameMatchCountInPeriodParams) (int32, error)
+	// Per-game stats for the player profile "Частые игры" table:
+	//   normalized_score = Σ (gas.elo_earned / K effective at the settlement's date)
+	//     (for matches, gas.elo_earned = K · NormalizedScore, so this sums the [0,1]
+	//      share-of-pool: a win contributes 1, a loss 0, ties/middle places a fraction)
+	//   gold/silver/bronze counts come from ranking players by score within each match.
+	//   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
+	//   every player in each of the target player's matches and the outer query then
+	//   filters down to the target player's own rows.
 	GetPlayerGameStats(ctx context.Context, playerID string) ([]GetPlayerGameStatsRow, error)
 	// Counts matches a player participated in within [from_date, to_date].
 	GetPlayerGlobalMatchCountInPeriod(ctx context.Context, arg GetPlayerGlobalMatchCountInPeriodParams) (int32, error)

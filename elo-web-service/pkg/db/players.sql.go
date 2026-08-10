@@ -157,32 +157,64 @@ func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID string) ([
 }
 
 const getPlayerGameStats = `-- name: GetPlayerGameStats :many
+WITH ranked AS (
+  SELECT
+    ms.match_id,
+    ms.player_id,
+    RANK() OVER (PARTITION BY ms.match_id ORDER BY ms.score DESC) AS place
+  FROM match_scores ms
+  JOIN (
+    SELECT DISTINCT match_id FROM match_scores WHERE player_id = $1
+  ) pm ON pm.match_id = ms.match_id
+)
 SELECT
   g.id::text AS game_id,
-  g.name     AS game_name,
-  COUNT(ms.match_id)::int AS matches_count,
-  COUNT(CASE WHEN ms.score = max_scores.max_score THEN 1 END)::int AS wins
-FROM match_scores ms
-JOIN matches m ON ms.match_id = m.id
-JOIN games g ON m.game_id = g.id
-JOIN (
-  SELECT match_id, MAX(score) AS max_score
-  FROM match_scores
-  GROUP BY match_id
-) max_scores ON max_scores.match_id = ms.match_id
-WHERE ms.player_id = $1
+  g.name AS game_name,
+  COUNT(*)::int AS matches_count,
+  COALESCE(SUM(
+    gas.elo_earned / (
+      SELECT es.elo_const_k
+      FROM elo_settings es
+      WHERE es.effective_date <= gas.date
+      ORDER BY es.effective_date DESC
+      LIMIT 1
+    )
+  ), 0)::float8 AS normalized_score,
+  COUNT(*) FILTER (WHERE ranked.place = 1)::int AS gold_count,
+  COUNT(*) FILTER (WHERE ranked.place = 2)::int AS silver_count,
+  COUNT(*) FILTER (WHERE ranked.place = 3)::int AS bronze_count
+FROM global_arena_settlement gas
+JOIN ranked
+  ON ranked.match_id = gas.match_id
+  AND ranked.player_id = gas.player_id
+JOIN matches m ON m.id = gas.match_id
+JOIN games g ON g.id = m.game_id
+WHERE gas.player_id = $1
+  AND gas.discriminator = 'match'
 GROUP BY g.id, g.name
 ORDER BY matches_count DESC
 LIMIT 10
 `
 
 type GetPlayerGameStatsRow struct {
-	GameID       string `json:"game_id"`
-	GameName     string `json:"game_name"`
-	MatchesCount int32  `json:"matches_count"`
-	Wins         int32  `json:"wins"`
+	GameID          string  `json:"game_id"`
+	GameName        string  `json:"game_name"`
+	MatchesCount    int32   `json:"matches_count"`
+	NormalizedScore float64 `json:"normalized_score"`
+	GoldCount       int32   `json:"gold_count"`
+	SilverCount     int32   `json:"silver_count"`
+	BronzeCount     int32   `json:"bronze_count"`
 }
 
+// Per-game stats for the player profile "Частые игры" table:
+//
+//	normalized_score = Σ (gas.elo_earned / K effective at the settlement's date)
+//	  (for matches, gas.elo_earned = K · NormalizedScore, so this sums the [0,1]
+//	   share-of-pool: a win contributes 1, a loss 0, ties/middle places a fraction)
+//	gold/silver/bronze counts come from ranking players by score within each match.
+//	NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
+//	every player in each of the target player's matches and the outer query then
+//	filters down to the target player's own rows.
 func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID string) ([]GetPlayerGameStatsRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
 	if err != nil {
@@ -196,7 +228,10 @@ func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID string) ([]Ge
 			&i.GameID,
 			&i.GameName,
 			&i.MatchesCount,
-			&i.Wins,
+			&i.NormalizedScore,
+			&i.GoldCount,
+			&i.SilverCount,
+			&i.BronzeCount,
 		); err != nil {
 			return nil, err
 		}

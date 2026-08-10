@@ -312,9 +312,23 @@ GameMatchStat:
       type: string
     matches_count:
       type: integer
-    wins:
+    normalized_score:
+      type: number
+      format: double
+      description: >
+        Sum of normalized scores (Σ elo_earned / K) across the player's matches
+        in this game. A win contributes 1, a loss 0, ties and middle places a
+        fractional share.
+    gold_count:
       type: integer
-  required: [game_id, game_name, matches_count, wins]
+      description: Number of 1st-place (gold medal) finishes in this game.
+    silver_count:
+      type: integer
+      description: Number of 2nd-place (silver medal) finishes in this game.
+    bronze_count:
+      type: integer
+      description: Number of 3rd-place (bronze medal) finishes in this game.
+  required: [game_id, game_name, matches_count, normalized_score, gold_count, silver_count, bronze_count]
 
 GameEloStat:
   type: object
