@@ -34,6 +34,8 @@ const STORAGE_KEYS = [
     "new-market/streakGameIDs",
     "new-market/winsRequired",
     "new-market/maxLosses",
+    "new-market/guarantorIDs",
+    "new-market/liquidityB",
 ] as const;
 
 export default function NewMarketPage() {
@@ -53,6 +55,14 @@ export default function NewMarketPage() {
     const [streakGameIDs, setStreakGameIDs] = useSessionStorage<string[]>("new-market/streakGameIDs", []);
     const [winsRequired, setWinsRequired] = useSessionStorage("new-market/winsRequired", "3");
     const [maxLosses, setMaxLosses] = useSessionStorage("new-market/maxLosses", "");
+    // Fixed-odds guarantors: prefilled with the creator's player. They split the
+    // market's settlement residual (deficit or surplus) — see ADR-10.
+    const [guarantorIDs, setGuarantorIDs] = useSessionStorage<string[]>(
+        "new-market/guarantorIDs",
+        me.playerId ? [me.playerId] : [],
+    );
+    // LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+    const [liquidityB, setLiquidityB] = useSessionStorage("new-market/liquidityB", "16");
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -78,6 +88,11 @@ export default function NewMarketPage() {
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
+            payload.guarantor_player_ids = guarantorIDs;
+            const lb = parseFloat(liquidityB);
+            if (!isNaN(lb) && lb > 0) {
+                payload.liquidity_b = lb;
+            }
             await createMarketPromise(payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/markets");
@@ -99,7 +114,7 @@ export default function NewMarketPage() {
             id: "", market_type: marketType, status: "open",
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
-            yes_pool: 0, no_pool: 0, yes_coefficient: 1, no_coefficient: 1,
+            yes_pool: 0, no_pool: 0, yes_price: 0.5, no_price: 0.5, yes_shares: 0, no_shares: 0, liquidity_b: parseFloat(liquidityB) || 16,
             target_player_id: targetID, params,
         };
     }
@@ -224,6 +239,30 @@ export default function NewMarketPage() {
                 )}
 
                 <ResolutionDescription market={buildPreviewMarket()} />
+
+                <div className="space-y-1.5">
+                    <Label>Поручители (покрывают остаток рейтинга)</Label>
+                    <PlayerMultiSelect value={guarantorIDs} onChange={setGuarantorIDs} />
+                    <p className="text-xs text-muted-foreground">
+                        Поручители — контрагенты рынка: они делят между собой дефицит или излишек рейтинга при разрешении.
+                    </p>
+                </div>
+
+                <div className="space-y-1.5">
+                    <Label htmlFor="liquidity_b">Ликвидность (b)</Label>
+                    <input
+                        id="liquidity_b"
+                        type="number"
+                        min={0.001}
+                        step="any"
+                        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                        value={liquidityB}
+                        onChange={e => setLiquidityB(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Параметр маркет-мейкера: больше b — менее резкое изменение цен и больше максимальный убыток поручителей (b·ln 2).
+                    </p>
+                </div>
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 

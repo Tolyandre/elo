@@ -12,9 +12,9 @@ import (
 )
 
 const createMarket = `-- name: CreateMarket :one
-INSERT INTO markets (id, market_type, starts_at, closes_at, created_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, q_yes, q_no
 `
 
 type CreateMarketParams struct {
@@ -23,6 +23,7 @@ type CreateMarketParams struct {
 	StartsAt   pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt   pgtype.Timestamptz `json:"closes_at"`
 	CreatedBy  string             `json:"created_by"`
+	LiquidityB float64            `json:"liquidity_b"`
 }
 
 func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error) {
@@ -32,6 +33,7 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		arg.StartsAt,
 		arg.ClosesAt,
 		arg.CreatedBy,
+		arg.LiquidityB,
 	)
 	var i Market
 	err := row.Scan(
@@ -46,8 +48,27 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.ResolutionMatchID,
 		&i.ResolutionOutcome,
 		&i.BettingClosedAt,
+		&i.LiquidityB,
+		&i.QYes,
+		&i.QNo,
 	)
 	return i, err
+}
+
+const createMarketGuarantors = `-- name: CreateMarketGuarantors :exec
+INSERT INTO market_guarantors (market_id, player_id)
+SELECT $1, t.player_id FROM unnest($2::uuid[]) AS t(player_id)
+`
+
+type CreateMarketGuarantorsParams struct {
+	MarketID  string   `json:"market_id"`
+	PlayerIds []string `json:"player_ids"`
+}
+
+// Bulk-inserts the market's guarantor players (zero-sum counterparties).
+func (q *Queries) CreateMarketGuarantors(ctx context.Context, arg CreateMarketGuarantorsParams) error {
+	_, err := q.db.Exec(ctx, createMarketGuarantors, arg.MarketID, arg.PlayerIds)
+	return err
 }
 
 const createMatchWinnerParams = `-- name: CreateMatchWinnerParams :exec
@@ -97,9 +118,12 @@ func (q *Queries) CreateWinStreakParams(ctx context.Context, arg CreateWinStreak
 }
 
 const deleteGlobalArenaSettlementByMarket = `-- name: DeleteGlobalArenaSettlementByMarket :exec
-DELETE FROM global_arena_settlement WHERE market_id = $1 AND discriminator = 'market'
+DELETE FROM global_arena_settlement
+WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor')
 `
 
+// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
+// rows for a market (used by unsettle/recalculation).
 func (q *Queries) DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *string) error {
 	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMarket, marketID)
 	return err
@@ -138,6 +162,46 @@ func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID strin
 	for rows.Next() {
 		var i GetBetsAggregatedByOutcomeRow
 		if err := rows.Scan(&i.PlayerID, &i.Outcome, &i.TotalAmount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBetsForSettlement = `-- name: GetBetsForSettlement :many
+SELECT player_id, outcome, amount, shares
+FROM bets
+WHERE market_id = $1
+ORDER BY placed_at, id
+`
+
+type GetBetsForSettlementRow struct {
+	PlayerID string  `json:"player_id"`
+	Outcome  string  `json:"outcome"`
+	Amount   float64 `json:"amount"`
+	Shares   float64 `json:"shares"`
+}
+
+// Per-buy rows (each carries the shares bought) used by share settlement.
+func (q *Queries) GetBetsForSettlement(ctx context.Context, marketID string) ([]GetBetsForSettlementRow, error) {
+	rows, err := q.db.Query(ctx, getBetsForSettlement, marketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetBetsForSettlementRow{}
+	for rows.Next() {
+		var i GetBetsForSettlementRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.Outcome,
+			&i.Amount,
+			&i.Shares,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -187,6 +251,52 @@ func (q *Queries) GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsO
 	return items, nil
 }
 
+const getMarketGuarantorPayouts = `-- name: GetMarketGuarantorPayouts :many
+SELECT bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
+FROM market_guarantors g
+JOIN global_arena_settlement bsd ON bsd.market_id = g.market_id AND bsd.player_id = g.player_id
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
+ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC
+`
+
+type GetMarketGuarantorPayoutsRow struct {
+	PlayerID   string  `json:"player_id"`
+	PlayerName string  `json:"player_name"`
+	Staked     float64 `json:"staked"`
+	Earned     float64 `json:"earned"`
+}
+
+// Guarantor-role settlement rows (discriminator 'market_guarantor') — the
+// per-guarantor payout rollup. A player who is both buyer and guarantor has a
+// separate buyer row (discriminator 'market'), so their entry here carries only
+// the house result (ADR-10).
+func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]GetMarketGuarantorPayoutsRow, error) {
+	rows, err := q.db.Query(ctx, getMarketGuarantorPayouts, marketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMarketGuarantorPayoutsRow{}
+	for rows.Next() {
+		var i GetMarketGuarantorPayoutsRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Staked,
+			&i.Earned,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMarketResolvedAt = `-- name: GetMarketResolvedAt :one
 SELECT resolved_at FROM markets WHERE id = $1
 `
@@ -202,6 +312,7 @@ const getMarketWithPools = `-- name: GetMarketWithPools :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -231,6 +342,9 @@ type GetMarketWithPoolsRow struct {
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID *string            `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
+	LiquidityB        float64            `json:"liquidity_b"`
+	QYes              float64            `json:"q_yes"`
+	QNo               float64            `json:"q_no"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    string             `json:"target_player_id"`
@@ -256,6 +370,9 @@ func (q *Queries) GetMarketWithPools(ctx context.Context, id string) (GetMarketW
 		&i.ResolvedAt,
 		&i.ResolutionMatchID,
 		&i.BettingClosedAt,
+		&i.LiquidityB,
+		&i.QYes,
+		&i.QNo,
 		&i.YesPool,
 		&i.NoPool,
 		&i.TargetPlayerID,
@@ -408,6 +525,45 @@ func (q *Queries) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetP
 	return items, nil
 }
 
+const getPlayerBetsForMarket = `-- name: GetPlayerBetsForMarket :many
+SELECT outcome, amount, shares
+FROM bets
+WHERE market_id = $1 AND player_id = $2
+ORDER BY placed_at, id
+`
+
+type GetPlayerBetsForMarketParams struct {
+	MarketID string `json:"market_id"`
+	PlayerID string `json:"player_id"`
+}
+
+type GetPlayerBetsForMarketRow struct {
+	Outcome string  `json:"outcome"`
+	Amount  float64 `json:"amount"`
+	Shares  float64 `json:"shares"`
+}
+
+// Per-buy rows for one player, used to show shares held / elo spent on the detail page.
+func (q *Queries) GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerBetsForMarket, arg.MarketID, arg.PlayerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetPlayerBetsForMarketRow{}
+	for rows.Next() {
+		var i GetPlayerBetsForMarketRow
+		if err := rows.Scan(&i.Outcome, &i.Amount, &i.Shares); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getPlayerReservedAmount = `-- name: GetPlayerReservedAmount :one
 SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
 FROM bets ob
@@ -522,8 +678,8 @@ func (q *Queries) GetWinStreakParams(ctx context.Context, marketID string) (Mark
 }
 
 const insertBet = `-- name: InsertBet :one
-INSERT INTO bets (id, market_id, player_id, outcome, amount)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO bets (id, market_id, player_id, outcome, amount, shares)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, placed_at
 `
 
@@ -533,6 +689,7 @@ type InsertBetParams struct {
 	PlayerID string  `json:"player_id"`
 	Outcome  string  `json:"outcome"`
 	Amount   float64 `json:"amount"`
+	Shares   float64 `json:"shares"`
 }
 
 type InsertBetRow struct {
@@ -547,16 +704,51 @@ func (q *Queries) InsertBet(ctx context.Context, arg InsertBetParams) (InsertBet
 		arg.PlayerID,
 		arg.Outcome,
 		arg.Amount,
+		arg.Shares,
 	)
 	var i InsertBetRow
 	err := row.Scan(&i.ID, &i.PlacedAt)
 	return i, err
 }
 
+const listMarketGuarantors = `-- name: ListMarketGuarantors :many
+SELECT g.player_id, p.name AS player_name
+FROM market_guarantors g
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = $1
+ORDER BY p.name
+`
+
+type ListMarketGuarantorsRow struct {
+	PlayerID   string `json:"player_id"`
+	PlayerName string `json:"player_name"`
+}
+
+func (q *Queries) ListMarketGuarantors(ctx context.Context, marketID string) ([]ListMarketGuarantorsRow, error) {
+	rows, err := q.db.Query(ctx, listMarketGuarantors, marketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMarketGuarantorsRow{}
+	for rows.Next() {
+		var i ListMarketGuarantorsRow
+		if err := rows.Scan(&i.PlayerID, &i.PlayerName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -586,6 +778,9 @@ type ListMarketsByResolutionMatchRow struct {
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID *string            `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
+	LiquidityB        float64            `json:"liquidity_b"`
+	QYes              float64            `json:"q_yes"`
+	QNo               float64            `json:"q_no"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    string             `json:"target_player_id"`
@@ -617,6 +812,9 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.ResolvedAt,
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
+			&i.LiquidityB,
+			&i.QYes,
+			&i.QNo,
 			&i.YesPool,
 			&i.NoPool,
 			&i.TargetPlayerID,
@@ -640,6 +838,7 @@ const listMarketsWithPools = `-- name: ListMarketsWithPools :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -669,6 +868,9 @@ type ListMarketsWithPoolsRow struct {
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID *string            `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
+	LiquidityB        float64            `json:"liquidity_b"`
+	QYes              float64            `json:"q_yes"`
+	QNo               float64            `json:"q_no"`
 	YesPool           float64            `json:"yes_pool"`
 	NoPool            float64            `json:"no_pool"`
 	TargetPlayerID    string             `json:"target_player_id"`
@@ -700,6 +902,9 @@ func (q *Queries) ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPo
 			&i.ResolvedAt,
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
+			&i.LiquidityB,
+			&i.QYes,
+			&i.QNo,
 			&i.YesPool,
 			&i.NoPool,
 			&i.TargetPlayerID,
@@ -1022,6 +1227,22 @@ func (q *Queries) UnsettleMarket(ctx context.Context, id string) error {
 	return err
 }
 
+const updateMarketAMMState = `-- name: UpdateMarketAMMState :exec
+UPDATE markets SET q_yes = $2, q_no = $3 WHERE id = $1
+`
+
+type UpdateMarketAMMStateParams struct {
+	ID   string  `json:"id"`
+	QYes float64 `json:"q_yes"`
+	QNo  float64 `json:"q_no"`
+}
+
+// Persists the LMSR state after a bet shifts the outstanding shares.
+func (q *Queries) UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error {
+	_, err := q.db.Exec(ctx, updateMarketAMMState, arg.ID, arg.QYes, arg.QNo)
+	return err
+}
+
 const updatePlayerBetLimit = `-- name: UpdatePlayerBetLimit :exec
 UPDATE players SET bet_limit = $2 WHERE id = $1
 `
@@ -1040,8 +1261,8 @@ const upsertGlobalArenaSettlementByMarket = `-- name: UpsertGlobalArenaSettlemen
 INSERT INTO global_arena_settlement
     (id, player_id, date, rating_after, elo_after, discriminator, market_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, $5, 'market', $6, $7, $8, $9, $10, $11)
-ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, $12, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -1053,19 +1274,23 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByMarketParams struct {
-	ID           string             `json:"id"`
-	PlayerID     string             `json:"player_id"`
-	Date         pgtype.Timestamptz `json:"date"`
-	RatingAfter  float64            `json:"rating_after"`
-	EloAfter     float64            `json:"elo_after"`
-	MarketID     *string            `json:"market_id"`
-	EloStaked    float64            `json:"elo_staked"`
-	EloEarned    float64            `json:"elo_earned"`
-	RatingStaked float64            `json:"rating_staked"`
-	RatingEarned float64            `json:"rating_earned"`
-	League       string             `json:"league"`
+	ID            string             `json:"id"`
+	PlayerID      string             `json:"player_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	RatingAfter   float64            `json:"rating_after"`
+	EloAfter      float64            `json:"elo_after"`
+	MarketID      *string            `json:"market_id"`
+	EloStaked     float64            `json:"elo_staked"`
+	EloEarned     float64            `json:"elo_earned"`
+	RatingStaked  float64            `json:"rating_staked"`
+	RatingEarned  float64            `json:"rating_earned"`
+	League        string             `json:"league"`
+	Discriminator string             `json:"discriminator"`
 }
 
+// One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
+// a player who is both gets two rows, hence the discriminator in the conflict
+// target.
 func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error {
 	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByMarket,
 		arg.ID,
@@ -1079,6 +1304,7 @@ func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg U
 		arg.RatingStaked,
 		arg.RatingEarned,
 		arg.League,
+		arg.Discriminator,
 	)
 	return err
 }

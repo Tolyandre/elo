@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -23,6 +24,23 @@ func newID(t *testing.T) string {
 		t.Fatalf("generate uuid: %v", err)
 	}
 	return id.String()
+}
+
+// placeBetAtCurrentPrice places a bet passing the market's live marginal price
+// as expectedPrice — mirroring what the UI sends for the price it displays.
+func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID, playerID, outcome string, shares float64) error {
+	t.Helper()
+	m, err := svc.GetMarketWithPools(ctx, marketID)
+	if err != nil {
+		t.Fatalf("GetMarketWithPools: %v", err)
+	}
+	yes, no := elo.MarginalPrices(m.QYes, m.QNo, m.LiquidityB)
+	price := yes
+	if outcome == "no" {
+		price = no
+	}
+	_, err = svc.PlaceBet(ctx, newID(t), marketID, playerID, outcome, shares, price)
+	return err
 }
 
 // newMatchOpts returns AddMatchOpts pre-filled with a fresh client-generated
@@ -203,6 +221,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	ctx := context.Background()
 	playerA := createTestPlayer(t, pool, "PlayerA")
 	playerB := createTestPlayer(t, pool, "PlayerB")
+	guarantor := createTestPlayer(t, pool, "PlayerBGuarantor")
 	gameID := createTestGame(t, pool, "Poker")
 	adminID := createTestAdmin(t, pool)
 
@@ -211,11 +230,12 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 
 	// Create a match_winner market: does playerA win a match that includes playerB?
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:         newID(t),
-		MarketType: "match_winner",
-		StartsAt:   time.Now().Add(-time.Minute),
-		ClosesAt:   time.Now().Add(24 * time.Hour),
-		CreatedBy:  adminID,
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           time.Now().Add(-time.Minute),
+		ClosesAt:           time.Now().Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    playerA,
 			RequiredPlayerIDs: []string{playerB},
@@ -232,11 +252,11 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Both players bet: A bets yes (they win), B bets no
-	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 10 to stay within it.
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
+	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 1-share buys (cost < 1 elo) to stay within it.
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 
@@ -267,8 +287,8 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 		t.Errorf("playerB: expected 1 market_settlement row, got %d", c)
 	}
 
-	// Winner (playerA) should have gained ELo from the settlement (earned 100, staked 50 → +50)
-	// Loser (playerB) should have lost Elo (-50).
+	// Winner (playerA) should have gained elo from the settlement (1 winning
+	// share pays 1, cost < 1); loser (playerB) should have lost their cost.
 	// We check by comparing their final ratings: playerA's market-settlement rating > pre-settlement.
 	allRowsA := playerRatingRows(t, pool, playerA)
 	// Find the last two rows: second-to-last is match, last is market settlement (or vice versa)
@@ -278,7 +298,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 	finalA := allRowsA[len(allRowsA)-1].Rating
 	finalB := latestRating(t, pool, playerB)
-	// playerA won the bet: +50 → final ELo higher than playerB who lost -50
+	// playerA won the bet (net > 0), playerB lost their cost → final elo A > B
 	if finalA <= finalB {
 		t.Errorf("after settlement: playerA Elo (%.2f) should exceed playerB Elo (%.2f)", finalA, finalB)
 	}
@@ -303,6 +323,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	ctx := context.Background()
 	playerA := createTestPlayer(t, pool, "RecalcA")
 	playerB := createTestPlayer(t, pool, "RecalcB")
+	guarantor := createTestPlayer(t, pool, "RecalcBGuarantor")
 	gameID := createTestGame(t, pool, "Domino")
 	adminID := createTestAdmin(t, pool)
 
@@ -326,9 +347,10 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 		MarketType: "match_winner",
 		// StartsAt must be AFTER t1 so that M1 (at t1) cannot trigger this market
 		// during recalculation (the market didn't exist yet when M1 first ran).
-		StartsAt: t1.Add(30 * time.Minute),
-		ClosesAt: now.Add(24 * time.Hour), // well in the future so the expiry timer doesn't fire during the test
-		CreatedBy: adminID,
+		StartsAt:           t1.Add(30 * time.Minute),
+		ClosesAt:           now.Add(24 * time.Hour), // well in the future so the expiry timer doesn't fire during the test
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    playerA,
 			RequiredPlayerIDs: []string{playerB},
@@ -337,11 +359,11 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 10 to stay within it.
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
+	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 1-share buys (cost < 1 elo) to stay within it.
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 
@@ -399,6 +421,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	ctx := context.Background()
 	playerA := createTestPlayer(t, pool, "ConflictA")
 	playerB := createTestPlayer(t, pool, "ConflictB")
+	guarantor := createTestPlayer(t, pool, "ConflictBGuarantor")
 	gameID := createTestGame(t, pool, "Checkers")
 	adminID := createTestAdmin(t, pool)
 
@@ -418,11 +441,12 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 
 	// 2. Market covering the upcoming game (starts in past, covers tFuture).
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:         newID(t),
-		MarketType: "match_winner",
-		StartsAt:   now.Add(-time.Hour),
-		ClosesAt:   now.Add(24 * time.Hour),
-		CreatedBy:  adminID,
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           now.Add(-time.Hour),
+		ClosesAt:           now.Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    playerA,
 			RequiredPlayerIDs: []string{playerB},
@@ -433,10 +457,10 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	}
 
 	// 3. Bets placed NOW (placed_at ≈ now, before tFuture = now+2h).
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 
@@ -466,6 +490,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	ctx := context.Background()
 	playerA := createTestPlayer(t, pool, "ExpiryA")
 	playerB := createTestPlayer(t, pool, "ExpiryB")
+	guarantor := createTestPlayer(t, pool, "ExpiryBGuarantor")
 	gameID := createTestGame(t, pool, "Go")
 	adminID := createTestAdmin(t, pool)
 
@@ -486,11 +511,12 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 
 	// Create a win_streak market that expires before the trigger match.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:         newID(t),
-		MarketType: "win_streak",
-		StartsAt:   now.Add(-time.Minute),
-		ClosesAt:   tExp,
-		CreatedBy:  adminID,
+		ID:                 newID(t),
+		MarketType:         "win_streak",
+		StartsAt:           now.Add(-time.Minute),
+		ClosesAt:           tExp,
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
 		WinStreak: &elo.WinStreakCreateParams{
 			TargetPlayerID: playerA,
 			GameIDs:        []string{gameID},
@@ -501,11 +527,11 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 		t.Fatalf("CreateMarket: %v", err)
 	}
 
-	// Bet limit after starting-Elo warm-up match = K/(1+1) = 16; use 10.
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
+	// Bet limit after starting-Elo warm-up match = K/(1+1) = 16; use 1-share buys.
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 
@@ -531,5 +557,393 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	}
 	if c := marketSettlementRatingCount(t, pool, playerB); c != 1 {
 		t.Errorf("playerB: expected 1 market_settlement row after expiry, got %d", c)
+	}
+}
+
+// TestMarketSettlement_FixedOddsZeroSum verifies the share-buying guarantees:
+//   - creating a market without guarantors is rejected (conservation requires a
+//     counterparty for the settlement residual);
+//   - each buy stores shares (each winning share pays 1 at resolution);
+//   - after settlement, elo is strictly conserved across buyers + guarantors
+//     (Σ (elo_staked + elo_earned) == 0 over the market's settlement rows);
+//   - the sole guarantor absorbs the full residual (deficit or surplus).
+func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	playerA := createTestPlayer(t, pool, "FxoA")
+	playerB := createTestPlayer(t, pool, "FxoB")
+	guarantor := createTestPlayer(t, pool, "FxoGuarantor")
+	gameID := createTestGame(t, pool, "FixGame")
+	adminID := createTestAdmin(t, pool)
+
+	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	marketSvc := elo.NewMarketService(pool)
+
+	// 1. No-guarantor market must be rejected.
+	if _, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerID:    playerA,
+			RequiredPlayerIDs: []string{playerB},
+		},
+	}); !errors.Is(err, elo.ErrMarketNeedsGuarantor) {
+		t.Fatalf("expected ErrMarketNeedsGuarantor, got %v", err)
+	}
+
+	// 2. Create a market backed by a sole guarantor.
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           time.Now().Add(-time.Minute),
+		ClosesAt:           time.Now().Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerID:    playerA,
+			RequiredPlayerIDs: []string{playerB},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+
+	// Warm-up match so players have a bet limit > 0.
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+		t.Fatalf("warm-up AddMatch: %v", err)
+	}
+
+	// 3. Buy shares (1 YES vs 2 NO — asymmetric so the settlement residual is
+	// non-zero); the AMM-priced cost (elo spent) and shares are stored
+	// server-side.
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
+		t.Fatalf("PlaceBet playerA: %v", err)
+	}
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 2); err != nil {
+		t.Fatalf("PlaceBet playerB: %v", err)
+	}
+
+	sharesA, sharesB := readBetShares(t, pool, market.ID, playerA), readBetShares(t, pool, market.ID, playerB)
+	// Shares-driven buys store exactly the shares asked for.
+	if math.Abs(sharesA-1) > 1e-9 || math.Abs(sharesB-2) > 1e-9 {
+		t.Errorf("shares = %v/%v, want 1/2 (as asked)", sharesA, sharesB)
+	}
+	// The cost is the average price over the bought interval — below the share
+	// count (price < 1).
+	amountA, amountB := readBetAmount(t, pool, market.ID, playerA), readBetAmount(t, pool, market.ID, playerB)
+	if amountA <= 0 || amountA >= 1 {
+		t.Errorf("playerA amount = %v, want it in (0, 1) at fresh 50/50 LMSR state", amountA)
+	}
+	if amountB <= 0 || amountB >= 2 {
+		t.Errorf("playerB amount = %v, want it in (0, 2)", amountB)
+	}
+
+	// 4. Trigger resolution: playerA (YES) wins.
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("trigger AddMatch: %v", err)
+	}
+
+	// 5. Strict zero-sum across all market settlement rows (buyers + guarantor).
+	var deltaSum float64
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	if err != nil {
+		t.Fatalf("query settlements: %v", err)
+	}
+	for rows.Next() {
+		var staked, earned float64
+		if err := rows.Scan(&staked, &earned); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		deltaSum += staked + earned
+	}
+	rows.Close()
+
+	// 6. The sole guarantor absorbs the residual exactly:
+	//    collected(amountA+amountB) − paid(sharesA), since each winning YES share
+	//    pays 1.
+	expectedResidual := (amountA + amountB) - sharesA
+	guarantorDelta := playerMarketDelta(t, pool, market.ID, guarantor)
+	gotGuarantorRow := guarantorDelta != 0 || math.Abs(expectedResidual) < 1e-9
+	if !gotGuarantorRow {
+		t.Errorf("expected a guarantor settlement row for %s", guarantor)
+	}
+	if math.Abs(guarantorDelta-expectedResidual) > 1e-6 {
+		t.Errorf("guarantor delta = %.6f, want residual %.6f", guarantorDelta, expectedResidual)
+	}
+
+	// 7. Winner (playerA) payout == their shares; loser (playerB) payout == 0.
+	if got := playerMarketEarned(t, pool, market.ID, playerA); math.Abs(got-sharesA) > 1e-6 {
+		t.Errorf("playerA earned = %.6f, want shares %.6f", got, sharesA)
+	}
+	if got := playerMarketEarned(t, pool, market.ID, playerB); math.Abs(got) > 1e-6 {
+		t.Errorf("playerB earned = %.6f, want 0 (loser)", got)
+	}
+
+	const epsilon = 1e-6
+	if math.Abs(deltaSum) > epsilon {
+		t.Errorf("market settlement not zero-sum: Σ(elo_staked+elo_earned) = %.6f (must be 0)", deltaSum)
+	}
+}
+
+// TestMarketSettlement_GuarantorBuysOwnMarket verifies the ADR-10 guarantee that
+// a player may be both buyer and guarantor (the creator's player is prefilled as
+// guarantor): the guarantor can buy on their own market, and at settlement they
+// get one settlement row per role — a 'market' row carrying the buy P&L and a
+// 'market_guarantor' row carrying their residual share — keeping elo strictly
+// conserved. Both rows share the same post-market balances so the latest-at-date
+// elo/rating read is correct whichever row the id tie-break picks. The
+// per-guarantor payout rollup shows only the guarantor-role row.
+func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	playerA := createTestPlayer(t, pool, "OwnGuarA") // buyer + sole guarantor
+	playerB := createTestPlayer(t, pool, "OwnGuarB")
+	gameID := createTestGame(t, pool, "OwnGuarGame")
+	adminID := createTestAdmin(t, pool)
+
+	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	marketSvc := elo.NewMarketService(pool)
+
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           time.Now().Add(-time.Minute),
+		ClosesAt:           time.Now().Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{playerA},
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerID:    playerA,
+			RequiredPlayerIDs: []string{playerB},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+		t.Fatalf("warm-up AddMatch: %v", err)
+	}
+
+	// The guarantor (playerA) buys 1 YES share on their own market; playerB buys
+	// 2 NO shares (asymmetric so the residual is non-zero).
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 1); err != nil {
+		t.Fatalf("PlaceBet playerA (guarantor buying own market): %v", err)
+	}
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 2); err != nil {
+		t.Fatalf("PlaceBet playerB: %v", err)
+	}
+
+	sharesA := readBetShares(t, pool, market.ID, playerA)
+	amountA, amountB := readBetAmount(t, pool, market.ID, playerA), readBetAmount(t, pool, market.ID, playerB)
+
+	// Resolve YES (playerA wins).
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("trigger AddMatch: %v", err)
+	}
+
+	// playerA must have exactly TWO settlement rows: one per role (UNIQUE
+	// (market_id, player_id, discriminator)) — the buy P&L in 'market' and the
+	// guarantor residual share in 'market_guarantor'.
+	var rowCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		market.ID, playerA,
+	).Scan(&rowCount); err != nil {
+		t.Fatalf("count playerA rows: %v", err)
+	}
+	if rowCount != 2 {
+		t.Errorf("playerA: expected 2 settlement rows (buyer + guarantor), got %d", rowCount)
+	}
+
+	// Both rows share the same post-market balances (computed from the total
+	// delta across both roles), so the latest-at-date elo/rating read is correct
+	// whichever row wins the id tie-break.
+	var buyerElo, buyerRating, guarantorElo, guarantorRating float64
+	if err := pool.QueryRow(ctx,
+		`SELECT elo_after, rating_after FROM global_arena_settlement
+		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market'`,
+		market.ID, playerA,
+	).Scan(&buyerElo, &buyerRating); err != nil {
+		t.Fatalf("read playerA buyer row: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`SELECT elo_after, rating_after FROM global_arena_settlement
+		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market_guarantor'`,
+		market.ID, playerA,
+	).Scan(&guarantorElo, &guarantorRating); err != nil {
+		t.Fatalf("read playerA guarantor row: %v", err)
+	}
+	if buyerElo != guarantorElo || buyerRating != guarantorRating {
+		t.Errorf("playerA rows carry different balances: elo %.6f/%.6f rating %.6f/%.6f",
+			buyerElo, guarantorElo, buyerRating, guarantorRating)
+	}
+
+	// Total delta: −amountA (bought) + sharesA (won) + residual (sole guarantor)
+	// = amountB; playerB loses amountB. Strict zero-sum overall.
+	const epsilon = 1e-6
+	if got := playerMarketDelta(t, pool, market.ID, playerA); math.Abs(got-amountB) > epsilon {
+		t.Errorf("playerA total delta = %.6f, want +%.6f (amountB)", got, amountB)
+	}
+	if got := playerMarketDelta(t, pool, market.ID, playerB); math.Abs(got+amountB) > epsilon {
+		t.Errorf("playerB delta = %.6f, want -%.6f", got, amountB)
+	}
+
+	var deltaSum float64
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	if err != nil {
+		t.Fatalf("query settlements: %v", err)
+	}
+	for rows.Next() {
+		var staked, earned float64
+		if err := rows.Scan(&staked, &earned); err != nil {
+			rows.Close()
+			t.Fatalf("scan: %v", err)
+		}
+		deltaSum += staked + earned
+	}
+	rows.Close()
+	if math.Abs(deltaSum) > epsilon {
+		t.Errorf("market settlement not zero-sum: Σ(elo_staked+elo_earned) = %.6f (must be 0)", deltaSum)
+	}
+
+	// The per-guarantor payout rollup must include only playerA's guarantor-role
+	// row (the house result: the residual share, without the buy P&L).
+	expectedResidual := (amountA + amountB) - sharesA
+	expGuarantorStaked := math.Max(-expectedResidual, 0)
+	expGuarantorEarned := math.Max(expectedResidual, 0)
+	rollup, err := db.New(pool).GetMarketGuarantorPayouts(ctx, market.ID)
+	if err != nil {
+		t.Fatalf("GetMarketGuarantorPayouts: %v", err)
+	}
+	found := false
+	for _, r := range rollup {
+		if r.PlayerID == playerA {
+			found = true
+			if math.Abs(r.Staked-expGuarantorStaked) > epsilon || math.Abs(r.Earned-expGuarantorEarned) > epsilon {
+				t.Errorf("guarantor rollup for playerA = (staked %.6f, earned %.6f), want (%.6f, %.6f)",
+					r.Staked, r.Earned, expGuarantorStaked, expGuarantorEarned)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("guarantor rollup does not include playerA (buyer + guarantor)")
+	}
+}
+
+// readBetShares returns the shares stored on a player's (single) buy.
+func readBetShares(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+	t.Helper()
+	var shares float64
+	err := pool.QueryRow(context.Background(),
+		`SELECT shares FROM bets WHERE market_id = $1 AND player_id = $2 LIMIT 1`, marketID, playerID,
+	).Scan(&shares)
+	if err != nil {
+		t.Fatalf("read shares for %s: %v", playerID, err)
+	}
+	return shares
+}
+
+// readBetAmount returns the AMM-priced elo cost stored on a player's (single) buy.
+func readBetAmount(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+	t.Helper()
+	var amount float64
+	err := pool.QueryRow(context.Background(),
+		`SELECT amount FROM bets WHERE market_id = $1 AND player_id = $2 LIMIT 1`, marketID, playerID,
+	).Scan(&amount)
+	if err != nil {
+		t.Fatalf("read amount for %s: %v", playerID, err)
+	}
+	return amount
+}
+
+// playerMarketEarned returns elo_earned for a player's market settlement row (0 if none).
+func playerMarketEarned(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+	t.Helper()
+	var earned float64
+	err := pool.QueryRow(context.Background(),
+		`SELECT COALESCE(SUM(elo_earned), 0) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		marketID, playerID,
+	).Scan(&earned)
+	if err != nil {
+		t.Fatalf("market earned for %s: %v", playerID, err)
+	}
+	return earned
+}
+
+// playerMarketDelta returns elo_staked + elo_earned for a player's market settlement row,
+// or 0 if no such row exists.
+func playerMarketDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+	t.Helper()
+	var delta float64
+	err := pool.QueryRow(context.Background(),
+		`SELECT COALESCE(SUM(elo_staked + elo_earned), 0) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		marketID, playerID,
+	).Scan(&delta)
+	if err != nil {
+		t.Fatalf("market delta for %s: %v", playerID, err)
+	}
+	return delta
+}
+
+// TestPlaceBet_ExpectedPriceValidation verifies that a buy is priced around the
+// price the buyer saw: PlaceBet rejects an expected_price that has drifted
+// beyond elo.PriceTolerance and accepts one within it.
+func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	playerA := createTestPlayer(t, pool, "PriceA")
+	playerB := createTestPlayer(t, pool, "PriceB")
+	guarantor := createTestPlayer(t, pool, "PriceGuarantor")
+	gameID := createTestGame(t, pool, "Poker")
+	adminID := createTestAdmin(t, pool)
+
+	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	marketSvc := elo.NewMarketService(pool)
+
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           time.Now().Add(-time.Minute),
+		ClosesAt:           time.Now().Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{guarantor},
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerID:    playerA,
+			RequiredPlayerIDs: []string{playerB},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+
+	// Warm-up match so the players have a bet limit.
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+		t.Fatalf("warm-up AddMatch: %v", err)
+	}
+
+	m, err := marketSvc.GetMarketWithPools(ctx, market.ID)
+	if err != nil {
+		t.Fatalf("GetMarketWithPools: %v", err)
+	}
+	yesPrice, _ := elo.MarginalPrices(m.QYes, m.QNo, m.LiquidityB)
+
+	// A stale price (an old snapshot, or the market moved) must be rejected.
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 1, yesPrice-0.05); !errors.Is(err, elo.ErrPriceChanged) {
+		t.Fatalf("PlaceBet with stale price: err = %v, want ErrPriceChanged", err)
+	}
+
+	// A price within the tolerance is accepted.
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 1, yesPrice-elo.PriceTolerance/2); err != nil {
+		t.Fatalf("PlaceBet with fresh price: %v", err)
 	}
 }

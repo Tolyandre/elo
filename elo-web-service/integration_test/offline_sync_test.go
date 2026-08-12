@@ -196,11 +196,12 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:         newID(t),
-		MarketType: "match_winner",
-		StartsAt:   now.Add(-time.Hour),
-		ClosesAt:   now.Add(24 * time.Hour),
-		CreatedBy:  adminID,
+		ID:                 newID(t),
+		MarketType:         "match_winner",
+		StartsAt:           now.Add(-time.Hour),
+		ClosesAt:           now.Add(24 * time.Hour),
+		CreatedBy:          adminID,
+		GuarantorPlayerIDs: []string{playerA},
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerID:    playerA,
 			RequiredPlayerIDs: []string{playerB},
@@ -211,10 +212,10 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	// Bets placed now.
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, "yes", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, "yes", 10); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerB, "no", 10); err != nil {
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, "no", 10); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 

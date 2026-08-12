@@ -2,8 +2,10 @@ package elo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -19,13 +21,17 @@ type CreateMarketParams struct {
 	ClosesAt   time.Time
 	CreatedBy  string
 
+	// Fixed-odds / LMSR fields.
+	LiquidityB         float64  // <=0 ⇒ resolved from elo_settings.market_default_liquidity_b
+	GuarantorPlayerIDs []string // players who absorb the market's settlement residual
+
 	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
 	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
 }
 
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
-	PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, amount float64) error
+	PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, shares float64, expectedPrice float64) (PlaceBetOutcome, error)
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
 	// Must be called within an active transaction (q is transactional).
@@ -35,8 +41,10 @@ type IMarketService interface {
 	// Must be called within an active transaction.
 	UnsettleMarketsFromDate(ctx context.Context, q *db.Queries, fromDate time.Time) error
 
-	// SettleMarket applies parimutuel payout for the given market and outcome.
-	// OutcomeCancelled returns all stakes. Must be called within an active transaction.
+	// SettleMarket pays out the winning side (each winning share pays 1) and
+	// redistributes the settlement residual across the market's guarantors, keeping
+	// elo strictly conserved (zero-sum across buyers + guarantors).
+	// OutcomeCancelled refunds all spent elo. Must be called within an active transaction.
 	SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
@@ -60,8 +68,11 @@ type IMarketService interface {
 	ListMarketsWithPools(ctx context.Context) ([]db.ListMarketsWithPoolsRow, error)
 	GetMarketWithPools(ctx context.Context, id string) (db.GetMarketWithPoolsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error)
+	GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]db.GetMarketGuarantorPayoutsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error)
+	GetPlayerBetsForMarket(ctx context.Context, arg db.GetPlayerBetsForMarketParams) ([]db.GetPlayerBetsForMarketRow, error)
+	ListMarketGuarantors(ctx context.Context, marketID string) ([]db.ListMarketGuarantorsRow, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error)
 	GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error)
 }
@@ -69,6 +80,7 @@ type IMarketService interface {
 type MarketService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Hub     *MarketsHub // optional; when set, PlaceBet broadcasts new prices
 	timer   *time.Timer
 	timerMu sync.Mutex
 }
@@ -77,6 +89,16 @@ func NewMarketService(pool *pgxpool.Pool) IMarketService {
 	return &MarketService{
 		Queries: db.New(pool),
 		Pool:    pool,
+	}
+}
+
+// NewMarketServiceWithHub wires the SSE hub so PlaceBet broadcasts live price
+// updates to connected clients.
+func NewMarketServiceWithHub(pool *pgxpool.Pool, hub *MarketsHub) IMarketService {
+	return &MarketService{
+		Queries: db.New(pool),
+		Pool:    pool,
+		Hub:     hub,
 	}
 }
 
@@ -95,12 +117,24 @@ func (s *MarketService) GetSettlementDetails(ctx context.Context, marketID *stri
 	return s.Queries.GetSettlementDetails(ctx, marketID)
 }
 
+func (s *MarketService) GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]db.GetMarketGuarantorPayoutsRow, error) {
+	return s.Queries.GetMarketGuarantorPayouts(ctx, marketID)
+}
+
 func (s *MarketService) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error) {
 	return s.Queries.ListMarketsByResolutionMatch(ctx, resolutionMatchID)
 }
 
 func (s *MarketService) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error) {
 	return s.Queries.GetPlayerBetsAggregatedForMarket(ctx, arg)
+}
+
+func (s *MarketService) GetPlayerBetsForMarket(ctx context.Context, arg db.GetPlayerBetsForMarketParams) ([]db.GetPlayerBetsForMarketRow, error) {
+	return s.Queries.GetPlayerBetsForMarket(ctx, arg)
+}
+
+func (s *MarketService) ListMarketGuarantors(ctx context.Context, marketID string) ([]db.ListMarketGuarantorsRow, error) {
+	return s.Queries.ListMarketGuarantors(ctx, marketID)
 }
 
 func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error) {
@@ -115,6 +149,26 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	handler, ok := marketTypeHandlers[params.MarketType]
 	if !ok {
 		return db.Market{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
+	}
+	// Guarantors are the zero-sum counterparty: without at least one, the fixed-odds
+	// settlement residual (deficit or surplus) would have nowhere to go and elo
+	// would not be conserved. The UI prefills the creator's player.
+	if len(params.GuarantorPlayerIDs) == 0 {
+		return db.Market{}, ErrMarketNeedsGuarantor
+	}
+
+	// Resolve the LMSR liquidity parameter: use the caller's value, else the
+	// configured default. b must be > 0 (it bounds guarantor loss at b·ln 2).
+	liquidityB := params.LiquidityB
+	if liquidityB <= 0 {
+		settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: params.StartsAt, Valid: true})
+		if err != nil {
+			return db.Market{}, fmt.Errorf("get elo settings for default liquidity: %w", err)
+		}
+		liquidityB = settingsRow.MarketDefaultLiquidityB
+		if liquidityB <= 0 {
+			liquidityB = 100
+		}
 	}
 
 	tx, err := s.Pool.Begin(ctx)
@@ -131,6 +185,7 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
 		ClosesAt:   pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
 		CreatedBy:  params.CreatedBy,
+		LiquidityB: liquidityB,
 	})
 	if err != nil {
 		return db.Market{}, fmt.Errorf("insert market: %w", err)
@@ -140,48 +195,92 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		return db.Market{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
 	}
 
+	if len(params.GuarantorPlayerIDs) > 0 {
+		if err := q.CreateMarketGuarantors(ctx, db.CreateMarketGuarantorsParams{
+			MarketID:  market.ID,
+			PlayerIds: params.GuarantorPlayerIDs,
+		}); err != nil {
+			return db.Market{}, fmt.Errorf("insert guarantors: %w", err)
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return db.Market{}, fmt.Errorf("commit tx: %w", err)
 	}
 
 	s.ScheduleNextExpiry(context.Background())
 
+	if s.Hub != nil {
+		s.Hub.BroadcastLobby([]byte(`{"type":"markets-changed"}`))
+	}
+
 	return market, nil
 }
 
-func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, amount float64) error {
+// PriceTolerance is the maximum allowed difference between the expected price
+// the buyer saw (and sends with the bet) and the live marginal price at bet
+// time. Covers UI rounding and SSE propagation latency, but rejects the buy
+// once other participants have moved the market.
+const PriceTolerance = 0.01
+
+// PlaceBetOutcome is returned to the buyer: the shares received and the effective
+// price paid per share (amount / shares).
+type PlaceBetOutcome struct {
+	Shares float64
+	Price  float64
+}
+
+func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, shares float64, expectedPrice float64) (PlaceBetOutcome, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	q := s.Queries.WithTx(tx)
 
 	if _, err := q.LockPlayerForEloCalculation(ctx, playerID); err != nil {
-		return fmt.Errorf("lock player: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("lock player: %w", err)
 	}
 
 	market, err := q.GetMarketWithPools(ctx, marketID)
 	if err != nil {
-		return fmt.Errorf("get market: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("get market: %w", err)
 	}
 	if market.Status != "open" {
-		return ErrMarketNotOpen
+		return PlaceBetOutcome{}, ErrMarketNotOpen
 	}
+
+	// The buyer must confirm the price they saw: reject if the live marginal
+	// price has drifted away beyond PriceTolerance since the client loaded it.
+	yesPrice, noPrice := MarginalPrices(market.QYes, market.QNo, market.LiquidityB)
+	currentPrice := yesPrice
+	if outcome == "no" {
+		currentPrice = noPrice
+	}
+	if math.Abs(currentPrice-expectedPrice) > PriceTolerance {
+		return PlaceBetOutcome{}, ErrPriceChanged
+	}
+
+	// A guarantor may also buy on their own market (the creator's player is
+	// prefilled as guarantor): at settlement they get separate buyer and
+	// guarantor rows (ADR-10).
+
+	// Shares-driven buy per ADR-10: the buyer asks for `shares` tokens (the UI
+	// always buys 1) and pays the AMM cost amount = C(q_i+shares, q_k) −
+	// C(q_i, q_k). `amount` is what is reserved against the buyer's bet_limit.
+	newQYes, newQNo, amount := ApplyBet(market.QYes, market.QNo, market.LiquidityB, outcome, shares)
 
 	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
 	if err != nil {
-		return fmt.Errorf("get reserved amount: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("get reserved amount: %w", err)
 	}
-
 	limit, err := q.GetPlayerBetLimit(ctx, playerID)
 	if err != nil {
-		return fmt.Errorf("get bet limit: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("get bet limit: %w", err)
 	}
-
 	if reserved+amount > limit {
-		return ErrBetLimitExceeded
+		return PlaceBetOutcome{}, ErrBetLimitExceeded
 	}
 
 	if _, err := q.InsertBet(ctx, db.InsertBetParams{
@@ -190,11 +289,74 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 		PlayerID: playerID,
 		Outcome:  outcome,
 		Amount:   amount,
+		Shares:   shares,
 	}); err != nil {
-		return fmt.Errorf("insert bet: %w", err)
+		return PlaceBetOutcome{}, fmt.Errorf("insert bet: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	if err := q.UpdateMarketAMMState(ctx, db.UpdateMarketAMMStateParams{
+		ID:   marketID,
+		QYes: newQYes,
+		QNo:  newQNo,
+	}); err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("update amm state: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("commit tx: %w", err)
+	}
+
+	if s.Hub != nil {
+		yesPool, noPool := market.YesPool, market.NoPool
+		if outcome == "yes" {
+			yesPool += amount
+		} else {
+			noPool += amount
+		}
+		s.broadcastPrices(marketID, newQYes, newQNo, market.LiquidityB, yesPool, noPool)
+	}
+
+	price := 0.0
+	if shares > 0 {
+		price = amount / shares
+	}
+	return PlaceBetOutcome{Shares: shares, Price: price}, nil
+}
+
+// broadcastPrices fans the new LMSR prices + share counts + pools out to the
+// market's SSE subscribers and signals the markets-list lobby.
+func (s *MarketService) broadcastPrices(marketID string, qYes, qNo, b, yesPool, noPool float64) {
+	yesPrice, noPrice := MarginalPrices(qYes, qNo, b)
+	payload, err := json.Marshal(marketsSSEEvent{
+		Type: "prices",
+		Data: pricesPayload{
+			YesPrice:  yesPrice,
+			NoPrice:   noPrice,
+			YesShares: qYes,
+			NoShares:  qNo,
+			YesPool:   yesPool,
+			NoPool:    noPool,
+		},
+	})
+	if err != nil {
+		return
+	}
+	s.Hub.Broadcast(marketID, payload)
+	s.Hub.BroadcastLobby([]byte(`{"type":"markets-changed"}`))
+}
+
+type marketsSSEEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+type pricesPayload struct {
+	YesPrice  float64 `json:"yes_price"`
+	NoPrice   float64 `json:"no_price"`
+	YesShares float64 `json:"yes_shares"`
+	NoShares  float64 `json:"no_shares"`
+	YesPool   float64 `json:"yes_pool"`
+	NoPool    float64 `json:"no_pool"`
 }
 
 // TriggerResolutionForMatch checks all open markets and resolves them if the given match satisfies their conditions.
@@ -257,55 +419,88 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 	return nil
 }
 
-// SettleMarket applies parimutuel payout and updates the market status.
-// Must be called within an active transaction.
+// SettleMarket pays the winning side (each winning share pays 1) and redistributes
+// the settlement residual across the market's guarantors, keeping elo strictly
+// conserved (zero-sum across buyers + guarantors).
+// OutcomeCancelled refunds all spent elo. Must be called within an active transaction.
 func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error {
-	rows, err := q.GetBetsAggregatedByOutcome(ctx, marketID)
+	bets, err := q.GetBetsForSettlement(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get bets for market %s: %w", marketID, err)
 	}
-
-	type playerData struct {
-		totalStaked    float64
-		winningOutcome float64
+	guarantors, err := q.ListMarketGuarantors(ctx, marketID)
+	if err != nil {
+		return fmt.Errorf("get guarantors for market %s: %w", marketID, err)
 	}
-	players := make(map[string]*playerData)
-	totalPool := 0.0
-	winningPool := 0.0
 
 	isCancelled := outcome == OutcomeCancelled
 	winningSide := string(outcome) // "yes", "no", "player_42", etc.
 
-	for _, row := range rows {
-		if _, ok := players[row.PlayerID]; !ok {
-			players[row.PlayerID] = &playerData{}
+	// Per-player buy P&L. staked is the elo spent (positive magnitude); earned is
+	// the payout (shares × 1 for the winning side, or the stake refunded on cancel).
+	// Losers earn 0.
+	type playerData struct {
+		staked float64
+		earned float64
+	}
+	players := make(map[string]*playerData)
+	totalCollected := 0.0
+	totalPaid := 0.0
+	for _, b := range bets {
+		pd := players[b.PlayerID]
+		if pd == nil {
+			pd = &playerData{}
+			players[b.PlayerID] = pd
 		}
-		players[row.PlayerID].totalStaked += row.TotalAmount
-		totalPool += row.TotalAmount
-		if !isCancelled && row.Outcome == winningSide {
-			players[row.PlayerID].winningOutcome += row.TotalAmount
-			winningPool += row.TotalAmount
+		pd.staked += b.Amount
+		totalCollected += b.Amount
+		if isCancelled {
+			pd.earned += b.Amount // refund of elo spent
+		} else if b.Outcome == winningSide {
+			pd.earned += b.Shares // each winning share pays 1
+			totalPaid += b.Shares
 		}
 	}
 
-	if isCancelled {
-		winningPool = totalPool
-		for pid := range players {
-			players[pid].winningOutcome = players[pid].totalStaked
+	// Guarantor residual = collected − paid. Split equally across guarantors,
+	// assigning the FP remainder to the last guarantor so the shares sum to the
+	// residual exactly (strict conservation).
+	guarantorSet := make(map[string]bool, len(guarantors))
+	guarantorIDs := make([]string, 0, len(guarantors))
+	for _, g := range guarantors {
+		if !guarantorSet[g.PlayerID] {
+			guarantorSet[g.PlayerID] = true
+			guarantorIDs = append(guarantorIDs, g.PlayerID)
 		}
 	}
-
-	earned := make(map[string]float64)
-	for pid, pd := range players {
-		if winningPool == 0 {
-			earned[pid] = pd.totalStaked
-		} else {
-			earned[pid] = (pd.winningOutcome / winningPool) * totalPool
+	sortPlayerIDs(guarantorIDs)
+	shares := make(map[string]float64, len(guarantorIDs))
+	if !isCancelled && len(guarantorIDs) > 0 {
+		residual := totalCollected - totalPaid // +surplus / −deficit
+		n := len(guarantorIDs)
+		perShare := residual / float64(n)
+		for i := 0; i < n-1; i++ {
+			shares[guarantorIDs[i]] = perShare
 		}
+		shares[guarantorIDs[n-1]] = residual - perShare*float64(n-1)
 	}
 
-	allPlayerIDs := make([]string, 0, len(players))
+	// A player may be both buyer and guarantor (the creator's player is prefilled
+	// as guarantor, and guarantors may buy). They get one settlement row per role
+	// (UNIQUE (market_id, player_id, discriminator), ADR-10): the 'market' row
+	// carries the buy P&L, the 'market_guarantor' row carries their residual
+	// share — so the value change per bet and the guarantor payout/surcharge are
+	// individually visible. Pure guarantors keep the 'market_guarantor'
+	// discriminator for the guarantor-payout rollup.
+	allPlayerIDSet := make(map[string]bool, len(players)+len(guarantorIDs))
 	for pid := range players {
+		allPlayerIDSet[pid] = true
+	}
+	for _, pid := range guarantorIDs {
+		allPlayerIDSet[pid] = true
+	}
+	allPlayerIDs := make([]string, 0, len(allPlayerIDSet))
+	for pid := range allPlayerIDSet {
 		allPlayerIDs = append(allPlayerIDs, pid)
 	}
 	sortPlayerIDs(allPlayerIDs)
@@ -321,69 +516,50 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	date6MAgo := pgtype.Timestamptz{Time: resolvedAt.Add(-6 * 30 * 24 * time.Hour), Valid: true}
 	date2MAgo := pgtype.Timestamptz{Time: resolvedAt.Add(-2 * 30 * 24 * time.Hour), Valid: true}
 
+	// One settlement row per role per player over buyers ∪ guarantors: elo spent
+	// as negative staked, payout (winning shares × 1, or refund on cancel) as
+	// earned for the 'market' row; the guarantor residual share (deficit as
+	// staked, surplus as earned) for the 'market_guarantor' row. Both rows of a
+	// buyer∩guarantor player share the same total-based *_after balances so the
+	// latest-at-date elo/rating read stays correct whichever row the id tie-break
+	// picks — hence the balances are read once, before either row is written.
 	for _, pid := range allPlayerIDs {
-		staked := players[pid].totalStaked
-		earnedAmt := earned[pid]
-
-		// Elo track
-		var currentElo float64
-		latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
-			PlayerID: pid,
-			Date:     resolvedAtTz,
-		})
-		if err != nil {
-			currentElo = settings.StartingElo
-		} else {
-			currentElo = latestElo
+		var buyerStaked, buyerEarned float64
+		if pd := players[pid]; pd != nil {
+			buyerStaked = -pd.staked
+			buyerEarned = pd.earned
 		}
-		eloStaked := -staked
-		eloEarned := earnedAmt
-		newElo := currentElo + eloStaked + eloEarned
-
-		// Rating track (same amounts as elo, but based on prevRating)
-		var currentRating float64
-		var storedLeague string
-		latestRating, err := q.GetPlayerLatestGlobalRatingAtDate(ctx, db.GetPlayerLatestGlobalRatingAtDateParams{
-			PlayerID: pid,
-			Date:     resolvedAtTz,
-		})
-		if err != nil {
-			currentRating = settings.StartingRatingGlobal
-			storedLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
-		} else {
-			currentRating = latestRating.Rating
-			storedLeague = latestRating.League
+		var guarantorStaked, guarantorEarned float64
+		if share := shares[pid]; share != 0 {
+			guarantorStaked = math.Min(share, 0)
+			guarantorEarned = math.Max(share, 0)
 		}
-		ratingStaked, ratingEarned := eloStaked, eloEarned
-		newRating := currentRating + ratingStaked + ratingEarned
+		totalStaked := buyerStaked + guarantorStaked
+		totalEarned := buyerEarned + guarantorEarned
 
-		count6M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
-			PlayerID: pid,
-			Date:     date6MAgo,
-			Date_2:   resolvedAtTz,
-		})
-		count2M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
-			PlayerID: pid,
-			Date:     date2MAgo,
-			Date_2:   resolvedAtTz,
-		})
-		prevLeague := effectiveLeague(storedLeague, int(count2M), int(count6M), settings)
-		newLeague := determineGlobalLeague(prevLeague, newRating, newElo, int(count6M), int(count2M), settings)
+		if buyerStaked == 0 && buyerEarned == 0 && guarantorStaked == 0 && guarantorEarned == 0 {
+			continue
+		}
 
-		if err := q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
-			ID:           newSettlementID(),
-			PlayerID:     pid,
-			Date:         resolvedAtTz,
-			RatingAfter:  newRating,
-			EloAfter:     newElo,
-			MarketID:     &marketID,
-			EloStaked:    eloStaked,
-			EloEarned:    eloEarned,
-			RatingStaked: ratingStaked,
-			RatingEarned: ratingEarned,
-			League:       newLeague,
-		}); err != nil {
-			return fmt.Errorf("upsert global arena settlement for player %s: %w", pid, err)
+		balances, err := s.readMarketSettlementBalances(ctx, q, pid, resolvedAtTz, settings, date6MAgo, date2MAgo)
+		if err != nil {
+			return fmt.Errorf("read balances for %s: %w", pid, err)
+		}
+		newElo := balances.currentElo + totalStaked + totalEarned
+		newRating := balances.currentRating + totalStaked + totalEarned
+		newLeague := determineGlobalLeague(balances.prevLeague, newRating, newElo, balances.count6M, balances.count2M, settings)
+
+		if buyerStaked != 0 || buyerEarned != 0 {
+			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market",
+				buyerStaked, buyerEarned, newElo, newRating, newLeague, resolvedAtTz); err != nil {
+				return fmt.Errorf("upsert settlement for %s: %w", pid, err)
+			}
+		}
+		if guarantorStaked != 0 || guarantorEarned != 0 {
+			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market_guarantor",
+				guarantorStaked, guarantorEarned, newElo, newRating, newLeague, resolvedAtTz); err != nil {
+				return fmt.Errorf("upsert guarantor settlement for %s: %w", pid, err)
+			}
 		}
 	}
 
@@ -410,6 +586,91 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	}
 
 	return nil
+}
+
+// marketSettlementBalances is the pre-market state one settlement row pair is
+// computed from.
+type marketSettlementBalances struct {
+	currentElo    float64
+	currentRating float64
+	prevLeague    string
+	count6M       int
+	count2M       int
+}
+
+// readMarketSettlementBalances reads the player's pre-market elo/rating/league
+// state. Called once per player before any of their rows are written, so the
+// second role row cannot observe the first one (they share the settlement date).
+func (s *MarketService) readMarketSettlementBalances(
+	ctx context.Context, q *db.Queries, playerID string,
+	resolvedAtTz pgtype.Timestamptz, settings EloSettings, date6MAgo, date2MAgo pgtype.Timestamptz,
+) (marketSettlementBalances, error) {
+	var b marketSettlementBalances
+	latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
+		PlayerID: playerID,
+		Date:     resolvedAtTz,
+	})
+	if err != nil {
+		b.currentElo = settings.StartingElo
+	} else {
+		b.currentElo = latestElo
+	}
+
+	var storedLeague string
+	latestRating, err := q.GetPlayerLatestGlobalRatingAtDate(ctx, db.GetPlayerLatestGlobalRatingAtDateParams{
+		PlayerID: playerID,
+		Date:     resolvedAtTz,
+	})
+	if err != nil {
+		b.currentRating = settings.StartingRatingGlobal
+		storedLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
+	} else {
+		b.currentRating = latestRating.Rating
+		storedLeague = latestRating.League
+	}
+
+	count6M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+		PlayerID: playerID,
+		Date:     date6MAgo,
+		Date_2:   resolvedAtTz,
+	})
+	count2M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+		PlayerID: playerID,
+		Date:     date2MAgo,
+		Date_2:   resolvedAtTz,
+	})
+	b.count6M = int(count6M)
+	b.count2M = int(count2M)
+	b.prevLeague = effectiveLeague(storedLeague, b.count2M, b.count6M, settings)
+	return b, nil
+}
+
+// upsertMarketSettlement persists one role's settlement row. eloStaked (≤ 0) and
+// eloEarned (≥ 0) are that role's delta (buyer P&L or guarantor residual share)
+// and feed the display + zero-sum invariant; newElo/newRating/newLeague are the
+// player's post-market balances (computed by the caller from the total delta
+// across both roles) and must be identical on both rows of a buyer∩guarantor
+// player. The rating track mirrors the elo track (markets apply no newbie
+// scaling).
+func (s *MarketService) upsertMarketSettlement(
+	ctx context.Context, q *db.Queries, playerID, marketID, discriminator string,
+	eloStaked, eloEarned, newElo, newRating float64, newLeague string,
+	resolvedAtTz pgtype.Timestamptz,
+) error {
+	return q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
+		ID:            newSettlementID(),
+		PlayerID:      playerID,
+		Date:          resolvedAtTz,
+		RatingAfter:   newRating,
+		EloAfter:      newElo,
+		MarketID:      &marketID,
+		Discriminator: discriminator,
+		EloStaked:     eloStaked,
+		EloEarned:     eloEarned,
+		RatingStaked:  eloStaked,
+		RatingEarned:  eloEarned,
+		League:        newLeague,
+	})
 }
 
 // LockMarketBetting stops accepting new bets on an open market (user event).

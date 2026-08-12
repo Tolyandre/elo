@@ -24,6 +24,8 @@ type Querier interface {
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
+	// Bulk-inserts the market's guarantor players (zero-sum counterparties).
+	CreateMarketGuarantors(ctx context.Context, arg CreateMarketGuarantorsParams) error
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
@@ -42,6 +44,8 @@ type Querier interface {
 	DeleteExpiredSkullKingTables(ctx context.Context) error
 	DeleteGame(ctx context.Context, id string) (Game, error)
 	DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *string) error
+	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
+	// rows for a market (used by unsettle/recalculation).
 	DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *string) error
 	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *string) error
 	DeleteMarket(ctx context.Context, id string) error
@@ -52,6 +56,8 @@ type Querier interface {
 	DeleteTournament(ctx context.Context, id string) (Tournament, error)
 	DeleteUser(ctx context.Context, id string) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID string) ([]GetBetsAggregatedByOutcomeRow, error)
+	// Per-buy rows (each carries the shares bought) used by share settlement.
+	GetBetsForSettlement(ctx context.Context, marketID string) ([]GetBetsForSettlementRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
 	GetClub(ctx context.Context, id string) ([]GetClubRow, error)
 	GetCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Correction, error)
@@ -60,6 +66,11 @@ type Querier interface {
 	GetGameByID(ctx context.Context, id string) (Game, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
+	// Guarantor-role settlement rows (discriminator 'market_guarantor') — the
+	// per-guarantor payout rollup. A player who is both buyer and guarantor has a
+	// separate buyer row (discriminator 'market'), so their entry here carries only
+	// the house result (ADR-10).
+	GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]GetMarketGuarantorPayoutsRow, error)
 	GetMarketResolvedAt(ctx context.Context, id string) (pgtype.Timestamptz, error)
 	GetMarketWithPools(ctx context.Context, id string) (GetMarketWithPoolsRow, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]string, error)
@@ -76,6 +87,8 @@ type Querier interface {
 	GetPlayer(ctx context.Context, id string) (Player, error)
 	GetPlayerBetLimit(ctx context.Context, id string) (float64, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error)
+	// Per-buy rows for one player, used to show shares held / elo spent on the detail page.
+	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID string) ([]GetPlayerGameEloStatsRow, error)
 	// Counts game-specific matches a player participated in within [from_date, to_date].
@@ -133,6 +146,7 @@ type Querier interface {
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListLatestGameEloPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameEloPerPlayerRow, error)
 	ListLatestGameRatingPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameRatingPerPlayerRow, error)
+	ListMarketGuarantors(ctx context.Context, marketID string) ([]ListMarketGuarantorsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]ListMarketsByResolutionMatchRow, error)
 	ListMarketsWithPools(ctx context.Context) ([]ListMarketsWithPoolsRow, error)
 	ListMatchResults(ctx context.Context, id string) ([]ListMatchResultsRow, error)
@@ -171,6 +185,8 @@ type Querier interface {
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
+	// Persists the LMSR state after a bet shifts the outstanding shares.
+	UpdateMarketAMMState(ctx context.Context, arg UpdateMarketAMMStateParams) error
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
@@ -181,6 +197,9 @@ type Querier interface {
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
 	UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error
 	UpsertGlobalArenaSettlementByCorrection(ctx context.Context, arg UpsertGlobalArenaSettlementByCorrectionParams) error
+	// One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
+	// a player who is both gets two rows, hence the discriminator in the conflict
+	// target.
 	UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error
 	UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error

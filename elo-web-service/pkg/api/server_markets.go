@@ -83,6 +83,27 @@ func convertSettlement(details []db.GetSettlementDetailsRow) *[]SettlementDetail
 	return &s
 }
 
+// convertGuarantorPayouts shapes the per-guarantor payout rollup (the
+// guarantor-role settlement rows of the market's guarantors; a guarantor who
+// also bought has a separate buyer row, so their entry carries only the house
+// result) for the response. Returns nil for an empty slice so the field is
+// omitted.
+func convertGuarantorPayouts(rows []db.GetMarketGuarantorPayoutsRow) *[]SettlementDetail {
+	if len(rows) == 0 {
+		return nil
+	}
+	s := make([]SettlementDetail, len(rows))
+	for i, r := range rows {
+		s[i] = SettlementDetail{
+			PlayerId:   r.PlayerID,
+			PlayerName: r.PlayerName,
+			Staked:     r.Staked,
+			Earned:     r.Earned,
+		}
+	}
+	return &s
+}
+
 func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObject) (ListMarketsResponseObject, error) {
 	rows, err := s.api.MarketService.ListMarketsWithPools(ctx)
 	if err != nil {
@@ -93,8 +114,8 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 	closed := make([]Market, 0)
 
 	for _, r := range rows {
-		totalPool := r.YesPool + r.NoPool
 		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
+		yesPrice, noPrice := elo.MarginalPrices(r.QYes, r.QNo, r.LiquidityB)
 
 		m := Market{
 			Id:             r.ID,
@@ -102,8 +123,12 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 			Status:         MarketStatus(r.Status),
 			YesPool:        r.YesPool,
 			NoPool:         r.NoPool,
-			YesCoefficient: calcCoefficient(r.YesPool, totalPool),
-			NoCoefficient:  calcCoefficient(r.NoPool, totalPool),
+			YesPrice:       yesPrice,
+			NoPrice:        noPrice,
+			YesShares:      r.QYes,
+			NoShares:       r.QNo,
+			LiquidityB:     r.LiquidityB,
+			Guarantors:     s.marketGuarantors(ctx, r.ID),
 			TargetPlayerId: targetID,
 			Params:         params,
 		}
@@ -115,6 +140,9 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 			if r.Status == "resolved" {
 				if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
 					m.Settlement = convertSettlement(details)
+				}
+				if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
+					m.GuarantorSettlement = convertGuarantorPayouts(gp)
 				}
 			}
 			closed = append(closed, m)
@@ -161,8 +189,8 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		}
 	}
 
-	totalPool := row.YesPool + row.NoPool
 	targetID, params := buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerID, row.RequiredPlayerIds, row.MwGameIds, row.WsGameIds, row.WinsRequired, row.MaxLosses)
+	yesPrice, noPrice := elo.MarginalPrices(row.QYes, row.QNo, row.LiquidityB)
 
 	detail := MarketDetail{
 		Id:             row.ID,
@@ -170,8 +198,12 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		Status:         MarketDetailStatus(row.Status),
 		YesPool:        row.YesPool,
 		NoPool:         row.NoPool,
-		YesCoefficient: calcCoefficient(row.YesPool, totalPool),
-		NoCoefficient:  calcCoefficient(row.NoPool, totalPool),
+		YesPrice:       yesPrice,
+		NoPrice:        noPrice,
+		YesShares:      row.QYes,
+		NoShares:       row.QNo,
+		LiquidityB:     row.LiquidityB,
+		Guarantors:     s.marketGuarantors(ctx, marketID),
 		TargetPlayerId: targetID,
 		Params:         params,
 	}
@@ -184,18 +216,21 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		if details, err := s.api.MarketService.GetSettlementDetails(ctx, &marketID); err == nil {
 			detail.Settlement = convertSettlement(details)
 		}
+		if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, marketID); err == nil {
+			detail.GuarantorSettlement = convertGuarantorPayouts(gp)
+		}
 	}
 
-	s.enrichMarketDetailForPlayer(ctx, &detail, marketID, totalPool, row.YesPool, row.NoPool)
+	s.enrichMarketDetailForPlayer(ctx, &detail, marketID)
 
 	return GetMarket200JSONResponse{Status: "success", Data: detail}, nil
 }
 
-// enrichMarketDetailForPlayer fills the per-player projection fields (staked,
-// projected reward, reserved, bet limit) when the caller is authenticated with
-// a linked player. Failures of the individual reads are non-fatal: a missing
-// field simply stays nil, matching the prior inline behavior.
-func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID string, totalPool, yesPool, noPool float64) {
+// enrichMarketDetailForPlayer fills the per-player fields (elo spent, shares held,
+// reserved, bet limit) when the caller is authenticated with a linked player.
+// Projections sum the player's per-buy shares (each pays 1 on a win) and spent
+// elo. Failures of the individual reads are non-fatal: a missing field stays nil.
+func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID string) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
 		return
@@ -210,31 +245,25 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 	}
 	playerID := *user.PlayerID
 
-	myBets, err := s.api.MarketService.GetPlayerBetsAggregatedForMarket(ctx, db.GetPlayerBetsAggregatedForMarketParams{
+	myBets, err := s.api.MarketService.GetPlayerBetsForMarket(ctx, db.GetPlayerBetsForMarketParams{
 		MarketID: marketID,
 		PlayerID: playerID,
 	})
 	if err == nil {
-		var myYes, myNo float64
+		var myYesStaked, myNoStaked, myYesShares, myNoShares float64
 		for _, b := range myBets {
 			if b.Outcome == "yes" {
-				myYes = b.TotalAmount
+				myYesStaked += b.Amount // elo spent
+				myYesShares += b.Shares // shares held (each pays 1 if YES wins)
 			} else {
-				myNo = b.TotalAmount
+				myNoStaked += b.Amount
+				myNoShares += b.Shares
 			}
 		}
-		detail.MyYesStaked = &myYes
-		detail.MyNoStaked = &myNo
-
-		var projYes, projNo float64
-		if yesPool > 0 {
-			projYes = (myYes / yesPool) * totalPool
-		}
-		if noPool > 0 {
-			projNo = (myNo / noPool) * totalPool
-		}
-		detail.ProjectedYesReward = &projYes
-		detail.ProjectedNoReward = &projNo
+		detail.MyYesStaked = &myYesStaked
+		detail.MyNoStaked = &myNoStaked
+		detail.MyYesShares = &myYesShares
+		detail.MyNoShares = &myNoShares
 	}
 
 	if reserved, err := s.api.MarketService.GetPlayerReservedAmount(ctx, playerID); err == nil {
@@ -339,6 +368,14 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		CreatedBy:  user.ID,
 	}
 
+	if body.GuarantorPlayerIds != nil {
+		params.GuarantorPlayerIDs = make([]string, len(*body.GuarantorPlayerIds))
+		copy(params.GuarantorPlayerIDs, *body.GuarantorPlayerIds)
+	}
+	if body.LiquidityB != nil {
+		params.LiquidityB = *body.LiquidityB
+	}
+
 	switch string(body.MarketType) {
 	case "match_winner":
 		var requiredIDs []string
@@ -384,6 +421,9 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	market, err := s.api.MarketService.CreateMarket(ctx, params)
 	if err != nil {
+		if errors.Is(err, elo.ErrMarketNeedsGuarantor) {
+			return CreateMarket400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		}
 		return nil, err
 	}
 
@@ -436,22 +476,29 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	}
 
 	body := request.Body
-	if body.Amount <= 0 {
-		return PlaceBet400JSONResponse{Status: "fail", Message: "amount must be positive"}, nil
+	if body.Shares <= 0 {
+		return PlaceBet400JSONResponse{Status: "fail", Message: "shares must be positive"}, nil
+	}
+	if body.ExpectedPrice <= 0 || body.ExpectedPrice >= 1 {
+		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_price must be in (0, 1)"}, nil
 	}
 
-	if err := s.api.MarketService.PlaceBet(ctx, body.Id, request.Id, *user.PlayerID, string(body.Outcome), body.Amount); err != nil {
+	outcome, err := s.api.MarketService.PlaceBet(ctx, body.Id, request.Id, *user.PlayerID, string(body.Outcome), body.Shares, body.ExpectedPrice)
+	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrBetLimitExceeded):
 			return PlaceBet422JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case errors.Is(err, elo.ErrMarketNotOpen):
+		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrPriceChanged):
 			return PlaceBet409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 
-	return PlaceBet201JSONResponse{Status: "success", Message: "Bet placed"}, nil
+	resp := PlaceBet201JSONResponse{Status: "success"}
+	resp.Data.Shares = outcome.Shares
+	resp.Data.Price = outcome.Price
+	return resp, nil
 }
 
 func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarketsByMatchIdRequestObject) (GetMarketsByMatchIdResponseObject, error) {
@@ -464,8 +511,8 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 
 	result := make([]Market, 0, len(rows))
 	for _, r := range rows {
-		totalPool := r.YesPool + r.NoPool
 		targetID, params := buildTypedMarketParams(r.MarketType, r.TargetPlayerID, r.RequiredPlayerIds, r.MwGameIds, r.WsGameIds, r.WinsRequired, r.MaxLosses)
+		yesPrice, noPrice := elo.MarginalPrices(r.QYes, r.QNo, r.LiquidityB)
 
 		m := Market{
 			Id:             r.ID,
@@ -473,8 +520,12 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 			Status:         MarketStatus(r.Status),
 			YesPool:        r.YesPool,
 			NoPool:         r.NoPool,
-			YesCoefficient: calcCoefficient(r.YesPool, totalPool),
-			NoCoefficient:  calcCoefficient(r.NoPool, totalPool),
+			YesPrice:       yesPrice,
+			NoPrice:        noPrice,
+			YesShares:      r.QYes,
+			NoShares:       r.QNo,
+			LiquidityB:     r.LiquidityB,
+			Guarantors:     s.marketGuarantors(ctx, r.ID),
 			TargetPlayerId: targetID,
 			Params:         params,
 		}
@@ -482,6 +533,9 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 		if r.Status == "resolved" {
 			if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
 				m.Settlement = convertSettlement(details)
+			}
+			if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
+				m.GuarantorSettlement = convertGuarantorPayouts(gp)
 			}
 		}
 		result = append(result, m)

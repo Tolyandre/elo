@@ -535,6 +535,8 @@ export async function createMarketPromise(payload: {
     streak_game_ids?: string[];
     wins_required?: number | null;
     max_losses?: number | null;
+    guarantor_player_ids?: string[];
+    liquidity_b?: number;
 }): Promise<{ id: string }> {
     return (await unwrap(client.POST("/markets", {
         body: {
@@ -542,6 +544,8 @@ export async function createMarketPromise(payload: {
             ...payload,
             starts_at: payload.starts_at ?? undefined,
             wins_required: payload.wins_required ?? undefined,
+            guarantor_player_ids: payload.guarantor_player_ids ?? undefined,
+            liquidity_b: payload.liquidity_b,
         },
     }))).data;
 }
@@ -563,11 +567,15 @@ export async function getMarketsByMatchIdPromise(matchId: string): Promise<Marke
     }))).data ?? [];
 }
 
-export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', amount: number): Promise<void> {
-    await unwrap(client.POST("/markets/{id}/bets", {
+export async function placeBetPromise(marketId: string, outcome: 'yes' | 'no', expectedPrice: number): Promise<{ shares: number; price: number }> {
+    // Shares-driven buy (ADR-10): the UI always buys a single share; the AMM
+    // prices the elo cost. expectedPrice is the price the user saw — the server
+    // rejects the bet (409) if the live price has moved beyond a tolerance.
+    const res = await unwrap(client.POST("/markets/{id}/bets", {
         params: { path: { id: marketId } },
-        body: { id: newId(), outcome, amount },
+        body: { id: newId(), outcome, shares: 1, expected_price: expectedPrice },
     }));
+    return { shares: res.data.shares, price: res.data.price };
 }
 
 export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {

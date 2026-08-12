@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -264,9 +265,16 @@ func findPlayer(players []elo.Player, id string) *elo.Player {
 // Market helpers (extracted from the former markets.go).
 // ---------------------------------------------------------------------------
 
-func calcCoefficient(pool, totalPool float64) float64 {
-	if pool == 0 {
-		return 1
+// marketGuarantors loads a market's guarantor players for the Market response.
+// Returns nil (omitted from JSON) on error so a read failure never breaks the payload.
+func (s *StrictServer) marketGuarantors(ctx context.Context, marketID string) *[]MarketsMarketGuarantor {
+	rows, err := s.api.MarketService.ListMarketGuarantors(ctx, marketID)
+	if err != nil || len(rows) == 0 {
+		return nil
 	}
-	return totalPool / pool
+	out := make([]MarketsMarketGuarantor, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, MarketsMarketGuarantor{PlayerId: r.PlayerID, PlayerName: r.PlayerName})
+	}
+	return &out
 }

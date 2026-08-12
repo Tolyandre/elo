@@ -981,24 +981,61 @@ export interface components {
             yes_pool: number;
             /** Format: double */
             no_pool: number;
-            /** Format: double */
-            yes_coefficient: number;
-            /** Format: double */
-            no_coefficient: number;
+            /**
+             * Format: double
+             * @description Live LMSR price of a YES share in [0,1] (probability).
+             */
+            yes_price: number;
+            /**
+             * Format: double
+             * @description Live LMSR price of a NO share in [0,1] (probability).
+             */
+            no_price: number;
+            /**
+             * Format: double
+             * @description Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
+             */
+            yes_shares: number;
+            /**
+             * Format: double
+             * @description Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
+             */
+            no_shares: number;
+            /**
+             * Format: double
+             * @description LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+             */
+            liquidity_b: number;
+            guarantors?: components["schemas"]["MarketGuarantor"][];
             target_player_id: string;
             /** @description Market-type-specific parameters */
             params?: (components["schemas"]["MatchWinnerParams"] | components["schemas"]["WinStreakParams"]) | null;
+            /** @description Buyer settlements (discriminator 'market') for a resolved market. */
             settlement?: components["schemas"]["SettlementDetail"][];
+            /** @description Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge). */
+            guarantor_settlement?: components["schemas"]["SettlementDetail"][];
         };
         MarketDetail: components["schemas"]["Market"] & {
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Elo the user spent on YES shares.
+             */
             my_yes_staked?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Elo the user spent on NO shares.
+             */
             my_no_staked?: number | null;
-            /** Format: double */
-            projected_yes_reward?: number | null;
-            /** Format: double */
-            projected_no_reward?: number | null;
+            /**
+             * Format: double
+             * @description YES shares the user holds (each pays 1 if YES wins).
+             */
+            my_yes_shares?: number | null;
+            /**
+             * Format: double
+             * @description NO shares the user holds (each pays 1 if NO wins).
+             */
+            my_no_shares?: number | null;
             /** Format: double */
             reserved?: number | null;
             /** Format: double */
@@ -1063,6 +1100,11 @@ export interface components {
         } | {
             /** @enum {string} */
             type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale";
+        };
+        /** @description A player who backs a market and splits its settlement residual (deficit or surplus). */
+        MarketGuarantor: {
+            player_id: string;
+            player_name: string;
         };
     };
     responses: never;
@@ -2906,6 +2948,13 @@ export interface operations {
                     streak_game_ids?: string[];
                     wins_required?: number;
                     max_losses?: number | null;
+                    /** @description Players who back the market and absorb its settlement residual. */
+                    guarantor_player_ids?: string[];
+                    /**
+                     * Format: double
+                     * @description LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
+                     */
+                    liquidity_b?: number;
                 };
             };
         };
@@ -3134,19 +3183,41 @@ export interface operations {
                     id: components["schemas"]["ULID"];
                     /** @enum {string} */
                     outcome: "yes" | "no";
-                    /** Format: double */
-                    amount: number;
+                    /**
+                     * Format: double
+                     * @description Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
+                     */
+                    shares: number;
+                    /**
+                     * Format: double
+                     * @description The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
+                     */
+                    expected_price: number;
                 };
             };
         };
         responses: {
-            /** @description Bet placed */
+            /** @description Shares bought */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                    "application/json": {
+                        status: string;
+                        data: {
+                            /**
+                             * Format: double
+                             * @description Shares received (each pays 1 if the outcome wins).
+                             */
+                            shares: number;
+                            /**
+                             * Format: double
+                             * @description Effective price paid per share (cost / shares).
+                             */
+                            price: number;
+                        };
+                    };
                 };
             };
             /** @description Bad request */
@@ -3176,7 +3247,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Market not open for betting */
+            /** @description Market not open for buying, or the live price moved away from expected_price */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3185,7 +3256,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Bet limit exceeded */
+            /** @description Spend limit exceeded */
             422: {
                 headers: {
                     [name: string]: unknown;

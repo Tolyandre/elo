@@ -1,7 +1,23 @@
 -- name: CreateMarket :one
-INSERT INTO markets (id, market_type, starts_at, closes_at, created_by)
-VALUES ($1, $2, $3, $4, $5)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at;
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, q_yes, q_no;
+
+-- name: UpdateMarketAMMState :exec
+-- Persists the LMSR state after a bet shifts the outstanding shares.
+UPDATE markets SET q_yes = $2, q_no = $3 WHERE id = $1;
+
+-- name: CreateMarketGuarantors :exec
+-- Bulk-inserts the market's guarantor players (zero-sum counterparties).
+INSERT INTO market_guarantors (market_id, player_id)
+SELECT sqlc.arg('market_id'), t.player_id FROM unnest(sqlc.arg('player_ids')::uuid[]) AS t(player_id);
+
+-- name: ListMarketGuarantors :many
+SELECT g.player_id, p.name AS player_name
+FROM market_guarantors g
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = $1
+ORDER BY p.name;
 
 -- name: CreateMatchWinnerParams :exec
 INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
@@ -15,6 +31,7 @@ VALUES ($1, $2, $3, $4, $5);
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -35,6 +52,7 @@ GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -143,8 +161,8 @@ WHERE market_id = $1
   AND placed_at < $3;
 
 -- name: InsertBet :one
-INSERT INTO bets (id, market_id, player_id, outcome, amount)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO bets (id, market_id, player_id, outcome, amount, shares)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, placed_at;
 
 -- name: GetPlayerReservedAmount :one
@@ -166,12 +184,29 @@ FROM bets
 WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome;
 
+-- name: GetBetsForSettlement :many
+-- Per-buy rows (each carries the shares bought) used by share settlement.
+SELECT player_id, outcome, amount, shares
+FROM bets
+WHERE market_id = $1
+ORDER BY placed_at, id;
+
+-- name: GetPlayerBetsForMarket :many
+-- Per-buy rows for one player, used to show shares held / elo spent on the detail page.
+SELECT outcome, amount, shares
+FROM bets
+WHERE market_id = $1 AND player_id = $2
+ORDER BY placed_at, id;
+
 -- name: UpsertGlobalArenaSettlementByMarket :exec
+-- One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
+-- a player who is both gets two rows, hence the discriminator in the conflict
+-- target.
 INSERT INTO global_arena_settlement
     (id, player_id, date, rating_after, elo_after, discriminator, market_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, $5, 'market', $6, $7, $8, $9, $10, $11)
-ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, sqlc.arg('discriminator'), $6, $7, $8, $9, $10, $11)
+ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -182,12 +217,16 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               league        = EXCLUDED.league;
 
 -- name: DeleteGlobalArenaSettlementByMarket :exec
-DELETE FROM global_arena_settlement WHERE market_id = $1 AND discriminator = 'market';
+-- Removes both buyer ('market') and guarantor ('market_guarantor') settlement
+-- rows for a market (used by unsettle/recalculation).
+DELETE FROM global_arena_settlement
+WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor');
 
 -- name: ListMarketsByResolutionMatch :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b, om.q_yes, om.q_no,
     COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
     COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
@@ -210,6 +249,19 @@ SELECT bsd.player_id, p.name AS player_name,
 FROM global_arena_settlement bsd
 JOIN players p ON p.id = bsd.player_id
 WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
+ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
+
+-- name: GetMarketGuarantorPayouts :many
+-- Guarantor-role settlement rows (discriminator 'market_guarantor') — the
+-- per-guarantor payout rollup. A player who is both buyer and guarantor has a
+-- separate buyer row (discriminator 'market'), so their entry here carries only
+-- the house result (ADR-10).
+SELECT bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
+FROM market_guarantors g
+JOIN global_arena_settlement bsd ON bsd.market_id = g.market_id AND bsd.player_id = g.player_id
+JOIN players p ON p.id = g.player_id
+WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
 ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 
 -- name: GetPlayerBetLimit :one

@@ -74,6 +74,18 @@ MarketsCollection:
               max_losses:
                 type: integer
                 nullable: true
+              # fixed-odds / LMSR fields
+              guarantor_player_ids:
+                type: array
+                description: Players who back the market and absorb its settlement residual.
+                items:
+                  type: string
+              liquidity_b:
+                type: number
+                format: double
+                minimum: 0
+                exclusiveMinimum: true
+                description: LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
             required: [market_type, closes_at, target_player_id, id]
     responses:
       "201":
@@ -270,19 +282,43 @@ MarketBets:
               outcome:
                 type: string
                 enum: [yes, no]
-              amount:
+              shares:
                 type: number
                 format: double
                 minimum: 0
                 exclusiveMinimum: true
-            required: [id, outcome, amount]
+                description: Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
+              expected_price:
+                type: number
+                format: double
+                minimum: 0
+                exclusiveMinimum: true
+                maximum: 1
+                description: The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
+            required: [id, outcome, shares, expected_price]
     responses:
       "201":
-        description: Bet placed
+        description: Shares bought
         content:
           application/json:
             schema:
-              $ref: './common.yaml#/ApiSuccessMessage'
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    shares:
+                      type: number
+                      format: double
+                      description: Shares received (each pays 1 if the outcome wins).
+                    price:
+                      type: number
+                      format: double
+                      description: Effective price paid per share (cost / shares).
+                  required: [shares, price]
+              required: [status, data]
       "400":
         description: Bad request
         content:
@@ -302,13 +338,13 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: Market not open for betting
+        description: Market not open for buying, or the live price moved away from expected_price
         content:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
       "422":
-        description: Bet limit exceeded
+        description: Spend limit exceeded
         content:
           application/json:
             schema:
@@ -330,6 +366,16 @@ SettlementDetail:
       type: number
       format: double
   required: [player_id, player_name, staked, earned]
+
+MarketGuarantor:
+  type: object
+  description: A player who backs a market and splits its settlement residual (deficit or surplus).
+  properties:
+    player_id:
+      type: string
+    player_name:
+      type: string
+  required: [player_id, player_name]
 
 MatchWinnerParams:
   type: object
@@ -398,12 +444,34 @@ Market:
     no_pool:
       type: number
       format: double
-    yes_coefficient:
+    yes_price:
       type: number
       format: double
-    no_coefficient:
+      minimum: 0
+      maximum: 1
+      description: Live LMSR price of a YES share in [0,1] (probability).
+    no_price:
       type: number
       format: double
+      minimum: 0
+      maximum: 1
+      description: Live LMSR price of a NO share in [0,1] (probability).
+    yes_shares:
+      type: number
+      format: double
+      description: Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
+    no_shares:
+      type: number
+      format: double
+      description: Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
+    liquidity_b:
+      type: number
+      format: double
+      description: LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+    guarantors:
+      type: array
+      items:
+        $ref: '#/MarketGuarantor'
     target_player_id:
       type: string
     params:
@@ -416,7 +484,18 @@ Market:
       type: array
       items:
         $ref: '#/SettlementDetail'
-  required: [id, market_type, status, yes_pool, no_pool, yes_coefficient, no_coefficient, target_player_id]
+      description: Buyer settlements (discriminator 'market') for a resolved market.
+    guarantor_settlement:
+      type: array
+      items:
+        $ref: '#/SettlementDetail'
+      description: >
+        Per-guarantor payout rollup for a resolved market: the guarantor-role
+        settlement row of every player who guaranteed the market. A guarantor
+        who also bought on the market has a separate buyer row (shown in
+        `settlement`), so their entry here carries only the house result
+        (payout/surcharge).
+  required: [id, market_type, status, yes_pool, no_pool, yes_price, no_price, yes_shares, no_shares, liquidity_b, target_player_id]
 
 MarketDetail:
   allOf:
@@ -427,18 +506,22 @@ MarketDetail:
           type: number
           format: double
           nullable: true
+          description: Elo the user spent on YES shares.
         my_no_staked:
           type: number
           format: double
           nullable: true
-        projected_yes_reward:
+          description: Elo the user spent on NO shares.
+        my_yes_shares:
           type: number
           format: double
           nullable: true
-        projected_no_reward:
+          description: YES shares the user holds (each pays 1 if YES wins).
+        my_no_shares:
           type: number
           format: double
           nullable: true
+          description: NO shares the user holds (each pays 1 if NO wins).
         reserved:
           type: number
           format: double

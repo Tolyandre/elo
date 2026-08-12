@@ -18,13 +18,15 @@ type API struct {
 	TournamentService     elo.ITournamentService
 	SkullKingTableService elo.ISkullKingTableService
 	SkullKingHub          *elo.SkullKingHub
+	MarketsHub            *elo.MarketsHub
 	CardRecognizer        ICardRecognizer
 	VoiceParser           *VoiceParser
 }
 
 func New(pool *pgxpool.Pool) *API {
-	marketService := elo.NewMarketService(pool)
 	skullKingHub := elo.NewSkullKingHub()
+	marketsHub := elo.NewMarketsHub()
+	marketService := elo.NewMarketServiceWithHub(pool, marketsHub)
 
 	return &API{
 		UserService:           elo.NewUserService(pool),
@@ -38,6 +40,7 @@ func New(pool *pgxpool.Pool) *API {
 		TournamentService:     elo.NewTournamentService(pool),
 		SkullKingHub:          skullKingHub,
 		SkullKingTableService: elo.NewSkullKingTableService(pool, skullKingHub),
+		MarketsHub:            marketsHub,
 		CardRecognizer:        newCardRecognizer(),
 		VoiceParser:           NewVoiceParser(configuration.Config.OllamaBaseUrl, configuration.Config.OllamaModel),
 	}

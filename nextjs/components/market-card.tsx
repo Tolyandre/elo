@@ -29,35 +29,73 @@ export function statusVariant(status: Market["status"], resolutionOutcome?: stri
     return "default";
 }
 
-function PoolBar({ yesPool, noPool, yesCoeff, noCoeff }: {
-    yesPool: number; noPool: number; yesCoeff: number; noCoeff: number;
+// payoutMultiplier returns the display coefficient for an outcome price: 1/price,
+// i.e. how much a win returns per 1 elo of buying cost (each winning share pays 1).
+// Returns null when the price is not usable (defensive — LMSR prices are in (0,1)).
+function payoutMultiplier(price: number): number | null {
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return 1 / price;
+}
+
+// formatShares renders share counts without decimals when they are whole
+// numbers (live LMSR buys are always whole shares; fractional values only
+// exist for backfilled historical data).
+function formatShares(v: number): string {
+    return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
+}
+
+function PoolBar({ yesPool, noPool, yesPrice, noPrice, yesShares, noShares }: {
+    yesPool: number; noPool: number; yesPrice: number; noPrice: number;
+    yesShares: number; noShares: number;
 }) {
-    const total = yesPool + noPool;
-    const yesPercent = total > 0 ? (yesPool / total) * 100 : 50;
-    const noPercent = 100 - yesPercent;
+    // The bar reflects the live price (probability) split — p_yes + p_no = 1.
+    const yesPct = Math.max(0, Math.min(100, yesPrice * 100));
+    const noPct = 100 - yesPct;
+    const yesMult = payoutMultiplier(yesPrice);
+    const noMult = payoutMultiplier(noPrice);
 
     return (
         <div className="space-y-1.5">
             <div className="flex h-5 rounded overflow-hidden text-xs font-medium">
                 <div
                     className="flex items-center justify-start pl-1.5 bg-green-500 text-white overflow-hidden whitespace-nowrap transition-all"
-                    style={{ width: `${yesPercent}%` }}
+                    style={{ width: `${yesPct}%` }}
                 >
-                    {yesPercent > 15 && `${yesPool.toFixed(1)} (${Math.round(yesPercent)}%)`}
+                    {yesPct > 18 && `Да ${Math.round(yesPct)}%`}
                 </div>
                 <div className="flex items-center justify-end pr-1.5 bg-red-400 text-white overflow-hidden whitespace-nowrap flex-1 transition-all">
-                    {noPercent > 15 && `${noPool.toFixed(1)} (${Math.round(noPercent)}%)`}
+                    {noPct > 18 && `Нет ${Math.round(noPct)}%`}
                 </div>
             </div>
             <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Да {yesCoeff.toFixed(2)}x</span>
-                <span>Нет {noCoeff.toFixed(2)}x</span>
+                <div>
+                    <div>
+                        {yesMult != null && `Коэффициент: ${yesMult.toFixed(1)}x`}
+                    </div>
+                    <div>
+                        Голоса: {formatShares(yesShares)}
+                    </div>
+                    <div>
+                        Потрачено: {yesPool.toFixed(1)}
+                    </div>
+                </div>
+                <div>
+                    <div>
+                        {noMult != null && `Коэффициент: ${noMult.toFixed(1)}x`}
+                    </div>
+                    <div>
+                        Голоса: {formatShares(noShares)}
+                    </div>
+                    <div>
+                        Потрачено: {noPool.toFixed(1)}
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
 
-function SettlementList({ details }: { details: SettlementDetail[] }) {
+function SettlementList({ details, showFlow = true }: { details: SettlementDetail[]; showFlow?: boolean }) {
     return (
         <div className="space-y-1 pt-2 border-t">
             {details.map(d => {
@@ -70,7 +108,9 @@ function SettlementList({ details }: { details: SettlementDetail[] }) {
                             {d.player_name}
                         </span>
                         <span className="flex gap-2 shrink-0">
-                            <span className="text-muted-foreground">({d.staked.toFixed(1)} → {d.earned.toFixed(1)})</span>
+                            {showFlow && (
+                                <span className="text-muted-foreground">({d.staked.toFixed(1)} → {d.earned.toFixed(1)})</span>
+                            )}
                             <span className={`w-10 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
                                 {positive ? "+" : ""}{delta.toFixed(1)}
                             </span>
@@ -96,8 +136,8 @@ export function MarketCard({ market, className }: { market: Market; className?: 
     const date = dateValue ? formatDateTime(dateValue) : null;
     const dateLabel = isOpen ? "Закрывается"
         : isBettingClosed ? "Ставки закрыты"
-        : market.status === "cancelled" ? "Отменён"
-        : "Разрешён";
+            : market.status === "cancelled" ? "Отменён"
+                : "Разрешён";
 
     return (
         <Card className={className}>
@@ -116,11 +156,27 @@ export function MarketCard({ market, className }: { market: Market; className?: 
                 <PoolBar
                     yesPool={market.yes_pool}
                     noPool={market.no_pool}
-                    yesCoeff={market.yes_coefficient}
-                    noCoeff={market.no_coefficient}
+                    yesPrice={market.yes_price}
+                    noPrice={market.no_price}
+                    yesShares={market.yes_shares}
+                    noShares={market.no_shares}
                 />
+                {(isOpen || isBettingClosed) && market.guarantors && market.guarantors.length > 0 && (
+                    <p className="text-xs text-muted-foreground pt-2">
+                        Поручители: {market.guarantors.map(g => g.player_name).join(", ")}
+                    </p>
+                )}
                 {market.settlement && market.settlement.length > 0 && (
-                    <SettlementList details={market.settlement} />
+                    <div className="space-y-1 pt-2 border-t">
+                        <p className="text-xs text-muted-foreground font-medium">Игроки</p>
+                        <SettlementList details={market.settlement} />
+                    </div>
+                )}
+                {market.guarantor_settlement && market.guarantor_settlement.length > 0 && (
+                    <div className="space-y-1 pt-2 border-t">
+                        <p className="text-xs text-muted-foreground font-medium">Поручители</p>
+                        <SettlementList details={market.guarantor_settlement} showFlow={false} />
+                    </div>
                 )}
             </CardContent>
         </Card>

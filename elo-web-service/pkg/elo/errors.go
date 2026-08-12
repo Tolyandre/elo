@@ -8,6 +8,8 @@ var (
 	ErrMatchDateOutOfRange              = errors.New("дата партии не может быть в будущем или старше 30 дней")
 	ErrBetLimitExceeded                 = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen                    = errors.New("рынок не открыт")
+	ErrPriceChanged                     = errors.New("цена изменилась, обновите страницу и повторите ставку")
+	ErrMarketNeedsGuarantor             = errors.New("рынок требует хотя бы одного гаранта (плательщика остатка)")
 	ErrPlayerHasNoLinkedPlayer          = errors.New("у пользователя нет привязанного игрока")
 	ErrPlayerAlreadyLinked              = errors.New("player already linked to another user")
 	ErrHistoryChangeConflict            = errors.New("изменение истории невозможно: ставка была сделана до того, как рынок был разрешён в результате новой даты партии")

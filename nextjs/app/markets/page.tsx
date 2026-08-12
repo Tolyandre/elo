@@ -7,18 +7,22 @@ import { PageHeader } from "@/app/pageHeaderContext";
 import { MarketCard } from "@/components/market-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMarketsLobbySSE } from "@/hooks/useMarketsSSE";
 
 export default function MarketsPage() {
     const [data, setData] = useState<{ active: Market[]; closed: Market[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Refetch on every "markets-changed" signal (create/delete/bet/close).
+    const lobbyTick = useMarketsLobbySSE(true);
+
     useEffect(() => {
         getMarketsPromise()
             .then(setData)
             .catch((e) => setError(e instanceof Error ? e.message : String(e)))
             .finally(() => setLoading(false));
-    }, []);
+    }, [lobbyTick]);
 
     return (
         <main className="max-w-sm mx-auto space-y-6">

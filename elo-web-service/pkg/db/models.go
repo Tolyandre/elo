@@ -18,6 +18,7 @@ type Bet struct {
 	Outcome  string             `json:"outcome"`
 	Amount   float64            `json:"amount"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
+	Shares   float64            `json:"shares"`
 }
 
 type Club struct {
@@ -49,6 +50,7 @@ type EloSetting struct {
 	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
 	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
 	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
+	MarketDefaultLiquidityB   float64            `json:"market_default_liquidity_b"`
 }
 
 type Game struct {
@@ -101,6 +103,14 @@ type Market struct {
 	ResolutionMatchID *string            `json:"resolution_match_id"`
 	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
+	LiquidityB        float64            `json:"liquidity_b"`
+	QYes              float64            `json:"q_yes"`
+	QNo               float64            `json:"q_no"`
+}
+
+type MarketGuarantor struct {
+	MarketID string `json:"market_id"`
+	PlayerID string `json:"player_id"`
 }
 
 type MarketMatchWinnerParam struct {

@@ -28,6 +28,15 @@ const testJWTSecret = "integration-test-jwt-secret"
 // setupTestDB starts a postgres container, applies migrations, and returns the pool + cleanup func.
 func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
+	pool, _, cleanup := setupTestDBWithDSN(t)
+	return pool, cleanup
+}
+
+// setupTestDBWithDSN is like setupTestDB but also returns the connection string,
+// so tests can exercise the in-process data-migration runner (MigrateCalculatorData),
+// which opens its own pool from the DSN.
+func setupTestDBWithDSN(t *testing.T) (*pgxpool.Pool, string, func()) {
+	t.Helper()
 	ctx := context.Background()
 
 	pgContainer, err := tcpostgres.Run(ctx, "docker.io/postgres:16-alpine",
@@ -58,7 +67,7 @@ func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 		t.Fatalf("create pool: %v", err)
 	}
 
-	return pool, func() {
+	return pool, connStr, func() {
 		pool.Close()
 		if err := pgContainer.Terminate(ctx); err != nil {
 			t.Logf("terminate container: %v", err)
