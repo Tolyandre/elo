@@ -102,16 +102,27 @@ identical — historical rating is preserved across match edits.
 ### Migration (resolved/cancelled markets only)
 
 Deploy precondition: the migration runs when **no open/betting_closed markets
-exist**, so every historical market is resolved or cancelled. The in-process data
-migration (`pkg/db/migrate_data.go`) backfills `bets.shares` only for markets with
-`q_yes = 0 AND q_no = 0` — the signature of pre-LMSR markets (any LMSR buy writes
-non-zero `q_*` via `UpdateMarketAMMState`, so real LMSR shares are never
-overwritten). For each resolved market the winning side gets
-`shares = amount × totalPool/winningPool`, which makes `shares × 1` reproduce the
-historical pari-mutuel payout exactly; the losing side gets the symmetric
-`amount × totalPool/losingPool`. The resulting residual is 0, so **no guarantor
-rows** are produced and historical elo is unchanged. The backfill is deterministic
-and idempotent.
+exist**, so every historical market is resolved or cancelled. The in-process
+data migration (`pkg/db/migrate_data.go`) targets markets created before the
+fixed-odds deploy date (`2026-08-14`) — anything created later already holds
+genuine LMSR data and is never rewritten. Instead of just faking payout-neutral
+share numbers, the backfill **replays** each historical market under the AMM:
+bets are re-processed in their original order from a fresh `q=(0,0)`, each
+spending its original `amount` to buy the share count that inverts the LMSR
+cost (closed form). Prices therefore move bet by bet, every implied per-bet
+price `amount/shares` lies in (0,1), and `q_yes`/`q_no` end up equal to the
+outstanding per-side share sums — the same invariant native markets satisfy,
+so displayed `yes_shares`/`no_shares` are consistent and never negative.
+
+**Rating preservation** (replay-safety): a recalculation re-running
+`SettleMarket` over these bets must reproduce the historical pari-mutuel
+payouts exactly, so for resolved markets each player's winning-side share total
+is pinned to `amount_win × totalPool/winningPool` by rescaling the replayed
+shares (computed from `amount`s only, so the backfill is deterministic and
+idempotent). Losing-side bets keep their replay shares (they pay 0), and
+cancelled markets replay freely (refunds depend on `amount` only). The winning
+shares still sum to the total pool, so the guarantor residual stays 0, no
+guarantor rows appear, and historical elo is unchanged.
 
 ### Live prices over SSE
 

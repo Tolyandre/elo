@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -146,40 +147,60 @@ func validateStored(ctx context.Context, tx pgx.Tx, matchID string) error {
 	return nil
 }
 
-// migrateMarketShares backfills bets.shares for pre-LMSR (parimutuel) markets so
-// the share settlement reproduces the exact historical payout.
+// lmsrDeployCutoff is the instant the fixed-odds share markets (ADR-10) went
+// live. Markets created before it are pre-LMSR pari-mutuel markets whose bets
+// carry no meaningful shares/AMM state; markets created on/after it hold
+// genuine LMSR data and must never be rewritten.
+var lmsrDeployCutoff = time.Date(2026, time.August, 14, 0, 0, 0, 0, time.UTC)
+
+// migrateMarketShares backfills bets.shares and the markets AMM state for
+// pre-LMSR (pari-mutuel) markets so the historical data looks as if the market
+// had genuinely traded under the fixed-odds share model — while keeping the
+// historical rating outcomes reproducible byte-for-byte.
 //
-// Deploy precondition (ADR-10): the migration runs when no open/betting_closed
-// markets exist, so every historical market is resolved or cancelled. The guard
-// `q_yes = 0 AND q_no = 0` selects exactly the pre-LMSR markets: any bet placed
-// under the new LMSR code writes non-zero q_* via UpdateMarketAMMState, so real
-// LMSR bets are never overwritten. The backfill is deterministic and idempotent.
+// The target set is resolved/cancelled markets created before lmsrDeployCutoff
+// (ADR-10's deploy precondition guarantees no open/betting_closed ones). The
+// backfill simulates the market: the historical bets are replayed through the
+// LMSR in their original order, each spending its original amount (amounts are
+// never modified), from a fresh q=(0,0). The replay yields realistic
+// share counts — prices move bet by bet, and every implied per-bet price
+// amount/shares lies in (0,1).
 //
-// For a resolved market the winning side gets shares = amount × totalPool/winningPool
-// (so shares × 1 reproduces the parimutuel share exactly); the losing side gets the
-// symmetric amount × totalPool/losingPool (payout is 0 regardless). The resulting
-// settlement residual is 0, so no guarantor rows are produced and historical elo is
-// preserved byte-for-byte. Cancelled markets refund the elo spent regardless of
-// shares, so they are left at the default 0.
+// Rating preservation (ADR-10 replay-safety): a recalculation re-running
+// SettleMarket over these bets must reproduce the historical pari-mutuel
+// payouts exactly, so for resolved markets each player's winning-side share
+// total is pinned to the pari-mutuel payout amount_win × totalPool/winPool by
+// rescaling the replayed shares (the losing side pays 0 and keeps its replay
+// shares; cancelled markets refund amounts regardless of shares). The winning
+// shares therefore still sum to the total pool — the guarantor residual stays
+// 0 and no guarantor rows appear.
+//
+// Finally q_yes/q_no are set to the outstanding share sums per side — the
+// invariant every native LMSR market satisfies — so the displayed prices are
+// consistent with the bets and never negative.
+//
+// The backfill is deterministic (it reads only amount/outcome/placed_at, none
+// of which it modifies) and therefore idempotent.
 func migrateMarketShares(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
-		SELECT id, resolution_outcome, liquidity_b
+		SELECT id, status, resolution_outcome, liquidity_b
 		FROM markets
-		WHERE status = 'resolved' AND q_yes = 0 AND q_no = 0
-	`)
+		WHERE status IN ('resolved', 'cancelled') AND created_at < $1
+	`, lmsrDeployCutoff)
 	if err != nil {
 		return fmt.Errorf("query pre-lmsr markets: %w", err)
 	}
 
 	type staleMarket struct {
 		ID                string
+		Status            string
 		ResolutionOutcome *string
 		LiquidityB        float64
 	}
 	stale := make([]staleMarket, 0)
 	for rows.Next() {
 		var m staleMarket
-		if err := rows.Scan(&m.ID, &m.ResolutionOutcome, &m.LiquidityB); err != nil {
+		if err := rows.Scan(&m.ID, &m.Status, &m.ResolutionOutcome, &m.LiquidityB); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan market: %w", err)
 		}
@@ -194,99 +215,159 @@ func migrateMarketShares(ctx context.Context, pool *pgxpool.Pool) error {
 
 	log.Printf("market migration: backfilling shares for %d pre-lmsr markets", len(stale))
 	for _, m := range stale {
-		if m.ResolutionOutcome == nil {
-			continue
+		// Only binary resolutions pin payouts; anything else (cancelled, or a
+		// NULL/unknown outcome) replays freely — refunds and missing winners
+		// don't depend on shares.
+		winning := ""
+		if m.Status == "resolved" && m.ResolutionOutcome != nil &&
+			(*m.ResolutionOutcome == "yes" || *m.ResolutionOutcome == "no") {
+			winning = *m.ResolutionOutcome
 		}
-		outcome := *m.ResolutionOutcome
-		if outcome != "yes" && outcome != "no" {
-			continue
-		}
-		if err := backfillMarketShares(ctx, pool, m.ID, outcome, m.LiquidityB); err != nil {
+		if err := backfillMarketShares(ctx, pool, m.ID, winning, m.LiquidityB); err != nil {
 			return fmt.Errorf("backfill market %s: %w", m.ID, err)
 		}
 	}
 	return nil
 }
 
-func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, winningOutcome string, liquidityB float64) error {
-	aggRows, err := pool.Query(ctx, `
-		SELECT outcome, SUM(amount)::float8 AS total
-		FROM bets WHERE market_id = $1 GROUP BY outcome
+// backfillMarketShares rewrites one market's bets.shares and AMM state via the
+// LMSR replay described on migrateMarketShares. winning is the winning outcome
+// ("yes"/"no") whose per-player share totals must reproduce the pari-mutuel
+// payouts, or "" when shares are unconstrained.
+func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, winning string, liquidityB float64) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	betRows, err := tx.Query(ctx, `
+		SELECT id, player_id, outcome, amount
+		FROM bets WHERE market_id = $1
+		ORDER BY placed_at, id
 	`, marketID)
 	if err != nil {
-		return fmt.Errorf("aggregate bets: %w", err)
+		return fmt.Errorf("query bets: %w", err)
 	}
-	yesPool, noPool := 0.0, 0.0
-	for aggRows.Next() {
-		var outcome string
-		var total float64
-		if err := aggRows.Scan(&outcome, &total); err != nil {
-			aggRows.Close()
-			return fmt.Errorf("scan aggregate: %w", err)
+	type betRow struct {
+		ID       string
+		PlayerID string
+		Outcome  string
+		Amount   float64
+	}
+	bets := make([]betRow, 0)
+	for betRows.Next() {
+		var b betRow
+		if err := betRows.Scan(&b.ID, &b.PlayerID, &b.Outcome, &b.Amount); err != nil {
+			betRows.Close()
+			return fmt.Errorf("scan bet: %w", err)
 		}
-		if outcome == "yes" {
-			yesPool = total
-		} else {
-			noPool = total
-		}
+		bets = append(bets, b)
 	}
-	if err := aggRows.Err(); err != nil {
-		return fmt.Errorf("iterate aggregates: %w", err)
+	if err := betRows.Err(); err != nil {
+		return fmt.Errorf("iterate bets: %w", err)
 	}
-
-	totalPool := yesPool + noPool
-	if totalPool == 0 {
-		return nil // no bets to backfill
-	}
-	var winPool, losePool float64
-	if winningOutcome == "yes" {
-		winPool, losePool = yesPool, noPool
-	} else {
-		winPool, losePool = noPool, yesPool
-	}
-	// shares = amount × (totalPool / pool_of_outcome). Storing the per-bet ratio
-	// lets us write one UPDATE that scales each row's own amount.
-	winRatio := 1.0
-	if winPool > 0 {
-		winRatio = totalPool / winPool
-	}
-	loseRatio := 1.0
-	if losePool > 0 {
-		loseRatio = totalPool / losePool
+	if len(bets) == 0 {
+		return nil // nothing to replay; q stays at its creation-time 0/0
 	}
 
-	// Cast the branches to float8 explicitly: pgx sends untyped params as text,
-	// and without the cast amount * (CASE ...) resolves to text, which won't assign
-	// to a double-precision column (SQLSTATE 42804).
-	_, err = pool.Exec(ctx, `
-		UPDATE bets
-		SET shares = amount * CASE WHEN outcome = $1 THEN $2::float8 ELSE $3::float8 END
-		WHERE market_id = $4
-	`, winningOutcome, winRatio, loseRatio, marketID)
-	if err != nil {
-		return fmt.Errorf("update shares: %w", err)
-	}
-
-	// Seed q_yes/q_no so the displayed LMSR price reflects the historical pool-
-	// implied probability (p_yes = yesPool/totalPool). q_yes - q_no = b·ln(yesPool/noPool).
-	// One-sided markets are clamped to a near-certain price.
 	b := liquidityB
 	if b <= 0 {
 		b = 16
 	}
+
+	// Replay: each historical bet spends its amount at the current marginal
+	// price, buying lmsrSharesForAmount shares; q accumulates the outstanding
+	// shares exactly like a native PlaceBet would.
 	qYes, qNo := 0.0, 0.0
-	switch {
-	case yesPool > 0 && noPool > 0:
-		qYes = b * math.Log(yesPool/noPool)
-	case yesPool > 0: // noPool == 0 → ~certain YES
-		qYes = b * 5
-	case noPool > 0: // yesPool == 0 → ~certain NO
-		qNo = b * 5
+	shares := make([]float64, len(bets))
+	for i, bet := range bets {
+		s := lmsrSharesForAmount(qYes, qNo, b, bet.Outcome, bet.Amount)
+		shares[i] = s
+		if bet.Outcome == "yes" {
+			qYes += s
+		} else {
+			qNo += s
+		}
 	}
-	if _, err := pool.Exec(ctx, `
+
+	// Pin the winning side to the historical pari-mutuel payouts: per player,
+	// rescale the replayed shares so they total amount_win × totalPool/winPool
+	// (computed from amounts only — never from the shares being rewritten — so
+	// repeated runs converge to the same values).
+	if winning != "" {
+		winPool, totalPool := 0.0, 0.0
+		amountWin := make(map[string]float64)
+		replayWin := make(map[string]float64)
+		for i, bet := range bets {
+			totalPool += bet.Amount
+			if bet.Outcome == winning {
+				winPool += bet.Amount
+				amountWin[bet.PlayerID] += bet.Amount
+				replayWin[bet.PlayerID] += shares[i]
+			}
+		}
+		if winPool > 0 {
+			payoutRatio := totalPool / winPool
+			factor := make(map[string]float64, len(replayWin))
+			for pid, replayed := range replayWin {
+				if replayed > 0 {
+					factor[pid] = amountWin[pid] * payoutRatio / replayed
+				}
+			}
+			for i, bet := range bets {
+				if bet.Outcome == winning {
+					shares[i] *= factor[bet.PlayerID]
+				}
+			}
+			// q must equal the outstanding shares, so re-accumulate the side
+			// that was rescaled.
+			qYes, qNo = 0.0, 0.0
+			for i, bet := range bets {
+				if bet.Outcome == "yes" {
+					qYes += shares[i]
+				} else {
+					qNo += shares[i]
+				}
+			}
+		}
+	}
+
+	for i, bet := range bets {
+		if _, err := tx.Exec(ctx, `
+			UPDATE bets SET shares = $2::float8 WHERE id = $1
+		`, bet.ID, shares[i]); err != nil {
+			return fmt.Errorf("update bet shares: %w", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE markets SET q_yes = $2::float8, q_no = $3::float8 WHERE id = $1
 	`, marketID, qYes, qNo); err != nil {
 		return fmt.Errorf("seed amm state: %w", err)
 	}
-	return nil
+	return tx.Commit(ctx)
+}
+
+// lmsrSharesForAmount inverts the LMSR cost function: it returns the number of
+// `outcome` shares that cost exactly `amount` given the current AMM state.
+// With p the outcome's marginal price, cost(amount) satisfies
+// e^(amount/b) = p·e^(s/b) + (1−p), hence the closed form below. Mirrors the
+// math in pkg/elo/amm.go (which pkg/db cannot import — cycle).
+func lmsrSharesForAmount(qYes, qNo, b float64, outcome string, amount float64) float64 {
+	p := lmsrPrice(qYes, qNo, b, outcome)
+	return b * math.Log((math.Exp(amount/b)-1+p)/p)
+}
+
+// lmsrPrice returns the marginal price (probability) of `outcome` in (0,1).
+// Same log-sum-exp stabilization as pkg/elo/amm.go.
+func lmsrPrice(qYes, qNo, b float64, outcome string) float64 {
+	uy := qYes / b
+	un := qNo / b
+	m := math.Max(uy, un)
+	ey := math.Exp(uy - m)
+	en := math.Exp(un - m)
+	if outcome == "yes" {
+		return ey / (ey + en)
+	}
+	return en / (ey + en)
 }
