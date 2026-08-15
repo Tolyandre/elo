@@ -184,6 +184,7 @@ func main() {
 	router.PATCH("/markets/:id", append(editorAuth(), strictWrapper.PatchMarket)...)
 	router.DELETE("/markets/:id", append(editorAuth(), strictWrapper.DeleteMarket)...)
 	router.POST("/markets/:id/bets", oauth2Handler.DeserializeUser(), strictWrapper.PlaceBet)
+	router.GET("/markets/:id/price-history", strictWrapper.GetMarketPriceHistory)
 	// Market SSE — lobby path before the /:id wildcard to avoid collision.
 	router.GET("/markets/lobby/events", apiHandler.MarketsLobbyEvents)
 	router.GET("/markets/:id/events", apiHandler.MarketEvents)

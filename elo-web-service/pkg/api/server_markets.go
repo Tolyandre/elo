@@ -226,6 +226,23 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	return GetMarket200JSONResponse{Status: "success", Data: detail}, nil
 }
 
+func (s *StrictServer) GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error) {
+	points, err := s.api.MarketService.GetMarketPriceHistory(ctx, request.Id)
+	if err != nil {
+		return GetMarketPriceHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
+	}
+	resp := GetMarketPriceHistory200JSONResponse{Status: "success"}
+	resp.Data.Points = make([]struct {
+		T        time.Time `json:"t"`
+		YesPrice float64   `json:"yes_price"`
+	}, len(points))
+	for i, p := range points {
+		resp.Data.Points[i].T = p.PlacedAt
+		resp.Data.Points[i].YesPrice = p.YesPrice
+	}
+	return resp, nil
+}
+
 // enrichMarketDetailForPlayer fills the per-player fields (elo spent, shares held,
 // reserved, bet limit) when the caller is authenticated with a linked player.
 // Projections sum the player's per-buy shares (each pays 1 on a win) and spent
@@ -253,10 +270,10 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 		var myYesStaked, myNoStaked, myYesShares, myNoShares float64
 		for _, b := range myBets {
 			if b.Outcome == "yes" {
-				myYesStaked += b.Amount // elo spent
+				myYesStaked += b.Cost // elo spent
 				myYesShares += b.Shares // shares held (each pays 1 if YES wins)
 			} else {
-				myNoStaked += b.Amount
+				myNoStaked += b.Cost
 				myNoShares += b.Shares
 			}
 		}

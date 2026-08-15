@@ -32,8 +32,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,
@@ -53,8 +53,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,
@@ -161,41 +161,49 @@ WHERE market_id = $1
   AND placed_at < $3;
 
 -- name: InsertBet :one
-INSERT INTO bets (id, market_id, player_id, outcome, amount, shares)
+INSERT INTO bets (id, market_id, player_id, outcome, cost, shares)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, placed_at;
 
 -- name: GetPlayerReservedAmount :one
-SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
+SELECT COALESCE(SUM(ob.cost), 0)::float8 AS reserved
 FROM bets ob
 JOIN markets om ON om.id = ob.market_id
 WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed');
 
 -- name: GetBetsAggregatedByOutcome :many
-SELECT player_id, outcome, SUM(amount)::float8 AS total_amount
+SELECT player_id, outcome, SUM(cost)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1
 GROUP BY player_id, outcome
 ORDER BY player_id, outcome;
 
 -- name: GetPlayerBetsAggregatedForMarket :many
-SELECT outcome, SUM(amount)::float8 AS total_amount
+SELECT outcome, SUM(cost)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome;
 
 -- name: GetBetsForSettlement :many
 -- Per-buy rows (each carries the shares bought) used by share settlement.
-SELECT player_id, outcome, amount, shares
+SELECT player_id, outcome, cost, shares
 FROM bets
 WHERE market_id = $1
 ORDER BY placed_at, id;
 
 -- name: GetPlayerBetsForMarket :many
 -- Per-buy rows for one player, used to show shares held / elo spent on the detail page.
-SELECT outcome, amount, shares
+SELECT outcome, cost, shares
 FROM bets
 WHERE market_id = $1 AND player_id = $2
+ORDER BY placed_at, id;
+
+-- name: GetMarketBetsForPriceHistory :many
+-- Ordered bet stream used to reconstruct the market's price history by
+-- replaying the LMSR from its creation state q=(0,0).
+SELECT outcome, shares, placed_at
+FROM bets
+WHERE market_id = $1
 ORDER BY placed_at, id;
 
 -- name: UpsertGlobalArenaSettlementByMarket :exec
@@ -227,8 +235,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,

@@ -433,6 +433,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/markets/{id}/price-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reconstructed yes-outcome price history of a market
+         * @description The marginal yes-price after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No prices are persisted; the series is derived from bets alone.
+         */
+        get: operations["GetMarketPriceHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -3258,6 +3278,62 @@ export interface operations {
             };
             /** @description Spend limit exceeded */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetMarketPriceHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price points ordered by time */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: {
+                            points: {
+                                /**
+                                 * Format: date-time
+                                 * @description When the bet was placed.
+                                 */
+                                t: string;
+                                /**
+                                 * Format: double
+                                 * @description Marginal yes-price right after the bet, in (0,1).
+                                 */
+                                yes_price: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Market not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

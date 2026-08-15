@@ -525,6 +525,17 @@ export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
     return (await unwrap(client.GET("/markets/{id}", { params: { path: { id } } }))).data;
 }
 
+export interface MarketPricePoint {
+    t: string;
+    yes_price: number;
+}
+
+// The price history is reconstructed server-side by replaying the bet stream
+// through the LMSR; points are the marginal yes-price right after each bet.
+export async function getMarketPriceHistoryPromise(id: string): Promise<MarketPricePoint[]> {
+    return (await unwrap(client.GET("/markets/{id}/price-history", { params: { path: { id } } }))).data.points;
+}
+
 export async function createMarketPromise(payload: {
     market_type: "match_winner" | "win_streak";
     starts_at: string | null;

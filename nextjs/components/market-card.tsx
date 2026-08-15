@@ -1,13 +1,23 @@
 "use client"
 import React from "react";
+import {
+    CartesianGrid,
+    Line,
+    LineChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from "recharts";
 import { Market, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
+import { ChartPricePoint } from "@/app/market/priceHistory";
 import { ClubIcons } from "@/components/player-name";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateTime, formatTime } from "@/lib/datetime";
 
 export function statusLabel(status: Market["status"], resolutionOutcome?: string | null): string {
     if (status === "resolved") {
@@ -95,6 +105,64 @@ function PoolBar({ yesPool, noPool, yesPrice, noPrice, yesShares, noShares }: {
     );
 }
 
+// axisTicks derives X-axis tick positions from the unique point timestamps,
+// capped at 4 evenly spaced values. Explicit ticks avoid a recharts quirk:
+// auto-generated ticks get duplicate React keys when several points share a
+// timestamp (e.g. bets placed in the same second).
+function axisTicks(points: ChartPricePoint[]): number[] {
+    const unique = Array.from(new Set(points.map(p => p.t)));
+    if (unique.length <= 4) return unique;
+    const step = (unique.length - 1) / 3;
+    return [0, 1, 2, 3].map(i => unique[Math.round(i * step)]);
+}
+
+// PriceChart renders the yes-outcome probability over time. The price moves in
+// discrete steps (one per bet), hence stepAfter; animation is off so live SSE
+// appends don't re-animate the whole line.
+function PriceChart({ points }: { points: ChartPricePoint[] }) {
+    return (
+        <div className="h-36 pt-2 -mx-2">
+            <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                        dataKey="t"
+                        type="number"
+                        scale="time"
+                        domain={["dataMin", "dataMax"]}
+                        ticks={axisTicks(points)}
+                        tickFormatter={(t: number) => formatTime(new Date(t))}
+                        tick={{ fontSize: 10 }}
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                    />
+                    <YAxis
+                        domain={[0, 1]}
+                        ticks={[0, 0.5, 1]}
+                        tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
+                        width={34}
+                        tick={{ fontSize: 10 }}
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                    />
+                    <Tooltip
+                        labelFormatter={(label) => formatDateTime(new Date(Number(label)))}
+                        formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, "Да"]}
+                    />
+                    <Line
+                        type="stepAfter"
+                        dataKey="yesPrice"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        dot={points.length <= 50 ? { r: 2 } : false}
+                        isAnimationActive={false}
+                    />
+                </LineChart>
+            </ResponsiveContainer>
+        </div>
+    );
+}
+
 function SettlementList({ details, showFlow = true }: { details: SettlementDetail[]; showFlow?: boolean }) {
     return (
         <div className="space-y-1 pt-2 border-t">
@@ -122,7 +190,7 @@ function SettlementList({ details, showFlow = true }: { details: SettlementDetai
     );
 }
 
-export function MarketCard({ market, className }: { market: Market; className?: string }) {
+export function MarketCard({ market, priceHistory, className }: { market: Market; priceHistory?: ChartPricePoint[]; className?: string }) {
     const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const title = getMarketTitle(market, players, games, playerDisplayName);
@@ -161,6 +229,9 @@ export function MarketCard({ market, className }: { market: Market; className?: 
                     yesShares={market.yes_shares}
                     noShares={market.no_shares}
                 />
+                {priceHistory && priceHistory.length > 0 && (
+                    <PriceChart points={priceHistory} />
+                )}
                 {(isOpen || isBettingClosed) && market.guarantors && market.guarantors.length > 0 && (
                     <p className="text-xs text-muted-foreground pt-2">
                         Поручители: {market.guarantors.map(g => g.player_name).join(", ")}

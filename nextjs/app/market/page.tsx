@@ -1,14 +1,20 @@
 "use client"
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { MarketDetail, getMarketByIdPromise, placeBetPromise } from "@/app/api";
+import {
+    MarketDetail,
+    getMarketByIdPromise,
+    getMarketPriceHistoryPromise,
+    placeBetPromise,
+} from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMarketPricesSSE } from "@/hooks/useMarketsSSE";
+import { ChartPricePoint, mergePriceHistory } from "@/app/market/priceHistory";
 
 function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: number; earned: number; totalStaked: number }) {
     const positive = net >= 0;
@@ -114,8 +120,30 @@ function MarketPageContent() {
         () => (id ? getMarketByIdPromise(id) : Promise.reject(new Error('no id'))),
         [id],
     );
+    const { data: fetchedHistory, invalidate: invalidateHistory } = useAsyncResource(
+        () => (id ? getMarketPriceHistoryPromise(id) : Promise.reject(new Error('no id'))),
+        [id],
+    );
     // Live LMSR prices/pools streamed after every purchase (ours and others').
     const ssePrices = useMarketPricesSSE(id || null);
+
+    // Live points appended onto the replayed history as SSE prices tick. A
+    // point whose price matches the previous one is dropped by the merge —
+    // that is the connect frame echoing the current state, or a bet a history
+    // refetch has already picked up.
+    const [livePoints, setLivePoints] = useState<ChartPricePoint[]>([]);
+    useEffect(() => {
+        /* eslint-disable react-hooks/set-state-in-effect -- the SSE hook surfaces the latest prices as a value, so recording each new value in an effect is the standard stream-to-state bridge */
+        if (!ssePrices) return;
+        setLivePoints(prev => [...prev, { t: Date.now(), yesPrice: ssePrices.yes_price }]);
+        /* eslint-enable react-hooks/set-state-in-effect */
+    }, [ssePrices]);
+
+    const priceHistory = mergePriceHistory(
+        (fetchedHistory ?? []).map(p => ({ t: new Date(p.t).getTime(), yesPrice: p.yes_price })),
+        livePoints,
+    );
+
     const [buyingYes, setBuyingYes] = useState(false);
     const [buyingNo, setBuyingNo] = useState(false);
 
@@ -163,8 +191,10 @@ function MarketPageContent() {
             const expectedPrice = outcome === "yes" ? displayMarket.yes_price : displayMarket.no_price;
             await placeBetPromise(id, outcome, expectedPrice);
             invalidate();
+            invalidateHistory();
         } catch {
             invalidate();
+            invalidateHistory();
         } finally {
             if (outcome === "yes") setBuyingYes(false);
             else setBuyingNo(false);
@@ -176,7 +206,7 @@ function MarketPageContent() {
     return (
         <main className="max-w-sm mx-auto space-y-4">
             <PageHeader title="Ставки" />
-            <MarketCard market={displayMarket} />
+            <MarketCard market={displayMarket} priceHistory={priceHistory} />
 
             <div className="flex flex-col sm:flex-row gap-3">
                 <OutcomeColumn

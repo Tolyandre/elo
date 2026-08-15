@@ -1449,6 +1449,9 @@ type ServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(c *gin.Context, id string)
+	// GetMarketPriceHistory Reconstructed yes-outcome price history of a market
+	// (GET /markets/{id}/price-history)
+	GetMarketPriceHistory(c *gin.Context, id string)
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(c *gin.Context, params ListMatchesParams)
@@ -2145,6 +2148,31 @@ func (siw *ServerInterfaceWrapper) PlaceBet(c *gin.Context) {
 	}
 
 	siw.Handler.PlaceBet(c, id)
+}
+
+// GetMarketPriceHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetMarketPriceHistory(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetMarketPriceHistory(c, id)
 }
 
 // ListMatches operation middleware
@@ -2891,6 +2919,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/markets/:id", wrapper.GetMarket)
 	router.PATCH(options.BaseURL+"/markets/:id", wrapper.PatchMarket)
 	router.POST(options.BaseURL+"/markets/:id/bets", wrapper.PlaceBet)
+	router.GET(options.BaseURL+"/markets/:id/price-history", wrapper.GetMarketPriceHistory)
 	router.GET(options.BaseURL+"/matches", wrapper.ListMatches)
 	router.POST(options.BaseURL+"/matches", wrapper.AddMatch)
 	router.GET(options.BaseURL+"/matches/:id", wrapper.GetMatchById)
@@ -4405,6 +4434,67 @@ func (response PlaceBet422JSONResponse) VisitPlaceBetResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMarketPriceHistoryRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetMarketPriceHistoryResponseObject interface {
+	VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error
+}
+
+type GetMarketPriceHistory200JSONResponse struct {
+	Data struct {
+		Points []struct {
+			// T When the bet was placed.
+			T time.Time `json:"t"`
+
+			// YesPrice Marginal yes-price right after the bet, in (0,1).
+			YesPrice float64 `json:"yes_price"`
+		} `json:"points"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response GetMarketPriceHistory200JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMarketPriceHistory400JSONResponse ApiError
+
+func (response GetMarketPriceHistory400JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMarketPriceHistory404JSONResponse ApiError
+
+func (response GetMarketPriceHistory404JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6384,6 +6474,9 @@ type StrictServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error)
+	// GetMarketPriceHistory Reconstructed yes-outcome price history of a market
+	// (GET /markets/{id}/price-history)
+	GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error)
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(ctx context.Context, request ListMatchesRequestObject) (ListMatchesResponseObject, error)
@@ -7286,6 +7379,32 @@ func (sh *strictHandler) PlaceBet(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PlaceBetResponseObject); ok {
 		if err := validResponse.VisitPlaceBetResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMarketPriceHistory operation middleware
+func (sh *strictHandler) GetMarketPriceHistory(ctx *gin.Context, id string) {
+	var request GetMarketPriceHistoryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMarketPriceHistory(ctx, request.(GetMarketPriceHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMarketPriceHistory")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetMarketPriceHistoryResponseObject); ok {
+		if err := validResponse.VisitGetMarketPriceHistoryResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

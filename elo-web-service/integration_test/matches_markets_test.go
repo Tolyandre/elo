@@ -635,7 +635,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	}
 	// The cost is the average price over the bought interval — below the share
 	// count (price < 1).
-	amountA, amountB := readBetAmount(t, pool, market.ID, playerA), readBetAmount(t, pool, market.ID, playerB)
+	amountA, amountB := readBetCost(t, pool, market.ID, playerA), readBetCost(t, pool, market.ID, playerB)
 	if amountA <= 0 || amountA >= 1 {
 		t.Errorf("playerA amount = %v, want it in (0, 1) at fresh 50/50 LMSR state", amountA)
 	}
@@ -742,7 +742,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	}
 
 	sharesA := readBetShares(t, pool, market.ID, playerA)
-	amountA, amountB := readBetAmount(t, pool, market.ID, playerA), readBetAmount(t, pool, market.ID, playerB)
+	amountA, amountB := readBetCost(t, pool, market.ID, playerA), readBetCost(t, pool, market.ID, playerB)
 
 	// Resolve YES (playerA wins).
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
@@ -851,17 +851,17 @@ func readBetShares(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) 
 	return shares
 }
 
-// readBetAmount returns the AMM-priced elo cost stored on a player's (single) buy.
-func readBetAmount(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+// readBetCost returns the AMM-priced elo cost stored on a player's (single) buy.
+func readBetCost(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
 	t.Helper()
-	var amount float64
+	var cost float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT amount FROM bets WHERE market_id = $1 AND player_id = $2 LIMIT 1`, marketID, playerID,
-	).Scan(&amount)
+		`SELECT cost FROM bets WHERE market_id = $1 AND player_id = $2 LIMIT 1`, marketID, playerID,
+	).Scan(&cost)
 	if err != nil {
-		t.Fatalf("read amount for %s: %v", playerID, err)
+		t.Fatalf("read cost for %s: %v", playerID, err)
 	}
-	return amount
+	return cost
 }
 
 // playerMarketEarned returns elo_earned for a player's market settlement row (0 if none).

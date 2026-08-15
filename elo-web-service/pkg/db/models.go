@@ -16,7 +16,7 @@ type Bet struct {
 	MarketID string             `json:"market_id"`
 	PlayerID string             `json:"player_id"`
 	Outcome  string             `json:"outcome"`
-	Amount   float64            `json:"amount"`
+	Cost     float64            `json:"cost"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 	Shares   float64            `json:"shares"`
 }

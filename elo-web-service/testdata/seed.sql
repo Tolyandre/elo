@@ -202,9 +202,10 @@ BEGIN
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.0)             / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000067'::uuid;
 
     -- Market 1: open match_winner (Alice beats Bob in Skull King)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
+    -- q_yes/q_no mirror the outstanding shares of the seeded bets below.
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, q_yes, q_no)
     VALUES ('00000000-0000-0000-0000-000000000001', 'match_winner', 'open',
-            NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id)
+            NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id, 10, 8)
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
@@ -213,9 +214,9 @@ BEGIN
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, q_yes, q_no)
     VALUES ('00000000-0000-0000-0000-000000000002', 'win_streak', 'open',
-            NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id)
+            NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id, 10, 10)
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
@@ -224,10 +225,10 @@ BEGIN
     ON CONFLICT (market_id) DO NOTHING;
 
     -- Market 3: resolved match_winner (outcome: yes)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, resolution_outcome)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, resolution_outcome, q_yes, q_no)
     VALUES ('00000000-0000-0000-0000-000000000003', 'match_winner', 'resolved',
             NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days',
-            '00000000-0000-0000-0000-0000000000c8'::uuid, 'yes')
+            '00000000-0000-0000-0000-0000000000c8'::uuid, 'yes', 20, 12)
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
@@ -247,24 +248,25 @@ BEGIN
             ARRAY['00000000-0000-0000-0000-000000000064'::uuid], ARRAY[]::uuid[])
     ON CONFLICT (market_id) DO NOTHING;
 
-    -- Bets on open market 1
-    INSERT INTO bets (id, market_id, player_id, outcome, amount) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 5.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  8.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 3.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 2.0);  -- Carol bets twice on yes
+    -- Bets on open market 1 (shares-driven: cost is the elo the AMM charged)
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 5.0, 5),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  8.0, 8),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 3.0, 3),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 2.0, 2);  -- Carol bets twice on yes
 
     -- Bets on open market 2
-    INSERT INTO bets (id, market_id, player_id, outcome, amount) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000064'::uuid, 'no',  6.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000065'::uuid, 'yes', 10.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  4.0);
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000064'::uuid, 'no',  6.0, 6),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000065'::uuid, 'yes', 10.0, 10),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  4.0, 4);
 
-    -- Bets + settlement for resolved market 3
-    INSERT INTO bets (id, market_id, player_id, outcome, amount) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 8.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  5.0),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  7.0);
+    -- Bets + settlement for resolved market 3 (Alice's 20 yes shares pay 20,
+    -- matching the settlement rows below)
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 8.0, 20),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  5.0, 5),
+        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  7.0, 7);
 
     -- global_arena_settlement for market 3 (discriminator='market').
     -- Settlement: Alice (yes): earned=20, staked=-8; Bob: earned=0, staked=-5; Carol: earned=0, staked=-7.
@@ -286,5 +288,5 @@ BEGIN
             989.8239449167427  + (0.0  - 7.0),
             989.8239449167427  + (0.0  - 7.0),
             'market', '00000000-0000-0000-0000-000000000003'::uuid, -7.0,  0.0, -7.0,  0.0, 'amateur')
-    ON CONFLICT (market_id, player_id) WHERE market_id IS NOT NULL DO NOTHING;
+    ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL DO NOTHING;
 END $$;

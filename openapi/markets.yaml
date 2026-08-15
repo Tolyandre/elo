@@ -350,6 +350,63 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
 
+MarketPriceHistory:
+  get:
+    operationId: GetMarketPriceHistory
+    tags: [markets]
+    summary: Reconstructed yes-outcome price history of a market
+    description: >-
+      The marginal yes-price after every bet, reconstructed by replaying the bet
+      stream through the market's LMSR from its creation state. No prices are
+      persisted; the series is derived from bets alone.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Price points ordered by time
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    points:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          t:
+                            type: string
+                            format: date-time
+                            description: When the bet was placed.
+                          yes_price:
+                            type: number
+                            format: double
+                            description: Marginal yes-price right after the bet, in (0,1).
+                        required: [t, yes_price]
+                  required: [points]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Market not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 SettlementDetail:

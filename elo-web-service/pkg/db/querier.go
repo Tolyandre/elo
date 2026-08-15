@@ -66,6 +66,9 @@ type Querier interface {
 	GetGameByID(ctx context.Context, id string) (Game, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
+	// Ordered bet stream used to reconstruct the market's price history by
+	// replaying the LMSR from its creation state q=(0,0).
+	GetMarketBetsForPriceHistory(ctx context.Context, marketID string) ([]GetMarketBetsForPriceHistoryRow, error)
 	// Guarantor-role settlement rows (discriminator 'market_guarantor') — the
 	// per-guarantor payout rollup. A player who is both buyer and guarantor has a
 	// separate buyer row (discriminator 'market'), so their entry here carries only

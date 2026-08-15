@@ -139,7 +139,7 @@ func (q *Queries) DeleteMarket(ctx context.Context, id string) error {
 }
 
 const getBetsAggregatedByOutcome = `-- name: GetBetsAggregatedByOutcome :many
-SELECT player_id, outcome, SUM(amount)::float8 AS total_amount
+SELECT player_id, outcome, SUM(cost)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1
 GROUP BY player_id, outcome
@@ -147,9 +147,9 @@ ORDER BY player_id, outcome
 `
 
 type GetBetsAggregatedByOutcomeRow struct {
-	PlayerID    string  `json:"player_id"`
-	Outcome     string  `json:"outcome"`
-	TotalAmount float64 `json:"total_amount"`
+	PlayerID  string  `json:"player_id"`
+	Outcome   string  `json:"outcome"`
+	TotalCost float64 `json:"total_cost"`
 }
 
 func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID string) ([]GetBetsAggregatedByOutcomeRow, error) {
@@ -161,7 +161,7 @@ func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID strin
 	items := []GetBetsAggregatedByOutcomeRow{}
 	for rows.Next() {
 		var i GetBetsAggregatedByOutcomeRow
-		if err := rows.Scan(&i.PlayerID, &i.Outcome, &i.TotalAmount); err != nil {
+		if err := rows.Scan(&i.PlayerID, &i.Outcome, &i.TotalCost); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -173,7 +173,7 @@ func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID strin
 }
 
 const getBetsForSettlement = `-- name: GetBetsForSettlement :many
-SELECT player_id, outcome, amount, shares
+SELECT player_id, outcome, cost, shares
 FROM bets
 WHERE market_id = $1
 ORDER BY placed_at, id
@@ -182,7 +182,7 @@ ORDER BY placed_at, id
 type GetBetsForSettlementRow struct {
 	PlayerID string  `json:"player_id"`
 	Outcome  string  `json:"outcome"`
-	Amount   float64 `json:"amount"`
+	Cost     float64 `json:"cost"`
 	Shares   float64 `json:"shares"`
 }
 
@@ -199,7 +199,7 @@ func (q *Queries) GetBetsForSettlement(ctx context.Context, marketID string) ([]
 		if err := rows.Scan(
 			&i.PlayerID,
 			&i.Outcome,
-			&i.Amount,
+			&i.Cost,
 			&i.Shares,
 		); err != nil {
 			return nil, err
@@ -241,6 +241,41 @@ func (q *Queries) GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsO
 	for rows.Next() {
 		var i GetBetsOnMarketPlacedBetweenRow
 		if err := rows.Scan(&i.ID, &i.PlayerID, &i.PlacedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMarketBetsForPriceHistory = `-- name: GetMarketBetsForPriceHistory :many
+SELECT outcome, shares, placed_at
+FROM bets
+WHERE market_id = $1
+ORDER BY placed_at, id
+`
+
+type GetMarketBetsForPriceHistoryRow struct {
+	Outcome  string             `json:"outcome"`
+	Shares   float64            `json:"shares"`
+	PlacedAt pgtype.Timestamptz `json:"placed_at"`
+}
+
+// Ordered bet stream used to reconstruct the market's price history by
+// replaying the LMSR from its creation state q=(0,0).
+func (q *Queries) GetMarketBetsForPriceHistory(ctx context.Context, marketID string) ([]GetMarketBetsForPriceHistoryRow, error) {
+	rows, err := q.db.Query(ctx, getMarketBetsForPriceHistory, marketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMarketBetsForPriceHistoryRow{}
+	for rows.Next() {
+		var i GetMarketBetsForPriceHistoryRow
+		if err := rows.Scan(&i.Outcome, &i.Shares, &i.PlacedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -313,8 +348,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,
@@ -489,7 +524,7 @@ func (q *Queries) GetPlayerBetLimit(ctx context.Context, id string) (float64, er
 }
 
 const getPlayerBetsAggregatedForMarket = `-- name: GetPlayerBetsAggregatedForMarket :many
-SELECT outcome, SUM(amount)::float8 AS total_amount
+SELECT outcome, SUM(cost)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome
@@ -501,8 +536,8 @@ type GetPlayerBetsAggregatedForMarketParams struct {
 }
 
 type GetPlayerBetsAggregatedForMarketRow struct {
-	Outcome     string  `json:"outcome"`
-	TotalAmount float64 `json:"total_amount"`
+	Outcome   string  `json:"outcome"`
+	TotalCost float64 `json:"total_cost"`
 }
 
 func (q *Queries) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error) {
@@ -514,7 +549,7 @@ func (q *Queries) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetP
 	items := []GetPlayerBetsAggregatedForMarketRow{}
 	for rows.Next() {
 		var i GetPlayerBetsAggregatedForMarketRow
-		if err := rows.Scan(&i.Outcome, &i.TotalAmount); err != nil {
+		if err := rows.Scan(&i.Outcome, &i.TotalCost); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -526,7 +561,7 @@ func (q *Queries) GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetP
 }
 
 const getPlayerBetsForMarket = `-- name: GetPlayerBetsForMarket :many
-SELECT outcome, amount, shares
+SELECT outcome, cost, shares
 FROM bets
 WHERE market_id = $1 AND player_id = $2
 ORDER BY placed_at, id
@@ -539,7 +574,7 @@ type GetPlayerBetsForMarketParams struct {
 
 type GetPlayerBetsForMarketRow struct {
 	Outcome string  `json:"outcome"`
-	Amount  float64 `json:"amount"`
+	Cost    float64 `json:"cost"`
 	Shares  float64 `json:"shares"`
 }
 
@@ -553,7 +588,7 @@ func (q *Queries) GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsF
 	items := []GetPlayerBetsForMarketRow{}
 	for rows.Next() {
 		var i GetPlayerBetsForMarketRow
-		if err := rows.Scan(&i.Outcome, &i.Amount, &i.Shares); err != nil {
+		if err := rows.Scan(&i.Outcome, &i.Cost, &i.Shares); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -565,7 +600,7 @@ func (q *Queries) GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsF
 }
 
 const getPlayerReservedAmount = `-- name: GetPlayerReservedAmount :one
-SELECT COALESCE(SUM(ob.amount), 0)::float8 AS reserved
+SELECT COALESCE(SUM(ob.cost), 0)::float8 AS reserved
 FROM bets ob
 JOIN markets om ON om.id = ob.market_id
 WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed')
@@ -678,7 +713,7 @@ func (q *Queries) GetWinStreakParams(ctx context.Context, marketID string) (Mark
 }
 
 const insertBet = `-- name: InsertBet :one
-INSERT INTO bets (id, market_id, player_id, outcome, amount, shares)
+INSERT INTO bets (id, market_id, player_id, outcome, cost, shares)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, placed_at
 `
@@ -688,7 +723,7 @@ type InsertBetParams struct {
 	MarketID string  `json:"market_id"`
 	PlayerID string  `json:"player_id"`
 	Outcome  string  `json:"outcome"`
-	Amount   float64 `json:"amount"`
+	Cost     float64 `json:"cost"`
 	Shares   float64 `json:"shares"`
 }
 
@@ -703,7 +738,7 @@ func (q *Queries) InsertBet(ctx context.Context, arg InsertBetParams) (InsertBet
 		arg.MarketID,
 		arg.PlayerID,
 		arg.Outcome,
-		arg.Amount,
+		arg.Cost,
 		arg.Shares,
 	)
 	var i InsertBetRow
@@ -749,8 +784,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,
@@ -839,8 +874,8 @@ SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
     om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.amount ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.amount ELSE 0 END), 0)::float8 AS no_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
+    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
     COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
     mwp.required_player_ids,
     mwp.game_ids AS mw_game_ids,

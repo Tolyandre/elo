@@ -242,7 +242,7 @@ func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, win
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	betRows, err := tx.Query(ctx, `
-		SELECT id, player_id, outcome, amount
+		SELECT id, player_id, outcome, cost
 		FROM bets WHERE market_id = $1
 		ORDER BY placed_at, id
 	`, marketID)
@@ -253,12 +253,12 @@ func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, win
 		ID       string
 		PlayerID string
 		Outcome  string
-		Amount   float64
+		Cost     float64
 	}
 	bets := make([]betRow, 0)
 	for betRows.Next() {
 		var b betRow
-		if err := betRows.Scan(&b.ID, &b.PlayerID, &b.Outcome, &b.Amount); err != nil {
+		if err := betRows.Scan(&b.ID, &b.PlayerID, &b.Outcome, &b.Cost); err != nil {
 			betRows.Close()
 			return fmt.Errorf("scan bet: %w", err)
 		}
@@ -282,7 +282,7 @@ func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, win
 	qYes, qNo := 0.0, 0.0
 	shares := make([]float64, len(bets))
 	for i, bet := range bets {
-		s := lmsrSharesForAmount(qYes, qNo, b, bet.Outcome, bet.Amount)
+		s := lmsrSharesForAmount(qYes, qNo, b, bet.Outcome, bet.Cost)
 		shares[i] = s
 		if bet.Outcome == "yes" {
 			qYes += s
@@ -300,10 +300,10 @@ func backfillMarketShares(ctx context.Context, pool *pgxpool.Pool, marketID, win
 		amountWin := make(map[string]float64)
 		replayWin := make(map[string]float64)
 		for i, bet := range bets {
-			totalPool += bet.Amount
+			totalPool += bet.Cost
 			if bet.Outcome == winning {
-				winPool += bet.Amount
-				amountWin[bet.PlayerID] += bet.Amount
+				winPool += bet.Cost
+				amountWin[bet.PlayerID] += bet.Cost
 				replayWin[bet.PlayerID] += shares[i]
 			}
 		}

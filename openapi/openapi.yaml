@@ -203,6 +203,8 @@ paths:
     $ref: './markets.yaml#/MarketItem'
   /markets/{id}/bets:
     $ref: './markets.yaml#/MarketBets'
+  /markets/{id}/price-history:
+    $ref: './markets.yaml#/MarketPriceHistory'
 
   # Auth
   /auth/login:

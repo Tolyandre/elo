@@ -75,6 +75,7 @@ type IMarketService interface {
 	ListMarketGuarantors(ctx context.Context, marketID string) ([]db.ListMarketGuarantorsRow, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error)
 	GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error)
+	GetMarketPriceHistory(ctx context.Context, marketID string) ([]PricePoint, error)
 }
 
 type MarketService struct {
@@ -143,6 +144,26 @@ func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID st
 
 func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error) {
 	return s.Queries.GetPlayerBetLimit(ctx, playerID)
+}
+
+// GetMarketPriceHistory reconstructs the market's yes-price series by replaying
+// its bet stream through the LMSR from the creation state q=(0,0). No prices
+// are persisted — see price_history.go.
+func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID string) ([]PricePoint, error) {
+	market, err := s.Queries.GetMarketWithPools(ctx, marketID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.Queries.GetMarketBetsForPriceHistory(ctx, marketID)
+	if err != nil {
+		return nil, err
+	}
+	bets := make([]PriceBet, len(rows))
+	for i, r := range rows {
+		bets[i] = PriceBet{Outcome: r.Outcome, Shares: r.Shares, PlacedAt: r.PlacedAt.Time}
+	}
+	// rows come back ordered by (placed_at, id) — the order PriceHistory expects.
+	return PriceHistory(bets, market.LiquidityB), nil
 }
 
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
@@ -288,7 +309,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 		MarketID: marketID,
 		PlayerID: playerID,
 		Outcome:  outcome,
-		Amount:   amount,
+		Cost:     amount,
 		Shares:   shares,
 	}); err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("insert bet: %w", err)
@@ -452,10 +473,10 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			pd = &playerData{}
 			players[b.PlayerID] = pd
 		}
-		pd.staked += b.Amount
-		totalCollected += b.Amount
+		pd.staked += b.Cost
+		totalCollected += b.Cost
 		if isCancelled {
-			pd.earned += b.Amount // refund of elo spent
+			pd.earned += b.Cost // refund of elo spent
 		} else if b.Outcome == winningSide {
 			pd.earned += b.Shares // each winning share pays 1
 			totalPaid += b.Shares
