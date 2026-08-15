@@ -4,14 +4,17 @@ import {
     CartesianGrid,
     Line,
     LineChart,
-    ResponsiveContainer,
-    Tooltip,
     XAxis,
     YAxis,
 } from "recharts";
 import { Market, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+} from "@/components/ui/chart";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle } from "@/app/market/marketTypes";
@@ -121,45 +124,65 @@ function axisTicks(points: ChartPricePoint[]): number[] {
 // appends don't re-animate the whole line.
 function PriceChart({ points }: { points: ChartPricePoint[] }) {
     return (
-        <div className="h-36 pt-2 -mx-2">
-            <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                        dataKey="t"
-                        type="number"
-                        scale="time"
-                        domain={["dataMin", "dataMax"]}
-                        ticks={axisTicks(points)}
-                        tickFormatter={(t: number) => formatTime(new Date(t))}
-                        tick={{ fontSize: 10 }}
-                        stroke="currentColor"
-                        className="text-muted-foreground"
-                    />
-                    <YAxis
-                        domain={[0, 1]}
-                        ticks={[0, 0.5, 1]}
-                        tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-                        width={34}
-                        tick={{ fontSize: 10 }}
-                        stroke="currentColor"
-                        className="text-muted-foreground"
-                    />
-                    <Tooltip
-                        labelFormatter={(label) => formatDateTime(new Date(Number(label)))}
-                        formatter={(value) => [`${(Number(value) * 100).toFixed(1)}%`, "Да"]}
-                    />
-                    <Line
-                        type="stepAfter"
-                        dataKey="yesPrice"
-                        stroke="#22c55e"
-                        strokeWidth={2}
-                        dot={points.length <= 50 ? { r: 2 } : false}
-                        isAnimationActive={false}
-                    />
-                </LineChart>
-            </ResponsiveContainer>
-        </div>
+        <ChartContainer
+            className="h-36 pt-2 -mx-2 aspect-auto w-full"
+            config={{ yes: { label: "Да", color: "#22c55e" } }}
+        >
+            <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis
+                    dataKey="t"
+                    type="number"
+                    scale="time"
+                    domain={["dataMin", "dataMax"]}
+                    ticks={axisTicks(points)}
+                    tickFormatter={(t: number) => formatTime(new Date(t))}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    stroke="var(--muted-foreground)"
+                />
+                <YAxis
+                    domain={[0, 1]}
+                    ticks={[0, 0.5, 1]}
+                    tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
+                    width={34}
+                    tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                    stroke="var(--muted-foreground)"
+                />
+                <ChartTooltip
+                    content={(props) => (
+                        <ChartTooltipContent
+                            active={props.active}
+                            payload={props.payload}
+                            label={props.label}
+                            coordinate={props.coordinate}
+                            accessibilityLayer={props.accessibilityLayer}
+                            activeIndex={props.activeIndex}
+                            // The built-in label resolves to the config label ("Да"),
+                            // so read the bet timestamp off the payload datum.
+                            labelFormatter={(_, payload) =>
+                                formatDateTime(new Date(Number(payload?.[0]?.payload?.t)))}
+                            formatter={(value, _name, item) => (
+                                <>
+                                    <span style={{ color: item.color }}>Да</span>
+                                    <span className="font-mono font-medium tabular-nums" style={{ color: item.color }}>
+                                        {(Number(value) * 100).toFixed(1)}%
+                                    </span>
+                                </>
+                            )}
+                        />
+                    )}
+                />
+                <Line
+                    type="stepAfter"
+                    dataKey="yesPrice"
+                    name="yes"
+                    stroke="var(--color-yes)"
+                    strokeWidth={2}
+                    dot={points.length <= 50 ? { r: 2 } : false}
+                    isAnimationActive={false}
+                />
+            </LineChart>
+        </ChartContainer>
     );
 }
 

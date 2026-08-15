@@ -1,9 +1,9 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Brush, ReferenceDot } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Brush, ReferenceDot } from 'recharts'
 import { Button } from '@/components/ui/button'
-import { ChartContainer } from '@/components/ui/chart'
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import {
     buildChartPoints,
     dotPointFor,
@@ -88,25 +88,41 @@ export function RatingChart({ history }: { history: RatingPoint[] }) {
                 }}
             >
                 <LineChart data={points}>
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
                         dataKey="label"
-                        tick={{ fontSize: 11 }}
+                        tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                         tickFormatter={labelDatePart}
                         interval="preserveStartEnd"
+                        stroke="var(--muted-foreground)"
                     />
                     <YAxis
                         domain={['auto', 'auto']}
-                        tick={{ fontSize: 11 }}
+                        tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                         width={55}
+                        stroke="var(--muted-foreground)"
                     />
-                    <Tooltip
-                        formatter={(value, name) => [value, name === 'rating' ? 'Рейтинг' : 'Эло']}
+                    <ChartTooltip
+                        content={(props) => (
+                            <ChartTooltipContent
+                                active={props.active}
+                                payload={props.payload}
+                                label={props.label}
+                                coordinate={props.coordinate}
+                                accessibilityLayer={props.accessibilityLayer}
+                                activeIndex={props.activeIndex}
+                                formatter={(value, name, item) => (
+                                    <>
+                                        <span style={{ color: item.color }}>{name === 'rating' ? 'Рейтинг' : 'Эло'}</span>
+                                        <span className="font-mono font-medium tabular-nums" style={{ color: item.color }}>
+                                            {value}
+                                        </span>
+                                    </>
+                                )}
+                            />
+                        )}
                     />
-                    <Legend
-                        formatter={(name) => name === 'rating' ? 'Рейтинг' : 'Эло'}
-                        wrapperStyle={{ fontSize: 12, paddingTop: 4 }}
-                    />
+                    <ChartLegend content={<ChartLegendContent />} />
                     {dots.map((dot, i) => (
                         <ReferenceDot
                             key={i}
