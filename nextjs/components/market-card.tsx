@@ -178,7 +178,7 @@ function PriceChart({ points }: { points: ChartPricePoint[] }) {
                     name="yes"
                     stroke="var(--color-yes)"
                     strokeWidth={2}
-                    dot={points.length <= 50 ? { r: 2 } : false}
+                    dot={points.length <= 50 ? { r: 0.5 } : false}
                     isAnimationActive={false}
                 />
             </LineChart>
