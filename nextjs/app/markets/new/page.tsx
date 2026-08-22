@@ -22,13 +22,14 @@ import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 
+
 const STORAGE_KEYS = [
     "new-market/marketType",
     "new-market/startsAtMode",
     "new-market/startsAt",
     "new-market/closesAt",
-    "new-market/targetPlayerID",
-    "new-market/requiredPlayerIDs",
+    "new-market/targetPlayerIDs",
+    "new-market/allowOtherPlayers",
     "new-market/gameIDs",
     "new-market/streakTargetPlayerID",
     "new-market/streakGameIDs",
@@ -46,9 +47,10 @@ export default function NewMarketPage() {
     const [startsAtMode, setStartsAtMode] = useSessionStorage<"now" | "specific">("new-market/startsAtMode", "now");
     const [startsAt, setStartsAt] = useSessionStorage("new-market/startsAt", "");
     const [closesAt, setClosesAt] = useSessionStorage("new-market/closesAt", "");
-    // match_winner
-    const [targetPlayerID, setTargetPlayerID] = useSessionStorage("new-market/targetPlayerID", "");
-    const [requiredPlayerIDs, setRequiredPlayerIDs] = useSessionStorage<string[]>("new-market/requiredPlayerIDs", []);
+    // match_winner: one "player wins" outcome per target plus the "other"
+    // outcome (ties / non-target winners).
+    const [targetPlayerIDs, setTargetPlayerIDs] = useSessionStorage<string[]>("new-market/targetPlayerIDs", []);
+    const [allowOtherPlayers, setAllowOtherPlayers] = useSessionStorage("new-market/allowOtherPlayers", true);
     const [gameIDs, setGameIDs] = useSessionStorage<string[]>("new-market/gameIDs", []);
     // win_streak
     const [streakTargetPlayerID, setStreakTargetPlayerID] = useSessionStorage("new-market/streakTargetPlayerID", "");
@@ -61,7 +63,8 @@ export default function NewMarketPage() {
         "new-market/guarantorIDs",
         me.playerId ? [me.playerId] : [],
     );
-    // LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+    // LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n
+    // outcomes).
     const [liquidityB, setLiquidityB] = useSessionStorage("new-market/liquidityB", "16");
 
     const [submitting, setSubmitting] = useState(false);
@@ -78,12 +81,13 @@ export default function NewMarketPage() {
                 market_type: marketType,
                 starts_at: startsAtMode === "now" ? null : new Date(startsAt).toISOString(),
                 closes_at: new Date(closesAt).toISOString(),
-                target_player_id: marketType === "match_winner" ? targetPlayerID : streakTargetPlayerID,
             };
             if (marketType === "match_winner") {
-                payload.required_player_ids = requiredPlayerIDs;
+                payload.target_player_ids = targetPlayerIDs;
+                payload.allow_other_players = allowOtherPlayers;
                 payload.game_ids = gameIDs;
             } else {
+                payload.target_player_id = streakTargetPlayerID;
                 payload.streak_game_ids = streakGameIDs;
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
@@ -104,18 +108,41 @@ export default function NewMarketPage() {
     }
 
     function buildPreviewMarket(): Market {
-        const targetID = marketType === "match_winner" ? targetPlayerID : streakTargetPlayerID;
-        const params = marketType === "match_winner"
-            ? { required_player_ids: requiredPlayerIDs, game_ids: gameIDs }
-            : { game_ids: streakGameIDs, wins_required: parseInt(winsRequired) || 0, max_losses: maxLosses !== "" ? parseInt(maxLosses) : null };
         const startsAtISO = startsAtMode === "specific" && startsAt ? new Date(startsAt).toISOString() : new Date().toISOString();
         const closesAtISO = closesAt ? new Date(closesAt).toISOString() : null;
+        if (marketType === "match_winner") {
+            // Preview outcomes: one per target plus "other", uniform prices.
+            const n = targetPlayerIDs.length + 1;
+            const price = 1 / n;
+            return {
+                id: "", market_type: marketType, status: "open",
+                starts_at: startsAtISO, closes_at: closesAtISO,
+                created_at: null, resolved_at: null,
+                liquidity_b: parseFloat(liquidityB) || 16,
+                outcomes: [
+                    ...targetPlayerIDs.map((id) => ({
+                        id: `preview:${id}`, kind: "player" as const, player_id: id, name: "",
+                        price, shares: 0, pool: 0,
+                    })),
+                    { id: "preview:other", kind: "other" as const, player_id: null, name: "Ничья", price, shares: 0, pool: 0 },
+                ],
+                params: { target_player_ids: targetPlayerIDs, allow_other_players: allowOtherPlayers, game_ids: gameIDs },
+            };
+        }
         return {
             id: "", market_type: marketType, status: "open",
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
-            yes_pool: 0, no_pool: 0, yes_price: 0.5, no_price: 0.5, yes_shares: 0, no_shares: 0, liquidity_b: parseFloat(liquidityB) || 16,
-            target_player_id: targetID, params,
+            liquidity_b: parseFloat(liquidityB) || 16,
+            outcomes: [
+                { id: "preview:yes", kind: "yes" as const, player_id: null, name: "Да", price: 0.5, shares: 0, pool: 0 },
+                { id: "preview:no", kind: "no" as const, player_id: null, name: "Нет", price: 0.5, shares: 0, pool: 0 },
+            ],
+            params: {
+                target_player_id: streakTargetPlayerID, game_ids: streakGameIDs,
+                wins_required: parseInt(winsRequired) || 0,
+                max_losses: maxLosses !== "" ? parseInt(maxLosses) : null,
+            },
         };
     }
 
@@ -187,12 +214,24 @@ export default function NewMarketPage() {
                 {marketType === "match_winner" && (
                     <>
                         <div className="space-y-1.5">
-                            <Label>Целевой игрок (должен победить)</Label>
-                            <PlayerCombobox value={targetPlayerID || undefined} onChange={v => setTargetPlayerID(v ?? "")} allowClear />
+                            <Label>Участники партии</Label>
+                            <PlayerMultiSelect value={targetPlayerIDs} onChange={setTargetPlayerIDs} />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>Обязательные соперники</Label>
-                            <PlayerMultiSelect value={requiredPlayerIDs} onChange={setRequiredPlayerIDs} />
+                            <label className="flex items-center gap-2 font-normal cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="size-4 rounded border-input"
+                                    checked={allowOtherPlayers}
+                                    onChange={e => setAllowOtherPlayers(e.target.checked)}
+                                />
+                                Разрешить других игроков
+                            </label>
+                            <p className="text-xs text-muted-foreground">
+                                {allowOtherPlayers
+                                    ? "Ничья и победа другого игрока разрешаются исходом «Ничья»."
+                                    : "Ничья разрешаются исходом «Ничья»."}
+                            </p>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
@@ -260,7 +299,7 @@ export default function NewMarketPage() {
                         onChange={e => setLiquidityB(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                        Параметр маркет-мейкера: больше b — менее резкое изменение цен и больше максимальный убыток поручителей (b·ln 2).
+                        Параметр маркет-мейкера: больше b — менее резкое изменение цен и больше максимальный убыток поручителей (b·ln n, где n — количество исходов рынка).
                     </p>
                 </div>
 

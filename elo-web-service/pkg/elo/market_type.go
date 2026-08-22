@@ -15,6 +15,21 @@ type MatchInfo struct {
 	MaxScore       float64
 }
 
+// SoleWinnerID returns the single player holding the strict maximum score of
+// the match. When two or more players share the top score (a tie), there is no
+// sole winner and ok is false.
+func (m MatchInfo) SoleWinnerID() (string, bool) {
+	count := 0
+	winner := ""
+	for pid, score := range m.PlayerScoreMap {
+		if score >= m.MaxScore {
+			count++
+			winner = pid
+		}
+	}
+	return winner, count == 1
+}
+
 // SettleFunc settles a market with a given outcome within an active transaction.
 type SettleFunc func(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
 
@@ -52,9 +67,12 @@ var marketTypeHandlers = map[string]MarketTypeHandler{
 }
 
 // MatchWinnerCreateParams holds creation parameters for a match_winner market.
+// One "player wins" outcome is created per target player plus the "other"
+// outcome (ties / non-target winners); with AllowOtherPlayers=false the market
+// only resolves matches consisting of exactly the target players.
 type MatchWinnerCreateParams struct {
-	TargetPlayerID    string
-	RequiredPlayerIDs []string
+	TargetPlayerIDs   []string
+	AllowOtherPlayers bool
 	GameIDs           []string
 }
 

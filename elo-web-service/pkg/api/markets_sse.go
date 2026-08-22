@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
 )
 
 // ─── Markets SSE ────────────────────────────────────────────────────────────
@@ -22,12 +23,7 @@ import (
 type marketPricesEvent struct {
 	Type string `json:"type"`
 	Data struct {
-		YesPrice  float64 `json:"yes_price"`
-		NoPrice   float64 `json:"no_price"`
-		YesShares float64 `json:"yes_shares"`
-		NoShares  float64 `json:"no_shares"`
-		YesPool   float64 `json:"yes_pool"`
-		NoPool    float64 `json:"no_pool"`
+		Outcomes []elo.LiveOutcome `json:"outcomes"`
 	} `json:"data"`
 }
 
@@ -35,9 +31,14 @@ func (a *API) MarketEvents(c *gin.Context) {
 	marketID := c.Param("id")
 	ctx := c.Request.Context()
 
-	row, err := a.MarketService.GetMarketWithPools(ctx, marketID)
+	row, err := a.MarketService.GetMarket(ctx, marketID)
 	if err != nil {
 		ErrorResponse(c, http.StatusNotFound, "market not found")
+		return
+	}
+	outcomeRows, err := a.MarketService.ListMarketOutcomesWithPools(ctx, marketID)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, "failed to load outcomes")
 		return
 	}
 
@@ -49,15 +50,23 @@ func (a *API) MarketEvents(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	// Send current prices immediately on connect.
-	yesPrice, noPrice := elo.MarginalPrices(row.QYes, row.QNo, row.LiquidityB)
+	// Send current prices immediately on connect. The frame bypasses
+	// EncodeIDsMiddleware (SSE is not buffered application/json), so the short
+	// id encoding is applied here to match every other payload.
+	q := make([]float64, len(outcomeRows))
+	for i, o := range outcomeRows {
+		q[i] = o.Q
+	}
+	prices := elo.MarginalPricesN(q, row.LiquidityB)
 	evt := marketPricesEvent{Type: "prices"}
-	evt.Data.YesPrice = yesPrice
-	evt.Data.NoPrice = noPrice
-	evt.Data.YesShares = row.QYes
-	evt.Data.NoShares = row.QNo
-	evt.Data.YesPool = row.YesPool
-	evt.Data.NoPool = row.NoPool
+	for i, o := range outcomeRows {
+		evt.Data.Outcomes = append(evt.Data.Outcomes, elo.LiveOutcome{
+			ID:     shortid.FromCanonical(o.ID),
+			Price:  prices[i],
+			Shares: o.Q,
+			Pool:   o.Pool,
+		})
+	}
 	if payload, err := json.Marshal(evt); err == nil {
 		fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
 		c.Writer.Flush()

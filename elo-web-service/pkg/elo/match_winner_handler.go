@@ -13,20 +13,31 @@ type matchWinnerHandler struct{}
 
 func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error {
 	p := params.MatchWinner
-	requiredIDs := p.RequiredPlayerIDs
-	if requiredIDs == nil {
-		requiredIDs = []string{}
+	targets := p.TargetPlayerIDs
+	if targets == nil {
+		targets = []string{}
 	}
 	gameIDs := p.GameIDs
 	if gameIDs == nil {
 		gameIDs = []string{}
 	}
-	return q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
+	if err := q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
 		MarketID:          marketID,
-		TargetPlayerID:    p.TargetPlayerID,
-		RequiredPlayerIds: requiredIDs,
+		TargetPlayerIds:   targets,
+		AllowOtherPlayers: p.AllowOtherPlayers,
 		GameIds:           gameIDs,
-	})
+	}); err != nil {
+		return err
+	}
+	// One "player wins" outcome per target plus the "other" outcome that ties
+	// and non-target winners resolve to.
+	if err := q.CreatePlayerOutcomes(ctx, db.CreatePlayerOutcomesParams{
+		MarketID:  marketID,
+		PlayerIds: targets,
+	}); err != nil {
+		return err
+	}
+	return q.CreateOtherOutcome(ctx, marketID)
 }
 
 func (h *matchWinnerHandler) ResolutionTrigger() ResolutionTrigger {
@@ -44,18 +55,23 @@ func (t *matchWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, match M
 
 	for _, m := range markets {
 		cond := MatchWinnerCondition{
-			TargetPlayerID:    m.TargetPlayerID,
-			RequiredPlayerIDs: m.RequiredPlayerIds,
+			TargetPlayerIDs:   m.TargetPlayerIds,
+			AllowOtherPlayers: m.AllowOtherPlayers,
 			GameIDs:           m.GameIds,
 		}
 		window := TimeWindow{StartsAt: m.StartsAt.Time, ClosesAt: m.ClosesAt.Time}
-		resolved, outcome := cond.Evaluate(match, window)
+		resolved, key := cond.Evaluate(match, window)
 		if !resolved {
 			continue
 		}
 
+		outcomeID, err := outcomeIDForKey(ctx, q, m.ID, key)
+		if err != nil {
+			return fmt.Errorf("resolve outcome for match_winner market %s: %w", m.ID, err)
+		}
+
 		resolutionMatchID := match.Match.ID
-		if err := settle(ctx, q, m.ID, outcome, match.Match.Date.Time, &resolutionMatchID); err != nil {
+		if err := settle(ctx, q, m.ID, MarketOutcome(outcomeID), match.Match.Date.Time, &resolutionMatchID); err != nil {
 			return fmt.Errorf("settle match_winner market %s: %w", m.ID, err)
 		}
 	}
@@ -86,4 +102,39 @@ func (t *matchWinnerTrigger) OnOverdue(ctx context.Context, q *db.Queries, settl
 		}
 	}
 	return nil
+}
+
+// outcomeIDForKey maps a semantic OutcomeKey ("player:<uuid>" / "other" /
+// "yes" / "no") to the market's concrete market_outcomes row id that bets and
+// resolution store.
+func outcomeIDForKey(ctx context.Context, q *db.Queries, marketID string, key OutcomeKey) (string, error) {
+	kind := string(key)
+	playerID := ""
+	if pid, ok := key.PlayerID(); ok {
+		kind = "player"
+		playerID = pid
+	}
+	if kind != "player" && kind != "other" && kind != "yes" && kind != "no" {
+		return "", fmt.Errorf("unknown outcome key %q", key)
+	}
+	outcomes, err := q.ListMarketOutcomes(ctx, marketID)
+	if err != nil {
+		return "", err
+	}
+	for _, o := range outcomes {
+		if o.Kind != kind {
+			continue
+		}
+		if kind == "player" {
+			if o.PlayerID != nil && *o.PlayerID == playerID {
+				return o.ID, nil
+			}
+			continue
+		}
+		return o.ID, nil
+	}
+	if kind == "player" {
+		return "", fmt.Errorf("market %s has no player outcome for %s", marketID, playerID)
+	}
+	return "", fmt.Errorf("market %s has no %q outcome", marketID, kind)
 }

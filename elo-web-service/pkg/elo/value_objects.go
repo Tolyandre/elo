@@ -86,10 +86,13 @@ func (w TimeWindow) Contains(t time.Time) bool {
 	return !t.Before(w.StartsAt) && !t.After(w.ClosesAt)
 }
 
-// MarketOutcome is the string identifier of the winning outcome of a market.
-// For binary markets: OutcomeYes / OutcomeNo.
-// For N-outcome markets: any free-text label (e.g. "player_42").
-// OutcomeCancelled is a special value that returns all stakes without redistribution.
+// MarketOutcome is the identifier of the winning outcome of a market: the
+// market_outcomes row GUID. For win_streak markets the two fixed outcomes
+// carry the historical yes/no semantics via their kind (OutcomeYes /
+// OutcomeNo map onto the corresponding outcome rows).
+// OutcomeCancelled is a special in-process value that returns all stakes
+// without redistribution; it is never persisted (cancelled markets store NULL
+// in resolution_outcome — cancellation is carried by the status column).
 type MarketOutcome string
 
 const (

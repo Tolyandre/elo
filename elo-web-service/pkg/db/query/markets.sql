@@ -1,11 +1,60 @@
 -- name: CreateMarket :one
 INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, q_yes, q_no;
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b;
 
--- name: UpdateMarketAMMState :exec
--- Persists the LMSR state after a bet shifts the outstanding shares.
-UPDATE markets SET q_yes = $2, q_no = $3 WHERE id = $1;
+-- name: UpdateMarketOutcomeQ :exec
+-- Persists one component of the LMSR state vector after a bet shifts the
+-- outstanding shares of an outcome.
+UPDATE market_outcomes SET q = $3 WHERE market_id = $1 AND id = $2;
+
+-- name: CreatePlayerOutcomes :exec
+-- Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
+INSERT INTO market_outcomes (market_id, kind, player_id)
+SELECT sqlc.arg('market_id'), 'player', t.player_id
+FROM unnest(sqlc.arg('player_ids')::uuid[]) AS t(player_id);
+
+-- name: CreateOtherOutcome :exec
+-- The "other" outcome of a match_winner market: tie at first place or a
+-- non-target winner.
+INSERT INTO market_outcomes (market_id, kind, player_id) VALUES ($1, 'other', NULL);
+
+-- name: CreateYesNoOutcomes :exec
+-- The two fixed Да/Нет outcomes of a win_streak market.
+INSERT INTO market_outcomes (market_id, kind, player_id) VALUES ($1, 'yes', NULL), ($1, 'no', NULL);
+
+-- name: ListMarketOutcomes :many
+-- Outcome rows in the canonical order: yes/no first (win_streak), then player
+-- outcomes, 'other' last. This order fixes the AMM q-vector layout.
+SELECT id, market_id, kind, player_id, q
+FROM market_outcomes
+WHERE market_id = $1
+ORDER BY (CASE kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), player_id;
+
+-- name: ListMarketOutcomesWithPools :many
+-- Outcome rows with derived display name (players.name for player outcomes)
+-- and the elo spent per outcome, in the canonical order (see ListMarketOutcomes).
+SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
+       COALESCE(bp.pool, 0)::float8 AS pool
+FROM market_outcomes o
+LEFT JOIN players p ON p.id = o.player_id
+LEFT JOIN (
+    SELECT bets.outcome, SUM(bets.cost) AS pool FROM bets WHERE bets.market_id = $1 GROUP BY bets.outcome
+) bp ON bp.outcome = o.id
+WHERE o.market_id = $1
+ORDER BY (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
+
+-- name: ListAllMarketOutcomesWithPools :many
+-- Same shape as ListMarketOutcomesWithPools for every market at once (used by
+-- the markets list endpoints), grouped client-side by market_id.
+SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
+       COALESCE(bp.pool, 0)::float8 AS pool
+FROM market_outcomes o
+LEFT JOIN players p ON p.id = o.player_id
+LEFT JOIN (
+    SELECT bets.market_id, bets.outcome, SUM(bets.cost) AS pool FROM bets GROUP BY bets.market_id, bets.outcome
+) bp ON bp.market_id = o.market_id AND bp.outcome = o.id
+ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
 
 -- name: CreateMarketGuarantors :exec
 -- Bulk-inserts the market's guarantor players (zero-sum counterparties).
@@ -20,54 +69,63 @@ WHERE g.market_id = $1
 ORDER BY p.name;
 
 -- name: CreateMatchWinnerParams :exec
-INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
+INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
 VALUES ($1, $2, $3, $4);
 
 -- name: CreateWinStreakParams :exec
 INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5);
 
--- name: GetMarketWithPools :one
+-- name: GetMarket :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
-    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
-    mwp.required_player_ids,
+    om.liquidity_b,
+    mwp.target_player_ids,
+    mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
+    wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN bets ob ON ob.market_id = om.id
-WHERE om.id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
-         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses;
+WHERE om.id = $1;
 
--- name: ListMarketsWithPools :many
+-- name: ListMarkets :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
-    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
-    mwp.required_player_ids,
+    om.liquidity_b,
+    mwp.target_player_ids,
+    mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
+    wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
     wsp.max_losses
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN bets ob ON ob.market_id = om.id
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
-         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses
 ORDER BY om.created_at DESC;
+
+-- name: ListMarketsByResolutionMatch :many
+SELECT
+    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
+    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
+    om.liquidity_b,
+    mwp.target_player_ids,
+    mwp.allow_other_players,
+    mwp.game_ids AS mw_game_ids,
+    wsp.target_player_id AS ws_target_player_id,
+    wsp.game_ids AS ws_game_ids,
+    wsp.wins_required,
+    wsp.max_losses
+FROM markets om
+LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
+LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+WHERE om.resolution_match_id = $1;
 
 -- name: GetMatchWinnerParams :one
 SELECT * FROM market_match_winner_params WHERE market_id = $1;
@@ -77,7 +135,7 @@ SELECT * FROM market_win_streak_params WHERE market_id = $1;
 
 -- name: ListOpenMatchWinnerMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
-    mwp.target_player_id, mwp.required_player_ids, mwp.game_ids
+    mwp.target_player_ids, mwp.allow_other_players, mwp.game_ids
 FROM markets om
 JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed');
@@ -122,6 +180,8 @@ ORDER BY closes_at ASC
 LIMIT 1;
 
 -- name: ResolveMarket :exec
+-- resolution_outcome is the winning outcome id; NULL for cancelled markets
+-- (cancellation is carried by the status column).
 UPDATE markets
 SET status = $2, resolved_at = $3, resolution_match_id = $4, resolution_outcome = $5
 WHERE id = $1;
@@ -200,7 +260,7 @@ ORDER BY placed_at, id;
 
 -- name: GetMarketBetsForPriceHistory :many
 -- Ordered bet stream used to reconstruct the market's price history by
--- replaying the LMSR from its creation state q=(0,0).
+-- replaying the LMSR from its creation state q=0.
 SELECT outcome, shares, placed_at
 FROM bets
 WHERE market_id = $1
@@ -229,27 +289,6 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 -- rows for a market (used by unsettle/recalculation).
 DELETE FROM global_arena_settlement
 WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor');
-
--- name: ListMarketsByResolutionMatch :many
-SELECT
-    om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
-    om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.q_yes, om.q_no,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'yes' THEN ob.cost ELSE 0 END), 0)::float8 AS yes_pool,
-    COALESCE(SUM(CASE WHEN ob.outcome = 'no'  THEN ob.cost ELSE 0 END), 0)::float8 AS no_pool,
-    COALESCE(mwp.target_player_id, wsp.target_player_id) AS target_player_id,
-    mwp.required_player_ids,
-    mwp.game_ids AS mw_game_ids,
-    wsp.game_ids AS ws_game_ids,
-    wsp.wins_required,
-    wsp.max_losses
-FROM markets om
-LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
-LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
-LEFT JOIN bets ob ON ob.market_id = om.id
-WHERE om.resolution_match_id = $1
-GROUP BY om.id, mwp.target_player_id, mwp.required_player_ids, mwp.game_ids,
-         wsp.target_player_id, wsp.game_ids, wsp.wins_required, wsp.max_losses;
 
 -- name: GetSettlementDetails :many
 SELECT bsd.player_id, p.name AS player_name,

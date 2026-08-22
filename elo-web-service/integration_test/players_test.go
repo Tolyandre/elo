@@ -107,6 +107,12 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/matches/:id", strictWrapper.GetMatchById)
 	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
+	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
+	// and the resolved-market outcome id).
+	r.GET("/markets", strictWrapper.ListMarkets)
+	r.POST("/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateMarket)
+	r.GET("/markets/:id", strictWrapper.GetMarket)
+	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
 	return r
 }
 

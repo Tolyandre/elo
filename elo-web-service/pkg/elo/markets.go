@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
@@ -65,8 +66,10 @@ type IMarketService interface {
 
 	// --- read-side queries used by the market handlers ---------------------
 
-	ListMarketsWithPools(ctx context.Context) ([]db.ListMarketsWithPoolsRow, error)
-	GetMarketWithPools(ctx context.Context, id string) (db.GetMarketWithPoolsRow, error)
+	ListMarkets(ctx context.Context) ([]db.ListMarketsRow, error)
+	GetMarket(ctx context.Context, id string) (db.GetMarketRow, error)
+	ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]db.ListMarketOutcomesWithPoolsRow, error)
+	ListAllMarketOutcomesWithPools(ctx context.Context) ([]db.ListAllMarketOutcomesWithPoolsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error)
 	GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]db.GetMarketGuarantorPayoutsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error)
@@ -106,12 +109,20 @@ func NewMarketServiceWithHub(pool *pgxpool.Pool, hub *MarketsHub) IMarketService
 // --- read-side queries. These delegate to *db.Queries so the market handlers
 // go through the service boundary instead of holding *db.Queries directly. ---
 
-func (s *MarketService) ListMarketsWithPools(ctx context.Context) ([]db.ListMarketsWithPoolsRow, error) {
-	return s.Queries.ListMarketsWithPools(ctx)
+func (s *MarketService) ListMarkets(ctx context.Context) ([]db.ListMarketsRow, error) {
+	return s.Queries.ListMarkets(ctx)
 }
 
-func (s *MarketService) GetMarketWithPools(ctx context.Context, id string) (db.GetMarketWithPoolsRow, error) {
-	return s.Queries.GetMarketWithPools(ctx, id)
+func (s *MarketService) GetMarket(ctx context.Context, id string) (db.GetMarketRow, error) {
+	return s.Queries.GetMarket(ctx, id)
+}
+
+func (s *MarketService) ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]db.ListMarketOutcomesWithPoolsRow, error) {
+	return s.Queries.ListMarketOutcomesWithPools(ctx, marketID)
+}
+
+func (s *MarketService) ListAllMarketOutcomesWithPools(ctx context.Context) ([]db.ListAllMarketOutcomesWithPoolsRow, error) {
+	return s.Queries.ListAllMarketOutcomesWithPools(ctx)
 }
 
 func (s *MarketService) GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error) {
@@ -146,11 +157,15 @@ func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID string) 
 	return s.Queries.GetPlayerBetLimit(ctx, playerID)
 }
 
-// GetMarketPriceHistory reconstructs the market's yes-price series by replaying
-// its bet stream through the LMSR from the creation state q=(0,0). No prices
-// are persisted — see price_history.go.
+// GetMarketPriceHistory reconstructs the market's per-outcome price series by
+// replaying its bet stream through the LMSR from the creation state q=0. No
+// prices are persisted — see price_history.go.
 func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID string) ([]PricePoint, error) {
-	market, err := s.Queries.GetMarketWithPools(ctx, marketID)
+	market, err := s.Queries.GetMarket(ctx, marketID)
+	if err != nil {
+		return nil, err
+	}
+	outcomes, err := s.Queries.ListMarketOutcomes(ctx, marketID)
 	if err != nil {
 		return nil, err
 	}
@@ -158,12 +173,16 @@ func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID stri
 	if err != nil {
 		return nil, err
 	}
+	outcomeIDs := make([]string, len(outcomes))
+	for i, o := range outcomes {
+		outcomeIDs[i] = o.ID
+	}
 	bets := make([]PriceBet, len(rows))
 	for i, r := range rows {
 		bets[i] = PriceBet{Outcome: r.Outcome, Shares: r.Shares, PlacedAt: r.PlacedAt.Time}
 	}
 	// rows come back ordered by (placed_at, id) — the order PriceHistory expects.
-	return PriceHistory(bets, market.LiquidityB), nil
+	return PriceHistory(bets, outcomeIDs, market.LiquidityB), nil
 }
 
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
@@ -264,7 +283,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 		return PlaceBetOutcome{}, fmt.Errorf("lock player: %w", err)
 	}
 
-	market, err := q.GetMarketWithPools(ctx, marketID)
+	market, err := q.GetMarket(ctx, marketID)
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("get market: %w", err)
 	}
@@ -272,13 +291,28 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 		return PlaceBetOutcome{}, ErrMarketNotOpen
 	}
 
-	// The buyer must confirm the price they saw: reject if the live marginal
-	// price has drifted away beyond PriceTolerance since the client loaded it.
-	yesPrice, noPrice := MarginalPrices(market.QYes, market.QNo, market.LiquidityB)
-	currentPrice := yesPrice
-	if outcome == "no" {
-		currentPrice = noPrice
+	// The outcome rows fix the AMM q-vector layout; the bet's outcome must be
+	// one of them.
+	outcomes, err := q.ListMarketOutcomesWithPools(ctx, marketID)
+	if err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("list market outcomes: %w", err)
 	}
+	outcomeIdx := -1
+	qVec := make([]float64, len(outcomes))
+	for i, o := range outcomes {
+		qVec[i] = o.Q
+		if o.ID == outcome {
+			outcomeIdx = i
+		}
+	}
+	if outcomeIdx < 0 {
+		return PlaceBetOutcome{}, ErrMarketOutcomeNotFound
+	}
+
+	// The buyer must confirm the price they saw: reject if the live marginal
+	// price of the outcome has drifted away beyond PriceTolerance since the
+	// client loaded it.
+	currentPrice := MarginalPricesN(qVec, market.LiquidityB)[outcomeIdx]
 	if math.Abs(currentPrice-expectedPrice) > PriceTolerance {
 		return PlaceBetOutcome{}, ErrPriceChanged
 	}
@@ -288,9 +322,9 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 	// guarantor rows (ADR-10).
 
 	// Shares-driven buy per ADR-10: the buyer asks for `shares` tokens (the UI
-	// always buys 1) and pays the AMM cost amount = C(q_i+shares, q_k) −
-	// C(q_i, q_k). `amount` is what is reserved against the buyer's bet_limit.
-	newQYes, newQNo, amount := ApplyBet(market.QYes, market.QNo, market.LiquidityB, outcome, shares)
+	// always buys 1) and pays the AMM cost amount = C(q+shares·e_i) − C(q).
+	// `amount` is what is reserved against the buyer's bet_limit.
+	newQ, amount := ApplyBetN(qVec, market.LiquidityB, outcomeIdx, shares)
 
 	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
 	if err != nil {
@@ -315,10 +349,10 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 		return PlaceBetOutcome{}, fmt.Errorf("insert bet: %w", err)
 	}
 
-	if err := q.UpdateMarketAMMState(ctx, db.UpdateMarketAMMStateParams{
-		ID:   marketID,
-		QYes: newQYes,
-		QNo:  newQNo,
+	if err := q.UpdateMarketOutcomeQ(ctx, db.UpdateMarketOutcomeQParams{
+		MarketID: marketID,
+		ID:       outcome,
+		Q:        newQ[outcomeIdx],
 	}); err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("update amm state: %w", err)
 	}
@@ -328,13 +362,19 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 	}
 
 	if s.Hub != nil {
-		yesPool, noPool := market.YesPool, market.NoPool
-		if outcome == "yes" {
-			yesPool += amount
-		} else {
-			noPool += amount
+		live := make([]LiveOutcome, len(outcomes))
+		prices := MarginalPricesN(newQ, market.LiquidityB)
+		for i, o := range outcomes {
+			pool := o.Pool
+			if i == outcomeIdx {
+				pool += amount
+			}
+			// SSE frames bypass the idcodec middleware (it only rewrites
+			// buffered application/json responses), so the short id encoding
+			// every other payload uses is applied here, at construction.
+			live[i] = LiveOutcome{ID: shortid.FromCanonical(o.ID), Price: prices[i], Shares: newQ[i], Pool: pool}
 		}
-		s.broadcastPrices(marketID, newQYes, newQNo, market.LiquidityB, yesPool, noPool)
+		s.broadcastPrices(marketID, live)
 	}
 
 	price := 0.0
@@ -344,20 +384,20 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 	return PlaceBetOutcome{Shares: shares, Price: price}, nil
 }
 
-// broadcastPrices fans the new LMSR prices + share counts + pools out to the
-// market's SSE subscribers and signals the markets-list lobby.
-func (s *MarketService) broadcastPrices(marketID string, qYes, qNo, b, yesPool, noPool float64) {
-	yesPrice, noPrice := MarginalPrices(qYes, qNo, b)
+// LiveOutcome is one outcome's live state in the SSE prices payload.
+type LiveOutcome struct {
+	ID     string  `json:"id"`
+	Price  float64 `json:"price"`
+	Shares float64 `json:"shares"`
+	Pool   float64 `json:"pool"`
+}
+
+// broadcastPrices fans the new per-outcome LMSR prices + share counts + pools
+// out to the market's SSE subscribers and signals the markets-list lobby.
+func (s *MarketService) broadcastPrices(marketID string, outcomes []LiveOutcome) {
 	payload, err := json.Marshal(marketsSSEEvent{
 		Type: "prices",
-		Data: pricesPayload{
-			YesPrice:  yesPrice,
-			NoPrice:   noPrice,
-			YesShares: qYes,
-			NoShares:  qNo,
-			YesPool:   yesPool,
-			NoPool:    noPool,
-		},
+		Data: pricesPayload{Outcomes: outcomes},
 	})
 	if err != nil {
 		return
@@ -372,12 +412,7 @@ type marketsSSEEvent struct {
 }
 
 type pricesPayload struct {
-	YesPrice  float64 `json:"yes_price"`
-	NoPrice   float64 `json:"no_price"`
-	YesShares float64 `json:"yes_shares"`
-	NoShares  float64 `json:"no_shares"`
-	YesPool   float64 `json:"yes_pool"`
-	NoPool    float64 `json:"no_pool"`
+	Outcomes []LiveOutcome `json:"outcomes"`
 }
 
 // TriggerResolutionForMatch checks all open markets and resolves them if the given match satisfies their conditions.
@@ -588,9 +623,11 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	if resolutionMatchID != nil {
 		resMatchID = resolutionMatchID
 	}
-	resolutionOutcome := pgtype.Text{}
+	// Cancelled markets carry no winning outcome: cancellation is encoded by
+	// the status column and resolution_outcome stays NULL.
+	var resolutionOutcome *string
 	if !isCancelled {
-		resolutionOutcome = pgtype.Text{String: winningSide, Valid: true}
+		resolutionOutcome = &winningSide
 	}
 	if err := q.ResolveMarket(ctx, db.ResolveMarketParams{
 		ID:                marketID,
@@ -705,7 +742,7 @@ func (s *MarketService) LockMarketBetting(ctx context.Context, marketID string) 
 
 	q := s.Queries.WithTx(tx)
 
-	market, err := q.GetMarketWithPools(ctx, marketID)
+	market, err := q.GetMarket(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get market: %w", err)
 	}

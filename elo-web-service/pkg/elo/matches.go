@@ -345,7 +345,7 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 
 	q := s.Queries.WithTx(tx)
 
-	market, err := q.GetMarketWithPools(ctx, marketID)
+	market, err := q.GetMarket(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get market: %w", err)
 	}

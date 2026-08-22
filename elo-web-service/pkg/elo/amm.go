@@ -2,85 +2,113 @@ package elo
 
 import "math"
 
-// This file implements a binary-outcome LMSR (Logarithmic Market Scoring Rule)
-// automatic market maker — the Polymarket-style pricing engine for share markets.
-// Each outcome has a live price in (0,1); a purchase is shares-driven: the buyer
-// asks for `shares` tokens of an outcome and pays the AMM cost. At resolution
-// every winning share pays 1.
+// This file implements an n-outcome LMSR (Logarithmic Market Scoring Rule)
+// automatic market maker — the Polymarket-style pricing engine for share
+// markets. Each of the market's mutually-exclusive outcomes has a live price
+// in (0,1); a purchase is shares-driven: the buyer asks for `shares` tokens of
+// an outcome and pays the AMM cost. At resolution every winning share pays 1.
 //
-// Math (outcome ∈ {yes, no}, liquidity parameter b > 0, outstanding shares q_yes/q_no):
+// Math (outcomes 0..n-1, liquidity parameter b > 0, outstanding shares vector
+// q with q_i shares of outcome i):
 //
-//	C(q_yes, q_no) = b · ln(e^(q_yes/b) + e^(q_no/b))           // market cost
-//	price_i        = e^(q_i/b) / (e^(q_yes/b) + e^(q_no/b))     // p_yes + p_no = 1
+//	C(q)     = b · ln(Σ_i e^(q_i/b))                    // market cost
+//	price_i  = e^(q_i/b) / Σ_j e^(q_j/b)                // Σ_i price_i = 1
 //
 // Buying `shares` of outcome i shifts q_i by exactly `shares` and costs
-// amount = C(q_i+shares, q_k) − C(q_i, q_k), computed directly (no inversion).
+// amount = C(q + shares·e_i) − C(q), computed directly (no inversion).
 // The displayed price is the marginal price_i (it moves with every purchase);
 // the buyer's effective price is amount/shares.
 //
-// Guarantors are the zero-sum counterparty: their combined worst-case loss is
-// bounded by b · ln(2) per market.
-
-// ammPrice returns the instantaneous price (probability) of `outcome` in (0,1).
-// Uses the log-sum-exp / softmax stabilization so large q/b cannot overflow.
-func ammPrice(qYes, qNo, b float64, outcome string) float64 {
-	uy := qYes / b
-	un := qNo / b
-	m := math.Max(uy, un)
-	ey := math.Exp(uy - m)
-	en := math.Exp(un - m)
-	denom := ey + en
-	if outcome == "yes" {
-		return ey / denom
-	}
-	return en / denom
-}
-
-// ammCost returns the LMSR market cost C(q_yes, q_no).
-func ammCost(qYes, qNo, b float64) float64 {
-	uy := qYes / b
-	un := qNo / b
-	m := math.Max(uy, un)
-	return b * (m + math.Log(math.Exp(uy-m)+math.Exp(un-m)))
-}
-
-// MarginalPrices returns the live (yes, no) outcome prices in (0,1) the UI shows
-// for a market, derived from its current LMSR state. They sum to 1.
-// Exported for the API layer.
-func MarginalPrices(qYes, qNo, b float64) (yes, no float64) {
-	return ammPrice(qYes, qNo, b, "yes"), ammPrice(qYes, qNo, b, "no")
-}
-
-// ammAmountForShares returns the elo cost of buying `shares` tokens on
-// `outcome`, given current AMM state: amount = C(q_i+shares, q_k) − C(q_i, q_k).
+// A binary market is the n=2 special case, so the historical q_yes/q_no state
+// maps onto the first two vector components.
 //
-// Returns 0 for non-positive shares or non-positive b (callers must validate
-// liquidity at market creation).
-func ammAmountForShares(qYes, qNo, b float64, outcome string, shares float64) float64 {
-	if shares <= 0 || b <= 0 {
+// Guarantors are the zero-sum counterparty: their combined worst-case loss is
+// bounded by b · ln(n) per market with n outcomes.
+
+// ammCostN returns the LMSR market cost C(q) = b·ln(Σ e^(q_i/b)).
+// Uses log-sum-exp stabilization so large q/b cannot overflow.
+func ammCostN(q []float64, b float64) float64 {
+	if len(q) == 0 || b <= 0 {
 		return 0
 	}
-	var costAfter float64
-	if outcome == "yes" {
-		costAfter = ammCost(qYes+shares, qNo, b)
-	} else {
-		costAfter = ammCost(qYes, qNo+shares, b)
+	m := q[0] / b
+	for _, qi := range q[1:] {
+		if v := qi / b; v > m {
+			m = v
+		}
 	}
-	return costAfter - ammCost(qYes, qNo, b)
+	sum := 0.0
+	for _, qi := range q {
+		sum += math.Exp(qi/b - m)
+	}
+	return b * (m + math.Log(sum))
 }
 
-// ApplyBet is the single buy primitive: given current AMM state and the
-// `shares` to buy on `outcome`, it returns the updated (q_yes, q_no) and the
-// elo `amount` the purchase costs. The caller persists the bet with amount
-// (= elo spent) + shares and writes the new q_yes/q_no back onto the market.
-func ApplyBet(qYes, qNo, b float64, outcome string, shares float64) (newQYes, newQNo, amount float64) {
-	amount = ammAmountForShares(qYes, qNo, b, outcome, shares)
-	if outcome == "yes" {
-		newQYes = qYes + shares
-		newQNo = qNo
-	} else {
-		newQYes = qYes
-		newQNo = qNo + shares
+// ammPriceN returns the instantaneous price (probability) of outcome i in
+// (0,1): e^(q_i/b) / Σ_j e^(q_j/b), log-sum-exp stabilized.
+func ammPriceN(q []float64, b float64, i int) float64 {
+	if len(q) == 0 || b <= 0 || i < 0 || i >= len(q) {
+		return 0
 	}
-	return newQYes, newQNo, amount
+	m := q[0] / b
+	for _, qi := range q[1:] {
+		if v := qi / b; v > m {
+			m = v
+		}
+	}
+	denom := 0.0
+	for _, qi := range q {
+		denom += math.Exp(qi/b - m)
+	}
+	if denom == 0 {
+		return 0
+	}
+	return math.Exp(q[i]/b-m) / denom
+}
+
+// MarginalPricesN returns the live prices of all outcomes in (0,1) the UI
+// shows for a market, derived from its current LMSR state. They sum to 1.
+// Exported for the API layer.
+func MarginalPricesN(q []float64, b float64) []float64 {
+	prices := make([]float64, len(q))
+	if len(q) == 0 || b <= 0 {
+		return prices
+	}
+	m := q[0] / b
+	for _, qi := range q[1:] {
+		if v := qi / b; v > m {
+			m = v
+		}
+	}
+	denom := 0.0
+	exp := make([]float64, len(q))
+	for i, qi := range q {
+		exp[i] = math.Exp(qi/b - m)
+		denom += exp[i]
+	}
+	if denom == 0 {
+		return prices
+	}
+	for i := range q {
+		prices[i] = exp[i] / denom
+	}
+	return prices
+}
+
+// ApplyBetN is the single buy primitive: given the current AMM state and the
+// `shares` to buy on outcome i, it returns the updated q vector (a copy; the
+// input is not mutated) and the elo `amount` the purchase costs:
+// amount = C(q + shares·e_i) − C(q).
+//
+// Returns a zero amount for non-positive shares or non-positive b (callers
+// must validate liquidity at market creation). The caller persists the bet
+// with amount (= elo spent) + shares and writes the new q_i back onto the
+// outcome row.
+func ApplyBetN(q []float64, b float64, i int, shares float64) ([]float64, float64) {
+	if len(q) == 0 || i < 0 || i >= len(q) || shares <= 0 || b <= 0 {
+		return append([]float64(nil), q...), 0
+	}
+	newQ := append([]float64(nil), q...)
+	newQ[i] += shares
+	return newQ, ammCostN(newQ, b) - ammCostN(q, b)
 }

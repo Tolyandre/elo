@@ -101,11 +101,9 @@ type Market struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
 	ResolutionMatchID *string            `json:"resolution_match_id"`
-	ResolutionOutcome pgtype.Text        `json:"resolution_outcome"`
+	ResolutionOutcome *string            `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	QYes              float64            `json:"q_yes"`
-	QNo               float64            `json:"q_no"`
 }
 
 type MarketGuarantor struct {
@@ -115,9 +113,17 @@ type MarketGuarantor struct {
 
 type MarketMatchWinnerParam struct {
 	MarketID          string   `json:"market_id"`
-	TargetPlayerID    string   `json:"target_player_id"`
-	RequiredPlayerIds []string `json:"required_player_ids"`
 	GameIds           []string `json:"game_ids"`
+	TargetPlayerIds   []string `json:"target_player_ids"`
+	AllowOtherPlayers bool     `json:"allow_other_players"`
+}
+
+type MarketOutcome struct {
+	ID       string  `json:"id"`
+	MarketID string  `json:"market_id"`
+	Kind     string  `json:"kind"`
+	PlayerID *string `json:"player_id"`
+	Q        float64 `json:"q"`
 }
 
 type MarketWinStreakParam struct {

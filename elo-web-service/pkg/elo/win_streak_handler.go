@@ -21,13 +21,17 @@ func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, mark
 	if gameIDs == nil {
 		gameIDs = []string{}
 	}
-	return q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
+	if err := q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
 		MarketID:       marketID,
 		TargetPlayerID: p.TargetPlayerID,
 		GameIds:        gameIDs,
 		WinsRequired:   p.WinsRequired,
 		MaxLosses:      maxLosses,
-	})
+	}); err != nil {
+		return err
+	}
+	// The two fixed Да/Нет outcomes every win_streak market resolves between.
+	return q.CreateYesNoOutcomes(ctx, marketID)
 }
 
 func (h *winStreakHandler) ResolutionTrigger() ResolutionTrigger {
@@ -66,8 +70,12 @@ func (t *winStreakTrigger) OnMatch(ctx context.Context, q *db.Queries, match Mat
 			continue
 		}
 
+		outcomeID, err := winStreakOutcomeID(ctx, q, m.ID, outcome)
+		if err != nil {
+			return fmt.Errorf("resolve outcome for win_streak market %s: %w", m.ID, err)
+		}
 		resolutionMatchID := match.Match.ID
-		if err := settle(ctx, q, m.ID, outcome, matchDate, &resolutionMatchID); err != nil {
+		if err := settle(ctx, q, m.ID, outcomeID, matchDate, &resolutionMatchID); err != nil {
 			return fmt.Errorf("settle win_streak market %s: %w", m.ID, err)
 		}
 	}
@@ -95,7 +103,11 @@ func (t *winStreakTrigger) OnTimeExpiry(ctx context.Context, q *db.Queries, cuto
 		if outcome == "" {
 			outcome = OutcomeNo
 		}
-		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
+		outcomeID, err := winStreakOutcomeID(ctx, q, m.ID, outcome)
+		if err != nil {
+			return fmt.Errorf("resolve outcome for win_streak market %s: %w", m.ID, err)
+		}
+		if err := settle(ctx, q, m.ID, outcomeID, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("settle overdue win_streak market %s: %w", m.ID, err)
 		}
 	}
@@ -123,9 +135,27 @@ func (t *winStreakTrigger) OnOverdue(ctx context.Context, q *db.Queries, settle 
 		if outcome == "" {
 			outcome = OutcomeNo
 		}
-		if err := settle(ctx, q, m.ID, outcome, m.ClosesAt.Time, nil); err != nil {
+		outcomeID, err := winStreakOutcomeID(ctx, q, m.ID, outcome)
+		if err != nil {
+			return fmt.Errorf("resolve outcome for win_streak market %s: %w", m.ID, err)
+		}
+		if err := settle(ctx, q, m.ID, outcomeID, m.ClosesAt.Time, nil); err != nil {
 			return fmt.Errorf("settle overdue win_streak market %s: %w", m.ID, err)
 		}
 	}
 	return nil
+}
+
+// winStreakOutcomeID maps the binary evaluation result to the market's yes/no
+// outcome row id.
+func winStreakOutcomeID(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome) (MarketOutcome, error) {
+	key := OutcomeKeyNo
+	if outcome == OutcomeYes {
+		key = OutcomeKeyYes
+	}
+	id, err := outcomeIDForKey(ctx, q, marketID, key)
+	if err != nil {
+		return "", err
+	}
+	return MarketOutcome(id), nil
 }

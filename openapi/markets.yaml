@@ -53,18 +53,28 @@ MarketsCollection:
               closes_at:
                 type: string
                 format: date-time
-              target_player_id:
-                type: string
               # match_winner fields
-              required_player_ids:
+              target_player_ids:
                 type: array
+                minItems: 1
+                maxItems: 12
                 items:
                   type: string
+                description: Target players — one "player wins" outcome is created per player.
+              allow_other_players:
+                type: boolean
+                description: >-
+                  When true, a match may include players outside the targets (all
+                  targets must still participate). When false, the market targets
+                  a match with exactly these players. A match resolving in a tie
+                  (or a non-target sole winner) resolves the "other" outcome.
               game_ids:
                 type: array
                 items:
                   type: string
               # win_streak fields
+              target_player_id:
+                type: string
               streak_game_ids:
                 type: array
                 items:
@@ -86,7 +96,7 @@ MarketsCollection:
                 minimum: 0
                 exclusiveMinimum: true
                 description: LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
-            required: [market_type, closes_at, target_player_id, id]
+            required: [market_type, closes_at, id]
     responses:
       "201":
         description: Market created
@@ -279,9 +289,12 @@ MarketBets:
             properties:
               id:
                 $ref: './common.yaml#/ULID'
-              outcome:
+              outcome_id:
                 type: string
-                enum: [yes, no]
+                description: >-
+                  Outcome identifier (GUID) the bet is placed on — one of the
+                  market's outcomes. The *_id suffix lets the idcodec boundary
+                  decode the short form clients see in responses.
               shares:
                 type: number
                 format: double
@@ -295,7 +308,7 @@ MarketBets:
                 exclusiveMinimum: true
                 maximum: 1
                 description: The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
-            required: [id, outcome, shares, expected_price]
+            required: [id, outcome_id, shares, expected_price]
     responses:
       "201":
         description: Shares bought
@@ -354,11 +367,11 @@ MarketPriceHistory:
   get:
     operationId: GetMarketPriceHistory
     tags: [markets]
-    summary: Reconstructed yes-outcome price history of a market
+    summary: Reconstructed per-outcome price history of a market
     description: >-
-      The marginal yes-price after every bet, reconstructed by replaying the bet
-      stream through the market's LMSR from its creation state. No prices are
-      persisted; the series is derived from bets alone.
+      The marginal price of every outcome after every bet, reconstructed by
+      replaying the bet stream through the market's LMSR from its creation
+      state. No prices are persisted; the series is derived from bets alone.
     parameters:
       - name: id
         in: path
@@ -387,11 +400,20 @@ MarketPriceHistory:
                             type: string
                             format: date-time
                             description: When the bet was placed.
-                          yes_price:
-                            type: number
-                            format: double
-                            description: Marginal yes-price right after the bet, in (0,1).
-                        required: [t, yes_price]
+                          prices:
+                            type: array
+                            description: Marginal price of every outcome right after the bet; prices sum to 1.
+                            items:
+                              type: object
+                              properties:
+                                outcome_id:
+                                  type: string
+                                price:
+                                  type: number
+                                  format: double
+                                  description: Marginal price in (0,1).
+                              required: [outcome_id, price]
+                        required: [t, prices]
                   required: [points]
               required: [status, data]
       "400":
@@ -408,6 +430,45 @@ MarketPriceHistory:
               $ref: './common.yaml#/ApiError'
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
+
+MarketOutcome:
+  type: object
+  description: >-
+    One mutually-exclusive outcome of a market. The id is the business-logic
+    identifier (bets and resolution reference it); the name is derived on the
+    fly for display only (player outcome → player name, other → «Ничья»,
+    yes/no → «Да»/«Нет»).
+  properties:
+    id:
+      type: string
+    kind:
+      type: string
+      enum: [player, other, yes, no]
+      description: >-
+        player — a specific target player wins (see player_id); other — tie at
+        first place or a non-target player wins; yes/no — the two fixed outcomes
+        of a win_streak market.
+    player_id:
+      type: string
+      nullable: true
+      description: Set iff kind=player.
+    name:
+      type: string
+    price:
+      type: number
+      format: double
+      minimum: 0
+      maximum: 1
+      description: Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
+    shares:
+      type: number
+      format: double
+      description: Outstanding shares of this outcome (the AMM q; each pays 1 if it wins).
+    pool:
+      type: number
+      format: double
+      description: Total elo spent on this outcome.
+  required: [id, kind, name, price, shares, pool]
 
 SettlementDetail:
   type: object
@@ -437,19 +498,27 @@ MarketGuarantor:
 MatchWinnerParams:
   type: object
   properties:
-    required_player_ids:
+    target_player_ids:
       type: array
       items:
         type: string
+      description: Target players — one "player wins" outcome exists per player.
+    allow_other_players:
+      type: boolean
+      description: >-
+        true — a resolving match must include all targets but may include other
+        players; false — the match must consist of exactly the target players.
     game_ids:
       type: array
       items:
         type: string
-  required: [required_player_ids]
+  required: [target_player_ids, allow_other_players]
 
 WinStreakParams:
   type: object
   properties:
+    target_player_id:
+      type: string
     game_ids:
       type: array
       items:
@@ -459,7 +528,7 @@ WinStreakParams:
     max_losses:
       type: integer
       nullable: true
-  required: [game_ids, wins_required]
+  required: [target_player_id, game_ids, wins_required]
 
 Market:
   type: object
@@ -472,9 +541,18 @@ Market:
     status:
       type: string
       enum: [open, betting_closed, resolved, expired, cancelled]
-    resolution_outcome:
+    resolution_outcome_id:
       type: string
       nullable: true
+      description: >-
+        The winning outcome id (GUID) for resolved markets; null for
+        open/betting_closed markets and for cancelled markets (cancellation is
+        carried by status alone). The *_id suffix lets the idcodec boundary
+        encode it to the same short form as the market's outcome ids.
+    resolution_match_id:
+      type: string
+      nullable: true
+      description: The match that resolved the market, when it was resolved by one.
     starts_at:
       type: string
       format: date-time
@@ -495,42 +573,19 @@ Market:
       type: string
       format: date-time
       nullable: true
-    yes_pool:
-      type: number
-      format: double
-    no_pool:
-      type: number
-      format: double
-    yes_price:
-      type: number
-      format: double
-      minimum: 0
-      maximum: 1
-      description: Live LMSR price of a YES share in [0,1] (probability).
-    no_price:
-      type: number
-      format: double
-      minimum: 0
-      maximum: 1
-      description: Live LMSR price of a NO share in [0,1] (probability).
-    yes_shares:
-      type: number
-      format: double
-      description: Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
-    no_shares:
-      type: number
-      format: double
-      description: Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
+    outcomes:
+      type: array
+      items:
+        $ref: '#/MarketOutcome'
+      description: The market's mutually-exclusive outcomes; prices sum to 1.
     liquidity_b:
       type: number
       format: double
-      description: LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+      description: LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
     guarantors:
       type: array
       items:
         $ref: '#/MarketGuarantor'
-    target_player_id:
-      type: string
     params:
       nullable: true
       description: Market-type-specific parameters
@@ -552,33 +607,30 @@ Market:
         who also bought on the market has a separate buyer row (shown in
         `settlement`), so their entry here carries only the house result
         (payout/surcharge).
-  required: [id, market_type, status, yes_pool, no_pool, yes_price, no_price, yes_shares, no_shares, liquidity_b, target_player_id]
+  required: [id, market_type, status, outcomes, liquidity_b]
 
 MarketDetail:
   allOf:
     - $ref: '#/Market'
     - type: object
       properties:
-        my_yes_staked:
-          type: number
-          format: double
-          nullable: true
-          description: Elo the user spent on YES shares.
-        my_no_staked:
-          type: number
-          format: double
-          nullable: true
-          description: Elo the user spent on NO shares.
-        my_yes_shares:
-          type: number
-          format: double
-          nullable: true
-          description: YES shares the user holds (each pays 1 if YES wins).
-        my_no_shares:
-          type: number
-          format: double
-          nullable: true
-          description: NO shares the user holds (each pays 1 if NO wins).
+        my_positions:
+          type: array
+          description: The user's per-outcome holdings on this market (empty when none).
+          items:
+            type: object
+            properties:
+              outcome_id:
+                type: string
+              staked:
+                type: number
+                format: double
+                description: Elo the user spent on this outcome.
+              shares:
+                type: number
+                format: double
+                description: Shares the user holds (each pays 1 if the outcome wins).
+            required: [outcome_id, staked, shares]
         reserved:
           type: number
           format: double

@@ -9,104 +9,160 @@ const floatEq = 1e-9
 
 func approxEq(a, b float64) bool { return math.Abs(a-b) < floatEq }
 
-func TestAMMPriceSumsToOne(t *testing.T) {
-	cases := []struct{ qY, qN, b float64 }{
-		{0, 0, 100},
-		{50, 10, 100},
-		{10, 50, 100},
-		{300, 0, 100},
-		{0, 300, 100},
-		{123.4, 567.8, 50},
+func sum(q []float64) float64 {
+	s := 0.0
+	for _, v := range q {
+		s += v
 	}
-	for _, c := range cases {
-		py, pn := MarginalPrices(c.qY, c.qN, c.b)
-		if !approxEq(py+pn, 1.0) {
-			t.Errorf("prices don't sum to 1: qY=%v qN=%v b=%v → %v+%v=%v", c.qY, c.qN, c.b, py, pn, py+pn)
+	return s
+}
+
+func TestAMMPricesSumToOne(t *testing.T) {
+	cases := [][]float64{
+		{0, 0},
+		{50, 10},
+		{10, 50},
+		{300, 0},
+		{0, 300},
+		{123.4, 567.8},
+		{1, 2, 3, 4, 5},
+		{0, 0, 0, 0, 500},
+	}
+	for _, q := range cases {
+		for _, b := range []float64{100, 16, 4} {
+			prices := MarginalPricesN(q, b)
+			if len(prices) != len(q) {
+				t.Fatalf("prices length %d, want %d", len(prices), len(q))
+			}
+			if !approxEq(sum(prices), 1.0) {
+				t.Errorf("prices don't sum to 1: q=%v b=%v → sum=%v", q, b, sum(prices))
+			}
 		}
 	}
 }
 
-func TestAMMSymmetricStartIsFiftyFifty(t *testing.T) {
-	// q_yes == q_no ⇒ equal prices 0.5 / 0.5.
-	py, pn := MarginalPrices(0, 0, 100)
-	if !approxEq(py, 0.5) || !approxEq(pn, 0.5) {
-		t.Fatalf("expected 0.5/0.5 prices at symmetric start, got %v/%v", py, pn)
+func TestAMMSymmetricStartIsUniform(t *testing.T) {
+	// All-equal q ⇒ equal prices 1/n.
+	for _, n := range []int{2, 3, 5} {
+		q := make([]float64, n)
+		prices := MarginalPricesN(q, 100)
+		for _, p := range prices {
+			if !approxEq(p, 1.0/float64(n)) {
+				t.Fatalf("expected uniform 1/%d prices at symmetric start, got %v", n, prices)
+			}
+		}
 	}
 }
 
-func TestAMMBuyingMovesPriceTowardBoughtSide(t *testing.T) {
-	qY, qN, b := 0.0, 0.0, 100.0
-	// Buy 10 YES shares → p_yes must rise; effective price (amount/shares) > 0.5
-	// (slippage).
-	newQY, _, amount := ApplyBet(qY, qN, b, "yes", 10)
-	pBefore, _ := MarginalPrices(qY, qN, b)
-	pAfter, _ := MarginalPrices(newQY, qN, b)
-	if !(pAfter > pBefore) {
-		t.Errorf("buying YES did not raise p_yes: %v → %v", pBefore, pAfter)
+func TestAMMBinaryMatchesLegacyYesNo(t *testing.T) {
+	// The n=2 vector form must reproduce the historical binary LMSR exactly.
+	qY, qN, b := 12.0, 7.0, 16.0
+	legacy := func(outcome string) float64 {
+		uy, un := qY/b, qN/b
+		m := math.Max(uy, un)
+		ey, en := math.Exp(uy-m), math.Exp(un-m)
+		if outcome == "yes" {
+			return ey / (ey + en)
+		}
+		return en / (ey + en)
+	}
+	prices := MarginalPricesN([]float64{qY, qN}, b)
+	if !approxEq(prices[0], legacy("yes")) || !approxEq(prices[1], legacy("no")) {
+		t.Fatalf("n=2 prices %v disagree with legacy yes/no (%v/%v)", prices, legacy("yes"), legacy("no"))
+	}
+}
+
+func TestAMMBuyingMovesPriceTowardBoughtOutcome(t *testing.T) {
+	q := []float64{0, 0, 0}
+	b := 100.0
+	// Buy 10 shares of outcome 1 → its price must rise; effective price
+	// (amount/shares) > marginal 1/3 (slippage).
+	newQ, amount := ApplyBetN(q, b, 1, 10)
+	pricesBefore := MarginalPricesN(q, b)
+	pricesAfter := MarginalPricesN(newQ, b)
+	if !(pricesAfter[1] > pricesBefore[1]) {
+		t.Errorf("buying outcome 1 did not raise its price: %v → %v", pricesBefore[1], pricesAfter[1])
 	}
 	if amount <= 0 {
 		t.Fatalf("amount must be positive, got %v", amount)
 	}
-	if eff := amount / 10; eff <= 0.5 {
-		t.Errorf("effective price %v should be > 0.5 (slippage), amount=%v", eff, amount)
+	if eff := amount / 10; eff <= pricesBefore[1] {
+		t.Errorf("effective price %v should exceed the pre-trade marginal %v", eff, pricesBefore[1])
+	}
+	// Other outcomes get cheaper (probability mass moved away).
+	if !(pricesAfter[0] < pricesBefore[0]) {
+		t.Errorf("buying outcome 1 should lower outcome 0's price: %v → %v", pricesBefore[0], pricesAfter[0])
 	}
 }
 
-func TestAMMAmountForSharesMatchesCostDelta(t *testing.T) {
-	// The quoted amount must satisfy C(q_i+s) - C(q_i) == amount.
+func TestAMMAmountMatchesCostDelta(t *testing.T) {
+	// The quoted amount must satisfy C(q + shares·e_i) − C(q) == amount.
 	for _, tc := range []struct {
-		qY, qN, b, shares float64
-		outcome           string
+		q      []float64
+		b      float64
+		i      int
+		shares float64
 	}{
-		{0, 0, 100, 1, "yes"},
-		{0, 0, 100, 1, "no"},
-		{0, 0, 100, 10, "yes"},
-		{40, 15, 100, 3, "yes"},
-		{15, 40, 100, 3, "no"},
-		{0, 0, 50, 5, "yes"},
+		{[]float64{0, 0}, 100, 0, 1},
+		{[]float64{0, 0}, 100, 1, 1},
+		{[]float64{0, 0, 0, 0}, 100, 2, 10},
+		{[]float64{40, 15, 3}, 100, 0, 3},
+		{[]float64{15, 40, 3}, 100, 1, 3},
+		{[]float64{0, 0}, 50, 0, 5},
 	} {
-		a := ammAmountForShares(tc.qY, tc.qN, tc.b, tc.outcome, tc.shares)
-		costBefore := ammCost(tc.qY, tc.qN, tc.b)
-		var costAfter float64
-		if tc.outcome == "yes" {
-			costAfter = ammCost(tc.qY+tc.shares, tc.qN, tc.b)
-		} else {
-			costAfter = ammCost(tc.qY, tc.qN+tc.shares, tc.b)
+		newQ, amount := ApplyBetN(tc.q, tc.b, tc.i, tc.shares)
+		want := ammCostN(newQ, tc.b) - ammCostN(tc.q, tc.b)
+		if !approxEq(want, amount) {
+			t.Errorf("cost mismatch for %+v: ΔC=%v want %v", tc, want, amount)
 		}
-		if !approxEq(costAfter-costBefore, a) {
-			t.Errorf("cost mismatch for %+v: ΔC=%v want %v", tc, costAfter-costBefore, a)
+		if !approxEq(newQ[tc.i], tc.q[tc.i]+tc.shares) {
+			t.Errorf("q_i not shifted by shares: %v", newQ)
 		}
 	}
 }
 
-func TestAMMEffectivePriceGeMarginal(t *testing.T) {
-	// A finite buy's effective price (amount/shares, incl. slippage) is ≥ the
-	// marginal price quoted just before the buy.
-	qY, qN, b := 0.0, 0.0, 100.0
-	marginal, _ := MarginalPrices(qY, qN, b)
-	_, _, amount := ApplyBet(qY, qN, b, "yes", 5)
-	eff := amount / 5
-	if eff < marginal-floatEq {
-		t.Errorf("effective price %v must be ≥ marginal %v", eff, marginal)
+func TestAMMInputNotMutated(t *testing.T) {
+	q := []float64{1, 2, 3}
+	newQ, _ := ApplyBetN(q, 16, 0, 5)
+	if !approxEq(q[0], 1) || !approxEq(newQ[0], 6) {
+		t.Fatalf("ApplyBetN must not mutate its input: q=%v newQ=%v", q, newQ)
 	}
 }
 
-func TestAMMSymmetryYesNo(t *testing.T) {
-	// From a symmetric state, buying YES and buying NO with the same shares must
-	// cost the same amount.
-	_, _, aY := ApplyBet(0, 0, 100, "yes", 20)
-	_, _, aN := ApplyBet(0, 0, 100, "no", 20)
-	if !approxEq(aY, aN) {
-		t.Errorf("amounts differ: yes=%v no=%v", aY, aN)
+func TestAMMSymmetryAcrossOutcomes(t *testing.T) {
+	// From a symmetric state, buying the same shares on any outcome must cost
+	// the same amount.
+	q := []float64{0, 0, 0, 0}
+	amounts := make([]float64, len(q))
+	for i := range q {
+		_, amounts[i] = ApplyBetN(q, 100, i, 20)
+	}
+	for i := 1; i < len(amounts); i++ {
+		if !approxEq(amounts[0], amounts[i]) {
+			t.Fatalf("amounts differ across outcomes: %v", amounts)
+		}
+	}
+}
+
+func TestAMMLargeStateStaysStable(t *testing.T) {
+	// Extreme one-sided states must stay in (0,1) thanks to log-sum-exp
+	// stabilization.
+	q := []float64{0, 500, 0}
+	prices := MarginalPricesN(q, 16)
+	for i, p := range prices {
+		if p <= 0 || p >= 1 || math.IsNaN(p) {
+			t.Fatalf("price[%d] = %v, want ∈ (0,1)", i, p)
+		}
+	}
+	if !approxEq(prices[1], 1.0-1e-12) && prices[1] <= 0.999999999999 {
+		t.Fatalf("dominant outcome price should approach 1: %v", prices[1])
 	}
 }
 
 func TestAMMZeroSharesIsZero(t *testing.T) {
-	if a := ammAmountForShares(0, 0, 100, "yes", 0); a != 0 {
-		t.Errorf("zero shares must cost zero, got %v", a)
-	}
-	nY, nN, a := ApplyBet(10, 20, 100, "yes", 0)
-	if a != 0 || nY != 10 || nN != 20 {
-		t.Errorf("zero-shares ApplyBet must be a no-op: nY=%v nN=%v a=%v", nY, nN, a)
+	q := []float64{10, 20, 30}
+	newQ, amount := ApplyBetN(q, 100, 1, 0)
+	if amount != 0 || !approxEq(sum(newQ), sum(q)) {
+		t.Fatalf("zero-shares ApplyBetN must be a no-op: newQ=%v a=%v", newQ, amount)
 	}
 }

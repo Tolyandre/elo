@@ -2,12 +2,15 @@
 import React from "react";
 import {
     CartesianGrid,
+    Cell,
     Line,
     LineChart,
+    Pie,
+    PieChart,
     XAxis,
     YAxis,
 } from "recharts";
-import { Market, SettlementDetail } from "@/app/api";
+import { Market, MarketOutcome, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -17,28 +20,24 @@ import {
 } from "@/components/ui/chart";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
-import { getMarketTitle } from "@/app/market/marketTypes";
+import { getMarketTitle, outcomeDisplayName } from "@/app/market/marketTypes";
+import { outcomeColors } from "@/app/market/outcomeColors";
 import { ChartPricePoint } from "@/app/market/priceHistory";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 
-export function statusLabel(status: Market["status"], resolutionOutcome?: string | null): string {
-    if (status === "resolved") {
-        if (resolutionOutcome === "yes") return "Да";
-        if (resolutionOutcome === "no") return "Нет";
-        return resolutionOutcome ?? "Разрешён";
+export function statusLabel(market: Market, resolutionOutcomeName?: string | null): string {
+    if (market.status === "resolved") {
+        return resolutionOutcomeName ?? "Разрешён";
     }
-    if (status === "cancelled") return "Отменён";
-    if (status === "betting_closed") return "Ставки закрыты";
+    if (market.status === "cancelled") return "Отменён";
+    if (market.status === "betting_closed") return "Ставки закрыты";
     return "Открыт";
 }
 
-export function statusVariant(status: Market["status"], resolutionOutcome?: string | null): "default" | "secondary" | "destructive" | "outline" {
-    if (status === "resolved") {
-        return resolutionOutcome === "no" ? "secondary" : "default";
-    }
-    if (status === "cancelled") return "destructive";
-    if (status === "betting_closed") return "outline";
+export function statusVariant(market: Market): "default" | "secondary" | "destructive" | "outline" {
+    if (market.status === "cancelled") return "destructive";
+    if (market.status === "betting_closed") return "outline";
     return "default";
 }
 
@@ -57,52 +56,80 @@ function formatShares(v: number): string {
     return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
 }
 
-function PoolBar({ yesPool, noPool, yesPrice, noPrice, yesShares, noShares }: {
-    yesPool: number; noPool: number; yesPrice: number; noPrice: number;
-    yesShares: number; noShares: number;
-}) {
-    // The bar reflects the live price (probability) split — p_yes + p_no = 1.
-    const yesPct = Math.max(0, Math.min(100, yesPrice * 100));
-    const noPct = 100 - yesPct;
-    const yesMult = payoutMultiplier(yesPrice);
-    const noMult = payoutMultiplier(noPrice);
+// OutcomeDonut renders the live probability split as a circle graph: one
+// segment per outcome, sized by its LMSR price (the segments sum to 100%).
+function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOutcome) => string }) {
+    const colors = outcomeColors(market.outcomes);
+    const data = market.outcomes.map((o) => ({
+        id: o.id,
+        name: nameOf(o),
+        value: Math.max(o.price, 0) * 100,
+        color: colors.get(o.id) ?? "#94a3b8",
+    }));
 
     return (
-        <div className="space-y-1.5">
-            <div className="flex h-5 rounded overflow-hidden text-xs font-medium">
-                <div
-                    className="flex items-center justify-start pl-1.5 bg-green-500 text-white overflow-hidden whitespace-nowrap transition-all"
-                    style={{ width: `${yesPct}%` }}
-                >
-                    {yesPct > 18 && `Да ${Math.round(yesPct)}%`}
-                </div>
-                <div className="flex items-center justify-end pr-1.5 bg-red-400 text-white overflow-hidden whitespace-nowrap flex-1 transition-all">
-                    {noPct > 18 && `Нет ${Math.round(noPct)}%`}
-                </div>
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-                <div>
-                    <div>
-                        {yesMult != null && `Коэффициент: ${yesMult.toFixed(1)}x`}
-                    </div>
-                    <div>
-                        Голоса: {formatShares(yesShares)}
-                    </div>
-                    <div>
-                        Потрачено: {yesPool.toFixed(1)}
-                    </div>
-                </div>
-                <div>
-                    <div>
-                        {noMult != null && `Коэффициент: ${noMult.toFixed(1)}x`}
-                    </div>
-                    <div>
-                        Голоса: {formatShares(noShares)}
-                    </div>
-                    <div>
-                        Потрачено: {noPool.toFixed(1)}
-                    </div>
-                </div>
+        <div className="flex items-center gap-3">
+            <ChartContainer
+                className="h-28 w-28 shrink-0 aspect-square"
+                config={Object.fromEntries(data.map((d) => [d.id, { label: d.name, color: d.color }]))}
+            >
+                <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                    <ChartTooltip
+                        content={(props) => (
+                            <ChartTooltipContent
+                                active={props.active}
+                                payload={props.payload}
+                                label={props.label}
+                                coordinate={props.coordinate}
+                                accessibilityLayer={props.accessibilityLayer}
+                                activeIndex={props.activeIndex}
+                                formatter={(value, _name, item) => (
+                                    <>
+                                        <span style={{ color: item.color }}>{item.payload?.name}</span>
+                                        <span className="font-mono font-medium tabular-nums" style={{ color: item.color }}>
+                                            {Number(value).toFixed(0)}%
+                                        </span>
+                                    </>
+                                )}
+                            />
+                        )}
+                    />
+                    <Pie
+                        data={data}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius="55%"
+                        outerRadius="100%"
+                        paddingAngle={data.length > 1 ? 1 : 0}
+                        stroke="var(--card)"
+                        strokeWidth={2}
+                        isAnimationActive={false}
+                    >
+                        {data.map((d) => (
+                            <Cell key={d.id} fill={d.color} />
+                        ))}
+                    </Pie>
+                </PieChart>
+            </ChartContainer>
+            <div className="flex-1 min-w-0 space-y-1.5">
+                {data.map((d, i) => {
+                    const o = market.outcomes[i];
+                    const mult = payoutMultiplier(o.price);
+                    return (
+                        <div key={d.id} className="text-xs leading-tight">
+                            <div className="flex items-center gap-1.5">
+                                <span className="inline-block size-2 rounded-full shrink-0" style={{ background: d.color }} />
+                                <span className="font-medium truncate">{d.name}</span>
+                                <span className="text-muted-foreground  flex gap-2"> {mult != null && <span>×{mult.toFixed(1)}</span>}</span>
+                                <span className="ml-auto font-mono tabular-nums text-muted-foreground shrink-0">{Math.round(d.value)}%</span>
+                            </div>
+                            <div className="text-muted-foreground pl-3.5 flex gap-2">
+                                {/* <span>Голоса: {formatShares(o.shares)}</span>
+                                <span>Потрачено: {o.pool.toFixed(1)}</span> */}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -119,16 +146,18 @@ function axisTicks(points: ChartPricePoint[]): number[] {
     return [0, 1, 2, 3].map(i => unique[Math.round(i * step)]);
 }
 
-// PriceChart renders the yes-outcome probability over time. The price moves in
-// discrete steps (one per bet), hence stepAfter; animation is off so live SSE
-// appends don't re-animate the whole line.
-function PriceChart({ points }: { points: ChartPricePoint[] }) {
+// PriceChart renders every outcome's probability over time, one step line per
+// outcome. Prices move in discrete steps (one per bet), hence stepAfter;
+// animation is off so live SSE appends don't re-animate the whole chart.
+function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
+    const colors = outcomeColors(outcomes);
+    const rows = points.map((p) => ({ t: p.t, ...p.prices }));
     return (
         <ChartContainer
             className="h-36 pt-2 -mx-2 aspect-auto w-full"
-            config={{ yes: { label: "Да", color: "#22c55e" } }}
+            config={Object.fromEntries(outcomes.map((o) => [o.id, { label: nameOf(o), color: colors.get(o.id) ?? "#94a3b8" }]))}
         >
-            <LineChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                 <XAxis
                     dataKey="t"
@@ -157,14 +186,16 @@ function PriceChart({ points }: { points: ChartPricePoint[] }) {
                             coordinate={props.coordinate}
                             accessibilityLayer={props.accessibilityLayer}
                             activeIndex={props.activeIndex}
-                            // The built-in label resolves to the config label ("Да"),
-                            // so read the bet timestamp off the payload datum.
+                            // The built-in label resolves to a config label, so
+                            // read the bet timestamp off the payload datum.
                             labelFormatter={(_, payload) =>
                                 formatDateTime(new Date(Number(payload?.[0]?.payload?.t)))}
-                            formatter={(value, _name, item) => (
+                            formatter={(value, name) => (
                                 <>
-                                    <span style={{ color: item.color }}>Да</span>
-                                    <span className="font-mono font-medium tabular-nums" style={{ color: item.color }}>
+                                    <span style={{ color: colors.get(String(name)) }}>
+                                        {outcomes.find((o) => o.id === name) ? nameOf(outcomes.find((o) => o.id === String(name))!) : String(name)}
+                                    </span>
+                                    <span className="font-mono font-medium tabular-nums" style={{ color: colors.get(String(name)) }}>
                                         {(Number(value) * 100).toFixed(1)}%
                                     </span>
                                 </>
@@ -172,15 +203,18 @@ function PriceChart({ points }: { points: ChartPricePoint[] }) {
                         />
                     )}
                 />
-                <Line
-                    type="stepAfter"
-                    dataKey="yesPrice"
-                    name="yes"
-                    stroke="var(--color-yes)"
-                    strokeWidth={2}
-                    dot={points.length <= 50 ? { r: 0.5 } : false}
-                    isAnimationActive={false}
-                />
+                {outcomes.map((o) => (
+                    <Line
+                        key={o.id}
+                        type="stepAfter"
+                        dataKey={o.id}
+                        name={o.id}
+                        stroke={colors.get(o.id) ?? "#94a3b8"}
+                        strokeWidth={2}
+                        dot={points.length <= 50 ? { r: 0.1 } : false}
+                        isAnimationActive={false}
+                    />
+                ))}
             </LineChart>
         </ChartContainer>
     );
@@ -217,6 +251,10 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
     const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const title = getMarketTitle(market, players, games, playerDisplayName);
+    const nameOf = React.useCallback(
+        (o: MarketOutcome) => outcomeDisplayName(o, players, playerDisplayName),
+        [players, playerDisplayName],
+    );
     const isOpen = market.status === "open";
     const isBettingClosed = market.status === "betting_closed";
     const dateValue = isOpen
@@ -229,14 +267,24 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
         : isBettingClosed ? "Ставки закрыты"
             : market.status === "cancelled" ? "Отменён"
                 : "Разрешён";
+    const resolutionOutcomeName = market.status === "resolved" && market.resolution_outcome_id
+        ? nameOf(market.outcomes.find((o) => o.id === market.resolution_outcome_id) ?? {
+            id: market.resolution_outcome_id,
+            kind: "other" as const,
+            name: "Разрешён",
+            price: 0,
+            shares: 0,
+            pool: 0,
+        })
+        : undefined;
 
     return (
         <Card className={className}>
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base">{title}</CardTitle>
-                    <Badge variant={statusVariant(market.status, market.resolution_outcome)} className="shrink-0">
-                        {statusLabel(market.status, market.resolution_outcome)}
+                    <Badge variant={statusVariant(market)} className="shrink-0">
+                        {statusLabel(market, resolutionOutcomeName)}
                     </Badge>
                 </div>
                 {date && (
@@ -244,16 +292,9 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
                 )}
             </CardHeader>
             <CardContent>
-                <PoolBar
-                    yesPool={market.yes_pool}
-                    noPool={market.no_pool}
-                    yesPrice={market.yes_price}
-                    noPrice={market.no_price}
-                    yesShares={market.yes_shares}
-                    noShares={market.no_shares}
-                />
+                <OutcomeDonut market={market} nameOf={nameOf} />
                 {priceHistory && priceHistory.length > 0 && (
-                    <PriceChart points={priceHistory} />
+                    <PriceChart points={priceHistory} outcomes={market.outcomes} nameOf={nameOf} />
                 )}
                 {(isOpen || isBettingClosed) && market.guarantors && market.guarantors.length > 0 && (
                     <p className="text-xs text-muted-foreground pt-2">

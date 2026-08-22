@@ -264,6 +264,30 @@ func (e SkullKingGameStatePhase) Valid() bool {
 	}
 }
 
+// Defines values for MarketsMarketOutcomeKind.
+const (
+	MarketsMarketOutcomeKindNo     MarketsMarketOutcomeKind = "no"
+	MarketsMarketOutcomeKindOther  MarketsMarketOutcomeKind = "other"
+	MarketsMarketOutcomeKindPlayer MarketsMarketOutcomeKind = "player"
+	MarketsMarketOutcomeKindYes    MarketsMarketOutcomeKind = "yes"
+)
+
+// Valid indicates whether the value is a known member of the MarketsMarketOutcomeKind enum.
+func (e MarketsMarketOutcomeKind) Valid() bool {
+	switch e {
+	case MarketsMarketOutcomeKindNo:
+		return true
+	case MarketsMarketOutcomeKindOther:
+		return true
+	case MarketsMarketOutcomeKindPlayer:
+		return true
+	case MarketsMarketOutcomeKindYes:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreatePlayerCorrectionJSONBodyDiscriminator.
 const (
 	CreatePlayerCorrectionJSONBodyDiscriminatorCorrection CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
@@ -306,24 +330,6 @@ const (
 func (e PatchMarketJSONBodyStatus) Valid() bool {
 	switch e {
 	case PatchMarketJSONBodyStatusBettingClosed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PlaceBetJSONBodyOutcome.
-const (
-	No  PlaceBetJSONBodyOutcome = "no"
-	Yes PlaceBetJSONBodyOutcome = "yes"
-)
-
-// Valid indicates whether the value is a known member of the PlaceBetJSONBodyOutcome enum.
-func (e PlaceBetJSONBodyOutcome) Valid() bool {
-	switch e {
-	case No:
-		return true
-	case Yes:
 		return true
 	default:
 		return false
@@ -509,34 +515,27 @@ type Market struct {
 	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
 	Id                  string                    `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
 	LiquidityB float64          `json:"liquidity_b"`
 	MarketType MarketMarketType `json:"market_type"`
-	NoPool     float64          `json:"no_pool"`
 
-	// NoPrice Live LMSR price of a NO share in [0,1] (probability).
-	NoPrice float64 `json:"no_price"`
-
-	// NoShares Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
-	NoShares float64 `json:"no_shares"`
+	// Outcomes The market's mutually-exclusive outcomes; prices sum to 1.
+	Outcomes []MarketsMarketOutcome `json:"outcomes"`
 
 	// Params Market-type-specific parameters
-	Params            *Market_Params `json:"params,omitempty"`
-	ResolutionOutcome *string        `json:"resolution_outcome,omitempty"`
-	ResolvedAt        *time.Time     `json:"resolved_at,omitempty"`
+	Params *Market_Params `json:"params,omitempty"`
+
+	// ResolutionMatchId The match that resolved the market, when it was resolved by one.
+	ResolutionMatchId *string `json:"resolution_match_id,omitempty"`
+
+	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). The *_id suffix lets the idcodec boundary encode it to the same short form as the market's outcome ids.
+	ResolutionOutcomeId *string    `json:"resolution_outcome_id,omitempty"`
+	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
 
 	// Settlement Buyer settlements (discriminator 'market') for a resolved market.
-	Settlement     *[]SettlementDetail `json:"settlement,omitempty"`
-	StartsAt       *time.Time          `json:"starts_at,omitempty"`
-	Status         MarketStatus        `json:"status"`
-	TargetPlayerId string              `json:"target_player_id"`
-	YesPool        float64             `json:"yes_pool"`
-
-	// YesPrice Live LMSR price of a YES share in [0,1] (probability).
-	YesPrice float64 `json:"yes_price"`
-
-	// YesShares Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
-	YesShares float64 `json:"yes_shares"`
+	Settlement *[]SettlementDetail `json:"settlement,omitempty"`
+	StartsAt   *time.Time          `json:"starts_at,omitempty"`
+	Status     MarketStatus        `json:"status"`
 }
 
 // MarketMarketType defines model for Market.MarketType.
@@ -562,47 +561,39 @@ type MarketDetail struct {
 	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
 	Id                  string                    `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
 	LiquidityB float64                `json:"liquidity_b"`
 	MarketType MarketDetailMarketType `json:"market_type"`
 
-	// MyNoShares NO shares the user holds (each pays 1 if NO wins).
-	MyNoShares *float64 `json:"my_no_shares,omitempty"`
+	// MyPositions The user's per-outcome holdings on this market (empty when none).
+	MyPositions *[]struct {
+		OutcomeId string `json:"outcome_id"`
 
-	// MyNoStaked Elo the user spent on NO shares.
-	MyNoStaked *float64 `json:"my_no_staked,omitempty"`
+		// Shares Shares the user holds (each pays 1 if the outcome wins).
+		Shares float64 `json:"shares"`
 
-	// MyYesShares YES shares the user holds (each pays 1 if YES wins).
-	MyYesShares *float64 `json:"my_yes_shares,omitempty"`
+		// Staked Elo the user spent on this outcome.
+		Staked float64 `json:"staked"`
+	} `json:"my_positions,omitempty"`
 
-	// MyYesStaked Elo the user spent on YES shares.
-	MyYesStaked *float64 `json:"my_yes_staked,omitempty"`
-	NoPool      float64  `json:"no_pool"`
-
-	// NoPrice Live LMSR price of a NO share in [0,1] (probability).
-	NoPrice float64 `json:"no_price"`
-
-	// NoShares Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
-	NoShares float64 `json:"no_shares"`
+	// Outcomes The market's mutually-exclusive outcomes; prices sum to 1.
+	Outcomes []MarketsMarketOutcome `json:"outcomes"`
 
 	// Params Market-type-specific parameters
-	Params            *MarketDetail_Params `json:"params,omitempty"`
-	Reserved          *float64             `json:"reserved,omitempty"`
-	ResolutionOutcome *string              `json:"resolution_outcome,omitempty"`
-	ResolvedAt        *time.Time           `json:"resolved_at,omitempty"`
+	Params   *MarketDetail_Params `json:"params,omitempty"`
+	Reserved *float64             `json:"reserved,omitempty"`
+
+	// ResolutionMatchId The match that resolved the market, when it was resolved by one.
+	ResolutionMatchId *string `json:"resolution_match_id,omitempty"`
+
+	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). The *_id suffix lets the idcodec boundary encode it to the same short form as the market's outcome ids.
+	ResolutionOutcomeId *string    `json:"resolution_outcome_id,omitempty"`
+	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
 
 	// Settlement Buyer settlements (discriminator 'market') for a resolved market.
-	Settlement     *[]SettlementDetail `json:"settlement,omitempty"`
-	StartsAt       *time.Time          `json:"starts_at,omitempty"`
-	Status         MarketDetailStatus  `json:"status"`
-	TargetPlayerId string              `json:"target_player_id"`
-	YesPool        float64             `json:"yes_pool"`
-
-	// YesPrice Live LMSR price of a YES share in [0,1] (probability).
-	YesPrice float64 `json:"yes_price"`
-
-	// YesShares Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
-	YesShares float64 `json:"yes_shares"`
+	Settlement *[]SettlementDetail `json:"settlement,omitempty"`
+	StartsAt   *time.Time          `json:"starts_at,omitempty"`
+	Status     MarketDetailStatus  `json:"status"`
 }
 
 // MarketDetailMarketType defines model for MarketDetail.MarketType.
@@ -652,8 +643,12 @@ type MatchTournament struct {
 
 // MatchWinnerParams defines model for MatchWinnerParams.
 type MatchWinnerParams struct {
+	// AllowOtherPlayers true — a resolving match must include all targets but may include other players; false — the match must consist of exactly the target players.
+	AllowOtherPlayers bool      `json:"allow_other_players"`
 	GameIds           *[]string `json:"game_ids,omitempty"`
-	RequiredPlayerIds []string  `json:"required_player_ids"`
+
+	// TargetPlayerIds Target players — one "player wins" outcome exists per player.
+	TargetPlayerIds []string `json:"target_player_ids"`
 }
 
 // MatchesPage defines model for MatchesPage.
@@ -844,9 +839,10 @@ type VoiceScore struct {
 
 // WinStreakParams defines model for WinStreakParams.
 type WinStreakParams struct {
-	GameIds      []string `json:"game_ids"`
-	MaxLosses    *int     `json:"max_losses,omitempty"`
-	WinsRequired int      `json:"wins_required"`
+	GameIds        []string `json:"game_ids"`
+	MaxLosses      *int     `json:"max_losses,omitempty"`
+	TargetPlayerId string   `json:"target_player_id"`
+	WinsRequired   int      `json:"wins_required"`
 }
 
 // MarketsMarketGuarantor A player who backs a market and splits its settlement residual (deficit or surplus).
@@ -854,6 +850,30 @@ type MarketsMarketGuarantor struct {
 	PlayerId   string `json:"player_id"`
 	PlayerName string `json:"player_name"`
 }
+
+// MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → Ничья, yes/no → «Да»/«Нет»).
+type MarketsMarketOutcome struct {
+	Id string `json:"id"`
+
+	// Kind player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
+	Kind MarketsMarketOutcomeKind `json:"kind"`
+	Name string                   `json:"name"`
+
+	// PlayerId Set iff kind=player.
+	PlayerId *string `json:"player_id,omitempty"`
+
+	// Pool Total elo spent on this outcome.
+	Pool float64 `json:"pool"`
+
+	// Price Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
+	Price float64 `json:"price"`
+
+	// Shares Outstanding shares of this outcome (the AMM q; each pays 1 if it wins).
+	Shares float64 `json:"shares"`
+}
+
+// MarketsMarketOutcomeKind player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
+type MarketsMarketOutcomeKind string
 
 // CreatePlayerCorrectionJSONBody defines parameters for CreatePlayerCorrection.
 type CreatePlayerCorrectionJSONBody struct {
@@ -925,8 +945,10 @@ type PatchGameJSONBody struct {
 
 // CreateMarketJSONBody defines parameters for CreateMarket.
 type CreateMarketJSONBody struct {
-	ClosesAt time.Time `json:"closes_at"`
-	GameIds  *[]string `json:"game_ids,omitempty"`
+	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
+	AllowOtherPlayers *bool     `json:"allow_other_players,omitempty"`
+	ClosesAt          time.Time `json:"closes_at"`
+	GameIds           *[]string `json:"game_ids,omitempty"`
 
 	// GuarantorPlayerIds Players who back the market and absorb its settlement residual.
 	GuarantorPlayerIds *[]string `json:"guarantor_player_ids,omitempty"`
@@ -935,16 +957,18 @@ type CreateMarketJSONBody struct {
 	Id ULID `json:"id"`
 
 	// LiquidityB LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
-	LiquidityB        *float64                       `json:"liquidity_b,omitempty"`
-	MarketType        CreateMarketJSONBodyMarketType `json:"market_type"`
-	MaxLosses         *int                           `json:"max_losses,omitempty"`
-	RequiredPlayerIds *[]string                      `json:"required_player_ids,omitempty"`
+	LiquidityB *float64                       `json:"liquidity_b,omitempty"`
+	MarketType CreateMarketJSONBodyMarketType `json:"market_type"`
+	MaxLosses  *int                           `json:"max_losses,omitempty"`
 
 	// StartsAt Defaults to now if omitted; must not be in the past if provided
 	StartsAt       *time.Time `json:"starts_at,omitempty"`
 	StreakGameIds  *[]string  `json:"streak_game_ids,omitempty"`
-	TargetPlayerId string     `json:"target_player_id"`
-	WinsRequired   *int       `json:"wins_required,omitempty"`
+	TargetPlayerId *string    `json:"target_player_id,omitempty"`
+
+	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
+	TargetPlayerIds *[]string `json:"target_player_ids,omitempty"`
+	WinsRequired    *int      `json:"wins_required,omitempty"`
 }
 
 // CreateMarketJSONBodyMarketType defines parameters for CreateMarket.
@@ -964,15 +988,14 @@ type PlaceBetJSONBody struct {
 	ExpectedPrice float64 `json:"expected_price"`
 
 	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id      ULID                    `json:"id"`
-	Outcome PlaceBetJSONBodyOutcome `json:"outcome"`
+	Id ULID `json:"id"`
+
+	// OutcomeId Outcome identifier (GUID) the bet is placed on — one of the market's outcomes. The *_id suffix lets the idcodec boundary decode the short form clients see in responses.
+	OutcomeId string `json:"outcome_id"`
 
 	// Shares Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
 	Shares float64 `json:"shares"`
 }
-
-// PlaceBetJSONBodyOutcome defines parameters for PlaceBet.
-type PlaceBetJSONBodyOutcome string
 
 // ListMatchesParams defines parameters for ListMatches.
 type ListMatchesParams struct {
@@ -1449,7 +1472,7 @@ type ServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(c *gin.Context, id string)
-	// GetMarketPriceHistory Reconstructed yes-outcome price history of a market
+	// GetMarketPriceHistory Reconstructed per-outcome price history of a market
 	// (GET /markets/{id}/price-history)
 	GetMarketPriceHistory(c *gin.Context, id string)
 	// ListMatches List matches with cursor-based pagination
@@ -4449,11 +4472,16 @@ type GetMarketPriceHistoryResponseObject interface {
 type GetMarketPriceHistory200JSONResponse struct {
 	Data struct {
 		Points []struct {
+			// Prices Marginal price of every outcome right after the bet; prices sum to 1.
+			Prices []struct {
+				OutcomeId string `json:"outcome_id"`
+
+				// Price Marginal price in (0,1).
+				Price float64 `json:"price"`
+			} `json:"prices"`
+
 			// T When the bet was placed.
 			T time.Time `json:"t"`
-
-			// YesPrice Marginal yes-price right after the bet, in (0,1).
-			YesPrice float64 `json:"yes_price"`
 		} `json:"points"`
 	} `json:"data"`
 	Status string `json:"status"`
@@ -6474,7 +6502,7 @@ type StrictServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error)
-	// GetMarketPriceHistory Reconstructed yes-outcome price history of a market
+	// GetMarketPriceHistory Reconstructed per-outcome price history of a market
 	// (GET /markets/{id}/price-history)
 	GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error)
 	// ListMatches List matches with cursor-based pagination

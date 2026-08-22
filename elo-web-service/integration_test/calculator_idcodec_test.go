@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
@@ -68,7 +69,9 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 		"id":              "00000000-0000-0000-0000-0000000000c1",
 		"game_id":         game,
 		"score":           map[string]any{pa: 10.0, pb: 5.0},
-		"date":            "2026-07-20T12:00:00Z",
+		// Match dates must be within the last 30 days — keep it relative to
+		// now so the test never ages out of the validation window.
+		"date":            time.Now().AddDate(0, 0, -7).UTC().Format(time.RFC3339),
 		"calculator_kind": "iaww",
 		"calculator_data": json.RawMessage(calcJSON),
 	}

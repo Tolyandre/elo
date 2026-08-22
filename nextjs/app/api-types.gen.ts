@@ -441,8 +441,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Reconstructed yes-outcome price history of a market
-         * @description The marginal yes-price after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No prices are persisted; the series is derived from bets alone.
+         * Reconstructed per-outcome price history of a market
+         * @description The marginal price of every outcome after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No prices are persisted; the series is derived from bets alone.
          */
         get: operations["GetMarketPriceHistory"];
         put?: never;
@@ -972,10 +972,14 @@ export interface components {
             earned: number;
         };
         MatchWinnerParams: {
-            required_player_ids: string[];
+            /** @description Target players — one "player wins" outcome exists per player. */
+            target_player_ids: string[];
+            /** @description true — a resolving match must include all targets but may include other players; false — the match must consist of exactly the target players. */
+            allow_other_players: boolean;
             game_ids?: string[];
         };
         WinStreakParams: {
+            target_player_id: string;
             game_ids: string[];
             wins_required: number;
             max_losses?: number | null;
@@ -986,7 +990,10 @@ export interface components {
             market_type: "match_winner" | "win_streak";
             /** @enum {string} */
             status: "open" | "betting_closed" | "resolved" | "expired" | "cancelled";
-            resolution_outcome?: string | null;
+            /** @description The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). The *_id suffix lets the idcodec boundary encode it to the same short form as the market's outcome ids. */
+            resolution_outcome_id?: string | null;
+            /** @description The match that resolved the market, when it was resolved by one. */
+            resolution_match_id?: string | null;
             /** Format: date-time */
             starts_at?: string | null;
             /** Format: date-time */
@@ -997,37 +1004,14 @@ export interface components {
             resolved_at?: string | null;
             /** Format: date-time */
             betting_closed_at?: string | null;
-            /** Format: double */
-            yes_pool: number;
-            /** Format: double */
-            no_pool: number;
+            /** @description The market's mutually-exclusive outcomes; prices sum to 1. */
+            outcomes: components["schemas"]["MarketOutcome"][];
             /**
              * Format: double
-             * @description Live LMSR price of a YES share in [0,1] (probability).
-             */
-            yes_price: number;
-            /**
-             * Format: double
-             * @description Live LMSR price of a NO share in [0,1] (probability).
-             */
-            no_price: number;
-            /**
-             * Format: double
-             * @description Outstanding YES shares (the AMM q_yes; each pays 1 if YES wins).
-             */
-            yes_shares: number;
-            /**
-             * Format: double
-             * @description Outstanding NO shares (the AMM q_no; each pays 1 if NO wins).
-             */
-            no_shares: number;
-            /**
-             * Format: double
-             * @description LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln 2).
+             * @description LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
              */
             liquidity_b: number;
             guarantors?: components["schemas"]["MarketGuarantor"][];
-            target_player_id: string;
             /** @description Market-type-specific parameters */
             params?: (components["schemas"]["MatchWinnerParams"] | components["schemas"]["WinStreakParams"]) | null;
             /** @description Buyer settlements (discriminator 'market') for a resolved market. */
@@ -1036,26 +1020,20 @@ export interface components {
             guarantor_settlement?: components["schemas"]["SettlementDetail"][];
         };
         MarketDetail: components["schemas"]["Market"] & {
-            /**
-             * Format: double
-             * @description Elo the user spent on YES shares.
-             */
-            my_yes_staked?: number | null;
-            /**
-             * Format: double
-             * @description Elo the user spent on NO shares.
-             */
-            my_no_staked?: number | null;
-            /**
-             * Format: double
-             * @description YES shares the user holds (each pays 1 if YES wins).
-             */
-            my_yes_shares?: number | null;
-            /**
-             * Format: double
-             * @description NO shares the user holds (each pays 1 if NO wins).
-             */
-            my_no_shares?: number | null;
+            /** @description The user's per-outcome holdings on this market (empty when none). */
+            my_positions?: {
+                outcome_id: string;
+                /**
+                 * Format: double
+                 * @description Elo the user spent on this outcome.
+                 */
+                staked: number;
+                /**
+                 * Format: double
+                 * @description Shares the user holds (each pays 1 if the outcome wins).
+                 */
+                shares: number;
+            }[];
             /** Format: double */
             reserved?: number | null;
             /** Format: double */
@@ -1120,6 +1098,33 @@ export interface components {
         } | {
             /** @enum {string} */
             type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale";
+        };
+        /** @description One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → Ничья, yes/no → «Да»/«Нет»). */
+        MarketOutcome: {
+            id: string;
+            /**
+             * @description player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
+             * @enum {string}
+             */
+            kind: "player" | "other" | "yes" | "no";
+            /** @description Set iff kind=player. */
+            player_id?: string | null;
+            name: string;
+            /**
+             * Format: double
+             * @description Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
+             */
+            price: number;
+            /**
+             * Format: double
+             * @description Outstanding shares of this outcome (the AMM q; each pays 1 if it wins).
+             */
+            shares: number;
+            /**
+             * Format: double
+             * @description Total elo spent on this outcome.
+             */
+            pool: number;
         };
         /** @description A player who backs a market and splits its settlement residual (deficit or surplus). */
         MarketGuarantor: {
@@ -2962,9 +2967,12 @@ export interface operations {
                     starts_at?: string;
                     /** Format: date-time */
                     closes_at: string;
-                    target_player_id: string;
-                    required_player_ids?: string[];
+                    /** @description Target players — one "player wins" outcome is created per player. */
+                    target_player_ids?: string[];
+                    /** @description When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome. */
+                    allow_other_players?: boolean;
                     game_ids?: string[];
+                    target_player_id?: string;
                     streak_game_ids?: string[];
                     wins_required?: number;
                     max_losses?: number | null;
@@ -3201,8 +3209,8 @@ export interface operations {
             content: {
                 "application/json": {
                     id: components["schemas"]["ULID"];
-                    /** @enum {string} */
-                    outcome: "yes" | "no";
+                    /** @description Outcome identifier (GUID) the bet is placed on — one of the market's outcomes. The *_id suffix lets the idcodec boundary decode the short form clients see in responses. */
+                    outcome_id: string;
                     /**
                      * Format: double
                      * @description Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
@@ -3313,11 +3321,15 @@ export interface operations {
                                  * @description When the bet was placed.
                                  */
                                 t: string;
-                                /**
-                                 * Format: double
-                                 * @description Marginal yes-price right after the bet, in (0,1).
-                                 */
-                                yes_price: number;
+                                /** @description Marginal price of every outcome right after the bet; prices sum to 1. */
+                                prices: {
+                                    outcome_id: string;
+                                    /**
+                                     * Format: double
+                                     * @description Marginal price in (0,1).
+                                     */
+                                    price: number;
+                                }[];
                             }[];
                         };
                     };

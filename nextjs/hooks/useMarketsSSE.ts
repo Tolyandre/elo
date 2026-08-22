@@ -8,13 +8,15 @@ import { EloWebServiceBaseUrl } from "@/app/api";
 // and we force a fresh EventSource. Kept above the server's 15s tick.
 const SSE_LIVENESS_TIMEOUT_MS = 45_000;
 
+export type LiveMarketOutcome = {
+    id: string;
+    price: number;
+    shares: number;
+    pool: number;
+};
+
 export type MarketPrices = {
-    yes_price: number;
-    no_price: number;
-    yes_shares: number;
-    no_shares: number;
-    yes_pool: number;
-    no_pool: number;
+    outcomes: LiveMarketOutcome[];
 };
 
 /**
