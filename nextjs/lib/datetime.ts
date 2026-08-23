@@ -19,6 +19,14 @@ export function formatDate(value: string | Date): string {
     });
 }
 
+/** Day and month only, e.g. "04.08". Used where the year adds no information (chart ticks). */
+export function formatDayMonth(value: string | Date): string {
+    return toDate(value).toLocaleDateString(LOCALE, {
+        day: "2-digit",
+        month: "2-digit",
+    });
+}
+
 /** Time only, e.g. "14:30". */
 export function formatTime(value: string | Date): string {
     return toDate(value).toLocaleTimeString(LOCALE, {

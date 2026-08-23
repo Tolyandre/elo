@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatDate, formatTime, formatDateTime, formatDateTimeLong } from "@/lib/datetime";
+import { formatDate, formatDayMonth, formatTime, formatDateTime, formatDateTimeLong } from "@/lib/datetime";
 
 describe("formatDate", () => {
     it("formats an ISO string as a short ru-RU date", () => {
@@ -9,6 +9,12 @@ describe("formatDate", () => {
 
     it("accepts a Date instance", () => {
         expect(formatDate(new Date("2026-01-15T00:00:00Z"))).toMatch(/^\d{2}\.\d{2}\.\d{2}$/);
+    });
+});
+
+describe("formatDayMonth", () => {
+    it("formats day and month without the year", () => {
+        expect(formatDayMonth("2026-08-04T12:00:00Z")).toMatch(/^\d{2}\.\d{2}$/);
     });
 });
 

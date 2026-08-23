@@ -24,7 +24,7 @@ import { getMarketTitle, outcomeDisplayName } from "@/app/market/marketTypes";
 import { outcomeColors } from "@/app/market/outcomeColors";
 import { ChartPricePoint } from "@/app/market/priceHistory";
 import { ClubIcons } from "@/components/player-name";
-import { formatDateTime, formatTime } from "@/lib/datetime";
+import { formatDateTime, formatDayMonth, formatTime } from "@/lib/datetime";
 
 export function statusLabel(market: Market, resolutionOutcomeName?: string | null): string {
     if (market.status === "resolved") {
@@ -135,15 +135,13 @@ function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOu
     );
 }
 
-// axisTicks derives X-axis tick positions from the unique point timestamps,
-// capped at 4 evenly spaced values. Explicit ticks avoid a recharts quirk:
-// auto-generated ticks get duplicate React keys when several points share a
-// timestamp (e.g. bets placed in the same second).
-function axisTicks(points: ChartPricePoint[]): number[] {
-    const unique = Array.from(new Set(points.map(p => p.t)));
-    if (unique.length <= 4) return unique;
-    const step = (unique.length - 1) / 3;
-    return [0, 1, 2, 3].map(i => unique[Math.round(i * step)]);
+// axisTicks picks ≤4 evenly spaced point indices for the X axis. Indices are
+// unique by construction (same-second bets get distinct positions), so this
+// only avoids label clutter.
+function axisTicks(count: number): number[] {
+    if (count <= 4) return Array.from({ length: Math.max(count, 1) }, (_, i) => i);
+    const step = (count - 1) / 3;
+    return [0, 1, 2, 3].map(i => Math.round(i * step));
 }
 
 // PriceChart renders every outcome's probability over time, one step line per
@@ -151,7 +149,22 @@ function axisTicks(points: ChartPricePoint[]): number[] {
 // animation is off so live SSE appends don't re-animate the whole chart.
 function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
     const colors = outcomeColors(outcomes);
-    const rows = points.map((p) => ({ t: p.t, ...p.prices }));
+    // X position is the point index (equal spacing regardless of bet timing);
+    // the real bet timestamp travels along as `time` for ticks and the tooltip.
+    const rows = points.map((p, i) => ({ t: i, time: p.t, ...p.prices }));
+    // Precomputed per-tick labels: time for every tick, prefixed with the day
+    // on the first tick of each day, so multi-day histories stay readable.
+    // Precomputing (instead of deriving inside tickFormatter) keeps the
+    // formatter pure — recharts may call it multiple times per tick.
+    const tickIdxs = axisTicks(rows.length);
+    const tickLabels = new Map<number, string>();
+    let lastDay = "";
+    for (const i of tickIdxs) {
+        const d = new Date(points[i]?.t ?? 0);
+        const day = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        tickLabels.set(i, day === lastDay ? formatTime(d) : `${formatDayMonth(d)} ${formatTime(d)}`);
+        lastDay = day;
+    }
     return (
         <ChartContainer
             className="h-36 pt-2 -mx-2 aspect-auto w-full"
@@ -162,22 +175,22 @@ function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; o
                 <XAxis
                     dataKey="t"
                     type="number"
-                    scale="time"
                     domain={["dataMin", "dataMax"]}
-                    ticks={axisTicks(points)}
-                    tickFormatter={(t: number) => formatTime(new Date(t))}
+                    ticks={tickIdxs}
+                    tickFormatter={(t: number) => tickLabels.get(t) ?? ""}
                     tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     stroke="var(--muted-foreground)"
                 />
                 <YAxis
-                    domain={[0, 1]}
-                    ticks={[0, 0.5, 1]}
+                    // domain={[0, 1]}
+                    domain={["dataMin", "dataMax"]}
+                    // ticks={[0, 0.5, 1]}
                     tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
                     width={34}
                     tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     stroke="var(--muted-foreground)"
                 />
-                <ChartTooltip
+                <ChartTooltip 
                     content={(props) => (
                         <ChartTooltipContent
                             active={props.active}
@@ -189,7 +202,7 @@ function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; o
                             // The built-in label resolves to a config label, so
                             // read the bet timestamp off the payload datum.
                             labelFormatter={(_, payload) =>
-                                formatDateTime(new Date(Number(payload?.[0]?.payload?.t)))}
+                                formatDateTime(new Date(Number(payload?.[0]?.payload?.time)))}
                             formatter={(value, name) => (
                                 <>
                                     <span style={{ color: colors.get(String(name)) }}>
@@ -206,7 +219,7 @@ function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; o
                 {outcomes.map((o) => (
                     <Line
                         key={o.id}
-                        type="stepAfter"
+                        type="monotone"
                         dataKey={o.id}
                         name={o.id}
                         stroke={colors.get(o.id) ?? "#94a3b8"}
