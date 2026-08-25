@@ -186,7 +186,9 @@ SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000032'::uuid, player_i
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
--- markets: test markets in various statuses
+-- markets: test markets in various statuses (n-outcome model, ADR-11).
+-- market_outcomes.q mirrors the outstanding shares of the seeded bets below
+-- (the AMM invariant). Outcome ids are fixed so the seed is idempotent.
 -- First get the dev user's ID for created_by
 DO $$
 DECLARE
@@ -201,22 +203,37 @@ BEGIN
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 982.1361049167427)  / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000066'::uuid;
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.0)             / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000067'::uuid;
 
-    -- Market 1: open match_winner (Alice beats Bob in Skull King)
-    -- q_yes/q_no mirror the outstanding shares of the seeded bets below.
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, q_yes, q_no)
+    -- Market 1: open match_winner (Alice or Bob wins in Skull King)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
     VALUES ('00000000-0000-0000-0000-000000000001', 'match_winner', 'open',
-            NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id, 10, 8)
+            NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
-    VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000064'::uuid,
-            ARRAY['00000000-0000-0000-0000-000000000065'::uuid], ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
+    INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
+    VALUES ('00000000-0000-0000-0000-000000000001',
+            ARRAY['00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000065'::uuid],
+            TRUE, ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
     ON CONFLICT (market_id) DO NOTHING;
 
+    INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
+        ('00000000-0000-0000-0000-000000000401', '00000000-0000-0000-0000-000000000001', 'player', '00000000-0000-0000-0000-000000000064', 10),
+        ('00000000-0000-0000-0000-000000000402', '00000000-0000-0000-0000-000000000001', 'player', '00000000-0000-0000-0000-000000000065', 0),
+        ('00000000-0000-0000-0000-000000000403', '00000000-0000-0000-0000-000000000001', 'other',  NULL, 8)
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Bets on open market 1 (shares-driven: cost is the elo the AMM charged).
+    -- Alice and Carol bet on Alice's outcome; Bob bets against her on 'other'.
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        ('00000000-0000-0000-0000-000000000501', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000401', 5.0, 5),
+        ('00000000-0000-0000-0000-000000000502', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000403', 8.0, 8),
+        ('00000000-0000-0000-0000-000000000503', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, '00000000-0000-0000-0000-000000000401', 3.0, 3),
+        ('00000000-0000-0000-0000-000000000504', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, '00000000-0000-0000-0000-000000000401', 2.0, 2)  -- Carol bets twice on Alice
+    ON CONFLICT (id) DO NOTHING;
+
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, q_yes, q_no)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by)
     VALUES ('00000000-0000-0000-0000-000000000002', 'win_streak', 'open',
-            NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id, 10, 10)
+            NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id)
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
@@ -224,18 +241,54 @@ BEGIN
             ARRAY['00000000-0000-0000-0000-000000000032'::uuid], 3, 1)
     ON CONFLICT (market_id) DO NOTHING;
 
-    -- Market 3: resolved match_winner (outcome: yes)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, resolution_outcome, q_yes, q_no)
-    VALUES ('00000000-0000-0000-0000-000000000003', 'match_winner', 'resolved',
-            NOW() - INTERVAL '10 days', NOW() - INTERVAL '6 days', dev_user_id, NOW() - INTERVAL '7 days',
-            '00000000-0000-0000-0000-0000000000c8'::uuid, 'yes', 20, 12)
+    INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
+        ('00000000-0000-0000-0000-000000000411', '00000000-0000-0000-0000-000000000002', 'yes', NULL, 10),
+        ('00000000-0000-0000-0000-000000000412', '00000000-0000-0000-0000-000000000002', 'no',  NULL, 10)
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
-    VALUES ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000064'::uuid,
-            ARRAY['00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000066'::uuid],
-            ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
+    -- Bets on open market 2
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        ('00000000-0000-0000-0000-000000000505', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000412',  6.0, 6),
+        ('00000000-0000-0000-0000-000000000506', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000411', 10.0, 10),
+        ('00000000-0000-0000-0000-000000000507', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000066'::uuid, '00000000-0000-0000-0000-000000000412',  4.0, 4)
+    ON CONFLICT (id) DO NOTHING;
+
+    -- Market 3: resolved match_winner (Alice won match 200 sole: 120 vs 80/60).
+    -- Window pinned to the resolution match date — the invariant resolved
+    -- match_winner markets satisfy since ADR-11 — so a recalculation re-links
+    -- exactly match 200 and reproduces the settlement rows below.
+    -- resolution_outcome is set below, after the outcome rows exist (circular FK).
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id)
+    VALUES ('00000000-0000-0000-0000-000000000003', 'match_winner', 'resolved',
+            (SELECT date FROM matches WHERE id = '00000000-0000-0000-0000-0000000000c8'::uuid),
+            (SELECT date FROM matches WHERE id = '00000000-0000-0000-0000-0000000000c8'::uuid),
+            dev_user_id, NOW() - INTERVAL '7 days',
+            '00000000-0000-0000-0000-0000000000c8'::uuid)
+    ON CONFLICT (id) DO NOTHING;
+
+    INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
+    VALUES ('00000000-0000-0000-0000-000000000003',
+            ARRAY['00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000066'::uuid],
+            TRUE, ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
     ON CONFLICT (market_id) DO NOTHING;
+
+    INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
+        ('00000000-0000-0000-0000-000000000421', '00000000-0000-0000-0000-000000000003', 'player', '00000000-0000-0000-0000-000000000064', 20),
+        ('00000000-0000-0000-0000-000000000422', '00000000-0000-0000-0000-000000000003', 'player', '00000000-0000-0000-0000-000000000065', 0),
+        ('00000000-0000-0000-0000-000000000423', '00000000-0000-0000-0000-000000000003', 'player', '00000000-0000-0000-0000-000000000066', 0),
+        ('00000000-0000-0000-0000-000000000424', '00000000-0000-0000-0000-000000000003', 'other',  NULL, 12)
+    ON CONFLICT (id) DO NOTHING;
+
+    UPDATE markets SET resolution_outcome = '00000000-0000-0000-0000-000000000421'
+    WHERE id = '00000000-0000-0000-0000-000000000003';
+
+    -- Bets on resolved market 3: Alice's 20 winning shares pay 20 (matching the
+    -- settlement rows below); the losing bets sit on 'other'.
+    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
+        ('00000000-0000-0000-0000-000000000508', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000421', 8.0, 20),
+        ('00000000-0000-0000-0000-000000000509', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000424', 5.0, 5),
+        ('00000000-0000-0000-0000-00000000050a', '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000066'::uuid, '00000000-0000-0000-0000-000000000424', 7.0, 7)
+    ON CONFLICT (id) DO NOTHING;
 
     -- Market 4: cancelled match_winner (expired without matching match)
     INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at)
@@ -243,33 +296,20 @@ BEGIN
             NOW() - INTERVAL '14 days', NOW() - INTERVAL '7 days', dev_user_id, NOW() - INTERVAL '7 days')
     ON CONFLICT (id) DO NOTHING;
 
-    INSERT INTO market_match_winner_params (market_id, target_player_id, required_player_ids, game_ids)
-    VALUES ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000066'::uuid,
-            ARRAY['00000000-0000-0000-0000-000000000064'::uuid], ARRAY[]::uuid[])
+    INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
+    VALUES ('00000000-0000-0000-0000-000000000004',
+            ARRAY['00000000-0000-0000-0000-000000000066'::uuid, '00000000-0000-0000-0000-000000000064'::uuid],
+            TRUE, ARRAY[]::uuid[])
     ON CONFLICT (market_id) DO NOTHING;
 
-    -- Bets on open market 1 (shares-driven: cost is the elo the AMM charged)
-    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 5.0, 5),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  8.0, 8),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 3.0, 3),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000066'::uuid, 'yes', 2.0, 2);  -- Carol bets twice on yes
-
-    -- Bets on open market 2
-    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000064'::uuid, 'no',  6.0, 6),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000065'::uuid, 'yes', 10.0, 10),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  4.0, 4);
-
-    -- Bets + settlement for resolved market 3 (Alice's 20 yes shares pay 20,
-    -- matching the settlement rows below)
-    INSERT INTO bets (id, market_id, player_id, outcome, cost, shares) VALUES
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000064'::uuid, 'yes', 8.0, 20),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000065'::uuid, 'no',  5.0, 5),
-        (gen_random_uuid(), '00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000066'::uuid, 'no',  7.0, 7);
+    INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
+        ('00000000-0000-0000-0000-000000000431', '00000000-0000-0000-0000-000000000004', 'player', '00000000-0000-0000-0000-000000000066', 0),
+        ('00000000-0000-0000-0000-000000000432', '00000000-0000-0000-0000-000000000004', 'player', '00000000-0000-0000-0000-000000000064', 0),
+        ('00000000-0000-0000-0000-000000000433', '00000000-0000-0000-0000-000000000004', 'other',  NULL, 0)
+    ON CONFLICT (id) DO NOTHING;
 
     -- global_arena_settlement for market 3 (discriminator='market').
-    -- Settlement: Alice (yes): earned=20, staked=-8; Bob: earned=0, staked=-5; Carol: earned=0, staked=-7.
+    -- Settlement: Alice (won): earned=20, staked=-8; Bob: earned=0, staked=-5; Carol: earned=0, staked=-7.
     -- Prev Elo at resolution date (after match 201, before match 202):
     --   Alice=1002.0534, Bob=1008.1226, Carol=989.8239
     INSERT INTO global_arena_settlement
