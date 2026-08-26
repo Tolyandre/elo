@@ -2,6 +2,7 @@
 
 import { Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { toBase58ID } from '@/lib/id'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -159,7 +160,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 
 function PlayerPageContent() {
     const searchParams = useSearchParams()
-    const id = searchParams.get('id')
+    const id = toBase58ID(searchParams.get('id') ?? '')
     const { data: stats, loading, error } = useAsyncResource(
         () => (id ? getPlayerStatsPromise(id) : Promise.reject(new Error('no id'))),
         [id],

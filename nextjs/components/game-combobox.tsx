@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Check, ChevronsUpDown, Plus } from "lucide-react"
 
+import type { Base58ID } from "@/lib/id"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,8 +28,8 @@ export function GameCombobox({
   value: controlledValue,
   onChange,
 }: {
-  value?: string
-  onChange?: (id?: string) => void
+  value?: Base58ID
+  onChange?: (id?: Base58ID) => void
 }) {
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
@@ -64,11 +65,11 @@ export function GameCombobox({
     if (controlledValue === undefined) {
       setInternalValue(next);
     }
-    onChange?.(next === "" ? undefined : next);
+    onChange?.(next === "" ? undefined : (next as Base58ID));
     setOpen(false);
   };
 
-  const selectCreated = (id: string) => {
+  const selectCreated = (id: Base58ID) => {
     // Wait a bit for context to update
     setTimeout(() => {
       if (controlledValue === undefined) {

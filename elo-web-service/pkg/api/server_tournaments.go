@@ -7,6 +7,7 @@ import (
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsRequestObject) (ListTournamentsResponseObject, error) {
@@ -15,8 +16,8 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 		return nil, err
 	}
 
-	tournamentsMap := map[string]*Tournament{}
-	order := []string{}
+	tournamentsMap := map[id.ID]*Tournament{}
+	order := []id.ID{}
 	for _, r := range rows {
 		if _, ok := tournamentsMap[r.TournamentID]; !ok {
 			t := Tournament{
@@ -24,7 +25,7 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 				Name:      r.TournamentName,
 				StartDate: r.StartDate.Time,
 				EndDate:   r.EndDate.Time,
-				PlayerIds: []string{},
+				PlayerIds: []id.ID{},
 			}
 			tournamentsMap[r.TournamentID] = &t
 			order = append(order, r.TournamentID)
@@ -35,15 +36,15 @@ func (s *StrictServer) ListTournaments(ctx context.Context, _ ListTournamentsReq
 	}
 
 	result := make([]Tournament, 0, len(order))
-	for _, id := range order {
-		result = append(result, *tournamentsMap[id])
+	for _, tid := range order {
+		result = append(result, *tournamentsMap[tid])
 	}
 
 	return ListTournaments200JSONResponse{Status: "success", Data: result}, nil
 }
 
 func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error) {
-	rows, err := s.api.TournamentService.GetTournament(ctx, request.Id)
+	rows, err := s.api.TournamentService.GetTournament(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -52,11 +53,11 @@ func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentR
 	}
 
 	t := Tournament{
-		Id:        request.Id,
+		Id:        rows[0].TournamentID,
 		Name:      rows[0].TournamentName,
 		StartDate: rows[0].StartDate.Time,
 		EndDate:   rows[0].EndDate.Time,
-		PlayerIds: []string{},
+		PlayerIds: []id.ID{},
 	}
 	for _, r := range rows {
 		if r.PlayerID != nil {
@@ -98,7 +99,7 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 
 	playerIDs := tournamentPlayerIDs(request.Body.PlayerIds)
 
-	tournament, err := s.api.TournamentService.UpdateTournament(ctx, request.Id, request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
+	tournament, err := s.api.TournamentService.UpdateTournament(ctx, parseIDParam(request.Id), request.Body.Name, request.Body.StartDate, request.Body.EndDate, playerIDs)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusConflict:
@@ -120,7 +121,7 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 }
 
 func (s *StrictServer) DeleteTournament(ctx context.Context, request DeleteTournamentRequestObject) (DeleteTournamentResponseObject, error) {
-	_, err := s.api.TournamentService.DeleteTournament(ctx, request.Id)
+	_, err := s.api.TournamentService.DeleteTournament(ctx, parseIDParam(request.Id))
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusConflict:
@@ -136,7 +137,7 @@ func (s *StrictServer) DeleteTournament(ctx context.Context, request DeleteTourn
 }
 
 func (s *StrictServer) GetTournamentStats(ctx context.Context, request GetTournamentStatsRequestObject) (GetTournamentStatsResponseObject, error) {
-	rows, err := s.api.TournamentService.GetStats(ctx, request.Id)
+	rows, err := s.api.TournamentService.GetStats(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func (s *StrictServer) GetTournamentStats(ctx context.Context, request GetTourna
 }
 
 // tournamentPlayerIDs returns the dereferenced slice of player IDs.
-func tournamentPlayerIDs(ids *[]string) []string {
+func tournamentPlayerIDs(ids *[]id.ID) []id.ID {
 	if ids == nil {
 		return nil
 	}
@@ -174,7 +175,7 @@ func isTournamentDomainConflict(err error) bool {
 }
 
 // tournamentToAPI maps a db.Tournament plus a known player set to the API model.
-func tournamentToAPI(t db.Tournament, playerIDs []string) Tournament {
+func tournamentToAPI(t db.Tournament, playerIDs []id.ID) Tournament {
 	return Tournament{
 		Id:        t.ID,
 		Name:      t.Name,

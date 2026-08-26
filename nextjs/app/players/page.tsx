@@ -1,5 +1,6 @@
 "use client";
 
+import { toBase58ID, type Base58ID } from "@/lib/id";
 import React, { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
@@ -200,12 +201,12 @@ function PlayersTable() {
     React.useEffect(() => {
         const clubParam = searchParams.get("club");
         if (clubParam !== null) {
-            setSelectedClubId(clubParam === "" ? null : clubParam);
+            setSelectedClubId(clubParam === "" ? null : toBase58ID(clubParam));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); // only on mount
 
-    function handleClubChange(id: string | null) {
+    function handleClubChange(id: Base58ID | null) {
         setSelectedClubId(id);
         router.replace(id !== null ? `${pathname}?club=${id}` : pathname, { scroll: false });
     }

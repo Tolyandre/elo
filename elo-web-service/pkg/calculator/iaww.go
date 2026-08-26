@@ -3,7 +3,7 @@ package calculator
 import (
 	"encoding/json"
 
-	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // It's a Wonderful World ("Этот Безумный Мир") calculator.
@@ -63,7 +63,7 @@ func migrateIAWWv1ToV2(raw json.RawMessage) (json.RawMessage, error) {
 	// Build reverse map: ToCanonical(row) → row, so corrupted row_ids map back.
 	uuidToRow := make(map[string]string, len(knownIAWWRows))
 	for _, r := range knownIAWWRows {
-		uuidToRow[shortid.ToCanonical(r)] = r
+		uuidToRow[id.CanonicalizeTolerant(r)] = r
 	}
 
 	if mults, ok := doc["multipliers"].([]any); ok {

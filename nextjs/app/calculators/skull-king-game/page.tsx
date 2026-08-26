@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -56,7 +57,7 @@ import { toast } from "sonner";
 // ─── Table session ────────────────────────────────────────────────────────────
 
 type TableSession = {
-    tableId: string;
+    tableId: Base58ID;
     isHost: boolean;
     myPlayerIndex: number | null; // null = observer / host (controls all)
 };
@@ -81,19 +82,19 @@ export default function SkullKingGamePage() {
 
     const [gameState, setGameStateRaw] = useLocalStorage<GameState>(LS_KEY, initialState);
     const [tableSession, setTableSession] = useLocalStorage<TableSession | null>(TABLE_SESSION_KEY, null);
-    const [setupPlayerIds, setSetupPlayerIds] = useState<string[]>(
+    const [setupPlayerIds, setSetupPlayerIds] = useState<Base58ID[]>(
         gameState.players.map((p) => p.id)
     );
 
     // Active tables list (fetched in setup phase)
     const [activeTables, setActiveTables] = useState<SkullKingTableSummary[]>([]);
     const [tablesLoading, setTablesLoading] = useState(false);
-    const [joiningTableId, setJoiningTableId] = useState<string | null>(null);
+    const [joiningTableId, setJoiningTableId] = useState<Base58ID | null>(null);
 
     // SSE subscription for all table participants (host + connected players).
     // Skip the optimistic placeholder tableId "" set before the API call resolves.
     const { table: sseTable, savedMatchId: sseSavedMatchId } = useSkullKingSSE(tableSession?.tableId || null);
-    const [connectedPlayerIds, setConnectedPlayerIds] = useState<string[]>([]);
+    const [connectedPlayerIds, setConnectedPlayerIds] = useState<Base58ID[]>([]);
 
     // Loading state for server interactions
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -242,7 +243,7 @@ export default function SkullKingGamePage() {
 
     // Tournament selection for the saved match. Mandatory tournaments (all players
     // are members) are applied server-side; checked carries the host's explicit picks.
-    const [checkedTournamentIds, setCheckedTournamentIds] = useState<string[]>([]);
+    const [checkedTournamentIds, setCheckedTournamentIds] = useState<Base58ID[]>([]);
     const tournamentDate = useMemo(() => new Date(), []);
     const tournamentPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
     const {
@@ -250,7 +251,7 @@ export default function SkullKingGamePage() {
         isMandatory: isTournamentMandatory,
         idsToSubmit: tournamentIdsToSubmit,
     } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
-    const toggleTournament = (id: string, checked: boolean) =>
+    const toggleTournament = (id: Base58ID, checked: boolean) =>
         setCheckedTournamentIds((prev) =>
             checked ? [...new Set([...prev, id])] : prev.filter((t) => t !== id),
         );
@@ -343,7 +344,7 @@ export default function SkullKingGamePage() {
         // Set tableSession optimistically (tableId="" placeholder) so the
         // "Ждать ставок от игроков" button appears immediately while the API call is in flight.
         if (me.isAuthenticated && me.playerId) {
-            setTableSession({ tableId: "", isHost: true, myPlayerIndex: null });
+            setTableSession({ tableId: "" as Base58ID, isHost: true, myPlayerIndex: null });
             setIsSubmitting(true);
             try {
                 const table = await createSkullKingTablePromise(newState);

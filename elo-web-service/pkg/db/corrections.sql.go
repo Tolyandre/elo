@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const createCorrection = `-- name: CreateCorrection :one
@@ -17,8 +18,8 @@ VALUES ($1, $2, $3, $4) RETURNING id, player_id, discriminator, diff, date
 `
 
 type CreateCorrectionParams struct {
-	ID            string  `json:"id"`
-	PlayerID      string  `json:"player_id"`
+	ID            id.ID   `json:"id"`
+	PlayerID      id.ID   `json:"player_id"`
 	Discriminator string  `json:"discriminator"`
 	Diff          float64 `json:"diff"`
 }
@@ -95,9 +96,9 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalStateBeforeCorrectionParams struct {
-	PlayerID     string             `json:"player_id"`
+	PlayerID     id.ID              `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
-	CorrectionID *string            `json:"correction_id"`
+	CorrectionID *id.ID             `json:"correction_id"`
 }
 
 type GetPlayerLatestGlobalStateBeforeCorrectionRow struct {
@@ -146,16 +147,16 @@ LIMIT $5::int4
 `
 
 type ListCorrectionsPaginatedParams struct {
-	PlayerID   *string            `json:"player_id"`
+	PlayerID   *id.ID             `json:"player_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	ClubID     *string            `json:"club_id"`
+	ClubID     *id.ID             `json:"club_id"`
 	NoClub     pgtype.Bool        `json:"no_club"`
 	Limit      int32              `json:"limit"`
 }
 
 type ListCorrectionsPaginatedRow struct {
-	ID         string             `json:"id"`
-	PlayerID   string             `json:"player_id"`
+	ID         id.ID              `json:"id"`
+	PlayerID   id.ID              `json:"player_id"`
 	Diff       float64            `json:"diff"`
 	Date       pgtype.Timestamptz `json:"date"`
 	PlayerName string             `json:"player_name"`
@@ -208,12 +209,12 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByCorrectionParams struct {
-	ID           string             `json:"id"`
-	PlayerID     string             `json:"player_id"`
+	ID           id.ID              `json:"id"`
+	PlayerID     id.ID              `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	RatingAfter  float64            `json:"rating_after"`
 	EloAfter     float64            `json:"elo_after"`
-	CorrectionID *string            `json:"correction_id"`
+	CorrectionID *id.ID             `json:"correction_id"`
 	RatingStaked float64            `json:"rating_staked"`
 	RatingEarned float64            `json:"rating_earned"`
 	League       string             `json:"league"`

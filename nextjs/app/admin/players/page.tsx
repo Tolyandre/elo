@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { patchPlayerPromise, deletePlayerPromise, createPlayerCorrectionPromise, listUsersPromise } from "@/app/api";
@@ -24,9 +25,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Edit2 } from "lucide-react";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 
-type DeleteTarget = { id: string; name: string };
-type RenameTarget = { id: string; name: string };
-type CorrectionTarget = { id: string; rating: number };
+type DeleteTarget = { id: Base58ID; name: string };
+type RenameTarget = { id: Base58ID; name: string };
+type CorrectionTarget = { id: Base58ID; rating: number };
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
@@ -82,7 +83,7 @@ export default function PlayersAdminPage() {
         ? sortedPlayers
         : sortedPlayers.filter(p => playerDisplayName(p).toLowerCase().includes(nameQuery.toLowerCase()));
 
-    function openRename(id: string, name: string) {
+    function openRename(id: Base58ID, name: string) {
         setRenameTarget({ id, name });
         setRenameValue(name);
     }
@@ -106,7 +107,7 @@ export default function PlayersAdminPage() {
         }
     }
 
-    function openCorrection(id: string, rating: number) {
+    function openCorrection(id: Base58ID, rating: number) {
         setCorrectionTarget({ id, rating: Math.round(rating) });
         setCorrectionValue("");
     }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // TestAddMatch_BackdatedRecalculatesLaterMatches verifies that inserting a match with a
@@ -31,10 +32,10 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
-	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t1, newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, t1, newMatchOpts(t)); err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
-	if _, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, t2, newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, t2, newMatchOpts(t)); err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
@@ -45,7 +46,7 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 	beforeB := latestElo(t, pool, playerB)
 
 	// Backdated offline match with the opposite outcome must change the replayed history.
-	created, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 1, playerB: 10}, tBackdated,
+	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 1, playerB: 10}, tBackdated,
 		elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if err != nil {
 		t.Fatalf("backdated AddMatch: %v", err)
@@ -64,7 +65,7 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 	}
 
 	// All three matches must have settlements for both players.
-	for _, pid := range []string{playerA, playerB} {
+	for _, pid := range []idpkg.ID{playerA, playerB} {
 		if rows := playerRatingRows(t, pool, pid); len(rows) != 3 {
 			t.Errorf("player %s: expected 3 settlement rows, got %d", pid, len(rows))
 		}
@@ -87,11 +88,11 @@ func TestAddMatch_IdempotencyKeyDeduplicates(t *testing.T) {
 	date := time.Now().Add(-time.Hour)
 	opts := elo.AddMatchOpts{ClientDate: true, ID: key}
 
-	first, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, date, opts)
+	first, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, date, opts)
 	if err != nil {
 		t.Fatalf("first AddMatch: %v", err)
 	}
-	second, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, date, opts)
+	second, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, date, opts)
 	if err != nil {
 		t.Fatalf("second AddMatch: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestAddMatch_IdempotencyKeyDeduplicates(t *testing.T) {
 		t.Errorf("retry created a new match: first=%s second=%s", first.ID, second.ID)
 	}
 
-	for _, pid := range []string{playerA, playerB} {
+	for _, pid := range []idpkg.ID{playerA, playerB} {
 		if rows := playerRatingRows(t, pool, pid); len(rows) != 1 {
 			t.Errorf("player %s: expected 1 settlement row after retry, got %d", pid, len(rows))
 		}
@@ -117,7 +118,7 @@ func TestAddMatch_ClientDateValidation(t *testing.T) {
 	gameID := createTestGame(t, pool, "Azul")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	scores := map[string]float64{playerA: 10, playerB: 5}
+	scores := map[idpkg.ID]float64{playerA: 10, playerB: 5}
 
 	_, err := svc.AddMatch(ctx, gameID, scores, time.Now().Add(time.Hour), elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if !errors.Is(err, elo.ErrMatchDateOutOfRange) {
@@ -191,7 +192,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match for bet limits.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, now.Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -201,9 +202,9 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 		StartsAt:           now.Add(-time.Hour),
 		ClosesAt:           now.Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{playerA},
+		GuarantorPlayerIDs: []idpkg.ID{playerA},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -222,13 +223,13 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	// Resolve the market with a match well after the bets.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, now.Add(2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("resolving AddMatch: %v", err)
 	}
 
 	// A backdated offline match qualifying for the market before the bets were placed
 	// would move resolved_at earlier than placed_at — must be rejected.
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, now.Add(-30*time.Minute),
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, now.Add(-30*time.Minute),
 		elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
 	if err == nil {
 		t.Fatal("backdated AddMatch: expected conflict error, got nil")

@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const addGame = `-- name: AddGame :one
@@ -17,7 +19,7 @@ RETURNING id, name
 `
 
 type AddGameParams struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -36,7 +38,7 @@ RETURNING id, name
 `
 
 type AddGamesIfNotExistsParams struct {
-	Column1 []string `json:"column_1"`
+	Column1 []id.ID  `json:"column_1"`
 	Column2 []string `json:"column_2"`
 }
 
@@ -66,8 +68,8 @@ WHERE id = $1
 RETURNING id, name
 `
 
-func (q *Queries) DeleteGame(ctx context.Context, id string) (Game, error) {
-	row := q.db.QueryRow(ctx, deleteGame, id)
+func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
+	row := q.db.QueryRow(ctx, deleteGame, argID)
 	var i Game
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err
@@ -78,8 +80,8 @@ SELECT id, name FROM games
 WHERE id = $1
 `
 
-func (q *Queries) GetGameByID(ctx context.Context, id string) (Game, error) {
-	row := q.db.QueryRow(ctx, getGameByID, id)
+func (q *Queries) GetGameByID(ctx context.Context, argID id.ID) (Game, error) {
+	row := q.db.QueryRow(ctx, getGameByID, argID)
 	var i Game
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err
@@ -109,7 +111,7 @@ ORDER BY MAX(m.date) DESC
 `
 
 type ListGamesOrderedByLastPlayedRow struct {
-	ID           string `json:"id"`
+	ID           id.ID  `json:"id"`
 	Name         string `json:"name"`
 	TotalMatches int64  `json:"total_matches"`
 }
@@ -142,7 +144,7 @@ RETURNING id, name
 `
 
 type UpdateGameNameParams struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 

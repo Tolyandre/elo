@@ -1,3 +1,4 @@
+import { Base58ID } from "../id";
 import {
     OfflineStore,
     PendingGame,
@@ -11,18 +12,18 @@ import {
 export type SyncCallResult<T> = { ok: true; data: T } | { ok: false; status: number; message: string };
 
 export type SyncApi = {
-    createGame(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
-    createPlayer(body: { id: string; name: string }): Promise<SyncCallResult<{ id: string }>>;
-    addClubMember(body: { club_id: string; player_id: string }): Promise<SyncCallResult<null>>;
+    createGame(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
+    createPlayer(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
+    addClubMember(body: { club_id: Base58ID; player_id: Base58ID }): Promise<SyncCallResult<null>>;
     addMatch(body: {
-        id: string;
-        game_id: string;
+        id: Base58ID;
+        game_id: Base58ID;
         score: Record<string, number>;
         date: string;
-        tournament_ids: string[];
+        tournament_ids: Base58ID[];
         calculator_kind?: string | null;
         calculator_data?: Record<string, unknown> | null;
-    }): Promise<SyncCallResult<{ id: string }>>;
+    }): Promise<SyncCallResult<{ id: Base58ID }>>;
 };
 
 export type SyncOutcome = {
@@ -84,7 +85,7 @@ export async function syncOffline(
     // 1. Games.
     for (const item of [...store.games]) {
         markSyncing(update, store, "games", item.clientId);
-        let result: SyncCallResult<{ id: string }>;
+        let result: SyncCallResult<{ id: Base58ID }>;
         try {
             result = await api.createGame({ id: item.clientId, name: item.name });
         } catch {
@@ -106,7 +107,7 @@ export async function syncOffline(
     // player id (a no-op upsert) and re-adds the same memberships (no-ops).
     for (const item of [...store.players]) {
         markSyncing(update, store, "players", item.clientId);
-        let result: SyncCallResult<{ id: string }>;
+        let result: SyncCallResult<{ id: Base58ID }>;
         try {
             result = await api.createPlayer({ id: item.clientId, name: item.name });
         } catch {
@@ -149,7 +150,7 @@ export async function syncOffline(
     // 3. Matches.
     for (const match of [...store.matches]) {
         markSyncing(update, store, "matches", match.clientId);
-        let result: SyncCallResult<{ id: string }>;
+        let result: SyncCallResult<{ id: Base58ID }>;
         try {
             result = await api.addMatch({
                 id: match.clientId,

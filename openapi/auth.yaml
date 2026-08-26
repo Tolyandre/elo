@@ -88,7 +88,8 @@ AuthMe:
             type: object
             properties:
               player_id:
-                type: string
+                allOf:
+                  - $ref: './common.yaml#/Base58ID'
                 nullable: true
     responses:
       "204":

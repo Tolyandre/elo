@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import React, { forwardRef, useImperativeHandle, useState } from "react";
 import { createPlayerPromise, addClubMemberPromise, isNetworkFailure } from "@/app/api";
@@ -39,7 +40,7 @@ export type AddPlayerFormHandle = {
 
 export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
     /** Called once the player is created (online or queued offline). */
-    onCreated?: (playerId: string, name: string) => void;
+    onCreated?: (playerId: Base58ID, name: string) => void;
     /** Compact layout for use inside a dropdown/bottom-sheet. */
     compact?: boolean;
     /** Hide the built-in submit button (parent drives submit via the ref). */
@@ -59,7 +60,7 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
     const { offline, addPendingPlayer } = useOffline();
 
     const [name, setName] = useState(initialName);
-    const [selectedClubs, setSelectedClubs] = useState<Set<string>>(new Set());
+    const [selectedClubs, setSelectedClubs] = useState<Set<Base58ID>>(new Set());
     const [adding, setAdding] = useState(false);
 
     const sortedClubs = React.useMemo(
@@ -69,7 +70,7 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
         [clubs, clubDisplayName],
     );
 
-    function toggleClub(clubId: string) {
+    function toggleClub(clubId: Base58ID) {
         setSelectedClubs((prev) => {
             const next = new Set(prev);
             if (next.has(clubId)) next.delete(clubId);

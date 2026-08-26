@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
-	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
 )
 
 // ─── Markets SSE ────────────────────────────────────────────────────────────
@@ -28,7 +27,7 @@ type marketPricesEvent struct {
 }
 
 func (a *API) MarketEvents(c *gin.Context) {
-	marketID := c.Param("id")
+	marketID := parseIDParam(c.Param("id"))
 	ctx := c.Request.Context()
 
 	row, err := a.MarketService.GetMarket(ctx, marketID)
@@ -42,7 +41,7 @@ func (a *API) MarketEvents(c *gin.Context) {
 		return
 	}
 
-	ch, cancel := a.MarketsHub.Subscribe(marketID)
+	ch, cancel := a.MarketsHub.Subscribe(string(marketID))
 	defer cancel()
 
 	c.Header("Content-Type", "text/event-stream")
@@ -50,9 +49,8 @@ func (a *API) MarketEvents(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
-	// Send current prices immediately on connect. The frame bypasses
-	// EncodeIDsMiddleware (SSE is not buffered application/json), so the short
-	// id encoding is applied here to match every other payload.
+	// Send current prices immediately on connect. SSE frames bypass the JSON
+	// DTO layer, so the wire-form encoding is applied here (ADR-12).
 	q := make([]float64, len(outcomeRows))
 	for i, o := range outcomeRows {
 		q[i] = o.Q
@@ -61,7 +59,7 @@ func (a *API) MarketEvents(c *gin.Context) {
 	evt := marketPricesEvent{Type: "prices"}
 	for i, o := range outcomeRows {
 		evt.Data.Outcomes = append(evt.Data.Outcomes, elo.LiveOutcome{
-			ID:     shortid.FromCanonical(o.ID),
+			ID:     string(o.ID.Base58()),
 			Price:  prices[i],
 			Shares: o.Q,
 			Pool:   o.Pool,

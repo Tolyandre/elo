@@ -2,7 +2,7 @@ import createClient, { type Middleware } from "openapi-fetch";
 import type { components, paths } from "./api-types.gen";
 import { toast } from "sonner";
 import { uuidv7 } from "uuidv7";
-import { encodeId } from "../lib/id";
+import { Base58ID, encodeId } from "../lib/id";
 
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
 if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
@@ -12,7 +12,7 @@ if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
 export const EloWebServiceBaseUrl = process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL.replace(/\/+$/, '');
 
 /** Mint a client-side id: a UUIDv7 encoded as a short Base58 string. */
-function newId(): string {
+function newId(): Base58ID {
     return encodeId(uuidv7());
 }
 
@@ -132,8 +132,8 @@ export type PlayerScore = {
 export type MatchTournament = components["schemas"]["MatchTournament"];
 
 export type Match = {
-    id: string;
-    game_id: string;
+    id: Base58ID;
+    game_id: Base58ID;
     game_name: string;
     date: Date | null;
     score: Record<string, PlayerScore>;
@@ -147,7 +147,7 @@ export type Match = {
 
 // date is a Date object
 export type GameMatch = {
-    id: string;
+    id: Base58ID;
     date: Date | null;
     players: GameMatchPlayer[];
     tournaments: MatchTournament[];
@@ -167,8 +167,8 @@ export type RatingPoint = { date: string; rating: number };
 
 // date is a Date object
 export type Correction = {
-    id: string;
-    player_id: string;
+    id: Base58ID;
+    player_id: Base58ID;
     player_name: string;
     diff: number;
     date: Date | null;
@@ -278,27 +278,27 @@ export async function getCorrectionsPagePromise(params?: {
     };
 }
 
-export async function getMatchByIdPromise(id: string): Promise<Match> {
+export async function getMatchByIdPromise(id: Base58ID): Promise<Match> {
     return mapMatch((await unwrap(client.GET("/matches/{id}", { params: { path: { id } } }))).data);
 }
 
 export async function addMatchPromise(payload: {
-    id: string;
-    game_id: string;
+    id: Base58ID;
+    game_id: Base58ID;
     score: Record<string, number>;
     date?: string;
-    tournament_ids?: string[];
+    tournament_ids?: Base58ID[];
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
     return (await unwrap(client.POST("/matches", { body: payload }))).data;
 }
 
-export async function updateMatchPromise(matchId: string, payload: {
-    game_id: string;
+export async function updateMatchPromise(matchId: Base58ID, payload: {
+    game_id: Base58ID;
     score: Record<string, number>;
     date: string;
-    tournament_ids?: string[];
+    tournament_ids?: Base58ID[];
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -317,11 +317,11 @@ export async function getGamesPromise(): Promise<GameList> {
     return (await unwrap(client.GET("/games"))).data;
 }
 
-export async function getGamePromise(id: string): Promise<Game> {
+export async function getGamePromise(id: Base58ID): Promise<Game> {
     return (await unwrap(client.GET("/games/{id}", { params: { path: { id } } }))).data;
 }
 
-export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]> {
+export async function getGameMatchesPromise(gameId: Base58ID): Promise<GameMatch[]> {
     const data = await unwrap(client.GET("/games/{id}/matches", { params: { path: { id: gameId } } }));
     return data.data.map(m => ({
         id: m.id,
@@ -331,11 +331,11 @@ export async function getGameMatchesPromise(gameId: string): Promise<GameMatch[]
     }));
 }
 
-export async function patchGamePromise(id: string, payload: { name: string }) {
+export async function patchGamePromise(id: Base58ID, payload: { name: string }) {
     return (await unwrap(client.PATCH("/games/{id}", { params: { path: { id } }, body: payload }))).data;
 }
 
-export async function deleteGamePromise(id: string) {
+export async function deleteGamePromise(id: Base58ID) {
     return unwrap(client.DELETE("/games/{id}", { params: { path: { id } } }));
 }
 
@@ -399,11 +399,11 @@ export async function listUsersPromise(): Promise<User[]> {
     return (await unwrap(client.GET("/users"))).data;
 }
 
-export async function patchMePromise(payload: { player_id: string | null }) {
+export async function patchMePromise(payload: { player_id: Base58ID | null }) {
     await unwrap(client.PATCH("/auth/me", { body: payload }));
 }
 
-export async function patchUserPromise(userId: string, payload: { can_edit: boolean }) {
+export async function patchUserPromise(userId: Base58ID, payload: { can_edit: boolean }) {
     return (await unwrap(client.PATCH("/users/{userId}", {
         params: { path: { userId } },
         body: payload,
@@ -414,18 +414,18 @@ export async function createPlayerPromise(payload: { name: string }) {
     return (await unwrap(client.POST("/players", { body: { id: newId(), ...payload } }))).data;
 }
 
-export async function patchPlayerPromise(playerId: string, payload: { name: string }) {
+export async function patchPlayerPromise(playerId: Base58ID, payload: { name: string }) {
     return (await unwrap(client.PATCH("/players/{id}", {
         params: { path: { id: playerId } },
         body: payload,
     }))).data;
 }
 
-export async function deletePlayerPromise(playerId: string) {
+export async function deletePlayerPromise(playerId: Base58ID) {
     return unwrap(client.DELETE("/players/{id}", { params: { path: { id: playerId } } }));
 }
 
-export async function createPlayerCorrectionPromise(playerId: string, diff: number) {
+export async function createPlayerCorrectionPromise(playerId: Base58ID, diff: number) {
     return unwrap(client.POST("/admin/players/{id}/corrections", {
         params: { path: { id: playerId } },
         body: { id: newId(), discriminator: "correction", diff },
@@ -436,7 +436,7 @@ export async function listClubsPromise(): Promise<Club[]> {
     return (await unwrap(client.GET("/clubs"))).data;
 }
 
-export async function getClubPromise(id: string): Promise<Club> {
+export async function getClubPromise(id: Base58ID): Promise<Club> {
     return (await unwrap(client.GET("/clubs/{id}", { params: { path: { id } } }))).data;
 }
 
@@ -445,7 +445,7 @@ export async function createClubPromise(payload: { name: string }): Promise<Club
 }
 
 export async function patchClubPromise(
-    id: string,
+    id: Base58ID,
     payload: { name?: string; icon?: string },
 ): Promise<Club> {
     return (await unwrap(client.PATCH("/clubs/{id}", {
@@ -454,18 +454,18 @@ export async function patchClubPromise(
     }))).data;
 }
 
-export async function deleteClubPromise(id: string) {
+export async function deleteClubPromise(id: Base58ID) {
     return unwrap(client.DELETE("/clubs/{id}", { params: { path: { id } } }));
 }
 
-export async function addClubMemberPromise(clubId: string, playerId: string) {
+export async function addClubMemberPromise(clubId: Base58ID, playerId: Base58ID) {
     return unwrap(client.POST("/clubs/{id}/members", {
         params: { path: { id: clubId } },
         body: { player_id: playerId },
     }));
 }
 
-export async function removeClubMemberPromise(clubId: string, playerId: string) {
+export async function removeClubMemberPromise(clubId: Base58ID, playerId: Base58ID) {
     return unwrap(client.DELETE("/clubs/{id}/members/{playerId}", {
         params: { path: { id: clubId, playerId } },
     }));
@@ -475,26 +475,26 @@ export async function listTournamentsPromise(): Promise<Tournament[]> {
     return (await unwrap(client.GET("/tournaments"))).data;
 }
 
-export async function getTournamentPromise(id: string): Promise<Tournament> {
+export async function getTournamentPromise(id: Base58ID): Promise<Tournament> {
     return (await unwrap(client.GET("/tournaments/{id}", { params: { path: { id } } }))).data;
 }
 
-export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: string[] }): Promise<Tournament> {
+export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: Base58ID[] }): Promise<Tournament> {
     return (await unwrap(client.POST("/tournaments", { body: { id: newId(), ...payload } }))).data;
 }
 
-export async function updateTournamentPromise(id: string, payload: { name: string; start_date: string; end_date: string; player_ids: string[] }): Promise<Tournament> {
+export async function updateTournamentPromise(id: Base58ID, payload: { name: string; start_date: string; end_date: string; player_ids: Base58ID[] }): Promise<Tournament> {
     return (await unwrap(client.PUT("/tournaments/{id}", {
         params: { path: { id } },
         body: { id, ...payload },
     }))).data;
 }
 
-export async function deleteTournamentPromise(id: string) {
+export async function deleteTournamentPromise(id: Base58ID) {
     return unwrap(client.DELETE("/tournaments/{id}", { params: { path: { id } } }));
 }
 
-export async function getTournamentStatsPromise(id: string): Promise<TournamentStats> {
+export async function getTournamentStatsPromise(id: Base58ID): Promise<TournamentStats> {
     return (await unwrap(client.GET("/tournaments/{id}/stats", { params: { path: { id } } }))).data;
 }
 
@@ -522,19 +522,19 @@ export async function getMarketsPromise(): Promise<{ active: Market[]; closed: M
     return (await unwrap(client.GET("/markets"))).data;
 }
 
-export async function getMarketByIdPromise(id: string): Promise<MarketDetail> {
+export async function getMarketByIdPromise(id: Base58ID): Promise<MarketDetail> {
     return (await unwrap(client.GET("/markets/{id}", { params: { path: { id } } }))).data;
 }
 
 export interface MarketPricePoint {
     t: string;
-    prices: { outcome_id: string; price: number }[];
+    prices: { outcome_id: Base58ID; price: number }[];
 }
 
 // The price history is reconstructed server-side by replaying the bet stream
 // through the LMSR; each point carries the marginal price of every outcome
 // right after a bet (the prices sum to 1).
-export async function getMarketPriceHistoryPromise(id: string): Promise<MarketPricePoint[]> {
+export async function getMarketPriceHistoryPromise(id: Base58ID): Promise<MarketPricePoint[]> {
     return (await unwrap(client.GET("/markets/{id}/price-history", { params: { path: { id } } }))).data.points;
 }
 
@@ -542,16 +542,16 @@ export async function createMarketPromise(payload: {
     market_type: "match_winner" | "win_streak";
     starts_at: string | null;
     closes_at: string;
-    target_player_ids?: string[];
+    target_player_ids?: Base58ID[];
     allow_other_players?: boolean;
-    game_ids?: string[];
-    target_player_id?: string;
-    streak_game_ids?: string[];
+    game_ids?: Base58ID[];
+    target_player_id?: Base58ID;
+    streak_game_ids?: Base58ID[];
     wins_required?: number | null;
     max_losses?: number | null;
-    guarantor_player_ids?: string[];
+    guarantor_player_ids?: Base58ID[];
     liquidity_b?: number;
-}): Promise<{ id: string }> {
+}): Promise<{ id: Base58ID }> {
     return (await unwrap(client.POST("/markets", {
         body: {
             id: newId(),
@@ -564,24 +564,24 @@ export async function createMarketPromise(payload: {
     }))).data;
 }
 
-export async function deleteMarketPromise(id: string): Promise<void> {
+export async function deleteMarketPromise(id: Base58ID): Promise<void> {
     await unwrap(client.DELETE("/markets/{id}", { params: { path: { id } } }));
 }
 
-export async function closeMarketBettingPromise(id: string): Promise<void> {
+export async function closeMarketBettingPromise(id: Base58ID): Promise<void> {
     await unwrap(client.PATCH("/markets/{id}", {
         params: { path: { id } },
         body: { status: "betting_closed" },
     }));
 }
 
-export async function getMarketsByMatchIdPromise(matchId: string): Promise<Market[]> {
+export async function getMarketsByMatchIdPromise(matchId: Base58ID): Promise<Market[]> {
     return (await unwrap(client.GET("/matches/{id}/markets", {
         params: { path: { id: matchId } },
     }))).data ?? [];
 }
 
-export async function placeBetPromise(marketId: string, outcomeId: string, expectedPrice: number): Promise<{ shares: number; price: number }> {
+export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, expectedPrice: number): Promise<{ shares: number; price: number }> {
     // Shares-driven buy (ADR-10): the UI always buys a single share of the
     // outcome; the AMM prices the elo cost. expectedPrice is the price the user
     // saw — the server rejects the bet (409) if the live price has moved beyond
@@ -593,7 +593,7 @@ export async function placeBetPromise(marketId: string, outcomeId: string, expec
     return { shares: res.data.shares, price: res.data.price };
 }
 
-export async function getPlayerStatsPromise(id: string): Promise<PlayerStats> {
+export async function getPlayerStatsPromise(id: Base58ID): Promise<PlayerStats> {
     return (await unwrap(client.GET("/players/{id}/stats", { params: { path: { id } } }))).data;
 }
 
@@ -617,38 +617,38 @@ export async function createSkullKingTablePromise(gameState: SkullKingGameState)
     return (await unwrap(client.POST("/skull-king/tables", { body: { id: newId(), game_state: gameState } }))).data;
 }
 
-export async function getSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
+export async function getSkullKingTablePromise(tableId: Base58ID): Promise<SkullKingTableSummary> {
     return (await unwrap(client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } }))).data;
 }
 
-export async function updateSkullKingTableStatePromise(tableId: string, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
+export async function updateSkullKingTableStatePromise(tableId: Base58ID, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
     return (await unwrap(client.PATCH("/skull-king/tables/{id}/state", {
         params: { path: { id: tableId } },
         body: { game_state: gameState },
     }))).data;
 }
 
-export async function joinSkullKingTablePromise(tableId: string): Promise<SkullKingTableSummary> {
+export async function joinSkullKingTablePromise(tableId: Base58ID): Promise<SkullKingTableSummary> {
     return (await unwrap(client.POST("/skull-king/tables/{id}/join", {
         params: { path: { id: tableId } },
     }))).data;
 }
 
-export async function submitSkullKingBidPromise(tableId: string, bid: number): Promise<SkullKingTableSummary> {
+export async function submitSkullKingBidPromise(tableId: Base58ID, bid: number): Promise<SkullKingTableSummary> {
     return (await unwrap(client.POST("/skull-king/tables/{id}/bid", {
         params: { path: { id: tableId } },
         body: { bid },
     }))).data;
 }
 
-export async function submitSkullKingResultPromise(tableId: string, actual: number, bonus: number): Promise<SkullKingTableSummary> {
+export async function submitSkullKingResultPromise(tableId: Base58ID, actual: number, bonus: number): Promise<SkullKingTableSummary> {
     return (await unwrap(client.POST("/skull-king/tables/{id}/result", {
         params: { path: { id: tableId } },
         body: { actual, bonus },
     }))).data;
 }
 
-export async function deleteSkullKingTablePromise(tableId: string, matchId?: string): Promise<void> {
+export async function deleteSkullKingTablePromise(tableId: Base58ID, matchId?: string): Promise<void> {
     await unwrap(client.DELETE("/skull-king/tables/{id}", {
         params: {
             path: { id: tableId },

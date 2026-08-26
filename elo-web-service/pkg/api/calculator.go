@@ -23,6 +23,10 @@ func buildCalculatorInput(kind string, data *map[string]interface{}) (*elo.Calcu
 	if err := calculator.Validate(kind, raw); err != nil {
 		return nil, err
 	}
+	raw, err = calculator.CanonicalizeIDs(kind, raw)
+	if err != nil {
+		return nil, err
+	}
 	return &elo.CalculatorInput{
 		Kind:    kind,
 		Version: schema.CurrentVersion,
@@ -51,6 +55,10 @@ func buildCalculatorUpdate(kind string, data *map[string]interface{}) (*elo.Calc
 		return nil, err
 	}
 	if err := calculator.Validate(kind, raw); err != nil {
+		return nil, err
+	}
+	raw, err = calculator.CanonicalizeIDs(kind, raw)
+	if err != nil {
 		return nil, err
 	}
 	kindCopy := kind

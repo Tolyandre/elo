@@ -3,6 +3,8 @@ package elo
 import (
 	"math"
 	"testing"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // Standard Elo constants used as fixtures across the math tests.
@@ -21,22 +23,22 @@ func TestWinExpectation(t *testing.T) {
 	cases := []struct {
 		name         string
 		currentElo   float64
-		playersScore map[string]float64
-		prevElo      map[string]float64
+		playersScore map[id.ID]float64
+		prevElo      map[id.ID]float64
 		want         float64
 	}{
 		{
 			name:         "single player short-circuits to 1",
 			currentElo:   testStartingElo,
-			playersScore: map[string]float64{"a": 10},
-			prevElo:      map[string]float64{"a": testStartingElo},
+			playersScore: map[id.ID]float64{"a": 10},
+			prevElo:      map[id.ID]float64{"a": testStartingElo},
 			want:         1,
 		},
 		{
 			name:         "two equal-rated players each expect 0.5",
 			currentElo:   testStartingElo,
-			playersScore: map[string]float64{"a": 10, "b": 10},
-			prevElo:      map[string]float64{"a": testStartingElo, "b": testStartingElo},
+			playersScore: map[id.ID]float64{"a": 10, "b": 10},
+			prevElo:      map[id.ID]float64{"a": testStartingElo, "b": testStartingElo},
 			want:         0.5,
 		},
 		{
@@ -47,15 +49,15 @@ func TestWinExpectation(t *testing.T) {
 			// sum = 3 * 0.9091 = 2.7273; result = (2.7273 - 0.5) / (3*2/2) = 2.2273/3 = 0.7424.
 			name:         "higher-rated player expects more than 0.5",
 			currentElo:   1400,
-			playersScore: map[string]float64{"a": 10, "b": 10, "c": 10},
-			prevElo:      map[string]float64{"a": 1000, "b": 1000},
+			playersScore: map[id.ID]float64{"a": 10, "b": 10, "c": 10},
+			prevElo:      map[id.ID]float64{"a": 1000, "b": 1000},
 			want:         0.7424242424242424,
 		},
 		{
 			// Opponent absent from prevElo falls back to startingElo.
 			name:         "missing opponent rating falls back to startingElo",
 			currentElo:   testStartingElo,
-			playersScore: map[string]float64{"a": 10, "b": 10},
+			playersScore: map[id.ID]float64{"a": 10, "b": 10},
 			prevElo:      nil, // both opponents fall back to startingElo -> equal rating
 			want:         0.5,
 		},
@@ -73,8 +75,8 @@ func TestWinExpectation(t *testing.T) {
 
 func TestWinExpectationSymmetricSum(t *testing.T) {
 	// For a symmetric 2-player game the two players' expectations must sum to 1.
-	prev := map[string]float64{"a": 1100, "b": 900}
-	scores := map[string]float64{"a": 1, "b": 0}
+	prev := map[id.ID]float64{"a": 1100, "b": 900}
+	scores := map[id.ID]float64{"a": 1, "b": 0}
 	ea := WinExpectation(1100, scores, testStartingElo, prev, testD)
 	eb := WinExpectation(900, scores, testStartingElo, prev, testD)
 	if !floatsEqual(ea+eb, 1.0) {
@@ -85,13 +87,13 @@ func TestWinExpectationSymmetricSum(t *testing.T) {
 func TestGetAbsoluteLoserScore(t *testing.T) {
 	cases := []struct {
 		name   string
-		scores map[string]float64
+		scores map[id.ID]float64
 		want   float64
 	}{
-		{"empty returns 0", map[string]float64{}, 0},
-		{"single entry", map[string]float64{"a": 42}, 42},
-		{"min of several", map[string]float64{"a": 10, "b": -3, "c": 7}, -3},
-		{"negative values", map[string]float64{"a": -10, "b": -2}, -10},
+		{"empty returns 0", map[id.ID]float64{}, 0},
+		{"single entry", map[id.ID]float64{"a": 42}, 42},
+		{"min of several", map[id.ID]float64{"a": 10, "b": -3, "c": 7}, -3},
+		{"negative values", map[id.ID]float64{"a": -10, "b": -2}, -10},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -106,7 +108,7 @@ func TestNormalizedScore(t *testing.T) {
 	cases := []struct {
 		name               string
 		currentScore       float64
-		playersScore       map[string]float64
+		playersScore       map[id.ID]float64
 		absoluteLoserScore float64
 		want               float64
 	}{
@@ -114,7 +116,7 @@ func TestNormalizedScore(t *testing.T) {
 			// all-equal scores -> numerator and denominator both 0 -> NaN -> fallback 1/N.
 			name:               "all-equal scores fall back to uniform 1/N",
 			currentScore:       10,
-			playersScore:       map[string]float64{"a": 10, "b": 10},
+			playersScore:       map[id.ID]float64{"a": 10, "b": 10},
 			absoluteLoserScore: 10,
 			want:               0.5,
 		},
@@ -124,7 +126,7 @@ func TestNormalizedScore(t *testing.T) {
 			// current=30: (30-10)^2 / 400 = 400/400 = 1.0 (the winner takes everything)
 			name:               "winner with zero-score loser takes all",
 			currentScore:       30,
-			playersScore:       map[string]float64{"a": 30, "b": 10},
+			playersScore:       map[id.ID]float64{"a": 30, "b": 10},
 			absoluteLoserScore: 10,
 			want:               1.0,
 		},
@@ -134,7 +136,7 @@ func TestNormalizedScore(t *testing.T) {
 			// current=30: 20^2/2000 = 400/2000 = 0.2
 			name:               "middle player gets a share",
 			currentScore:       30,
-			playersScore:       map[string]float64{"a": 50, "b": 30, "c": 10},
+			playersScore:       map[id.ID]float64{"a": 50, "b": 30, "c": 10},
 			absoluteLoserScore: 10,
 			want:               0.2,
 		},
@@ -152,7 +154,7 @@ func TestNormalizedScore(t *testing.T) {
 func TestNormalizedScoreMonotonic(t *testing.T) {
 	// Holding everything else fixed, a higher currentScore must yield a higher
 	// (or equal) normalized score.
-	scores := map[string]float64{"a": 50, "b": 30, "c": 10}
+	scores := map[id.ID]float64{"a": 50, "b": 30, "c": 10}
 	loser := 10.0
 	prev := NormalizedScore(30, scores, loser, testWinReward)
 	higher := NormalizedScore(50, scores, loser, testWinReward)
@@ -163,7 +165,7 @@ func TestNormalizedScoreMonotonic(t *testing.T) {
 
 func TestNormalizedScoresSumToOne(t *testing.T) {
 	// For non-degenerate inputs the normalized scores over all players sum to 1.
-	scores := map[string]float64{"a": 50, "b": 30, "c": 10}
+	scores := map[id.ID]float64{"a": 50, "b": 30, "c": 10}
 	loser := GetAbsoluteLoserScore(scores)
 	var sum float64
 	for _, s := range scores {
@@ -176,10 +178,10 @@ func TestNormalizedScoresSumToOne(t *testing.T) {
 
 func TestCalculateNewElo(t *testing.T) {
 	t.Run("equal-score symmetric match leaves ratings unchanged", func(t *testing.T) {
-		prev := map[string]float64{"a": 1000.0, "b": 1000.0}
+		prev := map[id.ID]float64{"a": 1000.0, "b": 1000.0}
 		// All-equal scores: NormalizedScore falls back to 1/N = 0.5 for each,
 		// and WinExpectation for equal ratings is 0.5; delta = K*(0.5-0.5) = 0.
-		scores := map[string]float64{"a": 10.0, "b": 10.0}
+		scores := map[id.ID]float64{"a": 10.0, "b": 10.0}
 		got := CalculateNewElo(prev, testStartingElo, scores, testK, testD, testWinReward)
 		for pid, elo := range got {
 			if !floatsEqual(elo, testStartingElo) {
@@ -189,9 +191,9 @@ func TestCalculateNewElo(t *testing.T) {
 	})
 
 	t.Run("winner gains, loser loses by the same amount in a 2-player match", func(t *testing.T) {
-		prev := map[string]float64{"a": 1000.0, "b": 1000.0}
+		prev := map[id.ID]float64{"a": 1000.0, "b": 1000.0}
 		// Winner-takes-all scores: a wins everything.
-		scores := map[string]float64{"a": 30.0, "b": 10.0}
+		scores := map[id.ID]float64{"a": 30.0, "b": 10.0}
 		got := CalculateNewElo(prev, testStartingElo, scores, testK, testD, testWinReward)
 
 		deltaA := got["a"] - 1000.0
@@ -209,8 +211,8 @@ func TestCalculateNewElo(t *testing.T) {
 	})
 
 	t.Run("players not in the score map are passed through unchanged", func(t *testing.T) {
-		prev := map[string]float64{"a": 1000.0, "b": 1500.0}
-		scores := map[string]float64{"a": 30.0, "b": 10.0}
+		prev := map[id.ID]float64{"a": 1000.0, "b": 1500.0}
+		scores := map[id.ID]float64{"a": 30.0, "b": 10.0}
 		got := CalculateNewElo(prev, testStartingElo, scores, testK, testD, testWinReward)
 		// b participates and changes; but if we add a non-participating player
 		// to prev, they must be carried over verbatim.
@@ -223,8 +225,8 @@ func TestCalculateNewElo(t *testing.T) {
 
 	t.Run("new player without prior elo falls back to startingElo", func(t *testing.T) {
 		// Player b is new (no prior), so their baseline before the delta is startingElo.
-		prev := map[string]float64{"a": 1000.0}
-		scores := map[string]float64{"a": 30.0, "b": 10.0}
+		prev := map[id.ID]float64{"a": 1000.0}
+		scores := map[id.ID]float64{"a": 30.0, "b": 10.0}
 		got := CalculateNewElo(prev, testStartingElo, scores, testK, testD, testWinReward)
 		// b lost; their new elo must be below the starting baseline.
 		if !(got["b"] < testStartingElo) {

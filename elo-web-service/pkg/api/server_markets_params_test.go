@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // TestBuildTypedMarketParams_regression guards against a nil-pointer panic
@@ -24,8 +25,8 @@ func TestBuildTypedMarketParams_regression(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			// Must not panic. win_streak needs a valid winsRequired for the int cast.
-			params := buildTypedMarketParams(c.marketType, []string{"p1", "p2"}, pgtype.Bool{Bool: true, Valid: true},
-				[]string{"g1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
+			params := buildTypedMarketParams(c.marketType, []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: true, Valid: true},
+				[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
 			if params == nil {
 				t.Fatalf("expected non-nil params for %s, got nil", c.marketType)
 			}
@@ -35,8 +36,8 @@ func TestBuildTypedMarketParams_regression(t *testing.T) {
 
 func TestBuildTypedMarketDetailParams_regression(t *testing.T) {
 	for _, marketType := range []string{"match_winner", "win_streak"} {
-		params := buildTypedMarketDetailParams(marketType, []string{"p1", "p2"}, pgtype.Bool{Bool: true, Valid: true},
-			[]string{"g1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
+		params := buildTypedMarketDetailParams(marketType, []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: true, Valid: true},
+			[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
 		if params == nil {
 			t.Errorf("expected non-nil detail params for %s, got nil", marketType)
 		}
@@ -45,8 +46,8 @@ func TestBuildTypedMarketDetailParams_regression(t *testing.T) {
 
 func TestBuildTypedParamsFillsUnions(t *testing.T) {
 	t.Run("match_winner", func(t *testing.T) {
-		params := buildTypedMarketParams("match_winner", []string{"p1", "p2"}, pgtype.Bool{Bool: false, Valid: true},
-			[]string{"g1", "g2"}, nil, nil, pgtype.Int4{}, pgtype.Int4{})
+		params := buildTypedMarketParams("match_winner", []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: false, Valid: true},
+			[]id.ID{"00000000-0000-0000-0000-0000000000b1", "00000000-0000-0000-0000-0000000000b2"}, nil, nil, pgtype.Int4{}, pgtype.Int4{})
 		mw, err := params.AsMatchWinnerParams()
 		if err != nil {
 			t.Fatalf("AsMatchWinnerParams: %v", err)
@@ -56,8 +57,8 @@ func TestBuildTypedParamsFillsUnions(t *testing.T) {
 		}
 	})
 	t.Run("win_streak", func(t *testing.T) {
-		wsTarget := "p9"
-		params := buildTypedMarketParams("win_streak", nil, pgtype.Bool{}, nil, &wsTarget, []string{"g1"},
+		wsTarget := id.ID("00000000-0000-0000-0000-0000000000a9")
+		params := buildTypedMarketParams("win_streak", nil, pgtype.Bool{}, nil, &wsTarget, []id.ID{"00000000-0000-0000-0000-0000000000b1"},
 			pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
 		ws, err := params.AsWinStreakParams()
 		if err != nil {

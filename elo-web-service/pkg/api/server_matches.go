@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/calculator"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesRequestObject) (ListMatchesResponseObject, error) {
@@ -26,13 +28,22 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 			return ListMatches400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
 		}
 	} else {
-		gameID = params.GameId
-		playerID = params.PlayerId
+		// Query params carry wire-form ids (Base58 or canonical); the cursor
+		// path above already holds canonical ones.
+		if params.GameId != nil {
+			g := string(parseIDParam(*params.GameId))
+			gameID = &g
+		}
+		if params.PlayerId != nil {
+			p := string(parseIDParam(*params.PlayerId))
+			playerID = &p
+		}
 		if params.ClubId != nil {
 			if *params.ClubId == "__no_club__" {
 				noClub = true
 			} else {
-				clubID = params.ClubId
+				c := string(parseIDParam(*params.ClubId))
+				clubID = &c
 			}
 		}
 	}
@@ -43,9 +54,9 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}
 
 	rows, err := s.api.MatchService.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
-		GameID:     gameID,
-		PlayerID:   playerID,
-		ClubID:     clubID,
+		GameID:     idPtr(gameID),
+		PlayerID:   idPtr(playerID),
+		ClubID:     idPtr(clubID),
 		NoClub:     pgtype.Bool{Bool: noClub, Valid: noClub},
 		CursorDate: cursorDate,
 		Limit:      limit,
@@ -54,8 +65,8 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		return nil, err
 	}
 
-	matchesMap := make(map[string]*tempMatch)
-	order := make([]string, 0)
+	matchesMap := make(map[id.ID]*tempMatch)
+	order := make([]id.ID, 0)
 
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
@@ -64,7 +75,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 				GameId:         r.GameID,
 				GameName:       r.GameName,
 				Date:           r.Date.Time,
-				Players:        make(map[string]matchPlayerJson),
+				Players:        make(map[id.ID]matchPlayerJson),
 				HasMarkets:     r.HasMarkets,
 				CalculatorKind: r.CalculatorKind,
 			}
@@ -90,7 +101,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	matchesSlice := buildMatchesResponse(matchesMap, order)
 	data := make([]Match, 0, len(matchesSlice))
 	for _, m := range matchesSlice {
-		score := make(map[string]MatchPlayer, len(m.Players))
+		score := make(IDMap[MatchPlayer], len(m.Players))
 		for pid, p := range m.Players {
 			score[pid] = MatchPlayer{
 				RatingStaked: p.RatingStaked,
@@ -140,7 +151,7 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	date := time.Now()
 	opts := elo.AddMatchOpts{
 		ID:            request.Body.Id,
-		TournamentIDs: derefStringSlice(request.Body.TournamentIds),
+		TournamentIDs: derefIDs(request.Body.TournamentIds),
 	}
 	if request.Body.Date != nil {
 		date = *request.Body.Date
@@ -190,15 +201,15 @@ func derefStringSlice(s *[]string) []string {
 }
 
 // tournamentsByMatch returns, per match id, the tournaments it belongs to.
-func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []string) (map[string][]MatchTournament, error) {
+func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []id.ID) (map[id.ID][]MatchTournament, error) {
 	if len(matchIDs) == 0 {
-		return map[string][]MatchTournament{}, nil
+		return map[id.ID][]MatchTournament{}, nil
 	}
 	rows, err := s.api.MatchService.ListTournamentsByMatchIDs(ctx, matchIDs)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string][]MatchTournament)
+	out := make(map[id.ID][]MatchTournament)
 	for _, r := range rows {
 		out[r.MatchID] = append(out[r.MatchID], MatchTournament{
 			Id:   r.TournamentID,
@@ -209,7 +220,7 @@ func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []string
 }
 
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
-	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, request.Id)
+	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +228,8 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		return GetMatchById404JSONResponse{Status: "fail", Message: "Match not found"}, nil
 	}
 
-	matchesMap := make(map[string]*tempMatch)
-	order := make([]string, 0)
+	matchesMap := make(map[id.ID]*tempMatch)
+	order := make([]id.ID, 0)
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
@@ -226,7 +237,7 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 				GameId:         r.GameID,
 				GameName:       r.GameName,
 				Date:           r.Date.Time,
-				Players:        make(map[string]matchPlayerJson),
+				Players:        make(map[id.ID]matchPlayerJson),
 				CalculatorKind: r.CalculatorKind,
 				CalculatorData: r.CalculatorData,
 			}
@@ -251,7 +262,7 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 
 	result := buildMatchesResponse(matchesMap, order)
 	m := result[0]
-	score := make(map[string]MatchPlayer, len(m.Players))
+	score := make(IDMap[MatchPlayer], len(m.Players))
 	for pid, p := range m.Players {
 		score[pid] = MatchPlayer{
 			RatingStaked: p.RatingStaked,
@@ -276,9 +287,14 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		kind := m.CalculatorKind.String
 		match.CalculatorKind = &kind
 		if len(m.CalculatorData) > 0 {
-			var data map[string]interface{}
-			if err := json.Unmarshal(m.CalculatorData, &data); err == nil {
-				match.CalculatorData = &data
+			// Stored docs hold canonical ids; the response carries the wire
+			// form (schema-driven, see pkg/calculator/ids.go).
+			short, err := calculator.ShortenIDs(kind, m.CalculatorData)
+			if err == nil {
+				var data map[string]interface{}
+				if err := json.Unmarshal(short, &data); err == nil {
+					match.CalculatorData = &data
+				}
 			}
 		}
 	}
@@ -293,7 +309,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	}
 
 	opts := elo.UpdateMatchOpts{
-		TournamentIDs: derefStringSlice(request.Body.TournamentIds),
+		TournamentIDs: derefIDs(request.Body.TournamentIds),
 	}
 	// A non-nil calculator_kind in the body means "set/replace"; a body that
 	// explicitly sends calculator_kind: null means "clear". Because the field
@@ -309,7 +325,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 		opts.Calculator = calc
 	}
 
-	_, err = s.api.MatchService.UpdateMatch(ctx, request.Id, gameID, playerScores, request.Body.Date, opts)
+	_, err = s.api.MatchService.UpdateMatch(ctx, parseIDParam(request.Id), gameID, playerScores, request.Body.Date, opts)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:

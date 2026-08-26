@@ -18,11 +18,21 @@ ApiSuccessMessage:
       type: string
   required: [status, message]
 
-ULID:
+# The identifier type every id-bearing property MUST reference (enforced by
+# internal/openapilint). Conversion between this wire form and the canonical
+# UUID used inside the service is structural: generators map this schema to a
+# typed identifier whose JSON hooks do the encoding (ADR-12). The Go mapping
+# is deliberately the canonical form — the idcodec-era middleware already
+# decoded inbound bodies before unmarshal, and handlers fill canonical ids.
+Base58ID:
   type: string
+  x-go-type: id.ID
+  x-go-type-import:
+    path: github.com/tolyandre/elo-web-service/pkg/id
   description: >-
-    Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin
-    alphabet — no 0/O/I/l). The client generates this on create; it serves as
-    both the primary key and the idempotency key. A repeated request with the same
-    id returns the already-created entity. The backend also accepts the standard
-    36-char canonical UUID form for backward compatibility.
+    Entity identifier: a UUID (v7 for client-minted ids) encoded as a short
+    Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create
+    requests the client generates the id; it serves as both the primary key
+    and the idempotency key, so a repeated request with the same id returns
+    the already-created entity. The backend also accepts the standard 36-char
+    canonical UUID form for backward compatibility.

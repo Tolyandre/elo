@@ -21,6 +21,7 @@ import (
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const testJWTSecret = "integration-test-jwt-secret"
@@ -86,11 +87,6 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	a := mainapi.New(pool)
 	o := apioauth2.New(pool)
 
-	// Mirror main.go: wrap the response writer (short ids out) and decode
-	// incoming short ids (canonical in) before handlers run.
-	r.Use(mainapi.EncodeIDsMiddleware())
-	r.Use(mainapi.DecodeIDsMiddleware())
-
 	strictWrapper := &mainapi.ServerInterfaceWrapper{
 		Handler: mainapi.NewStrictHandler(mainapi.NewStrictServer(a, o), nil),
 	}
@@ -106,12 +102,14 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/matches", strictWrapper.ListMatches)
 	r.GET("/matches/:id", strictWrapper.GetMatchById)
 	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
+	r.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
 	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
 	// and the resolved-market outcome id).
 	r.GET("/markets", strictWrapper.ListMarkets)
 	r.POST("/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateMarket)
 	r.GET("/markets/:id", strictWrapper.GetMarket)
+	r.GET("/markets/:id/price-history", strictWrapper.GetMarketPriceHistory)
 	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
 	return r
 }
@@ -125,7 +123,7 @@ func createTestUser(t *testing.T, pool *pgxpool.Pool, allowEditing bool) string 
 		t.Fatalf("generate user id: %v", err)
 	}
 	userID, err := queries.CreateUser(context.Background(), db.CreateUserParams{
-		ID:                  uid.String(),
+		ID:                  idpkg.ID(uid.String()),
 		AllowEditing:        allowEditing,
 		GoogleOauthUserID:   "test-user-001",
 		GoogleOauthUserName: "Test User",
@@ -133,7 +131,7 @@ func createTestUser(t *testing.T, pool *pgxpool.Pool, allowEditing bool) string 
 	if err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
-	token, err := apioauth2.CreateJwt(time.Hour, userID, testJWTSecret)
+	token, err := apioauth2.CreateJwt(time.Hour, string(userID), testJWTSecret)
 	if err != nil {
 		t.Fatalf("create JWT: %v", err)
 	}

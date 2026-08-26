@@ -1,4 +1,5 @@
 import { GameListItem, Match } from "@/app/api";
+import type { Base58ID } from "@/lib/id";
 
 type GameGroup = { heading: string; options: { value: string; label: string }[] };
 
@@ -17,7 +18,7 @@ export function buildGameGroups(
   const byId = new Map(games.map((g) => [g.id, g]));
 
   // 1. Recent
-  const recentIds: string[] = [];
+  const recentIds: Base58ID[] = [];
   if (playerId !== undefined) {
     const seen = new Set<string>();
     for (const match of matches) {

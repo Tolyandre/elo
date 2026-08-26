@@ -1,4 +1,5 @@
 // Normalized storage shape for the IAWW calculator state, plus conversions
+import type { Base58ID } from "@/lib/id";
 // to/from the live `GameState` used by the UI.
 //
 // IMPORTANT: every player id lives under a key named "player_id" (never as an
@@ -18,24 +19,24 @@ export const STORAGE_VERSION = 2 as const;
 
 export type IAWWStorage = {
     schema_version: typeof STORAGE_VERSION;
-    players: { player_id: string; name: string }[];
-    direct_vp: { player_id: string; value: number }[];
-    multipliers: { row: string; player_id: string; coeff: number; count: number }[];
-    fallback_game_id?: string | null;
+    players: { player_id: Base58ID; name: string }[];
+    direct_vp: { player_id: Base58ID; value: number }[];
+    multipliers: { row: string; player_id: Base58ID; coeff: number; count: number }[];
+    fallback_game_id?: Base58ID | null;
 };
 
 /** Convert the live UI state into the normalized form persisted on the match. */
 export function toStorage(state: GameState): IAWWStorage {
     const direct_vp = Object.entries(state.directVP)
         .filter(([, v]) => v != null)
-        .map(([player_id, value]) => ({ player_id, value }));
+        .map(([player_id, value]) => ({ player_id: player_id as Base58ID, value }));
     const multipliers: IAWWStorage["multipliers"] = [];
     for (const [row, byPlayer] of Object.entries(state.multipliers)) {
         for (const [playerId, cell] of Object.entries(byPlayer ?? {})) {
             if (!cell) continue;
             multipliers.push({
                 row,
-                player_id: playerId,
+                player_id: playerId as Base58ID,
                 coeff: cell.coeff,
                 count: cell.count,
             });

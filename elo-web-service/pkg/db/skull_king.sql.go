@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const addSkullKingTablePlayer = `-- name: AddSkullKingTablePlayer :one
@@ -19,7 +21,7 @@ RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expire
 `
 
 type AddSkullKingTablePlayerParams struct {
-	ID          string      `json:"id"`
+	ID          id.ID       `json:"id"`
 	ArrayAppend interface{} `json:"array_append"`
 }
 
@@ -44,8 +46,8 @@ RETURNING id, host_user_id, game_state, connected_player_ids, created_at, expire
 `
 
 type CreateSkullKingTableParams struct {
-	ID         string          `json:"id"`
-	HostUserID string          `json:"host_user_id"`
+	ID         id.ID           `json:"id"`
+	HostUserID id.ID           `json:"host_user_id"`
 	GameState  json.RawMessage `json:"game_state"`
 }
 
@@ -76,8 +78,8 @@ const deleteSkullKingTable = `-- name: DeleteSkullKingTable :exec
 DELETE FROM skull_king_tables WHERE id = $1
 `
 
-func (q *Queries) DeleteSkullKingTable(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, deleteSkullKingTable, id)
+func (q *Queries) DeleteSkullKingTable(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, deleteSkullKingTable, argID)
 	return err
 }
 
@@ -96,8 +98,8 @@ const getSkullKingTable = `-- name: GetSkullKingTable :one
 SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at FROM skull_king_tables WHERE id = $1
 `
 
-func (q *Queries) GetSkullKingTable(ctx context.Context, id string) (SkullKingTable, error) {
-	row := q.db.QueryRow(ctx, getSkullKingTable, id)
+func (q *Queries) GetSkullKingTable(ctx context.Context, argID id.ID) (SkullKingTable, error) {
+	row := q.db.QueryRow(ctx, getSkullKingTable, argID)
 	var i SkullKingTable
 	err := row.Scan(
 		&i.ID,
@@ -114,8 +116,8 @@ const getSkullKingTableForUpdate = `-- name: GetSkullKingTableForUpdate :one
 SELECT id, host_user_id, game_state, connected_player_ids, created_at, expires_at FROM skull_king_tables WHERE id = $1 FOR UPDATE
 `
 
-func (q *Queries) GetSkullKingTableForUpdate(ctx context.Context, id string) (SkullKingTable, error) {
-	row := q.db.QueryRow(ctx, getSkullKingTableForUpdate, id)
+func (q *Queries) GetSkullKingTableForUpdate(ctx context.Context, argID id.ID) (SkullKingTable, error) {
+	row := q.db.QueryRow(ctx, getSkullKingTableForUpdate, argID)
 	var i SkullKingTable
 	err := row.Scan(
 		&i.ID,
@@ -164,7 +166,7 @@ UPDATE skull_king_tables SET game_state = $2 WHERE id = $1 RETURNING id, host_us
 `
 
 type UpdateSkullKingTableStateParams struct {
-	ID        string          `json:"id"`
+	ID        id.ID           `json:"id"`
 	GameState json.RawMessage `json:"game_state"`
 }
 

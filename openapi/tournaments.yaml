@@ -256,7 +256,7 @@ TournamentInput:
   type: object
   properties:
     id:
-      $ref: './common.yaml#/ULID'
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     start_date:
@@ -268,7 +268,7 @@ TournamentInput:
     player_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
       description: Full desired set of participant player IDs
   required: [id, name, start_date, end_date]
 
@@ -276,7 +276,7 @@ Tournament:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     start_date:
@@ -288,7 +288,7 @@ Tournament:
     player_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
       description: List of participant player IDs
   required: [id, name, start_date, end_date, player_ids]
 
@@ -296,7 +296,7 @@ TournamentStatsPlayer:
   type: object
   properties:
     player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     matches_count:
       type: integer
     first:

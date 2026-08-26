@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) RecalculateGameElo(ctx context.Context, _ RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error) {
@@ -35,7 +36,8 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 }
 
 func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject) (GetGameResponseObject, error) {
-	gameStatistics, err := s.api.GameService.GetGameStatistics(ctx, request.Id)
+	gameID := parseIDParam(request.Id)
+	gameStatistics, err := s.api.GameService.GetGameStatistics(ctx, gameID)
 	if err != nil {
 		return GetGame400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
@@ -64,7 +66,7 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 	return GetGame200JSONResponse{
 		Status: "success",
 		Data: Game{
-			Id:           request.Id,
+			Id:           gameID,
 			Name:         gameStatistics.Name,
 			TotalMatches: gameStatistics.TotalMatches,
 			Players:      players,
@@ -93,7 +95,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 }
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
-	game, err := s.api.GameService.UpdateGameName(ctx, request.Id, request.Body.Name)
+	game, err := s.api.GameService.UpdateGameName(ctx, parseIDParam(request.Id), request.Body.Name)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
 			return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
@@ -108,7 +110,7 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 }
 
 func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequestObject) (DeleteGameResponseObject, error) {
-	_, err := s.api.GameService.DeleteGame(ctx, request.Id)
+	_, err := s.api.GameService.DeleteGame(ctx, parseIDParam(request.Id))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
@@ -123,12 +125,12 @@ func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequest
 }
 
 func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatchesRequestObject) (GetGameMatchesResponseObject, error) {
-	matches, err := s.api.GameService.GetGameMatches(ctx, request.Id)
+	matches, err := s.api.GameService.GetGameMatches(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return GetGameMatches400JSONResponse{Status: "fail", Message: err.Error()}, nil
 	}
 
-	matchIDs := make([]string, 0, len(matches))
+	matchIDs := make([]id.ID, 0, len(matches))
 	for _, m := range matches {
 		matchIDs = append(matchIDs, m.Id)
 	}

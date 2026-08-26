@@ -57,7 +57,7 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 	calc := map[string]any{
 		"schema_version":   2,
 		"players":          []map[string]any{{"player_id": pa, "name": "Alpha"}, {"player_id": pb, "name": "Beta"}},
-		"direct_vp":        []map[string]any{{"player_id": pa, "value": 1}},
+		"direct_vp":        []map[string]any{{"player_id": string(pa), "value": 1}},
 		"multipliers":      mults,
 		"fallback_game_id": nil,
 	}
@@ -66,9 +66,9 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 	// POST body — match id is canonical, score keyed by canonical player ids
 	// (idcodec decodes both on the way in).
 	body := map[string]any{
-		"id":              "00000000-0000-0000-0000-0000000000c1",
-		"game_id":         game,
-		"score":           map[string]any{pa: 10.0, pb: 5.0},
+		"id":      "00000000-0000-0000-0000-0000000000c1",
+		"game_id": game,
+		"score":   map[string]any{string(pa): 10.0, string(pb): 5.0},
 		// Match dates must be within the last 30 days — keep it relative to
 		// now so the test never ages out of the validation window.
 		"date":            time.Now().AddDate(0, 0, -7).UTC().Format(time.RFC3339),

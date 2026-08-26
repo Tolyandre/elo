@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tolyandre/elo-web-service/pkg/api"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type userJson struct {
@@ -24,14 +25,17 @@ func (a *OAUTH2) GetMe(ctx *gin.Context) {
 		return
 	}
 
+	// This response is rendered by gin directly (not the generated DTO layer),
+	// so the wire encoding is applied by hand: raw gin responses bypass the
+	// type-driven conversion (ADR-12).
 	var playerID *string
 	if user.PlayerID != nil {
-		s := *user.PlayerID
+		s := string(user.PlayerID.Base58())
 		playerID = &s
 	}
 
 	api.SuccessDataResponse(ctx, userJson{
-		Id:       user.ID,
+		Id:       string(user.ID.Base58()),
 		Name:     user.GoogleOauthUserName,
 		CanEdit:  user.AllowEditing,
 		PlayerID: playerID,
@@ -53,7 +57,13 @@ func (a *OAUTH2) PatchMe(ctx *gin.Context) {
 		return
 	}
 
-	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, body.PlayerID); err != nil {
+	var playerID *id.ID
+	if body.PlayerID != nil {
+		v := id.ID(*body.PlayerID)
+		playerID = &v
+	}
+
+	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, playerID); err != nil {
 		if errors.Is(err, elo.ErrPlayerAlreadyLinked) {
 			api.ErrorResponse(ctx, http.StatusConflict, err)
 			return

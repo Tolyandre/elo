@@ -10,16 +10,17 @@ import (
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // validSKState is a minimal, schema-compliant Skull King calculator document.
 // Player ids are filled in per-test.
-func validSKState(pA, pB string) map[string]any {
+func validSKState(pA, pB idpkg.ID) map[string]any {
 	return map[string]any{
 		"schema_version":       1,
 		"current_round":        2,
 		"current_player_index": 0,
-		"players":              []map[string]any{{"player_id": pA, "name": "A"}, {"player_id": pB, "name": "B"}},
+		"players":              []map[string]any{{"player_id": string(pA), "name": "A"}, {"player_id": string(pB), "name": "B"}},
 		"rounds": [][]map[string]any{
 			{{"bid": 0, "actual": 0, "bonus": 0}, {"bid": 1, "actual": 1, "bonus": 10}},
 		},
@@ -39,7 +40,7 @@ func TestAddMatch_PersistsCalculatorData(t *testing.T) {
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
-	created, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "skull-king", Version: 1, Data: data},
@@ -84,13 +85,13 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 
 	doc := map[string]any{
 		"schema_version": 2,
-		"players":        []map[string]any{{"player_id": playerA, "name": "A"}, {"player_id": playerB, "name": "B"}},
-		"direct_vp":      []map[string]any{{"player_id": playerA, "value": 5}},
-		"multipliers":    []map[string]any{{"row": "str-res", "player_id": playerA, "coeff": 6, "count": 2}},
+		"players":        []map[string]any{{"player_id": string(playerA), "name": "A"}, {"player_id": string(playerB), "name": "B"}},
+		"direct_vp":      []map[string]any{{"player_id": string(playerA), "value": 5}},
+		"multipliers":    []map[string]any{{"row": "str-res", "player_id": string(playerA), "coeff": 6, "count": 2}},
 	}
 	raw, _ := json.Marshal(doc)
 
-	created, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 17, playerB: 0}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 17, playerB: 0}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "iaww", Version: 2, Data: raw},
@@ -102,13 +103,13 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	// Update: replace calculator_data, then clear it.
 	updatedDoc := map[string]any{
 		"schema_version": 2,
-		"players":        []map[string]any{{"player_id": playerA, "name": "A"}, {"player_id": playerB, "name": "B"}},
-		"direct_vp":      []map[string]any{{"player_id": playerB, "value": 99}},
+		"players":        []map[string]any{{"player_id": string(playerA), "name": "A"}, {"player_id": string(playerB), "name": "B"}},
+		"direct_vp":      []map[string]any{{"player_id": string(playerB), "value": 99}},
 		"multipliers":    []map[string]any{},
 	}
 	updatedRaw, _ := json.Marshal(updatedDoc)
 	kind := "iaww"
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[string]float64{playerA: 0, playerB: 17}, created.Date.Time, elo.UpdateMatchOpts{
+	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 0, playerB: 17}, created.Date.Time, elo.UpdateMatchOpts{
 		Calculator: &elo.CalculatorUpdate{Kind: &kind, Version: 2, Data: updatedRaw},
 	}); err != nil {
 		t.Fatalf("UpdateMatch replace: %v", err)
@@ -118,12 +119,12 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	var got map[string]any
 	_ = json.Unmarshal(rows[0].CalculatorData, &got)
 	dv := got["direct_vp"].([]any)[0].(map[string]any)
-	if dv["player_id"] != playerB {
+	if dv["player_id"] != string(playerB) {
 		t.Errorf("after update: expected playerB in direct_vp, got %v", dv["player_id"])
 	}
 
 	// Clear.
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[string]float64{playerA: 5, playerB: 5}, created.Date.Time, elo.UpdateMatchOpts{
+	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, created.Date.Time, elo.UpdateMatchOpts{
 		Calculator: &elo.CalculatorUpdate{Kind: nil},
 	}); err != nil {
 		t.Fatalf("UpdateMatch clear: %v", err)
@@ -151,7 +152,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
-	created, err := svc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
+	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
 		ClientDate: true,
 		ID:         newID(t),
 		Calculator: &elo.CalculatorInput{Kind: "skull-king", Version: 1, Data: data},
@@ -160,7 +161,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
-	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[string]float64{playerA: 5, playerB: 10}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
+	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 10}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch: %v", err)
 	}
 	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, created.ID)

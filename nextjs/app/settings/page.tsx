@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import { useMe } from "@/app/meContext"
 import { PageHeader } from "@/app/pageHeaderContext"
@@ -12,7 +13,7 @@ import { LoginLink } from "@/components/login-link"
 export default function SettingsPage() {
     const { roundToInteger, setRoundToInteger, geologistMode, setGeologistMode, isAuthenticated, playerId, invalidate } = useMe()
 
-    async function handlePlayerChange(id?: string) {
+    async function handlePlayerChange(id?: Base58ID) {
         try {
             await patchMePromise({ player_id: id ?? null })
             invalidate()

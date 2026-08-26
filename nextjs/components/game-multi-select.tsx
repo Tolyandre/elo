@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import { useGames } from "@/app/gamesContext"
 import { useMatches } from "@/app/matches/MatchesContext"
@@ -11,8 +12,8 @@ export function GameMultiSelect({
   value,
   onChange,
 }: {
-  value: string[]
-  onChange?: (ids: string[]) => void
+  value: Base58ID[]
+  onChange?: (ids: Base58ID[]) => void
 }) {
   const { games } = useGames()
   const { matches } = useMatches()
@@ -29,7 +30,7 @@ export function GameMultiSelect({
       placeholder="Выберите игры"
       searchPlaceholder="Искать игру..."
       hideSelectAll={true}
-      onValueChange={onChange ?? (() => {})}
+      onValueChange={(ids: string[]) => (onChange ?? (() => {}))(ids as Base58ID[])}
       defaultValue={value}
     />
   )

@@ -32,7 +32,7 @@ GamesCollection:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               name:
                 type: string
             required: [id, name]
@@ -50,7 +50,7 @@ GamesCollection:
                   type: object
                   properties:
                     id:
-                      type: string
+                      $ref: './common.yaml#/Base58ID'
                     name:
                       type: string
                   required: [id, name]
@@ -146,7 +146,7 @@ GameItem:
                   type: object
                   properties:
                     id:
-                      type: string
+                      $ref: './common.yaml#/Base58ID'
                     name:
                       type: string
                   required: [id, name]
@@ -258,7 +258,7 @@ GameListItem:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     last_played_order:
@@ -280,7 +280,7 @@ GamePlayer:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     rating:
       type: number
       format: double
@@ -303,7 +303,7 @@ Game:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     total_matches:
@@ -318,7 +318,7 @@ GameMatchPlayer:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     score:
@@ -339,7 +339,7 @@ GameMatch:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     date:
       type: string
       format: date-time

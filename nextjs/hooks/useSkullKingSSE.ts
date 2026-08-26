@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -33,7 +34,7 @@ const SSE_LIVENESS_TIMEOUT_MS = 45_000;
  *      so a client that missed broadcasts while disconnected catches up.
  *   3. Tab regained visibility / navigator came back online — same refetch.
  */
-export function useSkullKingSSE(tableId: string | null): SkullKingSSE {
+export function useSkullKingSSE(tableId: Base58ID | null): SkullKingSSE {
     const [state, setState] = useState<SkullKingTableSummary | null>(null);
     const [savedMatchId, setSavedMatchId] = useState<string | null>(null);
     // Whether we've seen at least one error since the last successful open.

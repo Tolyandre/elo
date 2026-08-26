@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { Base58ID } from "../lib/id";
 import { scoreFromState as skScoreFromState } from "@/components/calculators/skull-king";
 import { scoreFromState as iawwScoreFromState } from "@/components/calculators/iaww/scoring";
 import { getCalculator, isCalculatorKind, CALCULATORS } from "@/components/calculators/registry";
@@ -9,7 +10,7 @@ describe("skull-king scoreFromState", () => {
     it("computes a score per player from the rounds breakdown", () => {
         const state: SKGameState = {
             phase: "result-entry",
-            players: [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
+            players: [{ id: "p1" as Base58ID, name: "A" }, { id: "p2" as Base58ID, name: "B" }],
             currentRound: 1,
             currentPlayerIndex: 0,
             rounds: [
@@ -29,7 +30,7 @@ describe("skull-king scoreFromState", () => {
     it("returns 0 for a player with no entries yet", () => {
         const state: SKGameState = {
             phase: "result-entry",
-            players: [{ id: "p1", name: "A" }],
+            players: [{ id: "p1" as Base58ID, name: "A" }],
             currentRound: 1,
             currentPlayerIndex: 0,
             rounds: [[null]],
@@ -42,7 +43,7 @@ describe("iaww scoreFromState", () => {
     it("computes a score per player from directVP + multipliers", () => {
         const state: IawwGameState = {
             phase: "scoring",
-            players: [{ id: "p1", name: "A" }, { id: "p2", name: "B" }],
+            players: [{ id: "p1" as Base58ID, name: "A" }, { id: "p2" as Base58ID, name: "B" }],
             directVP: { p1: 12, p2: 5 },
             multipliers: {
                 "str-res": { p1: { coeff: 6, count: 2 } }, // 6*2 = 12
@@ -84,7 +85,7 @@ describe("calculator registry", () => {
         const skAdapter = getCalculator("skull-king")!;
         const state: SKGameState = {
             phase: "result-entry",
-            players: [{ id: "p1", name: "A" }],
+            players: [{ id: "p1" as Base58ID, name: "A" }],
             currentRound: 1,
             currentPlayerIndex: 0,
             rounds: [[{ bid: 0, actual: 0, bonus: 0 }]],

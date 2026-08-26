@@ -1,5 +1,6 @@
 "use client";
 
+import { toBase58ID, type Base58ID } from "@/lib/id";
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
@@ -80,13 +81,13 @@ function MatchesPageWrapped() {
 
   // Sync filters from URL on mount
   React.useEffect(() => {
-    const p = searchParams.get("player") ?? undefined;
-    const g = searchParams.get("game") ?? undefined;
+    const p = toBase58ID(searchParams.get("player") ?? "") ?? undefined;
+    const g = toBase58ID(searchParams.get("game") ?? "") ?? undefined;
     const clubParam = searchParams.get("club");
     // URL param takes precedence and overwrites the saved setting
-    const clubId = clubParam !== null ? (clubParam === "" ? null : clubParam) : selectedClubId;
+    const clubId = clubParam !== null ? toBase58ID(clubParam) : selectedClubId;
     if (clubParam !== null) {
-      setSelectedClubId(clubParam === "" ? null : clubParam);
+      setSelectedClubId(toBase58ID(clubParam));
     }
     setFilters({ playerId: p, gameId: g, clubId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,17 +122,17 @@ function MatchesPageWrapped() {
     router.replace(url, { scroll: false });
   }
 
-  function handlePlayerChange(id?: string) {
+  function handlePlayerChange(id?: Base58ID) {
     setFilters({ ...filters, playerId: id });
     updateQueryParam("player", id);
   }
 
-  function handleGameChange(id?: string) {
+  function handleGameChange(id?: Base58ID) {
     setFilters({ ...filters, gameId: id });
     updateQueryParam("game", id);
   }
 
-  function handleClubChange(id: string | null) {
+  function handleClubChange(id: Base58ID | null) {
     setFilters({ ...filters, clubId: id });
     setSelectedClubId(id);
     updateQueryParam("club", id ?? undefined);

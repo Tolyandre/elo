@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
@@ -24,8 +25,8 @@ export function PlayerCombobox({
   onChange,
   allowClear = false,
 }: {
-  value?: string
-  onChange?: (id?: string) => void
+  value?: Base58ID
+  onChange?: (id?: Base58ID) => void
   allowClear?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
@@ -57,6 +58,7 @@ export function PlayerCombobox({
     [players, playerDisplayName]
   )
 
+  // cmdk hands us the raw string; it is one of the ids we put into the items.
   const handleSelect = (currentValue: string) => {
     const next = currentValue === value ? "" : currentValue
 
@@ -64,7 +66,7 @@ export function PlayerCombobox({
       setInternalValue(next)
     }
 
-    onChange?.(next === "" ? undefined : next)
+    onChange?.(next === "" ? undefined : (next as Base58ID))
     setOpen(false)
   }
 

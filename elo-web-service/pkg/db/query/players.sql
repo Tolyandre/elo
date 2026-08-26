@@ -54,7 +54,7 @@ WITH ranked AS (
   ) pm ON pm.match_id = ms.match_id
 )
 SELECT
-  g.id::text AS game_id,
+  g.id AS game_id,
   g.name AS game_name,
   COUNT(*)::int AS matches_count,
   COALESCE(SUM(
@@ -86,7 +86,7 @@ SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL;
 
 -- name: GetPlayerGameEloStats :many
 SELECT
-  g.id::text AS game_id,
+  g.id AS game_id,
   g.name     AS game_name,
   SUM(gas.elo_earned + gas.elo_staked)::float8 AS elo_earned
 FROM match_scores ms

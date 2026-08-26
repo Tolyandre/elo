@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { getMePromise, logout, User } from "./api";
@@ -22,7 +23,7 @@ export type MeState = {
   id: string | undefined;
   name: string | undefined;
   canEdit: boolean;
-  playerId: string | undefined;
+  playerId: Base58ID | undefined;
   isAuthenticated: boolean;
   /**
    * True until the identity is determined (cached value applied or the network
@@ -34,8 +35,8 @@ export type MeState = {
   invalidate: () => void;
   roundToInteger: boolean;
   setRoundToInteger: (value: boolean) => void;
-  selectedClubId: string | null;
-  setSelectedClubId: (value: string | null) => void;
+  selectedClubId: Base58ID | null;
+  setSelectedClubId: (value: Base58ID | null) => void;
   geologistMode: boolean;
   setGeologistMode: (value: boolean) => void;
 };
@@ -46,11 +47,11 @@ export const MeProvider = ({ children }: { children: ReactNode }) => {
   const [id, setId] = useState<string | undefined>(undefined);
   const [name, setName] = useState<string | undefined>(undefined);
   const [canEdit, setCanEdit] = useState<boolean>(false);
-  const [playerId, setPlayerId] = useState<string | undefined>(undefined);
+  const [playerId, setPlayerId] = useState<Base58ID | undefined>(undefined);
   const [loading, setLoading] = useState<boolean>(true);
   const [stamp, setStamp] = useState<number>(0);
   const [roundToInteger, setRoundToInteger] = useLocalStorage<boolean>("matches-round-to-integer", true);
-  const [selectedClubId, setSelectedClubId] = useLocalStorage<string | null>("selected-club-id", null);
+  const [selectedClubId, setSelectedClubId] = useLocalStorage<Base58ID | null>("selected-club-id", null);
   const [geologistMode, setGeologistMode] = useLocalStorage<boolean>("geologist-mode", false);
 
   useEffect(() => {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObject) (ListPlayersResponseObject, error) {
@@ -28,7 +30,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 	if err != nil {
 		return nil, err
 	}
-	playerUserMap := make(map[string]string, len(userLinks))
+	playerUserMap := make(map[id.ID]id.ID, len(userLinks))
 	for _, link := range userLinks {
 		if link.PlayerID != nil {
 			playerUserMap[*link.PlayerID] = link.UserID
@@ -42,7 +44,7 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 	geologistNameMap := make(map[string]string, len(dbPlayers))
 	for _, dp := range dbPlayers {
 		if dp.GeologistName.Valid {
-			geologistNameMap[dp.ID] = dp.GeologistName.String
+			geologistNameMap[string(dp.ID)] = dp.GeologistName.String
 		}
 	}
 
@@ -51,12 +53,12 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 		dayAgo := findPlayer(dayAgoPlayers, p.ID)
 		weekAgo := findPlayer(weekAgoPlayers, p.ID)
 
-		var userID *string
+		var userID *id.ID
 		var geologistName *string
 		if uid, ok := playerUserMap[p.ID]; ok {
 			userID = &uid
 		}
-		if gn, ok := geologistNameMap[p.ID]; ok {
+		if gn, ok := geologistNameMap[string(p.ID)]; ok {
 			geologistName = &gn
 		}
 
@@ -136,7 +138,7 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 		return PatchPlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.UpdatePlayer(ctx, request.Id, name)
+	player, err := s.api.PlayerService.UpdatePlayer(ctx, parseIDParam(request.Id), name)
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
@@ -157,7 +159,7 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 }
 
 func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerRequestObject) (DeletePlayerResponseObject, error) {
-	err := s.api.PlayerService.DeletePlayer(ctx, request.Id)
+	err := s.api.PlayerService.DeletePlayer(ctx, parseIDParam(request.Id))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
@@ -172,7 +174,7 @@ func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerReq
 }
 
 func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStatsRequestObject) (GetPlayerStatsResponseObject, error) {
-	playerID := request.Id
+	playerID := parseIDParam(request.Id)
 
 	player, err := s.api.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {

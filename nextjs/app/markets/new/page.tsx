@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
@@ -49,19 +50,19 @@ export default function NewMarketPage() {
     const [closesAt, setClosesAt] = useSessionStorage("new-market/closesAt", "");
     // match_winner: one "player wins" outcome per target plus the "other"
     // outcome (ties / non-target winners).
-    const [targetPlayerIDs, setTargetPlayerIDs] = useSessionStorage<string[]>("new-market/targetPlayerIDs", []);
+    const [targetPlayerIDs, setTargetPlayerIDs] = useSessionStorage<Base58ID[]>("new-market/targetPlayerIDs", [] as Base58ID[]);
     const [allowOtherPlayers, setAllowOtherPlayers] = useSessionStorage("new-market/allowOtherPlayers", true);
-    const [gameIDs, setGameIDs] = useSessionStorage<string[]>("new-market/gameIDs", []);
+    const [gameIDs, setGameIDs] = useSessionStorage<Base58ID[]>("new-market/gameIDs", [] as Base58ID[]);
     // win_streak
-    const [streakTargetPlayerID, setStreakTargetPlayerID] = useSessionStorage("new-market/streakTargetPlayerID", "");
-    const [streakGameIDs, setStreakGameIDs] = useSessionStorage<string[]>("new-market/streakGameIDs", []);
+    const [streakTargetPlayerID, setStreakTargetPlayerID] = useSessionStorage<Base58ID | "">("new-market/streakTargetPlayerID", "" as Base58ID | "");
+    const [streakGameIDs, setStreakGameIDs] = useSessionStorage<Base58ID[]>("new-market/streakGameIDs", [] as Base58ID[]);
     const [winsRequired, setWinsRequired] = useSessionStorage("new-market/winsRequired", "3");
     const [maxLosses, setMaxLosses] = useSessionStorage("new-market/maxLosses", "");
     // Fixed-odds guarantors: prefilled with the creator's player. They split the
     // market's settlement residual (deficit or surplus) — see ADR-10.
-    const [guarantorIDs, setGuarantorIDs] = useSessionStorage<string[]>(
+    const [guarantorIDs, setGuarantorIDs] = useSessionStorage<Base58ID[]>(
         "new-market/guarantorIDs",
-        me.playerId ? [me.playerId] : [],
+        me.playerId ? [me.playerId] : ([] as Base58ID[]),
     );
     // LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n
     // outcomes).
@@ -87,7 +88,7 @@ export default function NewMarketPage() {
                 payload.allow_other_players = allowOtherPlayers;
                 payload.game_ids = gameIDs;
             } else {
-                payload.target_player_id = streakTargetPlayerID;
+                payload.target_player_id = streakTargetPlayerID || undefined;
                 payload.streak_game_ids = streakGameIDs;
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
@@ -115,31 +116,31 @@ export default function NewMarketPage() {
             const n = targetPlayerIDs.length + 1;
             const price = 1 / n;
             return {
-                id: "", market_type: marketType, status: "open",
+                id: "" as Base58ID, market_type: marketType, status: "open",
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
                 liquidity_b: parseFloat(liquidityB) || 16,
                 outcomes: [
                     ...targetPlayerIDs.map((id) => ({
-                        id: `preview:${id}`, kind: "player" as const, player_id: id, name: "",
+                        id: `preview:` as Base58ID, kind: "player" as const, player_id: id, name: "",
                         price, shares: 0, pool: 0,
                     })),
-                    { id: "preview:other", kind: "other" as const, player_id: null, name: "Ничья", price, shares: 0, pool: 0 },
+                    { id: "preview:other" as Base58ID, kind: "other" as const, player_id: null, name: "Ничья", price, shares: 0, pool: 0 },
                 ],
                 params: { target_player_ids: targetPlayerIDs, allow_other_players: allowOtherPlayers, game_ids: gameIDs },
             };
         }
         return {
-            id: "", market_type: marketType, status: "open",
+            id: "" as Base58ID, market_type: marketType, status: "open",
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
             liquidity_b: parseFloat(liquidityB) || 16,
             outcomes: [
-                { id: "preview:yes", kind: "yes" as const, player_id: null, name: "Да", price: 0.5, shares: 0, pool: 0 },
-                { id: "preview:no", kind: "no" as const, player_id: null, name: "Нет", price: 0.5, shares: 0, pool: 0 },
+                { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", price: 0.5, shares: 0, pool: 0 },
+                { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", price: 0.5, shares: 0, pool: 0 },
             ],
             params: {
-                target_player_id: streakTargetPlayerID, game_ids: streakGameIDs,
+                target_player_id: streakTargetPlayerID || ("" as Base58ID), game_ids: streakGameIDs,
                 wins_required: parseInt(winsRequired) || 0,
                 max_losses: maxLosses !== "" ? parseInt(maxLosses) : null,
             },
@@ -244,7 +245,7 @@ export default function NewMarketPage() {
                     <>
                         <div className="space-y-1.5">
                             <Label>Целевой игрок</Label>
-                            <PlayerCombobox value={streakTargetPlayerID || undefined} onChange={v => setStreakTargetPlayerID(v ?? "")} allowClear />
+                            <PlayerCombobox value={streakTargetPlayerID || undefined} onChange={v => setStreakTargetPlayerID((v ?? "") as Base58ID | "")} allowClear />
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры</Label>

@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import React, { useState, useRef, useEffect } from "react"
 import { usePlayers } from "@/app/players/PlayersContext"
@@ -344,7 +345,7 @@ export function SetupScreen({
     ) => void
 }) {
     const { players: allPlayers, playerDisplayName } = usePlayers()
-    const [selectedIds, setSelectedIds] = useState<string[]>(state.players.map((p) => p.id))
+    const [selectedIds, setSelectedIds] = useState<Base58ID[]>(state.players.map((p) => p.id))
     const [playerConfigs, setPlayerConfigs] = useState<PlayerConfig[]>(state.players)
     const [mode, setMode] = useState<TimerMode>(state.mode)
     const [initialMinutes, setInitialMinutes] = useState(Math.floor(state.initialTimeMs / 60_000))

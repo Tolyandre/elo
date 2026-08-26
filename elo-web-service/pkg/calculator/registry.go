@@ -13,10 +13,10 @@
 //     the next version. Applied at startup (see MigrateData) so reads always
 //     return the current version.
 //
-// Storage shape convention: every player reference MUST live under a key named
-// "player_id" (or end in "_id"), never as an object key. This lets the
-// idcodec middleware rewrite canonical/short ids at the HTTP boundary
-// automatically — see pkg/api/idcodec_middleware.go.
+// Storage shape convention: every player reference lives under a key whose
+// schema entry is marked "x-entity-id": true (currently always "player_id"),
+// never as an object key, so the schema-driven id walk (ids.go) rewrites
+// canonical/wire ids at the boundary — see ADR-12.
 package calculator
 
 import (
@@ -51,6 +51,9 @@ type Schema struct {
 	// map[fromVersion] → upgrade to fromVersion+1. Empty for v1-only kinds.
 	migrators map[int]migrator
 	validator *jsonschema.Schema
+	// rawSchema is the decoded JSON Schema document; the x-entity-id walk
+	// (ids.go) reads it to find id-marked properties.
+	rawSchema map[string]any
 }
 
 type migrator func(json.RawMessage) (json.RawMessage, error)
@@ -60,7 +63,20 @@ var registry = map[string]*Schema{}
 // register is called from init() of each calculator's file.
 func register(s *Schema, schemaFile string) {
 	s.validator = mustLoadSchema(schemaFile)
+	s.rawSchema = mustLoadRawSchema(schemaFile)
 	registry[s.Kind] = s
+}
+
+func mustLoadRawSchema(file string) map[string]any {
+	b, err := schemasFS.ReadFile(file)
+	if err != nil {
+		panic(fmt.Sprintf("calculator: embed read %s: %v", file, err))
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(b, &doc); err != nil {
+		panic(fmt.Sprintf("calculator: parse %s: %v", file, err))
+	}
+	return doc
 }
 
 func mustLoadSchema(file string) *jsonschema.Schema {

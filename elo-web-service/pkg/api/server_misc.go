@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) GetPing(_ context.Context, _ GetPingRequestObject) (GetPingResponseObject, error) {
@@ -33,13 +35,13 @@ func (s *StrictServer) ParseVoiceInput(ctx context.Context, request ParseVoiceIn
 
 	validScores := make([]VoiceScore, 0, len(parsed.Scores))
 	for _, s := range parsed.Scores {
-		validScores = append(validScores, VoiceScore{PlayerId: s.PlayerID, Points: s.Points})
+		validScores = append(validScores, VoiceScore{PlayerId: id.ID(s.PlayerID), Points: s.Points})
 	}
 
 	return ParseVoiceInput200JSONResponse{
 		Status: "success",
 		Data: VoiceParseResult{
-			GameId: parsed.GameID,
+			GameId: idPtr(parsed.GameID),
 			Scores: validScores,
 		},
 	}, nil

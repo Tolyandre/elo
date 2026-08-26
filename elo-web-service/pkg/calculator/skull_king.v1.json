@@ -15,7 +15,7 @@
         "additionalProperties": false,
         "required": ["player_id", "name"],
         "properties": {
-          "player_id": { "type": "string", "minLength": 1 },
+          "player_id": { "type": "string", "minLength": 1, "x-entity-id": true },
           "name": { "type": "string", "minLength": 1 }
         }
       }
@@ -44,6 +44,6 @@
         }
       }
     },
-    "fallback_game_id": { "type": ["string", "null"] }
+    "fallback_game_id": { "type": ["string", "null"], "x-entity-id": true }
   }
 }

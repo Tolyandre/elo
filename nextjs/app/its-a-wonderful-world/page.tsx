@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import React, { useState, useMemo } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -43,7 +44,7 @@ export default function ItsAWonderfulWorldPage() {
     const router = useRouter();
 
     const [gameState, setGameState] = useLocalStorage<GameState>(LS_KEY, INITIAL);
-    const [setupPlayerIds, setSetupPlayerIds] = useState<string[]>(
+    const [setupPlayerIds, setSetupPlayerIds] = useState<Base58ID[]>(
         gameState.players.map(p => p.id)
     );
     const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
@@ -52,7 +53,7 @@ export default function ItsAWonderfulWorldPage() {
 
     // Tournament selection for the saved match. Mandatory tournaments (all players
     // are members) are applied server-side; checked carries the host's explicit picks.
-    const [checkedTournamentIds, setCheckedTournamentIds] = useState<string[]>([]);
+    const [checkedTournamentIds, setCheckedTournamentIds] = useState<Base58ID[]>([]);
     const tournamentDate = useMemo(() => new Date(), []);
     const tournamentPlayerIds = useMemo(() => gameState.players.map(p => p.id), [gameState.players]);
     const {
@@ -60,7 +61,7 @@ export default function ItsAWonderfulWorldPage() {
         isMandatory: isTournamentMandatory,
         idsToSubmit: tournamentIdsToSubmit,
     } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
-    const toggleTournament = (id: string, checked: boolean) =>
+    const toggleTournament = (id: Base58ID, checked: boolean) =>
         setCheckedTournamentIds(prev =>
             checked ? [...new Set([...prev, id])] : prev.filter(t => t !== id),
         );

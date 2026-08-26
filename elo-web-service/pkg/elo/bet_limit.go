@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // CalcBetLimit computes the bet limit for a player given their current Elo and the active settings.
@@ -18,7 +19,7 @@ func CalcBetLimit(playerElo float64, settings EloSettings) float64 {
 
 // RecalculateBetLimits updates bet_limit for the given players using current Elo settings.
 // Must be called within a transaction (q is a transactional *db.Queries).
-func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []string) error {
+func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []id.ID) error {
 	if len(playerIDs) == 0 {
 		return nil
 	}

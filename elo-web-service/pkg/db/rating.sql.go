@@ -9,13 +9,14 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const deleteGameArenaSettlementByMatch = `-- name: DeleteGameArenaSettlementByMatch :exec
 DELETE FROM game_arena_settlement WHERE match_id = $1
 `
 
-func (q *Queries) DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *string) error {
+func (q *Queries) DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error {
 	_, err := q.db.Exec(ctx, deleteGameArenaSettlementByMatch, matchID)
 	return err
 }
@@ -24,7 +25,7 @@ const deleteGlobalArenaSettlementByMatch = `-- name: DeleteGlobalArenaSettlement
 DELETE FROM global_arena_settlement WHERE match_id = $1 AND discriminator = 'match'
 `
 
-func (q *Queries) DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *string) error {
+func (q *Queries) DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error {
 	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMatch, matchID)
 	return err
 }
@@ -37,8 +38,8 @@ WHERE ms.player_id = $1 AND m.game_id = $2 AND m.date >= $3 AND m.date <= $4
 `
 
 type GetPlayerGameMatchCountInPeriodParams struct {
-	PlayerID string             `json:"player_id"`
-	GameID   string             `json:"game_id"`
+	PlayerID id.ID              `json:"player_id"`
+	GameID   id.ID              `json:"game_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 	Date_2   pgtype.Timestamptz `json:"date_2"`
 }
@@ -64,7 +65,7 @@ WHERE ms.player_id = $1 AND m.date >= $2 AND m.date <= $3
 `
 
 type GetPlayerGlobalMatchCountInPeriodParams struct {
-	PlayerID string             `json:"player_id"`
+	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 	Date_2   pgtype.Timestamptz `json:"date_2"`
 }
@@ -87,8 +88,8 @@ LIMIT 1
 `
 
 type GetPlayerLatestGameEloParams struct {
-	PlayerID string `json:"player_id"`
-	GameID   string `json:"game_id"`
+	PlayerID id.ID `json:"player_id"`
+	GameID   id.ID `json:"game_id"`
 }
 
 func (q *Queries) GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error) {
@@ -109,10 +110,10 @@ LIMIT 1
 `
 
 type GetPlayerLatestGameEloBeforeMatchParams struct {
-	PlayerID string             `json:"player_id"`
-	GameID   string             `json:"game_id"`
+	PlayerID id.ID              `json:"player_id"`
+	GameID   id.ID              `json:"game_id"`
 	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *string            `json:"match_id"`
+	MatchID  *id.ID             `json:"match_id"`
 }
 
 func (q *Queries) GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error) {
@@ -137,8 +138,8 @@ LIMIT 1
 `
 
 type GetPlayerLatestGameRatingParams struct {
-	PlayerID string `json:"player_id"`
-	GameID   string `json:"game_id"`
+	PlayerID id.ID `json:"player_id"`
+	GameID   id.ID `json:"game_id"`
 }
 
 type GetPlayerLatestGameRatingRow struct {
@@ -165,10 +166,10 @@ LIMIT 1
 `
 
 type GetPlayerLatestGameRatingBeforeMatchParams struct {
-	PlayerID string             `json:"player_id"`
-	GameID   string             `json:"game_id"`
+	PlayerID id.ID              `json:"player_id"`
+	GameID   id.ID              `json:"game_id"`
 	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *string            `json:"match_id"`
+	MatchID  *id.ID             `json:"match_id"`
 }
 
 type GetPlayerLatestGameRatingBeforeMatchRow struct {
@@ -197,7 +198,7 @@ LIMIT 1
 `
 
 // Returns the true Elo value (elo_after) for Elo calculations.
-func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID string) (float64, error) {
+func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID id.ID) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestGlobalElo, playerID)
 	var rating float64
 	err := row.Scan(&rating)
@@ -214,7 +215,7 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalEloAtDateParams struct {
-	PlayerID string             `json:"player_id"`
+	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 }
 
@@ -235,9 +236,9 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalEloBeforeMatchParams struct {
-	PlayerID string             `json:"player_id"`
+	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *string            `json:"match_id"`
+	MatchID  *id.ID             `json:"match_id"`
 }
 
 func (q *Queries) GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error) {
@@ -261,7 +262,7 @@ type GetPlayerLatestGlobalRatingRow struct {
 }
 
 // Returns the display rating (rating_after) and current league for rating-track calculations.
-func (q *Queries) GetPlayerLatestGlobalRating(ctx context.Context, playerID string) (GetPlayerLatestGlobalRatingRow, error) {
+func (q *Queries) GetPlayerLatestGlobalRating(ctx context.Context, playerID id.ID) (GetPlayerLatestGlobalRatingRow, error) {
 	row := q.db.QueryRow(ctx, getPlayerLatestGlobalRating, playerID)
 	var i GetPlayerLatestGlobalRatingRow
 	err := row.Scan(&i.Rating, &i.League)
@@ -278,7 +279,7 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalRatingAtDateParams struct {
-	PlayerID string             `json:"player_id"`
+	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 }
 
@@ -304,9 +305,9 @@ LIMIT 1
 `
 
 type GetPlayerLatestGlobalRatingBeforeMatchParams struct {
-	PlayerID string             `json:"player_id"`
+	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *string            `json:"match_id"`
+	MatchID  *id.ID             `json:"match_id"`
 }
 
 type GetPlayerLatestGlobalRatingBeforeMatchRow struct {
@@ -329,11 +330,11 @@ ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
 `
 
 type ListLatestGameEloPerPlayerRow struct {
-	PlayerID     string  `json:"player_id"`
+	PlayerID     id.ID   `json:"player_id"`
 	GameEloAfter float64 `json:"game_elo_after"`
 }
 
-func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameEloPerPlayerRow, error) {
+func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error) {
 	rows, err := q.db.Query(ctx, listLatestGameEloPerPlayer, gameID)
 	if err != nil {
 		return nil, err
@@ -365,13 +366,13 @@ ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
 `
 
 type ListLatestGameRatingPerPlayerRow struct {
-	PlayerID        string  `json:"player_id"`
+	PlayerID        id.ID   `json:"player_id"`
 	GameRatingAfter float64 `json:"game_rating_after"`
 	GameEloAfter    float64 `json:"game_elo_after"`
 	League          string  `json:"league"`
 }
 
-func (q *Queries) ListLatestGameRatingPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameRatingPerPlayerRow, error) {
+func (q *Queries) ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error) {
 	rows, err := q.db.Query(ctx, listLatestGameRatingPerPlayer, gameID)
 	if err != nil {
 		return nil, err
@@ -415,9 +416,9 @@ ORDER BY m.date ASC, m.id ASC, s.score DESC
 `
 
 type ListMatchesWithPlayersByGameFromDBRow struct {
-	MatchID          string             `json:"match_id"`
+	MatchID          id.ID              `json:"match_id"`
 	Date             pgtype.Timestamptz `json:"date"`
-	PlayerID         string             `json:"player_id"`
+	PlayerID         id.ID              `json:"player_id"`
 	PlayerName       string             `json:"player_name"`
 	Score            float64            `json:"score"`
 	GameRatingStaked pgtype.Float8      `json:"game_rating_staked"`
@@ -425,7 +426,7 @@ type ListMatchesWithPlayersByGameFromDBRow struct {
 	GameRatingAfter  pgtype.Float8      `json:"game_rating_after"`
 }
 
-func (q *Queries) ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID string) ([]ListMatchesWithPlayersByGameFromDBRow, error) {
+func (q *Queries) ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID id.ID) ([]ListMatchesWithPlayersByGameFromDBRow, error) {
 	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGameFromDB, gameID)
 	if err != nil {
 		return nil, err
@@ -468,7 +469,7 @@ type RatingHistoryRow struct {
 }
 
 // Returns rating_after and elo_after ordered by date for the player graph.
-func (q *Queries) RatingHistory(ctx context.Context, playerID string) ([]RatingHistoryRow, error) {
+func (q *Queries) RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error) {
 	rows, err := q.db.Query(ctx, ratingHistory, playerID)
 	if err != nil {
 		return nil, err
@@ -506,10 +507,10 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGameArenaSettlementByMatchParams struct {
-	MatchID      *string `json:"match_id"`
-	ID           string  `json:"id"`
-	GameID       string  `json:"game_id"`
-	PlayerID     string  `json:"player_id"`
+	MatchID      *id.ID  `json:"match_id"`
+	ID           id.ID   `json:"id"`
+	GameID       id.ID   `json:"game_id"`
+	PlayerID     id.ID   `json:"player_id"`
 	RatingAfter  float64 `json:"rating_after"`
 	EloAfter     float64 `json:"elo_after"`
 	EloStaked    float64 `json:"elo_staked"`
@@ -554,9 +555,9 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByMatchParams struct {
-	MatchID      *string `json:"match_id"`
-	ID           string  `json:"id"`
-	PlayerID     string  `json:"player_id"`
+	MatchID      *id.ID  `json:"match_id"`
+	ID           id.ID   `json:"id"`
+	PlayerID     id.ID   `json:"player_id"`
 	RatingAfter  float64 `json:"rating_after"`
 	EloAfter     float64 `json:"elo_after"`
 	EloStaked    float64 `json:"elo_staked"`

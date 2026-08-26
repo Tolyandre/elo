@@ -62,7 +62,7 @@ VoiceScore:
   type: object
   properties:
     player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     points:
       type: integer
   required: [player_id, points]
@@ -71,7 +71,8 @@ VoiceParseResult:
   type: object
   properties:
     game_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
     scores:
       type: array

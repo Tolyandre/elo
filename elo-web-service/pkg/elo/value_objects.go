@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // EloSettings holds the Elo calculation constants effective at a point in time.
@@ -34,33 +35,33 @@ type EloSettings struct {
 // decoupling the domain from the generated DB type.
 func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 	return EloSettings{
-		K:             row.EloConstK,
-		D:             row.EloConstD,
-		StartingElo:   row.StartingElo,
-		WinReward:     row.WinReward,
+		K:                     row.EloConstK,
+		D:                     row.EloConstD,
+		StartingElo:           row.StartingElo,
+		WinReward:             row.WinReward,
 		NewbieLeagueEarnedMin: row.NewbieLeagueEarnedMin,
 		NewbieLeagueEarnedMax: row.NewbieLeagueEarnedMax,
 		NewbieLeagueEarnedTau: row.NewbieLeagueEarnedTau,
 		NewbieLeagueGoalGap:   row.NewbieLeagueGoalGap,
 		StartingRatingGlobal:  row.StartingRatingGlobalArena,
 		StartingRatingGame:    row.StartingRatingGameArena,
-		EliteMatches6M:   int(row.EliteLeagueMatches6months),
-		EliteMatches2M:   int(row.EliteLeagueMatches2months),
+		EliteMatches6M:        int(row.EliteLeagueMatches6months),
+		EliteMatches2M:        int(row.EliteLeagueMatches2months),
 	}
 }
 
 // MatchPrevState bundles all per-player prior state needed to compute one match's settlements.
 type MatchPrevState struct {
-	Elo        map[string]float64 // true global Elo before this match
-	GameElo    map[string]float64 // true game Elo before this match
-	Rating     map[string]float64 // display global rating before this match
-	GameRating map[string]float64 // display game rating before this match
-	League     map[string]string  // global league before this match ("newbie"/"amateur"/"elite")
-	GameLeague map[string]string  // game league before this match ("newbie"/"amateur")
+	Elo        map[id.ID]float64 // true global Elo before this match
+	GameElo    map[id.ID]float64 // true game Elo before this match
+	Rating     map[id.ID]float64 // display global rating before this match
+	GameRating map[id.ID]float64 // display game rating before this match
+	League     map[id.ID]string  // global league before this match ("newbie"/"amateur"/"elite")
+	GameLeague map[id.ID]string  // game league before this match ("newbie"/"amateur")
 
 	// Elite promotion match counts for the match date (includes the current match).
-	Count6M map[string]int // matches in last 6 months
-	Count2M map[string]int // matches in last 2 months
+	Count6M map[id.ID]int // matches in last 6 months
+	Count2M map[id.ID]int // matches in last 2 months
 
 	Settings EloSettings
 }
@@ -70,8 +71,8 @@ type MatchPrevState struct {
 type EloCalcFunc func(
 	ctx context.Context,
 	q *db.Queries,
-	matchID, gameID string,
-	playerScores map[string]float64,
+	matchID, gameID id.ID,
+	playerScores map[id.ID]float64,
 	state MatchPrevState,
 ) error
 

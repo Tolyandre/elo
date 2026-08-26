@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func textPtr(t pgtype.Text) *string {
@@ -22,7 +23,7 @@ func clubFromGetRows(rows []db.GetClubRow) Club {
 	c := Club{
 		Id:        rows[0].ClubID,
 		Name:      rows[0].ClubName,
-		PlayerIds: []string{},
+		PlayerIds: []id.ID{},
 	}
 	if rows[0].ClubGeologistName.Valid {
 		gn := rows[0].ClubGeologistName.String
@@ -44,38 +45,38 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 	}
 
 	clubsMap := map[string]*Club{}
-	order := []string{}
+	order := []id.ID{}
 
 	for _, r := range rows {
-		if _, ok := clubsMap[r.ClubID]; !ok {
+		if _, ok := clubsMap[string(r.ClubID)]; !ok {
 			c := Club{
 				Id:        r.ClubID,
 				Name:      r.ClubName,
-				PlayerIds: []string{},
+				PlayerIds: []id.ID{},
 			}
 			if r.ClubGeologistName.Valid {
 				gn := r.ClubGeologistName.String
 				c.GeologistName = &gn
 			}
 			c.Icon = textPtr(r.ClubIcon)
-			clubsMap[r.ClubID] = &c
+			clubsMap[string(r.ClubID)] = &c
 			order = append(order, r.ClubID)
 		}
 		if r.PlayerID != nil {
-			clubsMap[r.ClubID].PlayerIds = append(clubsMap[r.ClubID].PlayerIds, *r.PlayerID)
+			clubsMap[string(r.ClubID)].PlayerIds = append(clubsMap[string(r.ClubID)].PlayerIds, *r.PlayerID)
 		}
 	}
 
 	result := make([]Club, 0, len(order))
-	for _, id := range order {
-		result = append(result, *clubsMap[id])
+	for _, cid := range order {
+		result = append(result, *clubsMap[string(cid)])
 	}
 
 	return ListClubs200JSONResponse{Status: "success", Data: result}, nil
 }
 
 func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error) {
-	rows, err := s.api.ClubService.GetClub(ctx, request.Id)
+	rows, err := s.api.ClubService.GetClub(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +104,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 	c := Club{
 		Id:        club.ID,
 		Name:      club.Name,
-		PlayerIds: []string{},
+		PlayerIds: []id.ID{},
 	}
 	if club.GeologistName.Valid {
 		gn := club.GeologistName.String
@@ -146,7 +147,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateName {
-		if _, err := s.api.ClubService.UpdateClub(ctx, request.Id, *request.Body.Name); err != nil {
+		if _, err := s.api.ClubService.UpdateClub(ctx, parseIDParam(request.Id), *request.Body.Name); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
@@ -158,7 +159,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateIcon {
-		if _, err := s.api.ClubService.UpdateClubIcon(ctx, request.Id, iconArg); err != nil {
+		if _, err := s.api.ClubService.UpdateClubIcon(ctx, parseIDParam(request.Id), iconArg); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
@@ -166,7 +167,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		}
 	}
 
-	rows, err := s.api.ClubService.GetClub(ctx, request.Id)
+	rows, err := s.api.ClubService.GetClub(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +179,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 }
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
-	_, err := s.api.ClubService.DeleteClub(ctx, request.Id)
+	_, err := s.api.ClubService.DeleteClub(ctx, parseIDParam(request.Id))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
@@ -198,7 +199,7 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 		return AddClubMember400JSONResponse{Status: "fail", Message: "player_id is required"}, nil
 	}
 
-	err := s.api.ClubService.AddMember(ctx, request.Id, playerID)
+	err := s.api.ClubService.AddMember(ctx, parseIDParam(request.Id), playerID)
 	if err != nil {
 		// OpenAPI only defines 200/400/401/403 for AddClubMember, so a duplicate
 		// (club_id, player_id) membership (unique violation) has no 409 in the
@@ -213,7 +214,7 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 }
 
 func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error) {
-	err := s.api.ClubService.RemoveMember(ctx, request.Id, request.PlayerId)
+	err := s.api.ClubService.RemoveMember(ctx, parseIDParam(request.Id), parseIDParam(request.PlayerId))
 	if err != nil {
 		return nil, err
 	}

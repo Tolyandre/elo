@@ -21,7 +21,7 @@ func (s *StrictServer) CreatePlayerCorrection(ctx context.Context, request Creat
 		return CreatePlayerCorrection400JSONResponse{Status: "fail", Message: "request body required"}, nil
 	}
 
-	if err := s.api.CorrectionService.CreateGlobalArenaRatingCorrection(ctx, request.Body.Id, request.Id, float64(request.Body.Diff)); err != nil {
+	if err := s.api.CorrectionService.CreateGlobalArenaRatingCorrection(ctx, request.Body.Id, parseIDParam(request.Id), float64(request.Body.Diff)); err != nil {
 		return nil, err
 	}
 

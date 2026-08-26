@@ -57,14 +57,14 @@ func (s *StrictServer) ListCorrections(ctx context.Context, request ListCorrecti
 		}
 	} else {
 		if params.PlayerId != nil {
-			pid := *params.PlayerId
+			pid := string(parseIDParam(*params.PlayerId))
 			playerID = &pid
 		}
 		if params.ClubId != nil {
 			if *params.ClubId == "__no_club__" {
 				noClub = true
 			} else {
-				cl := *params.ClubId
+				cl := string(parseIDParam(*params.ClubId))
 				clubID = &cl
 			}
 		}
@@ -76,8 +76,8 @@ func (s *StrictServer) ListCorrections(ctx context.Context, request ListCorrecti
 	}
 
 	rows, err := s.api.CorrectionService.ListCorrectionsPaginated(ctx, db.ListCorrectionsPaginatedParams{
-		PlayerID:   playerID,
-		ClubID:     clubID,
+		PlayerID:   idPtr(playerID),
+		ClubID:     idPtr(clubID),
 		NoClub:     pgtype.Bool{Bool: noClub, Valid: noClub},
 		CursorDate: cursorDate,
 		Limit:      limit,

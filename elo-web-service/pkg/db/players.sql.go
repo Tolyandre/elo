@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const addPlayersIfNotExists = `-- name: AddPlayersIfNotExists :many
@@ -19,12 +20,12 @@ RETURNING id, name
 `
 
 type AddPlayersIfNotExistsParams struct {
-	Column1 []string `json:"column_1"`
+	Column1 []id.ID  `json:"column_1"`
 	Column2 []string `json:"column_2"`
 }
 
 type AddPlayersIfNotExistsRow struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -56,7 +57,7 @@ RETURNING id, name, geologist_name, bet_limit
 `
 
 type CreatePlayerParams struct {
-	ID            string      `json:"id"`
+	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
 }
@@ -77,8 +78,8 @@ const deletePlayer = `-- name: DeletePlayer :exec
 DELETE FROM players WHERE id = $1
 `
 
-func (q *Queries) DeletePlayer(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, deletePlayer, id)
+func (q *Queries) DeletePlayer(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, deletePlayer, argID)
 	return err
 }
 
@@ -87,8 +88,8 @@ SELECT id, name, geologist_name, bet_limit FROM players
 WHERE id = $1
 `
 
-func (q *Queries) GetPlayer(ctx context.Context, id string) (Player, error) {
-	row := q.db.QueryRow(ctx, getPlayer, id)
+func (q *Queries) GetPlayer(ctx context.Context, argID id.ID) (Player, error) {
+	row := q.db.QueryRow(ctx, getPlayer, argID)
 	var i Player
 	err := row.Scan(
 		&i.ID,
@@ -118,7 +119,7 @@ func (q *Queries) GetPlayerByName(ctx context.Context, name string) (Player, err
 
 const getPlayerGameEloStats = `-- name: GetPlayerGameEloStats :many
 SELECT
-  g.id::text AS game_id,
+  g.id AS game_id,
   g.name     AS game_name,
   SUM(gas.elo_earned + gas.elo_staked)::float8 AS elo_earned
 FROM match_scores ms
@@ -131,12 +132,12 @@ ORDER BY elo_earned DESC
 `
 
 type GetPlayerGameEloStatsRow struct {
-	GameID    string  `json:"game_id"`
+	GameID    id.ID   `json:"game_id"`
 	GameName  string  `json:"game_name"`
 	EloEarned float64 `json:"elo_earned"`
 }
 
-func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID string) ([]GetPlayerGameEloStatsRow, error) {
+func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameEloStats, playerID)
 	if err != nil {
 		return nil, err
@@ -168,7 +169,7 @@ WITH ranked AS (
   ) pm ON pm.match_id = ms.match_id
 )
 SELECT
-  g.id::text AS game_id,
+  g.id AS game_id,
   g.name AS game_name,
   COUNT(*)::int AS matches_count,
   COALESCE(SUM(
@@ -197,7 +198,7 @@ LIMIT 10
 `
 
 type GetPlayerGameStatsRow struct {
-	GameID          string  `json:"game_id"`
+	GameID          id.ID   `json:"game_id"`
 	GameName        string  `json:"game_name"`
 	MatchesCount    int32   `json:"matches_count"`
 	NormalizedScore float64 `json:"normalized_score"`
@@ -215,7 +216,7 @@ type GetPlayerGameStatsRow struct {
 //	NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 //	every player in each of the target player's matches and the outer query then
 //	filters down to the target player's own rows.
-func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID string) ([]GetPlayerGameStatsRow, error) {
+func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error) {
 	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
 	if err != nil {
 		return nil, err
@@ -248,8 +249,8 @@ SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL
 `
 
 type ListPlayerUserLinksRow struct {
-	PlayerID *string `json:"player_id"`
-	UserID   string  `json:"user_id"`
+	PlayerID *id.ID `json:"player_id"`
+	UserID   id.ID  `json:"user_id"`
 }
 
 func (q *Queries) ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error) {
@@ -306,9 +307,9 @@ const lockPlayerForEloCalculation = `-- name: LockPlayerForEloCalculation :one
 SELECT id FROM players WHERE id = $1 FOR UPDATE
 `
 
-func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, lockPlayerForEloCalculation, id)
-	var id_2 string
+func (q *Queries) LockPlayerForEloCalculation(ctx context.Context, argID id.ID) (id.ID, error) {
+	row := q.db.QueryRow(ctx, lockPlayerForEloCalculation, argID)
+	var id_2 id.ID
 	err := row.Scan(&id_2)
 	return id_2, err
 }
@@ -321,7 +322,7 @@ RETURNING id, name, geologist_name, bet_limit
 `
 
 type UpdatePlayerParams struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 

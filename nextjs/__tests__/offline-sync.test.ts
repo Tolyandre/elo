@@ -2,10 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
 import { OfflineStore, PendingMatch, PendingPlayer } from '../lib/offline/types';
+import { Base58ID } from '../lib/id';
 
 const noopPersist = () => { };
 
-type RawMatch = Omit<PendingMatch, 'tournamentIds'> & { tournamentIds?: string[] };
+// uuidv7() as Base58ID mints the final ids; tests treat them as opaque ids, so cast once here.
+const id = () => uuidv7() as Base58ID;
+
+type RawMatch = Omit<PendingMatch, 'tournamentIds'> & { tournamentIds?: PendingMatch['tournamentIds'] };
 
 function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineStore['players']; matches?: RawMatch[] }): OfflineStore {
     return {
@@ -22,11 +26,11 @@ function okApi(): SyncApi & { calls: string[] } {
         calls,
         createGame: vi.fn(async (body) => {
             calls.push(`game:${body.name}`);
-            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: string }>;
+            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
         createPlayer: vi.fn(async (body) => {
             calls.push(`player:${body.name}`);
-            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: string }>;
+            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
         addClubMember: vi.fn(async ({ club_id, player_id }) => {
             calls.push(`club:${club_id}:${player_id}`);
@@ -34,26 +38,26 @@ function okApi(): SyncApi & { calls: string[] } {
         }),
         addMatch: vi.fn(async (body) => {
             calls.push(`match:${body.game_id}`);
-            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: string }>;
+            return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
     };
 }
 
-const pendingGame = (clientId: string, name: string, createdAt = '2026-06-01T10:00:00Z') =>
+const pendingGame = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z') =>
     ({ clientId, name, createdAt, status: 'pending' as const });
-const pendingPlayer = (clientId: string, name: string, createdAt = '2026-06-01T10:00:00Z', clubIds: string[] = []): PendingPlayer =>
+const pendingPlayer = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z', clubIds: Base58ID[] = []): PendingPlayer =>
     ({ clientId, name, createdAt, status: 'pending', clubIds });
 
 // A stable server-side game/player that a pending match can reference.
-const SERVER_GAME_ID = '018f6b00-0000-7000-8000-000000000005';
-const SERVER_PLAYER_ID = '018f6b00-0000-7000-8000-000000000001';
+const SERVER_GAME_ID = '018f6b00-0000-7000-8000-000000000005' as Base58ID;
+const SERVER_PLAYER_ID = '018f6b00-0000-7000-8000-000000000001' as Base58ID;
 
 describe('syncOffline', () => {
     it('syncs games, then players, then matches using their final ids', async () => {
         const api = okApi();
-        const gameId = uuidv7();
-        const playerId = uuidv7();
-        const matchId = uuidv7();
+        const gameId = uuidv7() as Base58ID;
+        const playerId = uuidv7() as Base58ID;
+        const matchId = uuidv7() as Base58ID;
         const store = makeStore({
             games: [pendingGame(gameId, 'Каркассон')],
             players: [pendingPlayer(playerId, 'Вася')],
@@ -90,7 +94,7 @@ describe('syncOffline', () => {
 
     it('forwards tournament_ids on a synced match', async () => {
         const api = okApi();
-        const matchId = uuidv7();
+        const matchId = uuidv7() as Base58ID;
         const store = makeStore({
             matches: [{
                 clientId: matchId,
@@ -98,7 +102,7 @@ describe('syncOffline', () => {
                 status: 'pending',
                 gameId: SERVER_GAME_ID,
                 score: { '1': 1, '2': 2 },
-                tournamentIds: ['7', '9'],
+                tournamentIds: ['7' as Base58ID, '9' as Base58ID],
             }],
         });
 
@@ -111,8 +115,8 @@ describe('syncOffline', () => {
         const api = okApi();
         const store = makeStore({
             games: [
-                pendingGame(uuidv7(), 'Вторая', '2026-06-02T10:00:00Z'),
-                pendingGame(uuidv7(), 'Первая', '2026-06-01T10:00:00Z'),
+                pendingGame(uuidv7() as Base58ID, 'Вторая', '2026-06-02T10:00:00Z'),
+                pendingGame(uuidv7() as Base58ID, 'Первая', '2026-06-01T10:00:00Z'),
             ],
         });
 
@@ -123,7 +127,7 @@ describe('syncOffline', () => {
 
     it('keeps an HTTP-rejected item as error and continues with the rest', async () => {
         const api = okApi();
-        const dupId = uuidv7();
+        const dupId = uuidv7() as Base58ID;
         api.createGame = vi.fn(async (body) =>
             body.name === 'Дубль'
                 ? { ok: false as const, status: 409, message: 'game with this name already exists' }
@@ -131,7 +135,7 @@ describe('syncOffline', () => {
         const store = makeStore({
             games: [
                 pendingGame(dupId, 'Дубль', '2026-06-01T10:00:00Z'),
-                pendingGame(uuidv7(), 'Нормальная', '2026-06-02T10:00:00Z'),
+                pendingGame(uuidv7() as Base58ID, 'Нормальная', '2026-06-02T10:00:00Z'),
             ],
         });
 
@@ -151,10 +155,10 @@ describe('syncOffline', () => {
         const api = okApi();
         api.createPlayer = vi.fn(async () => { throw new TypeError('fetch failed'); });
         const store = makeStore({
-            games: [pendingGame(uuidv7(), 'Игра')],
-            players: [pendingPlayer(uuidv7(), 'Игрок')],
+            games: [pendingGame(uuidv7() as Base58ID, 'Игра')],
+            players: [pendingPlayer(uuidv7() as Base58ID, 'Игрок')],
             matches: [{
-                clientId: uuidv7(),
+                clientId: uuidv7() as Base58ID,
                 createdAt: '2026-06-01T11:00:00Z',
                 status: 'pending',
                 gameId: SERVER_GAME_ID,
@@ -175,9 +179,9 @@ describe('syncOffline', () => {
         const api = okApi();
         api.createGame = vi.fn(async () => ({ ok: false as const, status: 401, message: 'unauthorized' }));
         const store = makeStore({
-            games: [pendingGame(uuidv7(), 'Игра')],
+            games: [pendingGame(uuidv7() as Base58ID, 'Игра')],
             matches: [{
-                clientId: uuidv7(),
+                clientId: uuidv7() as Base58ID,
                 createdAt: '2026-06-01T11:00:00Z',
                 status: 'pending',
                 gameId: SERVER_GAME_ID,
@@ -198,7 +202,7 @@ describe('syncOffline', () => {
         const now = new Date('2026-06-12T12:00:00.000Z');
         const store = makeStore({
             matches: [{
-                clientId: uuidv7(),
+                clientId: uuidv7() as Base58ID,
                 createdAt: '2026-06-12T13:00:00Z', // device clock ran ahead
                 status: 'pending',
                 gameId: SERVER_GAME_ID,
@@ -215,7 +219,7 @@ describe('syncOffline', () => {
         const api = okApi();
         const snapshots: number[] = [];
         const store = makeStore({
-            games: [pendingGame(uuidv7(), 'А'), pendingGame(uuidv7(), 'Б', '2026-06-02T10:00:00Z')],
+            games: [pendingGame(uuidv7() as Base58ID, 'А'), pendingGame(uuidv7() as Base58ID, 'Б', '2026-06-02T10:00:00Z')],
         });
 
         await syncOffline(store, api, (s) => snapshots.push(s.games.length));
@@ -228,9 +232,9 @@ describe('syncOffline', () => {
     describe('club memberships', () => {
         it('adds the player to each chosen club after creating them, in order', async () => {
             const api = okApi();
-            const playerId = uuidv7();
-            const clubA = uuidv7();
-            const clubB = uuidv7();
+            const playerId = uuidv7() as Base58ID;
+            const clubA = uuidv7() as Base58ID;
+            const clubB = uuidv7() as Base58ID;
             const store = makeStore({
                 players: [pendingPlayer(playerId, 'Вася', '2026-06-01T10:00:00Z', [clubA, clubB])],
             });
@@ -248,9 +252,9 @@ describe('syncOffline', () => {
 
         it('keeps the player pending and visible when one membership is HTTP-rejected', async () => {
             const api = okApi();
-            const playerId = uuidv7();
-            const clubA = uuidv7();
-            const clubB = uuidv7();
+            const playerId = uuidv7() as Base58ID;
+            const clubA = uuidv7() as Base58ID;
+            const clubB = uuidv7() as Base58ID;
             api.addClubMember = vi.fn(async ({ club_id }) =>
                 club_id === clubA
                     ? { ok: false as const, status: 403, message: 'forbidden' }
@@ -273,8 +277,8 @@ describe('syncOffline', () => {
 
         it('aborts on a membership network failure, leaving the player pending for retry', async () => {
             const api = okApi();
-            const playerId = uuidv7();
-            const clubA = uuidv7();
+            const playerId = uuidv7() as Base58ID;
+            const clubA = uuidv7() as Base58ID;
             api.addClubMember = vi.fn(async () => { throw new TypeError('fetch failed'); });
 
             const store = makeStore({
@@ -292,8 +296,8 @@ describe('syncOffline', () => {
 
         it('stops and reports authRequired on a 401 during membership add', async () => {
             const api = okApi();
-            const playerId = uuidv7();
-            const clubA = uuidv7();
+            const playerId = uuidv7() as Base58ID;
+            const clubA = uuidv7() as Base58ID;
             api.addClubMember = vi.fn(async () => ({ ok: false as const, status: 401, message: 'unauthorized' }));
 
             const store = makeStore({
@@ -310,7 +314,7 @@ describe('syncOffline', () => {
     describe('calculator_data', () => {
         it('forwards calculator_kind and calculator_data on a synced match', async () => {
             const api = okApi();
-            const matchId = uuidv7();
+            const matchId = uuidv7() as Base58ID;
             const calcData = { rounds: [{ scores: [10, 5] }] };
             const store = makeStore({
                 matches: [{
@@ -334,7 +338,7 @@ describe('syncOffline', () => {
 
         it('sends null calculator fields when the match has none', async () => {
             const api = okApi();
-            const matchId = uuidv7();
+            const matchId = uuidv7() as Base58ID;
             const store = makeStore({
                 matches: [{
                     clientId: matchId,

@@ -7,19 +7,20 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type matchWinnerHandler struct{}
 
-func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error {
+func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error {
 	p := params.MatchWinner
 	targets := p.TargetPlayerIDs
 	if targets == nil {
-		targets = []string{}
+		targets = []id.ID{}
 	}
 	gameIDs := p.GameIDs
 	if gameIDs == nil {
-		gameIDs = []string{}
+		gameIDs = []id.ID{}
 	}
 	if err := q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
 		MarketID:          marketID,
@@ -107,9 +108,9 @@ func (t *matchWinnerTrigger) OnOverdue(ctx context.Context, q *db.Queries, settl
 // outcomeIDForKey maps a semantic OutcomeKey ("player:<uuid>" / "other" /
 // "yes" / "no") to the market's concrete market_outcomes row id that bets and
 // resolution store.
-func outcomeIDForKey(ctx context.Context, q *db.Queries, marketID string, key OutcomeKey) (string, error) {
+func outcomeIDForKey(ctx context.Context, q *db.Queries, marketID id.ID, key OutcomeKey) (id.ID, error) {
 	kind := string(key)
-	playerID := ""
+	var playerID id.ID
 	if pid, ok := key.PlayerID(); ok {
 		kind = "player"
 		playerID = pid

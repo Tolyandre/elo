@@ -62,7 +62,7 @@ func (a *OAUTH2) GoogleOAuth(ctx *gin.Context) {
 		return
 	}
 
-	token, err := CreateJwt(time.Duration(cfg.Config.CookieTtlSeconds)*time.Second, userId, cfg.Config.CookieJwtSecret)
+	token, err := CreateJwt(time.Duration(cfg.Config.CookieTtlSeconds)*time.Second, string(userId), cfg.Config.CookieJwtSecret)
 	if err != nil {
 		api.ErrorResponse(ctx, http.StatusInternalServerError, err)
 		return

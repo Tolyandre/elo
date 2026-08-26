@@ -7,10 +7,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type ICorrectionService interface {
-	CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error
+	CreateGlobalArenaRatingCorrection(ctx context.Context, correctionID, playerID id.ID, diff float64) error
 	ListCorrectionsPaginated(ctx context.Context, arg db.ListCorrectionsPaginatedParams) ([]db.ListCorrectionsPaginatedRow, error)
 }
 
@@ -29,7 +30,7 @@ func (s *CorrectionService) ListCorrectionsPaginated(ctx context.Context, arg db
 	return s.Queries.ListCorrectionsPaginated(ctx, arg)
 }
 
-func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, id string, playerID string, diff float64) error {
+func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, correctionID, playerID id.ID, diff float64) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -39,7 +40,7 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 	q := db.New(tx)
 
 	correction, err := q.CreateCorrection(ctx, db.CreateCorrectionParams{
-		ID:            id,
+		ID:            correctionID,
 		PlayerID:      playerID,
 		Discriminator: "correction",
 		Diff:          diff,

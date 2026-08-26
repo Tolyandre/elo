@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // TestShortIds_EndToEnd verifies the full boundary codec against real Postgres:
@@ -31,10 +31,7 @@ func TestShortIds_EndToEnd(t *testing.T) {
 		t.Fatalf("generate player id: %v", err)
 	}
 	canonical := uid.String()
-	short, err := shortid.Encode(canonical)
-	if err != nil {
-		t.Fatalf("encode short id: %v", err)
-	}
+	short := idpkg.ToBase58(canonical)
 
 	// POST /players with the SHORT id in the body.
 	body := `{"id":"` + short + `","name":"ShortIdPlayer"}`
@@ -103,10 +100,7 @@ func TestShortIds_CanonicalStillAccepted(t *testing.T) {
 		t.Fatalf("generate player id: %v", err)
 	}
 	canonical := uid.String()
-	short, err := shortid.Encode(canonical)
-	if err != nil {
-		t.Fatalf("encode short id: %v", err)
-	}
+	short := idpkg.ToBase58(canonical)
 
 	// Send the CANONICAL form (what old clients do).
 	body := `{"id":"` + canonical + `","name":"CanonicalPlayer"}`

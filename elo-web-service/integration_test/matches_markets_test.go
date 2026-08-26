@@ -14,22 +14,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// newID generates a fresh UUIDv7 string for use as a primary key / idempotency key.
-func newID(t *testing.T) string {
+// newID generates a fresh UUIDv7 id for use as a primary key / idempotency key.
+func newID(t *testing.T) idpkg.ID {
 	t.Helper()
-	id, err := uuid.NewV7()
+	u, err := uuid.NewV7()
 	if err != nil {
 		t.Fatalf("generate uuid: %v", err)
 	}
-	return id.String()
+	return idpkg.ID(u.String())
 }
 
 // marketOutcomeID returns the market's outcome row id of the given kind — the
 // identifier bets and resolution reference. For kind "player" the target
 // player's outcome is returned.
-func marketOutcomeID(t *testing.T, ctx context.Context, svc elo.IMarketService, marketID, kind string, playerID string) string {
+func marketOutcomeID(t *testing.T, ctx context.Context, svc elo.IMarketService, marketID idpkg.ID, kind string, playerID idpkg.ID) idpkg.ID {
 	t.Helper()
 	outcomes, err := svc.ListMarketOutcomesWithPools(ctx, marketID)
 	if err != nil {
@@ -54,7 +55,7 @@ func marketOutcomeID(t *testing.T, ctx context.Context, svc elo.IMarketService, 
 // placeBetAtCurrentPrice places a bet on the given outcome id, passing the
 // market's live marginal price of that outcome as expectedPrice — mirroring
 // what the UI sends for the price it displays.
-func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID, playerID, outcomeID string, shares float64) error {
+func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID idpkg.ID, playerID idpkg.ID, outcomeID idpkg.ID, shares float64) error {
 	t.Helper()
 	m, err := svc.GetMarket(ctx, marketID)
 	if err != nil {
@@ -95,7 +96,7 @@ func newMatchOpts(t *testing.T) elo.AddMatchOpts {
 }
 
 // createTestPlayer inserts a player and returns its ID.
-func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) string {
+func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
@@ -107,7 +108,7 @@ func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) string {
 }
 
 // createTestGame inserts a game and returns its ID.
-func createTestGame(t *testing.T, pool *pgxpool.Pool, name string) string {
+func createTestGame(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
@@ -119,7 +120,7 @@ func createTestGame(t *testing.T, pool *pgxpool.Pool, name string) string {
 }
 
 // createTestAdmin inserts a user with allow_editing=true and returns its ID.
-func createTestAdmin(t *testing.T, pool *pgxpool.Pool) string {
+func createTestAdmin(t *testing.T, pool *pgxpool.Pool) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
@@ -136,7 +137,7 @@ func createTestAdmin(t *testing.T, pool *pgxpool.Pool) string {
 }
 
 // playerRatingRows returns all global_arena_settlement rows for a player, ordered by date.
-func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID string) []db.RatingHistoryRow {
+func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) []db.RatingHistoryRow {
 	t.Helper()
 	rows, err := db.New(pool).RatingHistory(context.Background(), playerID)
 	if err != nil {
@@ -146,7 +147,7 @@ func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID string) []db.Ra
 }
 
 // latestRating returns the most recent new_rating (display track) for a player.
-func latestRating(t *testing.T, pool *pgxpool.Pool, playerID string) float64 {
+func latestRating(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) float64 {
 	t.Helper()
 	rows := playerRatingRows(t, pool, playerID)
 	if len(rows) == 0 {
@@ -156,7 +157,7 @@ func latestRating(t *testing.T, pool *pgxpool.Pool, playerID string) float64 {
 }
 
 // latestElo returns the most recent new_elo (true Elo, zero-sum) for a player.
-func latestElo(t *testing.T, pool *pgxpool.Pool, playerID string) float64 {
+func latestElo(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) float64 {
 	t.Helper()
 	var elo float64
 	err := pool.QueryRow(context.Background(),
@@ -170,7 +171,7 @@ func latestElo(t *testing.T, pool *pgxpool.Pool, playerID string) float64 {
 }
 
 // marketSettlementRatingCount returns how many global_arena_settlement rows exist for a player with discriminator='market'.
-func marketSettlementRatingCount(t *testing.T, pool *pgxpool.Pool, playerID string) int {
+func marketSettlementRatingCount(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) int {
 	t.Helper()
 	var count int
 	err := pool.QueryRow(context.Background(),
@@ -198,13 +199,13 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	gameID := createTestGame(t, pool, "Catan")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	_, err := svc.AddMatch(ctx, gameID, map[string]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
+	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
 
 	// Each player must have exactly one settlement row after a single match.
-	for _, pid := range []string{p1, p2, p3} {
+	for _, pid := range []idpkg.ID{p1, p2, p3} {
 		rows := playerRatingRows(t, pool, pid)
 		if len(rows) != 1 {
 			t.Errorf("player %s: expected 1 rating row, got %d", pid, len(rows))
@@ -214,7 +215,7 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	// Check sum of all new_elo equals 3 * startingElo (true Elo is zero-sum across players)
 	const startingElo = 1000.0
 	var eloSum float64
-	for _, pid := range []string{p1, p2, p3} {
+	for _, pid := range []idpkg.ID{p1, p2, p3} {
 		eloSum += latestElo(t, pool, pid)
 	}
 	const epsilon = 0.001
@@ -236,7 +237,7 @@ func TestAddMatch_EloOrderPreserved(t *testing.T) {
 	gameID := createTestGame(t, pool, "Chess")
 
 	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	_, err := svc.AddMatch(ctx, gameID, map[string]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
+	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
@@ -271,9 +272,9 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 		StartsAt:           time.Now().Add(-time.Minute),
 		ClosesAt:           time.Now().Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -282,7 +283,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Give players enough bet limit by adding a warm-up match first
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -299,7 +300,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	}
 
 	// Add a match where playerA wins (higher score)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch (trigger): %v", err)
 	}
@@ -374,7 +375,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. M1
-	m1, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t))
+	m1, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
@@ -388,9 +389,9 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 		StartsAt:           t1.Add(30 * time.Minute),
 		ClosesAt:           now.Add(24 * time.Hour), // well in the future so the expiry timer doesn't fire during the test
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -408,13 +409,13 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	}
 
 	// 3. M2 triggers market resolution (playerA wins)
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
 	// 4. M3 after settlement
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 7, playerB: 8}, t3, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M3 AddMatch: %v", err)
 	}
@@ -424,7 +425,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	snapshotB := latestRating(t, pool, playerB)
 
 	// 6. Trigger recalculation via UpdateMatch on M1 with identical data
-	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[string]float64{playerA: 5, playerB: 5}, t1, elo.UpdateMatchOpts{})
+	_, err = matchSvc.UpdateMatch(ctx, m1.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, t1, elo.UpdateMatchOpts{})
 	if err != nil {
 		t.Fatalf("UpdateMatch (recalc trigger): %v", err)
 	}
@@ -474,7 +475,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. Warm-up match: gives players a bet limit of K/(1+1) ≈ 16.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, tWarmup, newMatchOpts(t))
+	_, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, tWarmup, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
@@ -486,9 +487,9 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 		StartsAt:           now.Add(-time.Hour),
 		ClosesAt:           now.Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -507,14 +508,14 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	}
 
 	// 4. M2 with a future domain date triggers resolution; resolved_at = tFuture > placed_at ✓.
-	m2, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, tFuture, newMatchOpts(t))
+	m2, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tFuture, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("M2 AddMatch: %v", err)
 	}
 
 	// 5. Move M2 to tPast (now-30min). This makes resolved_at = now-30min < placed_at (≈now).
 	// Bets fall in [now-30min, now+2h) → conflict must be returned.
-	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[string]float64{playerA: 10, playerB: 2}, tPast, elo.UpdateMatchOpts{})
+	_, err = matchSvc.UpdateMatch(ctx, m2.ID, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, tPast, elo.UpdateMatchOpts{})
 	if err == nil {
 		t.Fatal("UpdateMatch: expected error, got nil")
 	}
@@ -546,7 +547,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match (before market creation) to initialise bet limits.
-	_, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), newMatchOpts(t))
+	_, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, now.Add(-time.Hour), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("warm-up match: %v", err)
 	}
@@ -558,10 +559,10 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 		StartsAt:           now.Add(-time.Minute),
 		ClosesAt:           tExp,
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		WinStreak: &elo.WinStreakCreateParams{
 			TargetPlayerID: playerA,
-			GameIDs:        []string{gameID},
+			GameIDs:        []idpkg.ID{gameID},
 			WinsRequired:   3,
 		},
 	})
@@ -580,7 +581,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	}
 
 	// Add a match whose date is past closes_at — ExpireMarketsAtDate cancels the market.
-	_, err = matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 6, playerB: 4}, tMatch, newMatchOpts(t))
+	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, tMatch, newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch after expiry: %v", err)
 	}
@@ -633,7 +634,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 		ClosesAt:   time.Now().Add(24 * time.Hour),
 		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	}); !errors.Is(err, elo.ErrMarketNeedsGuarantor) {
@@ -647,9 +648,9 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 		StartsAt:           time.Now().Add(-time.Minute),
 		ClosesAt:           time.Now().Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -658,7 +659,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	}
 
 	// Warm-up match so players have a bet limit > 0.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -690,7 +691,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	}
 
 	// 4. Trigger resolution: playerA (YES) wins.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
@@ -764,9 +765,9 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 		StartsAt:           time.Now().Add(-time.Minute),
 		ClosesAt:           time.Now().Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{playerA},
+		GuarantorPlayerIDs: []idpkg.ID{playerA},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -774,7 +775,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 		t.Fatalf("CreateMarket: %v", err)
 	}
 
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -794,7 +795,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	amountA, amountB := readBetCost(t, pool, market.ID, playerA), readBetCost(t, pool, market.ID, playerB)
 
 	// Resolve YES (playerA wins).
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
@@ -888,7 +889,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 }
 
 // readBetShares returns the shares stored on a player's (single) buy.
-func readBetShares(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+func readBetShares(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, playerID idpkg.ID) float64 {
 	t.Helper()
 	var shares float64
 	err := pool.QueryRow(context.Background(),
@@ -901,7 +902,7 @@ func readBetShares(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) 
 }
 
 // readBetCost returns the AMM-priced elo cost stored on a player's (single) buy.
-func readBetCost(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+func readBetCost(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, playerID idpkg.ID) float64 {
 	t.Helper()
 	var cost float64
 	err := pool.QueryRow(context.Background(),
@@ -914,7 +915,7 @@ func readBetCost(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) fl
 }
 
 // playerMarketEarned returns elo_earned for a player's market settlement row (0 if none).
-func playerMarketEarned(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+func playerMarketEarned(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, playerID idpkg.ID) float64 {
 	t.Helper()
 	var earned float64
 	err := pool.QueryRow(context.Background(),
@@ -929,7 +930,7 @@ func playerMarketEarned(t *testing.T, pool *pgxpool.Pool, marketID, playerID str
 
 // playerMarketDelta returns elo_staked + elo_earned for a player's market settlement row,
 // or 0 if no such row exists.
-func playerMarketDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID string) float64 {
+func playerMarketDelta(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, playerID idpkg.ID) float64 {
 	t.Helper()
 	var delta float64
 	err := pool.QueryRow(context.Background(),
@@ -965,9 +966,9 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 		StartsAt:           time.Now().Add(-time.Minute),
 		ClosesAt:           time.Now().Add(24 * time.Hour),
 		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []string{guarantor},
+		GuarantorPlayerIDs: []idpkg.ID{guarantor},
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []string{playerA, playerB},
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
 	})
@@ -976,7 +977,7 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 	}
 
 	// Warm-up match so the players have a bet limit.
-	if _, err := matchSvc.AddMatch(ctx, gameID, map[string]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 
@@ -989,7 +990,7 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
 	}
 	q := make([]float64, len(outcomes))
-	outcomeA := ""
+	var outcomeA idpkg.ID
 	priceA := -1.0
 	for i, o := range outcomes {
 		q[i] = o.Q
@@ -998,7 +999,7 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 			priceA = elo.MarginalPricesN(q, m.LiquidityB)[i]
 		}
 	}
-	if outcomeA == "" {
+	if outcomeA.IsZero() {
 		t.Fatalf("playerA outcome not found on market %s", market.ID)
 	}
 

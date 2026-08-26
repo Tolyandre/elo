@@ -4,3 +4,5 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+patchedDependencies:
+  openapi-typescript-helpers@0.1.0: patches/openapi-typescript-helpers@0.1.0.patch

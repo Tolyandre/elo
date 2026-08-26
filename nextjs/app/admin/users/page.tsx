@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
 import Link from "next/link";
 import { listUsersPromise, patchUserPromise, User } from "../../api";
@@ -24,7 +25,7 @@ export default function AdminUsersPage() {
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [selfRevokeTarget, setSelfRevokeTarget] = useState<User | null>(null);
 
-  async function applyToggle(userId: string, newValue: boolean) {
+  async function applyToggle(userId: Base58ID, newValue: boolean) {
     setSavingIds((p) => ({ ...p, [userId]: true }));
     setToggleError(null);
     try {

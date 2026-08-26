@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const addClubMember = `-- name: AddClubMember :exec
@@ -18,8 +19,8 @@ ON CONFLICT DO NOTHING
 `
 
 type AddClubMemberParams struct {
-	ClubID   string `json:"club_id"`
-	PlayerID string `json:"player_id"`
+	ClubID   id.ID `json:"club_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
@@ -34,7 +35,7 @@ RETURNING id, name, geologist_name, icon
 `
 
 type CreateClubParams struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -56,8 +57,8 @@ WHERE id = $1
 RETURNING id, name, geologist_name, icon
 `
 
-func (q *Queries) DeleteClub(ctx context.Context, id string) (Club, error) {
-	row := q.db.QueryRow(ctx, deleteClub, id)
+func (q *Queries) DeleteClub(ctx context.Context, argID id.ID) (Club, error) {
+	row := q.db.QueryRow(ctx, deleteClub, argID)
 	var i Club
 	err := row.Scan(
 		&i.ID,
@@ -81,15 +82,15 @@ WHERE c.id = $1
 `
 
 type GetClubRow struct {
-	ClubID            string      `json:"club_id"`
+	ClubID            id.ID       `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
 	ClubIcon          pgtype.Text `json:"club_icon"`
-	PlayerID          *string     `json:"player_id"`
+	PlayerID          *id.ID      `json:"player_id"`
 }
 
-func (q *Queries) GetClub(ctx context.Context, id string) ([]GetClubRow, error) {
-	rows, err := q.db.Query(ctx, getClub, id)
+func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error) {
+	rows, err := q.db.Query(ctx, getClub, argID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,11 +127,11 @@ LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
 `
 
 type ListClubsRow struct {
-	ClubID            string      `json:"club_id"`
+	ClubID            id.ID       `json:"club_id"`
 	ClubName          string      `json:"club_name"`
 	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
 	ClubIcon          pgtype.Text `json:"club_icon"`
-	PlayerID          *string     `json:"player_id"`
+	PlayerID          *id.ID      `json:"player_id"`
 }
 
 func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
@@ -165,8 +166,8 @@ WHERE club_id = $1 AND player_id = $2
 `
 
 type RemoveClubMemberParams struct {
-	ClubID   string `json:"club_id"`
-	PlayerID string `json:"player_id"`
+	ClubID   id.ID `json:"club_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error {
@@ -182,7 +183,7 @@ RETURNING id, name, geologist_name, icon
 `
 
 type UpdateClubIconParams struct {
-	ID   string      `json:"id"`
+	ID   id.ID       `json:"id"`
 	Icon pgtype.Text `json:"icon"`
 }
 
@@ -206,7 +207,7 @@ RETURNING id, name, geologist_name, icon
 `
 
 type UpdateClubNameParams struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 

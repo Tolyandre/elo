@@ -2,6 +2,7 @@
 import { GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import React, { Suspense } from "react";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
@@ -26,7 +27,8 @@ export default function GamePage() {
 
 function GameWrapped() {
   const searchParams = useSearchParams()
-  const id = searchParams.get('id')
+  const idParam = searchParams.get('id') ?? ""
+  const id = toBase58ID(idParam)
 
   const { data: game, loading: loadingGame, error } = useAsyncResource(
     () => (id ? getGamePromise(id) : Promise.reject(new Error('no id'))),

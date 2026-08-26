@@ -1,8 +1,9 @@
+import type { Base58ID } from "@/lib/id";
 // Pure types, constants, and helpers for the chess-clock calculator.
 // Extracted from page.tsx so the timer engine and presentational components
 // can be unit-tested and reused independently.
 
-export type PlayerConfig = { id: string; name: string; color: string };
+export type PlayerConfig = { id: Base58ID; name: string; color: string };
 export type TimerMode = "countdown" | "elapsed";
 
 export type ChessClockState = {

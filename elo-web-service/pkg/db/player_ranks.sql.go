@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const listPlayersWithStats = `-- name: ListPlayersWithStats :many
@@ -40,7 +41,7 @@ ORDER BY latest_elo.rating_after DESC NULLS LAST, p.name
 `
 
 type ListPlayersWithStatsRow struct {
-	ID     string      `json:"id"`
+	ID     id.ID       `json:"id"`
 	Name   string      `json:"name"`
 	Rating interface{} `json:"rating"`
 	Elo    interface{} `json:"elo"`

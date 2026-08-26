@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
@@ -13,15 +14,15 @@ import { Club } from "@/app/api"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { NO_CLUB_ID, NO_CLUB_LABEL } from "@/lib/player-groups"
 
-type ClubOption = { id: string; name: string; club?: Club }
+type ClubOption = { id: Base58ID; name: string; club?: Club }
 
 /** value = null means "all clubs" */
 export function ClubSelect({
   value,
   onChange,
 }: {
-  value: string | null
-  onChange: (id: string | null) => void
+  value: Base58ID | null
+  onChange: (id: Base58ID | null) => void
 }) {
   const { clubs, clubDisplayName } = useClubs()
   const { isMobile } = useIsMobile()
@@ -30,7 +31,8 @@ export function ClubSelect({
   const options: ClubOption[] = React.useMemo(() => [
     ...[...clubs].sort((a, b) => clubDisplayName(a).localeCompare(clubDisplayName(b), undefined, { sensitivity: "base" }))
       .map(c => ({ id: c.id, name: clubDisplayName(c), club: c })),
-    { id: NO_CLUB_ID, name: NO_CLUB_LABEL },
+    // Synthetic sentinel that must survive as the club_id query value verbatim.
+    { id: NO_CLUB_ID as Base58ID, name: NO_CLUB_LABEL },
   ], [clubs, clubDisplayName])
 
   const triggerLabel = React.useMemo(() => {
@@ -38,7 +40,7 @@ export function ClubSelect({
     return options.find(o => o.id === value)?.name ?? "Клуб..."
   }, [value, options])
 
-  function select(id: string | null) {
+  function select(id: Base58ID | null) {
     onChange(id)
     setOpen(false)
   }

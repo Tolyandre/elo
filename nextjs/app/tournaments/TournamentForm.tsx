@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -35,7 +36,7 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
     const [name, setName] = useState(existing?.name ?? "");
     const [startDate, setStartDate] = useState(existing ? toDatetimeLocal(existing.start_date) : "");
     const [endDate, setEndDate] = useState(existing ? toDatetimeLocal(existing.end_date) : "");
-    const [playerIds, setPlayerIds] = useState<string[]>(existing ? existing.player_ids : []);
+    const [playerIds, setPlayerIds] = useState<Base58ID[]>(existing ? existing.player_ids : []);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 

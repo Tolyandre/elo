@@ -1,4 +1,5 @@
 import { Club, Match, Player, Tournament } from "@/app/api";
+import { Base58ID } from "@/lib/id";
 
 /** Synthetic ID representing players not in any club. Never sent to the backend. */
 export const NO_CLUB_ID = "__no_club__";
@@ -33,17 +34,17 @@ const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensiti
 export function buildPlayerGroups(
   players: Pick<Player, "id" | "name" | "geologist_name">[],
   clubs: Club[],
-  recentPlayerIds: string[],
+  recentPlayerIds: Base58ID[],
   playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string,
   tournaments: Pick<Tournament, "name" | "player_ids">[] = [],
-  myPlayerId?: string,
+  myPlayerId?: Base58ID,
 ): Group[] {
   const groups: Group[] = [];
 
   const byId = new Map(players.map((p) => [p.id, p]));
 
-  const optionsFromIds = (ids: string[]) =>
+  const optionsFromIds = (ids: Base58ID[]) =>
     ids
       .map((pid) => byId.get(pid))
       .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)
@@ -109,22 +110,22 @@ export function buildPlayerGroups(
  */
 export function recentCoPlayerIds(
   matches: Pick<Match, "date" | "score">[] | undefined,
-  myPlayerId: string | undefined,
+  myPlayerId: Base58ID | undefined,
   limit = 10,
-): string[] {
+): Base58ID[] {
   if (!myPlayerId || !matches) return [];
   const myMatches = [...matches]
     .filter((m) => Object.keys(m.score).includes(myPlayerId))
     .sort((a, b) => (a.date === b.date ? 0 : new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()));
   if (myMatches.length === 0) return [];
 
-  const coPlayers: string[] = [];
+  const coPlayers: Base58ID[] = [];
   const seen = new Set<string>([myPlayerId]);
   for (const m of myMatches) {
     for (const pid of Object.keys(m.score)) {
       if (!seen.has(pid)) {
         seen.add(pid);
-        coPlayers.push(pid);
+        coPlayers.push(pid as Base58ID);
       }
     }
     if (coPlayers.length >= limit) break;
@@ -143,16 +144,16 @@ export function recentCoPlayerIds(
 export function buildPlayerTabs(
   players: Pick<Player, "id" | "name" | "geologist_name">[],
   clubs: Club[],
-  recentPlayerIds: string[],
+  recentPlayerIds: Base58ID[],
   playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string,
-  myPlayerId?: string,
+  myPlayerId?: Base58ID,
   tournaments: Pick<Tournament, "id" | "name" | "player_ids">[] = [],
 ): PlayerTab[] {
   const tabs: PlayerTab[] = [];
   const byId = new Map(players.map((p) => [p.id, p]));
 
-  const optionsFromIds = (ids: string[]) =>
+  const optionsFromIds = (ids: Base58ID[]) =>
     ids
       .map((pid) => byId.get(pid))
       .filter((p): p is Pick<Player, "id" | "name" | "geologist_name"> => p !== undefined)

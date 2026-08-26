@@ -3,10 +3,11 @@
 import { useState, useRef } from "react";
 import { Mic, MicOff, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Base58ID } from "@/lib/id";
 import { parseVoiceInput, VoiceParseResult } from "@/app/api";
 
 export type VoiceInputProps = {
-    onResult: (gameId: string | undefined, scores: { playerId: string; points: number }[]) => void;
+    onResult: (gameId: Base58ID | undefined, scores: { playerId: Base58ID; points: number }[]) => void;
 };
 
 // Minimal Web Speech API types — not yet universally shipped in @types/dom

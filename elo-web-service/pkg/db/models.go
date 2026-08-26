@@ -9,28 +9,29 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type Bet struct {
-	ID       string             `json:"id"`
-	MarketID string             `json:"market_id"`
-	PlayerID string             `json:"player_id"`
-	Outcome  string             `json:"outcome"`
+	ID       id.ID              `json:"id"`
+	MarketID id.ID              `json:"market_id"`
+	PlayerID id.ID              `json:"player_id"`
+	Outcome  id.ID              `json:"outcome"`
 	Cost     float64            `json:"cost"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 	Shares   float64            `json:"shares"`
 }
 
 type Club struct {
-	ID            string      `json:"id"`
+	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
 	Icon          pgtype.Text `json:"icon"`
 }
 
 type Correction struct {
-	ID            string             `json:"id"`
-	PlayerID      string             `json:"player_id"`
+	ID            id.ID              `json:"id"`
+	PlayerID      id.ID              `json:"player_id"`
 	Discriminator string             `json:"discriminator"`
 	Diff          float64            `json:"diff"`
 	Date          pgtype.Timestamptz `json:"date"`
@@ -54,19 +55,19 @@ type EloSetting struct {
 }
 
 type Game struct {
-	ID   string `json:"id"`
+	ID   id.ID  `json:"id"`
 	Name string `json:"name"`
 }
 
 type GameArenaSettlement struct {
-	ID            string             `json:"id"`
-	GameID        string             `json:"game_id"`
-	PlayerID      string             `json:"player_id"`
+	ID            id.ID              `json:"id"`
+	GameID        id.ID              `json:"game_id"`
+	PlayerID      id.ID              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
 	RatingAfter   float64            `json:"rating_after"`
 	EloAfter      float64            `json:"elo_after"`
 	Discriminator string             `json:"discriminator"`
-	MatchID       *string            `json:"match_id"`
+	MatchID       *id.ID             `json:"match_id"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
@@ -75,15 +76,15 @@ type GameArenaSettlement struct {
 }
 
 type GlobalArenaSettlement struct {
-	ID            string             `json:"id"`
-	PlayerID      string             `json:"player_id"`
+	ID            id.ID              `json:"id"`
+	PlayerID      id.ID              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
 	RatingAfter   float64            `json:"rating_after"`
 	EloAfter      float64            `json:"elo_after"`
 	Discriminator string             `json:"discriminator"`
-	MatchID       *string            `json:"match_id"`
-	MarketID      *string            `json:"market_id"`
-	CorrectionID  *string            `json:"correction_id"`
+	MatchID       *id.ID             `json:"match_id"`
+	MarketID      *id.ID             `json:"market_id"`
+	CorrectionID  *id.ID             `json:"correction_id"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
@@ -92,106 +93,106 @@ type GlobalArenaSettlement struct {
 }
 
 type Market struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy         string             `json:"created_by"`
+	CreatedBy         id.ID              `json:"created_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
-	ResolutionMatchID *string            `json:"resolution_match_id"`
-	ResolutionOutcome *string            `json:"resolution_outcome"`
+	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
+	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
 }
 
 type MarketGuarantor struct {
-	MarketID string `json:"market_id"`
-	PlayerID string `json:"player_id"`
+	MarketID id.ID `json:"market_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 type MarketMatchWinnerParam struct {
-	MarketID          string   `json:"market_id"`
-	GameIds           []string `json:"game_ids"`
-	TargetPlayerIds   []string `json:"target_player_ids"`
-	AllowOtherPlayers bool     `json:"allow_other_players"`
+	MarketID          id.ID   `json:"market_id"`
+	GameIds           []id.ID `json:"game_ids"`
+	TargetPlayerIds   []id.ID `json:"target_player_ids"`
+	AllowOtherPlayers bool    `json:"allow_other_players"`
 }
 
 type MarketOutcome struct {
-	ID       string  `json:"id"`
-	MarketID string  `json:"market_id"`
+	ID       id.ID   `json:"id"`
+	MarketID id.ID   `json:"market_id"`
 	Kind     string  `json:"kind"`
-	PlayerID *string `json:"player_id"`
+	PlayerID *id.ID  `json:"player_id"`
 	Q        float64 `json:"q"`
 }
 
 type MarketWinStreakParam struct {
-	MarketID       string      `json:"market_id"`
-	TargetPlayerID string      `json:"target_player_id"`
+	MarketID       id.ID       `json:"market_id"`
+	TargetPlayerID id.ID       `json:"target_player_id"`
 	WinsRequired   int32       `json:"wins_required"`
 	MaxLosses      pgtype.Int4 `json:"max_losses"`
-	GameIds        []string    `json:"game_ids"`
+	GameIds        []id.ID     `json:"game_ids"`
 }
 
 type Match struct {
-	ID                      string             `json:"id"`
+	ID                      id.ID              `json:"id"`
 	Date                    pgtype.Timestamptz `json:"date"`
-	GameID                  string             `json:"game_id"`
+	GameID                  id.ID              `json:"game_id"`
 	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
 	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
 	CalculatorData          json.RawMessage    `json:"calculator_data"`
 }
 
 type MatchScore struct {
-	MatchID  string  `json:"match_id"`
-	PlayerID string  `json:"player_id"`
+	MatchID  id.ID   `json:"match_id"`
+	PlayerID id.ID   `json:"player_id"`
 	Score    float64 `json:"score"`
 }
 
 type MatchTournament struct {
-	MatchID      string `json:"match_id"`
-	TournamentID string `json:"tournament_id"`
+	MatchID      id.ID `json:"match_id"`
+	TournamentID id.ID `json:"tournament_id"`
 }
 
 type Player struct {
-	ID            string      `json:"id"`
+	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
 	BetLimit      float64     `json:"bet_limit"`
 }
 
 type PlayerClubMembership struct {
-	ClubID   string `json:"club_id"`
-	PlayerID string `json:"player_id"`
+	ClubID   id.ID `json:"club_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 type SkullKingTable struct {
-	ID                 string          `json:"id"`
-	HostUserID         string          `json:"host_user_id"`
+	ID                 id.ID           `json:"id"`
+	HostUserID         id.ID           `json:"host_user_id"`
 	GameState          json.RawMessage `json:"game_state"`
-	ConnectedPlayerIds []string        `json:"connected_player_ids"`
+	ConnectedPlayerIds []id.ID         `json:"connected_player_ids"`
 	CreatedAt          time.Time       `json:"created_at"`
 	ExpiresAt          time.Time       `json:"expires_at"`
 }
 
 type Tournament struct {
-	ID        string             `json:"id"`
+	ID        id.ID              `json:"id"`
 	Name      string             `json:"name"`
 	StartDate pgtype.Timestamptz `json:"start_date"`
 	EndDate   pgtype.Timestamptz `json:"end_date"`
 }
 
 type TournamentPlayerMembership struct {
-	TournamentID string `json:"tournament_id"`
-	PlayerID     string `json:"player_id"`
+	TournamentID id.ID `json:"tournament_id"`
+	PlayerID     id.ID `json:"player_id"`
 }
 
 type User struct {
-	ID                  string      `json:"id"`
+	ID                  id.ID       `json:"id"`
 	AllowEditing        bool        `json:"allow_editing"`
 	GoogleOauthUserID   string      `json:"google_oauth_user_id"`
 	GoogleOauthUserName string      `json:"google_oauth_user_name"`
-	PlayerID            *string     `json:"player_id"`
+	PlayerID            *id.ID      `json:"player_id"`
 	LegacyIntID         pgtype.Int4 `json:"legacy_int_id"`
 }

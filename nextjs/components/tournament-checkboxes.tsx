@@ -1,6 +1,7 @@
 "use client";
 
 import type { Tournament } from "@/app/api";
+import type { Base58ID } from "@/lib/id";
 
 /**
  * Shared tournament picker used by the match form and the calculators. Mandatory
@@ -15,9 +16,9 @@ export function TournamentCheckboxes({
     title = "Турниры:",
 }: {
     active: Tournament[];
-    checked: string[];
-    isMandatory: (id: string) => boolean;
-    onToggle: (id: string, checked: boolean) => void;
+    checked: Base58ID[];
+    isMandatory: (id: Base58ID) => boolean;
+    onToggle: (id: Base58ID, checked: boolean) => void;
     title?: string;
 }) {
     if (active.length === 0) return null;

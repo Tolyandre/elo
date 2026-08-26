@@ -8,19 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type ITournamentService interface {
 	ListTournaments(ctx context.Context) ([]db.ListTournamentsRow, error)
-	GetTournament(ctx context.Context, id string) ([]db.GetTournamentRow, error)
-	CreateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error)
+	GetTournament(ctx context.Context, tournamentID id.ID) ([]db.GetTournamentRow, error)
+	CreateTournament(ctx context.Context, tournamentID id.ID, name string, start, end time.Time, playerIDs []id.ID) (db.Tournament, error)
 	// UpdateTournament replaces a tournament's name, dates and full member set in one
 	// transaction. It rejects narrowing the dates past already-played matches and
 	// removing a member who has played a match in the tournament.
-	UpdateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error)
+	UpdateTournament(ctx context.Context, tournamentID id.ID, name string, start, end time.Time, playerIDs []id.ID) (db.Tournament, error)
 	// DeleteTournament removes a tournament only when it has no members.
-	DeleteTournament(ctx context.Context, id string) (db.Tournament, error)
-	GetStats(ctx context.Context, id string) ([]db.GetTournamentStatsRow, error)
+	DeleteTournament(ctx context.Context, tournamentID id.ID) (db.Tournament, error)
+	GetStats(ctx context.Context, tournamentID id.ID) ([]db.GetTournamentStatsRow, error)
 }
 
 type TournamentService struct {
@@ -36,15 +37,15 @@ func (s *TournamentService) ListTournaments(ctx context.Context) ([]db.ListTourn
 	return s.Queries.ListTournaments(ctx)
 }
 
-func (s *TournamentService) GetTournament(ctx context.Context, id string) ([]db.GetTournamentRow, error) {
-	return s.Queries.GetTournament(ctx, id)
+func (s *TournamentService) GetTournament(ctx context.Context, tournamentID id.ID) ([]db.GetTournamentRow, error) {
+	return s.Queries.GetTournament(ctx, tournamentID)
 }
 
-func (s *TournamentService) GetStats(ctx context.Context, id string) ([]db.GetTournamentStatsRow, error) {
-	return s.Queries.GetTournamentStats(ctx, id)
+func (s *TournamentService) GetStats(ctx context.Context, tournamentID id.ID) ([]db.GetTournamentStatsRow, error) {
+	return s.Queries.GetTournamentStats(ctx, tournamentID)
 }
 
-func (s *TournamentService) CreateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
+func (s *TournamentService) CreateTournament(ctx context.Context, tournamentID id.ID, name string, start, end time.Time, playerIDs []id.ID) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("unable to begin tx: %w", err)
@@ -53,7 +54,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, id string, nam
 	q := s.Queries.WithTx(tx)
 
 	created, err := q.CreateTournament(ctx, db.CreateTournamentParams{
-		ID:        id,
+		ID:        tournamentID,
 		Name:      name,
 		StartDate: pgtype.Timestamptz{Time: start, Valid: true},
 		EndDate:   pgtype.Timestamptz{Time: end, Valid: true},
@@ -72,7 +73,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, id string, nam
 	return created, nil
 }
 
-func (s *TournamentService) UpdateTournament(ctx context.Context, id string, name string, start, end time.Time, playerIDs []string) (db.Tournament, error) {
+func (s *TournamentService) UpdateTournament(ctx context.Context, tournamentID id.ID, name string, start, end time.Time, playerIDs []id.ID) (db.Tournament, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("unable to begin tx: %w", err)
@@ -81,7 +82,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	q := s.Queries.WithTx(tx)
 
 	// New dates must still cover every already-played match in the tournament.
-	dateRange, err := q.GetTournamentMatchDateRange(ctx, id)
+	dateRange, err := q.GetTournamentMatchDateRange(ctx, tournamentID)
 	if err != nil && !db.IsNoRows(err) {
 		return db.Tournament{}, fmt.Errorf("get tournament match date range: %w", err)
 	}
@@ -92,22 +93,22 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	}
 
 	// A removed member must not have played any match in the tournament.
-	current, err := q.GetTournament(ctx, id)
+	current, err := q.GetTournament(ctx, tournamentID)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("get tournament: %w", err)
 	}
-	desired := make(map[string]bool, len(playerIDs))
+	desired := make(map[id.ID]bool, len(playerIDs))
 	for _, pid := range playerIDs {
 		desired[pid] = true
 	}
-	currentSet := make(map[string]bool)
+	currentSet := make(map[id.ID]bool)
 	for _, r := range current {
 		if r.PlayerID == nil {
 			continue
 		}
 		currentSet[*r.PlayerID] = true
 		if !desired[*r.PlayerID] {
-			hasMatch, err := q.PlayerHasMatchInTournament(ctx, db.PlayerHasMatchInTournamentParams{TournamentID: id, PlayerID: *r.PlayerID})
+			hasMatch, err := q.PlayerHasMatchInTournament(ctx, db.PlayerHasMatchInTournamentParams{TournamentID: tournamentID, PlayerID: *r.PlayerID})
 			if err != nil {
 				return db.Tournament{}, fmt.Errorf("check player matches: %w", err)
 			}
@@ -118,7 +119,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	}
 
 	updated, err := q.UpdateTournament(ctx, db.UpdateTournamentParams{
-		ID:        id,
+		ID:        tournamentID,
 		Name:      name,
 		StartDate: pgtype.Timestamptz{Time: start, Valid: true},
 		EndDate:   pgtype.Timestamptz{Time: end, Valid: true},
@@ -131,14 +132,14 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 
 	for pid := range desired {
 		if !currentSet[pid] {
-			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
+			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tournamentID, PlayerID: pid}); err != nil {
 				return db.Tournament{}, fmt.Errorf("add member %s: %w", pid, err)
 			}
 		}
 	}
 	for pid := range currentSet {
 		if !desired[pid] {
-			if err := q.RemoveTournamentMember(ctx, db.RemoveTournamentMemberParams{TournamentID: id, PlayerID: pid}); err != nil {
+			if err := q.RemoveTournamentMember(ctx, db.RemoveTournamentMemberParams{TournamentID: tournamentID, PlayerID: pid}); err != nil {
 				return db.Tournament{}, fmt.Errorf("remove member %s: %w", pid, err)
 			}
 		}
@@ -150,13 +151,13 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, id string, nam
 	return updated, nil
 }
 
-func (s *TournamentService) DeleteTournament(ctx context.Context, id string) (db.Tournament, error) {
-	count, err := s.Queries.CountTournamentMembers(ctx, id)
+func (s *TournamentService) DeleteTournament(ctx context.Context, tournamentID id.ID) (db.Tournament, error) {
+	count, err := s.Queries.CountTournamentMembers(ctx, tournamentID)
 	if err != nil {
 		return db.Tournament{}, fmt.Errorf("count members: %w", err)
 	}
 	if count > 0 {
 		return db.Tournament{}, ErrTournamentHasMembers
 	}
-	return s.Queries.DeleteTournament(ctx, id)
+	return s.Queries.DeleteTournament(ctx, tournamentID)
 }

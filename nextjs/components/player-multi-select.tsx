@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useCallback, useMemo, useRef, useState } from "react"
@@ -29,10 +30,10 @@ export function PlayerMultiSelect({
   onChange,
   activeTournamentIds = [],
 }: {
-  value: string[]
-  onChange?: (ids: string[]) => void
+  value: Base58ID[]
+  onChange?: (ids: Base58ID[]) => void
   /** Tournament IDs (checked in the match form) whose participants get their own section. */
-  activeTournamentIds?: string[]
+  activeTournamentIds?: Base58ID[]
 }) {
   const { players, playerDisplayName } = usePlayers()
   const { matches } = useMatches()
@@ -97,8 +98,10 @@ export function PlayerMultiSelect({
     return groups
   }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedTournaments, myPlayerId, toOption, offlineGroup])
 
+  // The lib speaks plain strings; the values are the ids this component put
+  // into the options, so the widening cast back is safe.
   const handleSelect = (currentValue: string[]) => {
-    onChange?.(currentValue);
+    onChange?.(currentValue as Base58ID[]);
   }
 
   // Inline "create player": shown as a button under the empty search state.
@@ -114,7 +117,7 @@ export function PlayerMultiSelect({
     setCreateOpen(true)
   }, [])
 
-  const handleCreated = useCallback((playerId: string) => {
+  const handleCreated = useCallback((playerId: Base58ID) => {
     if (controlledValue.includes(playerId)) return
     onChange?.([...controlledValue, playerId])
   }, [controlledValue, onChange])

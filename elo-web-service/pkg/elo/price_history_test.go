@@ -3,9 +3,11 @@ package elo
 import (
 	"testing"
 	"time"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-func priceBets(outcomeIDs [3]string, bets ...[2]any) []PriceBet {
+func priceBets(outcomeIDs [3]id.ID, bets ...[2]any) []PriceBet {
 	// Each entry is {outcome index into outcomeIDs, shares} placed one hour apart.
 	out := make([]PriceBet, 0, len(bets))
 	base := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
@@ -19,9 +21,9 @@ func priceBets(outcomeIDs [3]string, bets ...[2]any) []PriceBet {
 	return out
 }
 
-var threeOutcomes = [3]string{"o1", "o2", "o3"}
+var threeOutcomes = [3]id.ID{"o1", "o2", "o3"}
 
-func priceOf(t *testing.T, p PricePoint, outcomeID string) float64 {
+func priceOf(t *testing.T, p PricePoint, outcomeID id.ID) float64 {
 	t.Helper()
 	for _, op := range p.Prices {
 		if op.OutcomeID == outcomeID {
@@ -62,9 +64,9 @@ func TestPriceHistoryBuyingOutcomeLowersOthers(t *testing.T) {
 	if !(priceOf(t, pts[0], "o2") > 1.0/3) {
 		t.Errorf("an o2 buy must raise o2 above 1/3, got %v", priceOf(t, pts[0], "o2"))
 	}
-	for _, id := range []string{"o1", "o3"} {
-		if !(priceOf(t, pts[0], id) < 1.0/3) {
-			t.Errorf("an o2 buy must lower %s below 1/3, got %v", id, priceOf(t, pts[0], id))
+	for _, oid := range []id.ID{"o1", "o3"} {
+		if !(priceOf(t, pts[0], oid) < 1.0/3) {
+			t.Errorf("an o2 buy must lower %s below 1/3, got %v", oid, priceOf(t, pts[0], oid))
 		}
 	}
 }

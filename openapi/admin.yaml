@@ -22,7 +22,7 @@ AdminPlayerCorrections:
             required: [id, discriminator, diff]
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               discriminator:
                 type: string
                 enum: [correction]
@@ -95,9 +95,9 @@ Correction:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     player_name:
       type: string
     diff:

@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import {
     ReactNode,
@@ -58,23 +59,23 @@ type  OfflineState = {
     isSyncing: boolean;
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
-    addPendingMatch: (m: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string }) => PendingMatch;
-    updatePendingMatch: (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => void;
-    deletePendingMatch: (clientId: string) => void;
-    addPendingPlayer: (name: string, clubIds?: string[]) => PendingPlayer;
-    updatePendingPlayer: (clientId: string, name: string) => void;
-    deletePendingPlayer: (clientId: string) => void;
+    addPendingMatch: (m: { gameId: Base58ID; score: Record<string, number>; tournamentIds?: Base58ID[]; clientId?: Base58ID }) => PendingMatch;
+    updatePendingMatch: (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; tournamentIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => void;
+    deletePendingMatch: (clientId: Base58ID) => void;
+    addPendingPlayer: (name: string, clubIds?: Base58ID[]) => PendingPlayer;
+    updatePendingPlayer: (clientId: Base58ID, name: string) => void;
+    deletePendingPlayer: (clientId: Base58ID) => void;
     addPendingGame: (name: string) => PendingGame;
-    updatePendingGame: (clientId: string, name: string) => void;
-    deletePendingGame: (clientId: string) => void;
+    updatePendingGame: (clientId: Base58ID, name: string) => void;
+    deletePendingGame: (clientId: Base58ID) => void;
     /**
      * Offline-aware match submission: posts to the server when online, queues a
      * pending match when offline or when the request fails at the network level.
      */
     submitMatch: (payload: {
-        game_id: string;
+        game_id: Base58ID;
         score: Record<string, number>;
-        tournament_ids?: string[];
+        tournament_ids?: Base58ID[];
         calculator_kind?: string | null;
         calculator_data?: Record<string, never> | null;
     }) => Promise<SubmitMatchResult>;
@@ -124,12 +125,12 @@ function persistStore(store: OfflineStore) {
 // openapi-fetch returns { error } for HTTP errors and throws (TypeError) on network failure —
 // exactly the contract syncOffline expects.
 const syncApi: SyncApi = {
-    async createGame(body): Promise<SyncCallResult<{ id: string }>> {
+    async createGame(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         const { data, error, response } = await client.POST("/games", { body });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
     },
-    async createPlayer(body): Promise<SyncCallResult<{ id: string }>> {
+    async createPlayer(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         const { data, error, response } = await client.POST("/players", { body });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
@@ -142,7 +143,7 @@ const syncApi: SyncApi = {
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: null };
     },
-    async addMatch(body): Promise<SyncCallResult<{ id: string }>> {
+    async addMatch(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         // The generated POST /matches body type narrows calculator_data to
         // Record<string, never> (an openapi-fetch artifact); the sync engine
         // carries the opaque calculator payload as Record<string, unknown>.
@@ -295,7 +296,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, tournamentIds, clientId, calculatorKind, calculatorData }: { gameId: string; score: Record<string, number>; tournamentIds?: string[]; clientId?: string; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        ({ gameId, score, tournamentIds, clientId, calculatorKind, calculatorData }: { gameId: Base58ID; score: Record<string, number>; tournamentIds?: Base58ID[]; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             const match: PendingMatch = {
                 clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
@@ -313,7 +314,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: string, patch: { gameId: string; score: Record<string, number>; createdAt?: string; tournamentIds?: string[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; tournamentIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
@@ -344,7 +345,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const addPendingPlayer = useCallback(
-        (name: string, clubIds: string[] = []) => {
+        (name: string, clubIds: Base58ID[] = []) => {
             const player: PendingPlayer = {
                 clientId: newOfflineId(),
                 createdAt: new Date().toISOString(),
@@ -412,9 +413,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const submitMatch = useCallback(
         async (payload: {
-            game_id: string;
+            game_id: Base58ID;
             score: Record<string, number>;
-            tournament_ids?: string[];
+            tournament_ids?: Base58ID[];
             // Optional calculator state (e.g. Skull King round breakdown). Forwarded
             // on both the online path and the offline queue so the calculator detail
             // survives an offline save and is restored when the match is synced.
@@ -425,8 +426,8 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             // the server yet — don't attempt a network call that would 400. Queue
             // directly so the match goes out after its dependencies in the next sync.
             const currentStore = storeRef.current;
-            const pendingGameIds = new Set(currentStore.games.map((g) => g.clientId));
-            const pendingPlayerIds = new Set(currentStore.players.map((p) => p.clientId));
+            const pendingGameIds = new Set<string>(currentStore.games.map((g) => g.clientId));
+            const pendingPlayerIds = new Set<string>(currentStore.players.map((p) => p.clientId));
             const referencesPending =
                 pendingGameIds.has(payload.game_id) ||
                 Object.keys(payload.score).some((k) => pendingPlayerIds.has(k));

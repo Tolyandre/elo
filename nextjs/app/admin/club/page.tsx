@@ -3,6 +3,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { Base58ID, toBase58ID } from "@/lib/id";
 import {
     getClubPromise,
     patchClubPromise,
@@ -32,7 +33,7 @@ export default function ClubAdminPage() {
 function ClubAdminContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const clubId = searchParams.get("id") ?? "";
+    const clubId = toBase58ID(searchParams.get("id") ?? "");
     const { canEdit } = useMe();
     const { players, playerDisplayName } = usePlayers();
     const { invalidate: invalidateClubs, clubDisplayName } = useClubs();
@@ -50,7 +51,7 @@ function ClubAdminContent() {
     const [iconError, setIconError] = useState<string | null>(null);
 
     const del = useConfirmAction<boolean>(async () => {
-        await deleteClubPromise(clubId);
+        await deleteClubPromise(clubId!);
         invalidateClubs();
         router.push("/admin/clubs");
     });
@@ -71,7 +72,7 @@ function ClubAdminContent() {
         }
         try {
             setRenameLoading(true);
-            const updated = await patchClubPromise(clubId, { name: renameValue.trim() });
+            const updated = await patchClubPromise(clubId!, { name: renameValue.trim() });
             setClub((prev) => prev ? { ...prev, name: updated.name } : prev);
             invalidateClubs();
             setRenameOpen(false);
@@ -86,7 +87,7 @@ function ClubAdminContent() {
         try {
             setIconError(null);
             setIconLoading(true);
-            const updated = await patchClubPromise(clubId, { icon });
+            const updated = await patchClubPromise(clubId!, { icon });
             setClub((prev) => prev ? { ...prev, icon: updated.icon } : prev);
             invalidateClubs();
         } catch (e) {
@@ -96,15 +97,15 @@ function ClubAdminContent() {
         }
     }
 
-    async function toggleMember(playerId: string, isMember: boolean) {
+    async function toggleMember(playerId: Base58ID, isMember: boolean) {
         const key = playerId;
         try {
             setMemberLoading((p) => ({ ...p, [key]: true }));
             if (isMember) {
-                await removeClubMemberPromise(clubId, playerId);
+                await removeClubMemberPromise(clubId!, playerId);
                 setClub((prev) => prev ? { ...prev, player_ids: prev.player_ids.filter((id) => id !== playerId) } : prev);
             } else {
-                await addClubMemberPromise(clubId, playerId);
+                await addClubMemberPromise(clubId!, playerId);
                 setClub((prev) => prev ? { ...prev, player_ids: [...prev.player_ids, playerId] } : prev);
             }
             invalidateClubs();

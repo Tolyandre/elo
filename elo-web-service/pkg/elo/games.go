@@ -10,10 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type GamePlayerStat struct {
-	Id                        string
+	Id                        id.ID
 	Elo                       float64
 	League                    string
 	Rank                      int
@@ -22,20 +23,20 @@ type GamePlayerStat struct {
 }
 
 type GameStatistics struct {
-	Id           string
+	Id           id.ID
 	Name         string
 	TotalMatches int
 	Players      []GamePlayerStat
 }
 
 type GameTitles struct {
-	Id           string
+	Id           id.ID
 	Name         string
 	TotalMatches int
 }
 
 type GameMatchPlayer struct {
-	Id           string
+	Id           id.ID
 	Name         string
 	Score        float64
 	RatingStaked float64
@@ -44,18 +45,18 @@ type GameMatchPlayer struct {
 }
 
 type GameMatch struct {
-	Id      string
+	Id      id.ID
 	Date    interface{} // pgtype.Timestamptz
 	Players []GameMatchPlayer
 }
 
 type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
-	GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error)
-	GetGameMatches(ctx context.Context, id string) ([]GameMatch, error)
-	DeleteGame(ctx context.Context, id string) (*db.Game, error)
-	UpdateGameName(ctx context.Context, id string, name string) (*db.Game, error)
-	AddGame(ctx context.Context, id, name string) (*db.Game, error)
+	GetGameStatistics(ctx context.Context, gameID id.ID) (*GameStatistics, error)
+	GetGameMatches(ctx context.Context, gameID id.ID) ([]GameMatch, error)
+	DeleteGame(ctx context.Context, gameID id.ID) (*db.Game, error)
+	UpdateGameName(ctx context.Context, gameID id.ID, name string) (*db.Game, error)
+	AddGame(ctx context.Context, gameID id.ID, name string) (*db.Game, error)
 }
 
 type GameService struct {
@@ -88,15 +89,15 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 	return gameList, nil
 }
 
-func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameStatistics, error) {
+func (s *GameService) GetGameStatistics(ctx context.Context, gameID id.ID) (*GameStatistics, error) {
 	// Read latest game rating per player from DB (display rating + league)
-	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, id)
+	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, gameID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve game rating from db: %w", err)
 	}
 
 	// Get total match count for the game
-	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, id)
+	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, gameID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get match count: %w", err)
 	}
@@ -106,9 +107,9 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	if err != nil {
 		return nil, fmt.Errorf("unable to get game name: %w", err)
 	}
-	gameName := id
+	gameName := string(gameID)
 	for _, g := range gameRows {
-		if g.ID == id {
+		if g.ID == gameID {
 			gameName = g.Name
 			break
 		}
@@ -171,35 +172,36 @@ func (s *GameService) GetGameStatistics(ctx context.Context, id string) (*GameSt
 	}
 
 	return &GameStatistics{
-		Id:           id,
+		Id:           gameID,
 		Name:         gameName,
 		TotalMatches: int(totalMatches),
 		Players:      players,
 	}, nil
 }
 
-func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatch, error) {
-	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, id)
+func (s *GameService) GetGameMatches(ctx context.Context, gameID id.ID) ([]GameMatch, error) {
+	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, gameID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve game matches from db: %w", err)
 	}
 
 	// Group rows by match (already ordered ASC by date/id)
-	matchMap := make(map[string]*GameMatch)
-	order := make([]string, 0)
+	matchMap := make(map[id.ID]*GameMatch)
+	order := make([]id.ID, 0)
 
 	for _, r := range rows {
-		if _, ok := matchMap[r.MatchID]; !ok {
+		mid := r.MatchID
+		if _, ok := matchMap[mid]; !ok {
 			m := &GameMatch{
-				Id:      r.MatchID,
+				Id:      mid,
 				Date:    r.Date,
 				Players: make([]GameMatchPlayer, 0),
 			}
-			matchMap[r.MatchID] = m
-			order = append(order, r.MatchID)
+			matchMap[mid] = m
+			order = append(order, mid)
 		}
 
-		matchMap[r.MatchID].Players = append(matchMap[r.MatchID].Players, GameMatchPlayer{
+		matchMap[mid].Players = append(matchMap[mid].Players, GameMatchPlayer{
 			Id:           r.PlayerID,
 			Name:         r.PlayerName,
 			Score:        r.Score,
@@ -217,17 +219,17 @@ func (s *GameService) GetGameMatches(ctx context.Context, id string) ([]GameMatc
 	return result, nil
 }
 
-func (s *GameService) DeleteGame(ctx context.Context, id string) (*db.Game, error) {
-	g, err := s.Queries.DeleteGame(ctx, id)
+func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID) (*db.Game, error) {
+	g, err := s.Queries.DeleteGame(ctx, gameID)
 	if err != nil {
 		return nil, err
 	}
 	return &g, nil
 }
 
-func (s *GameService) UpdateGameName(ctx context.Context, id string, name string) (*db.Game, error) {
+func (s *GameService) UpdateGameName(ctx context.Context, gameID id.ID, name string) (*db.Game, error) {
 	g, err := s.Queries.UpdateGameName(ctx, db.UpdateGameNameParams{
-		ID:   id,
+		ID:   gameID,
 		Name: name,
 	})
 	if err != nil {
@@ -236,9 +238,9 @@ func (s *GameService) UpdateGameName(ctx context.Context, id string, name string
 	return &g, nil
 }
 
-func (s *GameService) AddGame(ctx context.Context, id, name string) (*db.Game, error) {
+func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string) (*db.Game, error) {
 	g, err := s.Queries.AddGame(ctx, db.AddGameParams{
-		ID:   id,
+		ID:   gameID,
 		Name: name,
 	})
 	if err != nil {

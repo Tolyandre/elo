@@ -7,11 +7,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
+	"slices"
 )
 
 type winStreakHandler struct{}
 
-func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error {
+func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error {
 	p := params.WinStreak
 	maxLosses := pgtype.Int4{}
 	if p.MaxLosses != nil {
@@ -19,7 +21,7 @@ func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, mark
 	}
 	gameIDs := p.GameIDs
 	if gameIDs == nil {
-		gameIDs = []string{}
+		gameIDs = []id.ID{}
 	}
 	if err := q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
 		MarketID:       marketID,
@@ -50,7 +52,7 @@ func (t *winStreakTrigger) OnMatch(ctx context.Context, q *db.Queries, match Mat
 	matchDate := match.Match.Date.Time
 
 	for _, m := range markets {
-		if !match.ParticipantSet[m.TargetPlayerID] || !containsString(m.GameIds, match.Match.GameID) {
+		if !match.ParticipantSet[m.TargetPlayerID] || !slices.Contains(m.GameIds, match.Match.GameID) {
 			continue
 		}
 
@@ -148,14 +150,14 @@ func (t *winStreakTrigger) OnOverdue(ctx context.Context, q *db.Queries, settle 
 
 // winStreakOutcomeID maps the binary evaluation result to the market's yes/no
 // outcome row id.
-func winStreakOutcomeID(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome) (MarketOutcome, error) {
+func winStreakOutcomeID(ctx context.Context, q *db.Queries, marketID id.ID, outcome MarketOutcome) (MarketOutcome, error) {
 	key := OutcomeKeyNo
 	if outcome == OutcomeYes {
 		key = OutcomeKeyYes
 	}
-	id, err := outcomeIDForKey(ctx, q, marketID, key)
+	outcomeID, err := outcomeIDForKey(ctx, q, marketID, key)
 	if err != nil {
 		return "", err
 	}
-	return MarketOutcome(id), nil
+	return MarketOutcome(outcomeID), nil
 }

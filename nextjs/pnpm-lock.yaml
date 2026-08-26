@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  openapi-typescript-helpers@0.1.0: 1361c2bb8c6e2c32fd7bf72f1d2e5fd454e6a33114de84d9419ea4b624e4bde9
+
 importers:
 
   .:
@@ -2816,6 +2819,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -8675,9 +8679,9 @@ snapshots:
 
   openapi-fetch@0.17.0:
     dependencies:
-      openapi-typescript-helpers: 0.1.0
+      openapi-typescript-helpers: 0.1.0(patch_hash=1361c2bb8c6e2c32fd7bf72f1d2e5fd454e6a33114de84d9419ea4b624e4bde9)
 
-  openapi-typescript-helpers@0.1.0: {}
+  openapi-typescript-helpers@0.1.0(patch_hash=1361c2bb8c6e2c32fd7bf72f1d2e5fd454e6a33114de84d9419ea4b624e4bde9): {}
 
   openapi-typescript@7.13.0(typescript@6.0.3):
     dependencies:

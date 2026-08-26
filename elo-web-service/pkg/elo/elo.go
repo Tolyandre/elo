@@ -1,11 +1,10 @@
 package elo
 
 import (
-	"fmt"
 	"maps"
 	"math"
 
-	"github.com/google/uuid"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // newSettlementID mints a server-generated UUIDv7 for settlement rows.
@@ -13,17 +12,12 @@ import (
 // client never supplies them. UUIDv7 keeps them lexicographically sortable by
 // creation time, which the settlement-ordering queries (ORDER BY date, id)
 // rely on for the equal-date tie-break (ADR-01 §22).
-func newSettlementID() string {
-	id, err := uuid.NewV7()
-	if err != nil {
-		// uuid.NewV7 only fails on crypto/rand read errors, which are fatal.
-		panic(fmt.Sprintf("generate settlement id: %v", err))
-	}
-	return id.String()
+func newSettlementID() id.ID {
+	return id.New()
 }
 
-func WinExpectation(currentElo float64, playersScore map[string]float64, startingElo float64,
-	prevElo map[string]float64, elo_const_d float64) float64 {
+func WinExpectation(currentElo float64, playersScore map[id.ID]float64, startingElo float64,
+	prevElo map[id.ID]float64, elo_const_d float64) float64 {
 
 	var playersCount float64 = float64(len(playersScore))
 	if playersCount == 1 {
@@ -42,7 +36,7 @@ func WinExpectation(currentElo float64, playersScore map[string]float64, startin
 	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
 }
 
-func NormalizedScore(currentScore float64, playersScore map[string]float64, absoluteLoserScore float64, winReward float64) float64 {
+func NormalizedScore(currentScore float64, playersScore map[id.ID]float64, absoluteLoserScore float64, winReward float64) float64 {
 	var sumPow float64 = 0
 	for _, s := range playersScore {
 		sumPow += math.Pow(s-absoluteLoserScore, winReward)
@@ -54,7 +48,7 @@ func NormalizedScore(currentScore float64, playersScore map[string]float64, abso
 	return score
 }
 
-func GetAbsoluteLoserScore(playersScore map[string]float64) float64 {
+func GetAbsoluteLoserScore(playersScore map[id.ID]float64) float64 {
 	var minSet = false
 	var min float64 = 0
 	for _, s := range playersScore {
@@ -68,10 +62,10 @@ func GetAbsoluteLoserScore(playersScore map[string]float64) float64 {
 	return min
 }
 
-func CalculateNewElo(previousElo map[string]float64, startingElo float64, score map[string]float64,
-	eloConstK float64, eloConstD float64, winReward float64) map[string]float64 {
+func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score map[id.ID]float64,
+	eloConstK float64, eloConstD float64, winReward float64) map[id.ID]float64 {
 
-	newElo := make(map[string]float64)
+	newElo := make(map[id.ID]float64, len(previousElo))
 	maps.Copy(newElo, previousElo)
 
 	absoluteLoserScore := GetAbsoluteLoserScore(score)

@@ -1,10 +1,11 @@
+import type { Base58ID } from "../lib/id";
 import { describe, expect, it } from "vitest";
 import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "../lib/player-groups";
 import type { Club, Match, Player, Tournament } from "../app/api";
 
 const player = (id: string, name: string) => ({ id, name, geologist_name: null }) as Pick<Player, "id" | "name" | "geologist_name">;
-const club = (id: string, name: string, playerIds: string[]) => ({ id, name, player_ids: playerIds, geologist_name: null }) as Club;
-const tournament = (name: string, playerIds: string[]) => ({ name, player_ids: playerIds }) as Pick<Tournament, "name" | "player_ids">;
+const club = (id: string, name: string, playerIds: string[]) => ({ id: id as Base58ID, name, player_ids: playerIds as Base58ID[], geologist_name: null }) as Club;
+const tournament = (name: string, playerIds: string[]) => ({ name, player_ids: playerIds as Base58ID[] }) as Pick<Tournament, "name" | "player_ids">;
 
 const name = (p: { name: string }) => p.name;
 
@@ -18,7 +19,7 @@ describe("buildPlayerGroups", () => {
         ];
         const tournaments = [tournament("Beta camp", ["1", "3"]), tournament("Alpha camp", ["2"])];
 
-        const groups = buildPlayerGroups(players, clubs, ["1"], name, name, tournaments, "4");
+        const groups = buildPlayerGroups(players, clubs, ["1" as Base58ID], name, name, tournaments, "4" as Base58ID);
 
         expect(groups.map((g) => g.heading)).toEqual([
             "Недавние",
@@ -52,11 +53,11 @@ describe("recentCoPlayerIds", () => {
             match("2024-01-02", ["me", "2", "3"]),
             match("2024-01-01", ["x", "y"]), // not mine — ignored
         ];
-        expect(recentCoPlayerIds(matches, "me")).toEqual(["me", "1", "2", "3"]);
+        expect(recentCoPlayerIds(matches, "me" as Base58ID)).toEqual(["me", "1", "2", "3"]);
     });
 
     it("includes self even when their matches are solo", () => {
-        expect(recentCoPlayerIds([match("2024-01-01", ["me"])], "me")).toEqual(["me"]);
+        expect(recentCoPlayerIds([match("2024-01-01", ["me"])], "me" as Base58ID)).toEqual(["me"]);
     });
 
     it("respects the co-player limit and orders by match recency", () => {
@@ -66,7 +67,7 @@ describe("recentCoPlayerIds", () => {
             match("2024-01-02", ["me", "7"]),
             match("2024-01-01", ["me", "8"]),
         ];
-        expect(recentCoPlayerIds(matches, "me", 3)).toEqual(["me", "5", "6", "7"]);
+        expect(recentCoPlayerIds(matches, "me" as Base58ID, 3)).toEqual(["me", "5", "6", "7"]);
     });
 
     it("is empty without a current player", () => {
@@ -74,7 +75,7 @@ describe("recentCoPlayerIds", () => {
     });
 
     it("is empty when the current player has no matches", () => {
-        expect(recentCoPlayerIds([match("2024-01-01", ["a", "b"])], "me")).toEqual([]);
+        expect(recentCoPlayerIds([match("2024-01-01", ["a", "b"])], "me" as Base58ID)).toEqual([]);
     });
 });
 
@@ -87,7 +88,7 @@ describe("buildPlayerTabs", () => {
             club("a", "Alpha", ["2"]), // Bob — other club
         ];
         const tournaments = [tournament("Camp", ["1", "3"])] as Pick<Tournament, "id" | "name" | "player_ids">[];
-        const tabs = buildPlayerTabs(players, clubs, ["1"], name, name, "4", tournaments);
+        const tabs = buildPlayerTabs(players, clubs, ["1" as Base58ID], name, name, "4" as Base58ID, tournaments);
 
         expect(tabs.map((t) => t.label)).toEqual(["Недавние", "Camp", "Zeta", "Другие"]);
         // "Другие" holds a section for the other club and the club-less players

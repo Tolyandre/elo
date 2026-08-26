@@ -34,7 +34,7 @@ PlayersCollection:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               name:
                 type: string
             required: [id, name]
@@ -266,14 +266,15 @@ Player:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     geologist_name:
       type: string
       nullable: true
     user_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
     rank:
       $ref: '#/HistoryRank'
@@ -284,7 +285,7 @@ PlayerRef:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
   required: [id, name]
@@ -307,7 +308,7 @@ GameMatchStat:
   type: object
   properties:
     game_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_name:
       type: string
     matches_count:
@@ -334,7 +335,7 @@ GameEloStat:
   type: object
   properties:
     game_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_name:
       type: string
     elo_earned:

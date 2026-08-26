@@ -15,13 +15,22 @@ sql:
         overrides:
           - db_type: "timestamptz"
             go_type: "time.Time"
+          # uuid columns map to the typed identifier (canonical UUID string).
+          # Its JSON hooks keep the wire form short Base58 (ADR-12); Scan/Value
+          # make it a transparent pgx/database-sql value.
           - db_type: "uuid"
-            go_type: "string"
+            go_type: "github.com/tolyandre/elo-web-service/pkg/id.ID"
           - db_type: "uuid"
             nullable: true
             go_type:
-              type: "string"
+              import: "github.com/tolyandre/elo-web-service/pkg/id"
+              type: "ID"
               pointer: true
+          - db_type: "_uuid"
+            go_type:
+              import: "github.com/tolyandre/elo-web-service/pkg/id"
+              type: "ID"
+              slice: true
           # JSONB columns are scanned as raw bytes; the handler parses/validates
           # the document against a per-calculator-kind JSON schema (pkg/calculator).
           - db_type: "jsonb"

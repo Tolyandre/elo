@@ -15,7 +15,7 @@
         "additionalProperties": false,
         "required": ["player_id", "name"],
         "properties": {
-          "player_id": { "type": "string", "minLength": 1 },
+          "player_id": { "type": "string", "minLength": 1, "x-entity-id": true },
           "name": { "type": "string", "minLength": 1 }
         }
       }
@@ -27,7 +27,7 @@
         "additionalProperties": false,
         "required": ["player_id", "value"],
         "properties": {
-          "player_id": { "type": "string", "minLength": 1 },
+          "player_id": { "type": "string", "minLength": 1, "x-entity-id": true },
           "value": { "type": "integer", "minimum": 0 }
         }
       }
@@ -41,12 +41,12 @@
         "required": ["row", "player_id", "coeff", "count"],
         "properties": {
           "row": { "type": "string", "minLength": 1 },
-          "player_id": { "type": "string", "minLength": 1 },
+          "player_id": { "type": "string", "minLength": 1, "x-entity-id": true },
           "coeff": { "type": "integer" },
           "count": { "type": "integer", "minimum": 0 }
         }
       }
     },
-    "fallback_game_id": { "type": ["string", "null"] }
+    "fallback_game_id": { "type": ["string", "null"], "x-entity-id": true }
   }
 }

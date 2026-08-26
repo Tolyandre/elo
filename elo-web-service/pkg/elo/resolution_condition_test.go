@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 var testWindow = TimeWindow{
@@ -13,13 +14,13 @@ var testWindow = TimeWindow{
 	ClosesAt: time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC),
 }
 
-func makeMatch(date time.Time, gameID string, participants map[string]float64) MatchInfo {
-	scores := make(map[string]float64, len(participants))
-	pset := make(map[string]bool, len(participants))
+func makeMatch(date time.Time, gameID id.ID, participants map[string]float64) MatchInfo {
+	scores := make(map[id.ID]float64, len(participants))
+	pset := make(map[id.ID]bool, len(participants))
 	maxScore := -1.0
 	for pid, score := range participants {
-		scores[pid] = score
-		pset[pid] = true
+		scores[id.ID(pid)] = score
+		pset[id.ID(pid)] = true
 		if score > maxScore {
 			maxScore = score
 		}
@@ -83,11 +84,11 @@ func TestSoleWinnerID(t *testing.T) {
 func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	inWindow := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 	outOfWindow := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
-	gameID := "game-1"
-	otherGameID := "game-2"
+	gameID := id.ID("game-1")
+	otherGameID := id.ID("game-2")
 
 	t.Run("sole target winner resolves to the player outcome", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != PlayerOutcomeKey("10") {
@@ -96,7 +97,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("target behind resolves to other", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 3, "20": 5})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != OutcomeKeyOther {
@@ -105,7 +106,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("tie at first place resolves to other even if target is tied", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 5})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != OutcomeKeyOther {
@@ -114,7 +115,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("non-target sole winner resolves to other when others allowed", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 3, "99": 5})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != OutcomeKeyOther {
@@ -123,7 +124,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("second target winning resolves to that target's outcome", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "20"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "20"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 3, "20": 5})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != PlayerOutcomeKey("20") {
@@ -132,7 +133,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when match date outside window", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true}
 		match := makeMatch(outOfWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
@@ -141,7 +142,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when game_id does not match", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true, GameIDs: []string{gameID}}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true, GameIDs: []id.ID{gameID}}
 		match := makeMatch(inWindow, otherGameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
@@ -150,7 +151,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("resolved when game_id matches", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10"}, AllowOtherPlayers: true, GameIDs: []string{gameID}}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10"}, AllowOtherPlayers: true, GameIDs: []id.ID{gameID}}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != PlayerOutcomeKey("10") {
@@ -159,7 +160,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("not resolved when a target is absent", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "30"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "30"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 5, "20": 3})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
@@ -168,7 +169,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("allow_other: extra players do not block resolution", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "20"}, AllowOtherPlayers: true}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "20"}, AllowOtherPlayers: true}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 1, "20": 2, "30": 5, "40": 0})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != OutcomeKeyOther {
@@ -177,7 +178,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("exact players: extra players block resolution", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "20"}, AllowOtherPlayers: false}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "20"}, AllowOtherPlayers: false}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 1, "20": 2, "30": 5})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {
@@ -186,7 +187,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("exact players: matching set resolves", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "20"}, AllowOtherPlayers: false}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "20"}, AllowOtherPlayers: false}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 1, "20": 2})
 		resolved, key := cond.Evaluate(match, testWindow)
 		if !resolved || key != PlayerOutcomeKey("20") {
@@ -195,7 +196,7 @@ func TestMatchWinnerCondition_Evaluate(t *testing.T) {
 	})
 
 	t.Run("exact players: missing target blocks resolution", func(t *testing.T) {
-		cond := MatchWinnerCondition{TargetPlayerIDs: []string{"10", "20"}, AllowOtherPlayers: false}
+		cond := MatchWinnerCondition{TargetPlayerIDs: []id.ID{"10", "20"}, AllowOtherPlayers: false}
 		match := makeMatch(inWindow, gameID, map[string]float64{"10": 1})
 		resolved, _ := cond.Evaluate(match, testWindow)
 		if resolved {

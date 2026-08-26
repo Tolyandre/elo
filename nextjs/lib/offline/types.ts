@@ -1,13 +1,13 @@
 // Pending entities created while offline, stored in localStorage until synced.
 
 import { uuidv7 } from "uuidv7";
-import { encodeId } from "../id";
+import { Base58ID, encodeId } from "../id";
 
 export type SyncStatus = "pending" | "syncing" | "error";
 
 type PendingBase = {
     /** Final UUIDv7 id; used both as the local id and the server `id` on sync. */
-    clientId: string;
+    clientId: Base58ID;
     /** ISO time of offline creation; becomes the match `date` on sync. */
     createdAt: string;
     status: SyncStatus;
@@ -21,17 +21,17 @@ export type PendingPlayer = PendingBase & {
      * Memberships are applied (POST /clubs/{id}/members) right after the player
      * is created during sync. Empty for players created before this field existed.
      */
-    clubIds: string[];
+    clubIds: Base58ID[];
 };
 export type PendingGame = PendingBase & { name: string };
 
 export type PendingMatch = PendingBase & {
     /** Server game id, or clientId of a pending game. */
-    gameId: string;
+    gameId: Base58ID;
     /** Keys are server player ids or clientIds of pending players. */
     score: Record<string, number>;
     /** Server tournament ids this match belongs to (tournaments are never created offline). */
-    tournamentIds: string[];
+    tournamentIds: Base58ID[];
     /**
      * Calculator state captured when the match was created from a calculator
      * (e.g. Skull King). Forwarded on sync so the round-by-round breakdown
@@ -47,7 +47,7 @@ export type OfflineStore = {
     matches: PendingMatch[];
 };
 
-export function newOfflineId(): string {
+export function newOfflineId(): Base58ID {
     return encodeId(uuidv7());
 }
 

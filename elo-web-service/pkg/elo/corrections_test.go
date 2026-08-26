@@ -13,11 +13,11 @@ func TestDetermineCorrectionLeague(t *testing.T) {
 		want      string
 	}{
 		// gap > goalGap → always newbie regardless of prev
-		{"newbie", 983, "newbie"},   // gap = 17
-		{"amateur", 983, "newbie"},  // gap = 17
-		{"elite", 983, "newbie"},    // gap = 17
-		{"amateur", 0, "newbie"},    // gap = 1000
-		{"elite", 0, "newbie"},      // gap = 1000
+		{"newbie", 983, "newbie"},  // gap = 17
+		{"amateur", 983, "newbie"}, // gap = 17
+		{"elite", 983, "newbie"},   // gap = 17
+		{"amateur", 0, "newbie"},   // gap = 1000
+		{"elite", 0, "newbie"},     // gap = 1000
 
 		// gap <= goalGap, was newbie → amateur
 		{"newbie", 984, "amateur"},  // gap = 16

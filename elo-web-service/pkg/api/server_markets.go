@@ -11,7 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
+
+// idsToStrings / stringsToIDs bridge between canonical DB ids and the plain
+// string slices the response DTO layer still uses.
+func idsToStrings(ids []id.ID) []string {
+	if ids == nil {
+		return nil
+	}
+	out := make([]string, len(ids))
+	for i, v := range ids {
+		out[i] = string(v)
+	}
+	return out
+}
+
+func stringsToIDs(ss []string) []id.ID {
+	if ss == nil {
+		return nil
+	}
+	out := make([]id.ID, len(ss))
+	for i, v := range ss {
+		out[i] = id.ID(v)
+	}
+	return out
+}
 
 // marketParams is the base (non-pointer) type constraint: both Market_Params and
 // MarketDetail_Params expose the same discriminator-setting methods on their
@@ -34,22 +59,22 @@ type paramsFiller[T any] interface {
 // get / by resolution match); the converters below map each row onto it so
 // buildMarket is written once.
 type marketRow struct {
-	ID                string
+	ID                id.ID
 	MarketType        string
 	Status            string
-	ResolutionOutcome *string
-	ResolutionMatchID *string
+	ResolutionOutcome *id.ID
+	ResolutionMatchID *id.ID
 	StartsAt          pgtype.Timestamptz
 	ClosesAt          pgtype.Timestamptz
 	CreatedAt         pgtype.Timestamptz
 	ResolvedAt        pgtype.Timestamptz
 	BettingClosedAt   pgtype.Timestamptz
 	LiquidityB        float64
-	TargetPlayerIds   []string
+	TargetPlayerIds   []id.ID
 	AllowOtherPlayers pgtype.Bool
-	MwGameIds         []string
-	WsTargetPlayerID  *string
-	WsGameIds         []string
+	MwGameIds         []id.ID
+	WsTargetPlayerID  *id.ID
+	WsGameIds         []id.ID
 	WinsRequired      pgtype.Int4
 	MaxLosses         pgtype.Int4
 }
@@ -71,15 +96,14 @@ func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 // MarketDetail_Params). A fresh T is allocated and its address (P) is returned;
 // FromMatchWinnerParams and FromWinStreakParams have pointer receivers and
 // dereference the receiver, so a nil pointer would panic.
-func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targetPlayerIds []string, allowOtherPlayers pgtype.Bool, mwGameIDs []string, wsTargetPlayerID *string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) P {
+func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) P {
 	p := P(new(T))
 	switch marketType {
 	case "match_winner":
-		gameIDStrs := mwGameIDs
 		_ = p.FromMatchWinnerParams(MatchWinnerParams{
 			TargetPlayerIds:   targetPlayerIds,
 			AllowOtherPlayers: allowOtherPlayers.Bool,
-			GameIds:           &gameIDStrs,
+			GameIds:           &mwGameIDs,
 		})
 	case "win_streak":
 		var maxL *int
@@ -87,7 +111,7 @@ func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targ
 			v := int(maxLosses.Int32)
 			maxL = &v
 		}
-		wsTarget := ""
+		var wsTarget id.ID
 		if wsTargetPlayerID != nil {
 			wsTarget = *wsTargetPlayerID
 		}
@@ -102,12 +126,12 @@ func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targ
 }
 
 // buildTypedMarketParams converts raw DB columns to the typed Market_Params union.
-func buildTypedMarketParams(marketType string, targetPlayerIds []string, allowOtherPlayers pgtype.Bool, mwGameIDs []string, wsTargetPlayerID *string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *Market_Params {
+func buildTypedMarketParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *Market_Params {
 	return buildTypedParams[Market_Params, *Market_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses)
 }
 
 // buildTypedMarketDetailParams same as above but for MarketDetail_Params.
-func buildTypedMarketDetailParams(marketType string, targetPlayerIds []string, allowOtherPlayers pgtype.Bool, mwGameIDs []string, wsTargetPlayerID *string, wsGameIDs []string, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *MarketDetail_Params {
+func buildTypedMarketDetailParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *MarketDetail_Params {
 	return buildTypedParams[MarketDetail_Params, *MarketDetail_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses)
 }
 
@@ -183,8 +207,7 @@ func buildOutcomes(rows []db.ListMarketOutcomesWithPoolsRow, liquidityB float64)
 			Pool:   r.Pool,
 		}
 		if r.PlayerID != nil {
-			pid := *r.PlayerID
-			outcomes[i].PlayerId = &pid
+			outcomes[i].PlayerId = r.PlayerID
 		}
 	}
 	return outcomes
@@ -196,7 +219,7 @@ func buildOutcomes(rows []db.ListMarketOutcomesWithPoolsRow, liquidityB float64)
 func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map[string]float64) map[string][]MarketsMarketOutcome {
 	grouped := make(map[string][]db.ListMarketOutcomesWithPoolsRow, len(liquidity))
 	for _, r := range rows {
-		grouped[r.MarketID] = append(grouped[r.MarketID], db.ListMarketOutcomesWithPoolsRow{
+		grouped[string(r.MarketID)] = append(grouped[string(r.MarketID)], db.ListMarketOutcomesWithPoolsRow{
 			ID:         r.ID,
 			MarketID:   r.MarketID,
 			Kind:       r.Kind,
@@ -267,7 +290,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 	}
 	liquidity := make(map[string]float64, len(rows))
 	for _, r := range rows {
-		liquidity[r.ID] = r.LiquidityB
+		liquidity[string(r.ID)] = r.LiquidityB
 	}
 	outcomes := buildAllOutcomes(outcomeRows, liquidity)
 
@@ -275,7 +298,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 	closed := make([]Market, 0)
 
 	for _, r := range rows {
-		m := buildMarket(marketRowFromList(r), outcomes[r.ID])
+		m := buildMarket(marketRowFromList(r), outcomes[string(r.ID)])
 
 		if r.Status == "open" || r.Status == "betting_closed" {
 			active = append(active, m)
@@ -317,7 +340,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 }
 
 func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestObject) (GetMarketResponseObject, error) {
-	marketID := request.Id
+	marketID := parseIDParam(request.Id)
 
 	row, err := s.api.MarketService.GetMarket(ctx, marketID)
 	if err != nil {
@@ -390,22 +413,22 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 }
 
 func (s *StrictServer) GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error) {
-	points, err := s.api.MarketService.GetMarketPriceHistory(ctx, request.Id)
+	points, err := s.api.MarketService.GetMarketPriceHistory(ctx, parseIDParam(request.Id))
 	if err != nil {
 		return GetMarketPriceHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
 	}
 	resp := GetMarketPriceHistory200JSONResponse{Status: "success"}
 	resp.Data.Points = make([]struct {
 		Prices []struct {
-			OutcomeId string  `json:"outcome_id"`
-			Price     float64 `json:"price"`
+			OutcomeId Base58ID `json:"outcome_id"`
+			Price     float64  `json:"price"`
 		} `json:"prices"`
 		T time.Time `json:"t"`
 	}, len(points))
 	for i, p := range points {
 		resp.Data.Points[i].Prices = make([]struct {
-			OutcomeId string  `json:"outcome_id"`
-			Price     float64 `json:"price"`
+			OutcomeId Base58ID `json:"outcome_id"`
+			Price     float64  `json:"price"`
 		}, len(p.Prices))
 		for j, op := range p.Prices {
 			resp.Data.Points[i].Prices[j].OutcomeId = op.OutcomeID
@@ -421,7 +444,7 @@ func (s *StrictServer) GetMarketPriceHistory(ctx context.Context, request GetMar
 // with a linked player. Projections sum the player's per-buy shares (each pays
 // 1 on a win) and spent elo. Failures of the individual reads are non-fatal: a
 // missing field stays nil.
-func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID string) {
+func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID id.ID) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
 		return
@@ -442,12 +465,12 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 	})
 	if err == nil {
 		type position struct {
-			outcomeID string
+			outcomeID id.ID
 			staked    float64
 			shares    float64
 		}
-		order := make([]string, 0)
-		byOutcome := make(map[string]*position)
+		order := make([]id.ID, 0)
+		byOutcome := make(map[id.ID]*position)
 		for _, b := range myBets {
 			pos := byOutcome[b.Outcome]
 			if pos == nil {
@@ -460,16 +483,16 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 		}
 		if len(order) > 0 {
 			positions := make([]struct {
-				OutcomeId string  `json:"outcome_id"`
-				Shares    float64 `json:"shares"`
-				Staked    float64 `json:"staked"`
+				OutcomeId Base58ID `json:"outcome_id"`
+				Shares    float64  `json:"shares"`
+				Staked    float64  `json:"staked"`
 			}, 0, len(order))
 			for _, oid := range order {
 				pos := byOutcome[oid]
 				positions = append(positions, struct {
-					OutcomeId string  `json:"outcome_id"`
-					Shares    float64 `json:"shares"`
-					Staked    float64 `json:"staked"`
+					OutcomeId Base58ID `json:"outcome_id"`
+					Shares    float64  `json:"shares"`
+					Staked    float64  `json:"staked"`
 				}{OutcomeId: pos.outcomeID, Shares: pos.shares, Staked: pos.staked})
 			}
 			detail.MyPositions = &positions
@@ -514,7 +537,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	}
 
 	params := elo.CreateMarketParams{
-		ID:         body.Id,
+		ID:         id.ID(body.Id),
 		MarketType: string(body.MarketType),
 		StartsAt:   startsAt,
 		ClosesAt:   body.ClosesAt,
@@ -522,8 +545,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	}
 
 	if body.GuarantorPlayerIds != nil {
-		params.GuarantorPlayerIDs = make([]string, len(*body.GuarantorPlayerIds))
-		copy(params.GuarantorPlayerIDs, *body.GuarantorPlayerIds)
+		params.GuarantorPlayerIDs = *body.GuarantorPlayerIds
 	}
 	if body.LiquidityB != nil {
 		params.LiquidityB = *body.LiquidityB
@@ -541,18 +563,18 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 			return CreateMarket400JSONResponse{Status: "fail", Message: "match_winner requires allow_other_players"}, nil
 		}
 		// Deduplicate while preserving order.
-		seen := make(map[string]bool, len(*body.TargetPlayerIds))
-		targets := make([]string, 0, len(*body.TargetPlayerIds))
-		for _, id := range *body.TargetPlayerIds {
-			if !seen[id] {
-				seen[id] = true
-				targets = append(targets, id)
+		seen := make(map[id.ID]bool, len(*body.TargetPlayerIds))
+		targets := make([]id.ID, 0, len(*body.TargetPlayerIds))
+		for _, tpid := range *body.TargetPlayerIds {
+			v := id.ID(tpid)
+			if !seen[v] {
+				seen[v] = true
+				targets = append(targets, v)
 			}
 		}
-		var gameIDs []string
+		var gameIDs []id.ID
 		if body.GameIds != nil {
-			gameIDs = make([]string, len(*body.GameIds))
-			copy(gameIDs, *body.GameIds)
+			gameIDs = *body.GameIds
 		}
 		params.MatchWinner = &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   targets,
@@ -567,10 +589,9 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		if body.WinsRequired == nil {
 			return CreateMarket400JSONResponse{Status: "fail", Message: "win_streak requires wins_required"}, nil
 		}
-		var streakGameIDs []string
+		var streakGameIDs []id.ID
 		if body.StreakGameIds != nil {
-			streakGameIDs = make([]string, len(*body.StreakGameIds))
-			copy(streakGameIDs, *body.StreakGameIds)
+			streakGameIDs = *body.StreakGameIds
 		}
 		var maxLosses *int32
 		if body.MaxLosses != nil {
@@ -578,7 +599,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 			maxLosses = &v
 		}
 		params.WinStreak = &elo.WinStreakCreateParams{
-			TargetPlayerID: *body.TargetPlayerId,
+			TargetPlayerID: id.ID(*body.TargetPlayerId),
 			GameIDs:        streakGameIDs,
 			WinsRequired:   int32(*body.WinsRequired),
 			MaxLosses:      maxLosses,
@@ -604,7 +625,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 func (s *StrictServer) PatchMarket(ctx context.Context, request PatchMarketRequestObject) (PatchMarketResponseObject, error) {
 	switch string(request.Body.Status) {
 	case "betting_closed":
-		if err := s.api.MarketService.LockMarketBetting(ctx, request.Id); err != nil {
+		if err := s.api.MarketService.LockMarketBetting(ctx, parseIDParam(request.Id)); err != nil {
 			if errors.Is(err, elo.ErrMarketNotOpen) {
 				return PatchMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
 			}
@@ -617,7 +638,7 @@ func (s *StrictServer) PatchMarket(ctx context.Context, request PatchMarketReque
 }
 
 func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketRequestObject) (DeleteMarketResponseObject, error) {
-	if err := s.api.MatchService.DeleteMarketAndRecalculate(ctx, request.Id); err != nil {
+	if err := s.api.MatchService.DeleteMarketAndRecalculate(ctx, parseIDParam(request.Id)); err != nil {
 		if errors.Is(err, elo.ErrMarketNotOpen) {
 			return DeleteMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		}
@@ -652,7 +673,7 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_price must be in (0, 1)"}, nil
 	}
 
-	outcome, err := s.api.MarketService.PlaceBet(ctx, body.Id, request.Id, *user.PlayerID, body.OutcomeId, body.Shares, body.ExpectedPrice)
+	outcome, err := s.api.MarketService.PlaceBet(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, id.ID(body.OutcomeId), body.Shares, body.ExpectedPrice)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrBetLimitExceeded):
@@ -673,9 +694,9 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 }
 
 func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarketsByMatchIdRequestObject) (GetMarketsByMatchIdResponseObject, error) {
-	id := request.Id
+	matchID := parseIDParam(request.Id)
 
-	rows, err := s.api.MarketService.ListMarketsByResolutionMatch(ctx, &id)
+	rows, err := s.api.MarketService.ListMarketsByResolutionMatch(ctx, &matchID)
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +706,7 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 
 	liquidity := make(map[string]float64, len(rows))
 	for _, r := range rows {
-		liquidity[r.ID] = r.LiquidityB
+		liquidity[string(r.ID)] = r.LiquidityB
 	}
 	result := make([]Market, 0, len(rows))
 	for _, r := range rows {

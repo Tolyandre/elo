@@ -19,8 +19,7 @@ func (s *StrictServer) ListUsers(ctx context.Context, _ ListUsersRequestObject) 
 			CanEdit: u.AllowEditing,
 		}
 		if u.PlayerID != nil {
-			pid := *u.PlayerID
-			user.PlayerId = &pid
+			user.PlayerId = u.PlayerID
 		}
 		out = append(out, user)
 	}
@@ -29,11 +28,11 @@ func (s *StrictServer) ListUsers(ctx context.Context, _ ListUsersRequestObject) 
 }
 
 func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestObject) (PatchUserResponseObject, error) {
-	if err := s.api.UserService.AllowEditing(ctx, request.UserId, request.Body.CanEdit); err != nil {
+	if err := s.api.UserService.AllowEditing(ctx, parseIDParam(request.UserId), request.Body.CanEdit); err != nil {
 		return nil, err
 	}
 
-	user, err := s.api.UserService.GetUserByID(ctx, request.UserId)
+	user, err := s.api.UserService.GetUserByID(ctx, parseIDParam(request.UserId))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
 			return PatchUser404JSONResponse{Status: "fail", Message: "user not found"}, nil
@@ -47,8 +46,7 @@ func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestOb
 		CanEdit: user.AllowEditing,
 	}
 	if user.PlayerID != nil {
-		pid := *user.PlayerID
-		resp.PlayerId = &pid
+		resp.PlayerId = user.PlayerID
 	}
 
 	return PatchUser200JSONResponse{Status: "success", Data: resp}, nil

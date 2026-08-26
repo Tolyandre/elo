@@ -1,5 +1,11 @@
 # Short ids (Base58-encoded UUIDs)
 
+> **Superseded in part by ADR-12:** the boundary middlewares described below
+> were replaced by type-driven conversion (pkg/id JSON hooks, the shared
+> Base58ID OpenAPI schema, IDMap for score keys, and a schema-driven walk for
+> calculator_data). The encoding itself — Base58 wire form, canonical UUID in
+> storage, tolerant inbound decode — is unchanged.
+
 ## Problem
 
 ADR-06 made every primary key a client-generated UUIDv7 exposed on the wire as the standard 36-character canonical string (e.g. `018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f`). That format is verbose and awkward in the places users actually see ids — URLs like `/player?id=018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f` — especially on mobile and when sharing links by hand. The canonical form also carries four dashes that add nothing.

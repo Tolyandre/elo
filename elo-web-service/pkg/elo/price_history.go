@@ -1,6 +1,10 @@
 package elo
 
-import "time"
+import (
+	"time"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
+)
 
 // This file reconstructs a market's price history by replaying its bets
 // through the LMSR. Because a market's liquidity_b is fixed at creation and
@@ -11,14 +15,14 @@ import "time"
 
 // PriceBet is one replay step: the shares bought on an outcome and when.
 type PriceBet struct {
-	Outcome  string
+	Outcome  id.ID
 	Shares   float64
 	PlacedAt time.Time
 }
 
 // OutcomePrice is the marginal price of one outcome at a point in time.
 type OutcomePrice struct {
-	OutcomeID string
+	OutcomeID id.ID
 	Price     float64
 }
 
@@ -34,10 +38,10 @@ type PricePoint struct {
 // outcomeIDs fixes the vector layout (and its length); bets on unknown
 // outcomes are skipped (defensive — the FK guarantees they reference real
 // outcome rows of this market). Returns an empty slice for a bet-less market.
-func PriceHistory(bets []PriceBet, outcomeIDs []string, liquidityB float64) []PricePoint {
-	index := make(map[string]int, len(outcomeIDs))
-	for i, id := range outcomeIDs {
-		index[id] = i
+func PriceHistory(bets []PriceBet, outcomeIDs []id.ID, liquidityB float64) []PricePoint {
+	index := make(map[id.ID]int, len(outcomeIDs))
+	for i, oid := range outcomeIDs {
+		index[oid] = i
 	}
 	q := make([]float64, len(outcomeIDs))
 	points := make([]PricePoint, 0, len(bets))
@@ -49,8 +53,8 @@ func PriceHistory(bets []PriceBet, outcomeIDs []string, liquidityB float64) []Pr
 		q[i] += bet.Shares
 		prices := MarginalPricesN(q, liquidityB)
 		pp := PricePoint{PlacedAt: bet.PlacedAt, Prices: make([]OutcomePrice, len(outcomeIDs))}
-		for j, id := range outcomeIDs {
-			pp.Prices[j] = OutcomePrice{OutcomeID: id, Price: prices[j]}
+		for j, oid := range outcomeIDs {
+			pp.Prices[j] = OutcomePrice{OutcomeID: oid, Price: prices[j]}
 		}
 		points = append(points, pp)
 	}

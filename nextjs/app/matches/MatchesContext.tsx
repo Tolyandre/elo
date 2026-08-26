@@ -2,15 +2,16 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from "react";
 import { getMatchesPagePromise, getCorrectionsPagePromise, Match, Correction } from "../api";
+import type { Base58ID } from "@/lib/id";
 
 export type TimelineItem =
     | { type: "match"; data: Match }
     | { type: "correction"; data: Correction };
 
 type Filters = {
-  playerId?: string;
-  gameId?: string;
-  clubId?: string | null;
+  playerId?: Base58ID;
+  gameId?: Base58ID;
+  clubId?: Base58ID | null;
 };
 
 type MatchesState = {

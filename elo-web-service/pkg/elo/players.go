@@ -10,10 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type Player struct {
-	ID                        string
+	ID                        id.ID
 	Name                      string
 	Elo                       float64
 	League                    string
@@ -24,15 +25,15 @@ type Player struct {
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
-	CreatePlayer(ctx context.Context, id string, name string) (db.Player, error)
-	UpdatePlayer(ctx context.Context, id string, name string) (db.Player, error)
-	DeletePlayer(ctx context.Context, id string) error
-	GetPlayer(ctx context.Context, id string) (db.Player, error)
+	CreatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error)
+	UpdatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error)
+	DeletePlayer(ctx context.Context, playerID id.ID) error
+	GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error)
 	ListPlayers(ctx context.Context) ([]db.Player, error)
 	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
-	RatingHistory(ctx context.Context, playerID string) ([]db.RatingHistoryRow, error)
-	GetPlayerGameStats(ctx context.Context, playerID string) ([]db.GetPlayerGameStatsRow, error)
-	GetPlayerGameEloStats(ctx context.Context, playerID string) ([]db.GetPlayerGameEloStatsRow, error)
+	RatingHistory(ctx context.Context, playerID id.ID) ([]db.RatingHistoryRow, error)
+	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
 }
 
 type PlayerService struct {
@@ -201,24 +202,24 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	return players, nil
 }
 
-func (s *PlayerService) CreatePlayer(ctx context.Context, id string, name string) (db.Player, error) {
+func (s *PlayerService) CreatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error) {
 	return s.Queries.CreatePlayer(ctx, db.CreatePlayerParams{
-		ID:            id,
+		ID:            playerID,
 		Name:          name,
 		GeologistName: pgtype.Text{Valid: false},
 	})
 }
 
-func (s *PlayerService) UpdatePlayer(ctx context.Context, id string, name string) (db.Player, error) {
-	return s.Queries.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: id, Name: name})
+func (s *PlayerService) UpdatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error) {
+	return s.Queries.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: playerID, Name: name})
 }
 
-func (s *PlayerService) DeletePlayer(ctx context.Context, id string) error {
-	return s.Queries.DeletePlayer(ctx, id)
+func (s *PlayerService) DeletePlayer(ctx context.Context, playerID id.ID) error {
+	return s.Queries.DeletePlayer(ctx, playerID)
 }
 
-func (s *PlayerService) GetPlayer(ctx context.Context, id string) (db.Player, error) {
-	return s.Queries.GetPlayer(ctx, id)
+func (s *PlayerService) GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error) {
+	return s.Queries.GetPlayer(ctx, playerID)
 }
 
 func (s *PlayerService) ListPlayers(ctx context.Context) ([]db.Player, error) {
@@ -229,14 +230,14 @@ func (s *PlayerService) ListPlayerUserLinks(ctx context.Context) ([]db.ListPlaye
 	return s.Queries.ListPlayerUserLinks(ctx)
 }
 
-func (s *PlayerService) RatingHistory(ctx context.Context, playerID string) ([]db.RatingHistoryRow, error) {
+func (s *PlayerService) RatingHistory(ctx context.Context, playerID id.ID) ([]db.RatingHistoryRow, error) {
 	return s.Queries.RatingHistory(ctx, playerID)
 }
 
-func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID string) ([]db.GetPlayerGameStatsRow, error) {
+func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error) {
 	return s.Queries.GetPlayerGameStats(ctx, playerID)
 }
 
-func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID string) ([]db.GetPlayerGameEloStatsRow, error) {
+func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error) {
 	return s.Queries.GetPlayerGameEloStats(ctx, playerID)
 }

@@ -1,7 +1,9 @@
 "use client"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
+import type { Base58ID } from "@/lib/id";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import {
     MarketDetail,
@@ -125,7 +127,7 @@ function OutcomeColumn({
 
 function MarketPageContent() {
     const searchParams = useSearchParams();
-    const id = searchParams.get("id") ?? "";
+    const id = toBase58ID(searchParams.get("id") ?? "");
     const me = useMe();
     const { players, playerDisplayName } = usePlayers();
 
@@ -205,10 +207,10 @@ function MarketPageContent() {
     // outcome; the AMM prices the elo cost (≈ the current price shown on the
     // column). The displayed price is sent along so the server can reject the
     // buy if it has moved (409); on failure we refresh.
-    async function handleBuy(outcomeId: string, expectedPrice: number) {
+    async function handleBuy(outcomeId: Base58ID, expectedPrice: number) {
         setBuyingOutcome(outcomeId);
         try {
-            await placeBetPromise(id, outcomeId, expectedPrice);
+            await placeBetPromise(id!, outcomeId, expectedPrice);
             invalidate();
             invalidateHistory();
         } catch {

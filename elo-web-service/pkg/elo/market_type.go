@@ -5,22 +5,23 @@ import (
 	"time"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // MatchInfo holds derived match data for market resolution evaluation.
 type MatchInfo struct {
 	Match          db.Match
-	ParticipantSet map[string]bool
-	PlayerScoreMap map[string]float64
+	ParticipantSet map[id.ID]bool
+	PlayerScoreMap map[id.ID]float64
 	MaxScore       float64
 }
 
 // SoleWinnerID returns the single player holding the strict maximum score of
 // the match. When two or more players share the top score (a tie), there is no
 // sole winner and ok is false.
-func (m MatchInfo) SoleWinnerID() (string, bool) {
+func (m MatchInfo) SoleWinnerID() (id.ID, bool) {
 	count := 0
-	winner := ""
+	var winner id.ID
 	for pid, score := range m.PlayerScoreMap {
 		if score >= m.MaxScore {
 			count++
@@ -31,7 +32,7 @@ func (m MatchInfo) SoleWinnerID() (string, bool) {
 }
 
 // SettleFunc settles a market with a given outcome within an active transaction.
-type SettleFunc func(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
+type SettleFunc func(ctx context.Context, q *db.Queries, marketID id.ID, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *id.ID) error
 
 // ResolutionTrigger describes when and how markets of a given type are resolved.
 // Implementations must be safe to call as no-ops when the trigger type does not respond
@@ -53,7 +54,7 @@ type ResolutionTrigger interface {
 // MarketTypeHandler encapsulates all type-specific behavior for a market type.
 type MarketTypeHandler interface {
 	// CreateParams stores type-specific parameters in the DB within a transaction.
-	CreateParams(ctx context.Context, q *db.Queries, marketID string, params CreateMarketParams) error
+	CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error
 
 	// ResolutionTrigger returns the strategy that decides when and how markets of
 	// this type are resolved. Called once per handler; the result may be cached.
@@ -71,15 +72,15 @@ var marketTypeHandlers = map[string]MarketTypeHandler{
 // outcome (ties / non-target winners); with AllowOtherPlayers=false the market
 // only resolves matches consisting of exactly the target players.
 type MatchWinnerCreateParams struct {
-	TargetPlayerIDs   []string
+	TargetPlayerIDs   []id.ID
 	AllowOtherPlayers bool
-	GameIDs           []string
+	GameIDs           []id.ID
 }
 
 // WinStreakCreateParams holds creation parameters for a win_streak market.
 type WinStreakCreateParams struct {
-	TargetPlayerID string
-	GameIDs        []string
+	TargetPlayerID id.ID
+	GameIDs        []id.ID
 	WinsRequired   int32
 	MaxLosses      *int32
 }

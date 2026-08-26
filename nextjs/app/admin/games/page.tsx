@@ -1,4 +1,5 @@
 "use client"
+import type { Base58ID } from "@/lib/id";
 import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -13,7 +14,7 @@ import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/com
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-type GameRow = { id: string; name: string };
+type GameRow = { id: Base58ID; name: string };
 
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();

@@ -8,11 +8,12 @@
 //   - multipliers[rowId][playerId] = { coeff, count }
 //
 // This shape is convenient for the UI but stores player ids as OBJECT KEYS,
-// which the idcodec middleware would NOT rewrite at the HTTP boundary. So the
-// persisted form is normalized (see storage.ts): player ids move under
-// "player_id" keys inside arrays, so idcodec rewrites them automatically.
+// which the boundary conversion cannot type. So the persisted form is
+// normalized (see storage.ts): player ids move under "player_id" keys inside
+// arrays, where the backend's schema-driven id walk converts them (ADR-12).
 
 import type { ReactNode } from "react";
+import type { Base58ID } from "@/lib/id";
 import {
     ResearchIcon, DiscoveryIcon, StructureIcon, ProjectIcon, VehicleIcon,
     GeneralToken, FinancierToken, CultureToken,
@@ -56,10 +57,10 @@ export type CellValue = { coeff: number; count: number };
 /** Live in-browser state. Shared by the calculator page and the history editor. */
 export type GameState = {
     phase: "setup" | "scoring";
-    players: { id: string; name: string }[];
+    players: { id: Base58ID; name: string }[];
     directVP: Record<string, number>;
     multipliers: Record<string, Record<string, CellValue>>;
-    fallbackGameId?: string;
+    fallbackGameId?: Base58ID;
 };
 
 export const INITIAL: GameState = {
@@ -74,7 +75,7 @@ export function cellVP(cell?: CellValue): number {
     return (cell.coeff || 0) * (cell.count || 0);
 }
 
-export function playerTotal(state: GameState, playerId: string): number {
+export function playerTotal(state: GameState, playerId: Base58ID): number {
     const direct = state.directVP[playerId] || 0;
     return ROWS
         .filter((r): r is RowDef & { kind: "single" | "pair" } => r.kind !== "direct")
@@ -91,5 +92,5 @@ export function scoreFromState(state: GameState): Record<string, number> {
 }
 
 export type EditTarget =
-    | { kind: "direct"; playerId: string }
-    | { kind: "multiplier"; rowId: string; playerId: string };
+    | { kind: "direct"; playerId: Base58ID }
+    | { kind: "multiplier"; rowId: string; playerId: Base58ID };

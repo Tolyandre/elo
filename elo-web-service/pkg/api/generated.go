@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // Defines values for ApiErrorStatus.
@@ -354,26 +355,35 @@ type ApiSuccessMessage struct {
 // ApiSuccessMessageStatus defines model for ApiSuccessMessage.Status.
 type ApiSuccessMessageStatus string
 
+// Base58ID Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+type Base58ID = id.ID
+
 // Club defines model for Club.
 type Club struct {
 	GeologistName *string `json:"geologist_name,omitempty"`
 
 	// Icon Key into the frontend's built-in club icon set (e.g. "clover"). Null means the club has no icon. The icon itself is a version-controlled static SVG in the frontend.
 	Icon *string `json:"icon,omitempty"`
-	Id   string  `json:"id"`
-	Name string  `json:"name"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 
 	// PlayerIds List of player IDs
-	PlayerIds []string `json:"player_ids"`
+	PlayerIds []Base58ID `json:"player_ids"`
 }
 
 // Correction defines model for Correction.
 type Correction struct {
-	Date       time.Time `json:"date"`
-	Diff       float64   `json:"diff"`
-	Id         string    `json:"id"`
-	PlayerId   string    `json:"player_id"`
-	PlayerName string    `json:"player_name"`
+	Date time.Time `json:"date"`
+	Diff float64   `json:"diff"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId   Base58ID `json:"player_id"`
+	PlayerName string   `json:"player_name"`
 }
 
 // CorrectionsPage defines model for CorrectionsPage.
@@ -416,7 +426,8 @@ type EloSettingEntry struct {
 
 // Game defines model for Game.
 type Game struct {
-	Id           string       `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id           Base58ID     `json:"id"`
 	Name         string       `json:"name"`
 	Players      []GamePlayer `json:"players"`
 	TotalMatches int          `json:"total_matches"`
@@ -425,8 +436,10 @@ type Game struct {
 // GameEloStat defines model for GameEloStat.
 type GameEloStat struct {
 	EloEarned float64 `json:"elo_earned"`
-	GameId    string  `json:"game_id"`
-	GameName  string  `json:"game_name"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId   Base58ID `json:"game_id"`
+	GameName string   `json:"game_name"`
 }
 
 // GameList defines model for GameList.
@@ -436,16 +449,19 @@ type GameList struct {
 
 // GameListItem defines model for GameListItem.
 type GameListItem struct {
-	Id              string `json:"id"`
-	LastPlayedOrder int    `json:"last_played_order"`
-	Name            string `json:"name"`
-	TotalMatches    int    `json:"total_matches"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id              Base58ID `json:"id"`
+	LastPlayedOrder int      `json:"last_played_order"`
+	Name            string   `json:"name"`
+	TotalMatches    int      `json:"total_matches"`
 }
 
 // GameMatch defines model for GameMatch.
 type GameMatch struct {
-	Date    *time.Time        `json:"date,omitempty"`
-	Id      string            `json:"id"`
+	Date *time.Time `json:"date,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id      Base58ID          `json:"id"`
 	Players []GameMatchPlayer `json:"players"`
 
 	// Tournaments Tournaments this match belongs to
@@ -454,20 +470,23 @@ type GameMatch struct {
 
 // GameMatchPlayer defines model for GameMatchPlayer.
 type GameMatchPlayer struct {
-	Id           string  `json:"id"`
-	Name         string  `json:"name"`
-	RatingAfter  float64 `json:"rating_after"`
-	RatingEarned float64 `json:"rating_earned"`
-	RatingStaked float64 `json:"rating_staked"`
-	Score        float64 `json:"score"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id           Base58ID `json:"id"`
+	Name         string   `json:"name"`
+	RatingAfter  float64  `json:"rating_after"`
+	RatingEarned float64  `json:"rating_earned"`
+	RatingStaked float64  `json:"rating_staked"`
+	Score        float64  `json:"score"`
 }
 
 // GameMatchStat defines model for GameMatchStat.
 type GameMatchStat struct {
 	// BronzeCount Number of 3rd-place (bronze medal) finishes in this game.
-	BronzeCount int    `json:"bronze_count"`
-	GameId      string `json:"game_id"`
-	GameName    string `json:"game_name"`
+	BronzeCount int `json:"bronze_count"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId   Base58ID `json:"game_id"`
+	GameName string   `json:"game_name"`
 
 	// GoldCount Number of 1st-place (gold medal) finishes in this game.
 	GoldCount    int `json:"gold_count"`
@@ -482,7 +501,8 @@ type GameMatchStat struct {
 
 // GamePlayer defines model for GamePlayer.
 type GamePlayer struct {
-	Id     string           `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id     Base58ID         `json:"id"`
 	League GamePlayerLeague `json:"league"`
 	Rank   int              `json:"rank"`
 	Rating float64          `json:"rating"`
@@ -513,7 +533,9 @@ type Market struct {
 	// GuarantorSettlement Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge).
 	GuarantorSettlement *[]SettlementDetail       `json:"guarantor_settlement,omitempty"`
 	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
-	Id                  string                    `json:"id"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
 	LiquidityB float64          `json:"liquidity_b"`
@@ -526,10 +548,10 @@ type Market struct {
 	Params *Market_Params `json:"params,omitempty"`
 
 	// ResolutionMatchId The match that resolved the market, when it was resolved by one.
-	ResolutionMatchId *string `json:"resolution_match_id,omitempty"`
+	ResolutionMatchId *Base58ID `json:"resolution_match_id,omitempty"`
 
-	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). The *_id suffix lets the idcodec boundary encode it to the same short form as the market's outcome ids.
-	ResolutionOutcomeId *string    `json:"resolution_outcome_id,omitempty"`
+	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). Typed as Base58ID so it carries the same short form as the market's outcome ids.
+	ResolutionOutcomeId *Base58ID  `json:"resolution_outcome_id,omitempty"`
 	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
 
 	// Settlement Buyer settlements (discriminator 'market') for a resolved market.
@@ -559,7 +581,9 @@ type MarketDetail struct {
 	// GuarantorSettlement Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge).
 	GuarantorSettlement *[]SettlementDetail       `json:"guarantor_settlement,omitempty"`
 	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
-	Id                  string                    `json:"id"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
 	LiquidityB float64                `json:"liquidity_b"`
@@ -567,7 +591,8 @@ type MarketDetail struct {
 
 	// MyPositions The user's per-outcome holdings on this market (empty when none).
 	MyPositions *[]struct {
-		OutcomeId string `json:"outcome_id"`
+		// OutcomeId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		OutcomeId Base58ID `json:"outcome_id"`
 
 		// Shares Shares the user holds (each pays 1 if the outcome wins).
 		Shares float64 `json:"shares"`
@@ -584,10 +609,10 @@ type MarketDetail struct {
 	Reserved *float64             `json:"reserved,omitempty"`
 
 	// ResolutionMatchId The match that resolved the market, when it was resolved by one.
-	ResolutionMatchId *string `json:"resolution_match_id,omitempty"`
+	ResolutionMatchId *Base58ID `json:"resolution_match_id,omitempty"`
 
-	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). The *_id suffix lets the idcodec boundary encode it to the same short form as the market's outcome ids.
-	ResolutionOutcomeId *string    `json:"resolution_outcome_id,omitempty"`
+	// ResolutionOutcomeId The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). Typed as Base58ID so it carries the same short form as the market's outcome ids.
+	ResolutionOutcomeId *Base58ID  `json:"resolution_outcome_id,omitempty"`
 	ResolvedAt          *time.Time `json:"resolved_at,omitempty"`
 
 	// Settlement Buyer settlements (discriminator 'market') for a resolved market.
@@ -615,13 +640,17 @@ type Match struct {
 	// CalculatorKind Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form.
 	CalculatorKind *string   `json:"calculator_kind,omitempty"`
 	Date           time.Time `json:"date"`
-	GameId         string    `json:"game_id"`
-	GameName       string    `json:"game_name"`
-	HasMarkets     bool      `json:"has_markets"`
-	Id             string    `json:"id"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId     Base58ID `json:"game_id"`
+	GameName   string   `json:"game_name"`
+	HasMarkets bool     `json:"has_markets"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// Score Map of player_id (string) to player score data
-	Score map[string]MatchPlayer `json:"score"`
+	Score IDMap[MatchPlayer] `json:"score"`
 
 	// Tournaments Tournaments this match belongs to
 	Tournaments *[]MatchTournament `json:"tournaments,omitempty"`
@@ -637,18 +666,19 @@ type MatchPlayer struct {
 
 // MatchTournament A tournament a match belongs to
 type MatchTournament struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // MatchWinnerParams defines model for MatchWinnerParams.
 type MatchWinnerParams struct {
 	// AllowOtherPlayers true — a resolving match must include all targets but may include other players; false — the match must consist of exactly the target players.
-	AllowOtherPlayers bool      `json:"allow_other_players"`
-	GameIds           *[]string `json:"game_ids,omitempty"`
+	AllowOtherPlayers bool        `json:"allow_other_players"`
+	GameIds           *[]Base58ID `json:"game_ids,omitempty"`
 
 	// TargetPlayerIds Target players — one "player wins" outcome exists per player.
-	TargetPlayerIds []string `json:"target_player_ids"`
+	TargetPlayerIds []Base58ID `json:"target_player_ids"`
 }
 
 // MatchesPage defines model for MatchesPage.
@@ -662,17 +692,20 @@ type MatchesPage struct {
 
 // Player defines model for Player.
 type Player struct {
-	GeologistName *string     `json:"geologist_name,omitempty"`
-	Id            string      `json:"id"`
-	Name          string      `json:"name"`
-	Rank          HistoryRank `json:"rank"`
-	UserId        *string     `json:"user_id,omitempty"`
+	GeologistName *string `json:"geologist_name,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id     Base58ID    `json:"id"`
+	Name   string      `json:"name"`
+	Rank   HistoryRank `json:"rank"`
+	UserId *Base58ID   `json:"user_id,omitempty"`
 }
 
 // PlayerRef Minimal player object returned after create/patch
 type PlayerRef struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // PlayerStats defines model for PlayerStats.
@@ -709,10 +742,12 @@ type Settings struct {
 
 // SettlementDetail defines model for SettlementDetail.
 type SettlementDetail struct {
-	Earned     float64 `json:"earned"`
-	PlayerId   string  `json:"player_id"`
-	PlayerName string  `json:"player_name"`
-	Staked     float64 `json:"staked"`
+	Earned float64 `json:"earned"`
+
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId   Base58ID `json:"player_id"`
+	PlayerName string   `json:"player_name"`
+	Staked     float64  `json:"staked"`
 }
 
 // SkullKingCardImageResult defines model for SkullKingCardImageResult.
@@ -741,7 +776,7 @@ type SkullKingCardImageResult1Type string
 type SkullKingGameState struct {
 	CurrentPlayerIndex int                     `json:"currentPlayerIndex"`
 	CurrentRound       int                     `json:"currentRound"`
-	FallbackGameId     *string                 `json:"fallbackGameId,omitempty"`
+	FallbackGameId     *Base58ID               `json:"fallbackGameId,omitempty"`
 	Phase              SkullKingGameStatePhase `json:"phase"`
 	Players            []SkullKingPlayer       `json:"players"`
 
@@ -754,8 +789,9 @@ type SkullKingGameStatePhase string
 
 // SkullKingPlayer defines model for SkullKingPlayer.
 type SkullKingPlayer struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // SkullKingRoundEntry defines model for SkullKingRoundEntry.
@@ -767,36 +803,42 @@ type SkullKingRoundEntry struct {
 
 // SkullKingTableSummary defines model for SkullKingTableSummary.
 type SkullKingTableSummary struct {
-	ConnectedPlayerIds []string           `json:"connected_player_ids"`
+	ConnectedPlayerIds []Base58ID         `json:"connected_player_ids"`
 	CreatedAt          time.Time          `json:"created_at"`
 	ExpiresAt          time.Time          `json:"expires_at"`
 	GameState          SkullKingGameState `json:"game_state"`
-	HostUserId         string             `json:"host_user_id"`
-	Id                 string             `json:"id"`
+
+	// HostUserId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	HostUserId Base58ID `json:"host_user_id"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 }
 
 // Tournament defines model for Tournament.
 type Tournament struct {
 	EndDate time.Time `json:"end_date"`
-	Id      string    `json:"id"`
-	Name    string    `json:"name"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 
 	// PlayerIds List of participant player IDs
-	PlayerIds []string  `json:"player_ids"`
-	StartDate time.Time `json:"start_date"`
+	PlayerIds []Base58ID `json:"player_ids"`
+	StartDate time.Time  `json:"start_date"`
 }
 
 // TournamentInput defines model for TournamentInput.
 type TournamentInput struct {
 	EndDate time.Time `json:"end_date"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   ULID   `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 
 	// PlayerIds Full desired set of participant player IDs
-	PlayerIds *[]string `json:"player_ids,omitempty"`
-	StartDate time.Time `json:"start_date"`
+	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
+	StartDate time.Time   `json:"start_date"`
 }
 
 // TournamentStats defines model for TournamentStats.
@@ -806,61 +848,67 @@ type TournamentStats struct {
 
 // TournamentStatsPlayer defines model for TournamentStatsPlayer.
 type TournamentStatsPlayer struct {
-	First        int    `json:"first"`
-	Fourth       int    `json:"fourth"`
-	MatchesCount int    `json:"matches_count"`
-	PlayerId     string `json:"player_id"`
-	Second       int    `json:"second"`
-	Third        int    `json:"third"`
-}
+	First        int `json:"first"`
+	Fourth       int `json:"fourth"`
+	MatchesCount int `json:"matches_count"`
 
-// ULID Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-type ULID = string
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId Base58ID `json:"player_id"`
+	Second   int      `json:"second"`
+	Third    int      `json:"third"`
+}
 
 // User defines model for User.
 type User struct {
-	CanEdit  bool    `json:"can_edit"`
-	Id       string  `json:"id"`
-	Name     string  `json:"name"`
-	PlayerId *string `json:"player_id,omitempty"`
+	CanEdit bool `json:"can_edit"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id       Base58ID  `json:"id"`
+	Name     string    `json:"name"`
+	PlayerId *Base58ID `json:"player_id,omitempty"`
 }
 
 // VoiceParseResult defines model for VoiceParseResult.
 type VoiceParseResult struct {
-	GameId *string      `json:"game_id,omitempty"`
+	GameId *Base58ID    `json:"game_id,omitempty"`
 	Scores []VoiceScore `json:"scores"`
 }
 
 // VoiceScore defines model for VoiceScore.
 type VoiceScore struct {
-	PlayerId string `json:"player_id"`
-	Points   int    `json:"points"`
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId Base58ID `json:"player_id"`
+	Points   int      `json:"points"`
 }
 
 // WinStreakParams defines model for WinStreakParams.
 type WinStreakParams struct {
-	GameIds        []string `json:"game_ids"`
-	MaxLosses      *int     `json:"max_losses,omitempty"`
-	TargetPlayerId string   `json:"target_player_id"`
+	GameIds   []Base58ID `json:"game_ids"`
+	MaxLosses *int       `json:"max_losses,omitempty"`
+
+	// TargetPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TargetPlayerId Base58ID `json:"target_player_id"`
 	WinsRequired   int      `json:"wins_required"`
 }
 
 // MarketsMarketGuarantor A player who backs a market and splits its settlement residual (deficit or surplus).
 type MarketsMarketGuarantor struct {
-	PlayerId   string `json:"player_id"`
-	PlayerName string `json:"player_name"`
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId   Base58ID `json:"player_id"`
+	PlayerName string   `json:"player_name"`
 }
 
-// MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → Ничья, yes/no → «Да»/«Нет»).
+// MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
-	Id string `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// Kind player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
 	Kind MarketsMarketOutcomeKind `json:"kind"`
 	Name string                   `json:"name"`
 
 	// PlayerId Set iff kind=player.
-	PlayerId *string `json:"player_id,omitempty"`
+	PlayerId *Base58ID `json:"player_id,omitempty"`
 
 	// Pool Total elo spent on this outcome.
 	Pool float64 `json:"pool"`
@@ -880,8 +928,8 @@ type CreatePlayerCorrectionJSONBody struct {
 	Diff          float32                                     `json:"diff"`
 	Discriminator CreatePlayerCorrectionJSONBodyDiscriminator `json:"discriminator"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id ULID `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 }
 
 // CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
@@ -889,7 +937,7 @@ type CreatePlayerCorrectionJSONBodyDiscriminator string
 
 // PatchMeJSONBody defines parameters for PatchMe.
 type PatchMeJSONBody struct {
-	PlayerId *string `json:"player_id,omitempty"`
+	PlayerId *Base58ID `json:"player_id,omitempty"`
 }
 
 // AuthOAuth2CallbackParams defines parameters for AuthOAuth2Callback.
@@ -900,9 +948,9 @@ type AuthOAuth2CallbackParams struct {
 
 // CreateClubJSONBody defines parameters for CreateClub.
 type CreateClubJSONBody struct {
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   ULID   `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // PatchClubJSONBody defines parameters for PatchClub.
@@ -913,7 +961,8 @@ type PatchClubJSONBody struct {
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.
 type AddClubMemberJSONBody struct {
-	PlayerId string `json:"player_id"`
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId Base58ID `json:"player_id"`
 }
 
 // ListCorrectionsParams defines parameters for ListCorrections.
@@ -933,9 +982,9 @@ type ListCorrectionsParams struct {
 
 // CreateGameJSONBody defines parameters for CreateGame.
 type CreateGameJSONBody struct {
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   ULID   `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // PatchGameJSONBody defines parameters for PatchGame.
@@ -946,15 +995,15 @@ type PatchGameJSONBody struct {
 // CreateMarketJSONBody defines parameters for CreateMarket.
 type CreateMarketJSONBody struct {
 	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
-	AllowOtherPlayers *bool     `json:"allow_other_players,omitempty"`
-	ClosesAt          time.Time `json:"closes_at"`
-	GameIds           *[]string `json:"game_ids,omitempty"`
+	AllowOtherPlayers *bool       `json:"allow_other_players,omitempty"`
+	ClosesAt          time.Time   `json:"closes_at"`
+	GameIds           *[]Base58ID `json:"game_ids,omitempty"`
 
 	// GuarantorPlayerIds Players who back the market and absorb its settlement residual.
-	GuarantorPlayerIds *[]string `json:"guarantor_player_ids,omitempty"`
+	GuarantorPlayerIds *[]Base58ID `json:"guarantor_player_ids,omitempty"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id ULID `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// LiquidityB LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
 	LiquidityB *float64                       `json:"liquidity_b,omitempty"`
@@ -962,13 +1011,15 @@ type CreateMarketJSONBody struct {
 	MaxLosses  *int                           `json:"max_losses,omitempty"`
 
 	// StartsAt Defaults to now if omitted; must not be in the past if provided
-	StartsAt       *time.Time `json:"starts_at,omitempty"`
-	StreakGameIds  *[]string  `json:"streak_game_ids,omitempty"`
-	TargetPlayerId *string    `json:"target_player_id,omitempty"`
+	StartsAt      *time.Time  `json:"starts_at,omitempty"`
+	StreakGameIds *[]Base58ID `json:"streak_game_ids,omitempty"`
+
+	// TargetPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TargetPlayerId *Base58ID `json:"target_player_id,omitempty"`
 
 	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
-	TargetPlayerIds *[]string `json:"target_player_ids,omitempty"`
-	WinsRequired    *int      `json:"wins_required,omitempty"`
+	TargetPlayerIds *[]Base58ID `json:"target_player_ids,omitempty"`
+	WinsRequired    *int        `json:"wins_required,omitempty"`
 }
 
 // CreateMarketJSONBodyMarketType defines parameters for CreateMarket.
@@ -987,11 +1038,11 @@ type PlaceBetJSONBody struct {
 	// ExpectedPrice The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
 	ExpectedPrice float64 `json:"expected_price"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id ULID `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
-	// OutcomeId Outcome identifier (GUID) the bet is placed on — one of the market's outcomes. The *_id suffix lets the idcodec boundary decode the short form clients see in responses.
-	OutcomeId string `json:"outcome_id"`
+	// OutcomeId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	OutcomeId Base58ID `json:"outcome_id"`
 
 	// Shares Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
 	Shares float64 `json:"shares"`
@@ -1017,24 +1068,26 @@ type ListMatchesParams struct {
 
 // AddMatchJSONBody defines parameters for AddMatch.
 type AddMatchJSONBody struct {
-	// CalculatorData Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id" so the idcodec middleware rewrites ids at the HTTP boundary.
+	// CalculatorData Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary.
 	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
 
 	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form.
 	CalculatorKind *string `json:"calculator_kind,omitempty"`
 
 	// Date Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
-	Date   *time.Time `json:"date,omitempty"`
-	GameId string     `json:"game_id"`
+	Date *time.Time `json:"date,omitempty"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id ULID `json:"id"`
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId Base58ID `json:"game_id"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 
 	// Score Map of player_id (string) to numeric score
-	Score map[string]float64 `json:"score"`
+	Score IDMap[float64] `json:"score"`
 
 	// TournamentIds Optional tournament IDs this match belongs to. Every match player is auto-enrolled into each tournament.
-	TournamentIds *[]string `json:"tournament_ids,omitempty"`
+	TournamentIds *[]Base58ID `json:"tournament_ids,omitempty"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -1045,20 +1098,22 @@ type UpdateMatchJSONBody struct {
 	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match.
 	CalculatorKind *string   `json:"calculator_kind,omitempty"`
 	Date           time.Time `json:"date"`
-	GameId         string    `json:"game_id"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId Base58ID `json:"game_id"`
 
 	// Score Map of player_id (string) to numeric score
-	Score map[string]float64 `json:"score"`
+	Score IDMap[float64] `json:"score"`
 
 	// TournamentIds Tournament IDs this match belongs to. Associations are replaced with this set; players are enrolled but never un-enrolled.
-	TournamentIds *[]string `json:"tournament_ids,omitempty"`
+	TournamentIds *[]Base58ID `json:"tournament_ids,omitempty"`
 }
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
 type CreatePlayerJSONBody struct {
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   ULID   `json:"id"`
-	Name string `json:"name"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 }
 
 // PatchPlayerJSONBody defines parameters for PatchPlayer.
@@ -1091,8 +1146,8 @@ type ParseSkullKingCardImageJSONBody struct {
 type CreateSkullKingTableJSONBody struct {
 	GameState SkullKingGameState `json:"game_state"`
 
-	// Id Client-generated UUIDv7, encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). The client generates this on create; it serves as both the primary key and the idempotency key. A repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id ULID `json:"id"`
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
 }
 
 // DeleteSkullKingTableParams defines parameters for DeleteSkullKingTable.
@@ -3738,8 +3793,9 @@ type CreateGameResponseObject interface {
 
 type CreateGame200JSONResponse struct {
 	Data struct {
-		Id   string `json:"id"`
-		Name string `json:"name"`
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id   Base58ID `json:"id"`
+		Name string   `json:"name"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -3940,8 +3996,9 @@ type PatchGameResponseObject interface {
 
 type PatchGame200JSONResponse struct {
 	Data struct {
-		Id   string `json:"id"`
-		Name string `json:"name"`
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id   Base58ID `json:"id"`
+		Name string   `json:"name"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -4090,7 +4147,8 @@ type CreateMarketResponseObject interface {
 
 type CreateMarket201JSONResponse struct {
 	Data struct {
-		Id string `json:"id"`
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id Base58ID `json:"id"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -4474,7 +4532,8 @@ type GetMarketPriceHistory200JSONResponse struct {
 		Points []struct {
 			// Prices Marginal price of every outcome right after the bet; prices sum to 1.
 			Prices []struct {
-				OutcomeId string `json:"outcome_id"`
+				// OutcomeId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+				OutcomeId Base58ID `json:"outcome_id"`
 
 				// Price Marginal price in (0,1).
 				Price float64 `json:"price"`
@@ -4573,7 +4632,8 @@ type AddMatchResponseObject interface {
 
 type AddMatch200JSONResponse struct {
 	Data struct {
-		Id string `json:"id"`
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id Base58ID `json:"id"`
 	} `json:"data"`
 	Status string `json:"status"`
 }

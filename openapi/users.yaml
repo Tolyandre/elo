@@ -88,12 +88,13 @@ User:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
     can_edit:
       type: boolean
     player_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
   required: [id, name, can_edit]

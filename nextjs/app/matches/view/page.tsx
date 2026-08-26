@@ -2,6 +2,8 @@
 
 import React, { Suspense, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
+import type { Base58ID } from "@/lib/id";
 import { toast } from "sonner";
 import { useMatches } from "../MatchesContext";
 import { useMe } from "../../meContext";
@@ -37,7 +39,7 @@ export default function MatchViewPage() {
 
 function MatchViewPageWrapped() {
   const searchParams = useSearchParams();
-  const id = searchParams.get("id");
+  const id = toBase58ID(searchParams.get("id") ?? "");
   const { pendingMatches, ready } = useOffline();
 
   if (!id) return <NotFound />;
@@ -109,7 +111,7 @@ function EditAction({ id, disabled = false, viaCalculator = false }: { id: strin
   );
 }
 
-function SavedMatchView({ matchId }: { matchId: string }) {
+function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const { matches, loading: contextLoading } = useMatches();
   const { roundToInteger, setRoundToInteger } = useMe();
   const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
@@ -194,7 +196,7 @@ function SavedMatchView({ matchId }: { matchId: string }) {
   );
 }
 
-function PendingMatchView({ clientId }: { clientId: string }) {
+function PendingMatchView({ clientId }: { clientId: Base58ID }) {
   const { pendingMatches, ready, isSyncing, deletePendingMatch } = useOffline();
   const { canEdit } = useMe();
   const router = useRouter();

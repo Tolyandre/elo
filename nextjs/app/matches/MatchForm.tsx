@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import type { Base58ID } from "@/lib/id";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "../players/PlayersContext";
 import { useMatches } from "./MatchesContext";
@@ -21,7 +22,7 @@ import { PendingMatch } from "@/lib/offline/types";
 import { toast } from "sonner";
 
 type Participant = {
-    id: string;
+    id: Base58ID;
     name: string;
     points: string;
 };
@@ -67,14 +68,14 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     // the three targets never share state.
     const draftKey = editPending?.clientId ?? (editSaved ? `saved:${editSaved.id}` : "new");
     const [participants, setParticipants] = useSessionStorage<Participant[]>(`match-form:${draftKey}:participants`, []);
-    const [selectedGameId, setSelectedGameId] = useSessionStorage<string | undefined>(`match-form:${draftKey}:game`, undefined);
+    const [selectedGameId, setSelectedGameId] = useSessionStorage<Base58ID | undefined>(`match-form:${draftKey}:game`, undefined as Base58ID | undefined);
     const [editDate, setEditDate] = useSessionStorage<string>(`match-form:${draftKey}:date`, "");
     // Persisted so the one-time prefill from the edited match survives a refresh
     // instead of clobbering the user's draft.
     const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
     // Tournaments whose checkbox is ticked. The set submitted is this ∩ the
     // tournaments active on the match date (checkboxes appear/disappear with date).
-    const [checkedTournamentIds, setCheckedTournamentIds] = useSessionStorage<string[]>(`match-form:${draftKey}:tournaments`, []);
+    const [checkedTournamentIds, setCheckedTournamentIds] = useSessionStorage<Base58ID[]>(`match-form:${draftKey}:tournaments`, []);
     const [tournamentsSeeded, setTournamentsSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:tournamentsSeeded`, false);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
@@ -116,20 +117,20 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         if (loading || !isEdit || seeded) return;
         if (editPending) {
             setParticipants(
-                Object.entries(editPending.score).map(([id, points]) => ({
-                    id,
+                Object.entries(editPending.score).map(([pid, points]) => ({
+                    id: pid as Base58ID,
                     points: String(points),
-                    name: resolvePlayerName(id),
+                    name: resolvePlayerName(pid),
                 })),
             );
             setSelectedGameId(editPending.gameId);
             setEditDate(toDatetimeLocal(new Date(editPending.createdAt)));
         } else if (editSaved) {
             setParticipants(
-                Object.entries(editSaved.score).map(([id, data]) => ({
-                    id,
+                Object.entries(editSaved.score).map(([pid, data]) => ({
+                    id: pid as Base58ID,
                     points: String(data.score),
-                    name: resolvePlayerName(id),
+                    name: resolvePlayerName(pid),
                 })),
             );
             setSelectedGameId(editSaved.game_id);
@@ -171,13 +172,13 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tournamentsSeeded, loading, editPending, editSaved]);
 
-    const toggleTournament = (id: string, checked: boolean) => {
+    const toggleTournament = (id: Base58ID, checked: boolean) => {
         setCheckedTournamentIds(
             checked ? [...new Set([...checkedTournamentIds, id])] : checkedTournamentIds.filter((t) => t !== id),
         );
     };
 
-    const handleVoiceResult = (gameId: string | undefined, scores: { playerId: string; points: number }[]) => {
+    const handleVoiceResult = (gameId: Base58ID | undefined, scores: { playerId: Base58ID; points: number }[]) => {
         if (gameId) setSelectedGameId(gameId);
         if (scores.length > 0) {
             const merged = [...participants];
@@ -193,7 +194,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         }
     };
 
-    const handlePlayersChange = (newIds: string[]) => {
+    const handlePlayersChange = (newIds: Base58ID[]) => {
         setParticipants(
             newIds.map((id) => {
                 const existing = participants.find((p) => p.id === id);

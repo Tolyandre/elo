@@ -3,6 +3,7 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { getTournamentPromise, getTournamentStatsPromise } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -12,7 +13,7 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 function TournamentContent() {
     const searchParams = useSearchParams();
-    const id = searchParams.get("id") ?? "";
+    const id = toBase58ID(searchParams.get("id") ?? "");
     const { canEdit } = useMe();
     const { playerMap, playerDisplayName } = usePlayers();
 

@@ -1,6 +1,11 @@
 package elo
 
-import "strings"
+import (
+	"slices"
+	"strings"
+
+	"github.com/tolyandre/elo-web-service/pkg/id"
+)
 
 // OutcomeKey is the semantic identifier of an outcome a condition evaluates
 // to: "player:<uuid>" for a target player's win outcome, or "other" for the
@@ -19,25 +24,25 @@ const (
 )
 
 // PlayerOutcomeKey returns the key of a target player's win outcome.
-func PlayerOutcomeKey(playerID string) OutcomeKey {
-	return OutcomeKey("player:" + playerID)
+func PlayerOutcomeKey(playerID id.ID) OutcomeKey {
+	return OutcomeKey("player:" + string(playerID))
 }
 
 // PlayerID extracts the player id from a "player:<uuid>" key.
-func (k OutcomeKey) PlayerID() (string, bool) {
+func (k OutcomeKey) PlayerID() (id.ID, bool) {
 	pid, ok := strings.CutPrefix(string(k), "player:")
-	return pid, ok
+	return id.ID(pid), ok
 }
 
 // MatchWinnerCondition is a pure, DB-free evaluation of the match_winner market
 // condition. It is constructed from DB rows in the handler and evaluated
 // against a MatchInfo.
 type MatchWinnerCondition struct {
-	TargetPlayerIDs []string
+	TargetPlayerIDs []id.ID
 	// AllowOtherPlayers: true — every target must participate, extra players
 	// allowed; false — the match must consist of exactly the target players.
 	AllowOtherPlayers bool
-	GameIDs           []string
+	GameIDs           []id.ID
 }
 
 // Evaluate returns (resolved, key) where key identifies the winning outcome:
@@ -50,7 +55,7 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 	if !window.Contains(match.Match.Date.Time) {
 		return false, ""
 	}
-	if len(c.GameIDs) > 0 && !containsString(c.GameIDs, match.Match.GameID) {
+	if len(c.GameIDs) > 0 && !slices.Contains(c.GameIDs, match.Match.GameID) {
 		return false, ""
 	}
 	for _, t := range c.TargetPlayerIDs {
@@ -65,20 +70,11 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 		}
 	}
 	if winner, ok := match.SoleWinnerID(); ok {
-		if containsString(c.TargetPlayerIDs, winner) {
+		if slices.Contains(c.TargetPlayerIDs, winner) {
 			return true, PlayerOutcomeKey(winner)
 		}
 	}
 	return true, OutcomeKeyOther
-}
-
-func containsString(slice []string, v string) bool {
-	for _, s := range slice {
-		if s == v {
-			return true
-		}
-	}
-	return false
 }
 
 // WinStreakCondition evaluates win/loss counts against the streak thresholds.

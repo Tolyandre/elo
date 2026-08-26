@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type Querier interface {
@@ -19,7 +20,7 @@ type Querier interface {
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddSkullKingTablePlayer(ctx context.Context, arg AddSkullKingTablePlayerParams) (SkullKingTable, error)
 	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
-	CountTournamentMembers(ctx context.Context, tournamentID string) (int32, error)
+	CountTournamentMembers(ctx context.Context, tournamentID id.ID) (int32, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
@@ -30,77 +31,77 @@ type Querier interface {
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	// The "other" outcome of a match_winner market: tie at first place or a
 	// non-target winner.
-	CreateOtherOutcome(ctx context.Context, marketID string) error
+	CreateOtherOutcome(ctx context.Context, marketID id.ID) error
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	// Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
 	CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutcomesParams) error
 	CreateSkullKingTable(ctx context.Context, arg CreateSkullKingTableParams) (SkullKingTable, error)
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
-	CreateUser(ctx context.Context, arg CreateUserParams) (string, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	// The two fixed Да/Нет outcomes of a win_streak market.
-	CreateYesNoOutcomes(ctx context.Context, marketID string) error
+	CreateYesNoOutcomes(ctx context.Context, marketID id.ID) error
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
 	// Single delete covering match, market, AND correction settlements.
 	// Called at the start of RecalculateFrom so per-market deletes in
 	// UnsettleMarketsFromDate become harmless no-ops.
 	DeleteAllSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
-	DeleteClub(ctx context.Context, id string) (Club, error)
+	DeleteClub(ctx context.Context, argID id.ID) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredSkullKingTables(ctx context.Context) error
-	DeleteGame(ctx context.Context, id string) (Game, error)
-	DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *string) error
+	DeleteGame(ctx context.Context, argID id.ID) (Game, error)
+	DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error
 	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 	// rows for a market (used by unsettle/recalculation).
-	DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *string) error
-	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *string) error
-	DeleteMarket(ctx context.Context, id string) error
-	DeleteMatchScores(ctx context.Context, matchID string) error
-	DeleteMatchTournamentsByMatch(ctx context.Context, matchID string) error
-	DeletePlayer(ctx context.Context, id string) error
-	DeleteSkullKingTable(ctx context.Context, id string) error
-	DeleteTournament(ctx context.Context, id string) (Tournament, error)
-	DeleteUser(ctx context.Context, id string) error
-	GetBetsAggregatedByOutcome(ctx context.Context, marketID string) ([]GetBetsAggregatedByOutcomeRow, error)
+	DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *id.ID) error
+	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error
+	DeleteMarket(ctx context.Context, argID id.ID) error
+	DeleteMatchScores(ctx context.Context, matchID id.ID) error
+	DeleteMatchTournamentsByMatch(ctx context.Context, matchID id.ID) error
+	DeletePlayer(ctx context.Context, argID id.ID) error
+	DeleteSkullKingTable(ctx context.Context, argID id.ID) error
+	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
+	DeleteUser(ctx context.Context, argID id.ID) error
+	GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error)
 	// Per-buy rows (each carries the shares bought) used by share settlement.
-	GetBetsForSettlement(ctx context.Context, marketID string) ([]GetBetsForSettlementRow, error)
+	GetBetsForSettlement(ctx context.Context, marketID id.ID) ([]GetBetsForSettlementRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
-	GetClub(ctx context.Context, id string) ([]GetClubRow, error)
+	GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error)
 	GetCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Correction, error)
-	GetCountMatchesByGame(ctx context.Context, gameID string) (int64, error)
+	GetCountMatchesByGame(ctx context.Context, gameID id.ID) (int64, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
-	GetGameByID(ctx context.Context, id string) (Game, error)
+	GetGameByID(ctx context.Context, argID id.ID) (Game, error)
 	GetGameByName(ctx context.Context, name string) (Game, error)
 	GetLatestEloSettings(ctx context.Context) (GetLatestEloSettingsRow, error)
-	GetMarket(ctx context.Context, id string) (GetMarketRow, error)
+	GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, error)
 	// Ordered bet stream used to reconstruct the market's price history by
 	// replaying the LMSR from its creation state q=0.
-	GetMarketBetsForPriceHistory(ctx context.Context, marketID string) ([]GetMarketBetsForPriceHistoryRow, error)
+	GetMarketBetsForPriceHistory(ctx context.Context, marketID id.ID) ([]GetMarketBetsForPriceHistoryRow, error)
 	// Guarantor-role settlement rows (discriminator 'market_guarantor') — the
 	// per-guarantor payout rollup. A player who is both buyer and guarantor has a
 	// separate buyer row (discriminator 'market'), so their entry here carries only
 	// the house result (ADR-10).
-	GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]GetMarketGuarantorPayoutsRow, error)
-	GetMarketResolvedAt(ctx context.Context, id string) (pgtype.Timestamptz, error)
-	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]string, error)
+	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
+	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
+	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]id.ID, error)
 	// Returns resolved_at and betting_closed_at for the history conflict validation.
 	// betting_closed_at is a user event timestamp — preserved even after unsettling.
 	GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error)
-	GetMatch(ctx context.Context, id string) (Match, error)
-	GetMatchScoresForMatch(ctx context.Context, matchID string) ([]GetMatchScoresForMatchRow, error)
-	GetMatchWinnerParams(ctx context.Context, marketID string) (MarketMatchWinnerParam, error)
-	GetMatchWithPlayers(ctx context.Context, id string) ([]GetMatchWithPlayersRow, error)
+	GetMatch(ctx context.Context, argID id.ID) (Match, error)
+	GetMatchScoresForMatch(ctx context.Context, matchID id.ID) ([]GetMatchScoresForMatchRow, error)
+	GetMatchWinnerParams(ctx context.Context, marketID id.ID) (MarketMatchWinnerParam, error)
+	GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMatchWithPlayersRow, error)
 	GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error)
 	GetNearestMarketExpiry(ctx context.Context) (pgtype.Timestamptz, error)
 	GetNearestSkullKingTableExpiry(ctx context.Context) (time.Time, error)
-	GetPlayer(ctx context.Context, id string) (Player, error)
-	GetPlayerBetLimit(ctx context.Context, id string) (float64, error)
+	GetPlayer(ctx context.Context, argID id.ID) (Player, error)
+	GetPlayerBetLimit(ctx context.Context, argID id.ID) (float64, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error)
 	// Per-buy rows for one player, used to show shares held / elo spent on the detail page.
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
-	GetPlayerGameEloStats(ctx context.Context, playerID string) ([]GetPlayerGameEloStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error)
 	// Counts game-specific matches a player participated in within [from_date, to_date].
 	GetPlayerGameMatchCountInPeriod(ctx context.Context, arg GetPlayerGameMatchCountInPeriodParams) (int32, error)
 	// Per-game stats for the player profile "Частые игры" table:
@@ -111,7 +112,7 @@ type Querier interface {
 	//   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 	//   every player in each of the target player's matches and the outer query then
 	//   filters down to the target player's own rows.
-	GetPlayerGameStats(ctx context.Context, playerID string) ([]GetPlayerGameStatsRow, error)
+	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error)
 	// Counts matches a player participated in within [from_date, to_date].
 	GetPlayerGlobalMatchCountInPeriod(ctx context.Context, arg GetPlayerGlobalMatchCountInPeriodParams) (int32, error)
 	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error)
@@ -120,36 +121,36 @@ type Querier interface {
 	GetPlayerLatestGameRating(ctx context.Context, arg GetPlayerLatestGameRatingParams) (GetPlayerLatestGameRatingRow, error)
 	GetPlayerLatestGameRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGameRatingBeforeMatchParams) (GetPlayerLatestGameRatingBeforeMatchRow, error)
 	// Returns the true Elo value (elo_after) for Elo calculations.
-	GetPlayerLatestGlobalElo(ctx context.Context, playerID string) (float64, error)
+	GetPlayerLatestGlobalElo(ctx context.Context, playerID id.ID) (float64, error)
 	GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error)
 	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
 	// Returns the display rating (rating_after) and current league for rating-track calculations.
-	GetPlayerLatestGlobalRating(ctx context.Context, playerID string) (GetPlayerLatestGlobalRatingRow, error)
+	GetPlayerLatestGlobalRating(ctx context.Context, playerID id.ID) (GetPlayerLatestGlobalRatingRow, error)
 	GetPlayerLatestGlobalRatingAtDate(ctx context.Context, arg GetPlayerLatestGlobalRatingAtDateParams) (GetPlayerLatestGlobalRatingAtDateRow, error)
 	GetPlayerLatestGlobalRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalRatingBeforeMatchParams) (GetPlayerLatestGlobalRatingBeforeMatchRow, error)
 	// Picks the latest settlement before correction $3 for player $1 at date $2.
 	// Same-date matches/markets (discriminator != 'correction') come before corrections.
 	// Earlier same-date corrections (correction_id < $3) are also included.
 	GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestGlobalStateBeforeCorrectionParams) (GetPlayerLatestGlobalStateBeforeCorrectionRow, error)
-	GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error)
+	GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
-	GetSettlementDetails(ctx context.Context, marketID *string) ([]GetSettlementDetailsRow, error)
-	GetSkullKingTable(ctx context.Context, id string) (SkullKingTable, error)
-	GetSkullKingTableForUpdate(ctx context.Context, id string) (SkullKingTable, error)
-	GetTournament(ctx context.Context, id string) ([]GetTournamentRow, error)
+	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
+	GetSkullKingTable(ctx context.Context, argID id.ID) (SkullKingTable, error)
+	GetSkullKingTableForUpdate(ctx context.Context, argID id.ID) (SkullKingTable, error)
+	GetTournament(ctx context.Context, argID id.ID) ([]GetTournamentRow, error)
 	// HAVING guards the aggregate: with no matches it returns zero rows (ErrNoRows)
 	// instead of a (NULL, NULL) row that can't scan into the non-nullable time.Time.
-	GetTournamentMatchDateRange(ctx context.Context, tournamentID string) (GetTournamentMatchDateRangeRow, error)
-	GetTournamentStats(ctx context.Context, tournamentID string) ([]GetTournamentStatsRow, error)
-	GetUser(ctx context.Context, id string) (User, error)
+	GetTournamentMatchDateRange(ctx context.Context, tournamentID id.ID) (GetTournamentMatchDateRangeRow, error)
+	GetTournamentStats(ctx context.Context, tournamentID id.ID) ([]GetTournamentStatsRow, error)
+	GetUser(ctx context.Context, argID id.ID) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
 	// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
 	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
-	GetWinStreakParams(ctx context.Context, marketID string) (MarketWinStreakParam, error)
+	GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error)
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
 	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
-	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]string, error)
+	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]id.ID, error)
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
@@ -157,21 +158,21 @@ type Querier interface {
 	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
-	ListLatestGameEloPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameEloPerPlayerRow, error)
-	ListLatestGameRatingPerPlayer(ctx context.Context, gameID string) ([]ListLatestGameRatingPerPlayerRow, error)
-	ListMarketGuarantors(ctx context.Context, marketID string) ([]ListMarketGuarantorsRow, error)
+	ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error)
+	ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error)
+	ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]ListMarketGuarantorsRow, error)
 	// Outcome rows in the canonical order: yes/no first (win_streak), then player
 	// outcomes, 'other' last. This order fixes the AMM q-vector layout.
-	ListMarketOutcomes(ctx context.Context, marketID string) ([]MarketOutcome, error)
+	ListMarketOutcomes(ctx context.Context, marketID id.ID) ([]MarketOutcome, error)
 	// Outcome rows with derived display name (players.name for player outcomes)
 	// and the elo spent per outcome, in the canonical order (see ListMarketOutcomes).
-	ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]ListMarketOutcomesWithPoolsRow, error)
+	ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]ListMarketOutcomesWithPoolsRow, error)
 	ListMarkets(ctx context.Context) ([]ListMarketsRow, error)
-	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]ListMarketsByResolutionMatchRow, error)
-	ListMatchResults(ctx context.Context, id string) ([]ListMatchResultsRow, error)
+	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error)
+	ListMatchResults(ctx context.Context, argID id.ID) ([]ListMatchResultsRow, error)
 	ListMatchesWithPlayers(ctx context.Context) ([]ListMatchesWithPlayersRow, error)
-	ListMatchesWithPlayersByGame(ctx context.Context, id string) ([]ListMatchesWithPlayersByGameRow, error)
-	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID string) ([]ListMatchesWithPlayersByGameFromDBRow, error)
+	ListMatchesWithPlayersByGame(ctx context.Context, argID id.ID) ([]ListMatchesWithPlayersByGameRow, error)
+	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID id.ID) ([]ListMatchesWithPlayersByGameFromDBRow, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinStreakMarketsRow, error)
@@ -184,16 +185,16 @@ type Querier interface {
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
 	ListSkullKingTables(ctx context.Context) ([]SkullKingTable, error)
 	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
-	ListTournamentsByMatchIDs(ctx context.Context, matchIds []string) ([]ListTournamentsByMatchIDsRow, error)
+	ListTournamentsByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListTournamentsByMatchIDsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 	// Only succeeds if current status = 'open'; the caller must check affected rows or
 	// fetch the market first to return a proper domain error.
-	LockMarketBetting(ctx context.Context, id string) error
-	LockPlayerForEloCalculation(ctx context.Context, id string) (string, error)
+	LockMarketBetting(ctx context.Context, argID id.ID) error
+	LockPlayerForEloCalculation(ctx context.Context, argID id.ID) (id.ID, error)
 	PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error)
 	// Returns rating_after and elo_after ordered by date for the player graph.
-	RatingHistory(ctx context.Context, playerID string) ([]RatingHistoryRow, error)
+	RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
@@ -202,7 +203,7 @@ type Querier interface {
 	// Restores the pre-settlement status: betting_closed if the betting lock user event
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 	// a user event and must never be cleared by recalculation.
-	UnsettleMarket(ctx context.Context, id string) error
+	UnsettleMarket(ctx context.Context, argID id.ID) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)

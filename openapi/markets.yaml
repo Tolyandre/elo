@@ -42,7 +42,7 @@ MarketsCollection:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               market_type:
                 type: string
                 enum: [match_winner, win_streak]
@@ -59,7 +59,7 @@ MarketsCollection:
                 minItems: 1
                 maxItems: 12
                 items:
-                  type: string
+                  $ref: './common.yaml#/Base58ID'
                 description: Target players — one "player wins" outcome is created per player.
               allow_other_players:
                 type: boolean
@@ -71,14 +71,14 @@ MarketsCollection:
               game_ids:
                 type: array
                 items:
-                  type: string
+                    $ref: './common.yaml#/Base58ID'
               # win_streak fields
               target_player_id:
-                type: string
+                $ref: './common.yaml#/Base58ID'
               streak_game_ids:
                 type: array
                 items:
-                  type: string
+                    $ref: './common.yaml#/Base58ID'
               wins_required:
                 type: integer
               max_losses:
@@ -89,7 +89,7 @@ MarketsCollection:
                 type: array
                 description: Players who back the market and absorb its settlement residual.
                 items:
-                  type: string
+                  $ref: './common.yaml#/Base58ID'
               liquidity_b:
                 type: number
                 format: double
@@ -111,7 +111,7 @@ MarketsCollection:
                   type: object
                   properties:
                     id:
-                      type: string
+                      $ref: './common.yaml#/Base58ID'
                   required: [id]
               required: [status, data]
       "400":
@@ -288,13 +288,13 @@ MarketBets:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               outcome_id:
-                type: string
+                $ref: './common.yaml#/Base58ID'
                 description: >-
                   Outcome identifier (GUID) the bet is placed on — one of the
-                  market's outcomes. The *_id suffix lets the idcodec boundary
-                  decode the short form clients see in responses.
+                  market's outcomes. Typed as Base58ID so it carries the same
+                  short form clients see in the market's outcome ids.
               shares:
                 type: number
                 format: double
@@ -407,7 +407,7 @@ MarketPriceHistory:
                               type: object
                               properties:
                                 outcome_id:
-                                  type: string
+                                  $ref: './common.yaml#/Base58ID'
                                 price:
                                   type: number
                                   format: double
@@ -440,7 +440,7 @@ MarketOutcome:
     yes/no → «Да»/«Нет»).
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     kind:
       type: string
       enum: [player, other, yes, no]
@@ -449,7 +449,8 @@ MarketOutcome:
         first place or a non-target player wins; yes/no — the two fixed outcomes
         of a win_streak market.
     player_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
       description: Set iff kind=player.
     name:
@@ -474,7 +475,7 @@ SettlementDetail:
   type: object
   properties:
     player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     player_name:
       type: string
     staked:
@@ -490,7 +491,7 @@ MarketGuarantor:
   description: A player who backs a market and splits its settlement residual (deficit or surplus).
   properties:
     player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     player_name:
       type: string
   required: [player_id, player_name]
@@ -501,7 +502,7 @@ MatchWinnerParams:
     target_player_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
       description: Target players — one "player wins" outcome exists per player.
     allow_other_players:
       type: boolean
@@ -511,18 +512,18 @@ MatchWinnerParams:
     game_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
   required: [target_player_ids, allow_other_players]
 
 WinStreakParams:
   type: object
   properties:
     target_player_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
     wins_required:
       type: integer
     max_losses:
@@ -534,7 +535,7 @@ Market:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     market_type:
       type: string
       enum: [match_winner, win_streak]
@@ -542,15 +543,17 @@ Market:
       type: string
       enum: [open, betting_closed, resolved, expired, cancelled]
     resolution_outcome_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
       description: >-
         The winning outcome id (GUID) for resolved markets; null for
         open/betting_closed markets and for cancelled markets (cancellation is
-        carried by status alone). The *_id suffix lets the idcodec boundary
-        encode it to the same short form as the market's outcome ids.
+        carried by status alone). Typed as Base58ID so it carries the same
+        short form as the market's outcome ids.
     resolution_match_id:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
       description: The match that resolved the market, when it was resolved by one.
     starts_at:
@@ -621,7 +624,7 @@ MarketDetail:
             type: object
             properties:
               outcome_id:
-                type: string
+                $ref: './common.yaml#/Base58ID'
               staked:
                 type: number
                 format: double

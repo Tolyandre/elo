@@ -34,7 +34,7 @@ SkullKingTables:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               game_state:
                 $ref: '#/SkullKingGameState'
             required: [id, game_state]
@@ -395,7 +395,7 @@ SkullKingPlayer:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
   required: [id, name]
@@ -436,7 +436,8 @@ SkullKingGameState:
             - $ref: '#/SkullKingRoundEntry'
           nullable: true
     fallbackGameId:
-      type: string
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
       nullable: true
   required: [phase, players, currentRound, currentPlayerIndex, rounds]
 
@@ -444,15 +445,15 @@ SkullKingTableSummary:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     host_user_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_state:
       $ref: '#/SkullKingGameState'
     connected_player_ids:
       type: array
       items:
-        type: string
+          $ref: './common.yaml#/Base58ID'
     created_at:
       type: string
       format: date-time

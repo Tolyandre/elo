@@ -3,13 +3,14 @@
 import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Tournament, getTournamentPromise } from "@/app/api";
 import { TournamentForm } from "../TournamentForm";
 
 function EditTournamentContent() {
     const searchParams = useSearchParams();
-    const id = searchParams.get("id") ?? "";
+    const id = toBase58ID(searchParams.get("id") ?? "");
     const [tournament, setTournament] = useState<Tournament | null>(null);
     const [loading, setLoading] = useState(true);
 

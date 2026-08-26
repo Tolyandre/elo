@@ -11,20 +11,20 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 type CreateMarketParams struct {
-	ID         string
+	ID         id.ID
 	MarketType string
 	StartsAt   time.Time
 	ClosesAt   time.Time
-	CreatedBy  string
+	CreatedBy  id.ID
 
 	// Fixed-odds / LMSR fields.
-	LiquidityB         float64  // <=0 ⇒ resolved from elo_settings.market_default_liquidity_b
-	GuarantorPlayerIDs []string // players who absorb the market's settlement residual
+	LiquidityB         float64 // <=0 ⇒ resolved from elo_settings.market_default_liquidity_b
+	GuarantorPlayerIDs []id.ID // players who absorb the market's settlement residual
 
 	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
 	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
@@ -32,11 +32,11 @@ type CreateMarketParams struct {
 
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
-	PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, shares float64, expectedPrice float64) (PlaceBetOutcome, error)
+	PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedPrice float64) (PlaceBetOutcome, error)
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
 	// Must be called within an active transaction (q is transactional).
-	TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID string) error
+	TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID id.ID) error
 
 	// UnsettleMarketsFromDate resets markets that were resolved by matches on/after fromDate.
 	// Must be called within an active transaction.
@@ -46,7 +46,7 @@ type IMarketService interface {
 	// redistributes the settlement residual across the market's guarantors, keeping
 	// elo strictly conserved (zero-sum across buyers + guarantors).
 	// OutcomeCancelled refunds all spent elo. Must be called within an active transaction.
-	SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error
+	SettleMarket(ctx context.Context, q *db.Queries, marketID id.ID, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *id.ID) error
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 	ExpireOverdueMarkets(ctx context.Context) error
@@ -59,7 +59,7 @@ type IMarketService interface {
 	// LockMarketBetting stops new bets from being placed on an open market.
 	// This is a user event: betting_closed_at is persisted and never cleared
 	// during recalculation. Returns ErrMarketNotOpen if the market is not 'open'.
-	LockMarketBetting(ctx context.Context, marketID string) error
+	LockMarketBetting(ctx context.Context, marketID id.ID) error
 
 	// ScheduleNextExpiry sets a timer for the next market expiry.
 	ScheduleNextExpiry(ctx context.Context)
@@ -67,18 +67,18 @@ type IMarketService interface {
 	// --- read-side queries used by the market handlers ---------------------
 
 	ListMarkets(ctx context.Context) ([]db.ListMarketsRow, error)
-	GetMarket(ctx context.Context, id string) (db.GetMarketRow, error)
-	ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]db.ListMarketOutcomesWithPoolsRow, error)
+	GetMarket(ctx context.Context, marketID id.ID) (db.GetMarketRow, error)
+	ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]db.ListMarketOutcomesWithPoolsRow, error)
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]db.ListAllMarketOutcomesWithPoolsRow, error)
-	GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error)
-	GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]db.GetMarketGuarantorPayoutsRow, error)
-	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error)
+	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]db.GetSettlementDetailsRow, error)
+	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]db.GetMarketGuarantorPayoutsRow, error)
+	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]db.ListMarketsByResolutionMatchRow, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error)
 	GetPlayerBetsForMarket(ctx context.Context, arg db.GetPlayerBetsForMarketParams) ([]db.GetPlayerBetsForMarketRow, error)
-	ListMarketGuarantors(ctx context.Context, marketID string) ([]db.ListMarketGuarantorsRow, error)
-	GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error)
-	GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error)
-	GetMarketPriceHistory(ctx context.Context, marketID string) ([]PricePoint, error)
+	ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]db.ListMarketGuarantorsRow, error)
+	GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error)
+	GetPlayerBetLimit(ctx context.Context, playerID id.ID) (float64, error)
+	GetMarketPriceHistory(ctx context.Context, marketID id.ID) ([]PricePoint, error)
 }
 
 type MarketService struct {
@@ -113,11 +113,11 @@ func (s *MarketService) ListMarkets(ctx context.Context) ([]db.ListMarketsRow, e
 	return s.Queries.ListMarkets(ctx)
 }
 
-func (s *MarketService) GetMarket(ctx context.Context, id string) (db.GetMarketRow, error) {
-	return s.Queries.GetMarket(ctx, id)
+func (s *MarketService) GetMarket(ctx context.Context, marketID id.ID) (db.GetMarketRow, error) {
+	return s.Queries.GetMarket(ctx, marketID)
 }
 
-func (s *MarketService) ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]db.ListMarketOutcomesWithPoolsRow, error) {
+func (s *MarketService) ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]db.ListMarketOutcomesWithPoolsRow, error) {
 	return s.Queries.ListMarketOutcomesWithPools(ctx, marketID)
 }
 
@@ -125,15 +125,15 @@ func (s *MarketService) ListAllMarketOutcomesWithPools(ctx context.Context) ([]d
 	return s.Queries.ListAllMarketOutcomesWithPools(ctx)
 }
 
-func (s *MarketService) GetSettlementDetails(ctx context.Context, marketID *string) ([]db.GetSettlementDetailsRow, error) {
+func (s *MarketService) GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]db.GetSettlementDetailsRow, error) {
 	return s.Queries.GetSettlementDetails(ctx, marketID)
 }
 
-func (s *MarketService) GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]db.GetMarketGuarantorPayoutsRow, error) {
+func (s *MarketService) GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]db.GetMarketGuarantorPayoutsRow, error) {
 	return s.Queries.GetMarketGuarantorPayouts(ctx, marketID)
 }
 
-func (s *MarketService) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]db.ListMarketsByResolutionMatchRow, error) {
+func (s *MarketService) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]db.ListMarketsByResolutionMatchRow, error) {
 	return s.Queries.ListMarketsByResolutionMatch(ctx, resolutionMatchID)
 }
 
@@ -145,22 +145,22 @@ func (s *MarketService) GetPlayerBetsForMarket(ctx context.Context, arg db.GetPl
 	return s.Queries.GetPlayerBetsForMarket(ctx, arg)
 }
 
-func (s *MarketService) ListMarketGuarantors(ctx context.Context, marketID string) ([]db.ListMarketGuarantorsRow, error) {
+func (s *MarketService) ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]db.ListMarketGuarantorsRow, error) {
 	return s.Queries.ListMarketGuarantors(ctx, marketID)
 }
 
-func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error) {
+func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error) {
 	return s.Queries.GetPlayerReservedAmount(ctx, playerID)
 }
 
-func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID string) (float64, error) {
+func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID id.ID) (float64, error) {
 	return s.Queries.GetPlayerBetLimit(ctx, playerID)
 }
 
 // GetMarketPriceHistory reconstructs the market's per-outcome price series by
 // replaying its bet stream through the LMSR from the creation state q=0. No
 // prices are persisted — see price_history.go.
-func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID string) ([]PricePoint, error) {
+func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID id.ID) ([]PricePoint, error) {
 	market, err := s.Queries.GetMarket(ctx, marketID)
 	if err != nil {
 		return nil, err
@@ -173,7 +173,7 @@ func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID stri
 	if err != nil {
 		return nil, err
 	}
-	outcomeIDs := make([]string, len(outcomes))
+	outcomeIDs := make([]id.ID, len(outcomes))
 	for i, o := range outcomes {
 		outcomeIDs[i] = o.ID
 	}
@@ -270,7 +270,7 @@ type PlaceBetOutcome struct {
 	Price  float64
 }
 
-func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string, playerID string, outcome string, shares float64, expectedPrice float64) (PlaceBetOutcome, error) {
+func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedPrice float64) (PlaceBetOutcome, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("begin tx: %w", err)
@@ -339,7 +339,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 	}
 
 	if _, err := q.InsertBet(ctx, db.InsertBetParams{
-		ID:       id,
+		ID:       betID,
 		MarketID: marketID,
 		PlayerID: playerID,
 		Outcome:  outcome,
@@ -369,10 +369,9 @@ func (s *MarketService) PlaceBet(ctx context.Context, id string, marketID string
 			if i == outcomeIdx {
 				pool += amount
 			}
-			// SSE frames bypass the idcodec middleware (it only rewrites
-			// buffered application/json responses), so the short id encoding
-			// every other payload uses is applied here, at construction.
-			live[i] = LiveOutcome{ID: shortid.FromCanonical(o.ID), Price: prices[i], Shares: newQ[i], Pool: pool}
+			// SSE frames bypass the JSON DTO layer, so the wire-form encoding
+			// is applied here, at construction (ADR-12).
+			live[i] = LiveOutcome{ID: string(o.ID.Base58()), Price: prices[i], Shares: newQ[i], Pool: pool}
 		}
 		s.broadcastPrices(marketID, live)
 	}
@@ -394,7 +393,7 @@ type LiveOutcome struct {
 
 // broadcastPrices fans the new per-outcome LMSR prices + share counts + pools
 // out to the market's SSE subscribers and signals the markets-list lobby.
-func (s *MarketService) broadcastPrices(marketID string, outcomes []LiveOutcome) {
+func (s *MarketService) broadcastPrices(marketID id.ID, outcomes []LiveOutcome) {
 	payload, err := json.Marshal(marketsSSEEvent{
 		Type: "prices",
 		Data: pricesPayload{Outcomes: outcomes},
@@ -402,7 +401,7 @@ func (s *MarketService) broadcastPrices(marketID string, outcomes []LiveOutcome)
 	if err != nil {
 		return
 	}
-	s.Hub.Broadcast(marketID, payload)
+	s.Hub.Broadcast(string(marketID), payload)
 	s.Hub.BroadcastLobby([]byte(`{"type":"markets-changed"}`))
 }
 
@@ -417,7 +416,7 @@ type pricesPayload struct {
 
 // TriggerResolutionForMatch checks all open markets and resolves them if the given match satisfies their conditions.
 // Must be called within an active transaction (q is transactional Queries).
-func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID string) error {
+func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Queries, matchID id.ID) error {
 	match, err := q.GetMatch(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("get match %s: %w", matchID, err)
@@ -428,14 +427,14 @@ func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Que
 		return fmt.Errorf("get scores for match %s: %w", matchID, err)
 	}
 
-	participantSet := make(map[string]bool)
-	playerScoreMap := make(map[string]float64)
+	participantSet := make(map[id.ID]bool)
+	playerScoreMap := make(map[id.ID]float64)
 	maxScore := -1e18
-	for _, s := range scores {
-		participantSet[s.PlayerID] = true
-		playerScoreMap[s.PlayerID] = s.Score
-		if s.Score > maxScore {
-			maxScore = s.Score
+	for _, row := range scores {
+		participantSet[row.PlayerID] = true
+		playerScoreMap[row.PlayerID] = row.Score
+		if row.Score > maxScore {
+			maxScore = row.Score
 		}
 	}
 
@@ -479,7 +478,7 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 // the settlement residual across the market's guarantors, keeping elo strictly
 // conserved (zero-sum across buyers + guarantors).
 // OutcomeCancelled refunds all spent elo. Must be called within an active transaction.
-func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID string, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *string) error {
+func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketID id.ID, outcome MarketOutcome, resolvedAt time.Time, resolutionMatchID *id.ID) error {
 	bets, err := q.GetBetsForSettlement(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get bets for market %s: %w", marketID, err)
@@ -490,7 +489,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	}
 
 	isCancelled := outcome == OutcomeCancelled
-	winningSide := string(outcome) // "yes", "no", "player_42", etc.
+	winningSide := id.ID(outcome) // the winning outcome row id, or the "cancelled" pseudo-value
 
 	// Per-player buy P&L. staked is the elo spent (positive magnitude); earned is
 	// the payout (shares × 1 for the winning side, or the stake refunded on cancel).
@@ -499,7 +498,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		staked float64
 		earned float64
 	}
-	players := make(map[string]*playerData)
+	players := make(map[id.ID]*playerData)
 	totalCollected := 0.0
 	totalPaid := 0.0
 	for _, b := range bets {
@@ -521,8 +520,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	// Guarantor residual = collected − paid. Split equally across guarantors,
 	// assigning the FP remainder to the last guarantor so the shares sum to the
 	// residual exactly (strict conservation).
-	guarantorSet := make(map[string]bool, len(guarantors))
-	guarantorIDs := make([]string, 0, len(guarantors))
+	guarantorSet := make(map[id.ID]bool, len(guarantors))
+	guarantorIDs := make([]id.ID, 0, len(guarantors))
 	for _, g := range guarantors {
 		if !guarantorSet[g.PlayerID] {
 			guarantorSet[g.PlayerID] = true
@@ -530,7 +529,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 	sortPlayerIDs(guarantorIDs)
-	shares := make(map[string]float64, len(guarantorIDs))
+	shares := make(map[id.ID]float64, len(guarantorIDs))
 	if !isCancelled && len(guarantorIDs) > 0 {
 		residual := totalCollected - totalPaid // +surplus / −deficit
 		n := len(guarantorIDs)
@@ -548,14 +547,14 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	// share — so the value change per bet and the guarantor payout/surcharge are
 	// individually visible. Pure guarantors keep the 'market_guarantor'
 	// discriminator for the guarantor-payout rollup.
-	allPlayerIDSet := make(map[string]bool, len(players)+len(guarantorIDs))
+	allPlayerIDSet := make(map[id.ID]bool, len(players)+len(guarantorIDs))
 	for pid := range players {
 		allPlayerIDSet[pid] = true
 	}
 	for _, pid := range guarantorIDs {
 		allPlayerIDSet[pid] = true
 	}
-	allPlayerIDs := make([]string, 0, len(allPlayerIDSet))
+	allPlayerIDs := make([]id.ID, 0, len(allPlayerIDSet))
 	for pid := range allPlayerIDSet {
 		allPlayerIDs = append(allPlayerIDs, pid)
 	}
@@ -619,13 +618,9 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	var resMatchID *string
-	if resolutionMatchID != nil {
-		resMatchID = resolutionMatchID
-	}
 	// Cancelled markets carry no winning outcome: cancellation is encoded by
 	// the status column and resolution_outcome stays NULL.
-	var resolutionOutcome *string
+	var resolutionOutcome *id.ID
 	if !isCancelled {
 		resolutionOutcome = &winningSide
 	}
@@ -633,7 +628,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		ID:                marketID,
 		Status:            statusForOutcome(outcome),
 		ResolvedAt:        resolvedAtTz,
-		ResolutionMatchID: resMatchID,
+		ResolutionMatchID: resolutionMatchID,
 		ResolutionOutcome: resolutionOutcome,
 	}); err != nil {
 		return fmt.Errorf("resolve market %s: %w", marketID, err)
@@ -660,7 +655,7 @@ type marketSettlementBalances struct {
 // state. Called once per player before any of their rows are written, so the
 // second role row cannot observe the first one (they share the settlement date).
 func (s *MarketService) readMarketSettlementBalances(
-	ctx context.Context, q *db.Queries, playerID string,
+	ctx context.Context, q *db.Queries, playerID id.ID,
 	resolvedAtTz pgtype.Timestamptz, settings EloSettings, date6MAgo, date2MAgo pgtype.Timestamptz,
 ) (marketSettlementBalances, error) {
 	var b marketSettlementBalances
@@ -711,7 +706,7 @@ func (s *MarketService) readMarketSettlementBalances(
 // player. The rating track mirrors the elo track (markets apply no newbie
 // scaling).
 func (s *MarketService) upsertMarketSettlement(
-	ctx context.Context, q *db.Queries, playerID, marketID, discriminator string,
+	ctx context.Context, q *db.Queries, playerID, marketID id.ID, discriminator string,
 	eloStaked, eloEarned, newElo, newRating float64, newLeague string,
 	resolvedAtTz pgtype.Timestamptz,
 ) error {
@@ -733,7 +728,7 @@ func (s *MarketService) upsertMarketSettlement(
 
 // LockMarketBetting stops accepting new bets on an open market (user event).
 // betting_closed_at is stored permanently and never cleared during recalculation.
-func (s *MarketService) LockMarketBetting(ctx context.Context, marketID string) error {
+func (s *MarketService) LockMarketBetting(ctx context.Context, marketID id.ID) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

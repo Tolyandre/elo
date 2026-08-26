@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const createMarket = `-- name: CreateMarket :one
@@ -18,11 +19,11 @@ RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at,
 `
 
 type CreateMarketParams struct {
-	ID         string             `json:"id"`
+	ID         id.ID              `json:"id"`
 	MarketType string             `json:"market_type"`
 	StartsAt   pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt   pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy  string             `json:"created_by"`
+	CreatedBy  id.ID              `json:"created_by"`
 	LiquidityB float64            `json:"liquidity_b"`
 }
 
@@ -59,8 +60,8 @@ SELECT $1, t.player_id FROM unnest($2::uuid[]) AS t(player_id)
 `
 
 type CreateMarketGuarantorsParams struct {
-	MarketID  string   `json:"market_id"`
-	PlayerIds []string `json:"player_ids"`
+	MarketID  id.ID   `json:"market_id"`
+	PlayerIds []id.ID `json:"player_ids"`
 }
 
 // Bulk-inserts the market's guarantor players (zero-sum counterparties).
@@ -75,10 +76,10 @@ VALUES ($1, $2, $3, $4)
 `
 
 type CreateMatchWinnerParamsParams struct {
-	MarketID          string   `json:"market_id"`
-	TargetPlayerIds   []string `json:"target_player_ids"`
-	AllowOtherPlayers bool     `json:"allow_other_players"`
-	GameIds           []string `json:"game_ids"`
+	MarketID          id.ID   `json:"market_id"`
+	TargetPlayerIds   []id.ID `json:"target_player_ids"`
+	AllowOtherPlayers bool    `json:"allow_other_players"`
+	GameIds           []id.ID `json:"game_ids"`
 }
 
 func (q *Queries) CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error {
@@ -97,7 +98,7 @@ INSERT INTO market_outcomes (market_id, kind, player_id) VALUES ($1, 'other', NU
 
 // The "other" outcome of a match_winner market: tie at first place or a
 // non-target winner.
-func (q *Queries) CreateOtherOutcome(ctx context.Context, marketID string) error {
+func (q *Queries) CreateOtherOutcome(ctx context.Context, marketID id.ID) error {
 	_, err := q.db.Exec(ctx, createOtherOutcome, marketID)
 	return err
 }
@@ -109,8 +110,8 @@ FROM unnest($2::uuid[]) AS t(player_id)
 `
 
 type CreatePlayerOutcomesParams struct {
-	MarketID  string   `json:"market_id"`
-	PlayerIds []string `json:"player_ids"`
+	MarketID  id.ID   `json:"market_id"`
+	PlayerIds []id.ID `json:"player_ids"`
 }
 
 // Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
@@ -125,9 +126,9 @@ VALUES ($1, $2, $3, $4, $5)
 `
 
 type CreateWinStreakParamsParams struct {
-	MarketID       string      `json:"market_id"`
-	TargetPlayerID string      `json:"target_player_id"`
-	GameIds        []string    `json:"game_ids"`
+	MarketID       id.ID       `json:"market_id"`
+	TargetPlayerID id.ID       `json:"target_player_id"`
+	GameIds        []id.ID     `json:"game_ids"`
 	WinsRequired   int32       `json:"wins_required"`
 	MaxLosses      pgtype.Int4 `json:"max_losses"`
 }
@@ -148,7 +149,7 @@ INSERT INTO market_outcomes (market_id, kind, player_id) VALUES ($1, 'yes', NULL
 `
 
 // The two fixed Да/Нет outcomes of a win_streak market.
-func (q *Queries) CreateYesNoOutcomes(ctx context.Context, marketID string) error {
+func (q *Queries) CreateYesNoOutcomes(ctx context.Context, marketID id.ID) error {
 	_, err := q.db.Exec(ctx, createYesNoOutcomes, marketID)
 	return err
 }
@@ -160,7 +161,7 @@ WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor')
 
 // Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 // rows for a market (used by unsettle/recalculation).
-func (q *Queries) DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *string) error {
+func (q *Queries) DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *id.ID) error {
 	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMarket, marketID)
 	return err
 }
@@ -169,8 +170,8 @@ const deleteMarket = `-- name: DeleteMarket :exec
 DELETE FROM markets WHERE id = $1
 `
 
-func (q *Queries) DeleteMarket(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, deleteMarket, id)
+func (q *Queries) DeleteMarket(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, deleteMarket, argID)
 	return err
 }
 
@@ -183,12 +184,12 @@ ORDER BY player_id, outcome
 `
 
 type GetBetsAggregatedByOutcomeRow struct {
-	PlayerID  string  `json:"player_id"`
-	Outcome   string  `json:"outcome"`
+	PlayerID  id.ID   `json:"player_id"`
+	Outcome   id.ID   `json:"outcome"`
 	TotalCost float64 `json:"total_cost"`
 }
 
-func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID string) ([]GetBetsAggregatedByOutcomeRow, error) {
+func (q *Queries) GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error) {
 	rows, err := q.db.Query(ctx, getBetsAggregatedByOutcome, marketID)
 	if err != nil {
 		return nil, err
@@ -216,14 +217,14 @@ ORDER BY placed_at, id
 `
 
 type GetBetsForSettlementRow struct {
-	PlayerID string  `json:"player_id"`
-	Outcome  string  `json:"outcome"`
+	PlayerID id.ID   `json:"player_id"`
+	Outcome  id.ID   `json:"outcome"`
 	Cost     float64 `json:"cost"`
 	Shares   float64 `json:"shares"`
 }
 
 // Per-buy rows (each carries the shares bought) used by share settlement.
-func (q *Queries) GetBetsForSettlement(ctx context.Context, marketID string) ([]GetBetsForSettlementRow, error) {
+func (q *Queries) GetBetsForSettlement(ctx context.Context, marketID id.ID) ([]GetBetsForSettlementRow, error) {
 	rows, err := q.db.Query(ctx, getBetsForSettlement, marketID)
 	if err != nil {
 		return nil, err
@@ -256,14 +257,14 @@ WHERE market_id = $1
 `
 
 type GetBetsOnMarketPlacedBetweenParams struct {
-	MarketID   string             `json:"market_id"`
+	MarketID   id.ID              `json:"market_id"`
 	PlacedAt   pgtype.Timestamptz `json:"placed_at"`
 	PlacedAt_2 pgtype.Timestamptz `json:"placed_at_2"`
 }
 
 type GetBetsOnMarketPlacedBetweenRow struct {
-	ID       string             `json:"id"`
-	PlayerID string             `json:"player_id"`
+	ID       id.ID              `json:"id"`
+	PlayerID id.ID              `json:"player_id"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 }
 
@@ -306,29 +307,29 @@ WHERE om.id = $1
 `
 
 type GetMarketRow struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
-	ResolutionOutcome *string            `json:"resolution_outcome"`
+	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy         string             `json:"created_by"`
+	CreatedBy         id.ID              `json:"created_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
-	ResolutionMatchID *string            `json:"resolution_match_id"`
+	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	TargetPlayerIds   []string           `json:"target_player_ids"`
+	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
-	MwGameIds         []string           `json:"mw_game_ids"`
-	WsTargetPlayerID  *string            `json:"ws_target_player_id"`
-	WsGameIds         []string           `json:"ws_game_ids"`
+	MwGameIds         []id.ID            `json:"mw_game_ids"`
+	WsTargetPlayerID  *id.ID             `json:"ws_target_player_id"`
+	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
 
-func (q *Queries) GetMarket(ctx context.Context, id string) (GetMarketRow, error) {
-	row := q.db.QueryRow(ctx, getMarket, id)
+func (q *Queries) GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, error) {
+	row := q.db.QueryRow(ctx, getMarket, argID)
 	var i GetMarketRow
 	err := row.Scan(
 		&i.ID,
@@ -362,14 +363,14 @@ ORDER BY placed_at, id
 `
 
 type GetMarketBetsForPriceHistoryRow struct {
-	Outcome  string             `json:"outcome"`
+	Outcome  id.ID              `json:"outcome"`
 	Shares   float64            `json:"shares"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 }
 
 // Ordered bet stream used to reconstruct the market's price history by
 // replaying the LMSR from its creation state q=0.
-func (q *Queries) GetMarketBetsForPriceHistory(ctx context.Context, marketID string) ([]GetMarketBetsForPriceHistoryRow, error) {
+func (q *Queries) GetMarketBetsForPriceHistory(ctx context.Context, marketID id.ID) ([]GetMarketBetsForPriceHistoryRow, error) {
 	rows, err := q.db.Query(ctx, getMarketBetsForPriceHistory, marketID)
 	if err != nil {
 		return nil, err
@@ -400,7 +401,7 @@ ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC
 `
 
 type GetMarketGuarantorPayoutsRow struct {
-	PlayerID   string  `json:"player_id"`
+	PlayerID   id.ID   `json:"player_id"`
 	PlayerName string  `json:"player_name"`
 	Staked     float64 `json:"staked"`
 	Earned     float64 `json:"earned"`
@@ -410,7 +411,7 @@ type GetMarketGuarantorPayoutsRow struct {
 // per-guarantor payout rollup. A player who is both buyer and guarantor has a
 // separate buyer row (discriminator 'market'), so their entry here carries only
 // the house result (ADR-10).
-func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID string) ([]GetMarketGuarantorPayoutsRow, error) {
+func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error) {
 	rows, err := q.db.Query(ctx, getMarketGuarantorPayouts, marketID)
 	if err != nil {
 		return nil, err
@@ -439,8 +440,8 @@ const getMarketResolvedAt = `-- name: GetMarketResolvedAt :one
 SELECT resolved_at FROM markets WHERE id = $1
 `
 
-func (q *Queries) GetMarketResolvedAt(ctx context.Context, id string) (pgtype.Timestamptz, error) {
-	row := q.db.QueryRow(ctx, getMarketResolvedAt, id)
+func (q *Queries) GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getMarketResolvedAt, argID)
 	var resolved_at pgtype.Timestamptz
 	err := row.Scan(&resolved_at)
 	return resolved_at, err
@@ -453,15 +454,15 @@ WHERE om.status IN ('resolved', 'cancelled')
   AND om.resolved_at >= $1
 `
 
-func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]string, error) {
+func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]id.ID, error) {
 	rows, err := q.db.Query(ctx, getMarketsForUnsettle, resolvedAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []id.ID{}
 	for rows.Next() {
-		var id string
+		var id id.ID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
@@ -481,7 +482,7 @@ WHERE status IN ('resolved', 'cancelled')
 `
 
 type GetMarketsForUnsettleWithResolvedAtRow struct {
-	ID              string             `json:"id"`
+	ID              id.ID              `json:"id"`
 	ResolvedAt      pgtype.Timestamptz `json:"resolved_at"`
 	BettingClosedAt pgtype.Timestamptz `json:"betting_closed_at"`
 }
@@ -512,7 +513,7 @@ const getMatchWinnerParams = `-- name: GetMatchWinnerParams :one
 SELECT market_id, game_ids, target_player_ids, allow_other_players FROM market_match_winner_params WHERE market_id = $1
 `
 
-func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID string) (MarketMatchWinnerParam, error) {
+func (q *Queries) GetMatchWinnerParams(ctx context.Context, marketID id.ID) (MarketMatchWinnerParam, error) {
 	row := q.db.QueryRow(ctx, getMatchWinnerParams, marketID)
 	var i MarketMatchWinnerParam
 	err := row.Scan(
@@ -542,8 +543,8 @@ const getPlayerBetLimit = `-- name: GetPlayerBetLimit :one
 SELECT bet_limit FROM players WHERE id = $1
 `
 
-func (q *Queries) GetPlayerBetLimit(ctx context.Context, id string) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerBetLimit, id)
+func (q *Queries) GetPlayerBetLimit(ctx context.Context, argID id.ID) (float64, error) {
+	row := q.db.QueryRow(ctx, getPlayerBetLimit, argID)
 	var bet_limit float64
 	err := row.Scan(&bet_limit)
 	return bet_limit, err
@@ -557,12 +558,12 @@ GROUP BY outcome
 `
 
 type GetPlayerBetsAggregatedForMarketParams struct {
-	MarketID string `json:"market_id"`
-	PlayerID string `json:"player_id"`
+	MarketID id.ID `json:"market_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 type GetPlayerBetsAggregatedForMarketRow struct {
-	Outcome   string  `json:"outcome"`
+	Outcome   id.ID   `json:"outcome"`
 	TotalCost float64 `json:"total_cost"`
 }
 
@@ -594,12 +595,12 @@ ORDER BY placed_at, id
 `
 
 type GetPlayerBetsForMarketParams struct {
-	MarketID string `json:"market_id"`
-	PlayerID string `json:"player_id"`
+	MarketID id.ID `json:"market_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
 type GetPlayerBetsForMarketRow struct {
-	Outcome string  `json:"outcome"`
+	Outcome id.ID   `json:"outcome"`
 	Cost    float64 `json:"cost"`
 	Shares  float64 `json:"shares"`
 }
@@ -632,7 +633,7 @@ JOIN markets om ON om.id = ob.market_id
 WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed')
 `
 
-func (q *Queries) GetPlayerReservedAmount(ctx context.Context, playerID string) (float64, error) {
+func (q *Queries) GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error) {
 	row := q.db.QueryRow(ctx, getPlayerReservedAmount, playerID)
 	var reserved float64
 	err := row.Scan(&reserved)
@@ -657,8 +658,8 @@ WHERE ms.player_id = $1
 `
 
 type GetPlayerStreakStatsParams struct {
-	PlayerID string             `json:"player_id"`
-	Column2  []string           `json:"column_2"`
+	PlayerID id.ID              `json:"player_id"`
+	Column2  []id.ID            `json:"column_2"`
 	Date     pgtype.Timestamptz `json:"date"`
 	Date_2   pgtype.Timestamptz `json:"date_2"`
 }
@@ -690,13 +691,13 @@ ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC
 `
 
 type GetSettlementDetailsRow struct {
-	PlayerID   string  `json:"player_id"`
+	PlayerID   id.ID   `json:"player_id"`
 	PlayerName string  `json:"player_name"`
 	Staked     float64 `json:"staked"`
 	Earned     float64 `json:"earned"`
 }
 
-func (q *Queries) GetSettlementDetails(ctx context.Context, marketID *string) ([]GetSettlementDetailsRow, error) {
+func (q *Queries) GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error) {
 	rows, err := q.db.Query(ctx, getSettlementDetails, marketID)
 	if err != nil {
 		return nil, err
@@ -725,7 +726,7 @@ const getWinStreakParams = `-- name: GetWinStreakParams :one
 SELECT market_id, target_player_id, wins_required, max_losses, game_ids FROM market_win_streak_params WHERE market_id = $1
 `
 
-func (q *Queries) GetWinStreakParams(ctx context.Context, marketID string) (MarketWinStreakParam, error) {
+func (q *Queries) GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error) {
 	row := q.db.QueryRow(ctx, getWinStreakParams, marketID)
 	var i MarketWinStreakParam
 	err := row.Scan(
@@ -745,16 +746,16 @@ RETURNING id, placed_at
 `
 
 type InsertBetParams struct {
-	ID       string  `json:"id"`
-	MarketID string  `json:"market_id"`
-	PlayerID string  `json:"player_id"`
-	Outcome  string  `json:"outcome"`
+	ID       id.ID   `json:"id"`
+	MarketID id.ID   `json:"market_id"`
+	PlayerID id.ID   `json:"player_id"`
+	Outcome  id.ID   `json:"outcome"`
 	Cost     float64 `json:"cost"`
 	Shares   float64 `json:"shares"`
 }
 
 type InsertBetRow struct {
-	ID       string             `json:"id"`
+	ID       id.ID              `json:"id"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 }
 
@@ -784,10 +785,10 @@ ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'play
 `
 
 type ListAllMarketOutcomesWithPoolsRow struct {
-	ID         string      `json:"id"`
-	MarketID   string      `json:"market_id"`
+	ID         id.ID       `json:"id"`
+	MarketID   id.ID       `json:"market_id"`
 	Kind       string      `json:"kind"`
-	PlayerID   *string     `json:"player_id"`
+	PlayerID   *id.ID      `json:"player_id"`
 	PlayerName pgtype.Text `json:"player_name"`
 	Q          float64     `json:"q"`
 	Pool       float64     `json:"pool"`
@@ -832,11 +833,11 @@ ORDER BY p.name
 `
 
 type ListMarketGuarantorsRow struct {
-	PlayerID   string `json:"player_id"`
+	PlayerID   id.ID  `json:"player_id"`
 	PlayerName string `json:"player_name"`
 }
 
-func (q *Queries) ListMarketGuarantors(ctx context.Context, marketID string) ([]ListMarketGuarantorsRow, error) {
+func (q *Queries) ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]ListMarketGuarantorsRow, error) {
 	rows, err := q.db.Query(ctx, listMarketGuarantors, marketID)
 	if err != nil {
 		return nil, err
@@ -865,7 +866,7 @@ ORDER BY (CASE kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE
 
 // Outcome rows in the canonical order: yes/no first (win_streak), then player
 // outcomes, 'other' last. This order fixes the AMM q-vector layout.
-func (q *Queries) ListMarketOutcomes(ctx context.Context, marketID string) ([]MarketOutcome, error) {
+func (q *Queries) ListMarketOutcomes(ctx context.Context, marketID id.ID) ([]MarketOutcome, error) {
 	rows, err := q.db.Query(ctx, listMarketOutcomes, marketID)
 	if err != nil {
 		return nil, err
@@ -904,10 +905,10 @@ ORDER BY (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 EL
 `
 
 type ListMarketOutcomesWithPoolsRow struct {
-	ID         string      `json:"id"`
-	MarketID   string      `json:"market_id"`
+	ID         id.ID       `json:"id"`
+	MarketID   id.ID       `json:"market_id"`
 	Kind       string      `json:"kind"`
-	PlayerID   *string     `json:"player_id"`
+	PlayerID   *id.ID      `json:"player_id"`
 	PlayerName pgtype.Text `json:"player_name"`
 	Q          float64     `json:"q"`
 	Pool       float64     `json:"pool"`
@@ -915,7 +916,7 @@ type ListMarketOutcomesWithPoolsRow struct {
 
 // Outcome rows with derived display name (players.name for player outcomes)
 // and the elo spent per outcome, in the canonical order (see ListMarketOutcomes).
-func (q *Queries) ListMarketOutcomesWithPools(ctx context.Context, marketID string) ([]ListMarketOutcomesWithPoolsRow, error) {
+func (q *Queries) ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]ListMarketOutcomesWithPoolsRow, error) {
 	rows, err := q.db.Query(ctx, listMarketOutcomesWithPools, marketID)
 	if err != nil {
 		return nil, err
@@ -962,23 +963,23 @@ ORDER BY om.created_at DESC
 `
 
 type ListMarketsRow struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
-	ResolutionOutcome *string            `json:"resolution_outcome"`
+	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy         string             `json:"created_by"`
+	CreatedBy         id.ID              `json:"created_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
-	ResolutionMatchID *string            `json:"resolution_match_id"`
+	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	TargetPlayerIds   []string           `json:"target_player_ids"`
+	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
-	MwGameIds         []string           `json:"mw_game_ids"`
-	WsTargetPlayerID  *string            `json:"ws_target_player_id"`
-	WsGameIds         []string           `json:"ws_game_ids"`
+	MwGameIds         []id.ID            `json:"mw_game_ids"`
+	WsTargetPlayerID  *id.ID             `json:"ws_target_player_id"`
+	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
@@ -1042,28 +1043,28 @@ WHERE om.resolution_match_id = $1
 `
 
 type ListMarketsByResolutionMatchRow struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
-	ResolutionOutcome *string            `json:"resolution_outcome"`
+	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy         string             `json:"created_by"`
+	CreatedBy         id.ID              `json:"created_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
-	ResolutionMatchID *string            `json:"resolution_match_id"`
+	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	TargetPlayerIds   []string           `json:"target_player_ids"`
+	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
-	MwGameIds         []string           `json:"mw_game_ids"`
-	WsTargetPlayerID  *string            `json:"ws_target_player_id"`
-	WsGameIds         []string           `json:"ws_game_ids"`
+	MwGameIds         []id.ID            `json:"mw_game_ids"`
+	WsTargetPlayerID  *id.ID             `json:"ws_target_player_id"`
+	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
 }
 
-func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *string) ([]ListMarketsByResolutionMatchRow, error) {
+func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error) {
 	rows, err := q.db.Query(ctx, listMarketsByResolutionMatch, resolutionMatchID)
 	if err != nil {
 		return nil, err
@@ -1112,12 +1113,12 @@ WHERE om.status IN ('open', 'betting_closed')
 `
 
 type ListOpenMatchWinnerMarketsRow struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	StartsAt          pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt          pgtype.Timestamptz `json:"closes_at"`
-	TargetPlayerIds   []string           `json:"target_player_ids"`
+	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers bool               `json:"allow_other_players"`
-	GameIds           []string           `json:"game_ids"`
+	GameIds           []id.ID            `json:"game_ids"`
 }
 
 func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error) {
@@ -1156,11 +1157,11 @@ WHERE om.status IN ('open', 'betting_closed')
 `
 
 type ListOpenWinStreakMarketsRow struct {
-	ID             string             `json:"id"`
+	ID             id.ID              `json:"id"`
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
-	TargetPlayerID string             `json:"target_player_id"`
-	GameIds        []string           `json:"game_ids"`
+	TargetPlayerID id.ID              `json:"target_player_id"`
+	GameIds        []id.ID            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -1201,7 +1202,7 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW()
 `
 
 type ListOverdueMatchWinnerMarketsRow struct {
-	ID       string             `json:"id"`
+	ID       id.ID              `json:"id"`
 	ClosesAt pgtype.Timestamptz `json:"closes_at"`
 }
 
@@ -1233,7 +1234,7 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1
 `
 
 type ListOverdueMatchWinnerMarketsAtDateRow struct {
-	ID       string             `json:"id"`
+	ID       id.ID              `json:"id"`
 	ClosesAt pgtype.Timestamptz `json:"closes_at"`
 }
 
@@ -1266,11 +1267,11 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= NOW()
 `
 
 type ListOverdueWinStreakMarketsRow struct {
-	ID             string             `json:"id"`
+	ID             id.ID              `json:"id"`
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
-	TargetPlayerID string             `json:"target_player_id"`
-	GameIds        []string           `json:"game_ids"`
+	TargetPlayerID id.ID              `json:"target_player_id"`
+	GameIds        []id.ID            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -1312,11 +1313,11 @@ WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1
 `
 
 type ListOverdueWinStreakMarketsAtDateRow struct {
-	ID             string             `json:"id"`
+	ID             id.ID              `json:"id"`
 	ClosesAt       pgtype.Timestamptz `json:"closes_at"`
 	StartsAt       pgtype.Timestamptz `json:"starts_at"`
-	TargetPlayerID string             `json:"target_player_id"`
-	GameIds        []string           `json:"game_ids"`
+	TargetPlayerID id.ID              `json:"target_player_id"`
+	GameIds        []id.ID            `json:"game_ids"`
 	WinsRequired   int32              `json:"wins_required"`
 	MaxLosses      pgtype.Int4        `json:"max_losses"`
 }
@@ -1359,8 +1360,8 @@ WHERE id = $1 AND status = 'open'
 // Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 // Only succeeds if current status = 'open'; the caller must check affected rows or
 // fetch the market first to return a proper domain error.
-func (q *Queries) LockMarketBetting(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, lockMarketBetting, id)
+func (q *Queries) LockMarketBetting(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, lockMarketBetting, argID)
 	return err
 }
 
@@ -1371,11 +1372,11 @@ WHERE id = $1
 `
 
 type ResolveMarketParams struct {
-	ID                string             `json:"id"`
+	ID                id.ID              `json:"id"`
 	Status            string             `json:"status"`
 	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
-	ResolutionMatchID *string            `json:"resolution_match_id"`
-	ResolutionOutcome *string            `json:"resolution_outcome"`
+	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
+	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 }
 
 // resolution_outcome is the winning outcome id; NULL for cancelled markets
@@ -1403,8 +1404,8 @@ WHERE id = $1
 // Restores the pre-settlement status: betting_closed if the betting lock user event
 // was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 // a user event and must never be cleared by recalculation.
-func (q *Queries) UnsettleMarket(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, unsettleMarket, id)
+func (q *Queries) UnsettleMarket(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, unsettleMarket, argID)
 	return err
 }
 
@@ -1413,8 +1414,8 @@ UPDATE market_outcomes SET q = $3 WHERE market_id = $1 AND id = $2
 `
 
 type UpdateMarketOutcomeQParams struct {
-	MarketID string  `json:"market_id"`
-	ID       string  `json:"id"`
+	MarketID id.ID   `json:"market_id"`
+	ID       id.ID   `json:"id"`
 	Q        float64 `json:"q"`
 }
 
@@ -1430,7 +1431,7 @@ UPDATE players SET bet_limit = $2 WHERE id = $1
 `
 
 type UpdatePlayerBetLimitParams struct {
-	ID       string  `json:"id"`
+	ID       id.ID   `json:"id"`
 	BetLimit float64 `json:"bet_limit"`
 }
 
@@ -1456,12 +1457,12 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 `
 
 type UpsertGlobalArenaSettlementByMarketParams struct {
-	ID            string             `json:"id"`
-	PlayerID      string             `json:"player_id"`
+	ID            id.ID              `json:"id"`
+	PlayerID      id.ID              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
 	RatingAfter   float64            `json:"rating_after"`
 	EloAfter      float64            `json:"elo_after"`
-	MarketID      *string            `json:"market_id"`
+	MarketID      *id.ID             `json:"market_id"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`

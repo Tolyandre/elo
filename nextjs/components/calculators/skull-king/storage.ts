@@ -7,10 +7,11 @@
 // identifies the player) and therefore contain no player ids.
 
 import type { GameState, RoundEntry } from "./scoring";
+import type { Base58ID } from "@/lib/id";
 
 export const STORAGE_VERSION = 1 as const;
 
-type StoragePlayer = { player_id: string; name: string };
+type StoragePlayer = { player_id: Base58ID; name: string };
 
 type StorageEntry = { bid: number; actual: number | null; bonus: number };
 
@@ -20,7 +21,7 @@ export type SkullKingStorage = {
     current_round: number;
     current_player_index: number;
     rounds: (StorageEntry | null)[][];
-    fallback_game_id?: string | null;
+    fallback_game_id?: Base58ID | null;
 };
 
 /** Convert the live UI state into the normalized form persisted on the match. */

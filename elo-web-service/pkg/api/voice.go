@@ -65,14 +65,14 @@ func (p *VoiceParser) Parse(ctx context.Context, text string, games []elo.GameTi
 	gameIDs := make(map[string]struct{}, len(games))
 	var gameLines strings.Builder
 	for _, g := range games {
-		gameIDs[g.Id] = struct{}{}
-		fmt.Fprintf(&gameLines, "- %q -> %q\n", g.Id, g.Name)
+		gameIDs[string(g.Id)] = struct{}{}
+		fmt.Fprintf(&gameLines, "- %q -> %q\n", string(g.Id), g.Name)
 	}
 
 	playerIDs := make(map[string]struct{}, len(players))
 	var playerLines strings.Builder
 	for _, pl := range players {
-		id := pl.ID
+		id := string(pl.ID)
 		playerIDs[id] = struct{}{}
 		if pl.GeologistName.Valid && pl.GeologistName.String != "" {
 			fmt.Fprintf(&playerLines, "- %q -> %q (alias: %q)\n", id, pl.Name, pl.GeologistName.String)

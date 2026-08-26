@@ -61,14 +61,15 @@ MatchesCollection:
             type: object
             properties:
               id:
-                $ref: './common.yaml#/ULID'
+                $ref: './common.yaml#/Base58ID'
               game_id:
-                type: string
+                $ref: './common.yaml#/Base58ID'
               score:
                 type: object
                 additionalProperties:
                   type: number
                   format: double
+                x-go-type: IDMap[float64]
                 description: Map of player_id (string) to numeric score
               date:
                 type: string
@@ -80,7 +81,7 @@ MatchesCollection:
               tournament_ids:
                 type: array
                 items:
-                  type: string
+                    $ref: './common.yaml#/Base58ID'
                 description: >-
                   Optional tournament IDs this match belongs to. Every match
                   player is auto-enrolled into each tournament.
@@ -101,8 +102,8 @@ MatchesCollection:
                   breakdown). Opaque at the OpenAPI layer; validated against a
                   per-calculator-kind JSON Schema in the Go handler. Stored in a
                   normalized shape where every player reference lives under a
-                  key named "player_id" so the idcodec middleware rewrites ids
-                  at the HTTP boundary.
+                  key named "player_id", which the schema marks as an entity id
+                  so the Go handler canonicalizes it at the boundary.
             required: [id, game_id, score]
     responses:
       "200":
@@ -118,7 +119,7 @@ MatchesCollection:
                   type: object
                   properties:
                     id:
-                      type: string
+                      $ref: './common.yaml#/Base58ID'
                   required: [id]
               required: [status, data]
       "400":
@@ -202,12 +203,13 @@ MatchItem:
             type: object
             properties:
               game_id:
-                type: string
+                $ref: './common.yaml#/Base58ID'
               score:
                 type: object
                 additionalProperties:
                   type: number
                   format: double
+                x-go-type: IDMap[float64]
                 description: Map of player_id (string) to numeric score
               date:
                 type: string
@@ -215,7 +217,7 @@ MatchItem:
               tournament_ids:
                 type: array
                 items:
-                  type: string
+                    $ref: './common.yaml#/Base58ID'
                 description: >-
                   Tournament IDs this match belongs to. Associations are replaced
                   with this set; players are enrolled but never un-enrolled.
@@ -313,7 +315,7 @@ MatchTournament:
   description: A tournament a match belongs to
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     name:
       type: string
   required: [id, name]
@@ -340,9 +342,9 @@ Match:
   type: object
   properties:
     id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_id:
-      type: string
+      $ref: './common.yaml#/Base58ID'
     game_name:
       type: string
     date:
@@ -352,6 +354,7 @@ Match:
       type: object
       additionalProperties:
         $ref: '#/MatchPlayer'
+      x-go-type: IDMap[MatchPlayer]
       description: Map of player_id (string) to player score data
     has_markets:
       type: boolean

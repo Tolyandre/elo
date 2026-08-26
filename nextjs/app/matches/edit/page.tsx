@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useMatches } from "../MatchesContext";
 import { useOffline } from "../../offline/OfflineContext";
@@ -33,7 +34,7 @@ function MatchEditPageWrapped() {
     const { invalidate: invalidatePlayers } = usePlayers();
     const me = useMe();
     const searchParams = useSearchParams();
-    const id = searchParams.get("id");
+    const id = toBase58ID(searchParams.get("id") ?? "");
 
     // Editing needs a target; a bare /matches/edit is the dedicated "new match" route.
     useEffect(() => {

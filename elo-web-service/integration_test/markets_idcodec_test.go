@@ -14,9 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
-	"github.com/tolyandre/elo-web-service/pkg/api/shortid"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
+	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // TestMarkets_IDCodecOutcomeRoundtrip guards the idcodec contract of the
@@ -46,11 +46,11 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 
 	// The betting user acts as playerA; a warm-up match gives them a bet limit.
 	playerAID := playerA.ID
-	if err := q.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{ID: userID, PlayerID: &playerAID}); err != nil {
+	if err := q.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{ID: idpkg.ID(userID), PlayerID: &playerAID}); err != nil {
 		t.Fatalf("link player: %v", err)
 	}
 	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
-	if _, err := matchSvc.AddMatch(ctx, gameRow.ID, map[string]float64{playerA.ID: 5, playerB.ID: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameRow.ID, map[idpkg.ID]float64{playerA.ID: 5, playerB.ID: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up match: %v", err)
 	}
 
@@ -84,9 +84,9 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	var marketResp struct {
 		Data struct {
 			Outcomes []struct {
-				ID     string `json:"id"`
-				Kind   string `json:"kind"`
-				Player string `json:"player_id"`
+				ID     string  `json:"id"`
+				Kind   string  `json:"kind"`
+				Player string  `json:"player_id"`
 				Price  float64 `json:"price"`
 			} `json:"outcomes"`
 		} `json:"data"`
@@ -108,7 +108,7 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	if shortOutcomeID == "" || shortOtherID == "" {
 		t.Fatalf("market outcomes incomplete: %+v", marketResp.Data.Outcomes)
 	}
-	if shortOutcomeID == playerA.ID {
+	if shortOutcomeID == string(playerA.ID) {
 		t.Fatalf("outcome id came back canonical (%s) — idcodec did not encode it", shortOutcomeID)
 	}
 
@@ -144,7 +144,7 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	// Resolve the market (playerA wins sole) and check resolution_outcome_id
 	// comes back SHORT and matches the outcome id — the resolved-market badge
 	// depends on this.
-	if _, err := matchSvc.AddMatch(ctx, gameRow.ID, map[string]float64{playerA.ID: 10, playerB.ID: 2}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := matchSvc.AddMatch(ctx, gameRow.ID, map[idpkg.ID]float64{playerA.ID: 10, playerB.ID: 2}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("trigger match: %v", err)
 	}
 	w4 := httptest.NewRecorder()
@@ -154,7 +154,7 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	}
 	var resolved struct {
 		Data struct {
-			Status             string  `json:"status"`
+			Status              string  `json:"status"`
 			ResolutionOutcomeID *string `json:"resolution_outcome_id"`
 		} `json:"data"`
 	}
@@ -171,15 +171,15 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 
 // shortOf encodes a canonical uuid to the short Base58 form the API boundary
 // uses (same codec as the idcodec middleware).
-func shortOf(t *testing.T, canonical string) string {
+func shortOf(t *testing.T, canonical idpkg.ID) string {
 	t.Helper()
-	return shortid.FromCanonical(canonical)
+	return string(canonical.Base58())
 }
 
 // canonicalOf decodes a short id back to canonical form.
 func canonicalOf(t *testing.T, short string) string {
 	t.Helper()
-	return shortid.ToCanonical(short)
+	return idpkg.CanonicalizeTolerant(short)
 }
 
 // createTestUserWithID is createTestUser that also returns the user id (the
@@ -191,13 +191,13 @@ func createTestUserWithID(t *testing.T, pool *pgxpool.Pool, allowEditing bool) (
 	if err != nil {
 		t.Fatalf("generate user id: %v", err)
 	}
-	userID, err = queries.CreateUser(context.Background(), db.CreateUserParams{
-		ID:                  uid.String(),
+	userID = uid.String()
+	if _, err := queries.CreateUser(context.Background(), db.CreateUserParams{
+		ID:                  idpkg.ID(userID),
 		AllowEditing:        allowEditing,
-		GoogleOauthUserID:   "market-codec-user-" + uid.String(),
+		GoogleOauthUserID:   "market-codec-user-" + userID,
 		GoogleOauthUserName: "Market Codec User",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("create test user: %v", err)
 	}
 	token, err = apioauth2.CreateJwt(time.Hour, userID, testJWTSecret)

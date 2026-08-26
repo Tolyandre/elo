@@ -7,20 +7,21 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // UserEvent is an event created by a user, ordered strictly chronologically.
 // Events with the same date are ordered by ID ascending.
 type UserEvent interface {
 	UserEventDate() time.Time
-	UserEventID() string
+	UserEventID() id.ID
 }
 
 // MatchEvent wraps a db.Match as a UserEvent.
 type MatchEvent struct{ db.Match }
 
 func (e MatchEvent) UserEventDate() time.Time { return e.Date.Time }
-func (e MatchEvent) UserEventID() string     { return e.ID }
+func (e MatchEvent) UserEventID() id.ID       { return e.ID }
 
 // Settlement is a derived computation triggered by a user event.
 type Settlement interface {
@@ -42,9 +43,9 @@ type EventProcessor struct {
 func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
-	matchID string,
-	gameID string,
-	playerScores map[string]float64,
+	matchID id.ID,
+	gameID id.ID,
+	playerScores map[id.ID]float64,
 	state MatchPrevState,
 	matchDate time.Time,
 	eloCalcFn EloCalcFunc,
@@ -74,7 +75,7 @@ func (p *EventProcessor) RecalculateFrom(
 	q *db.Queries,
 	startDate time.Time,
 	calcAndUpdateElo EloCalcFunc,
-	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[string]float64) (MatchPrevState, error),
+	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, error),
 ) error {
 	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
 	// whether recalculation moves any market's resolution to an earlier time.
@@ -104,7 +105,7 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("get corrections from date %v: %w", startDate, err)
 	}
 
-	allAffectedPlayers := make(map[string]bool)
+	allAffectedPlayers := make(map[id.ID]bool)
 
 	// Merge matches and corrections in date order. On the same date, matches come first.
 	mi, ci := 0, 0
@@ -121,7 +122,7 @@ func (p *EventProcessor) RecalculateFrom(
 				return fmt.Errorf("get scores for match %s: %w", match.ID, err)
 			}
 
-			playerScores := make(map[string]float64)
+			playerScores := make(map[id.ID]float64)
 			for _, ms := range matchScores {
 				playerScores[ms.PlayerID] = ms.Score
 				allAffectedPlayers[ms.PlayerID] = true
@@ -147,7 +148,7 @@ func (p *EventProcessor) RecalculateFrom(
 		}
 	}
 
-	affectedIDs := make([]string, 0, len(allAffectedPlayers))
+	affectedIDs := make([]id.ID, 0, len(allAffectedPlayers))
 	for pid := range allAffectedPlayers {
 		affectedIDs = append(affectedIDs, pid)
 	}

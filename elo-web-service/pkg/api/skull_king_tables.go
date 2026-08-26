@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 // ─── List ─────────────────────────────────────────────────────────────────────
@@ -50,7 +51,15 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 
 	_ = playerID // host player_id is embedded in game_state; we use userID for ownership
 
-	table, err := a.SkullKingTableService.CreateTable(c.Request.Context(), body.Id, userID, body.GameState)
+	// The raw gin body bypasses the typed DTO layer, so the client-minted id
+	// arrives in its wire form (ADR-12).
+	tableID, err := id.ParseTolerant(body.Id)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	table, err := a.SkullKingTableService.CreateTable(c.Request.Context(), tableID, userID, body.GameState)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -61,7 +70,7 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 // ─── Get ──────────────────────────────────────────────────────────────────────
 
 func (a *API) GetSkullKingTable(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	table, err := a.SkullKingTableService.GetTable(c.Request.Context(), tableID)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
@@ -77,7 +86,7 @@ func (a *API) GetSkullKingTable(c *gin.Context) {
 // ─── Update state (host only) ─────────────────────────────────────────────────
 
 func (a *API) UpdateSkullKingTableState(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	userID, err := MustGetCurrentUserId(c)
 	if err != nil {
 		return
@@ -114,7 +123,7 @@ func (a *API) UpdateSkullKingTableState(c *gin.Context) {
 // ─── Join ─────────────────────────────────────────────────────────────────────
 
 func (a *API) JoinSkullKingTable(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	playerID := MustGetCurrentPlayerID(c)
 
 	table, err := a.SkullKingTableService.JoinTable(c.Request.Context(), tableID, playerID)
@@ -132,7 +141,7 @@ func (a *API) JoinSkullKingTable(c *gin.Context) {
 // ─── Submit bid ───────────────────────────────────────────────────────────────
 
 func (a *API) SubmitSkullKingBid(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	playerID := MustGetCurrentPlayerID(c)
 
 	var body struct {
@@ -162,7 +171,7 @@ func (a *API) SubmitSkullKingBid(c *gin.Context) {
 // ─── Submit result ────────────────────────────────────────────────────────────
 
 func (a *API) SubmitSkullKingResult(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	playerID := MustGetCurrentPlayerID(c)
 
 	var body struct {
@@ -193,7 +202,7 @@ func (a *API) SubmitSkullKingResult(c *gin.Context) {
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
 func (a *API) DeleteSkullKingTable(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	userID, err := MustGetCurrentUserId(c)
 	if err != nil {
 		return
@@ -201,7 +210,7 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 
 	// When the host saved the match, the client passes its id so the service
 	// can broadcast a "saved" event to connected players before teardown.
-	savedMatchID := c.Query("match_id")
+	savedMatchID := parseIDParam(c.Query("match_id"))
 
 	if err := a.SkullKingTableService.DeleteTable(c.Request.Context(), tableID, userID, savedMatchID); err != nil {
 		if errors.Is(err, elo.ErrTableNotFound) {
@@ -221,7 +230,7 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 // ─── SSE events stream ────────────────────────────────────────────────────────
 
 func (a *API) SkullKingTableEvents(c *gin.Context) {
-	tableID := c.Param("id")
+	tableID := parseIDParam(c.Param("id"))
 	ctx := c.Request.Context()
 
 	table, err := a.SkullKingTableService.GetTable(ctx, tableID)
@@ -234,7 +243,7 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 		return
 	}
 
-	ch, cancel := a.SkullKingHub.Subscribe(tableID)
+	ch, cancel := a.SkullKingHub.Subscribe(string(tableID))
 	defer cancel()
 
 	c.Header("Content-Type", "text/event-stream")

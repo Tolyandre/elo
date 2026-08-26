@@ -1,4 +1,5 @@
 "use client";
+import type { Base58ID } from "@/lib/id";
 
 import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 
 type PendingEntity = {
-    clientId: string;
+    clientId: Base58ID;
     name: string;
     status: "pending" | "syncing" | "error";
     error?: string;
@@ -32,12 +33,12 @@ export function PendingEntityList({
     title: string;
     items: PendingEntity[];
     canEdit: boolean;
-    onRename: (clientId: string, name: string) => void;
-    onDelete: (clientId: string) => void;
+    onRename: (clientId: Base58ID, name: string) => void;
+    onDelete: (clientId: Base58ID) => void;
 }) {
-    const [renameId, setRenameId] = useState<string | null>(null);
+    const [renameId, setRenameId] = useState<Base58ID | null>(null);
     const [renameValue, setRenameValue] = useState("");
-    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<Base58ID | null>(null);
 
     if (items.length === 0) return null;
 
