@@ -64,12 +64,6 @@ type SkullKingTableSummary struct {
 	ExpiresAt          time.Time          `json:"expires_at"`
 }
 
-// sseEvent wraps an SSE payload.
-type sseEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
-
 // ─── Service interface ────────────────────────────────────────────────────────
 
 type ISkullKingTableService interface {
@@ -90,12 +84,12 @@ type ISkullKingTableService interface {
 type SkullKingTableService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
-	Hub     *SkullKingHub
+	Hub     *Hub
 	timer   *time.Timer
 	timerMu sync.Mutex
 }
 
-func NewSkullKingTableService(pool *pgxpool.Pool, hub *SkullKingHub) ISkullKingTableService {
+func NewSkullKingTableService(pool *pgxpool.Pool, hub *Hub) ISkullKingTableService {
 	return &SkullKingTableService{
 		Queries: db.New(pool),
 		Pool:    pool,
@@ -135,11 +129,11 @@ func toTableSummary(row db.SkullKingTable) (SkullKingTableSummary, error) {
 }
 
 func (s *SkullKingTableService) broadcast(tableID id.ID, summary SkullKingTableSummary) {
-	payload, err := json.Marshal(sseEvent{Type: "state", Data: summary})
+	payload, err := json.Marshal(SSEEvent{Type: "state", Data: summary})
 	if err != nil {
 		return
 	}
-	s.Hub.Broadcast(string(tableID), payload)
+	s.Hub.Broadcast(SkullKingTableTopic(tableID), payload)
 }
 
 // broadcastSavedMatch tells table subscribers that the host saved the match,
@@ -147,24 +141,58 @@ func (s *SkullKingTableService) broadcast(tableID id.ID, summary SkullKingTableS
 // Sent before the table row is deleted so currently-connected clients receive it.
 // Like every SSE frame, the id is embedded in its short form.
 func (s *SkullKingTableService) broadcastSavedMatch(tableID, matchID id.ID) {
-	payload, err := json.Marshal(sseEvent{
+	payload, err := json.Marshal(SSEEvent{
 		Type: "saved",
 		Data: map[string]string{"match_id": string(matchID.Base58())},
 	})
 	if err != nil {
 		return
 	}
-	s.Hub.Broadcast(string(tableID), payload)
+	s.Hub.Broadcast(SkullKingTableTopic(tableID), payload)
 }
 
 // broadcastLobby signals lobby subscribers that the set of tables changed.
 // The signal carries no payload — clients refetch the full list.
 func (s *SkullKingTableService) broadcastLobby() {
-	payload, err := json.Marshal(sseEvent{Type: "tables-changed"})
+	s.Hub.PublishSignal(TopicLobbySkullKing, "tables-changed")
+}
+
+// broadcastInvites sends a table-invite event to the user controlling each
+// picked player (except the host). Transient by design: only currently
+// connected clients see it; everyone else finds the table in the lobby list.
+// Like every SSE frame, the table id is embedded in its short form.
+func (s *SkullKingTableService) broadcastInvites(summary SkullKingTableSummary, hostUserID id.ID) {
+	playerIDs := make([]id.ID, 0, len(summary.GameState.Players))
+	for _, p := range summary.GameState.Players {
+		playerIDs = append(playerIDs, p.ID)
+	}
+
+	ctx := context.Background()
+	links, err := s.Queries.ListUserIDsByPlayerIDs(ctx, playerIDs)
 	if err != nil {
 		return
 	}
-	s.Hub.BroadcastLobby(payload)
+	host, err := s.Queries.GetUser(ctx, hostUserID)
+	if err != nil {
+		return
+	}
+
+	payload, err := json.Marshal(SSEEvent{
+		Type: "table-invite",
+		Data: map[string]string{
+			"table_id":  summary.ID,
+			"host_name": host.GoogleOauthUserName,
+		},
+	})
+	if err != nil {
+		return
+	}
+	for _, link := range links {
+		if link.UserID == hostUserID {
+			continue
+		}
+		s.Hub.Broadcast(UserTopic(link.UserID), payload)
+	}
 }
 
 // findPlayerIndex returns the index of the player with the given app player ID
@@ -215,6 +243,7 @@ func (s *SkullKingTableService) CreateTable(ctx context.Context, tableID id.ID, 
 	// Reschedule cleanup timer to account for the new table's expiry
 	go s.ScheduleNextCleanup(context.Background())
 	s.broadcastLobby()
+	s.broadcastInvites(summary, hostUserID)
 	return summary, nil
 }
 

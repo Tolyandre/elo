@@ -183,6 +183,12 @@ func main() {
 	router.GET("/markets/lobby/events", apiHandler.MarketsLobbyEvents)
 	router.GET("/markets/:id/events", apiHandler.MarketEvents)
 
+	// Realtime SSE — global data-change signals (public) and per-user events
+	// (invites, match notifications). Both paths end in /events so the frontend
+	// service worker's NetworkOnly exclusion covers them.
+	router.GET("/data/events", apiHandler.DataEvents)
+	router.GET("/me/events", oauth2Handler.DeserializeUser(), apiHandler.MeEvents)
+
 	// Auth (delegated to oauth2Handler via StrictServer stubs)
 	authRouter := router.Group("/auth")
 	authRouter.POST("/logout", oauth2Handler.LogoutUser)

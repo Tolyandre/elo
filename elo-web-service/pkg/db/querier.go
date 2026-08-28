@@ -186,6 +186,9 @@ type Querier interface {
 	ListSkullKingTables(ctx context.Context) ([]SkullKingTable, error)
 	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
 	ListTournamentsByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListTournamentsByMatchIDsRow, error)
+	// Resolves the (unique) controlling user for each linked player; used to route
+	// per-user SSE events (table invites, match notifications).
+	ListUserIDsByPlayerIDs(ctx context.Context, dollar_1 []id.ID) ([]ListUserIDsByPlayerIDsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 	// Only succeeds if current status = 'open'; the caller must check affected rows or

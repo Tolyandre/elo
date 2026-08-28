@@ -645,6 +645,10 @@ func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketReq
 		return nil, err
 	}
 
+	// Market deletion also replays ratings, so both lists go stale.
+	s.api.Hub.PublishSignal(elo.TopicLobbyMarkets, "markets-changed")
+	s.api.broadcastDataChange(true, true)
+
 	return DeleteMarket200JSONResponse{Status: "success", Message: "Market deleted"}, nil
 }
 

@@ -111,6 +111,10 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/markets/:id", strictWrapper.GetMarket)
 	r.GET("/markets/:id/price-history", strictWrapper.GetMarketPriceHistory)
 	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
+	// Realtime SSE endpoints (ADR-13): global data-change signals and
+	// per-user events.
+	r.GET("/data/events", a.DataEvents)
+	r.GET("/me/events", o.DeserializeUser(), a.MeEvents)
 	return r
 }
 

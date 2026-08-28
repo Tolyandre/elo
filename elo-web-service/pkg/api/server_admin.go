@@ -25,5 +25,8 @@ func (s *StrictServer) CreatePlayerCorrection(ctx context.Context, request Creat
 		return nil, err
 	}
 
+	// Corrections shift ratings and appear in the matches timeline.
+	s.api.broadcastDataChange(true, true)
+
 	return CreatePlayerCorrection200JSONResponse{Status: "success", Message: "Correction applied"}, nil
 }

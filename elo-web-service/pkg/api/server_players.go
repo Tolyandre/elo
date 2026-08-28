@@ -123,6 +123,8 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 		return nil, err
 	}
 
+	s.api.broadcastDataChange(false, true)
+
 	return CreatePlayer200JSONResponse{
 		Status: "success",
 		Data: PlayerRef{
@@ -149,6 +151,8 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 		return nil, err
 	}
 
+	s.api.broadcastDataChange(false, true)
+
 	return PatchPlayer200JSONResponse{
 		Status: "success",
 		Data: PlayerRef{
@@ -169,6 +173,8 @@ func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerReq
 	default:
 		return nil, err
 	}
+
+	s.api.broadcastDataChange(false, true)
 
 	return DeletePlayer200JSONResponse{Status: "success", Message: "Player deleted"}, nil
 }

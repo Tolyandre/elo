@@ -16,6 +16,8 @@ import { TournamentsProvider } from "./tournamentsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { EnvBanner } from "@/components/env-banner";
+import { LiveDataSubscriber } from "@/components/live-data-subscriber";
+import { UserEventsSubscriber } from "@/components/user-events-subscriber";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://tolyandre.github.io/elo"),
@@ -81,6 +83,10 @@ export default function RootLayout({
                     />
                     <Toaster />
                     <SwUpdateReloader />
+                    {/* App-wide realtime subscriptions: data-change invalidation
+                        and per-user events (invites, match notifications). */}
+                    <LiveDataSubscriber />
+                    <UserEventsSubscriber />
                     <div className="flex flex-col min-h-screen">
                       <EnvBanner />
                       <div className="font-sans flex flex-col items-center flex-1">

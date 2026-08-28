@@ -3,9 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
@@ -229,11 +227,12 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 
 // ─── SSE events stream ────────────────────────────────────────────────────────
 
+// SkullKingTableEvents streams the full table state: the current snapshot on
+// connect, then every broadcast (state update, join, bid, result, saved).
 func (a *API) SkullKingTableEvents(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
-	ctx := c.Request.Context()
 
-	table, err := a.SkullKingTableService.GetTable(ctx, tableID)
+	table, err := a.SkullKingTableService.GetTable(c.Request.Context(), tableID)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
@@ -243,49 +242,16 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 		return
 	}
 
-	ch, cancel := a.SkullKingHub.Subscribe(string(tableID))
-	defer cancel()
-
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
 	// Send current state immediately on connect
-	initialPayload, err := json.Marshal(sseTableEvent{Type: "state", Data: table})
-	if err == nil {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", initialPayload)
-		c.Writer.Flush()
+	initialPayload, err := json.Marshal(elo.SSEEvent{Type: "state", Data: table})
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
 	}
 
-	// Heartbeat keeps the connection alive across proxies/NAT/VPNs that would
-	// otherwise reap an idle stream. Sent as an SSE comment frame (: heartbeat\n\n),
-	// which EventSource ignores but the bytes keep the TCP path warm and let us
-	// detect a dead client promptly (the Flush errors into ctx cancellation).
-	heartbeat := time.NewTicker(15 * time.Second)
-	defer heartbeat.Stop()
-
-	clientGone := ctx.Done()
-	for {
-		select {
-		case <-clientGone:
-			return
-		case msg, ok := <-ch:
-			if !ok {
-				return
-			}
-			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
-			c.Writer.Flush()
-		case <-heartbeat.C:
-			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
-			c.Writer.Flush()
-		}
-	}
-}
-
-type sseTableEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	a.serveSSE(c, func() (<-chan []byte, func()) {
+		return a.Hub.Subscribe(elo.SkullKingTableTopic(tableID))
+	}, initialPayload)
 }
 
 // ─── Lobby events stream ──────────────────────────────────────────────────────
@@ -293,42 +259,7 @@ type sseTableEvent struct {
 // Carries no payload — clients refetch the full list on each signal.
 
 func (a *API) SkullKingLobbyEvents(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	ch, cancel := a.SkullKingHub.SubscribeLobby()
-	defer cancel()
-
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
-	// Send an initial signal so the client syncs immediately on connect.
-	initialPayload, err := json.Marshal(sseTableEvent{Type: "tables-changed"})
-	if err == nil {
-		fmt.Fprintf(c.Writer, "data: %s\n\n", initialPayload)
-		c.Writer.Flush()
-	}
-
-	// Heartbeat keeps the connection alive across proxies/NAT/VPNs that would
-	// otherwise reap an idle stream. See SkullKingTableEvents for details.
-	heartbeat := time.NewTicker(15 * time.Second)
-	defer heartbeat.Stop()
-
-	clientGone := ctx.Done()
-	for {
-		select {
-		case <-clientGone:
-			return
-		case msg, ok := <-ch:
-			if !ok {
-				return
-			}
-			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
-			c.Writer.Flush()
-		case <-heartbeat.C:
-			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
-			c.Writer.Flush()
-		}
-	}
+	a.serveSSE(c, func() (<-chan []byte, func()) {
+		return a.Hub.Subscribe(elo.TopicLobbySkullKing)
+	}, initialSignalFrame("tables-changed"))
 }

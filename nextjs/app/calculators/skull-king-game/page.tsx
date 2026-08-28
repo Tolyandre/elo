@@ -1,8 +1,9 @@
 "use client";
 import type { Base58ID } from "@/lib/id";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState, useMemo, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -72,6 +73,16 @@ const CALCULATOR_KIND = "skull-king";
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function SkullKingGamePage() {
+    // useSearchParams (the ?join= invite deep-link) requires a Suspense
+    // boundary under the static export, same as the match/market pages.
+    return (
+        <Suspense>
+            <SkullKingGame />
+        </Suspense>
+    );
+}
+
+function SkullKingGame() {
     const me = useMe();
     const { players: allPlayers, playerDisplayName } = usePlayers();
     const { games } = useGames();
@@ -305,6 +316,32 @@ export default function SkullKingGamePage() {
             setJoiningTableId(null);
         }
     }
+
+    // Invite deep-link: the table-invite toast on any page navigates here with
+    // ?join=<tableId>. Fetch the table and auto-join once (session must be free
+    // and the user must control a player); the param is then cleared so a
+    // refresh does not retry the join.
+    const searchParams = useSearchParams();
+    const joinParam = toBase58ID(searchParams.get("join") ?? "");
+    useEffect(() => {
+        if (!joinParam || tableSession !== null) return;
+        if (!me.isAuthenticated || !me.playerId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const table = await getSkullKingTablePromise(joinParam);
+                if (!cancelled) await handleJoinTable(table);
+            } catch {
+                if (!cancelled) toast.error("Стол не найден или уже завершён");
+            } finally {
+                router.replace("/calculators/skull-king-game", { scroll: false });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [joinParam, tableSession === null, me.isAuthenticated, me.playerId]);
 
     async function resetGame() {
         // Only delete server table if we have a real (non-placeholder) tableId

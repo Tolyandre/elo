@@ -173,6 +173,20 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		return addMatchError(err)
 	}
 
+	// Live updates: signal every connected client to refresh matches/players
+	// (ratings moved), and notify the users controlling the match players.
+	// Post-commit and best-effort — never fails the write.
+	s.api.broadcastDataChange(true, true)
+	if ginCtx := ginCtxFromContext(ctx); ginCtx != nil {
+		if user, uerr := MustGetCurrentUser(ginCtx, s.api.UserService); uerr == nil {
+			playerIDs := make([]id.ID, 0, len(playerScores))
+			for pid := range playerScores {
+				playerIDs = append(playerIDs, pid)
+			}
+			s.api.notifyMatchRecorded(ctx, match.ID, playerIDs, user.ID, user.GoogleOauthUserName)
+		}
+	}
+
 	resp := AddMatch200JSONResponse{Status: "success"}
 	resp.Data.Id = match.ID
 	return resp, nil
@@ -338,6 +352,10 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 			return nil, err
 		}
 	}
+
+	// Edits replay ratings for the affected range — matches and players lists
+	// are stale for every connected client.
+	s.api.broadcastDataChange(true, true)
 
 	return UpdateMatch200JSONResponse{Status: "success", Message: "Match is updated"}, nil
 }

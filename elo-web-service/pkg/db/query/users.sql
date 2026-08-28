@@ -64,3 +64,10 @@ WHERE id = $1;
 
 -- name: UpdateUserPlayerID :exec
 UPDATE users SET player_id = $2 WHERE id = $1;
+
+-- name: ListUserIDsByPlayerIDs :many
+-- Resolves the (unique) controlling user for each linked player; used to route
+-- per-user SSE events (table invites, match notifications).
+SELECT id AS user_id, player_id
+FROM users
+WHERE player_id = ANY($1::uuid[]);

@@ -18,6 +18,9 @@ type IUserService interface {
 	ListUsers(ctx context.Context) ([]db.User, error)
 	AllowEditing(ctx context.Context, userID id.ID, allow bool) error
 	SetUserPlayer(ctx context.Context, userID id.ID, playerID *id.ID) error
+	// ListUserIDsByPlayerIDs resolves the controlling user of each linked
+	// player; used to route per-user SSE events.
+	ListUserIDsByPlayerIDs(ctx context.Context, playerIDs []id.ID) ([]db.ListUserIDsByPlayerIDsRow, error)
 }
 
 type UserService struct {
@@ -39,6 +42,10 @@ func (s *UserService) ListUsers(ctx context.Context) ([]db.User, error) {
 	}
 
 	return users, nil
+}
+
+func (s *UserService) ListUserIDsByPlayerIDs(ctx context.Context, playerIDs []id.ID) ([]db.ListUserIDsByPlayerIDsRow, error) {
+	return s.Queries.ListUserIDsByPlayerIDs(ctx, playerIDs)
 }
 
 // GetUserByID resolves a user from the JWT "sub" claim. It tries the UUID lookup

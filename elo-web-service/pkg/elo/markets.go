@@ -84,7 +84,7 @@ type IMarketService interface {
 type MarketService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
-	Hub     *MarketsHub // optional; when set, PlaceBet broadcasts new prices
+	Hub     *Hub // optional; when set, PlaceBet broadcasts new prices
 	timer   *time.Timer
 	timerMu sync.Mutex
 }
@@ -98,7 +98,7 @@ func NewMarketService(pool *pgxpool.Pool) IMarketService {
 
 // NewMarketServiceWithHub wires the SSE hub so PlaceBet broadcasts live price
 // updates to connected clients.
-func NewMarketServiceWithHub(pool *pgxpool.Pool, hub *MarketsHub) IMarketService {
+func NewMarketServiceWithHub(pool *pgxpool.Pool, hub *Hub) IMarketService {
 	return &MarketService{
 		Queries: db.New(pool),
 		Pool:    pool,
@@ -251,7 +251,7 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	s.ScheduleNextExpiry(context.Background())
 
 	if s.Hub != nil {
-		s.Hub.BroadcastLobby([]byte(`{"type":"markets-changed"}`))
+		s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
 	}
 
 	return market, nil
@@ -394,23 +394,20 @@ type LiveOutcome struct {
 // broadcastPrices fans the new per-outcome LMSR prices + share counts + pools
 // out to the market's SSE subscribers and signals the markets-list lobby.
 func (s *MarketService) broadcastPrices(marketID id.ID, outcomes []LiveOutcome) {
-	payload, err := json.Marshal(marketsSSEEvent{
+	payload, err := json.Marshal(SSEEvent{
 		Type: "prices",
-		Data: pricesPayload{Outcomes: outcomes},
+		Data: PricesPayload{Outcomes: outcomes},
 	})
 	if err != nil {
 		return
 	}
-	s.Hub.Broadcast(string(marketID), payload)
-	s.Hub.BroadcastLobby([]byte(`{"type":"markets-changed"}`))
+	s.Hub.Broadcast(MarketTopic(marketID), payload)
+	s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
 }
 
-type marketsSSEEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
-
-type pricesPayload struct {
+// PricesPayload is the data part of the "prices" SSE event, shared by the
+// PlaceBet broadcast and the MarketEvents connect frame.
+type PricesPayload struct {
 	Outcomes []LiveOutcome `json:"outcomes"`
 }
 
@@ -749,7 +746,16 @@ func (s *MarketService) LockMarketBetting(ctx context.Context, marketID id.ID) e
 		return fmt.Errorf("lock market betting: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+
+	// The markets list shows betting status, so lobby subscribers must hear
+	// about the close too.
+	if s.Hub != nil {
+		s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
+	}
+	return nil
 }
 
 // ExpireMarketsAtDate settles markets whose closes_at <= date.

@@ -127,6 +127,39 @@ func (q *Queries) GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.I
 	return i, err
 }
 
+const listUserIDsByPlayerIDs = `-- name: ListUserIDsByPlayerIDs :many
+SELECT id AS user_id, player_id
+FROM users
+WHERE player_id = ANY($1::uuid[])
+`
+
+type ListUserIDsByPlayerIDsRow struct {
+	UserID   id.ID  `json:"user_id"`
+	PlayerID *id.ID `json:"player_id"`
+}
+
+// Resolves the (unique) controlling user for each linked player; used to route
+// per-user SSE events (table invites, match notifications).
+func (q *Queries) ListUserIDsByPlayerIDs(ctx context.Context, dollar_1 []id.ID) ([]ListUserIDsByPlayerIDsRow, error) {
+	rows, err := q.db.Query(ctx, listUserIDsByPlayerIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserIDsByPlayerIDsRow{}
+	for rows.Next() {
+		var i ListUserIDsByPlayerIDsRow
+		if err := rows.Scan(&i.UserID, &i.PlayerID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
 SELECT
     id,

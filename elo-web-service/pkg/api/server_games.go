@@ -13,6 +13,8 @@ func (s *StrictServer) RecalculateGameElo(ctx context.Context, _ RecalculateGame
 	if err := s.api.MatchService.RecalculateAllGameElo(ctx); err != nil {
 		return nil, err
 	}
+	// A full recalculation rewrites every rating.
+	s.api.broadcastDataChange(true, true)
 	return RecalculateGameElo200JSONResponse{Status: "success", Message: "Game Elo recalculated successfully"}, nil
 }
 
