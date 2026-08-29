@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -45,6 +46,9 @@ type AddMatchOpts struct {
 	// that produced this match. Already validated by the caller (handler);
 	// stored verbatim alongside the match.
 	Calculator *CalculatorInput
+	// ActorUserID is the author recorded in the audit log. Zero skips the
+	// audit row (see pkg/elo/audit.go).
+	ActorUserID id.ID
 }
 
 // CalculatorInput is the validated calculator state attached to a new match.
@@ -64,6 +68,9 @@ type UpdateMatchOpts struct {
 	//   - &CalculatorUpdate{Kind: nil} → clear calculator columns (set to NULL)
 	//   - &CalculatorUpdate{Kind: &k, Data: d} → replace with validated document
 	Calculator *CalculatorUpdate
+	// ActorUserID is the editor recorded in the audit log. Zero skips the
+	// audit row (see pkg/elo/audit.go).
+	ActorUserID id.ID
 }
 
 // CalculatorUpdate describes a change to a match's calculator columns.
@@ -139,6 +146,19 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 
 	calcKind, calcVer, calcData := calculatorColumns(opts.Calculator)
 
+	// Audit "created" only for genuinely new rows: CreateMatch upserts on id,
+	// and an offline-sync replay must not emit a second created event. A zero
+	// id cannot exist yet — skip the probe and let CreateMatch surface the
+	// missing-id error on its original code path.
+	isNew := true
+	if !opts.ID.IsZero() {
+		_, err = q.GetMatch(ctx, opts.ID)
+		isNew = db.IsNoRows(err)
+		if err != nil && !isNew {
+			return db.Match{}, fmt.Errorf("unable to check match existence: %w", err)
+		}
+	}
+
 	// create match (foreign key will validate game_id exists)
 	// ON CONFLICT (id) DO UPDATE returns the existing row on retry (idempotency).
 	createdMatch, err := q.CreateMatch(ctx, db.CreateMatchParams{
@@ -151,6 +171,12 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	})
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to create match: %w", err)
+	}
+
+	if isNew {
+		if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionCreated, createdMatch.ID, "", nil); err != nil {
+			return db.Match{}, err
+		}
 	}
 
 	if opts.ClientDate {
@@ -260,6 +286,18 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		return db.Match{}, fmt.Errorf("unable to update match: %w", err)
 	}
 
+	// Audit diff inputs. Old scores must be read before the rewrite deletes
+	// them; the calculator columns are compared as resolved above (tri-state)
+	// against the row as stored.
+	oldScores, err := q.GetMatchScores(ctx, matchID)
+	if err != nil {
+		return db.Match{}, fmt.Errorf("unable to read old match scores: %w", err)
+	}
+	calcVerChanged := updateParams.CalculatorSchemaVersion.Valid != existingMatch.CalculatorSchemaVersion.Valid ||
+		(updateParams.CalculatorSchemaVersion.Valid && updateParams.CalculatorSchemaVersion.Int32 != existingMatch.CalculatorSchemaVersion.Int32)
+	calculatorChanged := !textEqual(updateParams.CalculatorKind, existingMatch.CalculatorKind) ||
+		calcVerChanged || !jsonEqual(updateParams.CalculatorData, existingMatch.CalculatorData)
+
 	// Delete old scores and settlements to handle player list changes.
 	// Explicit deletes are required because global_arena_settlement and game_arena_settlement
 	// reference matches(id), not match_scores, so there is no cascade from match_scores.
@@ -302,6 +340,15 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	}
 	if err := applyMatchTournaments(ctx, q, matchID, mergedTournamentIDs, playerIDs); err != nil {
 		return db.Match{}, err
+	}
+
+	// Record the edit in the audit log. An edit that changed nothing produces
+	// no audit row.
+	details := buildMatchUpdateDetails(existingMatch, oldScores, date, gameID, playerScores, calculatorChanged)
+	if !details.IsEmpty() {
+		if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityMatch, audit.ActionUpdated, matchID, audit.KindMatchUpdate, details); err != nil {
+			return db.Match{}, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

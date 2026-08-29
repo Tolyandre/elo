@@ -17,6 +17,7 @@ type API struct {
 	ClubService           elo.IClubService
 	TournamentService     elo.ITournamentService
 	SkullKingTableService elo.ISkullKingTableService
+	AuditService          elo.IAuditService
 	Hub                   *elo.Hub
 	CardRecognizer        ICardRecognizer
 	VoiceParser           *VoiceParser
@@ -37,6 +38,7 @@ func New(pool *pgxpool.Pool) *API {
 		ClubService:           elo.NewClubService(pool),
 		TournamentService:     elo.NewTournamentService(pool),
 		SkullKingTableService: elo.NewSkullKingTableService(pool, hub),
+		AuditService:          elo.NewAuditService(pool),
 		Hub:                   hub,
 		CardRecognizer:        newCardRecognizer(),
 		VoiceParser:           NewVoiceParser(configuration.Config.OllamaBaseUrl, configuration.Config.OllamaModel),

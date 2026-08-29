@@ -77,6 +77,8 @@ function GameWrapped() {
       game_id: id!,
       game_name: game?.name ?? "",
       date: gm.date,
+      // Display-only conversion (MatchCard); never resubmitted.
+      dateISO: null,
       score,
       has_markets: false,
       tournaments: gm.tournaments,

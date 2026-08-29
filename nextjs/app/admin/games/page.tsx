@@ -11,6 +11,7 @@ import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
+import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -66,6 +67,7 @@ export default function GamesAdminPage() {
                     <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
                 </div>
 
+            <AdminPageTabs entityType="game" mainLabel="Игры">
             {!meLoading && !isAuthenticated && (
                 <div className="flex flex-col items-start gap-2">
                     <p>Для редактирования необходимо авторизоваться.</p>
@@ -215,6 +217,7 @@ export default function GamesAdminPage() {
                     </>
                 )}
             </section>
+            </AdminPageTabs>
             {/* Rename dialog */}
             <ConfirmDialogWithContent
                 open={renameTarget !== null}

@@ -104,6 +104,14 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
 	r.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
+	// Games and clubs: needed by the audit-log integration test (ADR-14).
+	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)
+	r.PATCH("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchGame)
+	r.DELETE("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteGame)
+	r.POST("/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClub)
+	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
+	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
+	r.GET("/audit", strictWrapper.ListAuditEvents)
 	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
 	// and the resolved-market outcome id).
 	r.GET("/markets", strictWrapper.ListMarkets)

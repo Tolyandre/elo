@@ -10,6 +10,11 @@ VALUES ($1, $2, $3)
 ON CONFLICT (match_id, player_id)
 DO UPDATE SET score = EXCLUDED.score;
 
+-- name: GetMatchScores :many
+-- Current player→score rows of a match. Read before an edit rewrites them so
+-- the audit diff can describe what changed.
+SELECT player_id, score FROM match_scores WHERE match_id = $1;
+
 -- name: ListMatchResults :many
 SELECT
     m.id AS match_id,

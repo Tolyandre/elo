@@ -152,6 +152,7 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	opts := elo.AddMatchOpts{
 		ID:            request.Body.Id,
 		TournamentIDs: derefIDs(request.Body.TournamentIds),
+		ActorUserID:   currentActorID(ctx),
 	}
 	if request.Body.Date != nil {
 		date = *request.Body.Date
@@ -324,6 +325,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 
 	opts := elo.UpdateMatchOpts{
 		TournamentIDs: derefIDs(request.Body.TournamentIds),
+		ActorUserID:   currentActorID(ctx),
 	}
 	// A non-nil calculator_kind in the body means "set/replace"; a body that
 	// explicitly sends calculator_kind: null means "clear". Because the field

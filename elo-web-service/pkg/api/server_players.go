@@ -115,7 +115,7 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 		return CreatePlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name)
+	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
 			return CreatePlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
@@ -140,7 +140,7 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 		return PatchPlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	player, err := s.api.PlayerService.UpdatePlayer(ctx, parseIDParam(request.Id), name)
+	player, err := s.api.PlayerService.UpdatePlayer(ctx, parseIDParam(request.Id), name, currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
@@ -163,7 +163,7 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 }
 
 func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerRequestObject) (DeletePlayerResponseObject, error) {
-	err := s.api.PlayerService.DeletePlayer(ctx, parseIDParam(request.Id))
+	_, err := s.api.PlayerService.DeletePlayer(ctx, parseIDParam(request.Id), currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:

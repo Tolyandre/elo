@@ -136,6 +136,13 @@ export type Match = {
     game_id: Base58ID;
     game_name: string;
     date: Date | null;
+    /**
+     * Raw server date string (RFC3339 with microsecond precision). JS Date
+     * only holds milliseconds, so edit forms must resubmit this verbatim when
+     * the date is untouched — a Date round-trip silently truncates the
+     * stored instant and the audit log reports a change nobody made.
+     */
+    dateISO: string | null;
     score: Record<string, PlayerScore>;
     has_markets: boolean;
     tournaments: MatchTournament[];
@@ -179,6 +186,79 @@ export type CorrectionsPage = {
     next: string | null;
 };
 
+// ─── Audit ────────────────────────────────────────────────────────────────────
+
+export type AuditEntityType = "match" | "game" | "player" | "club";
+export type AuditAction = "created" | "updated" | "renamed" | "deleted";
+
+/** Details narrowed into a discriminated union by action/entity_type. */
+export type AuditEntryDetails =
+    | { kind: "entity"; name: string }
+    | { kind: "rename"; oldName: string; newName: string }
+    | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] };
+
+export type AuditEntry = {
+    id: Base58ID;
+    created_at: Date;
+    actor_user_id: Base58ID;
+    actor_name: string;
+    entity_type: AuditEntityType;
+    entity_id: Base58ID;
+    action: AuditAction;
+    details: AuditEntryDetails | null;
+};
+
+export type AuditPage = {
+    items: AuditEntry[];
+    next: string | null;
+};
+
+function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
+    let details: AuditEntryDetails | null = null;
+    if (e.details) {
+        if (e.action === "renamed" && "old_name" in e.details) {
+            details = { kind: "rename", oldName: e.details.old_name, newName: e.details.new_name };
+        } else if (e.action === "updated" && "player_changes" in e.details) {
+            details = { kind: "match-update", changes: e.details };
+        } else if ("name" in e.details) {
+            details = { kind: "entity", name: e.details.name };
+        }
+    }
+    return {
+        id: e.id,
+        created_at: new Date(e.created_at),
+        actor_user_id: e.actor_user_id,
+        actor_name: e.actor_name,
+        entity_type: e.entity_type,
+        entity_id: e.entity_id,
+        action: e.action,
+        details,
+    };
+}
+
+export async function getAuditPagePromise(params?: {
+    entity_type?: AuditEntityType;
+    entity_id?: string;
+    next?: string;
+    limit?: number;
+}): Promise<AuditPage> {
+    const query: Record<string, string> = {};
+    if (params?.next) {
+        // The cursor token embeds the filters; only limit is repeated.
+        query.next = params.next;
+    } else {
+        if (params?.entity_type) query.entity_type = params.entity_type;
+        if (params?.entity_id) query.entity_id = params.entity_id;
+    }
+    if (params?.limit) query.limit = String(params.limit);
+    const data = await unwrap(client.GET("/audit", { params: { query } }));
+    return {
+        items: data.data.map(mapAuditEntry),
+        next: data.next ?? null,
+    };
+}
+
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mapMatch(m: components["schemas"]["Match"]): Match {
@@ -193,6 +273,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
             ])
         ),
         date: m.date ? new Date(m.date) : null,
+        dateISO: m.date ?? null,
         has_markets: m.has_markets,
         tournaments: m.tournaments ?? [],
         // idcodec middleware already rewrote player ids inside calculator_data to

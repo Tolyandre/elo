@@ -93,7 +93,7 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 		return CreateClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	club, err := s.api.ClubService.CreateClub(ctx, request.Body.Id, name)
+	club, err := s.api.ClubService.CreateClub(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
 			return CreateClub409JSONResponse{Status: "fail", Message: "club with this name already exists"}, nil
@@ -147,7 +147,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateName {
-		if _, err := s.api.ClubService.UpdateClub(ctx, parseIDParam(request.Id), *request.Body.Name); err != nil {
+		if _, err := s.api.ClubService.UpdateClub(ctx, parseIDParam(request.Id), *request.Body.Name, currentActorID(ctx)); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
 			}
@@ -179,7 +179,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 }
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
-	_, err := s.api.ClubService.DeleteClub(ctx, parseIDParam(request.Id))
+	_, err := s.api.ClubService.DeleteClub(ctx, parseIDParam(request.Id), currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:

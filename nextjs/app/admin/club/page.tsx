@@ -17,6 +17,7 @@ import { useClubs } from "@/app/clubsContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
+import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
 import { ClubIcons } from "@/components/player-name";
 import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
@@ -143,6 +144,7 @@ function ClubAdminContent() {
                 Удаление клуба возможно только если в нём нет игроков.
             </p>
 
+            <AdminPageTabs entityType="club" entityId={clubId} mainLabel="Клуб">
 
             <div className="flex gap-2 mb-8">
                 <Button
@@ -230,6 +232,7 @@ function ClubAdminContent() {
                     </div>
                 )}
             </section>
+            </AdminPageTabs>
 
             {/* Rename dialog */}
             <ConfirmDialogWithContent

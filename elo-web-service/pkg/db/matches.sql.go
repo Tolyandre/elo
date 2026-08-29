@@ -111,6 +111,37 @@ func (q *Queries) GetMatch(ctx context.Context, argID id.ID) (Match, error) {
 	return i, err
 }
 
+const getMatchScores = `-- name: GetMatchScores :many
+SELECT player_id, score FROM match_scores WHERE match_id = $1
+`
+
+type GetMatchScoresRow struct {
+	PlayerID id.ID   `json:"player_id"`
+	Score    float64 `json:"score"`
+}
+
+// Current player→score rows of a match. Read before an edit rewrites them so
+// the audit diff can describe what changed.
+func (q *Queries) GetMatchScores(ctx context.Context, matchID id.ID) ([]GetMatchScoresRow, error) {
+	rows, err := q.db.Query(ctx, getMatchScores, matchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetMatchScoresRow{}
+	for rows.Next() {
+		var i GetMatchScoresRow
+		if err := rows.Scan(&i.PlayerID, &i.Score); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMatchScoresForMatch = `-- name: GetMatchScoresForMatch :many
 SELECT player_id, score
 FROM match_scores

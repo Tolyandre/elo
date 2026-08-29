@@ -115,6 +115,23 @@ func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error
 	return items, nil
 }
 
+const getClubByID = `-- name: GetClubByID :one
+SELECT id, name, geologist_name, icon FROM clubs WHERE id = $1
+`
+
+// Old-name read for the rename audit trail (ADR-14).
+func (q *Queries) GetClubByID(ctx context.Context, argID id.ID) (Club, error) {
+	row := q.db.QueryRow(ctx, getClubByID, argID)
+	var i Club
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.Icon,
+	)
+	return i, err
+}
+
 const listClubs = `-- name: ListClubs :many
 SELECT
     c.id AS club_id,

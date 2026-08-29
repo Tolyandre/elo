@@ -192,7 +192,10 @@ function CalculatorEdit({
             await updateMatchPromise(match.id, {
                 game_id: match.game_id,
                 score,
-                date: match.date ? match.date.toISOString() : new Date().toISOString(),
+                // The calculator editor never edits the date: resubmit the raw
+                // server string verbatim (µs precision) — a Date round-trip
+                // would truncate it to milliseconds.
+                date: match.dateISO ?? (match.date ? match.date.toISOString() : new Date().toISOString()),
                 calculator_kind: kind,
                 calculator_data: calcData,
             });

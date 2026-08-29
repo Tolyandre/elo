@@ -8,6 +8,7 @@ import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
 import { Match, updateMatchPromise } from "../api";
+import { unchangedEditDateISO } from "./edit-date";
 import { useTournamentSelection } from "@/hooks/useTournamentSelection";
 import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -70,6 +71,10 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     const [participants, setParticipants] = useSessionStorage<Participant[]>(`match-form:${draftKey}:participants`, []);
     const [selectedGameId, setSelectedGameId] = useSessionStorage<Base58ID | undefined>(`match-form:${draftKey}:game`, undefined as Base58ID | undefined);
     const [editDate, setEditDate] = useSessionStorage<string>(`match-form:${draftKey}:date`, "");
+    // Full-precision instant the saved/pending match already has. The date
+    // control carries minute precision, so an untouched date must resubmit this
+    // original instead of its truncated draft (edit-date.ts).
+    const [originalDateISO, setOriginalDateISO] = useSessionStorage<string>(`match-form:${draftKey}:original-date`, "");
     // Persisted so the one-time prefill from the edited match survives a refresh
     // instead of clobbering the user's draft.
     const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
@@ -90,6 +95,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         sessionStorage.removeItem(`match-form:${draftKey}:participants`);
         sessionStorage.removeItem(`match-form:${draftKey}:game`);
         sessionStorage.removeItem(`match-form:${draftKey}:date`);
+        sessionStorage.removeItem(`match-form:${draftKey}:original-date`);
         sessionStorage.removeItem(`match-form:${draftKey}:seeded`);
     };
 
@@ -125,6 +131,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             );
             setSelectedGameId(editPending.gameId);
             setEditDate(toDatetimeLocal(new Date(editPending.createdAt)));
+            setOriginalDateISO(new Date(editPending.createdAt).toISOString());
         } else if (editSaved) {
             setParticipants(
                 Object.entries(editSaved.score).map(([pid, data]) => ({
@@ -135,6 +142,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             );
             setSelectedGameId(editSaved.game_id);
             setEditDate(editSaved.date ? toDatetimeLocal(editSaved.date) : "");
+            // Prefer the raw server string (µs precision); the Date fallback
+            // truncates to milliseconds.
+            setOriginalDateISO(editSaved.dateISO ?? (editSaved.date ? editSaved.date.toISOString() : ""));
         }
         setSeeded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,7 +246,8 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 await updateMatchPromise(editSaved.id, {
                     game_id: selectedGameId,
                     score,
-                    date: new Date(editDate).toISOString(),
+                    // Untouched date → original full-precision instant (edit-date.ts).
+                    date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
                     tournament_ids: tournamentIdsToSubmit,
                 });
                 clearDraft();
@@ -250,7 +261,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 updatePendingMatch(editPending.clientId, {
                     gameId: selectedGameId,
                     score,
-                    createdAt: new Date(editDate).toISOString(),
+                    createdAt: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
                     tournamentIds: tournamentIdsToSubmit,
                 });
                 clearDraft();

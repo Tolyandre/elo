@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -54,9 +55,11 @@ type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
 	GetGameStatistics(ctx context.Context, gameID id.ID) (*GameStatistics, error)
 	GetGameMatches(ctx context.Context, gameID id.ID) ([]GameMatch, error)
-	DeleteGame(ctx context.Context, gameID id.ID) (*db.Game, error)
-	UpdateGameName(ctx context.Context, gameID id.ID, name string) (*db.Game, error)
-	AddGame(ctx context.Context, gameID id.ID, name string) (*db.Game, error)
+	// DeleteGame/UpdateGameName/AddGame record audit events for the actor
+	// (ADR-14); a zero actor skips the audit row.
+	DeleteGame(ctx context.Context, gameID id.ID, actor id.ID) (*db.Game, error)
+	UpdateGameName(ctx context.Context, gameID id.ID, name string, actor id.ID) (*db.Game, error)
+	AddGame(ctx context.Context, gameID id.ID, name string, actor id.ID) (*db.Game, error)
 }
 
 type GameService struct {
@@ -219,34 +222,81 @@ func (s *GameService) GetGameMatches(ctx context.Context, gameID id.ID) ([]GameM
 	return result, nil
 }
 
-func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID) (*db.Game, error) {
-	g, err := s.Queries.DeleteGame(ctx, gameID)
-	if err != nil {
-		return nil, err
-	}
-	return &g, nil
-}
-
-func (s *GameService) UpdateGameName(ctx context.Context, gameID id.ID, name string) (*db.Game, error) {
-	g, err := s.Queries.UpdateGameName(ctx, db.UpdateGameNameParams{
-		ID:   gameID,
-		Name: name,
+func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID, actor id.ID) (*db.Game, error) {
+	// DeleteGame returns the deleted row, so the audit event captures the name
+	// without a pre-read. Atomic with the delete via runInTx (ADR-14).
+	var deleted *db.Game
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		g, err := q.DeleteGame(ctx, gameID)
+		if err != nil {
+			return err
+		}
+		deleted = &g
+		return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionDeleted, gameID, audit.KindEntity, audit.NewEntityDetails(g.Name))
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &g, nil
+	return deleted, nil
 }
 
-func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string) (*db.Game, error) {
-	g, err := s.Queries.AddGame(ctx, db.AddGameParams{
-		ID:   gameID,
-		Name: name,
+func (s *GameService) UpdateGameName(ctx context.Context, gameID id.ID, name string, actor id.ID) (*db.Game, error) {
+	var updated *db.Game
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetGameByID(ctx, gameID)
+		if err != nil {
+			return err
+		}
+		g, err := q.UpdateGameName(ctx, db.UpdateGameNameParams{
+			ID:   gameID,
+			Name: name,
+		})
+		if err != nil {
+			return err
+		}
+		updated = &g
+		if old.Name != name {
+			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionRenamed, gameID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &g, nil
+	return updated, nil
+}
+
+func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, actor id.ID) (*db.Game, error) {
+	var added *db.Game
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		// AddGame upserts on id; an idempotent replay must not emit a second
+		// created event, so audit only genuinely new rows. A zero id cannot
+		// exist yet — skip the probe and let AddGame surface the error.
+		isNew := true
+		if !gameID.IsZero() {
+			_, err := q.GetGameByID(ctx, gameID)
+			isNew = db.IsNoRows(err)
+			if err != nil && !isNew {
+				return err
+			}
+		}
+		g, err := q.AddGame(ctx, db.AddGameParams{
+			ID:   gameID,
+			Name: name,
+		})
+		if err != nil {
+			return err
+		}
+		added = &g
+		if isNew {
+			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionCreated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return added, nil
 }
 
 func reduce[T, M any](s []T, f func(M, *T) M, initValue M) M {

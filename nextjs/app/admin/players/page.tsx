@@ -12,6 +12,7 @@ import { PendingEntityList } from "@/components/pending-entity-list";
 import { ClubIcons } from "@/components/player-name";
 import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
+import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import {
     Dialog,
     DialogContent,
@@ -135,6 +136,7 @@ export default function PlayersAdminPage() {
                 <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
             </div>
 
+            <AdminPageTabs entityType="player" mainLabel="Игроки">
             {!meLoading && !isAuthenticated && (
                 <div className="flex flex-col items-start gap-2">
                     <p>Для редактирования необходимо авторизоваться.</p>
@@ -303,6 +305,7 @@ export default function PlayersAdminPage() {
                     </>
                 )}
             </section>
+            </AdminPageTabs>
             {/* Add player confirmation dialog: name pre-filled from the inline
                 field, clubs selectable. Saving creates the player (online or
                 queued offline with the chosen clubs). */}

@@ -46,6 +46,75 @@ func (e ApiSuccessMessageStatus) Valid() bool {
 	}
 }
 
+// Defines values for AuditEntryAction.
+const (
+	Created AuditEntryAction = "created"
+	Deleted AuditEntryAction = "deleted"
+	Renamed AuditEntryAction = "renamed"
+	Updated AuditEntryAction = "updated"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntryAction enum.
+func (e AuditEntryAction) Valid() bool {
+	switch e {
+	case Created:
+		return true
+	case Deleted:
+		return true
+	case Renamed:
+		return true
+	case Updated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditEntryEntityType.
+const (
+	AuditEntryEntityTypeClub   AuditEntryEntityType = "club"
+	AuditEntryEntityTypeGame   AuditEntryEntityType = "game"
+	AuditEntryEntityTypeMatch  AuditEntryEntityType = "match"
+	AuditEntryEntityTypePlayer AuditEntryEntityType = "player"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntryEntityType enum.
+func (e AuditEntryEntityType) Valid() bool {
+	switch e {
+	case AuditEntryEntityTypeClub:
+		return true
+	case AuditEntryEntityTypeGame:
+		return true
+	case AuditEntryEntityTypeMatch:
+		return true
+	case AuditEntryEntityTypePlayer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditMatchUpdateDetailsPlayerChangesChange.
+const (
+	Added   AuditMatchUpdateDetailsPlayerChangesChange = "added"
+	Removed AuditMatchUpdateDetailsPlayerChangesChange = "removed"
+	Score   AuditMatchUpdateDetailsPlayerChangesChange = "score"
+)
+
+// Valid indicates whether the value is a known member of the AuditMatchUpdateDetailsPlayerChangesChange enum.
+func (e AuditMatchUpdateDetailsPlayerChangesChange) Valid() bool {
+	switch e {
+	case Added:
+		return true
+	case Removed:
+		return true
+	case Score:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EloRankLeague.
 const (
 	EloRankLeagueAmateur EloRankLeague = "amateur"
@@ -304,6 +373,30 @@ func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
 	}
 }
 
+// Defines values for ListAuditEventsParamsEntityType.
+const (
+	ListAuditEventsParamsEntityTypeClub   ListAuditEventsParamsEntityType = "club"
+	ListAuditEventsParamsEntityTypeGame   ListAuditEventsParamsEntityType = "game"
+	ListAuditEventsParamsEntityTypeMatch  ListAuditEventsParamsEntityType = "match"
+	ListAuditEventsParamsEntityTypePlayer ListAuditEventsParamsEntityType = "player"
+)
+
+// Valid indicates whether the value is a known member of the ListAuditEventsParamsEntityType enum.
+func (e ListAuditEventsParamsEntityType) Valid() bool {
+	switch e {
+	case ListAuditEventsParamsEntityTypeClub:
+		return true
+	case ListAuditEventsParamsEntityTypeGame:
+		return true
+	case ListAuditEventsParamsEntityTypeMatch:
+		return true
+	case ListAuditEventsParamsEntityTypePlayer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateMarketJSONBodyMarketType.
 const (
 	CreateMarketJSONBodyMarketTypeMatchWinner CreateMarketJSONBodyMarketType = "match_winner"
@@ -354,6 +447,90 @@ type ApiSuccessMessage struct {
 
 // ApiSuccessMessageStatus defines model for ApiSuccessMessage.Status.
 type ApiSuccessMessageStatus string
+
+// AuditEntityDetails defines model for AuditEntityDetails.
+type AuditEntityDetails struct {
+	// Name Entity name at the moment of creation/deletion
+	Name          string `json:"name"`
+	SchemaVersion int    `json:"schema_version"`
+}
+
+// AuditEntry defines model for AuditEntry.
+type AuditEntry struct {
+	Action AuditEntryAction `json:"action"`
+
+	// ActorName Display name of the acting user at read time
+	ActorName string `json:"actor_name"`
+
+	// ActorUserId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	ActorUserId Base58ID  `json:"actor_user_id"`
+	CreatedAt   time.Time `json:"created_at"`
+
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+	Details *AuditEntry_Details `json:"details,omitempty"`
+
+	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	EntityId   Base58ID             `json:"entity_id"`
+	EntityType AuditEntryEntityType `json:"entity_type"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+}
+
+// AuditEntryAction defines model for AuditEntry.Action.
+type AuditEntryAction string
+
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+type AuditEntry_Details struct {
+	union json.RawMessage
+}
+
+// AuditEntryEntityType defines model for AuditEntry.EntityType.
+type AuditEntryEntityType string
+
+// AuditMatchUpdateDetails defines model for AuditMatchUpdateDetails.
+type AuditMatchUpdateDetails struct {
+	CalculatorChanged bool `json:"calculator_changed"`
+	Date              *struct {
+		New time.Time `json:"new"`
+		Old time.Time `json:"old"`
+	} `json:"date,omitempty"`
+	Game *struct {
+		// NewGameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		NewGameId Base58ID `json:"new_game_id"`
+
+		// OldGameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		OldGameId Base58ID `json:"old_game_id"`
+	} `json:"game,omitempty"`
+	PlayerChanges []struct {
+		Change   AuditMatchUpdateDetailsPlayerChangesChange `json:"change"`
+		NewScore *float64                                   `json:"new_score,omitempty"`
+		OldScore *float64                                   `json:"old_score,omitempty"`
+
+		// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		PlayerId Base58ID `json:"player_id"`
+	} `json:"player_changes"`
+	SchemaVersion int `json:"schema_version"`
+}
+
+// AuditMatchUpdateDetailsPlayerChangesChange defines model for AuditMatchUpdateDetails.PlayerChanges.Change.
+type AuditMatchUpdateDetailsPlayerChangesChange string
+
+// AuditPage defines model for AuditPage.
+type AuditPage struct {
+	Data []AuditEntry `json:"data"`
+
+	// Next Cursor token for the next page; null if no more pages
+	Next   *string `json:"next,omitempty"`
+	Status string  `json:"status"`
+}
+
+// AuditRenameDetails defines model for AuditRenameDetails.
+type AuditRenameDetails struct {
+	NewName       string `json:"new_name"`
+	OldName       string `json:"old_name"`
+	SchemaVersion int    `json:"schema_version"`
+}
 
 // Base58ID Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 type Base58ID = id.ID
@@ -935,6 +1112,24 @@ type CreatePlayerCorrectionJSONBody struct {
 // CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
 type CreatePlayerCorrectionJSONBodyDiscriminator string
 
+// ListAuditEventsParams defines parameters for ListAuditEvents.
+type ListAuditEventsParams struct {
+	// EntityType Filter by entity type
+	EntityType *ListAuditEventsParamsEntityType `form:"entity_type,omitempty" json:"entity_type,omitempty"`
+
+	// EntityId Filter by entity ID (requires entity_type)
+	EntityId *string `form:"entity_id,omitempty" json:"entity_id,omitempty"`
+
+	// Next Cursor token from previous page's "next" field
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+
+	// Limit Number of events per page
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAuditEventsParamsEntityType defines parameters for ListAuditEvents.
+type ListAuditEventsParamsEntityType string
+
 // PatchMeJSONBody defines parameters for PatchMe.
 type PatchMeJSONBody struct {
 	PlayerId *Base58ID `json:"player_id,omitempty"`
@@ -1258,6 +1453,94 @@ type PatchUserJSONRequestBody PatchUserJSONBody
 // ParseVoiceInputJSONRequestBody defines body for ParseVoiceInput for application/json ContentType.
 type ParseVoiceInputJSONRequestBody ParseVoiceInputJSONBody
 
+// AsAuditEntityDetails returns the union data inside the AuditEntry_Details as a AuditEntityDetails
+func (t AuditEntry_Details) AsAuditEntityDetails() (AuditEntityDetails, error) {
+	var body AuditEntityDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditEntityDetails overwrites any union data inside the AuditEntry_Details as the provided AuditEntityDetails
+func (t *AuditEntry_Details) FromAuditEntityDetails(v AuditEntityDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditEntityDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditEntityDetails
+func (t *AuditEntry_Details) MergeAuditEntityDetails(v AuditEntityDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditRenameDetails returns the union data inside the AuditEntry_Details as a AuditRenameDetails
+func (t AuditEntry_Details) AsAuditRenameDetails() (AuditRenameDetails, error) {
+	var body AuditRenameDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditRenameDetails overwrites any union data inside the AuditEntry_Details as the provided AuditRenameDetails
+func (t *AuditEntry_Details) FromAuditRenameDetails(v AuditRenameDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditRenameDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditRenameDetails
+func (t *AuditEntry_Details) MergeAuditRenameDetails(v AuditRenameDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditMatchUpdateDetails returns the union data inside the AuditEntry_Details as a AuditMatchUpdateDetails
+func (t AuditEntry_Details) AsAuditMatchUpdateDetails() (AuditMatchUpdateDetails, error) {
+	var body AuditMatchUpdateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditMatchUpdateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditMatchUpdateDetails
+func (t *AuditEntry_Details) FromAuditMatchUpdateDetails(v AuditMatchUpdateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditMatchUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditMatchUpdateDetails
+func (t *AuditEntry_Details) MergeAuditMatchUpdateDetails(v AuditMatchUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AuditEntry_Details) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AuditEntry_Details) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // AsMatchWinnerParams returns the union data inside the Market_Params as a MatchWinnerParams
 func (t Market_Params) AsMatchWinnerParams() (MatchWinnerParams, error) {
 	var body MatchWinnerParams
@@ -1452,6 +1735,9 @@ type ServerInterface interface {
 	// RecalculateGameElo Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(c *gin.Context)
+	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
+	// (GET /audit)
+	ListAuditEvents(c *gin.Context, params ListAuditEventsParams)
 	// AuthLogin Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(c *gin.Context)
@@ -1676,6 +1962,57 @@ func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
 	}
 
 	siw.Handler.RecalculateGameElo(c)
+}
+
+// ListAuditEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListAuditEvents(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAuditEventsParams
+
+	// ------------- Optional query parameter "entity_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "entity_type", c.Request.URL.Query(), &params.EntityType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter entity_type: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "entity_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "entity_id", c.Request.URL.Query(), &params.EntityId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter entity_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter next: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListAuditEvents(c, params)
 }
 
 // AuthLogin operation middleware
@@ -2972,6 +3309,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.POST(options.BaseURL+"/admin/players/:id/corrections", wrapper.CreatePlayerCorrection)
 	router.POST(options.BaseURL+"/admin/recalculate-game-elo", wrapper.RecalculateGameElo)
+	router.GET(options.BaseURL+"/audit", wrapper.ListAuditEvents)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.AuthLogout)
 	router.GET(options.BaseURL+"/auth/me", wrapper.GetMe)
@@ -3115,6 +3453,42 @@ func (response RecalculateGameElo500JSONResponse) VisitRecalculateGameEloRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAuditEventsRequestObject struct {
+	Params ListAuditEventsParams
+}
+
+type ListAuditEventsResponseObject interface {
+	VisitListAuditEventsResponse(w http.ResponseWriter) error
+}
+
+type ListAuditEvents200JSONResponse AuditPage
+
+func (response ListAuditEvents200JSONResponse) VisitListAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAuditEvents400JSONResponse ApiError
+
+func (response ListAuditEvents400JSONResponse) VisitListAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6487,6 +6861,9 @@ type StrictServerInterface interface {
 	// RecalculateGameElo Recalculate all game-specific Elo ratings
 	// (POST /admin/recalculate-game-elo)
 	RecalculateGameElo(ctx context.Context, request RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error)
+	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
+	// (GET /audit)
+	ListAuditEvents(ctx context.Context, request ListAuditEventsRequestObject) (ListAuditEventsResponseObject, error)
 	// AuthLogin Initiate Google OAuth2 login flow
 	// (GET /auth/login)
 	AuthLogin(ctx context.Context, request AuthLoginRequestObject) (AuthLoginResponseObject, error)
@@ -6773,6 +7150,32 @@ func (sh *strictHandler) RecalculateGameElo(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(RecalculateGameEloResponseObject); ok {
 		if err := validResponse.VisitRecalculateGameEloResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAuditEvents operation middleware
+func (sh *strictHandler) ListAuditEvents(ctx *gin.Context, params ListAuditEventsParams) {
+	var request ListAuditEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAuditEvents(ctx, request.(ListAuditEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAuditEvents")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListAuditEventsResponseObject); ok {
+		if err := validResponse.VisitListAuditEventsResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

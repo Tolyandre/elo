@@ -114,6 +114,18 @@ components:
     CorrectionsPage:
       $ref: './admin.yaml#/CorrectionsPage'
 
+    # Audit
+    AuditEntry:
+      $ref: './audit.yaml#/AuditEntry'
+    AuditEntityDetails:
+      $ref: './audit.yaml#/AuditEntityDetails'
+    AuditRenameDetails:
+      $ref: './audit.yaml#/AuditRenameDetails'
+    AuditMatchUpdateDetails:
+      $ref: './audit.yaml#/AuditMatchUpdateDetails'
+    AuditPage:
+      $ref: './audit.yaml#/AuditPage'
+
     # Skull King
     SkullKingPlayer:
       $ref: './skull-king.yaml#/SkullKingPlayer'
@@ -219,6 +231,10 @@ paths:
   # Corrections
   /corrections:
     $ref: './admin.yaml#/CorrectionsCollection'
+
+  # Audit
+  /audit:
+    $ref: './audit.yaml#/AuditCollection'
 
   # Admin
   /admin/recalculate-game-elo:

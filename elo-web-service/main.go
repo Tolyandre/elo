@@ -183,6 +183,10 @@ func main() {
 	router.GET("/markets/lobby/events", apiHandler.MarketsLobbyEvents)
 	router.GET("/markets/:id/events", apiHandler.MarketEvents)
 
+	// Audit log — public read, latest first (ADR-14); events are written inside
+	// the audited mutations' transactions.
+	router.GET("/audit", strictWrapper.ListAuditEvents)
+
 	// Realtime SSE — global data-change signals (public) and per-user events
 	// (invites, match notifications). Both paths end in /events so the frontend
 	// service worker's NetworkOnly exclusion covers them.

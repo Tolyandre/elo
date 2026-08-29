@@ -82,7 +82,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 		return CreateGame400JSONResponse{Status: "fail", Message: "name is required"}, nil
 	}
 
-	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name)
+	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
 			return CreateGame409JSONResponse{Status: "fail", Message: "game with this name already exists"}, nil
@@ -97,7 +97,7 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 }
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
-	game, err := s.api.GameService.UpdateGameName(ctx, parseIDParam(request.Id), request.Body.Name)
+	game, err := s.api.GameService.UpdateGameName(ctx, parseIDParam(request.Id), request.Body.Name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
 			return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
@@ -112,7 +112,7 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 }
 
 func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequestObject) (DeleteGameResponseObject, error) {
-	_, err := s.api.GameService.DeleteGame(ctx, parseIDParam(request.Id))
+	_, err := s.api.GameService.DeleteGame(ctx, parseIDParam(request.Id), currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:

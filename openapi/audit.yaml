@@ -1,0 +1,169 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+AuditCollection:
+  get:
+    operationId: ListAuditEvents
+    tags: [audit]
+    summary: List audit events (who did what and when) with cursor-based pagination
+    description: >-
+      Public read (consistent with other read endpoints). Events are returned
+      latest-first. Filter by entity_type for the admin audit tabs, or by
+      entity_type + entity_id for one entity's history (e.g. a match).
+    parameters:
+      - name: entity_type
+        in: query
+        schema:
+          type: string
+          enum: [match, game, player, club]
+        description: Filter by entity type
+      - name: entity_id
+        in: query
+        schema:
+          type: string
+        description: Filter by entity ID (requires entity_type)
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of events per page
+    responses:
+      "200":
+        description: Paginated audit event list
+        content:
+          application/json:
+            schema:
+              $ref: '#/AuditPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+AuditEntry:
+  type: object
+  required: [id, created_at, actor_user_id, actor_name, entity_type, entity_id, action]
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    created_at:
+      type: string
+      format: date-time
+    actor_user_id:
+      $ref: './common.yaml#/Base58ID'
+    actor_name:
+      type: string
+      description: Display name of the acting user at read time
+    entity_type:
+      type: string
+      enum: [match, game, player, club]
+    entity_id:
+      $ref: './common.yaml#/Base58ID'
+    action:
+      type: string
+      enum: [created, updated, renamed, deleted]
+    details:
+      description: >-
+        Action-specific payload; null when the event carries no details (match
+        created). Narrow by action: entity → AuditEntityDetails (created/deleted
+        of game/player/club), renamed → AuditRenameDetails, updated →
+        AuditMatchUpdateDetails.
+      oneOf:
+        - $ref: '#/AuditEntityDetails'
+        - $ref: '#/AuditRenameDetails'
+        - $ref: '#/AuditMatchUpdateDetails'
+      nullable: true
+
+AuditEntityDetails:
+  type: object
+  required: [schema_version, name]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: string
+      description: Entity name at the moment of creation/deletion
+
+AuditRenameDetails:
+  type: object
+  required: [schema_version, old_name, new_name]
+  properties:
+    schema_version:
+      type: integer
+    old_name:
+      type: string
+    new_name:
+      type: string
+
+AuditMatchUpdateDetails:
+  type: object
+  required: [schema_version, player_changes, calculator_changed]
+  properties:
+    schema_version:
+      type: integer
+    date:
+      type: object
+      nullable: true
+      required: [old, new]
+      properties:
+        old:
+          type: string
+          format: date-time
+        new:
+          type: string
+          format: date-time
+    game:
+      type: object
+      nullable: true
+      required: [old_game_id, new_game_id]
+      properties:
+        old_game_id:
+          $ref: './common.yaml#/Base58ID'
+        new_game_id:
+          $ref: './common.yaml#/Base58ID'
+    player_changes:
+      type: array
+      items:
+        type: object
+        required: [player_id, change]
+        properties:
+          player_id:
+            $ref: './common.yaml#/Base58ID'
+          change:
+            type: string
+            enum: [added, removed, score]
+          old_score:
+            type: number
+            format: double
+            nullable: true
+          new_score:
+            type: number
+            format: double
+            nullable: true
+    calculator_changed:
+      type: boolean
+
+AuditPage:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/AuditEntry'
+    next:
+      type: string
+      nullable: true
+      description: Cursor token for the next page; null if no more pages
+  required: [status, data]

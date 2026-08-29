@@ -30,6 +30,9 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   output: 'export',
   basePath,
+  // Separate build dir lets a second dev instance run alongside another one
+  // (e.g. against a scratch backend on another port). Unset → default .next.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
 };
 
 // @serwist/next hooks into webpack, which `next dev` (Turbopack) rejects, so the

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/rename.v1.json",
+  "title": "Audit rename details (v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "old_name", "new_name"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "old_name": { "type": "string", "minLength": 1 },
+    "new_name": { "type": "string", "minLength": 1 }
+  }
+}

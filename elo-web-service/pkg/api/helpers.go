@@ -137,6 +137,22 @@ func tryGetCurrentUserID(ctx *gin.Context) (id.ID, bool) {
 	return id.ID(uid), true
 }
 
+// currentActorID resolves the authenticated user from a strict handler's
+// context for the audit log (ADR-14). Returns the zero id when the context
+// carries no user (impossible behind editorAuth in practice) — recordAudit
+// then skips the audit row rather than failing the write.
+func currentActorID(ctx context.Context) id.ID {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return ""
+	}
+	uid, err := MustGetCurrentUserId(ginCtx)
+	if err != nil {
+		return ""
+	}
+	return uid
+}
+
 // ---------------------------------------------------------------------------
 // Match helpers (extracted from the former matches.go).
 // ---------------------------------------------------------------------------

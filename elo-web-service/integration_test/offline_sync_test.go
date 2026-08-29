@@ -142,11 +142,11 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 	gameSvc := elo.NewGameService(pool)
 
 	playerKey := newID(t)
-	p1, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок")
+	p1, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок", "")
 	if err != nil {
 		t.Fatalf("first CreatePlayer: %v", err)
 	}
-	p2, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок")
+	p2, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок", "")
 	if err != nil {
 		t.Fatalf("retry CreatePlayer: %v", err)
 	}
@@ -154,23 +154,23 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 		t.Errorf("player retry created a duplicate: first=%s second=%s", p1.ID, p2.ID)
 	}
 	// Same name with a different key must still hit the name unique constraint.
-	if _, err := playerSvc.CreatePlayer(ctx, newID(t), "Оффлайн Игрок"); !db.IsUniqueViolation(err) {
+	if _, err := playerSvc.CreatePlayer(ctx, newID(t), "Оффлайн Игрок", ""); !db.IsUniqueViolation(err) {
 		t.Errorf("duplicate name with new key: expected unique violation, got %v", err)
 	}
 
 	gameKey := newID(t)
-	g1, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра")
+	g1, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра", "")
 	if err != nil {
 		t.Fatalf("first AddGame: %v", err)
 	}
-	g2, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра")
+	g2, err := gameSvc.AddGame(ctx, gameKey, "Оффлайн Игра", "")
 	if err != nil {
 		t.Fatalf("retry AddGame: %v", err)
 	}
 	if g1.ID != g2.ID {
 		t.Errorf("game retry created a duplicate: first=%s second=%s", g1.ID, g2.ID)
 	}
-	if _, err := gameSvc.AddGame(ctx, newID(t), "Оффлайн Игра"); !db.IsUniqueViolation(err) {
+	if _, err := gameSvc.AddGame(ctx, newID(t), "Оффлайн Игра", ""); !db.IsUniqueViolation(err) {
 		t.Errorf("duplicate game name with new key: expected unique violation, got %v", err)
 	}
 }

@@ -74,13 +74,22 @@ func (q *Queries) CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Pla
 	return i, err
 }
 
-const deletePlayer = `-- name: DeletePlayer :exec
+const deletePlayer = `-- name: DeletePlayer :one
 DELETE FROM players WHERE id = $1
+RETURNING id, name, geologist_name, bet_limit
 `
 
-func (q *Queries) DeletePlayer(ctx context.Context, argID id.ID) error {
-	_, err := q.db.Exec(ctx, deletePlayer, argID)
-	return err
+// Returns the deleted row so the audit trail can capture the player's name.
+func (q *Queries) DeletePlayer(ctx context.Context, argID id.ID) (Player, error) {
+	row := q.db.QueryRow(ctx, deletePlayer, argID)
+	var i Player
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.BetLimit,
+	)
+	return i, err
 }
 
 const getPlayer = `-- name: GetPlayer :one

@@ -536,6 +536,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit events (who did what and when) with cursor-based pagination
+         * @description Public read (consistent with other read endpoints). Events are returned latest-first. Filter by entity_type for the admin audit tabs, or by entity_type + entity_id for one entity's history (e.g. a match).
+         */
+        get: operations["ListAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/recalculate-game-elo": {
         parameters: {
             query?: never;
@@ -1056,6 +1076,58 @@ export interface components {
         CorrectionsPage: {
             status: string;
             data: components["schemas"]["Correction"][];
+            /** @description Cursor token for the next page; null if no more pages */
+            next?: string | null;
+        };
+        AuditEntry: {
+            id: components["schemas"]["Base58ID"];
+            /** Format: date-time */
+            created_at: string;
+            actor_user_id: components["schemas"]["Base58ID"];
+            /** @description Display name of the acting user at read time */
+            actor_name: string;
+            /** @enum {string} */
+            entity_type: "match" | "game" | "player" | "club";
+            entity_id: components["schemas"]["Base58ID"];
+            /** @enum {string} */
+            action: "created" | "updated" | "renamed" | "deleted";
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails. */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"]) | null;
+        };
+        AuditEntityDetails: {
+            schema_version: number;
+            /** @description Entity name at the moment of creation/deletion */
+            name: string;
+        };
+        AuditRenameDetails: {
+            schema_version: number;
+            old_name: string;
+            new_name: string;
+        };
+        AuditMatchUpdateDetails: {
+            schema_version: number;
+            date?: {
+                /** Format: date-time */
+                old: string;
+                /** Format: date-time */
+                new: string;
+            } | null;
+            game?: {
+                old_game_id: components["schemas"]["Base58ID"];
+                new_game_id: components["schemas"]["Base58ID"];
+            } | null;
+            player_changes: {
+                player_id: components["schemas"]["Base58ID"];
+                /** @enum {string} */
+                change: "added" | "removed" | "score";
+                old_score?: number | null;
+                new_score?: number | null;
+            }[];
+            calculator_changed: boolean;
+        };
+        AuditPage: {
+            status: string;
+            data: components["schemas"]["AuditEntry"][];
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
         };
@@ -3523,6 +3595,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CorrectionsPage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListAuditEvents: {
+        parameters: {
+            query?: {
+                /** @description Filter by entity type */
+                entity_type?: "match" | "game" | "player" | "club";
+                /** @description Filter by entity ID (requires entity_type) */
+                entity_id?: string;
+                /** @description Cursor token from previous page's "next" field */
+                next?: string;
+                /** @description Number of events per page */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated audit event list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditPage"];
                 };
             };
             /** @description Bad request */

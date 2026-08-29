@@ -59,7 +59,8 @@ type Querier interface {
 	DeleteMarket(ctx context.Context, argID id.ID) error
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
 	DeleteMatchTournamentsByMatch(ctx context.Context, matchID id.ID) error
-	DeletePlayer(ctx context.Context, argID id.ID) error
+	// Returns the deleted row so the audit trail can capture the player's name.
+	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
 	DeleteSkullKingTable(ctx context.Context, argID id.ID) error
 	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
@@ -68,6 +69,8 @@ type Querier interface {
 	GetBetsForSettlement(ctx context.Context, marketID id.ID) ([]GetBetsForSettlementRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
 	GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error)
+	// Old-name read for the rename audit trail (ADR-14).
+	GetClubByID(ctx context.Context, argID id.ID) (Club, error)
 	GetCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Correction, error)
 	GetCountMatchesByGame(ctx context.Context, gameID id.ID) (int64, error)
 	GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error)
@@ -89,6 +92,9 @@ type Querier interface {
 	// betting_closed_at is a user event timestamp — preserved even after unsettling.
 	GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error)
 	GetMatch(ctx context.Context, argID id.ID) (Match, error)
+	// Current player→score rows of a match. Read before an edit rewrites them so
+	// the audit diff can describe what changed.
+	GetMatchScores(ctx context.Context, matchID id.ID) ([]GetMatchScoresRow, error)
 	GetMatchScoresForMatch(ctx context.Context, matchID id.ID) ([]GetMatchScoresForMatchRow, error)
 	GetMatchWinnerParams(ctx context.Context, marketID id.ID) (MarketMatchWinnerParam, error)
 	GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMatchWithPlayersRow, error)
@@ -148,12 +154,20 @@ type Querier interface {
 	// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
 	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error)
+	// Appends one audit_log row. Called inside the same transaction as the write
+	// it describes (ADR-14). details_* are all NULL together for events without
+	// details (e.g. match "created").
+	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
 	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
 	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]id.ID, error)
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
+	// Latest-first audit feed. Optional entity_type / entity_id filters serve both
+	// the per-entity history (match view) and the per-type feed (admin tabs). The
+	// cursor is the (created_at, id) row of the last returned event.
+	ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)

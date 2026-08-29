@@ -49,3 +49,7 @@ ON CONFLICT DO NOTHING;
 -- name: RemoveClubMember :exec
 DELETE FROM player_club_membership
 WHERE club_id = $1 AND player_id = $2;
+
+-- name: GetClubByID :one
+-- Old-name read for the rename audit trail (ADR-14).
+SELECT * FROM clubs WHERE id = $1;

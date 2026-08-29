@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -25,9 +26,11 @@ type Player struct {
 }
 type IPlayerService interface {
 	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
-	CreatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error)
-	UpdatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error)
-	DeletePlayer(ctx context.Context, playerID id.ID) error
+	// CreatePlayer/UpdatePlayer/DeletePlayer record audit events for the actor
+	// (ADR-14); a zero actor skips the audit row.
+	CreatePlayer(ctx context.Context, playerID id.ID, name string, actor id.ID) (db.Player, error)
+	UpdatePlayer(ctx context.Context, playerID id.ID, name string, actor id.ID) (db.Player, error)
+	DeletePlayer(ctx context.Context, playerID id.ID, actor id.ID) (db.Player, error)
 	GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error)
 	ListPlayers(ctx context.Context) ([]db.Player, error)
 	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
@@ -202,20 +205,70 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	return players, nil
 }
 
-func (s *PlayerService) CreatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error) {
-	return s.Queries.CreatePlayer(ctx, db.CreatePlayerParams{
-		ID:            playerID,
-		Name:          name,
-		GeologistName: pgtype.Text{Valid: false},
+func (s *PlayerService) CreatePlayer(ctx context.Context, playerID id.ID, name string, actor id.ID) (db.Player, error) {
+	var created db.Player
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		// CreatePlayer upserts on id; an idempotent replay must not emit a
+		// second created event, so audit only genuinely new rows. A zero id
+		// cannot exist yet — skip the probe and let CreatePlayer surface the
+		// error.
+		isNew := true
+		if !playerID.IsZero() {
+			_, perr := q.GetPlayer(ctx, playerID)
+			isNew = db.IsNoRows(perr)
+			if perr != nil && !isNew {
+				return perr
+			}
+		}
+		var err error
+		created, err = q.CreatePlayer(ctx, db.CreatePlayerParams{
+			ID:            playerID,
+			Name:          name,
+			GeologistName: pgtype.Text{Valid: false},
+		})
+		if err != nil {
+			return err
+		}
+		if isNew {
+			return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionCreated, playerID, audit.KindEntity, audit.NewEntityDetails(name))
+		}
+		return nil
 	})
+	return created, err
 }
 
-func (s *PlayerService) UpdatePlayer(ctx context.Context, playerID id.ID, name string) (db.Player, error) {
-	return s.Queries.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: playerID, Name: name})
+func (s *PlayerService) UpdatePlayer(ctx context.Context, playerID id.ID, name string, actor id.ID) (db.Player, error) {
+	var updated db.Player
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetPlayer(ctx, playerID)
+		if err != nil {
+			return err
+		}
+		updated, err = q.UpdatePlayer(ctx, db.UpdatePlayerParams{ID: playerID, Name: name})
+		if err != nil {
+			return err
+		}
+		if old.Name != name {
+			return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionRenamed, playerID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
+		}
+		return nil
+	})
+	return updated, err
 }
 
-func (s *PlayerService) DeletePlayer(ctx context.Context, playerID id.ID) error {
-	return s.Queries.DeletePlayer(ctx, playerID)
+func (s *PlayerService) DeletePlayer(ctx context.Context, playerID id.ID, actor id.ID) (db.Player, error) {
+	// DeletePlayer returns the deleted row, so the audit event captures the
+	// name without a pre-read.
+	var deleted db.Player
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		var derr error
+		deleted, derr = q.DeletePlayer(ctx, playerID)
+		if derr != nil {
+			return derr
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityPlayer, audit.ActionDeleted, playerID, audit.KindEntity, audit.NewEntityDetails(deleted.Name))
+	})
+	return deleted, err
 }
 
 func (s *PlayerService) GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error) {

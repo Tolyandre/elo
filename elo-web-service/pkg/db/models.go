@@ -12,6 +12,18 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+type AuditLog struct {
+	ID                   id.ID           `json:"id"`
+	CreatedAt            time.Time       `json:"created_at"`
+	ActorUserID          id.ID           `json:"actor_user_id"`
+	EntityType           string          `json:"entity_type"`
+	EntityID             id.ID           `json:"entity_id"`
+	Action               string          `json:"action"`
+	DetailsKind          pgtype.Text     `json:"details_kind"`
+	DetailsSchemaVersion pgtype.Int4     `json:"details_schema_version"`
+	Details              json.RawMessage `json:"details"`
+}
+
 type Bet struct {
 	ID       id.ID              `json:"id"`
 	MarketID id.ID              `json:"market_id"`

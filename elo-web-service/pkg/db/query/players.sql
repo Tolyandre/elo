@@ -12,8 +12,10 @@ WHERE id = $1;
 SELECT * FROM players
 ORDER BY name;
 
--- name: DeletePlayer :exec
-DELETE FROM players WHERE id = $1;
+-- name: DeletePlayer :one
+-- Returns the deleted row so the audit trail can capture the player's name.
+DELETE FROM players WHERE id = $1
+RETURNING *;
 
 -- name: AddPlayersIfNotExists :many
 INSERT INTO players (id, name)

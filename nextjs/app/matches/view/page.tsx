@@ -16,6 +16,7 @@ import { AlertCircle, Edit2, ArrowLeft, Trash2, ClipboardEdit } from "lucide-rea
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
+import { MatchAudit } from "@/components/audit/match-audit";
 import { PendingMatchCard } from "@/components/pending-match-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldGroup, FieldTitle } from "@/components/ui/field";
@@ -181,6 +182,8 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
       </Card>
 
       <MatchCard match={match} roundToInteger={roundToInteger} />
+
+      <MatchAudit matchId={match.id} />
 
       {relatedMarkets.length > 0 && (
         <div className="space-y-3">

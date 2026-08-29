@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/entity.v1.json",
+  "title": "Audit entity lifecycle details (v1)",
+  "description": "Captures the entity name at the moment it was created or deleted (a deleted entity's name is otherwise lost).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 }
+  }
+}
