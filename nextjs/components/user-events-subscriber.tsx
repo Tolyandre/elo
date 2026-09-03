@@ -6,17 +6,11 @@ import { toast } from "sonner";
 import { EloWebServiceBaseUrl } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { useSSE } from "@/hooks/useSSE";
-
-/**
- * Local-storage key the Skull King page uses for its active table session.
- * Read directly (not via the page's hook) to suppress invite popups while the
- * user is already sitting at a table.
- */
-const SKULL_KING_TABLE_SESSION_KEY = "skull-king-game/table-session";
+import { TABLE_SESSION_KEY } from "@/hooks/useSkullKingTableSession";
 
 function hasActiveTableSession(): boolean {
     try {
-        const raw = localStorage.getItem(SKULL_KING_TABLE_SESSION_KEY);
+        const raw = localStorage.getItem(TABLE_SESSION_KEY);
         return raw != null && raw !== "null" && raw !== "";
     } catch {
         return false;

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { useWakeLock } from "@/hooks/useWakeLock"
 import { Button } from "@/components/ui/button"
-import { Pause, ArrowLeft, Sun } from "lucide-react"
+import { Pause, ArrowLeft, Lightbulb, LightbulbOff } from "lucide-react"
 import { PageHeader } from "@/app/pageHeaderContext"
 import {
     type ChessClockState,
@@ -184,7 +184,9 @@ export default function ChessClockPage() {
                                     className="gap-1.5 text-xs"
                                     onClick={wakeLock.toggle}
                                 >
-                                    <Sun className="h-3.5 w-3.5" />
+                                    {wakeLock.enabled
+                                        ? <Lightbulb className="h-3.5 w-3.5" />
+                                        : <LightbulbOff className="h-3.5 w-3.5" />}
                                     Экран не выключается
                                 </Button>
                             )}

@@ -13,18 +13,39 @@ export type SkullKingSSE = {
     table: SkullKingTableSummary | null;
     /** Set when the host saves the match — connected players redirect to it. */
     savedMatchId: string | null;
+    /**
+     * Set when the host tore the table down without saving (reset / new
+     * game). Connected players clear their session and return to setup.
+     */
+    closed: boolean;
+};
+
+export type UseSkullKingSSEOptions = {
+    /**
+     * The table could not be fetched during recovery (it was deleted — saved
+     * while this client was offline, reset by the host, or expired). Fire
+     * once per disappearance; consumers typically clear the session so the
+     * subscription ends.
+     */
+    onTableGone?: () => void;
 };
 
 /**
  * Subscribes to a Skull King table over SSE and keeps the local view in sync.
  *
  * Connection self-healing (heartbeat liveness, reopen-after-error refetch,
- * visibility/online catch-up) lives in useSSE; this hook only supplies the
- * event dispatch and the recovery refetch of the full table state.
+ * rejected-connection backoff, visibility/online catch-up) lives in useSSE;
+ * this hook only supplies the event dispatch and the recovery refetch of the
+ * full table state.
  */
-export function useSkullKingSSE(tableId: Base58ID | null): SkullKingSSE {
+export function useSkullKingSSE(
+    tableId: Base58ID | null,
+    options?: UseSkullKingSSEOptions,
+): SkullKingSSE {
     const [state, setState] = useState<SkullKingTableSummary | null>(null);
     const [savedMatchId, setSavedMatchId] = useState<string | null>(null);
+    const [closed, setClosed] = useState(false);
+    const [tableGoneNotified, setTableGoneNotified] = useState(false);
     // Reset when switching tables so the old table's state never bleeds over
     // (adjust-state-during-render on id change).
     const [trackedTableId, setTrackedTableId] = useState(tableId);
@@ -32,6 +53,8 @@ export function useSkullKingSSE(tableId: Base58ID | null): SkullKingSSE {
         setTrackedTableId(tableId);
         setState(null);
         setSavedMatchId(null);
+        setClosed(false);
+        setTableGoneNotified(false);
     }
 
     const onEvent = useCallback((event: { type: string; data?: unknown }) => {
@@ -39,24 +62,36 @@ export function useSkullKingSSE(tableId: Base58ID | null): SkullKingSSE {
             setState(event.data as SkullKingTableSummary);
         } else if (event.type === "saved" && (event.data as { match_id?: string } | undefined)?.match_id) {
             setSavedMatchId((event.data as { match_id: string }).match_id);
+        } else if (event.type === "closed") {
+            setClosed(true);
         }
     }, []);
 
     const onRecover = useCallback(() => {
         if (!tableId) return;
         getSkullKingTablePromise(tableId)
-            .then(setState)
+            .then((table) => {
+                setState(table);
+                setClosed(false);
+                setTableGoneNotified(false);
+            })
             .catch(() => {
-                // table may have been deleted; leave current state in place
+                // The table is gone (deleted while this client was offline,
+                // or expired). Notify once; the consumer clears the session,
+                // which ends this subscription.
+                if (!tableGoneNotified) {
+                    setTableGoneNotified(true);
+                    options?.onTableGone?.();
+                }
             });
-    }, [tableId]);
+    }, [tableId, tableGoneNotified, options]);
 
     useSSE(tableId ? `${EloWebServiceBaseUrl}/skull-king/tables/${tableId}/events` : null, {
         onEvent,
         onRecover,
     });
 
-    return { table: state, savedMatchId };
+    return { table: state, savedMatchId, closed };
 }
 
 /**

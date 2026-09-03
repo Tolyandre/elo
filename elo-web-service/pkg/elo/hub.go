@@ -69,12 +69,15 @@ func (h *Hub) Subscribe(topic string) (<-chan []byte, func()) {
 
 // Broadcast sends payload to all current subscribers of the topic.
 // Slow subscribers are skipped (non-blocking send) — they resync on reconnect.
+// The RLock is held for the whole iteration: cancel() deletes and closes
+// channels under the write lock, so iterating without it races a concurrent
+// unsubscribe (concurrent map iteration and map write, or a send on a closed
+// channel — both fatal).
 func (h *Hub) Broadcast(topic string, payload []byte) {
 	h.mu.RLock()
-	subs := h.subscribers[topic]
-	h.mu.RUnlock()
+	defer h.mu.RUnlock()
 
-	for ch := range subs {
+	for ch := range h.subscribers[topic] {
 		select {
 		case ch <- payload:
 		default:

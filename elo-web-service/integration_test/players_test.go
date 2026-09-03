@@ -123,6 +123,20 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	// per-user events.
 	r.GET("/data/events", a.DataEvents)
 	r.GET("/me/events", o.DeserializeUser(), a.MeEvents)
+	// Skull King live tables (ADR-13, ADR-15): raw gin handlers mirroring the
+	// route group in main.go.
+	skPlayerAuth := []gin.HandlerFunc{o.DeserializeUser(), a.RequirePlayerID()}
+	sk := r.Group("/skull-king/tables")
+	sk.GET("", a.ListSkullKingTables)
+	sk.POST("", append(skPlayerAuth, a.CreateSkullKingTable)...)
+	sk.GET("/:id", a.GetSkullKingTable)
+	sk.PATCH("/:id/state", append(skPlayerAuth, a.UpdateSkullKingTableState)...)
+	sk.POST("/:id/join", append(skPlayerAuth, a.JoinSkullKingTable)...)
+	sk.POST("/:id/bid", append(skPlayerAuth, a.SubmitSkullKingBid)...)
+	sk.POST("/:id/result", append(skPlayerAuth, a.SubmitSkullKingResult)...)
+	sk.DELETE("/:id", append(skPlayerAuth, a.DeleteSkullKingTable)...)
+	sk.GET("/:id/events", a.SkullKingTableEvents)
+	r.GET("/skull-king/lobby/events", a.SkullKingLobbyEvents)
 	return r
 }
 

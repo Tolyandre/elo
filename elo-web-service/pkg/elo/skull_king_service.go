@@ -151,6 +151,17 @@ func (s *SkullKingTableService) broadcastSavedMatch(tableID, matchID id.ID) {
 	s.Hub.Broadcast(SkullKingTableTopic(tableID), payload)
 }
 
+// broadcastClosed tells table subscribers the host tore the table down without
+// saving (reset / new game). Payload-less: connected players clear their
+// session and return to the setup screen.
+func (s *SkullKingTableService) broadcastClosed(tableID id.ID) {
+	payload, err := json.Marshal(SSEEvent{Type: "closed"})
+	if err != nil {
+		return
+	}
+	s.Hub.Broadcast(SkullKingTableTopic(tableID), payload)
+}
+
 // broadcastLobby signals lobby subscribers that the set of tables changed.
 // The signal carries no payload — clients refetch the full list.
 func (s *SkullKingTableService) broadcastLobby() {
@@ -514,6 +525,11 @@ func (s *SkullKingTableService) DeleteTable(ctx context.Context, tableID id.ID, 
 	// before tearing down the table (and thus the SSE channel).
 	if savedMatchID != "" {
 		s.broadcastSavedMatch(tableID, savedMatchID)
+	} else {
+		// Host reset without saving: tell connected players the table is gone
+		// so they exit to the setup screen instead of discovering a 404 on
+		// their next reconnect.
+		s.broadcastClosed(tableID)
 	}
 	if err := s.Queries.DeleteSkullKingTable(ctx, pgID); err != nil {
 		return err

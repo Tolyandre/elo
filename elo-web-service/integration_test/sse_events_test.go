@@ -273,3 +273,197 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 		t.Errorf("lobby frame = %s, want tables-changed", frame)
 	}
 }
+
+// createSkullKingTableHTTP creates a live table through the API as the given
+// host (who must have a linked player) and returns the wire-form table id.
+func createSkullKingTableHTTP(t *testing.T, router *gin.Engine, hostToken string, tableID idpkg.ID, gameState map[string]any) string {
+	t.Helper()
+	wire := string(tableID.Base58())
+	body, _ := json.Marshal(map[string]any{"id": wire, "game_state": gameState})
+	req, _ := http.NewRequest(http.MethodPost, "/skull-king/tables", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+hostToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("POST /skull-king/tables: %d: %s", w.Code, w.Body.String())
+	}
+	return wire
+}
+
+// TestSkullKing_TableEvents_HostEditPropagatesToSubscribers: when the host
+// PATCHes the table state — e.g. editing a cell in an already-completed round —
+// every table subscriber must receive the updated full snapshot (regression
+// for connected players freezing on host edits of previous rounds).
+func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	q := db.New(pool)
+	hostToken, hostUserID := createTestUserWithID(t, pool, true)
+	router := setupRouter(pool)
+
+	playerA := createTestPlayer(t, pool, "SkEditA")
+	playerB := createTestPlayer(t, pool, "SkEditB")
+	if err := q.UpdateUserPlayerID(context.Background(), db.UpdateUserPlayerIDParams{
+		ID:       idpkg.ID(hostUserID),
+		PlayerID: &playerA,
+	}); err != nil {
+		t.Fatalf("link host player: %v", err)
+	}
+
+	initialState := map[string]any{
+		"phase":              "round-complete",
+		"players":            []map[string]any{{"id": string(playerA), "name": "SkEditA"}, {"id": string(playerB), "name": "SkEditB"}},
+		"currentRound":       1,
+		"currentPlayerIndex": 0,
+		"rounds":             []any{[]any{map[string]any{"bid": 3, "actual": 2, "bonus": 0}, nil}},
+	}
+	wire := createSkullKingTableHTTP(t, router, hostToken, newID(t), initialState)
+
+	frames := openSSE(t, router, "/skull-king/tables/"+wire+"/events", "")
+	// Consume the connect snapshot, then edit player B's cell in round 1.
+	waitForSSEFrame(t, frames, "initial state", func(p string) bool { return isSignal(p, "state") })
+
+	editedState := map[string]any{
+		"phase":              "round-complete",
+		"players":            initialState["players"],
+		"currentRound":       1,
+		"currentPlayerIndex": 0,
+		"rounds":             []any{[]any{map[string]any{"bid": 3, "actual": 2, "bonus": 0}, map[string]any{"bid": 1, "actual": 1, "bonus": 30}}},
+	}
+	body, _ := json.Marshal(map[string]any{"game_state": editedState})
+	req, _ := http.NewRequest(http.MethodPatch, "/skull-king/tables/"+wire+"/state", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+hostToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH state: %d: %s", w.Code, w.Body.String())
+	}
+
+	frame := waitForSSEFrame(t, frames, "edited state", func(p string) bool { return isSignal(p, "state") })
+	var evt struct {
+		Type string              `json:"type"`
+		Data elo.SkullKingTableSummary `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(frame), &evt); err != nil {
+		t.Fatalf("parse state frame: %v", err)
+	}
+	if len(evt.Data.GameState.Rounds) != 1 || len(evt.Data.GameState.Rounds[0]) != 2 {
+		t.Fatalf("rounds shape = %v, want 1 round × 2 entries", evt.Data.GameState.Rounds)
+	}
+	var edited elo.SkullKingEntry
+	if err := json.Unmarshal(evt.Data.GameState.Rounds[0][1], &edited); err != nil {
+		t.Fatalf("parse edited entry: %v", err)
+	}
+	if edited.Bid != 1 || edited.Actual == nil || *edited.Actual != 1 || edited.Bonus != 30 {
+		t.Errorf("edited entry = %+v, want bid=1 actual=1 bonus=30", edited)
+	}
+}
+
+// TestSkullKing_TableEvents_ClosedOnHostReset: deleting a table without a
+// saved match (host pressed "new game") must broadcast a payload-less "closed"
+// event so connected players exit gracefully instead of hitting a 404 later.
+func TestSkullKing_TableEvents_ClosedOnHostReset(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	q := db.New(pool)
+	hostToken, hostUserID := createTestUserWithID(t, pool, true)
+	router := setupRouter(pool)
+
+	playerA := createTestPlayer(t, pool, "SkCloseA")
+	playerB := createTestPlayer(t, pool, "SkCloseB")
+	if err := q.UpdateUserPlayerID(context.Background(), db.UpdateUserPlayerIDParams{
+		ID:       idpkg.ID(hostUserID),
+		PlayerID: &playerA,
+	}); err != nil {
+		t.Fatalf("link host player: %v", err)
+	}
+
+	state := map[string]any{
+		"phase":              "waiting-for-bids",
+		"players":            []map[string]any{{"id": string(playerA), "name": "SkCloseA"}, {"id": string(playerB), "name": "SkCloseB"}},
+		"currentRound":       1,
+		"currentPlayerIndex": 0,
+		"rounds":             []any{nil},
+	}
+	wire := createSkullKingTableHTTP(t, router, hostToken, newID(t), state)
+
+	frames := openSSE(t, router, "/skull-king/tables/"+wire+"/events", "")
+	waitForSSEFrame(t, frames, "initial state", func(p string) bool { return isSignal(p, "state") })
+
+	req, _ := http.NewRequest(http.MethodDelete, "/skull-king/tables/"+wire, nil)
+	req.Header.Set("Authorization", "Bearer "+hostToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("DELETE table: %d: %s", w.Code, w.Body.String())
+	}
+
+	waitForSSEFrame(t, frames, "closed", func(p string) bool { return isSignal(p, "closed") })
+}
+
+// TestSSE_HeartbeatNamedEventAndRetryHint: the stream must advertise a retry
+// interval up front and send heartbeats as *named* events — comment frames are
+// discarded by EventSource before any handler runs, so a JS liveness watchdog
+// can only observe named `event: heartbeat` frames.
+func TestSSE_HeartbeatNamedEventAndRetryHint(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	token, _ := createTestUserWithID(t, pool, true)
+	router := setupRouter(pool)
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/data/events", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("open SSE stream: %v", err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+
+	lines := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		close(lines)
+	}()
+
+	// The retry hint is written before any frame.
+	select {
+	case line := <-lines:
+		if line != "retry: 5000" {
+			t.Fatalf("first line = %q, want retry: 5000", line)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("no first line received")
+	}
+
+	// The 15s heartbeat ticker fires within ~15s of stream open.
+	deadline := time.After(20 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed while waiting for heartbeat")
+			}
+			if line == "event: heartbeat" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no named heartbeat event within 20s")
+		}
+	}
+}

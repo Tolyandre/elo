@@ -2,6 +2,7 @@ package elo
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 )
@@ -114,4 +115,37 @@ func TestHub_PublishSignal(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("no message received")
 	}
+}
+
+// Regression for the broadcast-vs-cancel race: Broadcast used to iterate the
+// subscriber map after releasing RLock while cancel() deleted and closed
+// channels — a concurrent map iteration / send-on-closed-channel crash.
+// Meaningful under `go test -race`.
+func TestHub_ConcurrentBroadcastAndCancel(t *testing.T) {
+	h := NewHub()
+
+	const workers = 8
+	var wg sync.WaitGroup
+	wg.Add(2 * workers)
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 500; j++ {
+				_, cancel := h.Subscribe(TopicData)
+				h.Broadcast(TopicData, []byte(`{"type":"matches-changed"}`))
+				cancel()
+			}
+		}()
+	}
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 500; j++ {
+				h.PublishSignal(TopicData, "players-changed")
+				h.Broadcast(UserTopic("00000000-0000-0000-0000-000000000001"), []byte(`{}`))
+			}
+		}()
+	}
+	wg.Wait()
 }

@@ -17,6 +17,10 @@ import (
 // proxies/NATs from reaping idle connections, and the pump loop. Producers
 // broadcast to elo.Hub topics; handlers only pick a topic and an initial frame.
 
+// sseRetryMs is the reconnect interval advertised to browser EventSource
+// clients (the `retry:` field), so auto-reconnects are prompt and predictable.
+const sseRetryMs = 5000
+
 // serveSSE streams events for one hub subscription until the client goes away.
 // subscribe is called after the headers are decided; its cancel is deferred.
 // initial (optional) is written as the first data frame so clients sync
@@ -31,15 +35,19 @@ func (a *API) serveSSE(c *gin.Context, subscribe func() (<-chan []byte, func()),
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 
+	// Explicit reconnect interval for the browser's built-in EventSource retry.
+	fmt.Fprintf(c.Writer, "retry: %d\n\n", sseRetryMs)
 	if initial != nil {
 		fmt.Fprintf(c.Writer, "data: %s\n\n", initial)
-		c.Writer.Flush()
 	}
+	c.Writer.Flush()
 
 	// Heartbeat keeps the connection alive across proxies/NAT/VPNs that would
-	// otherwise reap an idle stream. Sent as an SSE comment frame, which
-	// EventSource ignores but the bytes keep the TCP path warm and let us
-	// detect a dead client promptly (the Flush errors into ctx cancellation).
+	// otherwise reap an idle stream. Sent as a *named* event: comment frames
+	// keep the TCP path warm but are discarded by EventSource before any
+	// handler runs, so the client's JS liveness watchdog can't see them. A
+	// named event is dispatched to `addEventListener("heartbeat", ...)` only
+	// (never onmessage), letting clients re-arm their watchdogs on it.
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
@@ -55,7 +63,7 @@ func (a *API) serveSSE(c *gin.Context, subscribe func() (<-chan []byte, func()),
 			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
 			c.Writer.Flush()
 		case <-heartbeat.C:
-			fmt.Fprintf(c.Writer, ": heartbeat\n\n")
+			fmt.Fprintf(c.Writer, "event: heartbeat\ndata: %d\n\n", time.Now().Unix())
 			c.Writer.Flush()
 		}
 	}

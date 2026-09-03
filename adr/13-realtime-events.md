@@ -34,14 +34,22 @@ liveness/reconnect scaffolding. On top of the duplication, three product gaps:
   | `user:<uuid>` | `GET /me/events` (session required) | invites / notifications |
 
 - **`pkg/api/sse.go`** owns everything an SSE response needs: headers, optional
-  initial frame, 15s heartbeat comment, and the pump loop. Handlers only pick a
-  topic and an initial frame.
+  initial frame, a `retry:` hint, the 15s heartbeat, and the pump loop.
+  Handlers only pick a topic and an initial frame. The heartbeat is a *named*
+  event (`event: heartbeat`) — comment frames keep the TCP path warm but are
+  discarded by `EventSource` before any handler runs, so a JS liveness
+  watchdog can only observe named events.
 - **`nextjs/hooks/useSSE.ts`** is the only EventSource construction site
   client-side: JSON envelope dispatch, the 45s liveness timer that recreates
-  silently-dead streams, recovery callbacks (reopen-after-error,
-  visibility/online), and fatal-close handling — a stream the server rejected
-  outright (404 table gone, 401 expired session leaves `readyState === CLOSED`)
-  stops instead of retry-looping every 45s.
+  silently-dead streams (re-armed by data frames and heartbeat events),
+  recovery callbacks (reopen-after-error, visibility/online), and
+  rejected-connection handling — a stream the server rejects outright (404
+  table gone, 401 expired session, 502 during a restart leaves
+  `readyState === CLOSED`) is retried with capped exponential backoff
+  (1s→30s). A rejection also fires `onRecover` immediately: `onopen` never
+  fires on a rejected connection, so the probe is the only way a consumer
+  learns a resource is permanently gone (e.g. a deleted table) and
+  unsubscribes by nulling the url.
 
 ### Live data updates (signal-and-refetch)
 
