@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/command"
 import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
 import { useGames } from "@/app/gamesContext"
-import { createGamePromise, isNetworkFailure } from "@/app/api"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
@@ -38,11 +37,11 @@ export function GameCombobox({
 
   const value = controlledValue !== undefined ? controlledValue : internalValue
 
-  const { games, invalidate } = useGames();
+  const { games } = useGames();
   const { matches } = useMatches();
   const { playerId } = useMe();
   const { isMobile } = useIsMobile();
-  const { pendingGames, offline, addPendingGame } = useOffline();
+  const { pendingGames, addPendingGame } = useOffline();
 
   const groups = React.useMemo(() => {
     const base = buildGameGroups(games, matches, playerId);
@@ -84,27 +83,16 @@ export function GameCombobox({
     }, 100);
   };
 
-  const handleCreateGame = async () => {
+  const handleCreateGame = () => {
     if (!searchQuery.trim() || creating) return;
 
     setCreating(true);
     const name = searchQuery.trim();
-    if (offline) {
-      selectCreated(addPendingGame(name).clientId);
-      return;
-    }
-    try {
-      const newGame = await createGamePromise({ name });
-      invalidate();
-      selectCreated(newGame.id);
-    } catch (e) {
-      if (isNetworkFailure(e)) {
-        // network died mid-request — queue the game offline instead
-        selectCreated(addPendingGame(name).clientId);
-        return;
-      }
-      setCreating(false);
-    }
+    // Creates always queue: the pending game's clientId is its final server
+    // id, so a lost response or retry can never mint a second id and end up
+    // stuck behind the unique-name index. While online the queue flushes
+    // within a round trip.
+    selectCreated(addPendingGame(name).clientId);
   };
 
   const trigger = (

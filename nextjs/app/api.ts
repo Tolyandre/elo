@@ -420,10 +420,6 @@ export async function deleteGamePromise(id: Base58ID) {
     return unwrap(client.DELETE("/games/{id}", { params: { path: { id } } }));
 }
 
-export async function createGamePromise(payload: { name: string }) {
-    return (await unwrap(client.POST("/games", { body: { id: newId(), ...payload } }))).data;
-}
-
 export async function getMePromise(): Promise<User | undefined> {
     // Manual fetch: 401 returns undefined instead of throwing.
     // A network failure throws NetworkError without a toast so the caller can
@@ -489,10 +485,6 @@ export async function patchUserPromise(userId: Base58ID, payload: { can_edit: bo
         params: { path: { userId } },
         body: payload,
     }))).data;
-}
-
-export async function createPlayerPromise(payload: { name: string }) {
-    return (await unwrap(client.POST("/players", { body: { id: newId(), ...payload } }))).data;
 }
 
 export async function patchPlayerPromise(playerId: Base58ID, payload: { name: string }) {

@@ -207,17 +207,18 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
 
   const match = pendingMatches.find((m) => m.clientId === clientId);
 
-  // `leavingRef` suppresses the redirect toast when the user themselves deletes.
+  // `leavingRef` suppresses the "synced" toast when the user themselves deletes.
   const leavingRef = useRef(false);
 
-  // The match is no longer in the pending store while we're on its page — a sync
-  // saved it to the server. Send the user to the list instead of a dead end.
+  // The match is no longer in the pending store while we're on its page — a
+  // sync saved it to the server under the same id. Stay put: the dispatcher
+  // above re-renders into SavedMatchView, which fetches and shows the Elo
+  // change (the whole reason to keep the user on this page).
   useEffect(() => {
     if (ready && !match && !leavingRef.current) {
       toast("Партия синхронизирована");
-      router.replace("/matches");
     }
-  }, [ready, match, router]);
+  }, [ready, match]);
 
   if (!ready || !match) {
     return (

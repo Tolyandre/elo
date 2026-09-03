@@ -2,19 +2,16 @@
 import type { Base58ID } from "@/lib/id";
 
 import React, { forwardRef, useImperativeHandle, useState } from "react";
-import { createPlayerPromise, addClubMemberPromise, isNetworkFailure } from "@/app/api";
-import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { ClubIcon } from "@/components/club-icon";
 import { cn } from "@/lib/utils";
 
 /**
- * Result of a create attempt. `created` is true once the player exists on the
- * server OR is queued offline (in which case the final id is the clientId).
+ * Result of a create attempt. `created` is true once the player is queued (its
+ * final id is the pending entry's clientId; the sync pushes it to the server).
  */
 export type AddPlayerResult = { created: true; id: string; name: string } | { created: false };
 
@@ -26,10 +23,9 @@ export type AddPlayerResult = { created: true; id: string; name: string } | { cr
  *  - embedded inside a confirmation dialog: `hideSubmit` hides the button and
  *    the parent drives submission via the imperative `submit()` handle.
  *
- * Clubs are applied after the player exists via POST /clubs/{id}/members. When
- * offline, both the player and the chosen club ids are queued and applied
- * together during sync (the player's clientId is its final server id, and
- * AddClubMember is idempotent, so retries are safe).
+ * Creates always queue — the pending player's clientId is its final server id
+ * — together with the chosen club ids; the sync engine applies the memberships
+ * right after the create (AddClubMember is idempotent, so retries are safe).
  */
 export type AddPlayerFormHandle = {
     /** Run the create flow. Resolves once the player is created or queued. */
@@ -54,14 +50,12 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
     { onCreated, compact = false, hideSubmit = false, submitLabel, initialName = "", autoFocus = false },
     ref,
 ) {
-    const { invalidate: invalidatePlayers } = usePlayers();
-    const { clubs, clubDisplayName, invalidate: invalidateClubs } = useClubs();
+    const { clubs, clubDisplayName } = useClubs();
     const { canEdit } = useMe();
     const { offline, addPendingPlayer } = useOffline();
 
     const [name, setName] = useState(initialName);
     const [selectedClubs, setSelectedClubs] = useState<Set<Base58ID>>(new Set());
-    const [adding, setAdding] = useState(false);
 
     const sortedClubs = React.useMemo(
         () => [...clubs].sort((a, b) =>
@@ -81,60 +75,24 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
 
     async function submit(): Promise<AddPlayerResult> {
         const trimmed = name.trim();
-        if (adding || !trimmed) return { created: false };
-        const clubIds = [...selectedClubs];
+        if (!trimmed) return { created: false };
 
-        if (offline) {
-            const player = addPendingPlayer(trimmed, clubIds);
-            setName("");
-            setSelectedClubs(new Set());
-            onCreated?.(player.clientId, trimmed);
-            return { created: true, id: player.clientId, name: trimmed };
-        }
-
-        setAdding(true);
-        try {
-            const created = await createPlayerPromise({ name: trimmed });
-            // Apply club memberships after the player exists. Best-effort: a
-            // failure on one club surfaces a toast but doesn't roll back the
-            // player (created successfully). Memberships can be fixed up later
-            // from the admin club page.
-            for (const clubId of clubIds) {
-                try {
-                    await addClubMemberPromise(clubId, created.id);
-                } catch {
-                    // toast already shown by the API helper
-                }
-            }
-            invalidatePlayers();
-            invalidateClubs();
-            setName("");
-            setSelectedClubs(new Set());
-            onCreated?.(created.id, created.name);
-            return { created: true, id: created.id, name: created.name };
-        } catch (e) {
-            if (isNetworkFailure(e)) {
-                // network died mid-request — queue offline instead, preserving
-                // the chosen clubs so they're applied on sync.
-                const player = addPendingPlayer(trimmed, clubIds);
-                invalidatePlayers();
-                setName("");
-                setSelectedClubs(new Set());
-                onCreated?.(player.clientId, trimmed);
-                return { created: true, id: player.clientId, name: trimmed };
-            }
-            // HTTP errors: toast already shown by the API helper
-            return { created: false };
-        } finally {
-            setAdding(false);
-        }
+        // Creates always queue: the pending player's clientId is its final
+        // server id, so a lost response or retry can never mint a second id
+        // and end up stuck behind the unique-name index. The chosen clubs are
+        // queued with it and applied by the sync engine right after the create.
+        const player = addPendingPlayer(trimmed, [...selectedClubs]);
+        setName("");
+        setSelectedClubs(new Set());
+        onCreated?.(player.clientId, trimmed);
+        return { created: true, id: player.clientId, name: trimmed };
     }
 
     // Rebind every render so the exposed `submit` always closes over the latest
     // name/clubs state (the dialog's confirm button calls it via the ref).
     useImperativeHandle(ref, () => ({
         submit,
-        isBusy: () => adding,
+        isBusy: () => false,
     }));
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -161,10 +119,8 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
                         <Button
                             type="button"
                             onClick={() => submit()}
-                            disabled={!canEdit || adding || !name.trim()}
-                            aria-busy={adding}
+                            disabled={!canEdit || !name.trim()}
                         >
-                            {adding && <Spinner className="size-4" />}
                             {offline ? "Добавить офлайн" : (submitLabel ?? "Добавить")}
                         </Button>
                     </div>

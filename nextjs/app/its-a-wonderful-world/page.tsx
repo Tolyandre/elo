@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
-import { useMatches } from "@/app/matches/MatchesContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { useTournamentSelection } from "@/hooks/useTournamentSelection";
@@ -38,9 +37,7 @@ export default function ItsAWonderfulWorldPage() {
     const { players: allPlayers, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const me = useMe();
-    const { invalidate: invalidateMatches } = useMatches();
-    const { invalidate: invalidatePlayers } = usePlayers();
-    const { submitMatch, offline } = useOffline();
+    const { submitMatch } = useOffline();
     const router = useRouter();
 
     const [gameState, setGameState] = useLocalStorage<GameState>(LS_KEY, INITIAL);
@@ -126,12 +123,9 @@ export default function ItsAWonderfulWorldPage() {
                 calculator_data: toStorage(gameState) as unknown as Record<string, never>,
             });
             localStorage.removeItem(LS_KEY);
-            // The match was either saved on the server or queued offline; either way
-            // its id is final. The view page shows the pending or saved card by id.
-            if (!offline) {
-                invalidateMatches();
-                invalidatePlayers();
-            }
+            // The match is queued under its final id; the lists refresh when the
+            // sync lands it. The view page shows the pending card first, then the
+            // saved one with the Elo change.
             router.push(`/matches/view?id=${result.id}`);
         } catch (err) {
             setSaveError(err instanceof Error ? err.message : String(err));

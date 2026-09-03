@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useState } from "react";
-import { patchGamePromise, deleteGamePromise, createGamePromise, isNetworkFailure } from "@/app/api";
+import { patchGamePromise, deleteGamePromise } from "@/app/api";
 import { LoginLink } from "@/components/login-link";
 import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
@@ -13,7 +13,6 @@ import { PendingEntityList } from "@/components/pending-entity-list";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 
 type GameRow = { id: Base58ID; name: string };
 
@@ -22,7 +21,6 @@ export default function GamesAdminPage() {
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
     const { pendingGames, offline, addPendingGame, updatePendingGame, deletePendingGame } = useOffline();
     const [newName, setNewName] = useState<string>("");
-    const [adding, setAdding] = useState(false);
     const [renameTarget, setRenameTarget] = useState<GameRow | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
 
@@ -86,34 +84,15 @@ export default function GamesAdminPage() {
                 />
                 <div className="w-full sm:w-auto">
                 <Button
-                    onClick={async () => {
-                        if (adding || !newName || newName.trim() === "") return;
-                        const name = newName.trim();
-                        if (offline) {
-                            addPendingGame(name);
-                            setNewName("");
-                            return;
-                        }
-                        setAdding(true);
-                        try {
-                            await createGamePromise({ name });
-                            invalidateGames();
-                            setNewName("");
-                        } catch (e) {
-                            if (isNetworkFailure(e)) {
-                                // network died mid-request — queue the game offline instead
-                                addPendingGame(name);
-                                setNewName("");
-                            }
-                            // HTTP errors: toast already shown
-                        } finally {
-                            setAdding(false);
-                        }
+                    onClick={() => {
+                        if (!newName || newName.trim() === "") return;
+                        // Creates always queue (the clientId is the final server
+                        // id); the sync flushes it within a round trip while online.
+                        addPendingGame(newName.trim());
+                        setNewName("");
                     }}
-                    disabled={!canEdit || adding}
-                    aria-busy={adding}
+                    disabled={!canEdit}
                 >
-                    {adding && <Spinner className="size-4" />}
                     {offline ? "Добавить офлайн" : "Добавить"}
                 </Button>
                 </div>

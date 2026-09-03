@@ -11,7 +11,7 @@ import {
     useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import { addMatchPromise, client, isNetworkFailure, pingApiPromise } from "../api";
+import { client, pingApiPromise } from "../api";
 import { useGames } from "../gamesContext";
 import { useMatches } from "../matches/MatchesContext";
 import { useMe } from "../meContext";
@@ -69,8 +69,11 @@ type  OfflineState = {
     updatePendingGame: (clientId: Base58ID, name: string) => void;
     deletePendingGame: (clientId: Base58ID) => void;
     /**
-     * Offline-aware match submission: posts to the server when online, queues a
-     * pending match when offline or when the request fails at the network level.
+     * Match submission: always queues a pending match, never posts directly.
+     * The pending entry's clientId is the match's final server id, so replays
+     * (flaky network, sync retries) can't duplicate it — the server upserts on
+     * id. Queueing re-triggers the probe effect, so while online the sync
+     * pushes it within a round trip; offline it waits for connectivity.
      */
     submitMatch: (payload: {
         game_id: Base58ID;
@@ -84,7 +87,11 @@ type  OfflineState = {
 
 const OfflineContext = createContext<OfflineState | undefined>(undefined);
 
-function loadStore(): OfflineStore {
+/**
+ * Read the persisted offline store. Exported so non-React code can observe
+ * queue state (e.g. waiting for a just-queued match to sync).
+ */
+export function loadOfflineStore(): OfflineStore {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return emptyOfflineStore();
@@ -174,11 +181,9 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
 
     const pendingCount = store.games.length + store.players.length + store.matches.length;
     const pendingCountRef = useRef(pendingCount);
-    const apiReachableRef = useRef<boolean | null>(apiReachable);
     useEffect(() => {
         pendingCountRef.current = pendingCount;
-        apiReachableRef.current = apiReachable;
-    }, [pendingCount, apiReachable]);
+    }, [pendingCount]);
 
     const { canEdit } = useMe();
     const { invalidate: invalidateMatches } = useMatches();
@@ -189,9 +194,27 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     // localStorage is unavailable during static export rendering — hydrate after mount.
     useEffect(() => {
         /* eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe hydration */
-        setStore(loadStore());
+        setStore(loadOfflineStore());
         setLoaded(true);
     }, []);
+
+    // Another tab wrote the offline store (creates from any tab queue here now,
+    // even while online) — adopt its state so a later write from this tab can't
+    // drop those items (the whole store is persisted per write). Skipped while a
+    // sync runs: the engine's snapshot would immediately overwrite the fresher
+    // state. Two tabs writing near-simultaneously still resolve last-write-wins;
+    // accepted for a single-user PWA.
+    useEffect(() => {
+        if (!loaded) return;
+        const onStorage = (e: StorageEvent) => {
+            if (e.key !== STORAGE_KEY || syncInProgressRef.current) return;
+            const next = loadOfflineStore();
+            storeRef.current = next;
+            setStore(next);
+        };
+        window.addEventListener("storage", onStorage);
+        return () => window.removeEventListener("storage", onStorage);
+    }, [loaded]);
 
     const mutateStore = useCallback((fn: (s: OfflineStore) => OfflineStore) => {
         setStore((prev) => {
@@ -416,41 +439,19 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             game_id: Base58ID;
             score: Record<string, number>;
             tournament_ids?: Base58ID[];
-            // Optional calculator state (e.g. Skull King round breakdown). Forwarded
-            // on both the online path and the offline queue so the calculator detail
-            // survives an offline save and is restored when the match is synced.
+            // Optional calculator state (e.g. Skull King round breakdown), stored
+            // with the pending match so the calculator detail survives until the
+            // sync pushes it to the server.
             calculator_kind?: string | null;
             calculator_data?: Record<string, never> | null;
         }): Promise<SubmitMatchResult> => {
-            // A pending game/player referenced by this match hasn't been synced to
-            // the server yet — don't attempt a network call that would 400. Queue
-            // directly so the match goes out after its dependencies in the next sync.
-            const currentStore = storeRef.current;
-            const pendingGameIds = new Set<string>(currentStore.games.map((g) => g.clientId));
-            const pendingPlayerIds = new Set<string>(currentStore.players.map((p) => p.clientId));
-            const referencesPending =
-                pendingGameIds.has(payload.game_id) ||
-                Object.keys(payload.score).some((k) => pendingPlayerIds.has(k));
-            // Mint the final UUIDv7 id up front so the SAME id is used for the online
-            // attempt and any offline retry. If the request reaches the server but
-            // the response is lost mid-flight, the resync sends the same id and the
-            // server returns the already-created match instead of duplicating.
-            const clientId = newOfflineId();
-            // Skip the network attempt when effectively offline (no network or the
-            // server is known to be unreachable) so the action queues instantly
-            // instead of hanging on a request that will time out.
-            const canTryServer = isOnline && apiReachableRef.current !== false;
-            if (canTryServer && !referencesPending) {
-                try {
-                    await addMatchPromise({ ...payload, id: clientId });
-                    return { id: clientId };
-                } catch (e) {
-                    if (!isNetworkFailure(e)) throw e;
-                    // network died mid-request — fall through to the offline queue
-                }
-            }
+            // Every create flows through the queue, even while online: a direct
+            // POST would need its own "request landed but response lost" fallback,
+            // and any retry of that fallback minted a second id — the source of
+            // duplicate matches and of games stuck behind the unique-name index.
+            // The sync engine sends games → players → matches, so dependencies on
+            // other pending entities need no special-casing here either.
             const match = addPendingMatch({
-                clientId,
                 gameId: payload.game_id,
                 score: payload.score,
                 tournamentIds: payload.tournament_ids,
@@ -459,7 +460,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             });
             return { id: match.clientId };
         },
-        [isOnline, addPendingMatch],
+        [addPendingMatch],
     );
 
     const errorCount =

@@ -7,7 +7,6 @@ import { toBase58ID } from "@/lib/id";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
-import { useMatches } from "@/app/matches/MatchesContext";
 import {
     listSkullKingTablesPromise,
     createSkullKingTablePromise,
@@ -29,7 +28,7 @@ import {
 import { toStorage as skToStorage } from "@/components/calculators/skull-king/storage";
 import { useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
 import { useSkullKingTableSession } from "@/hooks/useSkullKingTableSession";
-import { useOffline } from "@/app/offline/OfflineContext";
+import { useOffline, loadOfflineStore } from "@/app/offline/OfflineContext";
 import { useTournamentSelection } from "@/hooks/useTournamentSelection";
 import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
 import { GameCombobox } from "@/components/game-combobox";
@@ -69,13 +68,29 @@ export default function SkullKingGamePage() {
     );
 }
 
+// Waits until the sync engine has flushed the just-queued match to the server:
+// the engine removes the item from the persisted store on success (an item the
+// server rejected stays, with an error badge). Table teardown broadcasts the
+// match id to the connected players, so it must not fire before the match
+// exists. Returns false on timeout (e.g. the network died right after saving).
+async function waitForSyncedMatch(matchId: string, timeoutMs = 10_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    // Let the queue write and the ping+sync get going first — React persists
+    // the store shortly after submitMatch returns, and a sync flush takes at
+    // least a round trip while online.
+    await new Promise((r) => setTimeout(r, 400));
+    while (Date.now() < deadline) {
+        if (!loadOfflineStore().matches.some((m) => m.clientId === matchId)) return true;
+        await new Promise((r) => setTimeout(r, 400));
+    }
+    return false;
+}
+
 function SkullKingGame() {
     const me = useMe();
     const { players: allPlayers, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const { invalidate: invalidateMatches } = useMatches();
-    const { invalidate: invalidatePlayers } = usePlayers();
-    const { submitMatch, offline } = useOffline();
+    const { submitMatch } = useOffline();
     const router = useRouter();
 
     // Table session + game state with the strict host/connected-player policy
@@ -475,18 +490,12 @@ function SkullKingGame() {
                 calculator_kind: CALCULATOR_KIND,
                 calculator_data: skToStorage(gameState) as unknown as Record<string, never>,
             });
-            // The match was either saved on the server or queued offline; either way
-            // its id is final. The view page shows the pending or saved card by id.
-            if (!offline) {
-                invalidateMatches();
-                invalidatePlayers();
-                // Delete server table if in table mode. Pass the saved match id so
-                // the backend can broadcast a "saved" event to connected players
-                // before tearing down the table (online path only — offline queued
-                // matches have no server table yet).
-                if (tableSession?.tableId) {
-                    try { await deleteSkullKingTablePromise(tableSession.tableId, result.id); } catch { /* ignore */ }
-                }
+            // The match is queued under its final id; the lists refresh when the
+            // sync lands it. In table mode, teardown must wait until the match
+            // actually exists on the server: DeleteTable broadcasts its id to the
+            // connected players, who open the saved match right away.
+            if (tableSession?.tableId && (await waitForSyncedMatch(result.id))) {
+                try { await deleteSkullKingTablePromise(tableSession.tableId, result.id); } catch { /* ignore */ }
             }
             resetTableSession();
             router.push(`/matches/view?id=${result.id}`);
