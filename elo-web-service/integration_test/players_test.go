@@ -112,6 +112,9 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
+	// Auth /me: raw gin handlers on the oauth2 handler, mirroring main.go.
+	r.GET("/auth/me", o.DeserializeUser(), o.GetMe)
+	r.PATCH("/auth/me", o.DeserializeUser(), o.PatchMe)
 	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
 	// and the resolved-market outcome id).
 	r.GET("/markets", strictWrapper.ListMarkets)

@@ -49,8 +49,10 @@ func (a *OAUTH2) PatchMe(ctx *gin.Context) {
 		return
 	}
 
+	// Typed field: id.ID's UnmarshalJSON decodes the Base58 wire form (ADR-12);
+	// JSON null unmarshals to a nil pointer (unlink).
 	var body struct {
-		PlayerID *string `json:"player_id"`
+		PlayerID *api.Base58ID `json:"player_id"`
 	}
 	if err := ctx.BindJSON(&body); err != nil {
 		api.ErrorResponse(ctx, http.StatusBadRequest, err)
@@ -58,9 +60,8 @@ func (a *OAUTH2) PatchMe(ctx *gin.Context) {
 	}
 
 	var playerID *id.ID
-	if body.PlayerID != nil {
-		v := id.ID(*body.PlayerID)
-		playerID = &v
+	if body.PlayerID != nil && *body.PlayerID != "" {
+		playerID = body.PlayerID
 	}
 
 	if err := a.UserService.SetUserPlayer(ctx.Request.Context(), userID, playerID); err != nil {
