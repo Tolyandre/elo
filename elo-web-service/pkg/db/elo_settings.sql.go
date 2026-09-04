@@ -70,7 +70,7 @@ SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
        newbie_league_goal_gap,
        starting_rating_global_arena, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months,
-       market_default_liquidity_b
+       market_default_max_guarantor_loss
 FROM elo_settings
 WHERE effective_date <= $1
 ORDER BY effective_date DESC
@@ -78,19 +78,19 @@ LIMIT 1
 `
 
 type GetEloSettingsForDateRow struct {
-	EloConstK                 float64 `json:"elo_const_k"`
-	EloConstD                 float64 `json:"elo_const_d"`
-	StartingElo               float64 `json:"starting_elo"`
-	WinReward                 float64 `json:"win_reward"`
-	NewbieLeagueEarnedMin     float64 `json:"newbie_league_earned_min"`
-	NewbieLeagueEarnedMax     float64 `json:"newbie_league_earned_max"`
-	NewbieLeagueEarnedTau     float64 `json:"newbie_league_earned_tau"`
-	NewbieLeagueGoalGap       float64 `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64 `json:"starting_rating_global_arena"`
-	StartingRatingGameArena   float64 `json:"starting_rating_game_arena"`
-	EliteLeagueMatches6months int32   `json:"elite_league_matches_6months"`
-	EliteLeagueMatches2months int32   `json:"elite_league_matches_2months"`
-	MarketDefaultLiquidityB   float64 `json:"market_default_liquidity_b"`
+	EloConstK                     float64 `json:"elo_const_k"`
+	EloConstD                     float64 `json:"elo_const_d"`
+	StartingElo                   float64 `json:"starting_elo"`
+	WinReward                     float64 `json:"win_reward"`
+	NewbieLeagueEarnedMin         float64 `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax         float64 `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau         float64 `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap           float64 `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena     float64 `json:"starting_rating_global_arena"`
+	StartingRatingGameArena       float64 `json:"starting_rating_game_arena"`
+	EliteLeagueMatches6months     int32   `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months     int32   `json:"elite_league_matches_2months"`
+	MarketDefaultMaxGuarantorLoss float64 `json:"market_default_max_guarantor_loss"`
 }
 
 func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtype.Timestamptz) (GetEloSettingsForDateRow, error) {
@@ -109,7 +109,7 @@ func (q *Queries) GetEloSettingsForDate(ctx context.Context, effectiveDate pgtyp
 		&i.StartingRatingGameArena,
 		&i.EliteLeagueMatches6months,
 		&i.EliteLeagueMatches2months,
-		&i.MarketDefaultLiquidityB,
+		&i.MarketDefaultMaxGuarantorLoss,
 	)
 	return i, err
 }

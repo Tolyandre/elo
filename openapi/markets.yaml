@@ -95,7 +95,7 @@ MarketsCollection:
                 format: double
                 minimum: 0
                 exclusiveMinimum: true
-                description: LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
+                description: LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
             required: [market_type, closes_at, id]
     responses:
       "201":

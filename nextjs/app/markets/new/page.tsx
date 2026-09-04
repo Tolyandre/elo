@@ -22,6 +22,8 @@ import { GameMultiSelect } from "@/components/game-multi-select";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
+import { DEFAULT_MAX_GUARANTOR_LOSS, bFromRisk, outcomeCount } from "./liquidity";
+import { matchWinnerFormIssue } from "./validation";
 
 
 const STORAGE_KEYS = [
@@ -37,7 +39,7 @@ const STORAGE_KEYS = [
     "new-market/winsRequired",
     "new-market/maxLosses",
     "new-market/guarantorIDs",
-    "new-market/liquidityB",
+    "new-market/maxGuarantorLoss",
 ] as const;
 
 export default function NewMarketPage() {
@@ -64,9 +66,19 @@ export default function NewMarketPage() {
         "new-market/guarantorIDs",
         me.playerId ? [me.playerId] : ([] as Base58ID[]),
     );
-    // LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n
-    // outcomes).
-    const [liquidityB, setLiquidityB] = useSessionStorage("new-market/liquidityB", "16");
+    // The form asks for the guarantors' worst-case combined loss L; the LMSR
+    // parameter is derived as b = L/ln(n) — see liquidity.ts.
+    const [maxGuarantorLoss, setMaxGuarantorLoss] = useSessionStorage(
+        "new-market/maxGuarantorLoss",
+        String(DEFAULT_MAX_GUARANTOR_LOSS),
+    );
+
+    const outcomeN = outcomeCount(marketType, marketType === "match_winner" ? targetPlayerIDs.length : 0);
+    const derivedB = bFromRisk(parseFloat(maxGuarantorLoss), outcomeN);
+    const formIssue = marketType === "match_winner" ? matchWinnerFormIssue(targetPlayerIDs.length, allowOtherPlayers) : null;
+    // No message for an empty selection — an untouched form stays quiet; the
+    // disabled submit does the talking.
+    const needsPlayers = marketType === "match_winner" && targetPlayerIDs.length === 0;
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -94,9 +106,8 @@ export default function NewMarketPage() {
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
             payload.guarantor_player_ids = guarantorIDs;
-            const lb = parseFloat(liquidityB);
-            if (!isNaN(lb) && lb > 0) {
-                payload.liquidity_b = lb;
+            if (derivedB !== null) {
+                payload.liquidity_b = derivedB;
             }
             await createMarketPromise(payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
@@ -111,6 +122,8 @@ export default function NewMarketPage() {
     function buildPreviewMarket(): Market {
         const startsAtISO = startsAtMode === "specific" && startsAt ? new Date(startsAt).toISOString() : new Date().toISOString();
         const closesAtISO = closesAt ? new Date(closesAt).toISOString() : null;
+        // Falls back to the server-side default risk when the field is empty.
+        const previewB = derivedB ?? bFromRisk(DEFAULT_MAX_GUARANTOR_LOSS, outcomeN) ?? 16;
         if (marketType === "match_winner") {
             // Preview outcomes: one per target plus "other", uniform prices.
             const n = targetPlayerIDs.length + 1;
@@ -119,10 +132,10 @@ export default function NewMarketPage() {
                 id: "" as Base58ID, market_type: marketType, status: "open",
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
-                liquidity_b: parseFloat(liquidityB) || 16,
+                liquidity_b: previewB,
                 outcomes: [
                     ...targetPlayerIDs.map((id) => ({
-                        id: `preview:` as Base58ID, kind: "player" as const, player_id: id, name: "",
+                        id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
                         price, shares: 0, pool: 0,
                     })),
                     { id: "preview:other" as Base58ID, kind: "other" as const, player_id: null, name: "Ничья", price, shares: 0, pool: 0 },
@@ -134,7 +147,7 @@ export default function NewMarketPage() {
             id: "" as Base58ID, market_type: marketType, status: "open",
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
-            liquidity_b: parseFloat(liquidityB) || 16,
+            liquidity_b: previewB,
             outcomes: [
                 { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", price: 0.5, shares: 0, pool: 0 },
                 { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", price: 0.5, shares: 0, pool: 0 },
@@ -233,6 +246,7 @@ export default function NewMarketPage() {
                                     ? "Ничья и победа другого игрока разрешаются исходом «Ничья»."
                                     : "Ничья разрешаются исходом «Ничья»."}
                             </p>
+                            {formIssue && <p className="text-xs text-destructive">{formIssue}</p>}
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
@@ -289,24 +303,29 @@ export default function NewMarketPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                    <Label htmlFor="liquidity_b">Ликвидность (b)</Label>
+                    <Label htmlFor="max_guarantor_loss">Макс. убыток поручителей (L)</Label>
                     <input
-                        id="liquidity_b"
+                        id="max_guarantor_loss"
                         type="number"
-                        min={0.001}
+                        min={1}
                         step="any"
                         className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                        value={liquidityB}
-                        onChange={e => setLiquidityB(e.target.value)}
+                        value={maxGuarantorLoss}
+                        onChange={e => setMaxGuarantorLoss(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                        Параметр маркет-мейкера: больше b — менее резкое изменение цен и больше максимальный убыток поручителей (b·ln n, где n — количество исходов рынка).
+                        Капитализация рынка и предел суммарного риска поручителей: при разрешении рынка они
+                        теряют не больше этой суммы, даже если все ставки сыграют против них.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                        Ликвидность зависит от капитализации и числа исходов: b = L/ln(n){derivedB !== null ? ` ≈ ${derivedB.toFixed(1)}` : ""}
+                        {targetPlayerIDs.length > 0 && outcomeN > 2 ? " — добавление игроков снижает b, цены двигаются живее" : ""}
                     </p>
                 </div>
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
-                <Button type="submit" disabled={submitting || !canEdit} className="w-full">
+                <Button type="submit" disabled={submitting || !canEdit || formIssue !== null || needsPlayers} className="w-full">
                     {submitting ? "Создание..." : "Создать"}
                 </Button>
             </form>

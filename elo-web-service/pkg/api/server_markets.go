@@ -572,6 +572,11 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 				targets = append(targets, v)
 			}
 		}
+		// A single named player without the shared "other" winner leaves a
+		// degenerate market: any other player's win would resolve nothing.
+		if len(targets) == 1 && !*body.AllowOtherPlayers {
+			return CreateMarket400JSONResponse{Status: "fail", Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
+		}
 		var gameIDs []id.ID
 		if body.GameIds != nil {
 			gameIDs = *body.GameIds

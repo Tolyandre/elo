@@ -23,7 +23,7 @@ type CreateMarketParams struct {
 	CreatedBy  id.ID
 
 	// Fixed-odds / LMSR fields.
-	LiquidityB         float64 // <=0 ⇒ resolved from elo_settings.market_default_liquidity_b
+	LiquidityB         float64 // <=0 ⇒ derived from elo_settings.market_default_max_guarantor_loss as b = L/ln(n)
 	GuarantorPlayerIDs []id.ID // players who absorb the market's settlement residual
 
 	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
@@ -185,6 +185,22 @@ func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID id.I
 	return PriceHistory(bets, outcomeIDs, market.LiquidityB), nil
 }
 
+// defaultMarketMaxGuarantorLoss mirrors elo_settings.market_default_max_guarantor_loss
+// (DEFAULT 16) and covers degenerate settings rows.
+const defaultMarketMaxGuarantorLoss = 16
+
+// marketOutcomeCount returns the number of LMSR outcomes the market will get:
+// one per target player plus the shared "other" outcome for match_winner, the
+// Да/Нет pair for win_streak. Never below 2 so ln(n) stays positive.
+func marketOutcomeCount(params CreateMarketParams) int {
+	if params.MarketType == "match_winner" && params.MatchWinner != nil {
+		if n := len(params.MatchWinner.TargetPlayerIDs) + 1; n > 2 {
+			return n
+		}
+	}
+	return 2
+}
+
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
 	handler, ok := marketTypeHandlers[params.MarketType]
 	if !ok {
@@ -197,18 +213,20 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		return db.Market{}, ErrMarketNeedsGuarantor
 	}
 
-	// Resolve the LMSR liquidity parameter: use the caller's value, else the
-	// configured default. b must be > 0 (it bounds guarantor loss at b·ln 2).
+	// Resolve the LMSR liquidity parameter: use the caller's value, else derive
+	// it from the configured default max guarantor loss — b·ln(n) bounds the
+	// guarantors' combined worst-case loss for n outcomes (see amm.go).
 	liquidityB := params.LiquidityB
 	if liquidityB <= 0 {
 		settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: params.StartsAt, Valid: true})
 		if err != nil {
 			return db.Market{}, fmt.Errorf("get elo settings for default liquidity: %w", err)
 		}
-		liquidityB = settingsRow.MarketDefaultLiquidityB
-		if liquidityB <= 0 {
-			liquidityB = 100
+		loss := settingsRow.MarketDefaultMaxGuarantorLoss
+		if loss <= 0 {
+			loss = defaultMarketMaxGuarantorLoss
 		}
+		liquidityB = loss / math.Log(float64(marketOutcomeCount(params)))
 	}
 
 	tx, err := s.Pool.Begin(ctx)

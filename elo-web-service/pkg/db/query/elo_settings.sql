@@ -4,7 +4,7 @@ SELECT elo_const_k, elo_const_d, starting_elo, win_reward,
        newbie_league_goal_gap,
        starting_rating_global_arena, starting_rating_game_arena,
        elite_league_matches_6months, elite_league_matches_2months,
-       market_default_liquidity_b
+       market_default_max_guarantor_loss
 FROM elo_settings
 WHERE effective_date <= $1
 ORDER BY effective_date DESC

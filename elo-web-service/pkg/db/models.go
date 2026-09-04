@@ -50,20 +50,20 @@ type Correction struct {
 }
 
 type EloSetting struct {
-	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
-	EloConstK                 float64            `json:"elo_const_k"`
-	EloConstD                 float64            `json:"elo_const_d"`
-	StartingElo               float64            `json:"starting_elo"`
-	WinReward                 float64            `json:"win_reward"`
-	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
-	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
-	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
-	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
-	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
-	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
-	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
-	MarketDefaultLiquidityB   float64            `json:"market_default_liquidity_b"`
+	EffectiveDate                 pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                     float64            `json:"elo_const_k"`
+	EloConstD                     float64            `json:"elo_const_d"`
+	StartingElo                   float64            `json:"starting_elo"`
+	WinReward                     float64            `json:"win_reward"`
+	EliteLeagueMatches6months     int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months     int32              `json:"elite_league_matches_2months"`
+	NewbieLeagueEarnedMin         float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax         float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau         float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap           float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena     float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena       float64            `json:"starting_rating_game_arena"`
+	MarketDefaultMaxGuarantorLoss float64            `json:"market_default_max_guarantor_loss"`
 }
 
 type Game struct {

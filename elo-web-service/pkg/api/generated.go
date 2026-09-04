@@ -1200,7 +1200,7 @@ type CreateMarketJSONBody struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
+	// LiquidityB LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
 	LiquidityB *float64                       `json:"liquidity_b,omitempty"`
 	MarketType CreateMarketJSONBodyMarketType `json:"market_type"`
 	MaxLosses  *int                           `json:"max_losses,omitempty"`

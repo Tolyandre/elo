@@ -1120,7 +1120,9 @@ export interface components {
                 player_id: components["schemas"]["Base58ID"];
                 /** @enum {string} */
                 change: "added" | "removed" | "score";
+                /** Format: double */
                 old_score?: number | null;
+                /** Format: double */
                 new_score?: number | null;
             }[];
             calculator_changed: boolean;
@@ -3049,7 +3051,7 @@ export interface operations {
                     guarantor_player_ids?: components["schemas"]["Base58ID"][];
                     /**
                      * Format: double
-                     * @description LMSR liquidity parameter; defaults to elo_settings.market_default_liquidity_b when omitted.
+                     * @description LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
                      */
                     liquidity_b?: number;
                 };
