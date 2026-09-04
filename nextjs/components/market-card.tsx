@@ -13,11 +13,7 @@ import {
 import { Market, MarketOutcome, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    ChartContainer,
-    ChartTooltip,
-    ChartTooltipContent,
-} from "@/components/ui/chart";
+import { ChartContainer } from "@/components/ui/chart";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle, outcomeDisplayName } from "@/app/market/marketTypes";
@@ -41,21 +37,6 @@ export function statusVariant(market: Market): "default" | "secondary" | "destru
     return "default";
 }
 
-// payoutMultiplier returns the display coefficient for an outcome price: 1/price,
-// i.e. how much a win returns per 1 elo of buying cost (each winning share pays 1).
-// Returns null when the price is not usable (defensive — LMSR prices are in (0,1)).
-function payoutMultiplier(price: number): number | null {
-    if (!Number.isFinite(price) || price <= 0) return null;
-    return 1 / price;
-}
-
-// formatShares renders share counts without decimals when they are whole
-// numbers (live LMSR buys are always whole shares; fractional values only
-// exist for backfilled historical data).
-function formatShares(v: number): string {
-    return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
-}
-
 // OutcomeDonut renders the live probability split as a circle graph: one
 // segment per outcome, sized by its LMSR price (the segments sum to 100%).
 function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOutcome) => string }) {
@@ -74,26 +55,6 @@ function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOu
                 config={Object.fromEntries(data.map((d) => [d.id, { label: d.name, color: d.color }]))}
             >
                 <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                    <ChartTooltip
-                        content={(props) => (
-                            <ChartTooltipContent
-                                active={props.active}
-                                payload={props.payload}
-                                label={props.label}
-                                coordinate={props.coordinate}
-                                accessibilityLayer={props.accessibilityLayer}
-                                activeIndex={props.activeIndex}
-                                formatter={(value, _name, item) => (
-                                    <>
-                                        <span style={{ color: item.color }}>{item.payload?.name}</span>
-                                        <span className="font-mono font-medium tabular-nums" style={{ color: item.color }}>
-                                            {Number(value).toFixed(0)}%
-                                        </span>
-                                    </>
-                                )}
-                            />
-                        )}
-                    />
                     <Pie
                         data={data}
                         dataKey="value"
@@ -112,24 +73,15 @@ function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOu
                 </PieChart>
             </ChartContainer>
             <div className="flex-1 min-w-0 space-y-1.5">
-                {data.map((d, i) => {
-                    const o = market.outcomes[i];
-                    const mult = payoutMultiplier(o.price);
-                    return (
-                        <div key={d.id} className="text-xs leading-tight">
-                            <div className="flex items-center gap-1.5">
-                                <span className="inline-block size-2 rounded-full shrink-0" style={{ background: d.color }} />
-                                <span className="font-medium truncate">{d.name}</span>
-                                <span className="text-muted-foreground  flex gap-2"> {mult != null && <span>×{mult.toFixed(1)}</span>}</span>
-                                <span className="ml-auto font-mono tabular-nums text-muted-foreground shrink-0">{Math.round(d.value)}%</span>
-                            </div>
-                            <div className="text-muted-foreground pl-3.5 flex gap-2">
-                                {/* <span>Голоса: {formatShares(o.shares)}</span>
-                                <span>Потрачено: {o.pool.toFixed(1)}</span> */}
-                            </div>
+                {data.map((d) => (
+                    <div key={d.id} className="text-xs leading-tight">
+                        <div className="flex items-center gap-1.5">
+                            <span className="inline-block size-2 rounded-full shrink-0" style={{ background: d.color }} />
+                            <span className="font-medium truncate">{d.name}</span>
+                            <span className="ml-auto font-mono tabular-nums text-muted-foreground shrink-0">{Math.round(d.value)}%</span>
                         </div>
-                    );
-                })}
+                    </div>
+                ))}
             </div>
         </div>
     );
@@ -189,32 +141,6 @@ function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; o
                     width={34}
                     tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
                     stroke="var(--muted-foreground)"
-                />
-                <ChartTooltip 
-                    content={(props) => (
-                        <ChartTooltipContent
-                            active={props.active}
-                            payload={props.payload}
-                            label={props.label}
-                            coordinate={props.coordinate}
-                            accessibilityLayer={props.accessibilityLayer}
-                            activeIndex={props.activeIndex}
-                            // The built-in label resolves to a config label, so
-                            // read the bet timestamp off the payload datum.
-                            labelFormatter={(_, payload) =>
-                                formatDateTime(new Date(Number(payload?.[0]?.payload?.time)))}
-                            formatter={(value, name) => (
-                                <>
-                                    <span style={{ color: colors.get(String(name)) }}>
-                                        {outcomes.find((o) => o.id === name) ? nameOf(outcomes.find((o) => o.id === String(name))!) : String(name)}
-                                    </span>
-                                    <span className="font-mono font-medium tabular-nums" style={{ color: colors.get(String(name)) }}>
-                                        {(Number(value) * 100).toFixed(1)}%
-                                    </span>
-                                </>
-                            )}
-                        />
-                    )}
                 />
                 {outcomes.map((o) => (
                     <Line
@@ -296,9 +222,13 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base">{title}</CardTitle>
-                    <Badge variant={statusVariant(market)} className="shrink-0">
-                        {statusLabel(market, resolutionOutcomeName)}
-                    </Badge>
+                    {/* Open is the unremarkable default — only final/intermediate
+                        statuses get a badge. */}
+                    {!isOpen && (
+                        <Badge variant={statusVariant(market)} className="shrink-0">
+                            {statusLabel(market, resolutionOutcomeName)}
+                        </Badge>
+                    )}
                 </div>
                 {date && (
                     <p className="text-sm text-muted-foreground">{dateLabel}: {date}</p>

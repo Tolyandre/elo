@@ -654,14 +654,15 @@ export async function getMarketsByMatchIdPromise(matchId: Base58ID): Promise<Mar
     }))).data ?? [];
 }
 
-export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, expectedPrice: number): Promise<{ shares: number; price: number }> {
-    // Shares-driven buy (ADR-10): the UI always buys a single share of the
-    // outcome; the AMM prices the elo cost. expectedPrice is the price the user
-    // saw — the server rejects the bet (409) if the live price has moved beyond
-    // a tolerance.
+export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, expectedPrice: number, shares = 1): Promise<{ shares: number; price: number }> {
+    // Shares-driven buy (ADR-10): the AMM prices the elo cost of `shares`
+    // (default one share; the fixed-amount mode inverts the LMSR cost client
+    // side to get the share count for its amount). expectedPrice is the price
+    // the user saw — the server rejects the bet (409) if the live price has
+    // moved beyond a tolerance.
     const res = await unwrap(client.POST("/markets/{id}/bets", {
         params: { path: { id: marketId } },
-        body: { id: newId(), outcome_id: outcomeId, shares: 1, expected_price: expectedPrice },
+        body: { id: newId(), outcome_id: outcomeId, shares, expected_price: expectedPrice },
     }));
     return { shares: res.data.shares, price: res.data.price };
 }

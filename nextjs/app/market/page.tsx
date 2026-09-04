@@ -1,6 +1,5 @@
 "use client"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import type { Base58ID } from "@/lib/id";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
@@ -16,9 +15,14 @@ import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ResolutionDescription } from "@/components/resolution-description";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketPricesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/market/marketTypes";
+import { outcomeColors } from "@/app/market/outcomeColors";
+import { payoutMultiplier, sharesForAmount } from "@/app/market/lmsr";
+import { formatAmount } from "@/app/market/format";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ChartPricePoint, mergePriceHistory } from "@/app/market/priceHistory";
 
@@ -65,16 +69,16 @@ function ProjectedOutcome({ market, nameOf }: { market: MarketDetail; nameOf: (o
     );
 }
 
-// formatShares renders share counts without decimals when they are whole
-// numbers (new buys are always whole shares; fractional shares only exist in
-// backfilled historical data).
-function formatShares(v: number): string {
-    return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : v.toFixed(1);
-}
+// Buy modes: "share" buys exactly one voice at the current LMSR price;
+// "amount" stakes a fixed 1 elo and buys however many voices that costs
+// (the share count comes from inverting the LMSR cost client side).
+type BuyMode = "share" | "amount";
 
 function OutcomeColumn({
     label,
+    titleColor,
     price,
+    buyMode,
     myStaked,
     myShares,
     canBuy,
@@ -83,7 +87,9 @@ function OutcomeColumn({
     isWinner,
 }: {
     label: string;
+    titleColor?: string;
     price: number;
+    buyMode: BuyMode;
     myStaked?: number;
     myShares?: number;
     canBuy: boolean;
@@ -91,23 +97,26 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
+    const mult = payoutMultiplier(price);
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
             <div className="text-center min-w-0">
-                <h3 className="font-semibold text-lg truncate" title={label}>{isWinner ? "✓ " : ""}{label}</h3>
-                <p className="text-2xl font-bold leading-tight">{price.toFixed(2)}</p>
+                <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
+                <p className="text-2xl font-bold leading-tight">
+                    {buyMode === "amount" && mult != null ? `×${mult.toFixed(2)}` : price.toFixed(2)}
+                </p>
             </div>
             <div className="text-sm space-y-1">
                 {myShares !== undefined && myShares > 0 && (
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Куплено голосов:</span>
-                        <span>{formatShares(myShares)}</span>
+                        <span>{formatAmount(myShares)}</span>
                     </div>
                 )}
                 {myStaked !== undefined && myStaked > 0 && (
                     <div className="flex justify-between">
                         <span className="text-muted-foreground">Потрачено:</span>
-                        <span>{myStaked.toFixed(2)}</span>
+                        <span>{formatAmount(myStaked)}</span>
                     </div>
                 )}
             </div>
@@ -118,7 +127,7 @@ function OutcomeColumn({
                     onClick={onBuy}
                     disabled={!canBuy || buying}
                 >
-                    {buying ? "..." : "Купить"}
+                    {buying ? "..." : buyMode === "amount" ? "Поставить 1" : "Голосовать"}
                 </Button>
             )}
         </div>
@@ -165,6 +174,8 @@ function MarketPageContent() {
     );
 
     const [buyingOutcome, setBuyingOutcome] = useState<string | null>(null);
+    // The buy mode is a view preference — keep the user's choice across markets.
+    const [buyMode, setBuyMode] = useLocalStorage<BuyMode>("market-buy-mode", "share");
 
     const nameOf = useMemo(
         () => (o: MarketOutcome) => outcomeDisplayName(o, players, playerDisplayName),
@@ -203,14 +214,27 @@ function MarketPageContent() {
             ? "Привяжите игрока в Настройках"
             : "";
 
-    // Shares-driven buy (ADR-10): each purchase buys exactly 1 share of the
-    // outcome; the AMM prices the elo cost (≈ the current price shown on the
-    // column). The displayed price is sent along so the server can reject the
-    // buy if it has moved (409); on failure we refresh.
-    async function handleBuy(outcomeId: Base58ID, expectedPrice: number) {
-        setBuyingOutcome(outcomeId);
+    // Shares-driven buy (ADR-10): the AMM prices the elo cost. In the share
+    // mode each purchase buys exactly 1 share; in the amount mode the LMSR
+    // cost is inverted client side to buy as many shares as 1 elo buys (LMSR
+    // is path-independent, so both modes pay the same price per share). The
+    // displayed price is sent along so the server can reject the buy if it
+    // has moved (409); the spend limit is enforced server side (422); on
+    // failure we refresh.
+    async function handleBuy(outcome: MarketOutcome) {
+        setBuyingOutcome(outcome.id);
         try {
-            await placeBetPromise(id!, outcomeId, expectedPrice);
+            let shares = 1;
+            if (buyMode === "amount") {
+                const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
+                shares = sharesForAmount(
+                    displayMarket.outcomes.map((o) => o.shares),
+                    displayMarket.liquidity_b,
+                    idx,
+                    1,
+                );
+            }
+            await placeBetPromise(id!, outcome.id, outcome.price, shares);
             invalidate();
             invalidateHistory();
         } catch {
@@ -221,6 +245,9 @@ function MarketPageContent() {
         }
     }
 
+    // Pair the outcome titles with their chart colors, the same way the
+    // resolution description rows pair with the donut/price lines.
+    const colors = outcomeColors(displayMarket.outcomes);
     const stakedByOutcome = new Map((displayMarket.my_positions ?? []).map((p) => [p.outcome_id, p.staked]));
     const sharesOwnedByOutcome = new Map((displayMarket.my_positions ?? []).map((p) => [p.outcome_id, p.shares]));
     const resolvedOutcome = displayMarket.status === "resolved" ? displayMarket.resolution_outcome_id : null;
@@ -241,16 +268,29 @@ function MarketPageContent() {
                 </p>
             )}
 
+            <p className="text-sm text-muted-foreground text-center">
+                Каждый голос за сбывшийся исход принесёт 1 рейтинг.
+            </p>
+
+            <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
+                <TabsList className="grid grid-cols-2 w-full">
+                    <TabsTrigger value="share">По цене голоса</TabsTrigger>
+                    <TabsTrigger value="amount">Фиксированная ставка</TabsTrigger>
+                </TabsList>
+            </Tabs>
+
             <div className="grid grid-cols-2 gap-3">
                 {displayMarket.outcomes.map((o) => (
                     <OutcomeColumn
                         key={o.id}
                         label={nameOf(o)}
+                        titleColor={colors.get(o.id)}
                         price={o.price}
+                        buyMode={buyMode}
                         myStaked={stakedByOutcome.get(o.id)}
                         myShares={sharesOwnedByOutcome.get(o.id)}
                         canBuy={canBuy}
-                        onBuy={isOpen ? () => handleBuy(o.id, o.price) : undefined}
+                        onBuy={isOpen ? () => handleBuy(o) : undefined}
                         buying={buyingOutcome === o.id}
                         isWinner={resolvedOutcome != null && resolvedOutcome === o.id}
                     />
@@ -265,7 +305,7 @@ function MarketPageContent() {
 
             {isOpen && reserved != null && betLimit != null && (
                 <p className="text-sm text-muted-foreground text-center">
-                    Потрачено на {reserved.toFixed(1)} из лимита {betLimit.toFixed(1)}
+                    Потрачено на {formatAmount(reserved)} из лимита {formatAmount(betLimit)}
                 </p>
             )}
 
