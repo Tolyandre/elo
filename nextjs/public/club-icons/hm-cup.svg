@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Steam wisps -->
+  <g stroke="#F49B00" stroke-width="7" stroke-linecap="round" fill="none">
+    <path d="M32 15 V6"/>
+    <path d="M52 15 V6"/>
+  </g>
+  <!-- Handle: explicit C-shaped ear with a hole (painted first so the body overlaps the joint) -->
+  <path d="M72 38 a16 16 0 0 1 0 30" fill="none" stroke="#F49B00" stroke-width="10"/>
+  <!-- Cup body: straight sides, round bottom, like the Good plays cups -->
+  <path d="M10 28 H74 V54 A32 32 0 0 1 10 54 Z" fill="#F49B00"/>
+  <ellipse cx="42" cy="28" rx="32" ry="8" fill="#FFFFFF"/>
+  <!-- ХМ in heavy green strokes: legible even at 16 px next to a player name -->
+  <g stroke="#005726" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M21 42 L35 70"/>
+    <path d="M35 42 L21 70"/>
+    <path d="M43 70 V42 L53 57 L63 42 V70"/>
+  </g>
+</svg>

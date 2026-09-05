@@ -13,6 +13,8 @@
 export const CLUB_ICONS = [
     { key: "blue-figure", label: "Синяя фигура" },
     { key: "clover", label: "Клевер" },
+    { key: "hm", label: "Хорошее Место" },
+    { key: "hm-cup", label: "Хорошее Место (чашка)" },
     { key: "tbonk", label: "Тбонк" },
 ] as const;
 
