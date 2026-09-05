@@ -3,8 +3,8 @@ import React from "react";
 import { Market } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
-import { getMarketResolutionDescription } from "@/app/market/marketTypes";
-import { outcomeColors } from "@/app/market/outcomeColors";
+import { getMarketResolutionDescription } from "@/app/markets/marketTypes";
+import { outcomeColors } from "@/app/markets/outcomeColors";
 
 export function ResolutionDescription({ market }: { market: Market }) {
     const { players, playerDisplayName } = usePlayers();

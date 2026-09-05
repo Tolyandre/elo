@@ -25,7 +25,7 @@ export default function TournamentsPage() {
                 <div className="space-y-2">
                     {tournaments.map((t) => (
                         <div key={t.id} className="border rounded p-3 flex items-center justify-between gap-2">
-                            <Link href={`/tournament?id=${t.id}`} className="font-medium underline">
+                            <Link href={`/tournaments/view?id=${t.id}`} className="font-medium underline">
                                 {t.name}
                             </Link>
                             {canEdit && (

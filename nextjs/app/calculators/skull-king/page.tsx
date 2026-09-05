@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SkullKingCalculator } from "@/app/game/skull-king-calculator"
+import { SkullKingCalculator } from "@/app/games/skull-king-calculator"
 import { PageHeader } from "@/app/pageHeaderContext"
 
 export const metadata: Metadata = {

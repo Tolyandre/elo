@@ -61,7 +61,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
       <CardHeader>
         <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
           <Link
-            href={`/game?id=${match.game_id}`}
+            href={`/games/view?id=${match.game_id}`}
             className="underline"
             onClick={(e) => clickable && e.stopPropagation()}
           >

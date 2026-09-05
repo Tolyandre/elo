@@ -8,6 +8,7 @@ import { useClubs } from "@/app/clubsContext";
 import { ClubIcon } from "@/components/club-icon";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/back-button";
 
 export default function ClubsAdminPage() {
     const { canEdit } = useMe();
@@ -34,9 +35,7 @@ export default function ClubsAdminPage() {
     return (
         <main className="p-4">
             <PageHeader title="Управление клубами" />
-            <div className="mb-4">
-                <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
-            </div>
+            <BackButton href="/admin" />
 
             <AdminPageTabs entityType="club" mainLabel="Клубы">
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
@@ -64,7 +63,7 @@ export default function ClubsAdminPage() {
                         {sortedClubs.map((club) => (
                             <div key={club.id} className="border rounded p-3 flex items-center gap-2">
                                 <ClubIcon club={club} />
-                                <Link href={`/admin/club?id=${club.id}`} className="font-medium underline">
+                                <Link href={`/admin/clubs/edit?id=${club.id}`} className="font-medium underline">
                                     {clubDisplayName(club)}
                                 </Link>
                                 <span className="text-sm text-muted-foreground">

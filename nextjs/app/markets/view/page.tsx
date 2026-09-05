@@ -15,16 +15,17 @@ import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ResolutionDescription } from "@/components/resolution-description";
+import { BackButton } from "@/components/back-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketPricesSSE } from "@/hooks/useMarketsSSE";
-import { outcomeDisplayName } from "@/app/market/marketTypes";
-import { outcomeColors } from "@/app/market/outcomeColors";
-import { sharesForAmount } from "@/app/market/lmsr";
-import { formatAmount } from "@/app/market/format";
+import { outcomeDisplayName } from "@/app/markets/marketTypes";
+import { outcomeColors } from "@/app/markets/outcomeColors";
+import { sharesForAmount } from "@/app/markets/lmsr";
+import { formatAmount } from "@/app/markets/format";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { ChartPricePoint, mergePriceHistory } from "@/app/market/priceHistory";
+import { ChartPricePoint, mergePriceHistory } from "@/app/markets/priceHistory";
 
 function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: number; earned: number; totalStaked: number }) {
     const positive = net >= 0;
@@ -119,7 +120,7 @@ function OutcomeColumn({
                 )}
                 {myStaked !== undefined && myStaked > 0 && (
                     <div className="flex justify-between">
-                        <span className="text-muted-foreground">Потрачено:</span>
+                        <span className="text-muted-foreground">Поставлено:</span>
                         <span>{formatAmount(myStaked)}</span>
                     </div>
                 )}
@@ -263,6 +264,7 @@ function MarketPageContent() {
     const betLimit = displayMarket.bet_limit;
     return (
         <main className="max-w-sm mx-auto space-y-4">
+            <BackButton href="/markets" label="Назад к ставкам" />
             <PageHeader title="Ставки" />
             <MarketCard market={displayMarket} priceHistory={priceHistory} />
 
@@ -313,7 +315,7 @@ function MarketPageContent() {
 
             {isOpen && reserved != null && betLimit != null && (
                 <p className="text-sm text-muted-foreground text-center">
-                    Потрачено на {formatAmount(reserved)} из лимита {formatAmount(betLimit)}
+                    Поставлено {formatAmount(reserved)} из лимита {formatAmount(betLimit)}
                 </p>
             )}
 

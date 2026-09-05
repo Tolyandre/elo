@@ -1,6 +1,5 @@
 "use client"
 import React from "react";
-import Link from "next/link";
 import { Market, getMarketsPromise, deleteMarketPromise, closeMarketBettingPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
@@ -10,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getMarketTitle } from "@/app/market/marketTypes";
+import { getMarketTitle } from "@/app/markets/marketTypes";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { BackButton } from "@/components/back-button";
 
 export default function AdminMarketsPage() {
     const me = useMe();
@@ -34,11 +34,7 @@ export default function AdminMarketsPage() {
     return (
         <main className="p-4 max-w-sm mx-auto space-y-4">
             <PageHeader title="Активные рынки" />
-            <div className="mb-4">
-                <Button variant="link" asChild className="px-0">
-                    <Link href="/admin">Назад</Link>
-                </Button>
-            </div>
+            <BackButton href="/admin" />
 
             {error && <ErrorAlert message={error} />}
             {loading && (

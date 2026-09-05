@@ -1,7 +1,6 @@
 "use client"
 import React, { Suspense, useEffect, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Base58ID, toBase58ID } from "@/lib/id";
 import {
@@ -19,6 +18,7 @@ import { useMe } from "@/app/meContext";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/back-button";
 import { ClubIcons } from "@/components/player-name";
 import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
 import { cn } from "@/lib/utils";
@@ -137,9 +137,7 @@ function ClubAdminContent() {
     return (
         <main className="p-4">
             <PageHeader title={clubDisplayName(club)} />
-            <div className="mb-4">
-                <Link href="/admin/clubs" className="text-sm text-blue-600">Назад</Link>
-            </div>
+            <BackButton href="/admin/clubs" label="Назад к клубам" />
             <p className="text-sm text-muted-foreground mb-4">
                 Удаление клуба возможно только если в нём нет игроков.
             </p>

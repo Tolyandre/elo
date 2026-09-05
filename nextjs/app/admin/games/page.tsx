@@ -13,6 +13,7 @@ import { PendingEntityList } from "@/components/pending-entity-list";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/back-button";
 
 type GameRow = { id: Base58ID; name: string };
 
@@ -61,9 +62,7 @@ export default function GamesAdminPage() {
     return (
         <main className="p-4">
                 <PageHeader title="Управление играми" />
-                <div className="mb-4">
-                    <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
-                </div>
+                <BackButton href="/admin" />
 
             <AdminPageTabs entityType="game" mainLabel="Игры">
             {!meLoading && !isAuthenticated && (

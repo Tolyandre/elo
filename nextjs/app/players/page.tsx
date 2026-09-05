@@ -147,7 +147,7 @@ function PlayerRow({ player, ctx }: { player: Player; ctx: RowContext }) {
             </td>
             <td className="py-2 px-1 w-50">
                 <ClubIcons playerId={player.id} className="mr-1 align-text-bottom" />
-                <Link href={`/player?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
+                <Link href={`/players/view?id=${player.id}`} className={`hover:underline${player.id === myPlayerId ? " bg-blue-100 dark:bg-blue-900/40 rounded px-1" : ""}`}>{playerDisplayName(player)}</Link>
                 {matchesLeftForElite != null && matchesLeftForElite > 0 && (
                     <span className="text-xs text-muted-foreground ml-1">ещё {matchesLeftForElite} партий</span>
                 )}
@@ -292,7 +292,7 @@ function ActiveTournamentLinks() {
     return (
         <div className="flex flex-col gap-1">
             {active.map((t) => (
-                <Link key={t.id} href={`/tournament?id=${t.id}`} className="text-blue-600 underline font-medium">
+                <Link key={t.id} href={`/tournaments/view?id=${t.id}`} className="text-blue-600 underline font-medium">
                     🏕️ {t.name}
                 </Link>
             ))}

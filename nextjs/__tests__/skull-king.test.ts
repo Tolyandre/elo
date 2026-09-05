@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Fraction } from 'mathjs';
 import * as mathjs from 'mathjs';
-import { calculateProbabilities0, calculateProbabilities1 } from '../app/game/skull-king';
+import { calculateProbabilities0, calculateProbabilities1 } from '../app/games/skull-king';
 
 describe('calculateProbabilities1', () => {
     it('sums probabilities to 1 for a suit card', () => {

@@ -16,9 +16,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
-import { getMarketTitle, outcomeDisplayName } from "@/app/market/marketTypes";
-import { outcomeColors } from "@/app/market/outcomeColors";
-import { ChartPricePoint } from "@/app/market/priceHistory";
+import { getMarketTitle, outcomeDisplayName } from "@/app/markets/marketTypes";
+import { outcomeColors } from "@/app/markets/outcomeColors";
+import { ChartPricePoint } from "@/app/markets/priceHistory";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime, formatDayMonth, formatTime } from "@/lib/datetime";
 

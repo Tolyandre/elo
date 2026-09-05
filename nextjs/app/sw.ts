@@ -21,7 +21,7 @@ const serwist = new Serwist({
     disableDevLogs: true,
     precacheOptions: {
         cleanupOutdatedCaches: true,
-        // Pages are exported once per route; query params (/game?id=5) select
+        // Pages are exported once per route; query params (/games/view?id=5) select
         // content client-side, so the precached HTML matches any query.
         ignoreURLParametersMatching: [/.*/],
     },

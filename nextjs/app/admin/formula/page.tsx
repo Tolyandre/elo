@@ -1,7 +1,6 @@
 "use client"
 import React, { useEffect, useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
-import Link from "next/link";
 import {
     EloSettingEntry,
     listAllSettingsPromise,
@@ -10,6 +9,7 @@ import {
 } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -126,11 +126,7 @@ export default function FormulaAdminPage() {
     return (
         <main className="p-4 max-w-3xl">
             <PageHeader title="Настройка формулы Elo" />
-            <div className="mb-6">
-                <Button variant="link" asChild className="px-0">
-                    <Link href="/admin">Назад</Link>
-                </Button>
-            </div>
+            <BackButton href="/admin" />
 
             {loading && <p>Загрузка...</p>}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { sharesForAmount } from '../app/market/lmsr'
-import { formatAmount } from '../app/market/format'
+import { sharesForAmount } from '../app/markets/lmsr'
+import { formatAmount } from '../app/markets/format'
 
 // Independent LMSR cost, mirroring the server's ammCostN (b·ln Σ e^(q_j/b),
 // stabilized with a max-shift log-sum-exp).

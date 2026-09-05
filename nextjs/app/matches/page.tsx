@@ -42,7 +42,7 @@ function MatchWithMarkets({ match, roundToInteger }: { match: Match; roundToInte
       {relatedMarkets.length > 0 && (
         <div className="space-y-3 mt-3">
           {relatedMarkets.map((market) => (
-            <Link key={market.id} href={`/market?id=${market.id}`}>
+            <Link key={market.id} href={`/markets/view?id=${market.id}`}>
               <MarketCard market={market} className="hover:bg-accent transition-colors cursor-pointer" />
             </Link>
           ))}

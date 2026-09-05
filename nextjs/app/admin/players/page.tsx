@@ -13,6 +13,7 @@ import { ClubIcons } from "@/components/player-name";
 import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
+import { BackButton } from "@/components/back-button";
 import {
     Dialog,
     DialogContent,
@@ -132,9 +133,7 @@ export default function PlayersAdminPage() {
     return (
         <main className="p-4">
             <PageHeader title="Управление игроками" />
-            <div className="mb-4">
-                <Link href="/admin" className="text-sm text-blue-600">Назад</Link>
-            </div>
+            <BackButton href="/admin" />
 
             <AdminPageTabs entityType="player" mainLabel="Игроки">
             {!meLoading && !isAuthenticated && (

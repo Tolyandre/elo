@@ -68,12 +68,12 @@ export function TournamentForm({ existing }: { existing?: Tournament }) {
                 await updateTournamentPromise(existing.id, payload);
                 invalidate();
                 toast.success("Турнир обновлён");
-                router.push(`/tournament?id=${existing.id}`);
+                router.push(`/tournaments/view?id=${existing.id}`);
             } else {
                 const created = await createTournamentPromise(payload);
                 invalidate();
                 toast.success("Турнир создан");
-                router.push(`/tournament?id=${created.id}`);
+                router.push(`/tournaments/view?id=${created.id}`);
             }
         } catch (err) {
             // The API helper already shows a toast; surface the message inline too.

@@ -12,12 +12,13 @@ import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise } from "
 import { MarketCard } from "@/components/market-card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Edit2, ArrowLeft, Trash2, ClipboardEdit } from "lucide-react";
+import { AlertCircle, Edit2, Trash2, ClipboardEdit } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { MatchCard } from "@/components/match-card";
 import { MatchAudit } from "@/components/audit/match-audit";
 import { PendingMatchCard } from "@/components/pending-match-card";
+import { BackButton } from "@/components/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
@@ -57,19 +58,6 @@ function MatchViewPageWrapped() {
   return <SavedMatchView matchId={id} />;
 }
 
-function BackButton() {
-  return (
-    <div className="mb-4">
-      <Button asChild variant="outline">
-        <Link href="/matches">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Назад к партиям
-        </Link>
-      </Button>
-    </div>
-  );
-}
-
 function NotFound() {
   return (
     <main className="max-w-sm mx-auto p-4">
@@ -77,14 +65,7 @@ function NotFound() {
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>Партия не найдена</AlertDescription>
       </Alert>
-      <div className="mt-4">
-        <Button asChild variant="outline">
-          <Link href="/matches">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Вернуться к списку партий
-          </Link>
-        </Button>
-      </div>
+      <BackButton href="/matches" label="Вернуться к списку партий" />
     </main>
   );
 }
@@ -166,7 +147,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   return (
     <main className="max-w-sm mx-auto p-4 space-y-4">
-      <BackButton />
+      <BackButton href="/matches" label="Назад к партиям" />
 
       <PageHeader title="Просмотр партии" action={<EditAction id={match.id} viaCalculator={!!match.calculator_kind} />} />
 
@@ -189,7 +170,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
         <div className="space-y-3">
           <h2 className="text-base font-semibold text-muted-foreground">Связанные ставки</h2>
           {relatedMarkets.map((market) => (
-            <Link key={market.id} href={`/market?id=${market.id}`}>
+            <Link key={market.id} href={`/markets/view?id=${market.id}`}>
               <MarketCard market={market} className="hover:bg-accent transition-colors cursor-pointer" />
             </Link>
           ))}
@@ -232,7 +213,7 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
 
   return (
     <main className="max-w-sm mx-auto p-4 space-y-4">
-      <BackButton />
+      <BackButton href="/matches" label="Назад к партиям" />
 
       <PageHeader
         title="Просмотр партии"

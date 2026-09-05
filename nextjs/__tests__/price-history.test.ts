@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergePriceHistory, type ChartPricePoint } from '../app/market/priceHistory'
+import { mergePriceHistory, type ChartPricePoint } from '../app/markets/priceHistory'
 
 function point(t: number, prices: Record<string, number>): ChartPricePoint {
     return { t, prices }

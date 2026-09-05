@@ -14,9 +14,10 @@ import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { BackButton } from "@/components/back-button";
 
 // We cannot use /games/<GAME_ID> path in exported application.
-// So use query parameters instead /game?id=<GAME_ID>
+// So use query parameters instead /games/view?id=<GAME_ID>
 export default function GamePage() {
   return (
     <Suspense>
@@ -87,6 +88,7 @@ function GameWrapped() {
 
   return (
     <main className="max-w-sm mx-auto">
+      <BackButton href="/games" label="Назад к играм" />
       <div className="space-y-4">
         <div className=" max-w-sm">
           <PageHeader title={game?.name ?? ""} />

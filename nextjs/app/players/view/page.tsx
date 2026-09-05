@@ -15,6 +15,7 @@ import { ErrorAlert } from '@/components/error-alert'
 import { RankIcon } from '@/components/rank-icon'
 import { formatDate } from '@/lib/datetime'
 import { useAsyncResource } from '@/hooks/useAsyncResource'
+import { BackButton } from '@/components/back-button'
 
 function formatElo(value: number, roundToInteger: boolean) {
     if (roundToInteger) {
@@ -78,7 +79,6 @@ function MatchesTable({ rows }: { rows: GameMatchStat[] }) {
                                 <tr className="border-b">
                                     <th className="text-left py-2 pr-4 font-medium">Игра</th>
                                     <th className="text-right py-2 pr-4 font-medium">Партии</th>
-                                    <th className="text-right py-2 pr-4 font-medium">Победы</th>
                                     <th className="py-2 px-1"><div className="flex justify-center"><RankIcon rank={1} /></div></th>
                                     <th className="py-2 px-1"><div className="flex justify-center"><RankIcon rank={2} /></div></th>
                                     <th className="py-2 px-1"><div className="flex justify-center"><RankIcon rank={3} /></div></th>
@@ -89,7 +89,6 @@ function MatchesTable({ rows }: { rows: GameMatchStat[] }) {
                                     <tr key={row.game_id} className="border-b last:border-0">
                                         <td className="py-2 pr-4">{row.game_name}</td>
                                         <td className="py-2 pr-4 text-right">{row.matches_count}</td>
-                                        <td className="py-2 pr-4 text-right font-mono">{row.normalized_score.toFixed(1)}</td>
                                         <td className="py-2 px-1 text-center">{row.gold_count}</td>
                                         <td className="py-2 px-1 text-center">{row.silver_count}</td>
                                         <td className="py-2 px-1 text-center">{row.bronze_count}</td>
@@ -123,6 +122,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 
     return (
         <div className="space-y-6 p-4 max-w-3xl mx-auto">
+            <BackButton href="/players" label="Назад к игрокам" />
             <PageHeader title={stats.player_name} />
 
             <Card>

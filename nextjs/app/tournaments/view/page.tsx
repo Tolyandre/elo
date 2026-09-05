@@ -10,6 +10,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { RankIcon } from "@/components/rank-icon";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { BackButton } from "@/components/back-button";
 
 function TournamentContent() {
     const searchParams = useSearchParams();
@@ -34,6 +35,7 @@ function TournamentContent() {
 
     return (
         <>
+            <BackButton href="/tournaments" label="Назад к турнирам" />
             <PageHeader
                 title={tournament.name}
                 action={canEdit ? (
@@ -62,7 +64,7 @@ function TournamentContent() {
                             return (
                                 <tr key={p.player_id} className="border-t">
                                     <td className="py-2 pr-2">
-                                        <Link href={`/player?id=${p.player_id}`} className="hover:underline">{name}</Link>
+                                        <Link href={`/players/view?id=${p.player_id}`} className="hover:underline">{name}</Link>
                                     </td>
                                     <td className="py-2 px-1 text-center tabular-nums">{p.first || ""}</td>
                                     <td className="py-2 px-1 text-center tabular-nums">{p.second || ""}</td>

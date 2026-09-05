@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { StPatrickCalculator } from "@/app/game/st-patrick-calculator"
+import { StPatrickCalculator } from "@/app/games/st-patrick-calculator"
 import { PageHeader } from "@/app/pageHeaderContext"
 
 export const metadata: Metadata = {
