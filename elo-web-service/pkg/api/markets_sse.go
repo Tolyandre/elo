@@ -10,11 +10,11 @@ import (
 
 // ─── Markets SSE ────────────────────────────────────────────────────────────
 // Two streams, both served through serveSSE (see sse.go):
-//   GET /markets/:id/events       — per-market price/pool updates (PlaceBet)
+//   GET /markets/:id/events       — per-market probability/pool updates (PlaceBet)
 //   GET /markets/lobby/events     — markets-list change signal (refetch client-side)
 // In-process hub only (no Redis) → single backend instance.
 
-// MarketEvents streams live LMSR prices. On connect it sends the current
+// MarketEvents streams live LMSR probabilities. On connect it sends the current
 // snapshot; afterwards every PlaceBet broadcast arrives on the same topic.
 func (a *API) MarketEvents(c *gin.Context) {
 	marketID := parseIDParam(c.Param("id"))
@@ -31,23 +31,23 @@ func (a *API) MarketEvents(c *gin.Context) {
 		return
 	}
 
-	// Send current prices immediately on connect. SSE frames bypass the JSON
-	// DTO layer, so the wire-form encoding is applied here (ADR-12).
+	// Send current probabilities immediately on connect. SSE frames bypass the
+	// JSON DTO layer, so the wire-form encoding is applied here (ADR-12).
 	q := make([]float64, len(outcomeRows))
 	for i, o := range outcomeRows {
 		q[i] = o.Q
 	}
-	prices := elo.MarginalPricesN(q, row.LiquidityB)
+	probabilities := elo.MarginalProbabilitiesN(q, row.LiquidityB)
 	outcomes := make([]elo.LiveOutcome, 0, len(outcomeRows))
 	for i, o := range outcomeRows {
 		outcomes = append(outcomes, elo.LiveOutcome{
-			ID:     string(o.ID.Base58()),
-			Price:  prices[i],
-			Shares: o.Q,
-			Pool:   o.Pool,
+			ID:          string(o.ID.Base58()),
+			Probability: probabilities[i],
+			Shares:      o.Q,
+			Pool:        o.Pool,
 		})
 	}
-	initial, err := json.Marshal(elo.SSEEvent{Type: "prices", Data: elo.PricesPayload{Outcomes: outcomes}})
+	initial, err := json.Marshal(elo.SSEEvent{Type: "probabilities", Data: elo.ProbabilitiesPayload{Outcomes: outcomes}})
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, "failed to encode initial state")
 		return

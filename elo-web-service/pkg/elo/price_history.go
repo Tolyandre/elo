@@ -6,12 +6,12 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// This file reconstructs a market's price history by replaying its bets
+// This file reconstructs a market's probability history by replaying its bets
 // through the LMSR. Because a market's liquidity_b is fixed at creation and
 // every bet shifts the AMM state vector by exactly its shares on one outcome,
 // replaying the bet stream in (placed_at, id) order from the creation state
-// q=0 reproduces the marginal price of every outcome after every buy. No
-// prices are persisted — the series is derived from bets alone.
+// q=0 reproduces the probability of every outcome after every buy. No
+// probabilities are persisted — the series is derived from bets alone.
 
 // PriceBet is one replay step: the shares bought on an outcome and when.
 type PriceBet struct {
@@ -20,41 +20,42 @@ type PriceBet struct {
 	PlacedAt time.Time
 }
 
-// OutcomePrice is the marginal price of one outcome at a point in time.
-type OutcomePrice struct {
-	OutcomeID id.ID
-	Price     float64
+// OutcomeProbability is the probability (LMSR marginal price) of one outcome
+// at a point in time.
+type OutcomeProbability struct {
+	OutcomeID   id.ID
+	Probability float64
 }
 
-// PricePoint is the reconstructed price vector right after a bet: the
-// marginal price of every outcome, summing to 1.
-type PricePoint struct {
-	PlacedAt time.Time
-	Prices   []OutcomePrice
+// ProbabilityPoint is the reconstructed probability vector right after a bet:
+// the probability of every outcome, summing to 1.
+type ProbabilityPoint struct {
+	PlacedAt      time.Time
+	Probabilities []OutcomeProbability
 }
 
-// PriceHistory replays `bets` (they must already be ordered by placed_at, id)
-// from the creation state q=0 and returns the price vector after each bet.
+// ProbabilityHistory replays `bets` (they must already be ordered by placed_at, id)
+// from the creation state q=0 and returns the probability vector after each bet.
 // outcomeIDs fixes the vector layout (and its length); bets on unknown
 // outcomes are skipped (defensive — the FK guarantees they reference real
 // outcome rows of this market). Returns an empty slice for a bet-less market.
-func PriceHistory(bets []PriceBet, outcomeIDs []id.ID, liquidityB float64) []PricePoint {
+func ProbabilityHistory(bets []PriceBet, outcomeIDs []id.ID, liquidityB float64) []ProbabilityPoint {
 	index := make(map[id.ID]int, len(outcomeIDs))
 	for i, oid := range outcomeIDs {
 		index[oid] = i
 	}
 	q := make([]float64, len(outcomeIDs))
-	points := make([]PricePoint, 0, len(bets))
+	points := make([]ProbabilityPoint, 0, len(bets))
 	for _, bet := range bets {
 		i, ok := index[bet.Outcome]
 		if !ok || bet.Shares <= 0 {
 			continue // defensive: replayed shares are always positive
 		}
 		q[i] += bet.Shares
-		prices := MarginalPricesN(q, liquidityB)
-		pp := PricePoint{PlacedAt: bet.PlacedAt, Prices: make([]OutcomePrice, len(outcomeIDs))}
+		probabilities := MarginalProbabilitiesN(q, liquidityB)
+		pp := ProbabilityPoint{PlacedAt: bet.PlacedAt, Probabilities: make([]OutcomeProbability, len(outcomeIDs))}
 		for j, oid := range outcomeIDs {
-			pp.Prices[j] = OutcomePrice{OutcomeID: oid, Price: prices[j]}
+			pp.Probabilities[j] = OutcomeProbability{OutcomeID: oid, Probability: probabilities[j]}
 		}
 		points = append(points, pp)
 	}

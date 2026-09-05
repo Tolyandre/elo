@@ -9,7 +9,7 @@ var (
 	ErrBetLimitExceeded                 = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen                    = errors.New("рынок не открыт")
 	ErrMarketOutcomeNotFound            = errors.New("указанный исход не существует на этом рынке")
-	ErrPriceChanged                     = errors.New("цена изменилась, обновите страницу и повторите ставку")
+	ErrProbabilityChanged               = errors.New("цена изменилась, обновите страницу и повторите ставку")
 	ErrMarketNeedsGuarantor             = errors.New("рынок требует хотя бы одного гаранта (плательщика остатка)")
 	ErrPlayerHasNoLinkedPlayer          = errors.New("у пользователя нет привязанного игрока")
 	ErrPlayerAlreadyLinked              = errors.New("player already linked to another user")

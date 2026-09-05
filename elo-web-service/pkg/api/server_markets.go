@@ -188,23 +188,23 @@ func outcomeDisplayName(kind string, playerName pgtype.Text) string {
 }
 
 // buildOutcomes converts one market's outcome rows (canonical order, the AMM
-// q-vector layout) into the API shape: live prices from the LMSR state, shares
-// = the outstanding q, pool = elo spent on the outcome.
+// q-vector layout) into the API shape: live probabilities from the LMSR state,
+// shares = the outstanding q, pool = elo spent on the outcome.
 func buildOutcomes(rows []db.ListMarketOutcomesWithPoolsRow, liquidityB float64) []MarketsMarketOutcome {
 	q := make([]float64, len(rows))
 	for i, r := range rows {
 		q[i] = r.Q
 	}
-	prices := elo.MarginalPricesN(q, liquidityB)
+	probabilities := elo.MarginalProbabilitiesN(q, liquidityB)
 	outcomes := make([]MarketsMarketOutcome, len(rows))
 	for i, r := range rows {
 		outcomes[i] = MarketsMarketOutcome{
-			Id:     r.ID,
-			Kind:   MarketsMarketOutcomeKind(r.Kind),
-			Name:   outcomeDisplayName(r.Kind, r.PlayerName),
-			Price:  prices[i],
-			Shares: r.Q,
-			Pool:   r.Pool,
+			Id:          r.ID,
+			Kind:        MarketsMarketOutcomeKind(r.Kind),
+			Name:        outcomeDisplayName(r.Kind, r.PlayerName),
+			Probability: probabilities[i],
+			Shares:      r.Q,
+			Pool:        r.Pool,
 		}
 		if r.PlayerID != nil {
 			outcomes[i].PlayerId = r.PlayerID
@@ -214,8 +214,8 @@ func buildOutcomes(rows []db.ListMarketOutcomesWithPoolsRow, liquidityB float64)
 }
 
 // buildAllOutcomes groups every market's outcome rows (see
-// ListAllMarketOutcomesWithPools) and prices them per market. liquidity must
-// contain each market's liquidity_b keyed by market id.
+// ListAllMarketOutcomesWithPools) and computes their probabilities per market.
+// liquidity must contain each market's liquidity_b keyed by market id.
 func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map[string]float64) map[string][]MarketsMarketOutcome {
 	grouped := make(map[string][]db.ListMarketOutcomesWithPoolsRow, len(liquidity))
 	for _, r := range rows {
@@ -236,8 +236,8 @@ func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map
 	return result
 }
 
-// buildMarket assembles the API Market from a market row and its already-priced
-// outcomes.
+// buildMarket assembles the API Market from a market row and its outcomes
+// already carrying probabilities.
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	m := Market{
 		Id:         r.ID,
@@ -412,27 +412,27 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	return GetMarket200JSONResponse{Status: "success", Data: detail}, nil
 }
 
-func (s *StrictServer) GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error) {
-	points, err := s.api.MarketService.GetMarketPriceHistory(ctx, parseIDParam(request.Id))
+func (s *StrictServer) GetMarketProbabilityHistory(ctx context.Context, request GetMarketProbabilityHistoryRequestObject) (GetMarketProbabilityHistoryResponseObject, error) {
+	points, err := s.api.MarketService.GetMarketProbabilityHistory(ctx, parseIDParam(request.Id))
 	if err != nil {
-		return GetMarketPriceHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
+		return GetMarketProbabilityHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
 	}
-	resp := GetMarketPriceHistory200JSONResponse{Status: "success"}
+	resp := GetMarketProbabilityHistory200JSONResponse{Status: "success"}
 	resp.Data.Points = make([]struct {
-		Prices []struct {
-			OutcomeId Base58ID `json:"outcome_id"`
-			Price     float64  `json:"price"`
-		} `json:"prices"`
+		Probabilities []struct {
+			OutcomeId   Base58ID `json:"outcome_id"`
+			Probability float64  `json:"probability"`
+		} `json:"probabilities"`
 		T time.Time `json:"t"`
 	}, len(points))
 	for i, p := range points {
-		resp.Data.Points[i].Prices = make([]struct {
-			OutcomeId Base58ID `json:"outcome_id"`
-			Price     float64  `json:"price"`
-		}, len(p.Prices))
-		for j, op := range p.Prices {
-			resp.Data.Points[i].Prices[j].OutcomeId = op.OutcomeID
-			resp.Data.Points[i].Prices[j].Price = op.Price
+		resp.Data.Points[i].Probabilities = make([]struct {
+			OutcomeId   Base58ID `json:"outcome_id"`
+			Probability float64  `json:"probability"`
+		}, len(p.Probabilities))
+		for j, op := range p.Probabilities {
+			resp.Data.Points[i].Probabilities[j].OutcomeId = op.OutcomeID
+			resp.Data.Points[i].Probabilities[j].Probability = op.Probability
 		}
 		resp.Data.Points[i].T = p.PlacedAt
 	}
@@ -678,18 +678,18 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	if body.Shares <= 0 {
 		return PlaceBet400JSONResponse{Status: "fail", Message: "shares must be positive"}, nil
 	}
-	if body.ExpectedPrice <= 0 || body.ExpectedPrice >= 1 {
-		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_price must be in (0, 1)"}, nil
+	if body.ExpectedProbability <= 0 || body.ExpectedProbability >= 1 {
+		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_probability must be in (0, 1)"}, nil
 	}
 
-	outcome, err := s.api.MarketService.PlaceBet(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, id.ID(body.OutcomeId), body.Shares, body.ExpectedPrice)
+	outcome, err := s.api.MarketService.PlaceBet(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, id.ID(body.OutcomeId), body.Shares, body.ExpectedProbability)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrBetLimitExceeded):
 			return PlaceBet422JSONResponse{Status: "fail", Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketOutcomeNotFound):
 			return PlaceBet400JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrPriceChanged):
+		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrProbabilityChanged):
 			return PlaceBet409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err
@@ -698,7 +698,7 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 
 	resp := PlaceBet201JSONResponse{Status: "success"}
 	resp.Data.Shares = outcome.Shares
-	resp.Data.Price = outcome.Price
+	resp.Data.CostPerShare = outcome.CostPerShare
 	return resp, nil
 }
 

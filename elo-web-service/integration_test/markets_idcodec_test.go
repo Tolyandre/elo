@@ -84,10 +84,10 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	var marketResp struct {
 		Data struct {
 			Outcomes []struct {
-				ID     string  `json:"id"`
-				Kind   string  `json:"kind"`
-				Player string  `json:"player_id"`
-				Price  float64 `json:"price"`
+				ID          string  `json:"id"`
+				Kind        string  `json:"kind"`
+				Player      string  `json:"player_id"`
+				Probability float64 `json:"probability"`
 			} `json:"outcomes"`
 		} `json:"data"`
 	}
@@ -95,11 +95,11 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 		t.Fatalf("parse market: %v", err)
 	}
 	shortOutcomeID, shortOtherID := "", ""
-	var price float64
+	var probability float64
 	for _, o := range marketResp.Data.Outcomes {
 		if o.Kind == "player" && o.Player == shortOf(t, playerA.ID) {
 			shortOutcomeID = o.ID
-			price = o.Price
+			probability = o.Probability
 		}
 		if o.Kind == "other" {
 			shortOtherID = o.ID
@@ -115,10 +115,10 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	// Place a bet with the SHORT outcome id — the middleware must decode it to
 	// canonical before the service compares it against market_outcomes ids.
 	betBody := map[string]any{
-		"id":             uuid.MustParse("00000000-0000-0000-0000-0000000000d6").String(),
-		"outcome_id":     shortOutcomeID,
-		"shares":         1,
-		"expected_price": price,
+		"id":                   uuid.MustParse("00000000-0000-0000-0000-0000000000d6").String(),
+		"outcome_id":           shortOutcomeID,
+		"shares":               1,
+		"expected_probability": probability,
 	}
 	betJSON, _ := json.Marshal(betBody)
 	req3 := httptest.NewRequest(http.MethodPost, "/markets/"+marketID+"/bets", strings.NewReader(string(betJSON)))

@@ -53,8 +53,8 @@ func marketOutcomeID(t *testing.T, ctx context.Context, svc elo.IMarketService, 
 }
 
 // placeBetAtCurrentPrice places a bet on the given outcome id, passing the
-// market's live marginal price of that outcome as expectedPrice — mirroring
-// what the UI sends for the price it displays.
+// market's live probability of that outcome as expectedProbability — mirroring
+// what the UI sends for the probability it displays.
 func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID idpkg.ID, playerID idpkg.ID, outcomeID idpkg.ID, shares float64) error {
 	t.Helper()
 	m, err := svc.GetMarket(ctx, marketID)
@@ -70,7 +70,7 @@ func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketSe
 	for i, o := range outcomes {
 		q[i] = o.Q
 		if o.ID == outcomeID {
-			price = elo.MarginalPricesN(q, m.LiquidityB)[i]
+			price = elo.MarginalProbabilitiesN(q, m.LiquidityB)[i]
 		}
 	}
 	if price < 0 {
@@ -943,10 +943,10 @@ func playerMarketDelta(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, play
 	return delta
 }
 
-// TestPlaceBet_ExpectedPriceValidation verifies that a buy is priced around the
-// price the buyer saw: PlaceBet rejects an expected_price that has drifted
-// beyond elo.PriceTolerance and accepts one within it.
-func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
+// TestPlaceBet_ExpectedProbabilityValidation verifies that a buy is accepted around the
+// probability the buyer saw: PlaceBet rejects an expected_probability that has drifted
+// beyond elo.ProbabilityTolerance and accepts one within it.
+func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -996,7 +996,7 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 		q[i] = o.Q
 		if o.Kind == "player" && o.PlayerID != nil && *o.PlayerID == playerA {
 			outcomeA = o.ID
-			priceA = elo.MarginalPricesN(q, m.LiquidityB)[i]
+			priceA = elo.MarginalProbabilitiesN(q, m.LiquidityB)[i]
 		}
 	}
 	if outcomeA.IsZero() {
@@ -1004,12 +1004,12 @@ func TestPlaceBet_ExpectedPriceValidation(t *testing.T) {
 	}
 
 	// A stale price (an old snapshot, or the market moved) must be rejected.
-	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, outcomeA, 1, priceA-0.05); !errors.Is(err, elo.ErrPriceChanged) {
-		t.Fatalf("PlaceBet with stale price: err = %v, want ErrPriceChanged", err)
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, outcomeA, 1, priceA-0.05); !errors.Is(err, elo.ErrProbabilityChanged) {
+		t.Fatalf("PlaceBet with stale price: err = %v, want ErrProbabilityChanged", err)
 	}
 
 	// A price within the tolerance is accepted.
-	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, outcomeA, 1, priceA-elo.PriceTolerance/2); err != nil {
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, playerA, outcomeA, 1, priceA-elo.ProbabilityTolerance/2); err != nil {
 		t.Fatalf("PlaceBet with fresh price: %v", err)
 	}
 

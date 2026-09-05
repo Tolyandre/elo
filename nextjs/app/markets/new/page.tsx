@@ -125,9 +125,9 @@ export default function NewMarketPage() {
         // Falls back to the server-side default risk when the field is empty.
         const previewB = derivedB ?? bFromRisk(DEFAULT_MAX_GUARANTOR_LOSS, outcomeN) ?? 16;
         if (marketType === "match_winner") {
-            // Preview outcomes: one per target plus "other", uniform prices.
+            // Preview outcomes: one per target plus "other", uniform probabilities.
             const n = targetPlayerIDs.length + 1;
-            const price = 1 / n;
+            const probability = 1 / n;
             return {
                 id: "" as Base58ID, market_type: marketType, status: "open",
                 starts_at: startsAtISO, closes_at: closesAtISO,
@@ -136,9 +136,9 @@ export default function NewMarketPage() {
                 outcomes: [
                     ...targetPlayerIDs.map((id) => ({
                         id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
-                        price, shares: 0, pool: 0,
+                        probability, shares: 0, pool: 0,
                     })),
-                    { id: "preview:other" as Base58ID, kind: "other" as const, player_id: null, name: "Ничья", price, shares: 0, pool: 0 },
+                    { id: "preview:other" as Base58ID, kind: "other" as const, player_id: null, name: "Ничья", probability, shares: 0, pool: 0 },
                 ],
                 params: { target_player_ids: targetPlayerIDs, allow_other_players: allowOtherPlayers, game_ids: gameIDs },
             };
@@ -149,8 +149,8 @@ export default function NewMarketPage() {
             created_at: null, resolved_at: null,
             liquidity_b: previewB,
             outcomes: [
-                { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", price: 0.5, shares: 0, pool: 0 },
-                { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", price: 0.5, shares: 0, pool: 0 },
+                { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", probability: 0.5, shares: 0, pool: 0 },
+                { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", probability: 0.5, shares: 0, pool: 0 },
             ],
             params: {
                 target_player_id: streakTargetPlayerID || ("" as Base58ID), game_ids: streakGameIDs,

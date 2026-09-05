@@ -599,16 +599,16 @@ export async function getMarketByIdPromise(id: Base58ID): Promise<MarketDetail> 
     return (await unwrap(client.GET("/markets/{id}", { params: { path: { id } } }))).data;
 }
 
-export interface MarketPricePoint {
+export interface MarketProbabilityPoint {
     t: string;
-    prices: { outcome_id: Base58ID; price: number }[];
+    probabilities: { outcome_id: Base58ID; probability: number }[];
 }
 
-// The price history is reconstructed server-side by replaying the bet stream
-// through the LMSR; each point carries the marginal price of every outcome
-// right after a bet (the prices sum to 1).
-export async function getMarketPriceHistoryPromise(id: Base58ID): Promise<MarketPricePoint[]> {
-    return (await unwrap(client.GET("/markets/{id}/price-history", { params: { path: { id } } }))).data.points;
+// The probability history is reconstructed server-side by replaying the bet
+// stream through the LMSR; each point carries the probability (LMSR marginal
+// price) of every outcome right after a bet (the probabilities sum to 1).
+export async function getMarketProbabilityHistoryPromise(id: Base58ID): Promise<MarketProbabilityPoint[]> {
+    return (await unwrap(client.GET("/markets/{id}/probability-history", { params: { path: { id } } }))).data.points;
 }
 
 export async function createMarketPromise(payload: {
@@ -654,17 +654,17 @@ export async function getMarketsByMatchIdPromise(matchId: Base58ID): Promise<Mar
     }))).data ?? [];
 }
 
-export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, expectedPrice: number, shares = 1): Promise<{ shares: number; price: number }> {
+export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, expectedProbability: number, shares = 1): Promise<{ shares: number; cost_per_share: number }> {
     // Shares-driven buy (ADR-10): the AMM prices the elo cost of `shares`
     // (default one share; the fixed-amount mode inverts the LMSR cost client
-    // side to get the share count for its amount). expectedPrice is the price
-    // the user saw — the server rejects the bet (409) if the live price has
-    // moved beyond a tolerance.
+    // side to get the share count for its amount). expectedProbability is the
+    // outcome probability the user saw — the server rejects the bet (409) if
+    // the live probability has moved beyond a tolerance.
     const res = await unwrap(client.POST("/markets/{id}/bets", {
         params: { path: { id: marketId } },
-        body: { id: newId(), outcome_id: outcomeId, shares, expected_price: expectedPrice },
+        body: { id: newId(), outcome_id: outcomeId, shares, expected_probability: expectedProbability },
     }));
-    return { shares: res.data.shares, price: res.data.price };
+    return { shares: res.data.shares, cost_per_share: res.data.cost_per_share };
 }
 
 export async function getPlayerStatsPromise(id: Base58ID): Promise<PlayerStats> {

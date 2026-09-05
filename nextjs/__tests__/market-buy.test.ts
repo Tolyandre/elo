@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sharesForAmount } from '../app/markets/lmsr'
+import { sharesForAmount, costForShares } from '../app/markets/lmsr'
 import { formatAmount } from '../app/markets/format'
 
 // Independent LMSR cost, mirroring the server's ammCostN (b·ln Σ e^(q_j/b),
@@ -81,6 +81,49 @@ describe('buy mode price equivalence', () => {
             cur[0] += step
         }
         expect(sequential).toBeCloseTo(1, 10)
+    })
+})
+
+describe('costForShares', () => {
+    it.each([
+        { q: [0, 0], b: 8, i: 0, shares: 1 },
+        { q: [0, 0, 0], b: 16 / Math.LN2, i: 1, shares: 1 },
+        { q: [3.5, 1.25, 0], b: 8, i: 2, shares: 2 },
+        { q: [10, -2], b: 23, i: 1, shares: 0.5 },
+    ])('charges exactly the elo the AMM would for q=$q b=$b i=$i shares=$shares', ({ q, b, i, shares }) => {
+        expect(costForShares(q, b, i, shares)).toBeCloseTo(buyCost(q, b, i, shares), 10)
+    })
+
+    it('prices the first share above the opening probability in a thin market', () => {
+        // The reported bug: max guarantor loss L=1 in a 2-outcome market gives
+        // b = L/ln2, the opening probability is 0.5, but the first share costs
+        // C(e_1) − C(0) = b·ln((e^(1/b)+1)/2) ≈ 0.585 — the card must show the
+        // cost, not the probability.
+        const b = 1 / Math.LN2
+        expect(costForShares([0, 0], b, 0, 1)).toBeCloseTo(0.585, 2)
+        expect(costForShares([0, 0], b, 0, 1)).toBeGreaterThan(0.5)
+    })
+
+    it('approaches the probability for deep markets', () => {
+        // b=100: a 1-share buy barely moves the price, so cost ≈ probability.
+        const b = 100
+        const costPerShare = costForShares([0, 0], b, 0, 1)
+        expect(costPerShare).toBeGreaterThan(0.5)
+        expect(costPerShare).toBeLessThan(0.505)
+    })
+
+    it('is the exact inverse of sharesForAmount', () => {
+        const q = [2, 1, 0.5]
+        const b = 10
+        const shares = sharesForAmount(q, b, 1, 1)
+        expect(costForShares(q, b, 1, shares)).toBeCloseTo(1, 10)
+    })
+
+    it('returns NaN for unusable inputs', () => {
+        expect(costForShares([0, 0], 0, 0, 1)).toBeNaN()
+        expect(costForShares([0, 0], 8, 0, 0)).toBeNaN()
+        expect(costForShares([5], 8, 0, 1)).toBeNaN()
+        expect(costForShares([0, 0], 8, 5, 1)).toBeNaN()
     })
 })
 

@@ -215,8 +215,8 @@ paths:
     $ref: './markets.yaml#/MarketItem'
   /markets/{id}/bets:
     $ref: './markets.yaml#/MarketBets'
-  /markets/{id}/price-history:
-    $ref: './markets.yaml#/MarketPriceHistory'
+  /markets/{id}/probability-history:
+    $ref: './markets.yaml#/MarketProbabilityHistory'
 
   # Auth
   /auth/login:

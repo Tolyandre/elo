@@ -6,38 +6,39 @@ import { useSSE } from "@/hooks/useSSE";
 
 export type LiveMarketOutcome = {
     id: string;
-    price: number;
+    /** Probability (LMSR marginal price) in (0,1); probabilities sum to 1. Not the cost of a share. */
+    probability: number;
     shares: number;
     pool: number;
 };
 
-export type MarketPrices = {
+export type MarketProbabilities = {
     outcomes: LiveMarketOutcome[];
 };
 
 /**
  * Subscribes to a market's SSE stream and returns the latest live LMSR state —
- * prices (probabilities in [0,1]), outstanding share counts and pools —
- * broadcast after every purchase. Returns null until the first frame arrives;
- * callers fall back to the REST values.
+ * probabilities (in [0,1]), outstanding share counts and pools — broadcast
+ * after every purchase. Returns null until the first frame arrives; callers
+ * fall back to the REST values.
  *
  * Connection self-healing lives in useSSE. No recovery refetch is needed here:
  * the backend resends the current state on every (re)connect. Single-process
  * backend only (see ADR-10/ADR-13).
  */
-export function useMarketPricesSSE(marketId: string | null): MarketPrices | null {
-    const [prices, setPrices] = useState<MarketPrices | null>(null);
-    // Reset when switching markets so stale prices never bleed into the new
-    // page (adjust-state-during-render on id change).
+export function useMarketProbabilitiesSSE(marketId: string | null): MarketProbabilities | null {
+    const [probabilities, setProbabilities] = useState<MarketProbabilities | null>(null);
+    // Reset when switching markets so stale probabilities never bleed into the
+    // new page (adjust-state-during-render on id change).
     const [trackedMarketId, setTrackedMarketId] = useState(marketId);
     if (trackedMarketId !== marketId) {
         setTrackedMarketId(marketId);
-        setPrices(null);
+        setProbabilities(null);
     }
 
     const onEvent = useCallback((event: { type: string; data?: unknown }) => {
-        if (event.type === "prices" && event.data) {
-            setPrices(event.data as MarketPrices);
+        if (event.type === "probabilities" && event.data) {
+            setProbabilities(event.data as MarketProbabilities);
         }
     }, []);
 
@@ -45,7 +46,7 @@ export function useMarketPricesSSE(marketId: string | null): MarketPrices | null
         onEvent,
     });
 
-    return prices;
+    return probabilities;
 }
 
 /**

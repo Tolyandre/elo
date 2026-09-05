@@ -6,6 +6,33 @@
 // fixed-amount buy modes are therefore equivalent in price.
 
 /**
+ * The LMSR cost of a q-vector, C(q) = b·ln(Σ_j e^(q_j/b)), with the exponents
+ * shifted by max(q_j/b) so large q values don't overflow (same stabilization
+ * as the server's log-sum-exp).
+ */
+function cost(q: number[], b: number): number {
+    const m = Math.max(...q.map((v) => v / b));
+    const sum = q.reduce((acc, v) => acc + Math.exp(v / b - m), 0);
+    return b * (m + Math.log(sum));
+}
+
+/**
+ * Elo cost of buying `shares` of outcome `i` at the current q:
+ * C(q + shares·e_i) − C(q). This is what a buy actually charges — distinct
+ * from the outcome's probability (the LMSR marginal price), which it equals
+ * only for an infinitesimal share. With thin markets (small b) the cost of
+ * the first share is noticeably above the opening probability.
+ */
+export function costForShares(q: number[], b: number, i: number, shares: number): number {
+    if (!(b > 0) || !(shares > 0) || q.length < 2 || i < 0 || i >= q.length) {
+        return NaN;
+    }
+    const after = q.slice();
+    after[i] += shares;
+    return cost(after, b) - cost(q, b);
+}
+
+/**
  * Number of shares of outcome `i` that `amount` elo buys at the current q,
  * i.e. the exact inverse of the LMSR cost (closed form, no numeric search):
  *

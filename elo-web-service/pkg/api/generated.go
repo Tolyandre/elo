@@ -715,7 +715,7 @@ type Market struct {
 	LiquidityB float64          `json:"liquidity_b"`
 	MarketType MarketMarketType `json:"market_type"`
 
-	// Outcomes The market's mutually-exclusive outcomes; prices sum to 1.
+	// Outcomes The market's mutually-exclusive outcomes; probabilities sum to 1.
 	Outcomes []MarketsMarketOutcome `json:"outcomes"`
 
 	// Params Market-type-specific parameters
@@ -775,7 +775,7 @@ type MarketDetail struct {
 		Staked float64 `json:"staked"`
 	} `json:"my_positions,omitempty"`
 
-	// Outcomes The market's mutually-exclusive outcomes; prices sum to 1.
+	// Outcomes The market's mutually-exclusive outcomes; probabilities sum to 1.
 	Outcomes []MarketsMarketOutcome `json:"outcomes"`
 
 	// Params Market-type-specific parameters
@@ -1087,8 +1087,8 @@ type MarketsMarketOutcome struct {
 	// Pool Total elo spent on this outcome.
 	Pool float64 `json:"pool"`
 
-	// Price Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
-	Price float64 `json:"price"`
+	// Probability Live probability of the outcome in [0,1] (the LMSR marginal price); probabilities sum to 1. Not the cost of a share: buying `s` shares costs C(q+s·e_i) − C(q), which exceeds the probability whenever the buy moves the price (small liquidity b). The cost is derived from `shares` (the AMM q) + the market's `liquidity_b`, not from this field.
+	Probability float64 `json:"probability"`
 
 	// Shares Outstanding shares of this outcome (the AMM q; each pays 1 if it wins).
 	Shares float64 `json:"shares"`
@@ -1227,8 +1227,8 @@ type PatchMarketJSONBodyStatus string
 
 // PlaceBetJSONBody defines parameters for PlaceBet.
 type PlaceBetJSONBody struct {
-	// ExpectedPrice The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
-	ExpectedPrice float64 `json:"expected_price"`
+	// ExpectedProbability The outcome probability the buyer saw and agrees to buy around. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
+	ExpectedProbability float64 `json:"expected_probability"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
@@ -1810,9 +1810,9 @@ type ServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(c *gin.Context, id string)
-	// GetMarketPriceHistory Reconstructed per-outcome price history of a market
-	// (GET /markets/{id}/price-history)
-	GetMarketPriceHistory(c *gin.Context, id string)
+	// GetMarketProbabilityHistory Reconstructed per-outcome probability history of a market
+	// (GET /markets/{id}/probability-history)
+	GetMarketProbabilityHistory(c *gin.Context, id string)
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(c *gin.Context, params ListMatchesParams)
@@ -2562,8 +2562,8 @@ func (siw *ServerInterfaceWrapper) PlaceBet(c *gin.Context) {
 	siw.Handler.PlaceBet(c, id)
 }
 
-// GetMarketPriceHistory operation middleware
-func (siw *ServerInterfaceWrapper) GetMarketPriceHistory(c *gin.Context) {
+// GetMarketProbabilityHistory operation middleware
+func (siw *ServerInterfaceWrapper) GetMarketProbabilityHistory(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -2584,7 +2584,7 @@ func (siw *ServerInterfaceWrapper) GetMarketPriceHistory(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetMarketPriceHistory(c, id)
+	siw.Handler.GetMarketProbabilityHistory(c, id)
 }
 
 // ListMatches operation middleware
@@ -3332,7 +3332,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/markets/:id", wrapper.GetMarket)
 	router.PATCH(options.BaseURL+"/markets/:id", wrapper.PatchMarket)
 	router.POST(options.BaseURL+"/markets/:id/bets", wrapper.PlaceBet)
-	router.GET(options.BaseURL+"/markets/:id/price-history", wrapper.GetMarketPriceHistory)
+	router.GET(options.BaseURL+"/markets/:id/probability-history", wrapper.GetMarketProbabilityHistory)
 	router.GET(options.BaseURL+"/matches", wrapper.ListMatches)
 	router.POST(options.BaseURL+"/matches", wrapper.AddMatch)
 	router.GET(options.BaseURL+"/matches/:id", wrapper.GetMatchById)
@@ -4799,8 +4799,8 @@ type PlaceBetResponseObject interface {
 
 type PlaceBet201JSONResponse struct {
 	Data struct {
-		// Price Effective price paid per share (cost / shares).
-		Price float64 `json:"price"`
+		// CostPerShare Effective elo cost paid per share (cost / shares).
+		CostPerShare float64 `json:"cost_per_share"`
 
 		// Shares Shares received (each pays 1 if the outcome wins).
 		Shares float64 `json:"shares"`
@@ -4890,25 +4890,25 @@ func (response PlaceBet422JSONResponse) VisitPlaceBetResponse(w http.ResponseWri
 	return err
 }
 
-type GetMarketPriceHistoryRequestObject struct {
+type GetMarketProbabilityHistoryRequestObject struct {
 	Id string `json:"id"`
 }
 
-type GetMarketPriceHistoryResponseObject interface {
-	VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error
+type GetMarketProbabilityHistoryResponseObject interface {
+	VisitGetMarketProbabilityHistoryResponse(w http.ResponseWriter) error
 }
 
-type GetMarketPriceHistory200JSONResponse struct {
+type GetMarketProbabilityHistory200JSONResponse struct {
 	Data struct {
 		Points []struct {
-			// Prices Marginal price of every outcome right after the bet; prices sum to 1.
-			Prices []struct {
+			// Probabilities Probability of every outcome right after the bet; probabilities sum to 1.
+			Probabilities []struct {
 				// OutcomeId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 				OutcomeId Base58ID `json:"outcome_id"`
 
-				// Price Marginal price in (0,1).
-				Price float64 `json:"price"`
-			} `json:"prices"`
+				// Probability Probability (LMSR marginal price) in (0,1).
+				Probability float64 `json:"probability"`
+			} `json:"probabilities"`
 
 			// T When the bet was placed.
 			T time.Time `json:"t"`
@@ -4917,7 +4917,7 @@ type GetMarketPriceHistory200JSONResponse struct {
 	Status string `json:"status"`
 }
 
-func (response GetMarketPriceHistory200JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+func (response GetMarketProbabilityHistory200JSONResponse) VisitGetMarketProbabilityHistoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4929,9 +4929,9 @@ func (response GetMarketPriceHistory200JSONResponse) VisitGetMarketPriceHistoryR
 	return err
 }
 
-type GetMarketPriceHistory400JSONResponse ApiError
+type GetMarketProbabilityHistory400JSONResponse ApiError
 
-func (response GetMarketPriceHistory400JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+func (response GetMarketProbabilityHistory400JSONResponse) VisitGetMarketProbabilityHistoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4943,9 +4943,9 @@ func (response GetMarketPriceHistory400JSONResponse) VisitGetMarketPriceHistoryR
 	return err
 }
 
-type GetMarketPriceHistory404JSONResponse ApiError
+type GetMarketProbabilityHistory404JSONResponse ApiError
 
-func (response GetMarketPriceHistory404JSONResponse) VisitGetMarketPriceHistoryResponse(w http.ResponseWriter) error {
+func (response GetMarketProbabilityHistory404JSONResponse) VisitGetMarketProbabilityHistoryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6936,9 +6936,9 @@ type StrictServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error)
-	// GetMarketPriceHistory Reconstructed per-outcome price history of a market
-	// (GET /markets/{id}/price-history)
-	GetMarketPriceHistory(ctx context.Context, request GetMarketPriceHistoryRequestObject) (GetMarketPriceHistoryResponseObject, error)
+	// GetMarketProbabilityHistory Reconstructed per-outcome probability history of a market
+	// (GET /markets/{id}/probability-history)
+	GetMarketProbabilityHistory(ctx context.Context, request GetMarketProbabilityHistoryRequestObject) (GetMarketProbabilityHistoryResponseObject, error)
 	// ListMatches List matches with cursor-based pagination
 	// (GET /matches)
 	ListMatches(ctx context.Context, request ListMatchesRequestObject) (ListMatchesResponseObject, error)
@@ -7874,25 +7874,25 @@ func (sh *strictHandler) PlaceBet(ctx *gin.Context, id string) {
 	}
 }
 
-// GetMarketPriceHistory operation middleware
-func (sh *strictHandler) GetMarketPriceHistory(ctx *gin.Context, id string) {
-	var request GetMarketPriceHistoryRequestObject
+// GetMarketProbabilityHistory operation middleware
+func (sh *strictHandler) GetMarketProbabilityHistory(ctx *gin.Context, id string) {
+	var request GetMarketProbabilityHistoryRequestObject
 
 	request.Id = id
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetMarketPriceHistory(ctx, request.(GetMarketPriceHistoryRequestObject))
+		return sh.ssi.GetMarketProbabilityHistory(ctx, request.(GetMarketProbabilityHistoryRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetMarketPriceHistory")
+		handler = middleware(handler, "GetMarketProbabilityHistory")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetMarketPriceHistoryResponseObject); ok {
-		if err := validResponse.VisitGetMarketPriceHistoryResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(GetMarketProbabilityHistoryResponseObject); ok {
+		if err := validResponse.VisitGetMarketProbabilityHistoryResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

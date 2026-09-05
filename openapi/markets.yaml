@@ -301,14 +301,14 @@ MarketBets:
                 minimum: 0
                 exclusiveMinimum: true
                 description: Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
-              expected_price:
+              expected_probability:
                 type: number
                 format: double
                 minimum: 0
                 exclusiveMinimum: true
                 maximum: 1
-                description: The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
-            required: [id, outcome_id, shares, expected_price]
+                description: The outcome probability the buyer saw and agrees to buy around. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
+            required: [id, outcome_id, shares, expected_probability]
     responses:
       "201":
         description: Shares bought
@@ -326,11 +326,11 @@ MarketBets:
                       type: number
                       format: double
                       description: Shares received (each pays 1 if the outcome wins).
-                    price:
+                    cost_per_share:
                       type: number
                       format: double
-                      description: Effective price paid per share (cost / shares).
-                  required: [shares, price]
+                      description: Effective elo cost paid per share (cost / shares).
+                  required: [shares, cost_per_share]
               required: [status, data]
       "400":
         description: Bad request
@@ -351,7 +351,7 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: Market not open for buying, or the live price moved away from expected_price
+        description: Market not open for buying, or the live probability moved away from expected_probability
         content:
           application/json:
             schema:
@@ -363,15 +363,16 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
 
-MarketPriceHistory:
+MarketProbabilityHistory:
   get:
-    operationId: GetMarketPriceHistory
+    operationId: GetMarketProbabilityHistory
     tags: [markets]
-    summary: Reconstructed per-outcome price history of a market
+    summary: Reconstructed per-outcome probability history of a market
     description: >-
-      The marginal price of every outcome after every bet, reconstructed by
-      replaying the bet stream through the market's LMSR from its creation
-      state. No prices are persisted; the series is derived from bets alone.
+      The probability (LMSR marginal price) of every outcome after every bet,
+      reconstructed by replaying the bet stream through the market's LMSR from
+      its creation state. No probabilities are persisted; the series is derived
+      from bets alone.
     parameters:
       - name: id
         in: path
@@ -380,7 +381,7 @@ MarketPriceHistory:
           type: string
     responses:
       "200":
-        description: Price points ordered by time
+        description: Probability points ordered by time
         content:
           application/json:
             schema:
@@ -400,20 +401,20 @@ MarketPriceHistory:
                             type: string
                             format: date-time
                             description: When the bet was placed.
-                          prices:
+                          probabilities:
                             type: array
-                            description: Marginal price of every outcome right after the bet; prices sum to 1.
+                            description: Probability of every outcome right after the bet; probabilities sum to 1.
                             items:
                               type: object
                               properties:
                                 outcome_id:
                                   $ref: './common.yaml#/Base58ID'
-                                price:
+                                probability:
                                   type: number
                                   format: double
-                                  description: Marginal price in (0,1).
-                              required: [outcome_id, price]
-                        required: [t, prices]
+                                  description: Probability (LMSR marginal price) in (0,1).
+                              required: [outcome_id, probability]
+                        required: [t, probabilities]
                   required: [points]
               required: [status, data]
       "400":
@@ -455,12 +456,17 @@ MarketOutcome:
       description: Set iff kind=player.
     name:
       type: string
-    price:
+    probability:
       type: number
       format: double
       minimum: 0
       maximum: 1
-      description: Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
+      description: >-
+        Live probability of the outcome in [0,1] (the LMSR marginal price);
+        probabilities sum to 1. Not the cost of a share: buying `s` shares
+        costs C(q+s·e_i) − C(q), which exceeds the probability whenever the
+        buy moves the price (small liquidity b). The cost is derived from
+        `shares` (the AMM q) + the market's `liquidity_b`, not from this field.
     shares:
       type: number
       format: double
@@ -469,7 +475,7 @@ MarketOutcome:
       type: number
       format: double
       description: Total elo spent on this outcome.
-  required: [id, kind, name, price, shares, pool]
+  required: [id, kind, name, probability, shares, pool]
 
 SettlementDetail:
   type: object
@@ -580,7 +586,7 @@ Market:
       type: array
       items:
         $ref: '#/MarketOutcome'
-      description: The market's mutually-exclusive outcomes; prices sum to 1.
+      description: The market's mutually-exclusive outcomes; probabilities sum to 1.
     liquidity_b:
       type: number
       format: double

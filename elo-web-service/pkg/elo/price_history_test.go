@@ -23,44 +23,44 @@ func priceBets(outcomeIDs [3]id.ID, bets ...[2]any) []PriceBet {
 
 var threeOutcomes = [3]id.ID{"o1", "o2", "o3"}
 
-func priceOf(t *testing.T, p PricePoint, outcomeID id.ID) float64 {
+func priceOf(t *testing.T, p ProbabilityPoint, outcomeID id.ID) float64 {
 	t.Helper()
-	for _, op := range p.Prices {
+	for _, op := range p.Probabilities {
 		if op.OutcomeID == outcomeID {
-			return op.Price
+			return op.Probability
 		}
 	}
-	t.Fatalf("outcome %q missing from point prices %v", outcomeID, p.Prices)
+	t.Fatalf("outcome %q missing from point probabilities %v", outcomeID, p.Probabilities)
 	return 0
 }
 
-func TestPriceHistoryEmpty(t *testing.T) {
-	if pts := PriceHistory(nil, threeOutcomes[:], 100); len(pts) != 0 {
+func TestProbabilityHistoryEmpty(t *testing.T) {
+	if pts := ProbabilityHistory(nil, threeOutcomes[:], 100); len(pts) != 0 {
 		t.Fatalf("expected no points for a bet-less market, got %d", len(pts))
 	}
 }
 
-func TestPriceHistorySingleBet(t *testing.T) {
-	pts := PriceHistory(priceBets(threeOutcomes, [2]any{0, 10.0}), threeOutcomes[:], 100)
+func TestProbabilityHistorySingleBet(t *testing.T) {
+	pts := ProbabilityHistory(priceBets(threeOutcomes, [2]any{0, 10.0}), threeOutcomes[:], 100)
 	if len(pts) != 1 {
 		t.Fatalf("expected 1 point, got %d", len(pts))
 	}
 	if priceOf(t, pts[0], "o1") <= 1.0/3 {
-		t.Errorf("an o1 buy must push its price above 1/3, got %v", priceOf(t, pts[0], "o1"))
+		t.Errorf("an o1 buy must push its probability above 1/3, got %v", priceOf(t, pts[0], "o1"))
 	}
-	// The point must equal the price PlaceBet would have broadcast.
-	live := MarginalPricesN([]float64{10, 0, 0}, 100)
+	// The point must equal the probability PlaceBet would have broadcast.
+	live := MarginalProbabilitiesN([]float64{10, 0, 0}, 100)
 	if !approxEq(priceOf(t, pts[0], "o1"), live[0]) {
-		t.Errorf("replayed price %v != live price %v", priceOf(t, pts[0], "o1"), live[0])
+		t.Errorf("replayed probability %v != live probability %v", priceOf(t, pts[0], "o1"), live[0])
 	}
-	// Every point carries the full price vector, summing to 1.
+	// Every point carries the full probability vector, summing to 1.
 	if !approxEq(sum([]float64{priceOf(t, pts[0], "o1"), priceOf(t, pts[0], "o2"), priceOf(t, pts[0], "o3")}), 1.0) {
-		t.Errorf("point prices must sum to 1")
+		t.Errorf("point probabilities must sum to 1")
 	}
 }
 
-func TestPriceHistoryBuyingOutcomeLowersOthers(t *testing.T) {
-	pts := PriceHistory(priceBets(threeOutcomes, [2]any{1, 10.0}), threeOutcomes[:], 100)
+func TestProbabilityHistoryBuyingOutcomeLowersOthers(t *testing.T) {
+	pts := ProbabilityHistory(priceBets(threeOutcomes, [2]any{1, 10.0}), threeOutcomes[:], 100)
 	if !(priceOf(t, pts[0], "o2") > 1.0/3) {
 		t.Errorf("an o2 buy must raise o2 above 1/3, got %v", priceOf(t, pts[0], "o2"))
 	}
@@ -71,8 +71,8 @@ func TestPriceHistoryBuyingOutcomeLowersOthers(t *testing.T) {
 	}
 }
 
-func TestPriceHistorySymmetricBetsStayUniform(t *testing.T) {
-	pts := PriceHistory(priceBets(threeOutcomes,
+func TestProbabilityHistorySymmetricBetsStayUniform(t *testing.T) {
+	pts := ProbabilityHistory(priceBets(threeOutcomes,
 		[2]any{0, 7.0},
 		[2]any{1, 3.0},
 		[2]any{1, 4.0},
@@ -83,13 +83,13 @@ func TestPriceHistorySymmetricBetsStayUniform(t *testing.T) {
 	}
 	for _, id := range threeOutcomes[:] {
 		if !approxEq(priceOf(t, pts[3], id), 1.0/3) {
-			t.Errorf("equal share totals must give uniform prices, o(%s)=%v", id, priceOf(t, pts[3], id))
+			t.Errorf("equal share totals must give uniform probabilities, o(%s)=%v", id, priceOf(t, pts[3], id))
 		}
 	}
 }
 
-func TestPriceHistoryMatchesLiveState(t *testing.T) {
-	// The last replayed point must equal the market's current live price for
+func TestProbabilityHistoryMatchesLiveState(t *testing.T) {
+	// The last replayed point must equal the market's current live probability for
 	// the same q state — this is what keeps the chart consistent with the SSE
 	// stream it gets appended to.
 	bets := priceBets(threeOutcomes,
@@ -98,7 +98,7 @@ func TestPriceHistoryMatchesLiveState(t *testing.T) {
 		[2]any{0, 1.0},
 		[2]any{2, 9.0},
 	)
-	pts := PriceHistory(bets, threeOutcomes[:], 100)
+	pts := ProbabilityHistory(bets, threeOutcomes[:], 100)
 	q := []float64{0, 0, 0}
 	for _, b := range bets {
 		for i, id := range threeOutcomes {
@@ -107,22 +107,22 @@ func TestPriceHistoryMatchesLiveState(t *testing.T) {
 			}
 		}
 	}
-	live := MarginalPricesN(q, 100)
+	live := MarginalProbabilitiesN(q, 100)
 	for i, id := range threeOutcomes {
 		if !approxEq(priceOf(t, pts[len(pts)-1], id), live[i]) {
-			t.Errorf("last replayed price for %s: %v != live %v", id, priceOf(t, pts[len(pts)-1], id), live[i])
+			t.Errorf("last replayed probability for %s: %v != live %v", id, priceOf(t, pts[len(pts)-1], id), live[i])
 		}
 	}
 }
 
-func TestPriceHistorySkipsNonPositiveSharesAndUnknownOutcomes(t *testing.T) {
-	pts := PriceHistory(priceBets(threeOutcomes,
+func TestProbabilityHistorySkipsNonPositiveSharesAndUnknownOutcomes(t *testing.T) {
+	pts := ProbabilityHistory(priceBets(threeOutcomes,
 		[2]any{0, 10.0},
 		[2]any{1, 0.0},
 		[2]any{0, 5.0},
 	), threeOutcomes[:], 100)
 	// Also a bet referencing an outcome outside the market's set is skipped.
-	pts = append(pts, PriceHistory([]PriceBet{{Outcome: "unknown", Shares: 3, PlacedAt: time.Now()}}, threeOutcomes[:], 100)...)
+	pts = append(pts, ProbabilityHistory([]PriceBet{{Outcome: "unknown", Shares: 3, PlacedAt: time.Now()}}, threeOutcomes[:], 100)...)
 	if len(pts) != 2 {
 		t.Fatalf("expected zero-shares and unknown-outcome bets to be skipped, got %d points", len(pts))
 	}

@@ -18,7 +18,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle, outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
-import { ChartPricePoint } from "@/app/markets/priceHistory";
+import { ProbabilityPoint } from "@/app/markets/probabilityHistory";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime, formatDayMonth, formatTime } from "@/lib/datetime";
 
@@ -38,13 +38,13 @@ export function statusVariant(market: Market): "default" | "secondary" | "destru
 }
 
 // OutcomeDonut renders the live probability split as a circle graph: one
-// segment per outcome, sized by its LMSR price (the segments sum to 100%).
+// segment per outcome, sized by its LMSR probability (the segments sum to 100%).
 function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOutcome) => string }) {
     const colors = outcomeColors(market.outcomes);
     const data = market.outcomes.map((o) => ({
         id: o.id,
         name: nameOf(o),
-        value: Math.max(o.price, 0) * 100,
+        value: Math.max(o.probability, 0) * 100,
         color: colors.get(o.id) ?? "#94a3b8",
     }));
 
@@ -96,14 +96,15 @@ function axisTicks(count: number): number[] {
     return [0, 1, 2, 3].map(i => Math.round(i * step));
 }
 
-// PriceChart renders every outcome's probability over time, one step line per
-// outcome. Prices move in discrete steps (one per bet), hence stepAfter;
-// animation is off so live SSE appends don't re-animate the whole chart.
-function PriceChart({ points, outcomes, nameOf }: { points: ChartPricePoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
+// ProbabilityChart renders every outcome's probability over time, one step
+// line per outcome. Probabilities move in discrete steps (one per bet), hence
+// stepAfter; animation is off so live SSE appends don't re-animate the whole
+// chart.
+function ProbabilityChart({ points, outcomes, nameOf }: { points: ProbabilityPoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
     const colors = outcomeColors(outcomes);
     // X position is the point index (equal spacing regardless of bet timing);
     // the real bet timestamp travels along as `time` for ticks and the tooltip.
-    const rows = points.map((p, i) => ({ t: i, time: p.t, ...p.prices }));
+    const rows = points.map((p, i) => ({ t: i, time: p.t, ...p.probabilities }));
     // Precomputed per-tick labels: time for every tick, prefixed with the day
     // on the first tick of each day, so multi-day histories stay readable.
     // Precomputing (instead of deriving inside tickFormatter) keeps the
@@ -186,7 +187,7 @@ function SettlementList({ details, showFlow = true }: { details: SettlementDetai
     );
 }
 
-export function MarketCard({ market, priceHistory, className }: { market: Market; priceHistory?: ChartPricePoint[]; className?: string }) {
+export function MarketCard({ market, probabilityHistory, className }: { market: Market; probabilityHistory?: ProbabilityPoint[]; className?: string }) {
     const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
     const title = getMarketTitle(market, players, games, playerDisplayName);
@@ -211,7 +212,7 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
             id: market.resolution_outcome_id,
             kind: "other" as const,
             name: "Разрешён",
-            price: 0,
+            probability: 0,
             shares: 0,
             pool: 0,
         })
@@ -236,8 +237,8 @@ export function MarketCard({ market, priceHistory, className }: { market: Market
             </CardHeader>
             <CardContent>
                 <OutcomeDonut market={market} nameOf={nameOf} />
-                {priceHistory && priceHistory.length > 0 && (
-                    <PriceChart points={priceHistory} outcomes={market.outcomes} nameOf={nameOf} />
+                {probabilityHistory && probabilityHistory.length > 0 && (
+                    <ProbabilityChart points={probabilityHistory} outcomes={market.outcomes} nameOf={nameOf} />
                 )}
                 {(isOpen || isBettingClosed) && market.guarantors && market.guarantors.length > 0 && (
                     <p className="text-xs text-muted-foreground pt-2">

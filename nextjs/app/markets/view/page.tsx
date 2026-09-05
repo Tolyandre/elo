@@ -8,7 +8,7 @@ import {
     MarketDetail,
     MarketOutcome,
     getMarketByIdPromise,
-    getMarketPriceHistoryPromise,
+    getMarketProbabilityHistoryPromise,
     placeBetPromise,
 } from "@/app/api";
 import { useMe } from "@/app/meContext";
@@ -19,13 +19,13 @@ import { BackButton } from "@/components/back-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import { useMarketPricesSSE } from "@/hooks/useMarketsSSE";
+import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
-import { sharesForAmount } from "@/app/markets/lmsr";
+import { costForShares, sharesForAmount } from "@/app/markets/lmsr";
 import { formatAmount } from "@/app/markets/format";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { ChartPricePoint, mergePriceHistory } from "@/app/markets/priceHistory";
+import { ProbabilityPoint, mergeProbabilityHistory } from "@/app/markets/probabilityHistory";
 
 function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: number; earned: number; totalStaked: number }) {
     const positive = net >= 0;
@@ -78,7 +78,8 @@ type BuyMode = "share" | "amount";
 function OutcomeColumn({
     label,
     titleColor,
-    price,
+    probability,
+    shareCost,
     betShares,
     buyMode,
     myStaked,
@@ -90,7 +91,10 @@ function OutcomeColumn({
 }: {
     label: string;
     titleColor?: string;
-    price: number;
+    /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
+    probability: number;
+    /** Elo the next 1-share buy costs right now (C(q+e_i) − C(q)); set only while the market is open for buying. */
+    shareCost?: number;
     /** Shares a fixed 1-elo bet buys at the current q — the multiplier the bet actually realizes. */
     betShares?: number;
     buyMode: BuyMode;
@@ -101,15 +105,34 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
+    // In the share mode the headline and the buy button show what a 1-share
+    // buy actually charges — the LMSR cost of the next share, which sits above
+    // the probability whenever the buy moves the price (thin markets, small b).
+    // Without an active buy (market closed) the probability is shown instead.
+    const costShown = shareCost != null && Number.isFinite(shareCost);
+    const headline = buyMode === "amount" && betShares != null && Number.isFinite(betShares)
+        ? `×${betShares.toFixed(2)}`
+        : buyMode === "share" && costShown
+            ? formatAmount(shareCost)
+            : probability.toFixed(2);
+    const headlineCaption = buyMode === "amount" && betShares != null && Number.isFinite(betShares)
+        ? "голосов за 1 рейтинг"
+        : buyMode === "share" && costShown
+            ? "цена 1 голоса"
+            : null;
+    const buyLabel = buyMode === "amount"
+        ? "Поставить 1"
+        : costShown
+            ? `Поставить ${formatAmount(shareCost)}`
+            : "Поставить";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
             <div className="text-center min-w-0">
                 <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
-                <p className="text-2xl font-bold leading-tight">
-                    {buyMode === "amount" && betShares != null && Number.isFinite(betShares)
-                        ? `×${betShares.toFixed(2)}`
-                        : price.toFixed(2)}
-                </p>
+                <p className="text-2xl font-bold leading-tight">{headline}</p>
+                {headlineCaption && (
+                    <p className="text-xs text-muted-foreground leading-tight">{headlineCaption}</p>
+                )}
             </div>
             <div className="text-sm space-y-1">
                 {myShares !== undefined && myShares > 0 && (
@@ -132,7 +155,7 @@ function OutcomeColumn({
                     onClick={onBuy}
                     disabled={!canBuy || buying}
                 >
-                    {buying ? "..." : buyMode === "amount" ? "Поставить 1" : "Купить 1 голос"}
+                    {buying ? "..." : buyLabel}
                 </Button>
             )}
         </div>
@@ -150,30 +173,30 @@ function MarketPageContent() {
         [id],
     );
     const { data: fetchedHistory, invalidate: invalidateHistory } = useAsyncResource(
-        () => (id ? getMarketPriceHistoryPromise(id) : Promise.reject(new Error('no id'))),
+        () => (id ? getMarketProbabilityHistoryPromise(id) : Promise.reject(new Error('no id'))),
         [id],
     );
-    // Live LMSR prices/pools streamed after every purchase (ours and others').
-    const ssePrices = useMarketPricesSSE(id || null);
+    // Live LMSR probabilities/pools streamed after every purchase (ours and others').
+    const sseProbabilities = useMarketProbabilitiesSSE(id || null);
 
-    // Live points appended onto the replayed history as SSE prices tick. A
-    // point whose price vector matches the previous one is dropped by the
-    // merge — that is the connect frame echoing the current state, or a bet a
-    // history refetch has already picked up.
-    const [livePoints, setLivePoints] = useState<ChartPricePoint[]>([]);
+    // Live points appended onto the replayed history as SSE probabilities tick.
+    // A point whose probability vector matches the previous one is dropped by
+    // the merge — that is the connect frame echoing the current state, or a bet
+    // a history refetch has already picked up.
+    const [livePoints, setLivePoints] = useState<ProbabilityPoint[]>([]);
     useEffect(() => {
-        /* eslint-disable react-hooks/set-state-in-effect -- the SSE hook surfaces the latest prices as a value, so recording each new value in an effect is the standard stream-to-state bridge */
-        if (!ssePrices) return;
-        const prices: Record<string, number> = {};
-        for (const o of ssePrices.outcomes) prices[o.id] = o.price;
-        setLivePoints(prev => [...prev, { t: Date.now(), prices }]);
+        /* eslint-disable react-hooks/set-state-in-effect -- the SSE hook surfaces the latest probabilities as a value, so recording each new value in an effect is the standard stream-to-state bridge */
+        if (!sseProbabilities) return;
+        const probabilities: Record<string, number> = {};
+        for (const o of sseProbabilities.outcomes) probabilities[o.id] = o.probability;
+        setLivePoints(prev => [...prev, { t: Date.now(), probabilities }]);
         /* eslint-enable react-hooks/set-state-in-effect */
-    }, [ssePrices]);
+    }, [sseProbabilities]);
 
-    const priceHistory = mergePriceHistory(
+    const probabilityHistory = mergeProbabilityHistory(
         (fetchedHistory ?? []).map(p => ({
             t: new Date(p.t).getTime(),
-            prices: Object.fromEntries(p.prices.map(op => [op.outcome_id, op.price])),
+            probabilities: Object.fromEntries(p.probabilities.map(op => [op.outcome_id, op.probability])),
         })),
         livePoints,
     );
@@ -195,15 +218,15 @@ function MarketPageContent() {
         );
     }
 
-    // SSE overrides the REST snapshot so prices/voice counts/pools tick live
-    // while the market is open.
-    const liveById = new Map((ssePrices?.outcomes ?? []).map((o) => [o.id, o]));
-    const displayMarket: MarketDetail = ssePrices
+    // SSE overrides the REST snapshot so probabilities/voice counts/pools tick
+    // live while the market is open.
+    const liveById = new Map((sseProbabilities?.outcomes ?? []).map((o) => [o.id, o]));
+    const displayMarket: MarketDetail = sseProbabilities
         ? {
             ...market,
             outcomes: market.outcomes.map((o) => {
                 const live = liveById.get(o.id);
-                return live ? { ...o, price: live.price, shares: live.shares, pool: live.pool } : o;
+                return live ? { ...o, probability: live.probability, shares: live.shares, pool: live.pool } : o;
             }),
         }
         : market;
@@ -221,8 +244,8 @@ function MarketPageContent() {
 
     // Fixed-amount buys (and their headline multiplier) derive from the live
     // q vector: 1 elo buys `sharesForAmount` shares, and that share count is
-    // what the bet actually delivers. Unlike the instantaneous 1/price, it
-    // accounts for the price walk within the buy (LMSR is path-independent,
+    // what the bet actually delivers. Unlike the instantaneous 1/probability,
+    // it accounts for the price walk within the buy (LMSR is path-independent,
     // so a batch buy costs exactly what step-by-step buys would — the modes
     // stay equally priced).
     const qVec = displayMarket.outcomes.map((o) => o.shares);
@@ -231,8 +254,8 @@ function MarketPageContent() {
     // Shares-driven buy (ADR-10): the AMM prices the elo cost. In the share
     // mode each purchase buys exactly 1 share; in the amount mode the LMSR
     // cost is inverted client side to buy as many shares as 1 elo buys. The
-    // displayed price is sent along so the server can reject the buy if it
-    // has moved (409); the spend limit is enforced server side (422); on
+    // displayed probability is sent along so the server can reject the buy if
+    // it has moved (409); the spend limit is enforced server side (422); on
     // failure we refresh.
     async function handleBuy(outcome: MarketOutcome) {
         setBuyingOutcome(outcome.id);
@@ -242,7 +265,7 @@ function MarketPageContent() {
                 const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
                 shares = sharesForAmount(qVec, liquidityB, idx, 1);
             }
-            await placeBetPromise(id!, outcome.id, outcome.price, shares);
+            await placeBetPromise(id!, outcome.id, outcome.probability, shares);
             invalidate();
             invalidateHistory();
         } catch {
@@ -266,7 +289,7 @@ function MarketPageContent() {
         <main className="max-w-sm mx-auto space-y-4">
             <BackButton href="/markets" label="Назад к ставкам" />
             <PageHeader title="Ставки" />
-            <MarketCard market={displayMarket} priceHistory={priceHistory} />
+            <MarketCard market={displayMarket} probabilityHistory={probabilityHistory} />
 
             {displayMarket.resolution_match_id && (
                 <p className="text-sm text-muted-foreground text-center">
@@ -283,8 +306,8 @@ function MarketPageContent() {
 
             <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
                 <TabsList className="grid grid-cols-2 w-full">
-                    <TabsTrigger value="share">Цена голоса</TabsTrigger>
-                    <TabsTrigger value="amount">Коэффициент</TabsTrigger>
+                    <TabsTrigger value="share">По одному голосу</TabsTrigger>
+                    <TabsTrigger value="amount">Коэффициенты</TabsTrigger>
                 </TabsList>
             </Tabs>
 
@@ -294,7 +317,8 @@ function MarketPageContent() {
                         key={o.id}
                         label={nameOf(o)}
                         titleColor={colors.get(o.id)}
-                        price={o.price}
+                        probability={o.probability}
+                        shareCost={isOpen ? costForShares(qVec, liquidityB, i, 1) : undefined}
                         betShares={sharesForAmount(qVec, liquidityB, i, 1)}
                         buyMode={buyMode}
                         myStaked={stakedByOutcome.get(o.id)}

@@ -32,7 +32,7 @@ type CreateMarketParams struct {
 
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
-	PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedPrice float64) (PlaceBetOutcome, error)
+	PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedProbability float64) (PlaceBetOutcome, error)
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
 	// Must be called within an active transaction (q is transactional).
@@ -78,7 +78,7 @@ type IMarketService interface {
 	ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]db.ListMarketGuarantorsRow, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error)
 	GetPlayerBetLimit(ctx context.Context, playerID id.ID) (float64, error)
-	GetMarketPriceHistory(ctx context.Context, marketID id.ID) ([]PricePoint, error)
+	GetMarketProbabilityHistory(ctx context.Context, marketID id.ID) ([]ProbabilityPoint, error)
 }
 
 type MarketService struct {
@@ -157,10 +157,10 @@ func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID id.ID) (
 	return s.Queries.GetPlayerBetLimit(ctx, playerID)
 }
 
-// GetMarketPriceHistory reconstructs the market's per-outcome price series by
-// replaying its bet stream through the LMSR from the creation state q=0. No
-// prices are persisted — see price_history.go.
-func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID id.ID) ([]PricePoint, error) {
+// GetMarketProbabilityHistory reconstructs the market's per-outcome probability
+// series by replaying its bet stream through the LMSR from the creation state
+// q=0. No probabilities are persisted — see price_history.go.
+func (s *MarketService) GetMarketProbabilityHistory(ctx context.Context, marketID id.ID) ([]ProbabilityPoint, error) {
 	market, err := s.Queries.GetMarket(ctx, marketID)
 	if err != nil {
 		return nil, err
@@ -181,8 +181,8 @@ func (s *MarketService) GetMarketPriceHistory(ctx context.Context, marketID id.I
 	for i, r := range rows {
 		bets[i] = PriceBet{Outcome: r.Outcome, Shares: r.Shares, PlacedAt: r.PlacedAt.Time}
 	}
-	// rows come back ordered by (placed_at, id) — the order PriceHistory expects.
-	return PriceHistory(bets, outcomeIDs, market.LiquidityB), nil
+	// rows come back ordered by (placed_at, id) — the order ProbabilityHistory expects.
+	return ProbabilityHistory(bets, outcomeIDs, market.LiquidityB), nil
 }
 
 // defaultMarketMaxGuarantorLoss mirrors elo_settings.market_default_max_guarantor_loss
@@ -275,20 +275,21 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	return market, nil
 }
 
-// PriceTolerance is the maximum allowed difference between the expected price
-// the buyer saw (and sends with the bet) and the live marginal price at bet
-// time. Covers UI rounding and SSE propagation latency, but rejects the buy
-// once other participants have moved the market.
-const PriceTolerance = 0.01
+// ProbabilityTolerance is the maximum allowed difference between the expected
+// probability the buyer saw (and sends with the bet) and the live probability
+// at bet time. Covers UI rounding and SSE propagation latency, but rejects the
+// buy once other participants have moved the market.
+const ProbabilityTolerance = 0.01
 
-// PlaceBetOutcome is returned to the buyer: the shares received and the effective
-// price paid per share (amount / shares).
+// PlaceBetOutcome is returned to the buyer: the shares received and the
+// effective elo cost paid per share (amount / shares) — a cost, not the
+// outcome's probability.
 type PlaceBetOutcome struct {
-	Shares float64
-	Price  float64
+	Shares       float64
+	CostPerShare float64
 }
 
-func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedPrice float64) (PlaceBetOutcome, error) {
+func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedProbability float64) (PlaceBetOutcome, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("begin tx: %w", err)
@@ -327,12 +328,12 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 		return PlaceBetOutcome{}, ErrMarketOutcomeNotFound
 	}
 
-	// The buyer must confirm the price they saw: reject if the live marginal
-	// price of the outcome has drifted away beyond PriceTolerance since the
-	// client loaded it.
-	currentPrice := MarginalPricesN(qVec, market.LiquidityB)[outcomeIdx]
-	if math.Abs(currentPrice-expectedPrice) > PriceTolerance {
-		return PlaceBetOutcome{}, ErrPriceChanged
+	// The buyer must confirm the probability they saw: reject if the live
+	// probability of the outcome has drifted away beyond ProbabilityTolerance
+	// since the client loaded it.
+	currentProbability := MarginalProbabilitiesN(qVec, market.LiquidityB)[outcomeIdx]
+	if math.Abs(currentProbability-expectedProbability) > ProbabilityTolerance {
+		return PlaceBetOutcome{}, ErrProbabilityChanged
 	}
 
 	// A guarantor may also buy on their own market (the creator's player is
@@ -381,7 +382,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 
 	if s.Hub != nil {
 		live := make([]LiveOutcome, len(outcomes))
-		prices := MarginalPricesN(newQ, market.LiquidityB)
+		probabilities := MarginalProbabilitiesN(newQ, market.LiquidityB)
 		for i, o := range outcomes {
 			pool := o.Pool
 			if i == outcomeIdx {
@@ -389,32 +390,34 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 			}
 			// SSE frames bypass the JSON DTO layer, so the wire-form encoding
 			// is applied here, at construction (ADR-12).
-			live[i] = LiveOutcome{ID: string(o.ID.Base58()), Price: prices[i], Shares: newQ[i], Pool: pool}
+			live[i] = LiveOutcome{ID: string(o.ID.Base58()), Probability: probabilities[i], Shares: newQ[i], Pool: pool}
 		}
-		s.broadcastPrices(marketID, live)
+		s.broadcastProbabilities(marketID, live)
 	}
 
-	price := 0.0
+	costPerShare := 0.0
 	if shares > 0 {
-		price = amount / shares
+		costPerShare = amount / shares
 	}
-	return PlaceBetOutcome{Shares: shares, Price: price}, nil
+	return PlaceBetOutcome{Shares: shares, CostPerShare: costPerShare}, nil
 }
 
-// LiveOutcome is one outcome's live state in the SSE prices payload.
+// LiveOutcome is one outcome's live state in the SSE probabilities payload:
+// the probability (LMSR marginal price), outstanding shares and elo pool.
 type LiveOutcome struct {
-	ID     string  `json:"id"`
-	Price  float64 `json:"price"`
-	Shares float64 `json:"shares"`
-	Pool   float64 `json:"pool"`
+	ID          string  `json:"id"`
+	Probability float64 `json:"probability"`
+	Shares      float64 `json:"shares"`
+	Pool        float64 `json:"pool"`
 }
 
-// broadcastPrices fans the new per-outcome LMSR prices + share counts + pools
-// out to the market's SSE subscribers and signals the markets-list lobby.
-func (s *MarketService) broadcastPrices(marketID id.ID, outcomes []LiveOutcome) {
+// broadcastProbabilities fans the new per-outcome probabilities + share counts
+// + pools out to the market's SSE subscribers and signals the markets-list
+// lobby.
+func (s *MarketService) broadcastProbabilities(marketID id.ID, outcomes []LiveOutcome) {
 	payload, err := json.Marshal(SSEEvent{
-		Type: "prices",
-		Data: PricesPayload{Outcomes: outcomes},
+		Type: "probabilities",
+		Data: ProbabilitiesPayload{Outcomes: outcomes},
 	})
 	if err != nil {
 		return
@@ -423,9 +426,9 @@ func (s *MarketService) broadcastPrices(marketID id.ID, outcomes []LiveOutcome) 
 	s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
 }
 
-// PricesPayload is the data part of the "prices" SSE event, shared by the
-// PlaceBet broadcast and the MarketEvents connect frame.
-type PricesPayload struct {
+// ProbabilitiesPayload is the data part of the "probabilities" SSE event,
+// shared by the PlaceBet broadcast and the MarketEvents connect frame.
+type ProbabilitiesPayload struct {
 	Outcomes []LiveOutcome `json:"outcomes"`
 }
 

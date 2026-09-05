@@ -30,7 +30,7 @@ func TestAMMPricesSumToOne(t *testing.T) {
 	}
 	for _, q := range cases {
 		for _, b := range []float64{100, 16, 4} {
-			prices := MarginalPricesN(q, b)
+			prices := MarginalProbabilitiesN(q, b)
 			if len(prices) != len(q) {
 				t.Fatalf("prices length %d, want %d", len(prices), len(q))
 			}
@@ -45,7 +45,7 @@ func TestAMMSymmetricStartIsUniform(t *testing.T) {
 	// All-equal q ⇒ equal prices 1/n.
 	for _, n := range []int{2, 3, 5} {
 		q := make([]float64, n)
-		prices := MarginalPricesN(q, 100)
+		prices := MarginalProbabilitiesN(q, 100)
 		for _, p := range prices {
 			if !approxEq(p, 1.0/float64(n)) {
 				t.Fatalf("expected uniform 1/%d prices at symmetric start, got %v", n, prices)
@@ -66,7 +66,7 @@ func TestAMMBinaryMatchesLegacyYesNo(t *testing.T) {
 		}
 		return en / (ey + en)
 	}
-	prices := MarginalPricesN([]float64{qY, qN}, b)
+	prices := MarginalProbabilitiesN([]float64{qY, qN}, b)
 	if !approxEq(prices[0], legacy("yes")) || !approxEq(prices[1], legacy("no")) {
 		t.Fatalf("n=2 prices %v disagree with legacy yes/no (%v/%v)", prices, legacy("yes"), legacy("no"))
 	}
@@ -78,8 +78,8 @@ func TestAMMBuyingMovesPriceTowardBoughtOutcome(t *testing.T) {
 	// Buy 10 shares of outcome 1 → its price must rise; effective price
 	// (amount/shares) > marginal 1/3 (slippage).
 	newQ, amount := ApplyBetN(q, b, 1, 10)
-	pricesBefore := MarginalPricesN(q, b)
-	pricesAfter := MarginalPricesN(newQ, b)
+	pricesBefore := MarginalProbabilitiesN(q, b)
+	pricesAfter := MarginalProbabilitiesN(newQ, b)
 	if !(pricesAfter[1] > pricesBefore[1]) {
 		t.Errorf("buying outcome 1 did not raise its price: %v → %v", pricesBefore[1], pricesAfter[1])
 	}
@@ -148,7 +148,7 @@ func TestAMMLargeStateStaysStable(t *testing.T) {
 	// Extreme one-sided states must stay in (0,1) thanks to log-sum-exp
 	// stabilization.
 	q := []float64{0, 500, 0}
-	prices := MarginalPricesN(q, 16)
+	prices := MarginalProbabilitiesN(q, 16)
 	for i, p := range prices {
 		if p <= 0 || p >= 1 || math.IsNaN(p) {
 			t.Fatalf("price[%d] = %v, want ∈ (0,1)", i, p)

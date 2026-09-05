@@ -430,7 +430,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/markets/{id}/price-history": {
+    "/markets/{id}/probability-history": {
         parameters: {
             query?: never;
             header?: never;
@@ -438,10 +438,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Reconstructed per-outcome price history of a market
-         * @description The marginal price of every outcome after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No prices are persisted; the series is derived from bets alone.
+         * Reconstructed per-outcome probability history of a market
+         * @description The probability (LMSR marginal price) of every outcome after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No probabilities are persisted; the series is derived from bets alone.
          */
-        get: operations["GetMarketPriceHistory"];
+        get: operations["GetMarketProbabilityHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1016,7 +1016,7 @@ export interface components {
             resolved_at?: string | null;
             /** Format: date-time */
             betting_closed_at?: string | null;
-            /** @description The market's mutually-exclusive outcomes; prices sum to 1. */
+            /** @description The market's mutually-exclusive outcomes; probabilities sum to 1. */
             outcomes: components["schemas"]["MarketOutcome"][];
             /**
              * Format: double
@@ -1178,9 +1178,9 @@ export interface components {
             name: string;
             /**
              * Format: double
-             * @description Live LMSR price of the outcome in [0,1] (probability); prices sum to 1.
+             * @description Live probability of the outcome in [0,1] (the LMSR marginal price); probabilities sum to 1. Not the cost of a share: buying `s` shares costs C(q+s·e_i) − C(q), which exceeds the probability whenever the buy moves the price (small liquidity b). The cost is derived from `shares` (the AMM q) + the market's `liquidity_b`, not from this field.
              */
-            price: number;
+            probability: number;
             /**
              * Format: double
              * @description Outstanding shares of this outcome (the AMM q; each pays 1 if it wins).
@@ -3284,9 +3284,9 @@ export interface operations {
                     shares: number;
                     /**
                      * Format: double
-                     * @description The outcome price the buyer saw and agrees to buy around. The server rejects the bet (409) if the live price has moved away from it beyond a small tolerance.
+                     * @description The outcome probability the buyer saw and agrees to buy around. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
                      */
-                    expected_price: number;
+                    expected_probability: number;
                 };
             };
         };
@@ -3307,9 +3307,9 @@ export interface operations {
                             shares: number;
                             /**
                              * Format: double
-                             * @description Effective price paid per share (cost / shares).
+                             * @description Effective elo cost paid per share (cost / shares).
                              */
-                            price: number;
+                            cost_per_share: number;
                         };
                     };
                 };
@@ -3341,7 +3341,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Market not open for buying, or the live price moved away from expected_price */
+            /** @description Market not open for buying, or the live probability moved away from expected_probability */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3361,7 +3361,7 @@ export interface operations {
             };
         };
     };
-    GetMarketPriceHistory: {
+    GetMarketProbabilityHistory: {
         parameters: {
             query?: never;
             header?: never;
@@ -3372,7 +3372,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Price points ordered by time */
+            /** @description Probability points ordered by time */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3387,14 +3387,14 @@ export interface operations {
                                  * @description When the bet was placed.
                                  */
                                 t: string;
-                                /** @description Marginal price of every outcome right after the bet; prices sum to 1. */
-                                prices: {
+                                /** @description Probability of every outcome right after the bet; probabilities sum to 1. */
+                                probabilities: {
                                     outcome_id: components["schemas"]["Base58ID"];
                                     /**
                                      * Format: double
-                                     * @description Marginal price in (0,1).
+                                     * @description Probability (LMSR marginal price) in (0,1).
                                      */
-                                    price: number;
+                                    probability: number;
                                 }[];
                             }[];
                         };
