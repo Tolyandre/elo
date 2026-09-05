@@ -88,8 +88,9 @@ export function ConfirmDialogWithContent(
 /**
  * State machine for a one-shot async action gated behind a confirm dialog.
  * `trigger(target)` opens the dialog remembering `target`; `confirm()` runs the
- * action, disabling the button while pending. The action is responsible for
- * closing the dialog on success (call `reset()`) — toasts are shown by the API layer.
+ * action, disabling the button while pending and closing the dialog on success.
+ * On failure the dialog stays open so the user can retry — toasts are shown by
+ * the API layer.
  *
  * @example
  * const del = useConfirmAction(async (g: Game) => { await deleteGamePromise(g.id); invalidate(); });
@@ -131,7 +132,9 @@ export function useConfirmAction<T>(
         setPending(true);
         actionRef
             .current(t)
+            .then(() => setTarget(null))
             .catch(() => {
+                // keep the dialog open so the user can retry;
                 // toasts are shown by the API layer
             })
             .finally(() => setPending(false));
