@@ -1,7 +1,6 @@
 "use client"
 import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
-import Link from "next/link";
 import { listUsersPromise, patchUserPromise, User } from "../../api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
@@ -17,13 +16,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { usePlayers } from "@/app/players/PlayersContext";
+import { BackButton } from "@/components/back-button";
 
 export default function AdminUsersPage() {
   const { id: currentUserId } = useMe();
+  const { players, playerDisplayName } = usePlayers();
   const { data: users, loading, error, invalidate } = useAsyncResource(listUsersPromise);
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [selfRevokeTarget, setSelfRevokeTarget] = useState<User | null>(null);
+
+  // Player display name for every user with a bound player account.
+  const playerNameById = new Map(players.map((p) => [p.id, playerDisplayName(p)]));
 
   async function applyToggle(userId: Base58ID, newValue: boolean) {
     setSavingIds((p) => ({ ...p, [userId]: true }));
@@ -56,11 +61,7 @@ export default function AdminUsersPage() {
   return (
     <main className="p-4 max-w-2xl">
       <PageHeader title="Управление пользователями" />
-      <div className="mb-6">
-        <Button variant="link" asChild className="px-0">
-          <Link href="/admin">Назад</Link>
-        </Button>
-      </div>
+      <BackButton href="/admin" />
 
       {loading && <p>Загрузка...</p>}
 
@@ -80,6 +81,11 @@ export default function AdminUsersPage() {
             <div key={u.id} className="flex items-center justify-between py-3 border-b last:border-0">
               <Label htmlFor={`switch-${u.id}`} className="text-sm font-normal cursor-pointer">
                 {u.name}
+                {u.player_id && playerNameById.get(u.player_id) && (
+                  <span className="block text-xs text-muted-foreground">
+                    игрок: {playerNameById.get(u.player_id)}
+                  </span>
+                )}
               </Label>
               <div className="flex items-center gap-2">
                 {savingIds[u.id] && (
