@@ -132,7 +132,7 @@ function OutcomeColumn({
                     onClick={onBuy}
                     disabled={!canBuy || buying}
                 >
-                    {buying ? "..." : buyMode === "amount" ? "Поставить 1" : "Голосовать"}
+                    {buying ? "..." : buyMode === "amount" ? "Поставить 1" : "Купить 1 голос"}
                 </Button>
             )}
         </div>
@@ -278,13 +278,13 @@ function MarketPageContent() {
             )}
 
             <p className="text-sm text-muted-foreground text-center">
-                Каждый голос за сбывшийся исход принесёт 1 рейтинг.
+                Каждый голос принесёт 1 рейтинг, если исход сбудется.
             </p>
 
             <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
                 <TabsList className="grid grid-cols-2 w-full">
-                    <TabsTrigger value="share">По цене голоса</TabsTrigger>
-                    <TabsTrigger value="amount">Фиксированная ставка</TabsTrigger>
+                    <TabsTrigger value="share">Цена голоса</TabsTrigger>
+                    <TabsTrigger value="amount">Коэффициент</TabsTrigger>
                 </TabsList>
             </Tabs>
 
