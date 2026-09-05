@@ -212,13 +212,12 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 	topGamesByMatches := make([]GameMatchStat, 0, len(gameStats))
 	for _, g := range gameStats {
 		topGamesByMatches = append(topGamesByMatches, GameMatchStat{
-			GameId:          g.GameID,
-			GameName:        g.GameName,
-			MatchesCount:    int(g.MatchesCount),
-			NormalizedScore: g.NormalizedScore,
-			GoldCount:       int(g.GoldCount),
-			SilverCount:     int(g.SilverCount),
-			BronzeCount:     int(g.BronzeCount),
+			GameId:       g.GameID,
+			GameName:     g.GameName,
+			MatchesCount: int(g.MatchesCount),
+			GoldCount:    int(g.GoldCount),
+			SilverCount:  int(g.SilverCount),
+			BronzeCount:  int(g.BronzeCount),
 		})
 	}
 

@@ -37,11 +37,8 @@ WHERE id = $1
 RETURNING *;
 
 -- name: GetPlayerGameStats :many
--- Per-game stats for the player profile "Частые игры" table:
---   normalized_score = Σ (gas.elo_earned / K effective at the settlement's date)
---     (for matches, gas.elo_earned = K · NormalizedScore, so this sums the [0,1]
---      share-of-pool: a win contributes 1, a loss 0, ties/middle places a fraction)
---   gold/silver/bronze counts come from ranking players by score within each match.
+-- Per-game stats for the player profile "Частые игры" table: match count plus
+--   gold/silver/bronze counts from ranking players by score within each match.
 --   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 --   every player in each of the target player's matches and the outer query then
 --   filters down to the target player's own rows.
@@ -59,15 +56,6 @@ SELECT
   g.id AS game_id,
   g.name AS game_name,
   COUNT(*)::int AS matches_count,
-  COALESCE(SUM(
-    gas.elo_earned / (
-      SELECT es.elo_const_k
-      FROM elo_settings es
-      WHERE es.effective_date <= gas.date
-      ORDER BY es.effective_date DESC
-      LIMIT 1
-    )
-  ), 0)::float8 AS normalized_score,
   COUNT(*) FILTER (WHERE ranked.place = 1)::int AS gold_count,
   COUNT(*) FILTER (WHERE ranked.place = 2)::int AS silver_count,
   COUNT(*) FILTER (WHERE ranked.place = 3)::int AS bronze_count

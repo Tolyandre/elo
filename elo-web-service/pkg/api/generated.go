@@ -669,9 +669,6 @@ type GameMatchStat struct {
 	GoldCount    int `json:"gold_count"`
 	MatchesCount int `json:"matches_count"`
 
-	// NormalizedScore Sum of normalized scores (Σ elo_earned / K) across the player's matches in this game. A win contributes 1, a loss 0, ties and middle places a fractional share.
-	NormalizedScore float64 `json:"normalized_score"`
-
 	// SilverCount Number of 2nd-place (silver medal) finishes in this game.
 	SilverCount int `json:"silver_count"`
 }

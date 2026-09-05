@@ -786,11 +786,6 @@ export interface components {
             game_id: components["schemas"]["Base58ID"];
             game_name: string;
             matches_count: number;
-            /**
-             * Format: double
-             * @description Sum of normalized scores (Σ elo_earned / K) across the player's matches in this game. A win contributes 1, a loss 0, ties and middle places a fractional share.
-             */
-            normalized_score: number;
             /** @description Number of 1st-place (gold medal) finishes in this game. */
             gold_count: number;
             /** @description Number of 2nd-place (silver medal) finishes in this game. */
