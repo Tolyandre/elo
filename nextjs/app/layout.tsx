@@ -65,7 +65,10 @@ export default function RootLayout({
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
-                <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+                {/* suppressHydrationWarning: browser extensions (Grammarly,
+                    dark-mode helpers, ...) inject attributes on <body> before
+                    hydration; React ignores them anyway, so don't warn. */}
+                <body suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
                   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
                     <script
                       type="application/ld+json"
