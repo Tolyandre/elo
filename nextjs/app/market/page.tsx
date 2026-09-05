@@ -21,7 +21,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketPricesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/market/marketTypes";
 import { outcomeColors } from "@/app/market/outcomeColors";
-import { payoutMultiplier, sharesForAmount } from "@/app/market/lmsr";
+import { sharesForAmount } from "@/app/market/lmsr";
 import { formatAmount } from "@/app/market/format";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ChartPricePoint, mergePriceHistory } from "@/app/market/priceHistory";
@@ -78,6 +78,7 @@ function OutcomeColumn({
     label,
     titleColor,
     price,
+    betShares,
     buyMode,
     myStaked,
     myShares,
@@ -89,6 +90,8 @@ function OutcomeColumn({
     label: string;
     titleColor?: string;
     price: number;
+    /** Shares a fixed 1-elo bet buys at the current q — the multiplier the bet actually realizes. */
+    betShares?: number;
     buyMode: BuyMode;
     myStaked?: number;
     myShares?: number;
@@ -97,13 +100,14 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
-    const mult = payoutMultiplier(price);
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
             <div className="text-center min-w-0">
                 <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
                 <p className="text-2xl font-bold leading-tight">
-                    {buyMode === "amount" && mult != null ? `×${mult.toFixed(2)}` : price.toFixed(2)}
+                    {buyMode === "amount" && betShares != null && Number.isFinite(betShares)
+                        ? `×${betShares.toFixed(2)}`
+                        : price.toFixed(2)}
                 </p>
             </div>
             <div className="text-sm space-y-1">
@@ -214,10 +218,18 @@ function MarketPageContent() {
             ? "Привяжите игрока в Настройках"
             : "";
 
+    // Fixed-amount buys (and their headline multiplier) derive from the live
+    // q vector: 1 elo buys `sharesForAmount` shares, and that share count is
+    // what the bet actually delivers. Unlike the instantaneous 1/price, it
+    // accounts for the price walk within the buy (LMSR is path-independent,
+    // so a batch buy costs exactly what step-by-step buys would — the modes
+    // stay equally priced).
+    const qVec = displayMarket.outcomes.map((o) => o.shares);
+    const liquidityB = displayMarket.liquidity_b;
+
     // Shares-driven buy (ADR-10): the AMM prices the elo cost. In the share
     // mode each purchase buys exactly 1 share; in the amount mode the LMSR
-    // cost is inverted client side to buy as many shares as 1 elo buys (LMSR
-    // is path-independent, so both modes pay the same price per share). The
+    // cost is inverted client side to buy as many shares as 1 elo buys. The
     // displayed price is sent along so the server can reject the buy if it
     // has moved (409); the spend limit is enforced server side (422); on
     // failure we refresh.
@@ -227,12 +239,7 @@ function MarketPageContent() {
             let shares = 1;
             if (buyMode === "amount") {
                 const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
-                shares = sharesForAmount(
-                    displayMarket.outcomes.map((o) => o.shares),
-                    displayMarket.liquidity_b,
-                    idx,
-                    1,
-                );
+                shares = sharesForAmount(qVec, liquidityB, idx, 1);
             }
             await placeBetPromise(id!, outcome.id, outcome.price, shares);
             invalidate();
@@ -280,12 +287,13 @@ function MarketPageContent() {
             </Tabs>
 
             <div className="grid grid-cols-2 gap-3">
-                {displayMarket.outcomes.map((o) => (
+                {displayMarket.outcomes.map((o, i) => (
                     <OutcomeColumn
                         key={o.id}
                         label={nameOf(o)}
                         titleColor={colors.get(o.id)}
                         price={o.price}
+                        betShares={sharesForAmount(qVec, liquidityB, i, 1)}
                         buyMode={buyMode}
                         myStaked={stakedByOutcome.get(o.id)}
                         myShares={sharesOwnedByOutcome.get(o.id)}

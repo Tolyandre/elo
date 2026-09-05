@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sharesForAmount, payoutMultiplier } from '../app/market/lmsr'
+import { sharesForAmount } from '../app/market/lmsr'
 import { formatAmount } from '../app/market/format'
 
 // Independent LMSR cost, mirroring the server's ammCostN (b·ln Σ e^(q_j/b),
@@ -85,16 +85,16 @@ describe('buy mode price equivalence', () => {
 })
 
 describe('payoutMultiplier', () => {
-    it('returns 1/price for usable prices', () => {
-        expect(payoutMultiplier(0.5)).toBe(2)
-        expect(payoutMultiplier(0.25)).toBe(4)
-    })
-
-    it('returns null for unusable prices', () => {
-        expect(payoutMultiplier(0)).toBeNull()
-        expect(payoutMultiplier(-0.5)).toBeNull()
-        expect(payoutMultiplier(Number.NaN)).toBeNull()
-        expect(payoutMultiplier(Number.POSITIVE_INFINITY)).toBeNull()
+    it('shows the multiplier a 1-elo bet realizes, not the instantaneous 1/price', () => {
+        // Demo market with max guarantor loss L=1 and two outcomes: b = L/ln2.
+        // At the initial q the marginal price is 0.5 (instantaneous ×2), but a
+        // whole 1-elo bet walks the price up and only buys ~1.585 shares —
+        // the multiplier the user actually gets.
+        const b = 1 / Math.LN2
+        const coeff = sharesForAmount([0, 0], b, 0, 1)
+        expect(coeff).toBeCloseTo(1.585, 2)
+        // Betting 1 elo at these odds pays exactly `coeff` if the outcome wins.
+        expect(buyCost([0, 0], b, 0, coeff)).toBeCloseTo(1, 10)
     })
 })
 

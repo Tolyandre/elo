@@ -5,12 +5,6 @@
 // costs exactly as much as s sequential single-share buys — the share and
 // fixed-amount buy modes are therefore equivalent in price.
 
-/** Display coefficient for an outcome price: 1/price, i.e. how much a win returns per 1 elo of buying cost (each winning share pays 1). Returns null when the price is not usable (defensive — LMSR prices are in (0,1)). */
-export function payoutMultiplier(price: number): number | null {
-    if (!Number.isFinite(price) || price <= 0) return null;
-    return 1 / price;
-}
-
 /**
  * Number of shares of outcome `i` that `amount` elo buys at the current q,
  * i.e. the exact inverse of the LMSR cost (closed form, no numeric search):
