@@ -9,7 +9,7 @@ import type { Base58ID } from "@/lib/id";
 import type { UseSkullKingSSEOptions } from "@/hooks/useSkullKingSSE";
 import { useSkullKingTableSession, TABLE_SESSION_KEY } from "@/hooks/useSkullKingTableSession";
 import { renderHook } from "./render-hook";
-import { joinSkullKingTablePromise } from "@/app/api";
+import { joinSkullKingTablePromise, type SkullKingGameState } from "@/app/api";
 import { toast } from "sonner";
 
 vi.mock("@/app/api", () => ({
@@ -31,7 +31,7 @@ const STATE_KEY = "skull-king-game/state";
 
 const pid = (s: string) => s as Base58ID;
 
-function makeState(phase = "bidding") {
+function makeState(phase: SkullKingGameState["phase"] = "bidding") {
     return {
         phase,
         players: [{ id: pid("p1"), name: "Alice" }, { id: pid("p2"), name: "Bob" }],

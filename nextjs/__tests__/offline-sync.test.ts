@@ -6,9 +6,6 @@ import { Base58ID } from '../lib/id';
 
 const noopPersist = () => { };
 
-// uuidv7() as Base58ID mints the final ids; tests treat them as opaque ids, so cast once here.
-const id = () => uuidv7() as Base58ID;
-
 type RawMatch = Omit<PendingMatch, 'tournamentIds'> & { tournamentIds?: PendingMatch['tournamentIds'] };
 
 function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineStore['players']; matches?: RawMatch[] }): OfflineStore {
