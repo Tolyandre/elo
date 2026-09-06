@@ -1,9 +1,11 @@
 "use client"
 import { GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import React, { Suspense } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScoreLeadersTab } from "@/app/games/view/score-leaders-tab";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { useSettings } from "@/app/settingsContext";
@@ -18,6 +20,12 @@ import { BackButton } from "@/components/back-button";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /games/view?id=<GAME_ID>
+const GAME_TABS = ["arena", "history", "leaders"] as const;
+type GameTab = (typeof GAME_TABS)[number];
+
+function parseTab(value: string | null): GameTab {
+  return (GAME_TABS as readonly string[]).includes(value ?? "") ? (value as GameTab) : "arena";
+}
 export default function GamePage() {
   return (
     <Suspense>
@@ -30,6 +38,16 @@ function GameWrapped() {
   const searchParams = useSearchParams()
   const idParam = searchParams.get('id') ?? ""
   const id = toBase58ID(idParam)
+
+  const router = useRouter()
+  const pathname = usePathname()
+  const tab = parseTab(searchParams.get('tab'))
+
+  function setTab(value: string) {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.set('tab', value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   const { data: game, loading: loadingGame, error } = useAsyncResource(
     () => (id ? getGamePromise(id) : Promise.reject(new Error('no id'))),
@@ -92,18 +110,27 @@ function GameWrapped() {
       <div className="space-y-4">
         <div className=" max-w-sm">
           <PageHeader title={game?.name ?? ""} />
-
-          <p className="text-gray-600">Партий: {game?.total_matches ?? "…"}</p>
-
-          <p className="text-sm text-muted-foreground mt-1">
-            Это рейтинг по партиям одной игры, рассчитывается независимо от
-            общего рейтинга по тем же формулам.
-          </p><p className="text-sm text-muted-foreground mt-1">
-            Если бы все играли только в {game?.name}, то значения совпадали бы с общим рейтингом.
-          </p>
         </div>
 
         {error && <ErrorAlert message={error} />}
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="arena" className="px-1 text-xs">Рейтинг</TabsTrigger>
+            <TabsTrigger value="history" className="px-1 text-xs">История партий</TabsTrigger>
+            <TabsTrigger value="leaders" className="px-1 text-xs">Лидеры по очкам</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="arena" className="space-y-4">
+            <p className="text-gray-600">Партий: {game?.total_matches ?? "…"}</p>
+
+            <p className="text-sm text-muted-foreground">
+              Это рейтинг по партиям одной игры, рассчитывается независимо от
+              общего рейтинга по тем же формулам.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Если бы все играли только в {game?.name}, то значения совпадали бы с общим рейтингом.
+            </p>
 
         {!game ? (
           // Skeleton while loading; nothing on error (the ErrorAlert above covers it).
@@ -151,7 +178,9 @@ function GameWrapped() {
           );
         })}
 
-        <h2 className="text-xl font-semibold">История партий</h2>
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-2">
         {pendingMatches
           .filter((pm) => pm.gameId === id)
           .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -169,6 +198,12 @@ function GameWrapped() {
             <MatchCard key={gm.id} match={toMatchCardFormat(gm)} roundToInteger={roundToInteger} />
           ))
         )}
+          </TabsContent>
+
+          <TabsContent value="leaders" className="space-y-4">
+            <ScoreLeadersTab matches={gameMatches} loading={loadingMatches} gameName={game?.name} />
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );
