@@ -15,6 +15,8 @@ Elo rating tracker for board games with a Go backend, Next.js frontend, and Post
 
 This project uses Nix with direnv for reproducible development environments. After initial setup (`direnv allow`), all tools (Go, pnpm, Node.js, etc.) are automatically available.
 
+**Use the Nix dev shell in every mode, including plan mode.** Agents without a direnv hook must wrap every project command: `nix develop .# --command bash -lc '<command>'`. Entering the shell is not a system modification — `nix develop` only materializes the pinned toolchain into the Nix store (a per-user cache) — so it is fine in plan mode even when it downloads or builds packages. Do not fall back to ambient `python3`/`go`/etc. to avoid a Nix download; read-only commands (tests, linters, python analysis) must also run through the wrapper. For Python work use the shell's `python3` (the flake's `pythonEnv`: opencv, numpy, ultralytics, pillow, tkinter, fastapi, uvicorn; also symlinked at `.python-nix` in the repo root).
+
 Each application (backend and frontend) has its own directory and can be developed independently.
 
 ## Common Commands
@@ -28,6 +30,7 @@ make dev-migrate     # Re-apply migrations against the dev DB
 make backend-run     # Run backend with -tags opencv, loads secrets from .env.docker
 make frontend-run    # Run the Next.js dev server
 make dev-down        # Stop all dev dependencies
+make copy-prod-db-to-dev  # Copy the prod DB (runs on this machine) into the compose postgres via sudo pg_dump (wipes local elo DB)
 ```
 
 ### Frontend (Next.js)

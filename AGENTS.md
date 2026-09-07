@@ -14,6 +14,7 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
   - `components/calculators/<kind>/`: reusable calculator UI for both the live calculator pages and the saved-match calculator editor (the `/matches/edit` route dispatches to it when the match has `calculator_kind`). Each kind ships `scoring.tsx` (pure scoring + types), `storage.ts` (normalized stored shape + `toStorage`/`fromStorage`), and presentational components. Storage shape convention: every player reference lives under a `player_id` key (never as an object key) and the backend schema marks it `x-entity-id`, so ids convert at the boundary. See ADR-09, ADR-12.
 - `openapi/`: source API specifications. Update these before regenerating API clients/server bindings. Every id-bearing property MUST reference the shared `Base58ID` schema (`openapi/common.yaml`) — the openapilint test fails the build otherwise. Path/query params with id values stay plain `type: string` (parsed via `id.ParseTolerant` in handlers).
 - `nix/`, `flake.nix`, `flake.lock`: Nix development and deployment definitions.
+- `mock-oauth2/`: minimal OAuth2/OIDC mock for local dev (started by `make dev-up`). Its login page lists every user from the dev database (`DB_DSN`) and lets you log in as any of them or as a new display name (sub derived from the name; the backend creates the user on first login) — handy for debugging multi-user flows or after `make copy-prod-db-to-dev`.
 - `recognition/`: Python/OpenCV card recognition tools and datasets.
 - `adr/`: architecture decision records.
 
@@ -30,9 +31,11 @@ nix develop .# --command bash -lc '<command>'
 nix develop .# --command bash -lc 'make integration-test-podman'
 ```
 
+**Use the dev shell in every mode, including plan mode.** Plan mode restricts mutations of the repo and system — it does not forbid entering the dev shell. `nix develop` only materializes the pinned toolchain into the Nix store (a per-user cache); it modifies nothing in the repository or system configuration, so running it in plan mode is fine even when it needs to download or build packages first. Never dodge it in favor of an ambient `python3`/`go`/etc. to avoid a Nix download — read-only work (running tests, linters, python analysis) must still go through the wrapper so results come from the pinned toolchain.
+
 What's where:
 
-- **Provided by the devShell** (absent or version-different on ambient PATH): the pinned `go`, `gcc`/`pkg-config`/`opencv` (the CGO toolchain for `pkg/cardrecognition`), `sqlc`, `gomod2nix`, `gopls`. `make` is also reachable inside the devShell (pulled in transitively, not declared in `buildInputs`).
+- **Provided by the devShell** (absent or version-different on ambient PATH): the pinned `go`, `gcc`/`pkg-config`/`opencv` (the CGO toolchain for `pkg/cardrecognition`), `sqlc`, `gomod2nix`, `gopls`, and `python3` (the flake's `pythonEnv`, bundling the project's python deps — opencv, numpy, ultralytics, pillow, tkinter, fastapi, uvicorn; also exposed as the `.python-nix` symlink at the repo root). `make` is also reachable inside the devShell (pulled in transitively, not declared in `buildInputs`).
 - **From the ambient system PATH, not the flake**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; the flake does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm`.
 - **Not a standalone binary**: `oapi-codegen` runs via `go generate` (`make generate-go-api` → `go generate ./pkg/api/...`), so it's built on demand from `go.mod` — no binary needs to be on PATH.
 
