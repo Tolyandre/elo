@@ -33,6 +33,12 @@ services:
       context: ./mock-oauth2
     container_name: mock-oauth2
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Lets the mock login page offer every user known to the dev database
+      DB_DSN: postgres://elo:devpassword@postgres:5432/elo?sslmode=disable
     ports:
       - "5556:8080"
 

@@ -4,7 +4,7 @@
 INSERT INTO clubs (id, name) VALUES ('00000000-0000-0000-0000-000000000001', 'Default Club')
 ON CONFLICT (id) DO NOTHING;
 
--- User for mock-oauth2 login (sub matches mock-oauth2/main.go handleUserinfo)
+-- User for mock-oauth2 login (the mock login page lists users from this table)
 -- Uses a different id from the 035_schema user (116214603310517670471) to avoid PK conflict.
 INSERT INTO users (id, allow_editing, google_oauth_user_id, google_oauth_user_name)
 VALUES ('00000000-0000-0000-0000-000000000002', true, 'dev-user-001', 'Dev User')
