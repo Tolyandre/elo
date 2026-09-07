@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test copy-prod-db-to-stage generate-api generate-go-api generate-ts-api
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -51,6 +51,25 @@ copy-prod-db-to-test:
 copy-prod-db-to-stage:
 	sudo -u postgres psql -f scripts/copy-prod-db-to-stage.sql
 	@echo ">>> Done. elo-web-service-stage is now a copy of elo-web-service."
+
+## Copy the production DB into the local docker compose postgres. Prod runs on
+## this machine (see copy-prod-db-to-test/stage — local postgres peer auth via
+## sudo), so no SSH is involved. Wipes the local elo database first (seed data
+## is not re-applied), restores the dump with objects owned by the local elo
+## role, then re-applies migrations so the schema matches the local code.
+## Override if the prod database is named differently:
+##   make copy-prod-db-to-dev PROD_DB=elo-web-service
+PROD_DB ?= elo-web-service
+PROD_DUMP_CMD ?= sudo -u postgres pg_dump
+
+copy-prod-db-to-dev:
+	docker compose up -d --wait postgres
+	docker compose exec -T postgres psql -U elo -d postgres -v ON_ERROR_STOP=1 \
+	  -c "DROP DATABASE IF EXISTS elo WITH (FORCE)" -c "CREATE DATABASE elo OWNER elo"
+	$(PROD_DUMP_CMD) --no-owner --no-privileges $(PROD_DB) | \
+	  docker compose exec -T postgres psql -U elo -d elo -v ON_ERROR_STOP=1 -q
+	$(MAKE) dev-migrate
+	@echo ">>> Done. Local compose postgres now holds a copy of $(PROD_DB)."
 
 ## Run integration tests (requires colima or Docker with socket at ~/.colima/default/docker.sock)
 integration-test-colima:
