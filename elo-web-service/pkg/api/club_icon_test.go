@@ -7,11 +7,11 @@ import (
 
 func TestValidateClubIconKey_Valid(t *testing.T) {
 	valid := map[string]string{
-		"simple":      "tbonk",
-		"kebab":       "blue-figure",
-		"alphanumeric": "icon2",
+		"simple":        "tbonk",
+		"kebab":         "blue-figure",
+		"alphanumeric":  "icon2",
 		"multi-segment": "a-b-c",
-		"with-spaces":  "  clover  ",
+		"with-spaces":   "  clover  ",
 	}
 	for name, in := range valid {
 		out, err := validateClubIconKey(in)
@@ -27,18 +27,18 @@ func TestValidateClubIconKey_Valid(t *testing.T) {
 
 func TestValidateClubIconKey_Rejected(t *testing.T) {
 	rejected := map[string]string{
-		"empty":            ``,
-		"whitespace":       `   `,
-		"uppercase":        `Tbonk`,
-		"leading hyphen":   `-tbonk`,
-		"trailing hyphen":  `tbonk-`,
-		"double hyphen":    `blue--figure`,
-		"underscore":       `blue_figure`,
-		"space inside":     `blue figure`,
-		"svg markup":       `<svg viewBox="0 0 1 1"></svg>`,
-		"slash":            `icons/tbonk`,
-		"special chars":    `tbonk!`,
-		"non-ascii":        `тбонк`,
+		"empty":           ``,
+		"whitespace":      `   `,
+		"uppercase":       `Tbonk`,
+		"leading hyphen":  `-tbonk`,
+		"trailing hyphen": `tbonk-`,
+		"double hyphen":   `blue--figure`,
+		"underscore":      `blue_figure`,
+		"space inside":    `blue figure`,
+		"svg markup":      `<svg viewBox="0 0 1 1"></svg>`,
+		"slash":           `icons/tbonk`,
+		"special chars":   `tbonk!`,
+		"non-ascii":       `тбонк`,
 	}
 	for name, in := range rejected {
 		if _, err := validateClubIconKey(in); err == nil {

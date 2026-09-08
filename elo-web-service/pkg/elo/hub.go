@@ -8,7 +8,7 @@ import (
 )
 
 // Hub is the single in-process SSE fan-out point. Every realtime stream in the
-// service (markets, Skull King tables, global data-change signals, per-user
+// service (markets, game tables, global data-change signals, per-user
 // events) subscribes to a topic here; producers broadcast marshalled SSEEvent
 // payloads to a topic. In-process only (no Redis pub/sub), so it fans out only
 // within a single backend instance — the deployment runs one instance per
@@ -35,14 +35,14 @@ type SSEEvent struct {
 // Topic constants for the non-entity streams. Entity streams append the
 // canonical UUID to a prefix below.
 const (
-	TopicLobbyMarkets   = "lobby:markets"   // markets-list change signals
-	TopicLobbySkullKing = "lobby:skull-king" // table-list change signals
-	TopicData           = "data"             // global matches/players change signals
+	TopicLobbyMarkets = "lobby:markets" // markets-list change signals
+	TopicLobbyTables  = "lobby:tables"  // game-table-list change signals
+	TopicData         = "data"          // global matches/players change signals
 )
 
-func MarketTopic(marketID id.ID) string        { return "market:" + string(marketID) }
-func SkullKingTableTopic(tableID id.ID) string { return "skull-king-table:" + string(tableID) }
-func UserTopic(userID id.ID) string            { return "user:" + string(userID) }
+func MarketTopic(marketID id.ID) string { return "market:" + string(marketID) }
+func TableTopic(tableID id.ID) string   { return "table:" + string(tableID) }
+func UserTopic(userID id.ID) string     { return "user:" + string(userID) }
 
 // Subscribe registers a buffered channel for the given topic.
 // The caller MUST invoke cancel() (typically via defer) when the connection closes.

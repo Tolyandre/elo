@@ -607,43 +607,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/skull-king/tables": {
+    "/tables": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List all active Skull King tables */
-        get: operations["ListSkullKingTables"];
+        /** List all active game tables */
+        get: operations["ListTables"];
         put?: never;
-        /** Create a new Skull King table */
-        post: operations["CreateSkullKingTable"];
+        /** Create a new game table */
+        post: operations["CreateTable"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/skull-king/tables/{id}": {
+    "/tables/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get a Skull King table by ID */
-        get: operations["GetSkullKingTable"];
+        /** Get a game table by ID */
+        get: operations["GetTable"];
         put?: never;
         post?: never;
-        /** Delete a Skull King table (host only) */
-        delete: operations["DeleteSkullKingTable"];
+        /** Delete a game table (host only) */
+        delete: operations["DeleteTable"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/skull-king/tables/{id}/state": {
+    "/tables/{id}/state": {
         parameters: {
             query?: never;
             header?: never;
@@ -656,11 +656,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update game state (host only) */
-        patch: operations["UpdateSkullKingTableState"];
+        /** Replace the game state (host only, optimistic lock) */
+        patch: operations["UpdateTableState"];
         trace?: never;
     };
-    "/skull-king/tables/{id}/join": {
+    "/tables/{id}/join": {
         parameters: {
             query?: never;
             header?: never;
@@ -669,15 +669,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Join a Skull King table as a player */
-        post: operations["JoinSkullKingTable"];
+        /** Join a game table as a connected player */
+        post: operations["JoinTable"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/skull-king/tables/{id}/bid": {
+    "/tables/{id}/submit": {
         parameters: {
             query?: never;
             header?: never;
@@ -686,15 +686,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a bid for the current round */
-        post: operations["SubmitSkullKingBid"];
+        /**
+         * Submit the connected player's input (bid, round result, or scoring)
+         * @description The payload shape depends on the table's game: skull-king reads `bid` (waiting-for-bids phase) or `actual`+`bonus` (result-entry phase); iaww reads `directVp`+`cells`. A submission is final — the player cannot change it afterwards; only the host can correct it.
+         */
+        post: operations["SubmitTable"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/skull-king/tables/{id}/result": {
+    "/tables/{id}/takeover": {
         parameters: {
             query?: never;
             header?: never;
@@ -703,8 +706,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit actual tricks taken for the current round */
-        post: operations["SubmitSkullKingResult"];
+        /**
+         * Claim hosting of the table for this device
+         * @description Claims hosting for the requesting device (host_client_token — a per-browser token; the summary broadcasts it so the same user's other devices step down to player/viewer mode). The current host may always re-claim, which is also how hosting resumes on another device; any other user additionally needs edit permission.
+         */
+        post: operations["TakeoverTable"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1128,34 +1134,62 @@ export interface components {
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
         };
-        SkullKingPlayer: {
+        TablePlayer: {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
-        SkullKingRoundEntry: {
-            bid: number;
-            actual?: number | null;
-            bonus: number;
+        TableSummary: {
+            id: components["schemas"]["Base58ID"];
+            game_id: components["schemas"]["Base58ID"];
+            host_user_id: components["schemas"]["Base58ID"];
+            /** @description Per-device token of the device that last claimed hosting; a host session whose token differs steps down to player/viewer mode. Empty on legacy tables (nothing enforces it). */
+            host_client_token: string;
+            game_state: components["schemas"]["TableGameState"];
+            connected_player_ids: components["schemas"]["Base58ID"][];
+            /**
+             * Format: int64
+             * @description Optimistic-lock counter; changes with every game_state write
+             */
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
         };
+        TableGameState: components["schemas"]["SkullKingGameState"] | components["schemas"]["IawwGameState"];
         SkullKingGameState: {
             /** @enum {string} */
             phase: "setup" | "bidding" | "waiting-for-bids" | "bid-review" | "result-entry" | "round-complete";
-            players: components["schemas"]["SkullKingPlayer"][];
+            players: components["schemas"]["TablePlayer"][];
             currentRound: number;
             currentPlayerIndex: number;
             /** @description rounds[roundIndex][playerIndex] — null until the player has entered data */
             rounds: (components["schemas"]["SkullKingRoundEntry"] | null)[][];
             fallbackGameId?: components["schemas"]["Base58ID"] | null;
         };
-        SkullKingTableSummary: {
-            id: components["schemas"]["Base58ID"];
-            host_user_id: components["schemas"]["Base58ID"];
-            game_state: components["schemas"]["SkullKingGameState"];
-            connected_player_ids: components["schemas"]["Base58ID"][];
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at: string;
+        SkullKingRoundEntry: {
+            bid: number;
+            actual?: number | null;
+            bonus: number;
+        };
+        IawwGameState: {
+            /**
+             * @description setup is client-only (pre-table); tables are created in scoring
+             * @enum {string}
+             */
+            phase: "setup" | "scoring";
+            players: components["schemas"]["TablePlayer"][];
+            /** @description One entry per player, same order as players */
+            entries: components["schemas"]["IawwEntry"][];
+            fallbackGameId?: components["schemas"]["Base58ID"] | null;
+        };
+        IawwEntry: {
+            playerId: components["schemas"]["Base58ID"];
+            /** @description Direct victory points; null until entered */
+            directVp?: number | null;
+            cells: components["schemas"]["IawwCell"][];
+            /** @description The player has submitted their final scoring */
+            done: boolean;
         };
         SkullKingCardImageResult: {
             /** @enum {string} */
@@ -1196,6 +1230,42 @@ export interface components {
         MarketGuarantor: {
             player_id: components["schemas"]["Base58ID"];
             player_name: string;
+        };
+        IawwCell: {
+            /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
+            row: string;
+            coeff: number;
+            count: number;
+        };
+        CreateTableRequest: {
+            id: components["schemas"]["Base58ID"];
+            game_id: components["schemas"]["Base58ID"];
+            /** @description Per-browser device token; identifies the creating device as the host */
+            host_client_token?: string;
+            game_state: components["schemas"]["TableGameState"];
+        };
+        UpdateTableStateRequest: {
+            /**
+             * Format: int64
+             * @description The version this edit is based on; a mismatch is a 409
+             */
+            version: number;
+            game_state: components["schemas"]["TableGameState"];
+        };
+        SkullKingBidInput: {
+            bid: number;
+        };
+        SkullKingResultInput: {
+            actual: number;
+            bonus: number;
+        };
+        IawwScoreInput: {
+            /** @description Direct victory points; null or omitted keeps the current value (partial update) */
+            directVp?: number | null;
+            /** @description Partial column update: rows not carried are kept, a carried cell with count 0 clears its row, others upsert */
+            cells: components["schemas"]["IawwCell"][];
+            /** @description Marks the player's column finished (locks it for the player). Omitted behaves as true — legacy one-shot submits. */
+            done?: boolean;
         };
     };
     responses: never;
@@ -3787,7 +3857,7 @@ export interface operations {
             };
         };
     };
-    ListSkullKingTables: {
+    ListTables: {
         parameters: {
             query?: never;
             header?: never;
@@ -3804,13 +3874,13 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"][];
+                        data: components["schemas"]["TableSummary"][];
                     };
                 };
             };
         };
     };
-    CreateSkullKingTable: {
+    CreateTable: {
         parameters: {
             query?: never;
             header?: never;
@@ -3819,10 +3889,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    id: components["schemas"]["Base58ID"];
-                    game_state: components["schemas"]["SkullKingGameState"];
-                };
+                "application/json": components["schemas"]["CreateTableRequest"];
             };
         };
         responses: {
@@ -3834,11 +3901,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
                 };
             };
-            /** @description Bad request */
+            /** @description Bad request (invalid state or unknown game) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3858,7 +3925,7 @@ export interface operations {
             };
         };
     };
-    GetSkullKingTable: {
+    GetTable: {
         parameters: {
             query?: never;
             header?: never;
@@ -3877,7 +3944,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
                 };
             };
@@ -3892,10 +3959,10 @@ export interface operations {
             };
         };
     };
-    DeleteSkullKingTable: {
+    DeleteTable: {
         parameters: {
             query?: {
-                /** @description When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when abandoning/resetting a game (no broadcast). */
+                /** @description When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when closing the table without saving (a `closed` event instead). */
                 match_id?: string;
             };
             header?: never;
@@ -3942,7 +4009,7 @@ export interface operations {
             };
         };
     };
-    UpdateSkullKingTableState: {
+    UpdateTableState: {
         parameters: {
             query?: never;
             header?: never;
@@ -3953,9 +4020,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    game_state: components["schemas"]["SkullKingGameState"];
-                };
+                "application/json": components["schemas"]["UpdateTableStateRequest"];
             };
         };
         responses: {
@@ -3967,8 +4032,17 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
+                };
+            };
+            /** @description Invalid game state */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Unauthorized */
@@ -3998,9 +4072,22 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Version conflict — the state changed after the caller last saw it (player submission or the host's other device). The current table is returned in `data` so the caller can merge its edit and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        message: string;
+                        data: components["schemas"]["TableSummary"];
+                    };
+                };
+            };
         };
     };
-    JoinSkullKingTable: {
+    JoinTable: {
         parameters: {
             query?: never;
             header?: never;
@@ -4019,7 +4106,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
                 };
             };
@@ -4043,7 +4130,7 @@ export interface operations {
             };
         };
     };
-    SubmitSkullKingBid: {
+    SubmitTable: {
         parameters: {
             query?: never;
             header?: never;
@@ -4054,13 +4141,11 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    bid: number;
-                };
+                "application/json": components["schemas"]["SkullKingBidInput"] | components["schemas"]["SkullKingResultInput"] | components["schemas"]["IawwScoreInput"];
             };
         };
         responses: {
-            /** @description Bid submitted */
+            /** @description Submission applied */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4068,8 +4153,17 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
+                };
+            };
+            /** @description Invalid input (validation failed) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Unauthorized */
@@ -4090,7 +4184,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Wrong phase, player not in game, or bid already submitted */
+            /** @description Wrong phase, player not in game, or already submitted */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4101,7 +4195,7 @@ export interface operations {
             };
         };
     };
-    SubmitSkullKingResult: {
+    TakeoverTable: {
         parameters: {
             query?: never;
             header?: never;
@@ -4110,16 +4204,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/json": {
-                    actual: number;
-                    bonus: number;
+                    /** @description Per-device token stored with the hosting claim */
+                    host_client_token?: string;
                 };
             };
         };
         responses: {
-            /** @description Result submitted */
+            /** @description Updated table (the caller's device now hosts) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4127,7 +4221,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         status: string;
-                        data: components["schemas"]["SkullKingTableSummary"];
+                        data: components["schemas"]["TableSummary"];
                     };
                 };
             };
@@ -4140,8 +4234,8 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Table not found */
-            404: {
+            /** @description Forbidden (not the current host and no edit permission) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4149,8 +4243,8 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Wrong phase, player not in game, or result already submitted */
-            409: {
+            /** @description Table not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

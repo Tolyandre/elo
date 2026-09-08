@@ -1,5 +1,7 @@
 "use client";
 
+import type { Base58ID } from "@/lib/id";
+
 import { VictoryPoints } from "./victory-points";
 import { ScoringBadge } from "./scoring-badge";
 import { ROWS, cellVP, playerTotal } from "./scoring";
@@ -9,15 +11,19 @@ import type { EditTarget, GameState } from "./scoring";
  * The players × rows IAWW scoring grid with a totals row. Clicking a cell
  * invokes onEdit so the parent can open an EditDialog. When `readOnly` is
  * true, cell clicks are disabled (the table is for viewing only).
+ * `editablePlayerIds` narrows the clickable cells to specific players'
+ * columns (live tables: a connected player edits only their own column).
  */
 export function ScoringTable({
     state,
     onEdit,
     readOnly = false,
+    editablePlayerIds,
 }: {
     state: GameState;
     onEdit: (target: EditTarget) => void;
     readOnly?: boolean;
+    editablePlayerIds?: Base58ID[];
 }) {
     return (
         <div className="overflow-x-auto">
@@ -73,15 +79,17 @@ export function ScoringTable({
                                 const target: EditTarget = row.kind === "direct"
                                     ? { kind: "direct", playerId: player.id }
                                     : { kind: "multiplier", rowId: row.id, playerId: player.id };
+                                const editable = !readOnly &&
+                                    (editablePlayerIds === undefined || editablePlayerIds.includes(player.id));
 
                                 return (
                                     <td key={player.id}
                                         className={`border border-border p-1 text-center min-w-[4.5rem] sm:min-w-[6rem] ${
-                                            readOnly
-                                                ? ""
-                                                : "cursor-pointer hover:bg-accent transition-colors"
+                                            editable
+                                                ? "cursor-pointer hover:bg-accent transition-colors"
+                                                : ""
                                         }`}
-                                        onClick={readOnly ? undefined : () => onEdit(target)}>
+                                        onClick={editable ? () => onEdit(target) : undefined}>
                                         {label}
                                     </td>
                                 );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sharesForAmount, costForShares } from '../app/markets/lmsr'
+import { sharesForAmount, costForShares, averagePricePerShare, buyQuote } from '../app/markets/lmsr'
 import { formatAmount } from '../app/markets/format'
 
 // Independent LMSR cost, mirroring the server's ammCostN (b·ln Σ e^(q_j/b),
@@ -138,6 +138,85 @@ describe('payoutMultiplier', () => {
         expect(coeff).toBeCloseTo(1.585, 2)
         // Betting 1 elo at these odds pays exactly `coeff` if the outcome wins.
         expect(buyCost([0, 0], b, 0, coeff)).toBeCloseTo(1, 10)
+    })
+})
+
+describe('averagePricePerShare', () => {
+    it('multiplies out to the amount with the multiplier', () => {
+        // The "за 1 голос" caption in the amount mode must agree with the
+        // ×multiplier headline: multiplier × average price = the 1-elo stake.
+        const q = [3.5, 1.25, 0]
+        const b = 8
+        const shares = sharesForAmount(q, b, 2, 1)
+        expect(shares * averagePricePerShare(q, b, 2, 1)).toBeCloseTo(1, 10)
+    })
+
+    it('is the buy average, above the cheaper first share', () => {
+        // A 1-elo buy walks the LMSR price up, so each delivered share costs
+        // more on average than the marginal price of the first one.
+        const q = [0, 0]
+        const b = 1 / Math.LN2
+        expect(averagePricePerShare(q, b, 0, 1)).toBeGreaterThan(costForShares(q, b, 0, 1))
+    })
+
+    it('converges to the marginal price in deep markets', () => {
+        // b=100: a 1-elo buy barely moves the price, so average ≈ marginal.
+        const q = [0, 0]
+        const b = 100
+        expect(averagePricePerShare(q, b, 0, 1)).toBeCloseTo(costForShares(q, b, 0, 1), 2)
+    })
+
+    it('returns NaN for unusable inputs', () => {
+        expect(averagePricePerShare([0, 0], 0, 0, 1)).toBeNaN()
+        expect(averagePricePerShare([0, 0], 8, 0, 0)).toBeNaN()
+        expect(averagePricePerShare([5], 8, 0, 1)).toBeNaN()
+        expect(averagePricePerShare([0, 0], 8, 5, 1)).toBeNaN()
+    })
+})
+
+describe('buyQuote', () => {
+    it.each([
+        { q: [0, 0], b: 8 },
+        { q: [3.5, 1.25, 0], b: 8 },
+        { q: [10, -2], b: 23 },
+    ])('quotes the pending buy: multiplier × price = 1 for q=$q b=$b', ({ q, b }) => {
+        for (const mode of ['share', 'amount'] as const) {
+            const { pricePerShare, multiplier } = buyQuote(q, b, 0, mode)
+            expect(Number.isFinite(pricePerShare)).toBe(true)
+            expect(multiplier * pricePerShare).toBeCloseTo(1, 10)
+        }
+    })
+
+    it('in the share mode quotes the single share: price = marginal cost, multiplier = 1/price', () => {
+        // The reported bug: at p=0.5 with b=1/ln2 the card said ×1.58 (a whole
+        // 1-elo buy) next to "0.58 за 1 голос", but the button buys one share
+        // — per elo that is 1/0.58 ≈ ×1.72.
+        const q = [0, 0]
+        const b = 1 / Math.LN2
+        const { pricePerShare, multiplier } = buyQuote(q, b, 0, 'share')
+        expect(pricePerShare).toBeCloseTo(costForShares(q, b, 0, 1), 12)
+        expect(pricePerShare).toBeCloseTo(0.585, 2)
+        expect(multiplier).toBeCloseTo(1 / pricePerShare, 12)
+    })
+
+    it('in the amount mode quotes the 1-elo buy: multiplier = sharesForAmount, price = its average', () => {
+        const q = [0, 0]
+        const b = 1 / Math.LN2
+        const { pricePerShare, multiplier } = buyQuote(q, b, 0, 'amount')
+        expect(multiplier).toBeCloseTo(sharesForAmount(q, b, 0, 1), 12)
+        expect(multiplier).toBeCloseTo(1.585, 2)
+        expect(pricePerShare).toBeCloseTo(averagePricePerShare(q, b, 0, 1), 12)
+        // the price walk makes a whole 1-elo buy pricier per share than its
+        // first share, so the amount-mode multiplier stays below the share-mode one
+        expect(multiplier).toBeLessThan(buyQuote(q, b, 0, 'share').multiplier)
+    })
+
+    it('returns NaNs for unusable inputs', () => {
+        for (const mode of ['share', 'amount'] as const) {
+            expect(buyQuote([0, 0], 0, 0, mode).pricePerShare).toBeNaN()
+            expect(buyQuote([0, 0], 0, 0, mode).multiplier).toBeNaN()
+            expect(buyQuote([5], 8, 0, mode).multiplier).toBeNaN()
+        }
     })
 })
 

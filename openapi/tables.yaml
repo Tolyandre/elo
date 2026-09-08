@@ -1,0 +1,599 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+# Generic live game tables (ADR-16). A table is created by the host with the
+# initial state of one game (game_id pins it), joined by connected players,
+# watched read-only by anyone. When the game ends the host saves a match and
+# deletes the table; the table's SSE channel carries the saved match id.
+
+TablesCollection:
+  get:
+    operationId: ListTables
+    tags: [tables]
+    summary: List all active game tables
+    responses:
+      "200":
+        description: List of tables
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/TableSummary'
+              required: [status, data]
+  post:
+    operationId: CreateTable
+    tags: [tables]
+    summary: Create a new game table
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/CreateTableRequest'
+    responses:
+      "201":
+        description: Table created
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "400":
+        description: Bad request (invalid state or unknown game)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TableItem:
+  get:
+    operationId: GetTable
+    tags: [tables]
+    summary: Get a game table by ID
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Table details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteTable
+    tags: [tables]
+    summary: Delete a game table (host only)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: match_id
+        in: query
+        required: false
+        description: >
+          When provided, the server broadcasts a `saved` SSE event carrying this
+          match id to the table's subscribers before deleting the table, so
+          connected players can be redirected to the saved match. Omitted by the
+          host when closing the table without saving (a `closed` event instead).
+        schema:
+          type: string
+    responses:
+      "204":
+        description: Table deleted
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (not host)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TableState:
+  patch:
+    operationId: UpdateTableState
+    tags: [tables]
+    summary: Replace the game state (host only, optimistic lock)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/UpdateTableStateRequest'
+    responses:
+      "200":
+        description: Updated table
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "400":
+        description: Invalid game state
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (not host)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: >
+          Version conflict — the state changed after the caller last saw it
+          (player submission or the host's other device). The current table is
+          returned in `data` so the caller can merge its edit and retry.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, message, data]
+
+TableJoin:
+  post:
+    operationId: JoinTable
+    tags: [tables]
+    summary: Join a game table as a connected player
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Joined table
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TableSubmit:
+  post:
+    operationId: SubmitTable
+    tags: [tables]
+    summary: Submit the connected player's input (bid, round result, or scoring)
+    description: >
+      The payload shape depends on the table's game: skull-king reads `bid`
+      (waiting-for-bids phase) or `actual`+`bonus` (result-entry phase);
+      iaww reads `directVp`+`cells`. A submission is final — the player
+      cannot change it afterwards; only the host can correct it.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/SkullKingBidInput'
+              - $ref: '#/SkullKingResultInput'
+              - $ref: '#/IawwScoreInput'
+    responses:
+      "200":
+        description: Submission applied
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "400":
+        description: Invalid input (validation failed)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Wrong phase, player not in game, or already submitted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TableTakeover:
+  post:
+    operationId: TakeoverTable
+    tags: [tables]
+    summary: Claim hosting of the table for this device
+    description: >
+      Claims hosting for the requesting device (host_client_token — a
+      per-browser token; the summary broadcasts it so the same user's other
+      devices step down to player/viewer mode). The current host may always
+      re-claim, which is also how hosting resumes on another device; any
+      other user additionally needs edit permission.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              host_client_token:
+                type: string
+                description: Per-device token stored with the hosting claim
+            additionalProperties: false
+    responses:
+      "200":
+        description: Updated table (the caller's device now hosts)
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/TableSummary'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (not the current host and no edit permission)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Table not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+TablePlayer:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+  required: [id, name]
+
+TableSummary:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    host_user_id:
+      $ref: './common.yaml#/Base58ID'
+    host_client_token:
+      type: string
+      description: >
+        Per-device token of the device that last claimed hosting; a host
+        session whose token differs steps down to player/viewer mode. Empty
+        on legacy tables (nothing enforces it).
+    game_state:
+      $ref: '#/TableGameState'
+    connected_player_ids:
+      type: array
+      items:
+          $ref: './common.yaml#/Base58ID'
+    version:
+      type: integer
+      format: int64
+      description: Optimistic-lock counter; changes with every game_state write
+    created_at:
+      type: string
+      format: date-time
+    expires_at:
+      type: string
+      format: date-time
+  required: [id, game_id, host_user_id, host_client_token, game_state, connected_player_ids, version, created_at, expires_at]
+
+CreateTableRequest:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    host_client_token:
+      type: string
+      description: Per-browser device token; identifies the creating device as the host
+    game_state:
+      $ref: '#/TableGameState'
+  required: [id, game_id, game_state]
+
+UpdateTableStateRequest:
+  type: object
+  properties:
+    version:
+      type: integer
+      format: int64
+      description: The version this edit is based on; a mismatch is a 409
+    game_state:
+      $ref: '#/TableGameState'
+  required: [version, game_state]
+
+# Per-game state documents, discriminated by the table's game_id.
+TableGameState:
+  oneOf:
+    - $ref: '#/SkullKingGameState'
+    - $ref: '#/IawwGameState'
+
+# ─── Skull King ───────────────────────────────────────────────────────────────
+
+SkullKingBidInput:
+  type: object
+  additionalProperties: false
+  properties:
+    bid:
+      type: integer
+      minimum: 0
+  required: [bid]
+
+SkullKingResultInput:
+  type: object
+  additionalProperties: false
+  properties:
+    actual:
+      type: integer
+      minimum: 0
+    bonus:
+      type: integer
+      minimum: 0
+  required: [actual, bonus]
+
+SkullKingRoundEntry:
+  type: object
+  properties:
+    bid:
+      type: integer
+    actual:
+      type: integer
+      nullable: true
+    bonus:
+      type: integer
+  required: [bid, bonus]
+
+SkullKingGameState:
+  type: object
+  properties:
+    phase:
+      type: string
+      enum: [setup, bidding, waiting-for-bids, bid-review, result-entry, round-complete]
+    players:
+      type: array
+      items:
+        $ref: '#/TablePlayer'
+    currentRound:
+      type: integer
+    currentPlayerIndex:
+      type: integer
+    rounds:
+      type: array
+      description: rounds[roundIndex][playerIndex] — null until the player has entered data
+      items:
+        type: array
+        items:
+          allOf:
+            - $ref: '#/SkullKingRoundEntry'
+          nullable: true
+    fallbackGameId:
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
+      nullable: true
+  required: [phase, players, currentRound, currentPlayerIndex, rounds]
+
+# ─── It's a Wonderful World (ЭБМ) ────────────────────────────────────────────
+
+IawwScoreInput:
+  type: object
+  additionalProperties: false
+  properties:
+    directVp:
+      type: integer
+      nullable: true
+      minimum: 0
+      maximum: 999
+      description: >
+        Direct victory points; null or omitted keeps the current value
+        (partial update)
+    cells:
+      type: array
+      description: >
+        Partial column update: rows not carried are kept, a carried cell with
+        count 0 clears its row, others upsert
+      items:
+        $ref: '#/IawwCell'
+    done:
+      type: boolean
+      description: >
+        Marks the player's column finished (locks it for the player). Omitted
+        behaves as true — legacy one-shot submits.
+  required: [cells]
+
+IawwCell:
+  type: object
+  properties:
+    row:
+      type: string
+      description: Scoring row id (e.g. "structure", "str-res"); not an entity id
+    coeff:
+      type: integer
+      minimum: 0
+    count:
+      type: integer
+      minimum: 0
+  required: [row, coeff, count]
+
+IawwEntry:
+  type: object
+  properties:
+    playerId:
+      $ref: './common.yaml#/Base58ID'
+    directVp:
+      type: integer
+      nullable: true
+      description: Direct victory points; null until entered
+    cells:
+      type: array
+      items:
+        $ref: '#/IawwCell'
+    done:
+      type: boolean
+      description: The player has submitted their final scoring
+  required: [playerId, cells, done]
+
+IawwGameState:
+  type: object
+  properties:
+    phase:
+      type: string
+      enum: [setup, scoring]
+      description: setup is client-only (pre-table); tables are created in scoring
+    players:
+      type: array
+      minItems: 2
+      items:
+        $ref: '#/TablePlayer'
+    entries:
+      type: array
+      description: One entry per player, same order as players
+      items:
+        $ref: '#/IawwEntry'
+    fallbackGameId:
+      allOf:
+        - $ref: './common.yaml#/Base58ID'
+      nullable: true
+  required: [phase, players, entries]

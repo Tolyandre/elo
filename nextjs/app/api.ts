@@ -3,6 +3,7 @@ import type { components, paths } from "./api-types.gen";
 import { toast } from "sonner";
 import { uuidv7 } from "uuidv7";
 import { Base58ID, encodeId } from "../lib/id";
+import { getTableClientToken } from "../lib/table-client";
 
 // NEXT_PUBLIC_ prefix ensures the variable is inlined into the client bundle at build time.
 if (!process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL) {
@@ -21,10 +22,11 @@ function newId(): Base58ID {
  * openapi-fetch returns `{ data, error }` rather than throwing; this collapses
  * the repeated `if (error) throwApiError(error); return data.data` boilerplate.
  * Returns the success body (the full envelope); callers read `.data` etc. off it.
+ * Failures throw an ApiError carrying the HTTP status when there was a response.
  */
-async function unwrap<D>(promise: Promise<{ data?: D; error?: unknown }>): Promise<D> {
-    const { data, error } = await promise;
-    if (error) throwApiError(error);
+async function unwrap<D>(promise: Promise<{ data?: D; error?: unknown; response?: Response }>): Promise<D> {
+    const { data, error, response } = await promise;
+    if (error) throwApiError(error, response?.status);
     return data as D;
 }
 
@@ -61,15 +63,34 @@ export function isNetworkFailure(e: unknown): boolean {
 }
 
 /**
+ * An API error with a known HTTP status (there was a response). Lets callers
+ * distinguish definitive outcomes — 404 table gone, 409 conflict — from
+ * transient ones (network failures, 5xx during a restart).
+ */
+export class ApiError extends Error {
+    status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = "ApiError";
+        this.status = status;
+    }
+}
+
+/**
  * Throws a proper Error carrying the server's message from an openapi-fetch error body.
  * openapi-fetch returns the parsed error object (`{ status, message }`) rather than an
  * Error instance; throwing it verbatim makes `instanceof Error` fail and produces
  * "[object Object]" in catch blocks. This wraps it so `.message` works everywhere.
+ * When an HTTP status is available the error is an ApiError exposing it.
  */
-export function throwApiError(error: unknown): never {
+export function throwApiError(error: unknown, status?: number): never {
     if (error && typeof error === "object" && "message" in error) {
         const m = (error as { message?: unknown }).message;
-        if (typeof m === "string" && m.length > 0) throw new Error(m);
+        if (typeof m === "string" && m.length > 0) {
+            if (status !== undefined) throw new ApiError(m, status);
+            throw new Error(m);
+        }
     }
     throw new Error("Request failed");
 }
@@ -108,10 +129,20 @@ export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
 export type WinStreakParams = components["schemas"]["WinStreakParams"];
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
 export type VoiceParseResult = components["schemas"]["VoiceParseResult"];
-export type SkullKingTableSummary = components["schemas"]["SkullKingTableSummary"];
+export type TableSummary = components["schemas"]["TableSummary"];
+export type TableGameState = components["schemas"]["TableGameState"];
+export type TablePlayer = components["schemas"]["TablePlayer"];
 export type SkullKingGameState = components["schemas"]["SkullKingGameState"];
 export type SkullKingRoundEntry = components["schemas"]["SkullKingRoundEntry"];
 export type SkullKingGamePhase = components["schemas"]["SkullKingGameState"]["phase"];
+export type IawwGameState = components["schemas"]["IawwGameState"];
+export type IawwEntry = components["schemas"]["IawwEntry"];
+export type IawwCell = components["schemas"]["IawwCell"];
+export type IawwScoreInput = components["schemas"]["IawwScoreInput"];
+export type TableSubmitInput =
+    | components["schemas"]["SkullKingBidInput"]
+    | components["schemas"]["SkullKingResultInput"]
+    | components["schemas"]["IawwScoreInput"];
 export type SkullKingCardImageResult = components["schemas"]["SkullKingCardImageResult"];
 export type PlayerStats = components["schemas"]["PlayerStats"];
 export type GameEloStat = components["schemas"]["GameEloStat"];
@@ -681,49 +712,71 @@ export async function parseSkullKingCardImagePromise(imageBase64: string): Promi
     }))).data;
 }
 
-// ─── Skull King table API ─────────────────────────────────────────────────────
+// ─── Live game table API (generic; per-game payloads, ADR-16) ────────────────
 
-export async function listSkullKingTablesPromise(): Promise<SkullKingTableSummary[]> {
-    return (await unwrap(client.GET("/skull-king/tables"))).data;
+export async function listTablesPromise(): Promise<TableSummary[]> {
+    return (await unwrap(client.GET("/tables"))).data;
 }
 
-export async function createSkullKingTablePromise(gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.POST("/skull-king/tables", { body: { id: newId(), game_state: gameState } }))).data;
-}
-
-export async function getSkullKingTablePromise(tableId: Base58ID): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.GET("/skull-king/tables/{id}", { params: { path: { id: tableId } } }))).data;
-}
-
-export async function updateSkullKingTableStatePromise(tableId: Base58ID, gameState: SkullKingGameState): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.PATCH("/skull-king/tables/{id}/state", {
-        params: { path: { id: tableId } },
-        body: { game_state: gameState },
+export async function createTablePromise(gameId: Base58ID, gameState: TableGameState): Promise<TableSummary> {
+    return (await unwrap(client.POST("/tables", {
+        body: { id: newId(), game_id: gameId, host_client_token: getTableClientToken(), game_state: gameState },
     }))).data;
 }
 
-export async function joinSkullKingTablePromise(tableId: Base58ID): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.POST("/skull-king/tables/{id}/join", {
+export async function getTablePromise(tableId: Base58ID): Promise<TableSummary> {
+    return (await unwrap(client.GET("/tables/{id}", { params: { path: { id: tableId } } }))).data;
+}
+
+/** Result of a host state patch: ok, or a version conflict carrying the current table. */
+export type TableStateUpdate =
+    | { status: "ok"; table: TableSummary }
+    | { status: "conflict"; table: TableSummary };
+
+export async function updateTableState(tableId: Base58ID, version: number, gameState: TableGameState): Promise<TableStateUpdate> {
+    const { data, error, response } = await client.PATCH("/tables/{id}/state", {
+        params: { path: { id: tableId } },
+        body: { version, game_state: gameState },
+    });
+    if (error) {
+        // 409 carries the current table so the caller can merge its edit and
+        // retry instead of erasing another writer's input.
+        if (response.status === 409) {
+            return { status: "conflict", table: (error as { data: TableSummary }).data };
+        }
+        throwApiError(error);
+    }
+    return { status: "ok", table: (data as { data: TableSummary }).data };
+}
+
+export async function joinTablePromise(tableId: Base58ID): Promise<TableSummary> {
+    return (await unwrap(client.POST("/tables/{id}/join", {
         params: { path: { id: tableId } },
     }))).data;
 }
 
-export async function submitSkullKingBidPromise(tableId: Base58ID, bid: number): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.POST("/skull-king/tables/{id}/bid", {
+/**
+ * Claim hosting of the table for this device (the current host may always
+ * re-claim — this is also host resume on another device; everyone else needs
+ * edit permission). Broadcasts the new claim so the previous host device
+ * steps down.
+ */
+export async function takeoverTablePromise(tableId: Base58ID): Promise<TableSummary> {
+    return (await unwrap(client.POST("/tables/{id}/takeover", {
         params: { path: { id: tableId } },
-        body: { bid },
+        body: { host_client_token: getTableClientToken() },
     }))).data;
 }
 
-export async function submitSkullKingResultPromise(tableId: Base58ID, actual: number, bonus: number): Promise<SkullKingTableSummary> {
-    return (await unwrap(client.POST("/skull-king/tables/{id}/result", {
+export async function submitTablePromise(tableId: Base58ID, input: TableSubmitInput): Promise<TableSummary> {
+    return (await unwrap(client.POST("/tables/{id}/submit", {
         params: { path: { id: tableId } },
-        body: { actual, bonus },
+        body: input,
     }))).data;
 }
 
-export async function deleteSkullKingTablePromise(tableId: Base58ID, matchId?: string): Promise<void> {
-    await unwrap(client.DELETE("/skull-king/tables/{id}", {
+export async function deleteTablePromise(tableId: Base58ID, matchId?: string): Promise<void> {
+    await unwrap(client.DELETE("/tables/{id}", {
         params: {
             path: { id: tableId },
             ...(matchId ? { query: { match_id: matchId } } : {}),

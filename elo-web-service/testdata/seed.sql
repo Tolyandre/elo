@@ -27,13 +27,17 @@ INSERT INTO player_club_membership (club_id, player_id) VALUES
     ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000067')
 ON CONFLICT (club_id, player_id) DO NOTHING;
 
--- Test matches
-INSERT INTO games (id, name) VALUES ('00000000-0000-0000-0000-000000000032', 'Skull King') ON CONFLICT (id) DO NOTHING;
+-- Test matches. Game ids are the well-known constants pinned in
+-- pkg/elo/game_ids.go (Skull King 0x188, IAWW 0x9).
+INSERT INTO games (id, name) VALUES
+    ('00000000-0000-0000-0000-000000000188', 'Skull King'),
+    ('00000000-0000-0000-0000-000000000009', 'Этот Безумный Мир')
+ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO matches (id, date, game_id) VALUES
-    ('00000000-0000-0000-0000-0000000000c8', NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000032'),
-    ('00000000-0000-0000-0000-0000000000c9', NOW() - INTERVAL '3 days', '00000000-0000-0000-0000-000000000032'),
-    ('00000000-0000-0000-0000-0000000000ca', NOW() - INTERVAL '1 day',  '00000000-0000-0000-0000-000000000032')
+    ('00000000-0000-0000-0000-0000000000c8', NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000188'),
+    ('00000000-0000-0000-0000-0000000000c9', NOW() - INTERVAL '3 days', '00000000-0000-0000-0000-000000000188'),
+    ('00000000-0000-0000-0000-0000000000ca', NOW() - INTERVAL '1 day',  '00000000-0000-0000-0000-000000000188')
 ON CONFLICT (id) DO NOTHING;
 
 -- match_scores: only score, no Elo columns (moved to global_arena_settlement / game_arena_settlement)
@@ -121,7 +125,7 @@ FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
 -- game_arena_settlement: per-game Elo after each match.
--- All matches are Skull King (game_id=50), so game Elo equals global Elo here.
+-- All matches are Skull King (game_id=0x188), so game Elo equals global Elo here.
 WITH base AS (
     SELECT m.date, ms.player_id, ms.match_id,
         CASE (ms.match_id, ms.player_id)
@@ -153,7 +157,7 @@ WITH base AS (
 )
 INSERT INTO game_arena_settlement
     (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000032'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000188'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
@@ -182,7 +186,7 @@ WITH base AS (
 )
 INSERT INTO game_arena_settlement
     (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000032'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000188'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
 ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
@@ -212,7 +216,7 @@ BEGIN
     INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
     VALUES ('00000000-0000-0000-0000-000000000001',
             ARRAY['00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000065'::uuid],
-            TRUE, ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
+            TRUE, ARRAY['00000000-0000-0000-0000-000000000188'::uuid])
     ON CONFLICT (market_id) DO NOTHING;
 
     INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
@@ -238,7 +242,7 @@ BEGIN
 
     INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
     VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000065'::uuid,
-            ARRAY['00000000-0000-0000-0000-000000000032'::uuid], 3, 1)
+            ARRAY['00000000-0000-0000-0000-000000000188'::uuid], 3, 1)
     ON CONFLICT (market_id) DO NOTHING;
 
     INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES
@@ -269,7 +273,7 @@ BEGIN
     INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
     VALUES ('00000000-0000-0000-0000-000000000003',
             ARRAY['00000000-0000-0000-0000-000000000064'::uuid, '00000000-0000-0000-0000-000000000065'::uuid, '00000000-0000-0000-0000-000000000066'::uuid],
-            TRUE, ARRAY['00000000-0000-0000-0000-000000000032'::uuid])
+            TRUE, ARRAY['00000000-0000-0000-0000-000000000188'::uuid])
     ON CONFLICT (market_id) DO NOTHING;
 
     INSERT INTO market_outcomes (id, market_id, kind, player_id, q) VALUES

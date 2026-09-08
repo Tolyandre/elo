@@ -66,10 +66,10 @@ func GetGoogleUser(access_token string, id_token string) (*GoogleUserResult, err
 		return nil, errors.New("could not extract user id from userinfo response")
 	}
 
-	name, _       := GoogleUserRes["name"].(string)
-	givenName, _  := GoogleUserRes["given_name"].(string)
+	name, _ := GoogleUserRes["name"].(string)
+	givenName, _ := GoogleUserRes["given_name"].(string)
 	familyName, _ := GoogleUserRes["family_name"].(string)
-	picture, _    := GoogleUserRes["picture"].(string)
+	picture, _ := GoogleUserRes["picture"].(string)
 
 	return &GoogleUserResult{
 		Id:          id,

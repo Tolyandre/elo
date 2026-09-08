@@ -1,6 +1,5 @@
 "use client"
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -14,6 +13,7 @@ import {
 import { useMe } from "@/app/meContext";
 import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
+import { MarketRelatedMatches } from "@/components/market-related-matches";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { BackButton } from "@/components/back-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +22,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
-import { costForShares, sharesForAmount } from "@/app/markets/lmsr";
+import { sharesForAmount, buyQuote } from "@/app/markets/lmsr";
 import { formatAmount } from "@/app/markets/format";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ProbabilityPoint, mergeProbabilityHistory } from "@/app/markets/probabilityHistory";
@@ -79,8 +79,8 @@ function OutcomeColumn({
     label,
     titleColor,
     probability,
-    shareCost,
-    betShares,
+    pricePerShare,
+    multiplier,
     buyMode,
     myStaked,
     myShares,
@@ -93,10 +93,10 @@ function OutcomeColumn({
     titleColor?: string;
     /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
     probability: number;
-    /** Elo the next 1-share buy costs right now (C(q+e_i) − C(q)); set only while the market is open for buying. */
-    shareCost?: number;
-    /** Shares a fixed 1-elo bet buys at the current q — the multiplier the bet actually realizes. */
-    betShares?: number;
+    /** Elo per share the pending buy effectively pays (see buyQuote) — the "за 1 голос" price. */
+    pricePerShare?: number;
+    /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
+    multiplier?: number;
     buyMode: BuyMode;
     myStaked?: number;
     myShares?: number;
@@ -105,25 +105,20 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
-    // In the share mode the headline and the buy button show what a 1-share
-    // buy actually charges — the LMSR cost of the next share, which sits above
-    // the probability whenever the buy moves the price (thin markets, small b).
-    // Without an active buy (market closed) the probability is shown instead.
-    const costShown = shareCost != null && Number.isFinite(shareCost);
-    const headline = buyMode === "amount" && betShares != null && Number.isFinite(betShares)
-        ? `×${betShares.toFixed(2)}`
-        : buyMode === "share" && costShown
-            ? formatAmount(shareCost)
-            : probability.toFixed(2);
-    const headlineCaption = buyMode === "amount" && betShares != null && Number.isFinite(betShares)
-        ? "голосов за 1 рейтинг"
-        : buyMode === "share" && costShown
-            ? "цена 1 голоса"
-            : null;
+    // The card quotes the pending buy — a ×multiplier headline (voices per
+    // elo) over its per-share price; the two are reciprocals. The modes
+    // differ in what the buy button actually spends: the price of one share
+    // ("По одному голосу") or a fixed 1 elo ("По стоимости 1").
+    const headline = multiplier != null && Number.isFinite(multiplier)
+        ? `×${multiplier.toFixed(2)}`
+        : probability.toFixed(2);
+    const headlineCaption = pricePerShare != null && Number.isFinite(pricePerShare)
+        ? `${formatAmount(pricePerShare)} за 1 голос`
+        : null;
     const buyLabel = buyMode === "amount"
         ? "Поставить 1"
-        : costShown
-            ? `Поставить ${formatAmount(shareCost)}`
+        : pricePerShare != null && Number.isFinite(pricePerShare)
+            ? `Поставить ${formatAmount(pricePerShare)}`
             : "Поставить";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
@@ -291,15 +286,6 @@ function MarketPageContent() {
             <PageHeader title="Ставки" />
             <MarketCard market={displayMarket} probabilityHistory={probabilityHistory} />
 
-            {displayMarket.resolution_match_id && (
-                <p className="text-sm text-muted-foreground text-center">
-                    Партия, разрешившая рынок:{" "}
-                    <Link className="underline underline-offset-2 hover:text-foreground" href={`/matches/view?id=${displayMarket.resolution_match_id}`}>
-                        открыть
-                    </Link>
-                </p>
-            )}
-
             <p className="text-sm text-muted-foreground text-center">
                 Каждый голос принесёт 1 рейтинг, если исход сбудется.
             </p>
@@ -307,28 +293,31 @@ function MarketPageContent() {
             <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
                 <TabsList className="grid grid-cols-2 w-full">
                     <TabsTrigger value="share">По одному голосу</TabsTrigger>
-                    <TabsTrigger value="amount">Коэффициенты</TabsTrigger>
+                    <TabsTrigger value="amount">По стоимости 1</TabsTrigger>
                 </TabsList>
             </Tabs>
 
             <div className="grid grid-cols-2 gap-3">
-                {displayMarket.outcomes.map((o, i) => (
-                    <OutcomeColumn
-                        key={o.id}
-                        label={nameOf(o)}
-                        titleColor={colors.get(o.id)}
-                        probability={o.probability}
-                        shareCost={isOpen ? costForShares(qVec, liquidityB, i, 1) : undefined}
-                        betShares={sharesForAmount(qVec, liquidityB, i, 1)}
-                        buyMode={buyMode}
-                        myStaked={stakedByOutcome.get(o.id)}
-                        myShares={sharesOwnedByOutcome.get(o.id)}
-                        canBuy={canBuy}
-                        onBuy={isOpen ? () => handleBuy(o) : undefined}
-                        buying={buyingOutcome === o.id}
-                        isWinner={resolvedOutcome != null && resolvedOutcome === o.id}
-                    />
-                ))}
+                {displayMarket.outcomes.map((o, i) => {
+                    const quote = buyQuote(qVec, liquidityB, i, buyMode);
+                    return (
+                        <OutcomeColumn
+                            key={o.id}
+                            label={nameOf(o)}
+                            titleColor={colors.get(o.id)}
+                            probability={o.probability}
+                            pricePerShare={quote.pricePerShare}
+                            multiplier={quote.multiplier}
+                            buyMode={buyMode}
+                            myStaked={stakedByOutcome.get(o.id)}
+                            myShares={sharesOwnedByOutcome.get(o.id)}
+                            canBuy={canBuy}
+                            onBuy={isOpen ? () => handleBuy(o) : undefined}
+                            buying={buyingOutcome === o.id}
+                            isWinner={resolvedOutcome != null && resolvedOutcome === o.id}
+                        />
+                    );
+                })}
             </div>
 
             {isOpen && <ProjectedOutcome market={displayMarket} nameOf={nameOf} />}
@@ -344,6 +333,8 @@ function MarketPageContent() {
             )}
 
             <ResolutionDescription market={displayMarket} />
+
+            <MarketRelatedMatches market={displayMarket} roundToInteger={me.roundToInteger} />
         </main>
     );
 }

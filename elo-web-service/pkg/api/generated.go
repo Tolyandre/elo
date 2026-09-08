@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -148,6 +150,24 @@ func (e GamePlayerLeague) Valid() bool {
 	case GamePlayerLeagueAmateur:
 		return true
 	case GamePlayerLeagueNewbie:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IawwGameStatePhase.
+const (
+	IawwGameStatePhaseScoring IawwGameStatePhase = "scoring"
+	IawwGameStatePhaseSetup   IawwGameStatePhase = "setup"
+)
+
+// Valid indicates whether the value is a known member of the IawwGameStatePhase enum.
+func (e IawwGameStatePhase) Valid() bool {
+	switch e {
+	case IawwGameStatePhaseScoring:
+		return true
+	case IawwGameStatePhaseSetup:
 		return true
 	default:
 		return false
@@ -306,28 +326,28 @@ func (e SkullKingCardImageResult1Type) Valid() bool {
 
 // Defines values for SkullKingGameStatePhase.
 const (
-	BidReview      SkullKingGameStatePhase = "bid-review"
-	Bidding        SkullKingGameStatePhase = "bidding"
-	ResultEntry    SkullKingGameStatePhase = "result-entry"
-	RoundComplete  SkullKingGameStatePhase = "round-complete"
-	Setup          SkullKingGameStatePhase = "setup"
-	WaitingForBids SkullKingGameStatePhase = "waiting-for-bids"
+	SkullKingGameStatePhaseBidReview      SkullKingGameStatePhase = "bid-review"
+	SkullKingGameStatePhaseBidding        SkullKingGameStatePhase = "bidding"
+	SkullKingGameStatePhaseResultEntry    SkullKingGameStatePhase = "result-entry"
+	SkullKingGameStatePhaseRoundComplete  SkullKingGameStatePhase = "round-complete"
+	SkullKingGameStatePhaseSetup          SkullKingGameStatePhase = "setup"
+	SkullKingGameStatePhaseWaitingForBids SkullKingGameStatePhase = "waiting-for-bids"
 )
 
 // Valid indicates whether the value is a known member of the SkullKingGameStatePhase enum.
 func (e SkullKingGameStatePhase) Valid() bool {
 	switch e {
-	case BidReview:
+	case SkullKingGameStatePhaseBidReview:
 		return true
-	case Bidding:
+	case SkullKingGameStatePhaseBidding:
 		return true
-	case ResultEntry:
+	case SkullKingGameStatePhaseResultEntry:
 		return true
-	case RoundComplete:
+	case SkullKingGameStatePhaseRoundComplete:
 		return true
-	case Setup:
+	case SkullKingGameStatePhaseSetup:
 		return true
-	case WaitingForBids:
+	case SkullKingGameStatePhaseWaitingForBids:
 		return true
 	default:
 		return false
@@ -698,6 +718,34 @@ type HistoryRank struct {
 	WeekAgo EloRank `json:"week_ago"`
 }
 
+// IawwEntry defines model for IawwEntry.
+type IawwEntry struct {
+	Cells []TablesIawwCell `json:"cells"`
+
+	// DirectVp Direct victory points; null until entered
+	DirectVp *int `json:"directVp,omitempty"`
+
+	// Done The player has submitted their final scoring
+	Done bool `json:"done"`
+
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId Base58ID `json:"playerId"`
+}
+
+// IawwGameState defines model for IawwGameState.
+type IawwGameState struct {
+	// Entries One entry per player, same order as players
+	Entries        []IawwEntry `json:"entries"`
+	FallbackGameId *Base58ID   `json:"fallbackGameId,omitempty"`
+
+	// Phase setup is client-only (pre-table); tables are created in scoring
+	Phase   IawwGameStatePhase `json:"phase"`
+	Players []TablePlayer      `json:"players"`
+}
+
+// IawwGameStatePhase setup is client-only (pre-table); tables are created in scoring
+type IawwGameStatePhase string
+
 // Market defines model for Market.
 type Market struct {
 	BettingClosedAt *time.Time `json:"betting_closed_at,omitempty"`
@@ -952,7 +1000,7 @@ type SkullKingGameState struct {
 	CurrentRound       int                     `json:"currentRound"`
 	FallbackGameId     *Base58ID               `json:"fallbackGameId,omitempty"`
 	Phase              SkullKingGameStatePhase `json:"phase"`
-	Players            []SkullKingPlayer       `json:"players"`
+	Players            []TablePlayer           `json:"players"`
 
 	// Rounds rounds[roundIndex][playerIndex] — null until the player has entered data
 	Rounds [][]*SkullKingRoundEntry `json:"rounds"`
@@ -961,13 +1009,6 @@ type SkullKingGameState struct {
 // SkullKingGameStatePhase defines model for SkullKingGameState.Phase.
 type SkullKingGameStatePhase string
 
-// SkullKingPlayer defines model for SkullKingPlayer.
-type SkullKingPlayer struct {
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
-}
-
 // SkullKingRoundEntry defines model for SkullKingRoundEntry.
 type SkullKingRoundEntry struct {
 	Actual *int `json:"actual,omitempty"`
@@ -975,18 +1016,39 @@ type SkullKingRoundEntry struct {
 	Bonus  int  `json:"bonus"`
 }
 
-// SkullKingTableSummary defines model for SkullKingTableSummary.
-type SkullKingTableSummary struct {
-	ConnectedPlayerIds []Base58ID         `json:"connected_player_ids"`
-	CreatedAt          time.Time          `json:"created_at"`
-	ExpiresAt          time.Time          `json:"expires_at"`
-	GameState          SkullKingGameState `json:"game_state"`
+// TableGameState defines model for TableGameState.
+type TableGameState struct {
+	union json.RawMessage
+}
+
+// TablePlayer defines model for TablePlayer.
+type TablePlayer struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+}
+
+// TableSummary defines model for TableSummary.
+type TableSummary struct {
+	ConnectedPlayerIds []Base58ID `json:"connected_player_ids"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ExpiresAt          time.Time  `json:"expires_at"`
+
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId    Base58ID       `json:"game_id"`
+	GameState TableGameState `json:"game_state"`
+
+	// HostClientToken Per-device token of the device that last claimed hosting; a host session whose token differs steps down to player/viewer mode. Empty on legacy tables (nothing enforces it).
+	HostClientToken string `json:"host_client_token"`
 
 	// HostUserId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	HostUserId Base58ID `json:"host_user_id"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
+
+	// Version Optimistic-lock counter; changes with every game_state write
+	Version int64 `json:"version"`
 }
 
 // Tournament defines model for Tournament.
@@ -1096,6 +1158,59 @@ type MarketsMarketOutcome struct {
 
 // MarketsMarketOutcomeKind player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
 type MarketsMarketOutcomeKind string
+
+// TablesCreateTableRequest defines model for tables_CreateTableRequest.
+type TablesCreateTableRequest struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId    Base58ID       `json:"game_id"`
+	GameState TableGameState `json:"game_state"`
+
+	// HostClientToken Per-browser device token; identifies the creating device as the host
+	HostClientToken *string `json:"host_client_token,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+}
+
+// TablesIawwCell defines model for tables_IawwCell.
+type TablesIawwCell struct {
+	Coeff int `json:"coeff"`
+	Count int `json:"count"`
+
+	// Row Scoring row id (e.g. "structure", "str-res"); not an entity id
+	Row string `json:"row"`
+}
+
+// TablesIawwScoreInput defines model for tables_IawwScoreInput.
+type TablesIawwScoreInput struct {
+	// Cells Partial column update: rows not carried are kept, a carried cell with count 0 clears its row, others upsert
+	Cells []TablesIawwCell `json:"cells"`
+
+	// DirectVp Direct victory points; null or omitted keeps the current value (partial update)
+	DirectVp *int `json:"directVp,omitempty"`
+
+	// Done Marks the player's column finished (locks it for the player). Omitted behaves as true — legacy one-shot submits.
+	Done *bool `json:"done,omitempty"`
+}
+
+// TablesSkullKingBidInput defines model for tables_SkullKingBidInput.
+type TablesSkullKingBidInput struct {
+	Bid int `json:"bid"`
+}
+
+// TablesSkullKingResultInput defines model for tables_SkullKingResultInput.
+type TablesSkullKingResultInput struct {
+	Actual int `json:"actual"`
+	Bonus  int `json:"bonus"`
+}
+
+// TablesUpdateTableStateRequest defines model for tables_UpdateTableStateRequest.
+type TablesUpdateTableStateRequest struct {
+	GameState TableGameState `json:"game_state"`
+
+	// Version The version this edit is based on; a mismatch is a 409
+	Version int64 `json:"version"`
+}
 
 // CreatePlayerCorrectionJSONBody defines parameters for CreatePlayerCorrection.
 type CreatePlayerCorrectionJSONBody struct {
@@ -1334,34 +1449,21 @@ type ParseSkullKingCardImageJSONBody struct {
 	Image string `json:"image"`
 }
 
-// CreateSkullKingTableJSONBody defines parameters for CreateSkullKingTable.
-type CreateSkullKingTableJSONBody struct {
-	GameState SkullKingGameState `json:"game_state"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-}
-
-// DeleteSkullKingTableParams defines parameters for DeleteSkullKingTable.
-type DeleteSkullKingTableParams struct {
-	// MatchId When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when abandoning/resetting a game (no broadcast).
+// DeleteTableParams defines parameters for DeleteTable.
+type DeleteTableParams struct {
+	// MatchId When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when closing the table without saving (a `closed` event instead).
 	MatchId *string `form:"match_id,omitempty" json:"match_id,omitempty"`
 }
 
-// SubmitSkullKingBidJSONBody defines parameters for SubmitSkullKingBid.
-type SubmitSkullKingBidJSONBody struct {
-	Bid int `json:"bid"`
+// SubmitTableJSONBody defines parameters for SubmitTable.
+type SubmitTableJSONBody struct {
+	union json.RawMessage
 }
 
-// SubmitSkullKingResultJSONBody defines parameters for SubmitSkullKingResult.
-type SubmitSkullKingResultJSONBody struct {
-	Actual int `json:"actual"`
-	Bonus  int `json:"bonus"`
-}
-
-// UpdateSkullKingTableStateJSONBody defines parameters for UpdateSkullKingTableState.
-type UpdateSkullKingTableStateJSONBody struct {
-	GameState SkullKingGameState `json:"game_state"`
+// TakeoverTableJSONBody defines parameters for TakeoverTable.
+type TakeoverTableJSONBody struct {
+	// HostClientToken Per-device token stored with the hosting claim
+	HostClientToken *string `json:"host_client_token,omitempty"`
 }
 
 // PatchUserJSONBody defines parameters for PatchUser.
@@ -1426,17 +1528,17 @@ type CreateSettingsJSONRequestBody CreateSettingsJSONBody
 // ParseSkullKingCardImageJSONRequestBody defines body for ParseSkullKingCardImage for application/json ContentType.
 type ParseSkullKingCardImageJSONRequestBody ParseSkullKingCardImageJSONBody
 
-// CreateSkullKingTableJSONRequestBody defines body for CreateSkullKingTable for application/json ContentType.
-type CreateSkullKingTableJSONRequestBody CreateSkullKingTableJSONBody
+// CreateTableJSONRequestBody defines body for CreateTable for application/json ContentType.
+type CreateTableJSONRequestBody = TablesCreateTableRequest
 
-// SubmitSkullKingBidJSONRequestBody defines body for SubmitSkullKingBid for application/json ContentType.
-type SubmitSkullKingBidJSONRequestBody SubmitSkullKingBidJSONBody
+// UpdateTableStateJSONRequestBody defines body for UpdateTableState for application/json ContentType.
+type UpdateTableStateJSONRequestBody = TablesUpdateTableStateRequest
 
-// SubmitSkullKingResultJSONRequestBody defines body for SubmitSkullKingResult for application/json ContentType.
-type SubmitSkullKingResultJSONRequestBody SubmitSkullKingResultJSONBody
+// SubmitTableJSONRequestBody defines body for SubmitTable for application/json ContentType.
+type SubmitTableJSONRequestBody SubmitTableJSONBody
 
-// UpdateSkullKingTableStateJSONRequestBody defines body for UpdateSkullKingTableState for application/json ContentType.
-type UpdateSkullKingTableStateJSONRequestBody UpdateSkullKingTableStateJSONBody
+// TakeoverTableJSONRequestBody defines body for TakeoverTable for application/json ContentType.
+type TakeoverTableJSONRequestBody TakeoverTableJSONBody
 
 // CreateTournamentJSONRequestBody defines body for CreateTournament for application/json ContentType.
 type CreateTournamentJSONRequestBody = TournamentInput
@@ -1724,6 +1826,156 @@ func (t *SkullKingCardImageResult) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsSkullKingGameState returns the union data inside the TableGameState as a SkullKingGameState
+func (t TableGameState) AsSkullKingGameState() (SkullKingGameState, error) {
+	var body SkullKingGameState
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSkullKingGameState overwrites any union data inside the TableGameState as the provided SkullKingGameState
+func (t *TableGameState) FromSkullKingGameState(v SkullKingGameState) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSkullKingGameState performs a merge with any union data inside the TableGameState, using the provided SkullKingGameState
+func (t *TableGameState) MergeSkullKingGameState(v SkullKingGameState) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsIawwGameState returns the union data inside the TableGameState as a IawwGameState
+func (t TableGameState) AsIawwGameState() (IawwGameState, error) {
+	var body IawwGameState
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromIawwGameState overwrites any union data inside the TableGameState as the provided IawwGameState
+func (t *TableGameState) FromIawwGameState(v IawwGameState) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeIawwGameState performs a merge with any union data inside the TableGameState, using the provided IawwGameState
+func (t *TableGameState) MergeIawwGameState(v IawwGameState) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TableGameState) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TableGameState) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTablesSkullKingBidInput returns the union data inside the SubmitTableJSONBody as a TablesSkullKingBidInput
+func (t SubmitTableJSONBody) AsTablesSkullKingBidInput() (TablesSkullKingBidInput, error) {
+	var body TablesSkullKingBidInput
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTablesSkullKingBidInput overwrites any union data inside the SubmitTableJSONBody as the provided TablesSkullKingBidInput
+func (t *SubmitTableJSONBody) FromTablesSkullKingBidInput(v TablesSkullKingBidInput) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTablesSkullKingBidInput performs a merge with any union data inside the SubmitTableJSONBody, using the provided TablesSkullKingBidInput
+func (t *SubmitTableJSONBody) MergeTablesSkullKingBidInput(v TablesSkullKingBidInput) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTablesSkullKingResultInput returns the union data inside the SubmitTableJSONBody as a TablesSkullKingResultInput
+func (t SubmitTableJSONBody) AsTablesSkullKingResultInput() (TablesSkullKingResultInput, error) {
+	var body TablesSkullKingResultInput
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTablesSkullKingResultInput overwrites any union data inside the SubmitTableJSONBody as the provided TablesSkullKingResultInput
+func (t *SubmitTableJSONBody) FromTablesSkullKingResultInput(v TablesSkullKingResultInput) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTablesSkullKingResultInput performs a merge with any union data inside the SubmitTableJSONBody, using the provided TablesSkullKingResultInput
+func (t *SubmitTableJSONBody) MergeTablesSkullKingResultInput(v TablesSkullKingResultInput) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTablesIawwScoreInput returns the union data inside the SubmitTableJSONBody as a TablesIawwScoreInput
+func (t SubmitTableJSONBody) AsTablesIawwScoreInput() (TablesIawwScoreInput, error) {
+	var body TablesIawwScoreInput
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTablesIawwScoreInput overwrites any union data inside the SubmitTableJSONBody as the provided TablesIawwScoreInput
+func (t *SubmitTableJSONBody) FromTablesIawwScoreInput(v TablesIawwScoreInput) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTablesIawwScoreInput performs a merge with any union data inside the SubmitTableJSONBody, using the provided TablesIawwScoreInput
+func (t *SubmitTableJSONBody) MergeTablesIawwScoreInput(v TablesIawwScoreInput) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SubmitTableJSONBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SubmitTableJSONBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// CreatePlayerCorrection Apply a manual rating correction for a player
@@ -1861,30 +2113,30 @@ type ServerInterface interface {
 	// ParseSkullKingCardImage Identify a Skull King card from a base64-encoded image
 	// (POST /skull-king/parse-card-image)
 	ParseSkullKingCardImage(c *gin.Context)
-	// ListSkullKingTables List all active Skull King tables
-	// (GET /skull-king/tables)
-	ListSkullKingTables(c *gin.Context)
-	// CreateSkullKingTable Create a new Skull King table
-	// (POST /skull-king/tables)
-	CreateSkullKingTable(c *gin.Context)
-	// DeleteSkullKingTable Delete a Skull King table (host only)
-	// (DELETE /skull-king/tables/{id})
-	DeleteSkullKingTable(c *gin.Context, id string, params DeleteSkullKingTableParams)
-	// GetSkullKingTable Get a Skull King table by ID
-	// (GET /skull-king/tables/{id})
-	GetSkullKingTable(c *gin.Context, id string)
-	// SubmitSkullKingBid Submit a bid for the current round
-	// (POST /skull-king/tables/{id}/bid)
-	SubmitSkullKingBid(c *gin.Context, id string)
-	// JoinSkullKingTable Join a Skull King table as a player
-	// (POST /skull-king/tables/{id}/join)
-	JoinSkullKingTable(c *gin.Context, id string)
-	// SubmitSkullKingResult Submit actual tricks taken for the current round
-	// (POST /skull-king/tables/{id}/result)
-	SubmitSkullKingResult(c *gin.Context, id string)
-	// UpdateSkullKingTableState Update game state (host only)
-	// (PATCH /skull-king/tables/{id}/state)
-	UpdateSkullKingTableState(c *gin.Context, id string)
+	// ListTables List all active game tables
+	// (GET /tables)
+	ListTables(c *gin.Context)
+	// CreateTable Create a new game table
+	// (POST /tables)
+	CreateTable(c *gin.Context)
+	// DeleteTable Delete a game table (host only)
+	// (DELETE /tables/{id})
+	DeleteTable(c *gin.Context, id string, params DeleteTableParams)
+	// GetTable Get a game table by ID
+	// (GET /tables/{id})
+	GetTable(c *gin.Context, id string)
+	// JoinTable Join a game table as a connected player
+	// (POST /tables/{id}/join)
+	JoinTable(c *gin.Context, id string)
+	// UpdateTableState Replace the game state (host only, optimistic lock)
+	// (PATCH /tables/{id}/state)
+	UpdateTableState(c *gin.Context, id string)
+	// SubmitTable Submit the connected player's input (bid, round result, or scoring)
+	// (POST /tables/{id}/submit)
+	SubmitTable(c *gin.Context, id string)
+	// TakeoverTable Claim hosting of the table for this device
+	// (POST /tables/{id}/takeover)
+	TakeoverTable(c *gin.Context, id string)
 	// ListTournaments List all tournaments (newest start date first)
 	// (GET /tournaments)
 	ListTournaments(c *gin.Context)
@@ -2913,8 +3165,8 @@ func (siw *ServerInterfaceWrapper) ParseSkullKingCardImage(c *gin.Context) {
 	siw.Handler.ParseSkullKingCardImage(c)
 }
 
-// ListSkullKingTables operation middleware
-func (siw *ServerInterfaceWrapper) ListSkullKingTables(c *gin.Context) {
+// ListTables operation middleware
+func (siw *ServerInterfaceWrapper) ListTables(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -2923,11 +3175,11 @@ func (siw *ServerInterfaceWrapper) ListSkullKingTables(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListSkullKingTables(c)
+	siw.Handler.ListTables(c)
 }
 
-// CreateSkullKingTable operation middleware
-func (siw *ServerInterfaceWrapper) CreateSkullKingTable(c *gin.Context) {
+// CreateTable operation middleware
+func (siw *ServerInterfaceWrapper) CreateTable(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -2936,11 +3188,11 @@ func (siw *ServerInterfaceWrapper) CreateSkullKingTable(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateSkullKingTable(c)
+	siw.Handler.CreateTable(c)
 }
 
-// DeleteSkullKingTable operation middleware
-func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
+// DeleteTable operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTable(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -2955,7 +3207,7 @@ func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
 	}
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteSkullKingTableParams
+	var params DeleteTableParams
 
 	// ------------- Optional query parameter "match_id" -------------
 
@@ -2972,11 +3224,11 @@ func (siw *ServerInterfaceWrapper) DeleteSkullKingTable(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteSkullKingTable(c, id, params)
+	siw.Handler.DeleteTable(c, id, params)
 }
 
-// GetSkullKingTable operation middleware
-func (siw *ServerInterfaceWrapper) GetSkullKingTable(c *gin.Context) {
+// GetTable operation middleware
+func (siw *ServerInterfaceWrapper) GetTable(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -2997,11 +3249,11 @@ func (siw *ServerInterfaceWrapper) GetSkullKingTable(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetSkullKingTable(c, id)
+	siw.Handler.GetTable(c, id)
 }
 
-// SubmitSkullKingBid operation middleware
-func (siw *ServerInterfaceWrapper) SubmitSkullKingBid(c *gin.Context) {
+// JoinTable operation middleware
+func (siw *ServerInterfaceWrapper) JoinTable(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -3022,11 +3274,11 @@ func (siw *ServerInterfaceWrapper) SubmitSkullKingBid(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SubmitSkullKingBid(c, id)
+	siw.Handler.JoinTable(c, id)
 }
 
-// JoinSkullKingTable operation middleware
-func (siw *ServerInterfaceWrapper) JoinSkullKingTable(c *gin.Context) {
+// UpdateTableState operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTableState(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -3047,11 +3299,11 @@ func (siw *ServerInterfaceWrapper) JoinSkullKingTable(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.JoinSkullKingTable(c, id)
+	siw.Handler.UpdateTableState(c, id)
 }
 
-// SubmitSkullKingResult operation middleware
-func (siw *ServerInterfaceWrapper) SubmitSkullKingResult(c *gin.Context) {
+// SubmitTable operation middleware
+func (siw *ServerInterfaceWrapper) SubmitTable(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -3072,11 +3324,11 @@ func (siw *ServerInterfaceWrapper) SubmitSkullKingResult(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SubmitSkullKingResult(c, id)
+	siw.Handler.SubmitTable(c, id)
 }
 
-// UpdateSkullKingTableState operation middleware
-func (siw *ServerInterfaceWrapper) UpdateSkullKingTableState(c *gin.Context) {
+// TakeoverTable operation middleware
+func (siw *ServerInterfaceWrapper) TakeoverTable(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -3097,7 +3349,7 @@ func (siw *ServerInterfaceWrapper) UpdateSkullKingTableState(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateSkullKingTableState(c, id)
+	siw.Handler.TakeoverTable(c, id)
 }
 
 // ListTournaments operation middleware
@@ -3349,14 +3601,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/settings", wrapper.CreateSettings)
 	router.GET(options.BaseURL+"/settings/all", wrapper.ListAllSettings)
 	router.POST(options.BaseURL+"/skull-king/parse-card-image", wrapper.ParseSkullKingCardImage)
-	router.GET(options.BaseURL+"/skull-king/tables", wrapper.ListSkullKingTables)
-	router.POST(options.BaseURL+"/skull-king/tables", wrapper.CreateSkullKingTable)
-	router.DELETE(options.BaseURL+"/skull-king/tables/:id", wrapper.DeleteSkullKingTable)
-	router.GET(options.BaseURL+"/skull-king/tables/:id", wrapper.GetSkullKingTable)
-	router.POST(options.BaseURL+"/skull-king/tables/:id/bid", wrapper.SubmitSkullKingBid)
-	router.POST(options.BaseURL+"/skull-king/tables/:id/join", wrapper.JoinSkullKingTable)
-	router.POST(options.BaseURL+"/skull-king/tables/:id/result", wrapper.SubmitSkullKingResult)
-	router.PATCH(options.BaseURL+"/skull-king/tables/:id/state", wrapper.UpdateSkullKingTableState)
+	router.GET(options.BaseURL+"/tables", wrapper.ListTables)
+	router.POST(options.BaseURL+"/tables", wrapper.CreateTable)
+	router.DELETE(options.BaseURL+"/tables/:id", wrapper.DeleteTable)
+	router.GET(options.BaseURL+"/tables/:id", wrapper.GetTable)
+	router.POST(options.BaseURL+"/tables/:id/join", wrapper.JoinTable)
+	router.PATCH(options.BaseURL+"/tables/:id/state", wrapper.UpdateTableState)
+	router.POST(options.BaseURL+"/tables/:id/submit", wrapper.SubmitTable)
+	router.POST(options.BaseURL+"/tables/:id/takeover", wrapper.TakeoverTable)
 	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
 	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
 	router.DELETE(options.BaseURL+"/tournaments/:id", wrapper.DeleteTournament)
@@ -5846,19 +6098,19 @@ func (response ParseSkullKingCardImage500JSONResponse) VisitParseSkullKingCardIm
 	return err
 }
 
-type ListSkullKingTablesRequestObject struct {
+type ListTablesRequestObject struct {
 }
 
-type ListSkullKingTablesResponseObject interface {
-	VisitListSkullKingTablesResponse(w http.ResponseWriter) error
+type ListTablesResponseObject interface {
+	VisitListTablesResponse(w http.ResponseWriter) error
 }
 
-type ListSkullKingTables200JSONResponse struct {
-	Data   []SkullKingTableSummary `json:"data"`
-	Status string                  `json:"status"`
+type ListTables200JSONResponse struct {
+	Data   []TableSummary `json:"data"`
+	Status string         `json:"status"`
 }
 
-func (response ListSkullKingTables200JSONResponse) VisitListSkullKingTablesResponse(w http.ResponseWriter) error {
+func (response ListTables200JSONResponse) VisitListTablesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5870,20 +6122,20 @@ func (response ListSkullKingTables200JSONResponse) VisitListSkullKingTablesRespo
 	return err
 }
 
-type CreateSkullKingTableRequestObject struct {
-	Body *CreateSkullKingTableJSONRequestBody
+type CreateTableRequestObject struct {
+	Body *CreateTableJSONRequestBody
 }
 
-type CreateSkullKingTableResponseObject interface {
-	VisitCreateSkullKingTableResponse(w http.ResponseWriter) error
+type CreateTableResponseObject interface {
+	VisitCreateTableResponse(w http.ResponseWriter) error
 }
 
-type CreateSkullKingTable201JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
+type CreateTable201JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
 }
 
-func (response CreateSkullKingTable201JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+func (response CreateTable201JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5895,9 +6147,9 @@ func (response CreateSkullKingTable201JSONResponse) VisitCreateSkullKingTableRes
 	return err
 }
 
-type CreateSkullKingTable400JSONResponse ApiError
+type CreateTable400JSONResponse ApiError
 
-func (response CreateSkullKingTable400JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+func (response CreateTable400JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5909,9 +6161,9 @@ func (response CreateSkullKingTable400JSONResponse) VisitCreateSkullKingTableRes
 	return err
 }
 
-type CreateSkullKingTable401JSONResponse ApiError
+type CreateTable401JSONResponse ApiError
 
-func (response CreateSkullKingTable401JSONResponse) VisitCreateSkullKingTableResponse(w http.ResponseWriter) error {
+func (response CreateTable401JSONResponse) VisitCreateTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5923,26 +6175,26 @@ func (response CreateSkullKingTable401JSONResponse) VisitCreateSkullKingTableRes
 	return err
 }
 
-type DeleteSkullKingTableRequestObject struct {
+type DeleteTableRequestObject struct {
 	Id     string `json:"id"`
-	Params DeleteSkullKingTableParams
+	Params DeleteTableParams
 }
 
-type DeleteSkullKingTableResponseObject interface {
-	VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error
+type DeleteTableResponseObject interface {
+	VisitDeleteTableResponse(w http.ResponseWriter) error
 }
 
-type DeleteSkullKingTable204Response struct {
+type DeleteTable204Response struct {
 }
 
-func (response DeleteSkullKingTable204Response) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+func (response DeleteTable204Response) VisitDeleteTableResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
 }
 
-type DeleteSkullKingTable401JSONResponse ApiError
+type DeleteTable401JSONResponse ApiError
 
-func (response DeleteSkullKingTable401JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+func (response DeleteTable401JSONResponse) VisitDeleteTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5954,9 +6206,9 @@ func (response DeleteSkullKingTable401JSONResponse) VisitDeleteSkullKingTableRes
 	return err
 }
 
-type DeleteSkullKingTable403JSONResponse ApiError
+type DeleteTable403JSONResponse ApiError
 
-func (response DeleteSkullKingTable403JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+func (response DeleteTable403JSONResponse) VisitDeleteTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5968,9 +6220,9 @@ func (response DeleteSkullKingTable403JSONResponse) VisitDeleteSkullKingTableRes
 	return err
 }
 
-type DeleteSkullKingTable404JSONResponse ApiError
+type DeleteTable404JSONResponse ApiError
 
-func (response DeleteSkullKingTable404JSONResponse) VisitDeleteSkullKingTableResponse(w http.ResponseWriter) error {
+func (response DeleteTable404JSONResponse) VisitDeleteTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5982,20 +6234,20 @@ func (response DeleteSkullKingTable404JSONResponse) VisitDeleteSkullKingTableRes
 	return err
 }
 
-type GetSkullKingTableRequestObject struct {
+type GetTableRequestObject struct {
 	Id string `json:"id"`
 }
 
-type GetSkullKingTableResponseObject interface {
-	VisitGetSkullKingTableResponse(w http.ResponseWriter) error
+type GetTableResponseObject interface {
+	VisitGetTableResponse(w http.ResponseWriter) error
 }
 
-type GetSkullKingTable200JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
+type GetTable200JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
 }
 
-func (response GetSkullKingTable200JSONResponse) VisitGetSkullKingTableResponse(w http.ResponseWriter) error {
+func (response GetTable200JSONResponse) VisitGetTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6007,63 +6259,9 @@ func (response GetSkullKingTable200JSONResponse) VisitGetSkullKingTableResponse(
 	return err
 }
 
-type GetSkullKingTable404JSONResponse ApiError
+type GetTable404JSONResponse ApiError
 
-func (response GetSkullKingTable404JSONResponse) VisitGetSkullKingTableResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SubmitSkullKingBidRequestObject struct {
-	Id   string `json:"id"`
-	Body *SubmitSkullKingBidJSONRequestBody
-}
-
-type SubmitSkullKingBidResponseObject interface {
-	VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error
-}
-
-type SubmitSkullKingBid200JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
-}
-
-func (response SubmitSkullKingBid200JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SubmitSkullKingBid401JSONResponse ApiError
-
-func (response SubmitSkullKingBid401JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SubmitSkullKingBid404JSONResponse ApiError
-
-func (response SubmitSkullKingBid404JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
+func (response GetTable404JSONResponse) VisitGetTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6075,34 +6273,20 @@ func (response SubmitSkullKingBid404JSONResponse) VisitSubmitSkullKingBidRespons
 	return err
 }
 
-type SubmitSkullKingBid409JSONResponse ApiError
-
-func (response SubmitSkullKingBid409JSONResponse) VisitSubmitSkullKingBidResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type JoinSkullKingTableRequestObject struct {
+type JoinTableRequestObject struct {
 	Id string `json:"id"`
 }
 
-type JoinSkullKingTableResponseObject interface {
-	VisitJoinSkullKingTableResponse(w http.ResponseWriter) error
+type JoinTableResponseObject interface {
+	VisitJoinTableResponse(w http.ResponseWriter) error
 }
 
-type JoinSkullKingTable200JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
+type JoinTable200JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
 }
 
-func (response JoinSkullKingTable200JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+func (response JoinTable200JSONResponse) VisitJoinTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6114,9 +6298,9 @@ func (response JoinSkullKingTable200JSONResponse) VisitJoinSkullKingTableRespons
 	return err
 }
 
-type JoinSkullKingTable401JSONResponse ApiError
+type JoinTable401JSONResponse ApiError
 
-func (response JoinSkullKingTable401JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+func (response JoinTable401JSONResponse) VisitJoinTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6128,9 +6312,9 @@ func (response JoinSkullKingTable401JSONResponse) VisitJoinSkullKingTableRespons
 	return err
 }
 
-type JoinSkullKingTable404JSONResponse ApiError
+type JoinTable404JSONResponse ApiError
 
-func (response JoinSkullKingTable404JSONResponse) VisitJoinSkullKingTableResponse(w http.ResponseWriter) error {
+func (response JoinTable404JSONResponse) VisitJoinTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6142,21 +6326,21 @@ func (response JoinSkullKingTable404JSONResponse) VisitJoinSkullKingTableRespons
 	return err
 }
 
-type SubmitSkullKingResultRequestObject struct {
+type UpdateTableStateRequestObject struct {
 	Id   string `json:"id"`
-	Body *SubmitSkullKingResultJSONRequestBody
+	Body *UpdateTableStateJSONRequestBody
 }
 
-type SubmitSkullKingResultResponseObject interface {
-	VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error
+type UpdateTableStateResponseObject interface {
+	VisitUpdateTableStateResponse(w http.ResponseWriter) error
 }
 
-type SubmitSkullKingResult200JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
+type UpdateTableState200JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
 }
 
-func (response SubmitSkullKingResult200JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+func (response UpdateTableState200JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6168,9 +6352,23 @@ func (response SubmitSkullKingResult200JSONResponse) VisitSubmitSkullKingResultR
 	return err
 }
 
-type SubmitSkullKingResult401JSONResponse ApiError
+type UpdateTableState400JSONResponse ApiError
 
-func (response SubmitSkullKingResult401JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
+func (response UpdateTableState400JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTableState401JSONResponse ApiError
+
+func (response UpdateTableState401JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6182,77 +6380,9 @@ func (response SubmitSkullKingResult401JSONResponse) VisitSubmitSkullKingResultR
 	return err
 }
 
-type SubmitSkullKingResult404JSONResponse ApiError
+type UpdateTableState403JSONResponse ApiError
 
-func (response SubmitSkullKingResult404JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SubmitSkullKingResult409JSONResponse ApiError
-
-func (response SubmitSkullKingResult409JSONResponse) VisitSubmitSkullKingResultResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateSkullKingTableStateRequestObject struct {
-	Id   string `json:"id"`
-	Body *UpdateSkullKingTableStateJSONRequestBody
-}
-
-type UpdateSkullKingTableStateResponseObject interface {
-	VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error
-}
-
-type UpdateSkullKingTableState200JSONResponse struct {
-	Data   SkullKingTableSummary `json:"data"`
-	Status string                `json:"status"`
-}
-
-func (response UpdateSkullKingTableState200JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateSkullKingTableState401JSONResponse ApiError
-
-func (response UpdateSkullKingTableState401JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateSkullKingTableState403JSONResponse ApiError
-
-func (response UpdateSkullKingTableState403JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+func (response UpdateTableState403JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6264,9 +6394,177 @@ func (response UpdateSkullKingTableState403JSONResponse) VisitUpdateSkullKingTab
 	return err
 }
 
-type UpdateSkullKingTableState404JSONResponse ApiError
+type UpdateTableState404JSONResponse ApiError
 
-func (response UpdateSkullKingTableState404JSONResponse) VisitUpdateSkullKingTableStateResponse(w http.ResponseWriter) error {
+func (response UpdateTableState404JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTableState409JSONResponse struct {
+	Data    TableSummary `json:"data"`
+	Message string       `json:"message"`
+	Status  string       `json:"status"`
+}
+
+func (response UpdateTableState409JSONResponse) VisitUpdateTableStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitTableRequestObject struct {
+	Id   string `json:"id"`
+	Body *SubmitTableJSONRequestBody
+}
+
+type SubmitTableResponseObject interface {
+	VisitSubmitTableResponse(w http.ResponseWriter) error
+}
+
+type SubmitTable200JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
+}
+
+func (response SubmitTable200JSONResponse) VisitSubmitTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitTable400JSONResponse ApiError
+
+func (response SubmitTable400JSONResponse) VisitSubmitTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitTable401JSONResponse ApiError
+
+func (response SubmitTable401JSONResponse) VisitSubmitTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitTable404JSONResponse ApiError
+
+func (response SubmitTable404JSONResponse) VisitSubmitTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitTable409JSONResponse ApiError
+
+func (response SubmitTable409JSONResponse) VisitSubmitTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeoverTableRequestObject struct {
+	Id   string `json:"id"`
+	Body *TakeoverTableJSONRequestBody
+}
+
+type TakeoverTableResponseObject interface {
+	VisitTakeoverTableResponse(w http.ResponseWriter) error
+}
+
+type TakeoverTable200JSONResponse struct {
+	Data   TableSummary `json:"data"`
+	Status string       `json:"status"`
+}
+
+func (response TakeoverTable200JSONResponse) VisitTakeoverTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeoverTable401JSONResponse ApiError
+
+func (response TakeoverTable401JSONResponse) VisitTakeoverTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeoverTable403JSONResponse ApiError
+
+func (response TakeoverTable403JSONResponse) VisitTakeoverTableResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TakeoverTable404JSONResponse ApiError
+
+func (response TakeoverTable404JSONResponse) VisitTakeoverTableResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6987,30 +7285,30 @@ type StrictServerInterface interface {
 	// ParseSkullKingCardImage Identify a Skull King card from a base64-encoded image
 	// (POST /skull-king/parse-card-image)
 	ParseSkullKingCardImage(ctx context.Context, request ParseSkullKingCardImageRequestObject) (ParseSkullKingCardImageResponseObject, error)
-	// ListSkullKingTables List all active Skull King tables
-	// (GET /skull-king/tables)
-	ListSkullKingTables(ctx context.Context, request ListSkullKingTablesRequestObject) (ListSkullKingTablesResponseObject, error)
-	// CreateSkullKingTable Create a new Skull King table
-	// (POST /skull-king/tables)
-	CreateSkullKingTable(ctx context.Context, request CreateSkullKingTableRequestObject) (CreateSkullKingTableResponseObject, error)
-	// DeleteSkullKingTable Delete a Skull King table (host only)
-	// (DELETE /skull-king/tables/{id})
-	DeleteSkullKingTable(ctx context.Context, request DeleteSkullKingTableRequestObject) (DeleteSkullKingTableResponseObject, error)
-	// GetSkullKingTable Get a Skull King table by ID
-	// (GET /skull-king/tables/{id})
-	GetSkullKingTable(ctx context.Context, request GetSkullKingTableRequestObject) (GetSkullKingTableResponseObject, error)
-	// SubmitSkullKingBid Submit a bid for the current round
-	// (POST /skull-king/tables/{id}/bid)
-	SubmitSkullKingBid(ctx context.Context, request SubmitSkullKingBidRequestObject) (SubmitSkullKingBidResponseObject, error)
-	// JoinSkullKingTable Join a Skull King table as a player
-	// (POST /skull-king/tables/{id}/join)
-	JoinSkullKingTable(ctx context.Context, request JoinSkullKingTableRequestObject) (JoinSkullKingTableResponseObject, error)
-	// SubmitSkullKingResult Submit actual tricks taken for the current round
-	// (POST /skull-king/tables/{id}/result)
-	SubmitSkullKingResult(ctx context.Context, request SubmitSkullKingResultRequestObject) (SubmitSkullKingResultResponseObject, error)
-	// UpdateSkullKingTableState Update game state (host only)
-	// (PATCH /skull-king/tables/{id}/state)
-	UpdateSkullKingTableState(ctx context.Context, request UpdateSkullKingTableStateRequestObject) (UpdateSkullKingTableStateResponseObject, error)
+	// ListTables List all active game tables
+	// (GET /tables)
+	ListTables(ctx context.Context, request ListTablesRequestObject) (ListTablesResponseObject, error)
+	// CreateTable Create a new game table
+	// (POST /tables)
+	CreateTable(ctx context.Context, request CreateTableRequestObject) (CreateTableResponseObject, error)
+	// DeleteTable Delete a game table (host only)
+	// (DELETE /tables/{id})
+	DeleteTable(ctx context.Context, request DeleteTableRequestObject) (DeleteTableResponseObject, error)
+	// GetTable Get a game table by ID
+	// (GET /tables/{id})
+	GetTable(ctx context.Context, request GetTableRequestObject) (GetTableResponseObject, error)
+	// JoinTable Join a game table as a connected player
+	// (POST /tables/{id}/join)
+	JoinTable(ctx context.Context, request JoinTableRequestObject) (JoinTableResponseObject, error)
+	// UpdateTableState Replace the game state (host only, optimistic lock)
+	// (PATCH /tables/{id}/state)
+	UpdateTableState(ctx context.Context, request UpdateTableStateRequestObject) (UpdateTableStateResponseObject, error)
+	// SubmitTable Submit the connected player's input (bid, round result, or scoring)
+	// (POST /tables/{id}/submit)
+	SubmitTable(ctx context.Context, request SubmitTableRequestObject) (SubmitTableResponseObject, error)
+	// TakeoverTable Claim hosting of the table for this device
+	// (POST /tables/{id}/takeover)
+	TakeoverTable(ctx context.Context, request TakeoverTableRequestObject) (TakeoverTableResponseObject, error)
 	// ListTournaments List all tournaments (newest start date first)
 	// (GET /tournaments)
 	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
@@ -8347,23 +8645,23 @@ func (sh *strictHandler) ParseSkullKingCardImage(ctx *gin.Context) {
 	}
 }
 
-// ListSkullKingTables operation middleware
-func (sh *strictHandler) ListSkullKingTables(ctx *gin.Context) {
-	var request ListSkullKingTablesRequestObject
+// ListTables operation middleware
+func (sh *strictHandler) ListTables(ctx *gin.Context) {
+	var request ListTablesRequestObject
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListSkullKingTables(ctx, request.(ListSkullKingTablesRequestObject))
+		return sh.ssi.ListTables(ctx, request.(ListTablesRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListSkullKingTables")
+		handler = middleware(handler, "ListTables")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListSkullKingTablesResponseObject); ok {
-		if err := validResponse.VisitListSkullKingTablesResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(ListTablesResponseObject); ok {
+		if err := validResponse.VisitListTablesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8371,11 +8669,11 @@ func (sh *strictHandler) ListSkullKingTables(ctx *gin.Context) {
 	}
 }
 
-// CreateSkullKingTable operation middleware
-func (sh *strictHandler) CreateSkullKingTable(ctx *gin.Context) {
-	var request CreateSkullKingTableRequestObject
+// CreateTable operation middleware
+func (sh *strictHandler) CreateTable(ctx *gin.Context) {
+	var request CreateTableRequestObject
 
-	var body CreateSkullKingTableJSONRequestBody
+	var body CreateTableJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(ctx, err)
 		return
@@ -8383,18 +8681,18 @@ func (sh *strictHandler) CreateSkullKingTable(ctx *gin.Context) {
 	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateSkullKingTable(ctx, request.(CreateSkullKingTableRequestObject))
+		return sh.ssi.CreateTable(ctx, request.(CreateTableRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateSkullKingTable")
+		handler = middleware(handler, "CreateTable")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateSkullKingTableResponseObject); ok {
-		if err := validResponse.VisitCreateSkullKingTableResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(CreateTableResponseObject); ok {
+		if err := validResponse.VisitCreateTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8402,26 +8700,26 @@ func (sh *strictHandler) CreateSkullKingTable(ctx *gin.Context) {
 	}
 }
 
-// DeleteSkullKingTable operation middleware
-func (sh *strictHandler) DeleteSkullKingTable(ctx *gin.Context, id string, params DeleteSkullKingTableParams) {
-	var request DeleteSkullKingTableRequestObject
+// DeleteTable operation middleware
+func (sh *strictHandler) DeleteTable(ctx *gin.Context, id string, params DeleteTableParams) {
+	var request DeleteTableRequestObject
 
 	request.Id = id
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteSkullKingTable(ctx, request.(DeleteSkullKingTableRequestObject))
+		return sh.ssi.DeleteTable(ctx, request.(DeleteTableRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteSkullKingTable")
+		handler = middleware(handler, "DeleteTable")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(DeleteSkullKingTableResponseObject); ok {
-		if err := validResponse.VisitDeleteSkullKingTableResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(DeleteTableResponseObject); ok {
+		if err := validResponse.VisitDeleteTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8429,25 +8727,25 @@ func (sh *strictHandler) DeleteSkullKingTable(ctx *gin.Context, id string, param
 	}
 }
 
-// GetSkullKingTable operation middleware
-func (sh *strictHandler) GetSkullKingTable(ctx *gin.Context, id string) {
-	var request GetSkullKingTableRequestObject
+// GetTable operation middleware
+func (sh *strictHandler) GetTable(ctx *gin.Context, id string) {
+	var request GetTableRequestObject
 
 	request.Id = id
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSkullKingTable(ctx, request.(GetSkullKingTableRequestObject))
+		return sh.ssi.GetTable(ctx, request.(GetTableRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSkullKingTable")
+		handler = middleware(handler, "GetTable")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetSkullKingTableResponseObject); ok {
-		if err := validResponse.VisitGetSkullKingTableResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(GetTableResponseObject); ok {
+		if err := validResponse.VisitGetTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8455,13 +8753,39 @@ func (sh *strictHandler) GetSkullKingTable(ctx *gin.Context, id string) {
 	}
 }
 
-// SubmitSkullKingBid operation middleware
-func (sh *strictHandler) SubmitSkullKingBid(ctx *gin.Context, id string) {
-	var request SubmitSkullKingBidRequestObject
+// JoinTable operation middleware
+func (sh *strictHandler) JoinTable(ctx *gin.Context, id string) {
+	var request JoinTableRequestObject
 
 	request.Id = id
 
-	var body SubmitSkullKingBidJSONRequestBody
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.JoinTable(ctx, request.(JoinTableRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "JoinTable")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(JoinTableResponseObject); ok {
+		if err := validResponse.VisitJoinTableResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTableState operation middleware
+func (sh *strictHandler) UpdateTableState(ctx *gin.Context, id string) {
+	var request UpdateTableStateRequestObject
+
+	request.Id = id
+
+	var body UpdateTableStateJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(ctx, err)
 		return
@@ -8469,18 +8793,18 @@ func (sh *strictHandler) SubmitSkullKingBid(ctx *gin.Context, id string) {
 	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.SubmitSkullKingBid(ctx, request.(SubmitSkullKingBidRequestObject))
+		return sh.ssi.UpdateTableState(ctx, request.(UpdateTableStateRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SubmitSkullKingBid")
+		handler = middleware(handler, "UpdateTableState")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(SubmitSkullKingBidResponseObject); ok {
-		if err := validResponse.VisitSubmitSkullKingBidResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(UpdateTableStateResponseObject); ok {
+		if err := validResponse.VisitUpdateTableStateResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8488,39 +8812,13 @@ func (sh *strictHandler) SubmitSkullKingBid(ctx *gin.Context, id string) {
 	}
 }
 
-// JoinSkullKingTable operation middleware
-func (sh *strictHandler) JoinSkullKingTable(ctx *gin.Context, id string) {
-	var request JoinSkullKingTableRequestObject
+// SubmitTable operation middleware
+func (sh *strictHandler) SubmitTable(ctx *gin.Context, id string) {
+	var request SubmitTableRequestObject
 
 	request.Id = id
 
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.JoinSkullKingTable(ctx, request.(JoinSkullKingTableRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "JoinSkullKingTable")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(JoinSkullKingTableResponseObject); ok {
-		if err := validResponse.VisitJoinSkullKingTableResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SubmitSkullKingResult operation middleware
-func (sh *strictHandler) SubmitSkullKingResult(ctx *gin.Context, id string) {
-	var request SubmitSkullKingResultRequestObject
-
-	request.Id = id
-
-	var body SubmitSkullKingResultJSONRequestBody
+	var body SubmitTableJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(ctx, err)
 		return
@@ -8528,18 +8826,18 @@ func (sh *strictHandler) SubmitSkullKingResult(ctx *gin.Context, id string) {
 	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.SubmitSkullKingResult(ctx, request.(SubmitSkullKingResultRequestObject))
+		return sh.ssi.SubmitTable(ctx, request.(SubmitTableRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SubmitSkullKingResult")
+		handler = middleware(handler, "SubmitTable")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(SubmitSkullKingResultResponseObject); ok {
-		if err := validResponse.VisitSubmitSkullKingResultResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(SubmitTableResponseObject); ok {
+		if err := validResponse.VisitSubmitTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8547,32 +8845,35 @@ func (sh *strictHandler) SubmitSkullKingResult(ctx *gin.Context, id string) {
 	}
 }
 
-// UpdateSkullKingTableState operation middleware
-func (sh *strictHandler) UpdateSkullKingTableState(ctx *gin.Context, id string) {
-	var request UpdateSkullKingTableStateRequestObject
+// TakeoverTable operation middleware
+func (sh *strictHandler) TakeoverTable(ctx *gin.Context, id string) {
+	var request TakeoverTableRequestObject
 
 	request.Id = id
 
-	var body UpdateSkullKingTableStateJSONRequestBody
+	var body TakeoverTableJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(ctx, err)
+			return
+		}
+	} else {
+		request.Body = &body
 	}
-	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.UpdateSkullKingTableState(ctx, request.(UpdateSkullKingTableStateRequestObject))
+		return sh.ssi.TakeoverTable(ctx, request.(TakeoverTableRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateSkullKingTableState")
+		handler = middleware(handler, "TakeoverTable")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(UpdateSkullKingTableStateResponseObject); ok {
-		if err := validResponse.VisitUpdateSkullKingTableStateResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(TakeoverTableResponseObject); ok {
+		if err := validResponse.VisitTakeoverTableResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

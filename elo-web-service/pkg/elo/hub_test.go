@@ -98,10 +98,10 @@ func TestHub_SlowSubscriberIsSkippedNotBlocked(t *testing.T) {
 
 func TestHub_PublishSignal(t *testing.T) {
 	h := NewHub()
-	ch, cancel := h.Subscribe(TopicLobbySkullKing)
+	ch, cancel := h.Subscribe(TopicLobbyTables)
 	defer cancel()
 
-	h.PublishSignal(TopicLobbySkullKing, "tables-changed")
+	h.PublishSignal(TopicLobbyTables, "tables-changed")
 
 	select {
 	case msg := <-ch:

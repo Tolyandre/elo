@@ -126,15 +126,23 @@ components:
     AuditPage:
       $ref: './audit.yaml#/AuditPage'
 
-    # Skull King
-    SkullKingPlayer:
-      $ref: './skull-king.yaml#/SkullKingPlayer'
-    SkullKingRoundEntry:
-      $ref: './skull-king.yaml#/SkullKingRoundEntry'
+    # Game tables (generic live tables, ADR-16)
+    TablePlayer:
+      $ref: './tables.yaml#/TablePlayer'
+    TableSummary:
+      $ref: './tables.yaml#/TableSummary'
+    TableGameState:
+      $ref: './tables.yaml#/TableGameState'
     SkullKingGameState:
-      $ref: './skull-king.yaml#/SkullKingGameState'
-    SkullKingTableSummary:
-      $ref: './skull-king.yaml#/SkullKingTableSummary'
+      $ref: './tables.yaml#/SkullKingGameState'
+    SkullKingRoundEntry:
+      $ref: './tables.yaml#/SkullKingRoundEntry'
+    IawwGameState:
+      $ref: './tables.yaml#/IawwGameState'
+    IawwEntry:
+      $ref: './tables.yaml#/IawwEntry'
+
+    # Skull King
     SkullKingCardImageResult:
       $ref: './skull-king.yaml#/SkullKingCardImageResult'
 
@@ -247,17 +255,18 @@ paths:
     $ref: './voice.yaml#/VoiceParse'
 
   # Skull King
-  /skull-king/tables:
-    $ref: './skull-king.yaml#/SkullKingTables'
-  /skull-king/tables/{id}:
-    $ref: './skull-king.yaml#/SkullKingTableItem'
-  /skull-king/tables/{id}/state:
-    $ref: './skull-king.yaml#/SkullKingTableState'
-  /skull-king/tables/{id}/join:
-    $ref: './skull-king.yaml#/SkullKingTableJoin'
-  /skull-king/tables/{id}/bid:
-    $ref: './skull-king.yaml#/SkullKingTableBid'
-  /skull-king/tables/{id}/result:
-    $ref: './skull-king.yaml#/SkullKingTableResult'
+  # Game tables (generic live tables, ADR-16)
+  /tables:
+    $ref: './tables.yaml#/TablesCollection'
+  /tables/{id}:
+    $ref: './tables.yaml#/TableItem'
+  /tables/{id}/state:
+    $ref: './tables.yaml#/TableState'
+  /tables/{id}/join:
+    $ref: './tables.yaml#/TableJoin'
+  /tables/{id}/submit:
+    $ref: './tables.yaml#/TableSubmit'
+  /tables/{id}/takeover:
+    $ref: './tables.yaml#/TableTakeover'
   /skull-king/parse-card-image:
     $ref: './skull-king.yaml#/SkullKingParseCardImage'

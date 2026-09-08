@@ -1,4 +1,5 @@
 //go:build integration
+
 package skull_king
 
 import (
@@ -81,10 +82,10 @@ func detectColorFamily(src gocv.Mat) string {
 	sh := max(1, h*12/100)
 
 	rects := []image.Rectangle{
-		image.Rect(sw, 0, w-sw, sh),    // top
-		image.Rect(sw, h-sh, w-sw, h),  // bottom
-		image.Rect(0, sh, sw, h-sh),    // left
-		image.Rect(w-sw, sh, w, h-sh),  // right
+		image.Rect(sw, 0, w-sw, sh),   // top
+		image.Rect(sw, h-sh, w-sw, h), // bottom
+		image.Rect(0, sh, sw, h-sh),   // left
+		image.Rect(w-sw, sh, w, h-sh), // right
 	}
 
 	hsv := gocv.NewMat()
@@ -100,13 +101,13 @@ func detectColorFamily(src gocv.Mat) string {
 		redC += hsvCount(roi, 0, 11, 80, 50)
 		redC += hsvCount(roi, 164, 180, 80, 50)
 
-		tealC += hsvCount(roi, 82, 102, 80, 60)          // teal/cyan
-		greenC += hsvCount(roi, 55, 82, 80, 60)          // green
-		purpleC += hsvCount(roi, 118, 155, 50, 85)        // bright purple (map suit, V>=85)
-		darkPurpleC += hsvCount(roi, 118, 155, 50, 30)   // all purple V>=30
-		darkPurpleC -= hsvCount(roi, 118, 155, 50, 85)   // subtract bright → dark only (V 30-84)
-		blueC += hsvCount(roi, 95, 130, 40, 120)         // pastel blue/escape
-		goldC += hsvCount(roi, 15, 45, 100, 100)         // gold/orange
+		tealC += hsvCount(roi, 82, 102, 80, 60)        // teal/cyan
+		greenC += hsvCount(roi, 55, 82, 80, 60)        // green
+		purpleC += hsvCount(roi, 118, 155, 50, 85)     // bright purple (map suit, V>=85)
+		darkPurpleC += hsvCount(roi, 118, 155, 50, 30) // all purple V>=30
+		darkPurpleC -= hsvCount(roi, 118, 155, 50, 85) // subtract bright → dark only (V 30-84)
+		blueC += hsvCount(roi, 95, 130, 40, 120)       // pastel blue/escape
+		goldC += hsvCount(roi, 15, 45, 100, 100)       // gold/orange
 
 		// Dark: low V regardless of hue (for skull-king/jolly-roger dark border).
 		// Threshold at 100 rather than 60 to capture dark-navy borders that
@@ -169,7 +170,7 @@ func hsvCount(roi gocv.Mat, hMin, hMax, sMin, vMin int) int {
 	gocv.Threshold(hC, &lo, float32(hMin-1), 255, gocv.ThresholdBinary)  // H >= hMin
 	gocv.Threshold(hC, &hi, float32(hMax), 255, gocv.ThresholdBinaryInv) // H <= hMax
 	gocv.BitwiseAnd(lo, hi, &hRange)
-	gocv.Threshold(sC, &sm, float32(sMin-1), 255, gocv.ThresholdBinary)  // S >= sMin
+	gocv.Threshold(sC, &sm, float32(sMin-1), 255, gocv.ThresholdBinary) // S >= sMin
 	gocv.BitwiseAnd(hRange, sm, &result)
 	if vMin > 0 {
 		vm := gocv.NewMat()

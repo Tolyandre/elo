@@ -17,6 +17,7 @@ import { MatchCard } from "@/components/match-card";
 import { MarketCard } from "@/components/market-card";
 import { CorrectionCard } from "@/components/correction-card";
 import { PendingMatchCard } from "@/components/pending-match-card";
+import { RunningTables } from "@/components/tables/running-tables";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -144,6 +145,9 @@ function MatchesPageWrapped() {
         title="Партии"
         action={<Button asChild size="sm"><Link href="/matches/new">Добавить партию</Link></Button>}
       />
+
+      {/* Live game tables currently running, before the timeline and filters */}
+      <RunningTables />
 
       {error && <ErrorAlert message={error} />}
 

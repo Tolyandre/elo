@@ -117,7 +117,7 @@ The card-recognition feature depends on OpenCV and is gated behind the `opencv` 
   - **page.tsx**: Home page with player rankings
   - **add-match/**, **match/**, **matches/**: Add a match and view match history
   - **game/**, **games/**: Game detail and game list
-  - **calculators/**, **skull-king-game/**, **its-a-wonderful-world/**: Game-specific score calculators
+  - **calculators/**: Standalone tools (probability, st-patrick, chess clock); **matches/table/<kind>/**: live game tables (host / connected player / viewer, ADR-18)
   - **player/**, **players/**: Player detail and management
   - **market/**, **markets/**: Market features
   - **admin/**: User administration
@@ -191,7 +191,7 @@ make generate-go-api
 1. `tools/bundle-openapi` — resolves all cross-file `$ref` into a single `openapi/bundled.json` using kin-openapi's `InternalizeRefs`. A custom resolver preserves the short alias names from `openapi.yaml` (e.g. `Club`, not `clubs_Club`).
 2. `oapi-codegen` — reads `bundled.json` and writes `pkg/api/generated.go` with Go types, Gin server interface, and strict handler scaffolding.
 
-After `generate:api`, `nextjs/app/api-types.gen.ts` is updated. The frontend uses the `client` export from `app/api.ts` (an `openapi-fetch` instance) for type-safe HTTP calls. SSE endpoints are not in the spec and use manual fetch in `hooks/useSkullKingSSE.ts`.
+After `generate:api`, `nextjs/app/api-types.gen.ts` is updated. The frontend uses the `client` export from `app/api.ts` (an `openapi-fetch` instance) for type-safe HTTP calls. SSE endpoints are not in the spec and use manual fetch in `hooks/useTableSSE.ts`.
 
 ## Configuration
 

@@ -87,6 +87,18 @@ type GameArenaSettlement struct {
 	League        string             `json:"league"`
 }
 
+type GameTable struct {
+	ID                 id.ID           `json:"id"`
+	HostUserID         id.ID           `json:"host_user_id"`
+	GameState          json.RawMessage `json:"game_state"`
+	ConnectedPlayerIds []id.ID         `json:"connected_player_ids"`
+	CreatedAt          time.Time       `json:"created_at"`
+	ExpiresAt          time.Time       `json:"expires_at"`
+	GameID             id.ID           `json:"game_id"`
+	Version            int64           `json:"version"`
+	HostClientToken    string          `json:"host_client_token"`
+}
+
 type GlobalArenaSettlement struct {
 	ID            id.ID              `json:"id"`
 	PlayerID      id.ID              `json:"player_id"`
@@ -177,15 +189,6 @@ type Player struct {
 type PlayerClubMembership struct {
 	ClubID   id.ID `json:"club_id"`
 	PlayerID id.ID `json:"player_id"`
-}
-
-type SkullKingTable struct {
-	ID                 id.ID           `json:"id"`
-	HostUserID         id.ID           `json:"host_user_id"`
-	GameState          json.RawMessage `json:"game_state"`
-	ConnectedPlayerIds []id.ID         `json:"connected_player_ids"`
-	CreatedAt          time.Time       `json:"created_at"`
-	ExpiresAt          time.Time       `json:"expires_at"`
 }
 
 type Tournament struct {

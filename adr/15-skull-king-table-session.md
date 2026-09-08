@@ -72,3 +72,8 @@ ever stranded on a frozen screen.
 - Wake lock preference (`wake-lock/enabled`) is also persisted now, restored
   best-effort on mount; browsers that reject `request()` without user
   activation simply wait for the next manual toggle.
+
+> **Superseded in part by [ADR-18](18-game-tables.md):** the table mechanism is
+> game-generic now — the session lives under the `game-table/session` key, the
+> host/connected mode guarantees carry over unchanged, but host/local
+> game-state persistence in localStorage is gone (tables are server-only).

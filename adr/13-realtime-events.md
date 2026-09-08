@@ -28,10 +28,13 @@ liveness/reconnect scaffolding. On top of the duplication, three product gaps:
   |---|---|---|
   | `market:<uuid>` | `GET /markets/:id/events` | live LMSR prices |
   | `lobby:markets` | `GET /markets/lobby/events` | signal |
-  | `skull-king-table:<uuid>` | `GET /skull-king/tables/:id/events` | full table state |
-  | `lobby:skull-king` | `GET /skull-king/lobby/events` | signal |
+  | `table:<uuid>` | `GET /tables/:id/events` | full game-table state |
+  | `lobby:tables` | `GET /tables/lobby/events` | signal |
   | `data` | `GET /data/events` | signal |
   | `user:<uuid>` | `GET /me/events` (session required) | invites / notifications |
+
+  (Table topics were `skull-king-table:<uuid>` / `lobby:skull-king` before
+  tables were generalized — see [ADR-18](18-game-tables.md).)
 
 - **`pkg/api/sse.go`** owns everything an SSE response needs: headers, optional
   initial frame, a `retry:` hint, the 15s heartbeat, and the pump loop.

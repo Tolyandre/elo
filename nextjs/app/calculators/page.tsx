@@ -1,5 +1,8 @@
 import Link from "next/link"
-import { Skull, Crosshair, Globe, Timer } from "lucide-react"
+import { Skull, Crosshair, Timer } from "lucide-react"
+
+// Live game tables (Skull King, Этот Безумный Мир) are created from
+// /matches/new — see lib/game-apps.ts. This page lists the standalone tools only.
 
 const items = [
   {
@@ -8,19 +11,9 @@ const items = [
     title: "Skull King",
   },
   {
-    href: "/calculators/skull-king-game",
-    icon: <Skull className="h-6 w-6" />,
-    title: "Skull King: игра",
-  },
-  {
     href: "/calculators/st-patrick",
     icon: <Crosshair className="h-6 w-6" />,
     title: "Охота на змей",
-  },
-  {
-    href: "/its-a-wonderful-world",
-    icon: <Globe className="h-6 w-6" />,
-    title: "Этот Безумный Мир",
   },
   {
     href: "/calculators/chess-clock",

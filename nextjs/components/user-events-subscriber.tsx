@@ -6,7 +6,9 @@ import { toast } from "sonner";
 import { EloWebServiceBaseUrl } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { useSSE } from "@/hooks/useSSE";
-import { TABLE_SESSION_KEY } from "@/hooks/useSkullKingTableSession";
+import { TABLE_SESSION_KEY } from "@/hooks/useTableSession";
+import { gameAppByGameId } from "@/lib/game-apps";
+import { toBase58ID } from "@/lib/id";
 
 function hasActiveTableSession(): boolean {
     try {
@@ -21,9 +23,9 @@ function hasActiveTableSession(): boolean {
  * Invisible app-wide subscriber to the per-user event stream (`GET /me/events`),
  * mounted only for signed-in users. Handles:
  *
- *   - "table-invite": another user created a Skull King table with this user's
+ *   - "table-invite": another user created a game table with this user's
  *     player in it → toast with a "Войти" action that deep-links to the game
- *     page (?join=<tableId>) and auto-joins. Transient by design — users who
+ *     page (?table=<tableId>) and auto-joins. Transient by design — users who
  *     had the app closed find the table in the "Активные столы" lobby list.
  *   - "match-recorded": another user recorded a match with this user's player
  *     → toast linking to the match view.
@@ -37,11 +39,13 @@ export function UserEventsSubscriber() {
             const data = (event.data ?? {}) as Record<string, string>;
 
             if (event.type === "table-invite" && data.table_id && !hasActiveTableSession()) {
+                const app = data.game_id ? gameAppByGameId(toBase58ID(data.game_id)) : undefined;
+                if (!app) return;
                 const tableId = data.table_id;
-                toast(`Вас позвали за стол Skull King${data.host_name ? ` — ${data.host_name}` : ""}`, {
+                toast(`Вас позвали за стол «${app.title}»${data.host_name ? ` — ${data.host_name}` : ""}`, {
                     action: {
                         label: "Войти",
-                        onClick: () => router.push(`/calculators/skull-king-game?join=${tableId}`),
+                        onClick: () => router.push(`${app.href}?table=${tableId}`),
                     },
                     duration: 20_000,
                 });

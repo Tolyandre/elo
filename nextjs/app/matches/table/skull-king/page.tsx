@@ -2,40 +2,37 @@
 import type { Base58ID } from "@/lib/id";
 
 import React, { Suspense, useState, useMemo, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toBase58ID } from "@/lib/id";
+import { useRouter } from "next/navigation";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { useGames } from "@/app/gamesContext";
 import {
-    listSkullKingTablesPromise,
-    createSkullKingTablePromise,
-    updateSkullKingTableStatePromise,
-    submitSkullKingBidPromise,
-    submitSkullKingResultPromise,
-    deleteSkullKingTablePromise,
-    getSkullKingTablePromise,
+    createTablePromise,
+    deleteTablePromise,
     SkullKingGameState as GameState,
     SkullKingRoundEntry as RoundEntry,
-    SkullKingTableSummary,
+    TableGameState,
 } from "@/app/api";
+import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
 import {
     GameTable,
     EditCellDialog,
     BidButtons,
     playerTotal, findNextUnfilled, TOTAL_ROUNDS,
+    initialState,
 } from "@/components/calculators/skull-king";
+import { mergeSkullKingStates } from "@/components/calculators/skull-king/merge";
 import { toStorage as skToStorage } from "@/components/calculators/skull-king/storage";
-import { useSkullKingLobbySSE } from "@/hooks/useSkullKingSSE";
-import { useSkullKingTableSession } from "@/hooks/useSkullKingTableSession";
-import { useOffline, loadOfflineStore } from "@/app/offline/OfflineContext";
+import { useTableSession, waitForSyncedMatch } from "@/hooks/useTableSession";
+import { useTableDeepLink } from "@/hooks/useTableDeepLink";
+import { useOffline } from "@/app/offline/OfflineContext";
 import { useTournamentSelection } from "@/hooks/useTournamentSelection";
 import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
-import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthWarning } from "@/components/auth-warning";
+import { TableStatusBanner } from "@/components/tables/table-status-banner";
+import { TakeoverButton } from "@/components/tables/takeover-button";
 import { SetupScreen } from "./setup-screen";
 import { ResultEntryCard } from "./result-entry-card";
 import {
@@ -54,12 +51,16 @@ import { Check, Lightbulb, LightbulbOff, Loader2 } from "lucide-react";
 import { useMe } from "@/app/meContext";
 import { toast } from "sonner";
 
-const CALCULATOR_KIND = "skull-king";
+const PAGE_PATH = "/matches/table/skull-king";
+
+function isSkullKingState(state: TableGameState): state is GameState {
+    return "rounds" in state;
+}
 
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function SkullKingGamePage() {
-    // useSearchParams (the ?join= invite deep-link) requires a Suspense
+    // useSearchParams (the ?table= deep-link) requires a Suspense
     // boundary under the static export, same as the match/market pages.
     return (
         <Suspense>
@@ -68,63 +69,39 @@ export default function SkullKingGamePage() {
     );
 }
 
-// Waits until the sync engine has flushed the just-queued match to the server:
-// the engine removes the item from the persisted store on success (an item the
-// server rejected stays, with an error badge). Table teardown broadcasts the
-// match id to the connected players, so it must not fire before the match
-// exists. Returns false on timeout (e.g. the network died right after saving).
-async function waitForSyncedMatch(matchId: string, timeoutMs = 10_000): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    // Let the queue write and the ping+sync get going first — React persists
-    // the store shortly after submitMatch returns, and a sync flush takes at
-    // least a round trip while online.
-    await new Promise((r) => setTimeout(r, 400));
-    while (Date.now() < deadline) {
-        if (!loadOfflineStore().matches.some((m) => m.clientId === matchId)) return true;
-        await new Promise((r) => setTimeout(r, 400));
-    }
-    return false;
-}
-
 function SkullKingGame() {
     const me = useMe();
     const { players: allPlayers, playerDisplayName } = usePlayers();
-    const { games } = useGames();
     const { submitMatch } = useOffline();
     const router = useRouter();
 
-    // Table session + game state with the strict host/connected-player policy
-    // (ADR-15): connected players never persist local state and can never
-    // render as host; the SSE wiring (snapshots, saved/closed, table-gone
-    // recovery) lives inside the hook.
+    // Table session (ADR-15/ADR-16), server-only: no local game-state
+    // persistence — a reload resumes from the SSE connect snapshot.
     const {
         hydrated,
         session: tableSession,
         gameState,
-        setGameState: setGameStateRaw,
         setSession: setTableSession,
-        resetGame: resetTableSession,
+        resetTableSession,
         joinTable,
+        takeoverHosting,
         connectedPlayerIds,
         savedMatchId: sseSavedMatchId,
-        refreshFromServer,
+        closed: sseClosed,
+        connected: sseConnected,
+        table: currentTable,
+        syncHostState,
+        submitInput,
         awaitingSnapshot,
-    } = useSkullKingTableSession();
+    } = useTableSession<GameState>({
+        initial: initialState,
+        isGameState: isSkullKingState,
+        me: { id: me.id, playerId: me.playerId },
+        mergeStates: mergeSkullKingStates,
+    });
 
-    // Player selection for a new local game; initialized once from the
-    // restored (host/local) state after hydration.
+    // Player selection for a new game.
     const [setupPlayerIds, setSetupPlayerIds] = useState<Base58ID[]>([]);
-    useEffect(() => {
-        if (!hydrated) return;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time init from the hydrated game state
-        setSetupPlayerIds(gameState.players.map((p) => p.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hydrated]);
-
-    // Active tables list (fetched in setup phase)
-    const [activeTables, setActiveTables] = useState<SkullKingTableSummary[]>([]);
-    const [tablesLoading, setTablesLoading] = useState(false);
-    const [joiningTableId, setJoiningTableId] = useState<Base58ID | null>(null);
 
     // Loading state for server interactions
     const [isTransitioning, setIsTransitioning] = useState(false);
@@ -134,21 +111,16 @@ function SkullKingGame() {
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
     const [isBidRevealed, setIsBidRevealed] = useState(false);
 
-    // Async phase transition: updates local state and awaits server sync
-    const doPhaseTransition = useCallback(async (newState: GameState) => {
+    // Async phase transition: applies the updater locally and awaits the
+    // versioned server sync (with one automatic conflict merge + retry).
+    const doPhaseTransition = useCallback(async (updater: (prev: GameState) => GameState) => {
         setIsTransitioning(true);
         try {
-            setGameStateRaw(newState);
-            if (tableSession?.isHost && tableSession.tableId) {
-                await updateSkullKingTableStatePromise(tableSession.tableId, newState);
-            }
-        } catch (err) {
-            toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
+            await syncHostState(updater);
         } finally {
             setIsTransitioning(false);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tableSession]);
+    }, [syncHostState]);
 
     // Connected player: when the host saves the match, the server broadcasts a
     // "saved" event carrying the new match id. Redirect to that match's view
@@ -161,6 +133,15 @@ function SkullKingGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sseSavedMatchId]);
 
+    // The host closed the table without saving: connected players go back to
+    // the matches page (rejoining happens from there). The hook already
+    // toasted and cleared the session.
+    useEffect(() => {
+        if (!sseClosed || tableSession?.isHost !== false) return;
+        router.push("/matches");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sseClosed]);
+
     // Auto-advance to round-complete when all results are filled (triggered via SSE in table mode)
     useEffect(() => {
         if (gameState.phase !== "result-entry" || tableSession === null || !tableSession.isHost) return;
@@ -170,42 +151,25 @@ function SkullKingGame() {
             .every(e => e !== null && e.actual !== null);
         if (allDone) {
             // eslint-disable-next-line react-hooks/set-state-in-effect -- advance phase once all results arrive via SSE
-            doPhaseTransition({ ...gameState, phase: "round-complete", currentPlayerIndex: 0 });
+            doPhaseTransition((prev) => ({ ...prev, phase: "round-complete", currentPlayerIndex: 0 }));
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [gameState]);
 
-    // Wrap setGameState so host auto-syncs to server
-    // Skip when tableId is "" (placeholder set before API call resolves)
-    const setGameState = useCallback((newState: GameState) => {
-        setGameStateRaw(newState);
-        if (tableSession?.isHost && tableSession.tableId) {
-            updateSkullKingTableStatePromise(tableSession.tableId, newState).catch((err) => {
-                toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
-            });
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tableSession]);
-
-    // Like setGameState, but awaits the server sync and exposes an in-flight flag
-    // (isSyncing) so host entry buttons can disable + show a spinner while sending.
-    // In local-only mode (no table) it applies state instantly and never blocks.
-    const syncGameState = useCallback(async (newState: GameState) => {
-        if (!(tableSession?.isHost && tableSession.tableId)) {
-            setGameStateRaw(newState);
-            return;
-        }
+    // Host mutation with an in-flight flag (buttons disable + show a spinner).
+    const syncGameState = useCallback(async (updater: (prev: GameState) => GameState) => {
         setIsSyncing(true);
         try {
-            setGameStateRaw(newState);
-            await updateSkullKingTableStatePromise(tableSession.tableId, newState);
-        } catch (err) {
-            toast.error("Ошибка синхронизации: " + (err instanceof Error ? err.message : String(err)));
+            await syncHostState(updater);
         } finally {
             setIsSyncing(false);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tableSession]);
+    }, [syncHostState]);
+
+    // Fire-and-forget host mutation (tab switches and similar UI state).
+    const setGameState = useCallback((updater: (prev: GameState) => GameState) => {
+        void syncHostState(updater);
+    }, [syncHostState]);
 
     // Edit cell dialog state
     const [editCell, setEditCell] = useState<{ roundIndex: number; playerIndex: number } | null>(null);
@@ -238,79 +202,49 @@ function SkullKingGame() {
     // Wake lock
     const { supported: wakeLockSupported, enabled: wakeLockEnabled, toggle: toggleWakeLock } = useWakeLock();
 
-    const skullKingGame = useMemo(
-        () => games.find((g) => g.name.toLowerCase().includes("skull king")),
-        [games]
-    );
+    // URL bindings (ADR-18): ?new=1 forces a fresh table (the /matches/new
+    // links), ?table=<id> is the sticky shareable binding — a stored session
+    // on that table resumes as-is, otherwise the table is joined (or watched
+    // read-only by a visitor who cannot join). ?join= is a legacy alias.
+    useTableDeepLink({
+        pagePath: PAGE_PATH,
+        gameId: GAME_ID_SKULL_KING,
+        hydrated,
+        session: tableSession,
+        me: { isAuthenticated: me.isAuthenticated, playerId: me.playerId },
+        setSession: setTableSession,
+        joinTable,
+        resetTableSession,
+    });
 
-    // Subscribe to lobby SSE while on the setup screen so the active-tables list
-    // auto-refreshes when tables are created/deleted on the server.
-    const lobbyEnabled = hydrated && gameState.phase === "setup" && tableSession === null;
-    const lobbyTick = useSkullKingLobbySSE(lobbyEnabled);
-
-    // Load active tables when in setup phase (re-runs on each lobby signal)
-    useEffect(() => {
-        if (!hydrated || gameState.phase !== "setup" || tableSession !== null) return;
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
-        setTablesLoading(true);
-        listSkullKingTablesPromise()
-            .then(setActiveTables)
-            .catch(() => {}) // ignore errors silently
-            .finally(() => setTablesLoading(false));
-    }, [hydrated, gameState.phase, tableSession, lobbyTick]);
-
-    async function handleJoinTable(table: SkullKingTableSummary) {
-        if (!me.isAuthenticated || !me.playerId) return;
-        setJoiningTableId(table.id);
+    // Claim hosting (edit permission; idempotent for the account that already
+    // hosts — the second-device host scenario).
+    const [isTakingOver, setIsTakingOver] = useState(false);
+    async function handleTakeover() {
+        setIsTakingOver(true);
         try {
-            await joinTable(table, me.playerId);
+            await takeoverHosting();
+            toast.success("Вы ведущий");
         } catch (err) {
             toast.error(err instanceof Error ? err.message : String(err));
         } finally {
-            setJoiningTableId(null);
+            setIsTakingOver(false);
         }
     }
 
-    // Invite deep-link: the table-invite toast on any page navigates here with
-    // ?join=<tableId>. Fetch the table and auto-join once (session must be free
-    // and the user must control a player); the param is then cleared so a
-    // refresh does not retry the join.
-    const searchParams = useSearchParams();
-    const joinParam = toBase58ID(searchParams.get("join") ?? "");
-    useEffect(() => {
-        if (!joinParam || !hydrated || tableSession !== null) return;
-        if (!me.isAuthenticated || !me.playerId) return;
-        let cancelled = false;
-        (async () => {
-            try {
-                const table = await getSkullKingTablePromise(joinParam);
-                if (!cancelled) await handleJoinTable(table);
-            } catch {
-                if (!cancelled) toast.error("Стол не найден или уже завершён");
-            } finally {
-                router.replace("/calculators/skull-king-game", { scroll: false });
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [joinParam, hydrated, tableSession === null, me.isAuthenticated, me.playerId]);
-
-    // Host: confirm + delete the server table. Connected player: leave the
-    // table immediately — their state lives on the server and cannot be lost,
-    // so no confirmation is needed.
-    async function resetGame() {
-        // Only delete server table if we have a real (non-placeholder) tableId
+    // Host: confirm + delete the server table, then return to the matches page
+    // (rejoining happens from there; new tables are created from /matches/new).
+    async function closeTable() {
         if (tableSession?.isHost && tableSession.tableId) {
             setIsResetting(true);
-            try { await deleteSkullKingTablePromise(tableSession.tableId); }
+            try { await deleteTablePromise(tableSession.tableId); }
             catch { /* ignore */ }
             finally { setIsResetting(false); }
         }
         resetTableSession();
         setSetupPlayerIds([]);
         setSaveError("");
+        router.push("/matches");
     }
 
     async function startGame() {
@@ -319,35 +253,33 @@ function SkullKingGame() {
             .filter(Boolean)
             .map((p) => ({ id: p!.id, name: playerDisplayName(p!) }));
         if (players.length < 2) return;
+        if (!(me.isAuthenticated && me.playerId)) return;
 
-        const isTableMode = !!(me.isAuthenticated && me.playerId);
         const newState: GameState = {
-            phase: isTableMode ? "waiting-for-bids" : "bidding",
+            phase: "waiting-for-bids",
             players,
             currentRound: 1,
             currentPlayerIndex: 0,
             // Pre-initialize round 1 slot so connected players can submit bids immediately.
             // An empty rounds array causes the backend to reject bids with ErrWrongPhase.
-            rounds: isTableMode ? [new Array(players.length).fill(null)] : [],
+            rounds: [new Array(players.length).fill(null)],
         };
 
-        setGameStateRaw(newState);
-
-        // Create server table if authenticated with player_id.
         // Set tableSession optimistically (tableId="" placeholder) so the
-        // "Ждать ставки от игроков" button appears immediately while the API call is in flight.
-        if (me.isAuthenticated && me.playerId) {
-            setTableSession({ tableId: "" as Base58ID, isHost: true, myPlayerIndex: null });
-            setIsSubmitting(true);
-            try {
-                const table = await createSkullKingTablePromise(newState);
-                setTableSession({ tableId: table.id, isHost: true, myPlayerIndex: null });
-            } catch (err) {
-                toast.error("Не удалось создать стол: " + (err instanceof Error ? err.message : String(err)));
-                setTableSession(null); // revert to local-only
-            } finally {
-                setIsSubmitting(false);
-            }
+        // host UI appears immediately while the API call is in flight.
+        setTableSession({ tableId: "" as Base58ID, isHost: true, myPlayerIndex: null });
+        setIsSubmitting(true);
+        try {
+            const table = await createTablePromise(GAME_ID_SKULL_KING, newState);
+            setTableSession({ tableId: table.id, isHost: true, myPlayerIndex: null });
+            // The table id stays in the URL: a refresh or a shared link
+            // reopens exactly this table.
+            router.replace(`${PAGE_PATH}?table=${table.id}`, { scroll: false });
+        } catch (err) {
+            toast.error("Не удалось создать стол: " + (err instanceof Error ? err.message : String(err)));
+            resetTableSession();
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -356,12 +288,8 @@ function SkullKingGame() {
         if (!tableSession || tableSession.isHost) return;
         setIsSubmitting(true);
         try {
-            const updated = await submitSkullKingBidPromise(tableSession.tableId, bid);
-            setGameStateRaw(updated.game_state);
+            await submitInput({ bid });
         } catch (err) {
-            // On phase mismatch (409) or any error, refresh state from server
-            // so the UI reflects the actual current game phase
-            await refreshFromServer();
             toast.error(err instanceof Error ? err.message : String(err));
         } finally {
             setIsSubmitting(false);
@@ -373,12 +301,8 @@ function SkullKingGame() {
         if (!tableSession || tableSession.isHost) return;
         setIsSubmitting(true);
         try {
-            const updated = await submitSkullKingResultPromise(tableSession.tableId, actual, bonus);
-            setGameStateRaw(updated.game_state);
+            await submitInput({ actual, bonus });
         } catch (err) {
-            // On phase mismatch (409) or any error, refresh state from server
-            // so the UI reflects the actual current game phase
-            await refreshFromServer();
             toast.error(err instanceof Error ? err.message : String(err));
         } finally {
             setIsSubmitting(false);
@@ -386,58 +310,62 @@ function SkullKingGame() {
     }
 
     function handleBidSelect(bid: number, playerIndex: number) {
-        const { currentRound, players, rounds } = gameState;
-        const roundIndex = currentRound - 1;
+        void syncGameState((prev) => {
+            const { currentRound, players, rounds } = prev;
+            const roundIndex = currentRound - 1;
 
-        const newRounds = [...rounds];
-        if (!newRounds[roundIndex]) {
-            newRounds[roundIndex] = new Array(players.length).fill(null);
-        } else {
-            newRounds[roundIndex] = [...newRounds[roundIndex]];
-        }
-        newRounds[roundIndex][playerIndex] = { bid, actual: null, bonus: 0 };
+            const newRounds = [...rounds];
+            if (!newRounds[roundIndex]) {
+                newRounds[roundIndex] = new Array(players.length).fill(null);
+            } else {
+                newRounds[roundIndex] = [...newRounds[roundIndex]];
+            }
+            newRounds[roundIndex][playerIndex] = { bid, actual: null, bonus: 0 };
 
-        const allBid =
-            newRounds[roundIndex].length >= players.length &&
-            newRounds[roundIndex].slice(0, players.length).every((e) => e !== null);
+            const allBid =
+                newRounds[roundIndex].length >= players.length &&
+                newRounds[roundIndex].slice(0, players.length).every((e) => e !== null);
 
-        if (allBid) {
-            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "bid-review" });
-        } else {
+            if (allBid) {
+                return { ...prev, rounds: newRounds, currentPlayerIndex: 0, phase: "bid-review" as const };
+            }
             const next = findNextUnfilled(playerIndex, players.length, (i) => !!newRounds[roundIndex][i]);
-            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
-        }
+            return { ...prev, rounds: newRounds, currentPlayerIndex: next ?? playerIndex };
+        });
     }
 
     async function startResultEntry() {
-        const firstDisconnected = gameState.players.findIndex(
-            (p) => !connectedPlayerIds.some(id => id === p.id)
-        );
-        const startIndex = firstDisconnected >= 0 ? firstDisconnected : 0;
-        await doPhaseTransition({ ...gameState, phase: "result-entry", currentPlayerIndex: startIndex });
+        await doPhaseTransition((prev) => {
+            const firstDisconnected = prev.players.findIndex(
+                (p) => !connectedPlayerIds.some(id => id === p.id),
+            );
+            const startIndex = firstDisconnected >= 0 ? firstDisconnected : 0;
+            return { ...prev, phase: "result-entry" as const, currentPlayerIndex: startIndex };
+        });
     }
 
     function handleResultSubmit(actual: number, bonus: number, playerIndex: number) {
-        const { currentRound, players, rounds } = gameState;
-        const roundIndex = currentRound - 1;
-        const newRounds = rounds.map((r) => [...r]);
-        // Guard: ensure the round slot exists (can be missing if bids weren't recorded locally)
-        if (!newRounds[roundIndex]) {
-            newRounds[roundIndex] = new Array(players.length).fill(null);
-        }
-        newRounds[roundIndex][playerIndex] = {
-            bid: newRounds[roundIndex][playerIndex]?.bid ?? 0,
-            actual,
-            bonus,
-        };
+        void syncGameState((prev) => {
+            const { currentRound, players, rounds } = prev;
+            const roundIndex = currentRound - 1;
+            const newRounds = rounds.map((r) => [...r]);
+            // Guard: ensure the round slot exists (can be missing if bids weren't recorded locally)
+            if (!newRounds[roundIndex]) {
+                newRounds[roundIndex] = new Array(players.length).fill(null);
+            }
+            newRounds[roundIndex][playerIndex] = {
+                bid: newRounds[roundIndex][playerIndex]?.bid ?? 0,
+                actual,
+                bonus,
+            };
 
-        const allDone = newRounds[roundIndex]
-            .slice(0, players.length)
-            .every(e => e !== null && e.actual !== null);
+            const allDone = newRounds[roundIndex]
+                .slice(0, players.length)
+                .every(e => e !== null && e.actual !== null);
 
-        if (allDone) {
-            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" });
-        } else {
+            if (allDone) {
+                return { ...prev, rounds: newRounds, currentPlayerIndex: 0, phase: "round-complete" as const };
+            }
             const needsResult = (i: number) => (newRounds[roundIndex][i]?.actual ?? null) === null;
             const isConnected = (i: number) => connectedPlayerIds.some(id => id === players[i].id);
             const findNext = (candidates: number[]) => {
@@ -447,35 +375,35 @@ function SkullKingGame() {
             const disconnectedNeeding = players.map((_, i) => i).filter(i => needsResult(i) && !isConnected(i));
             const connectedNeeding = players.map((_, i) => i).filter(i => needsResult(i) && isConnected(i));
             const next = findNext(disconnectedNeeding) ?? findNext(connectedNeeding);
-            syncGameState({ ...gameState, rounds: newRounds, currentPlayerIndex: next ?? playerIndex });
-        }
+            return { ...prev, rounds: newRounds, currentPlayerIndex: next ?? playerIndex };
+        });
     }
 
     async function startNextRound() {
-        const nextRound = gameState.currentRound + 1;
-        const newRounds = [...gameState.rounds];
-        // Pre-initialize the next round slot for connected-player bid submissions.
-        if (tableSession !== null) {
-            newRounds[nextRound - 1] = new Array(gameState.players.length).fill(null);
-        }
-        await doPhaseTransition({
-            ...gameState,
-            rounds: newRounds,
-            phase: tableSession !== null ? "waiting-for-bids" : "bidding",
-            currentRound: nextRound,
-            currentPlayerIndex: 0,
+        await doPhaseTransition((prev) => {
+            const nextRound = prev.currentRound + 1;
+            const newRounds = [...prev.rounds];
+            // Pre-initialize the next round slot for connected-player bid submissions.
+            newRounds[nextRound - 1] = new Array(prev.players.length).fill(null);
+            return {
+                ...prev,
+                rounds: newRounds,
+                phase: "waiting-for-bids" as const,
+                currentRound: nextRound,
+                currentPlayerIndex: 0,
+            };
         });
     }
 
     function handleCellEdit(roundIndex: number, playerIndex: number, entry: RoundEntry) {
-        const newRounds = gameState.rounds.map((r) => [...r]);
-        newRounds[roundIndex][playerIndex] = entry;
-        setGameState({ ...gameState, rounds: newRounds });
+        setGameState((prev) => {
+            const newRounds = prev.rounds.map((r) => [...r]);
+            newRounds[roundIndex][playerIndex] = entry;
+            return { ...prev, rounds: newRounds };
+        });
     }
 
     async function saveGame() {
-        const gameId = skullKingGame?.id ?? gameState.fallbackGameId;
-        if (!gameId) return;
         setSaving(true);
         setSaveError("");
         try {
@@ -484,18 +412,18 @@ function SkullKingGame() {
                 score[p.id] = playerTotal(gameState.rounds, pi, gameState.players.length);
             });
             const result = await submitMatch({
-                game_id: gameId,
+                game_id: GAME_ID_SKULL_KING,
                 score,
                 tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
-                calculator_kind: CALCULATOR_KIND,
+                calculator_kind: "skull-king",
                 calculator_data: skToStorage(gameState) as unknown as Record<string, never>,
             });
             // The match is queued under its final id; the lists refresh when the
-            // sync lands it. In table mode, teardown must wait until the match
-            // actually exists on the server: DeleteTable broadcasts its id to the
+            // sync lands it. Table teardown must wait until the match actually
+            // exists on the server: DeleteTable broadcasts its id to the
             // connected players, who open the saved match right away.
             if (tableSession?.tableId && (await waitForSyncedMatch(result.id))) {
-                try { await deleteSkullKingTablePromise(tableSession.tableId, result.id); } catch { /* ignore */ }
+                try { await deleteTablePromise(tableSession.tableId, result.id); } catch { /* ignore */ }
             }
             resetTableSession();
             router.push(`/matches/view?id=${result.id}`);
@@ -509,9 +437,9 @@ function SkullKingGame() {
     // ── Render ───────────────────────────────────────────────────────────────
 
     const { phase, players, currentRound, currentPlayerIndex, rounds } = gameState;
-    // ADR-15: only a stored host session (or no session at all — a local game)
-    // renders as host. A connected player stays connected until they leave the
-    // table; losing the session can no longer silently promote them.
+    // ADR-15: only a stored host session renders as host. A connected player
+    // stays connected until they leave the table; losing the session can no
+    // longer silently promote them.
     const isHost = !tableSession || tableSession.isHost;
     const myPlayerIndex = tableSession?.myPlayerIndex ?? null;
 
@@ -529,7 +457,7 @@ function SkullKingGame() {
     const connecting = !hydrated || awaitingSnapshot;
 
     return (
-        <main className="max-w-5xl mx-auto space-y-4 overflow-x-hidden">
+        <main className="max-w-sm md:max-w-5xl mx-auto space-y-4 overflow-x-hidden">
             <PageHeader
                 title="Skull King"
                 action={
@@ -546,36 +474,36 @@ function SkullKingGame() {
                                     : <LightbulbOff className="h-4 w-4" />}
                             </Button>
                         )}
-                        {phase !== "setup" && (
-                            isHost ? (
-                                <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="outline" size="sm">Новая партия</Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Начать новую партию?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                Результаты текущей партии будут удалены.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel disabled={isResetting}>Отмена</AlertDialogCancel>
-                                            <AlertDialogAction
-                                                disabled={isResetting}
-                                                onClick={(e) => {
-                                                    e.preventDefault();
-                                                    resetGame().then(() => setResetDialogOpen(false));
-                                                }}
-                                            >
-                                                {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Начать"}
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            ) : (
-                                <Button variant="outline" size="sm" onClick={resetTableSession}>Новая партия</Button>
-                            )
+                        {phase !== "setup" && !isHost && me.canEdit && (
+                            <TakeoverButton busy={isTakingOver} onConfirm={handleTakeover} />
+                        )}
+                        {phase !== "setup" && isHost && (
+                            <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm">Удалить стол</Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Удалить стол?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            Результаты текущей партии будут удалены. Новый стол создаётся на странице «Партии».
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel disabled={isResetting}>Отмена</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            variant="destructive"
+                                            disabled={isResetting}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                closeTable().then(() => setResetDialogOpen(false));
+                                            }}
+                                        >
+                                            {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Удалить"}
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
                         )}
                     </div>
                 }
@@ -583,7 +511,12 @@ function SkullKingGame() {
 
             {/* Only the host can save; a connected player can't, so the auth
                 warning is irrelevant for them. */}
-            {isHost && <AuthWarning />}
+            {isHost && <AuthWarning table />}
+
+            {/* Connection status */}
+            {phase !== "setup" && currentTable && (
+                <TableStatusBanner connected={sseConnected} />
+            )}
 
             {connecting ? (
                 <Card>
@@ -597,13 +530,9 @@ function SkullKingGame() {
                     {/* ── SETUP ──────────────────────────────────────── */}
                     {phase === "setup" && (
                         <SetupScreen
-                            me={me}
                             players={allPlayers}
                             playerDisplayName={playerDisplayName}
-                            activeTables={activeTables}
-                            tablesLoading={tablesLoading}
-                            joiningTableId={joiningTableId}
-                            onJoin={handleJoinTable}
+                            canCreate={!!(me.isAuthenticated && me.playerId)}
                             setupPlayerIds={setupPlayerIds}
                             onSetupPlayerIdsChange={setSetupPlayerIds}
                             isSubmitting={isSubmitting}
@@ -611,7 +540,7 @@ function SkullKingGame() {
                         />
                     )}
 
-                    {/* ── BIDDING ────────────────────────────────────── */}
+                    {/* ── BIDDING (host manual entry) ────────────────── */}
                     {phase === "bidding" && !isHost && (
                         <div className="space-y-4">
                             <p className="text-sm text-muted-foreground text-center">Ожидание ведущего...</p>
@@ -634,7 +563,7 @@ function SkullKingGame() {
                                 <Tabs
                                     value={String(currentPlayerIndex)}
                                     onValueChange={(v) =>
-                                        setGameState({ ...gameState, currentPlayerIndex: Number(v) })
+                                        setGameState((prev) => ({ ...prev, currentPlayerIndex: Number(v) }))
                                     }
                                 >
                                     <TabsList className="flex flex-wrap h-auto gap-1">
@@ -669,7 +598,7 @@ function SkullKingGame() {
                                     <Button
                                         className="w-full md:h-12 md:text-base"
                                         disabled={isTransitioning}
-                                        onClick={() => doPhaseTransition({ ...gameState, phase: "bid-review", currentPlayerIndex: 0 })}
+                                        onClick={() => doPhaseTransition((prev) => ({ ...prev, phase: "bid-review" as const, currentPlayerIndex: 0 }))}
                                     >
                                         {isTransitioning ? <Loader2 className="h-5 w-5 animate-spin" /> : "Перейти к обзору"}
                                     </Button>
@@ -769,10 +698,14 @@ function SkullKingGame() {
                                 );
                                 async function performForceTransition() {
                                     if (allBid) {
-                                        await doPhaseTransition({ ...gameState, phase: "bid-review", currentPlayerIndex: 0 });
+                                        await doPhaseTransition((prev) => ({ ...prev, phase: "bid-review" as const, currentPlayerIndex: 0 }));
                                     } else {
                                         const firstUnfilled = roundData.findIndex(e => e == null);
-                                        await doPhaseTransition({ ...gameState, phase: "bidding", currentPlayerIndex: firstUnfilled >= 0 ? firstUnfilled : 0 });
+                                        await doPhaseTransition((prev) => ({
+                                            ...prev,
+                                            phase: "bidding" as const,
+                                            currentPlayerIndex: firstUnfilled >= 0 ? firstUnfilled : 0,
+                                        }));
                                     }
                                 }
                                 if (connectedNotBid.length > 0) {
@@ -894,7 +827,7 @@ function SkullKingGame() {
                                             <Tabs
                                                 value={String(currentPlayerIndex)}
                                                 onValueChange={(v) =>
-                                                    setGameState({ ...gameState, currentPlayerIndex: Number(v) })
+                                                    setGameState((prev) => ({ ...prev, currentPlayerIndex: Number(v) }))
                                                 }
                                             >
                                                 <TabsList className="flex flex-wrap h-auto gap-1">
@@ -1002,19 +935,6 @@ function SkullKingGame() {
 
                                     {currentRound === TOTAL_ROUNDS && isHost && (
                                         <div className="space-y-2">
-                                            {!skullKingGame && (
-                                                <div className="space-y-1">
-                                                    <p className="text-sm text-muted-foreground">
-                                                        Не найдена игра «Skull King». Выберите вручную:
-                                                    </p>
-                                                    <GameCombobox
-                                                        value={gameState.fallbackGameId ?? undefined}
-                                                        onChange={(id) =>
-                                                            setGameState({ ...gameState, fallbackGameId: id })
-                                                        }
-                                                    />
-                                                </div>
-                                            )}
                                             <TournamentCheckboxes
                                                 active={activeTournamentsForSave}
                                                 checked={checkedTournamentIds}
@@ -1026,11 +946,7 @@ function SkullKingGame() {
                                             )}
                                             <Button
                                                 className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg"
-                                                disabled={
-                                                    saving ||
-                                                    (!skullKingGame && !gameState.fallbackGameId) ||
-                                                    !me.id
-                                                }
+                                                disabled={saving || !me.id}
                                                 onClick={saveGame}
                                             >
                                                 {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2 inline" />Сохранение...</> : "Сохранить партию"}

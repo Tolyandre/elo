@@ -4,18 +4,21 @@ package skull_king
 type Recognizer Rec
 
 type Rec struct{}
-	type CardResult struct{ Type string; Value *int }
-	type SkullKingConfig struct{ ConfidenceThreshold float64 }
+type CardResult struct {
+	Type  string
+	Value *int
+}
+type SkullKingConfig struct{ ConfidenceThreshold float64 }
 
 func DefaultConfig() interface{} { return &SkullKingConfig{} }
 
 func NewRecognizer(cfg interface{}) (*Recognizer, error) {
-    // The cfg argument is ignored.
-    return &Recognizer{}, nil
+	// The cfg argument is ignored.
+	return &Recognizer{}, nil
 }
 
 func (r *Recognizer) Recognize([]byte) (CardResult, error) {
-    return CardResult{Type: "stub", Value: nil}, nil
+	return CardResult{Type: "stub", Value: nil}, nil
 }
 
 func (r *Recognizer) Close() {}

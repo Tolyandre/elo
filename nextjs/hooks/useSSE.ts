@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // Must stay above the backend's 15s heartbeat tick (pkg/api/sse.go): if no
 // frame — data or named heartbeat — arrives within this window, the stream is
@@ -35,7 +35,12 @@ export type UseSSEOptions = {
 
 /**
  * The single SSE subscription primitive for every realtime stream
- * (markets, Skull King tables, data-change signals, user events).
+ * (markets, game tables, data-change signals, user events).
+ *
+ * Returns whether the stream is currently open. While disconnected the
+ * consumer's data is a frozen snapshot of the last received state — live
+ * tables surface this as a "no connection" hint instead of letting the user
+ * wonder why nothing moves.
  *
  * Self-heals four dropout scenarios the browser's built-in EventSource
  * reconnect does not cover:
@@ -57,7 +62,8 @@ export type UseSSEOptions = {
  *      again (only when onRecover is provided; listeners are not attached
  *      otherwise).
  */
-export function useSSE(url: string | null, options: UseSSEOptions): void {
+export function useSSE(url: string | null, options: UseSSEOptions): boolean {
+    const [connected, setConnected] = useState(false);
     // Keep the latest handlers without resubscribing when they change identity.
     // Updated in a layout-less effect (runs after every render, before any
     // async SSE event can fire) instead of during render.
@@ -121,6 +127,7 @@ export function useSSE(url: string | null, options: UseSSEOptions): void {
 
             source.onopen = () => {
                 armLivenessTimer();
+                setConnected(true);
                 retryAttempt = 0;
                 if (missedSinceOpen) {
                     missedSinceOpen = false;
@@ -129,6 +136,7 @@ export function useSSE(url: string | null, options: UseSSEOptions): void {
             };
 
             source.onerror = () => {
+                setConnected(false);
                 if (source.readyState === EventSource.CLOSED) {
                     // The server rejected the connection (non-200). The
                     // browser will not reconnect on its own; retry with
@@ -170,6 +178,7 @@ export function useSSE(url: string | null, options: UseSSEOptions): void {
                 // silently dead. Force a fresh EventSource; the recreate marks
                 // a gap so the next open triggers catch-up.
                 missedSinceOpen = true;
+                setConnected(false);
                 es?.close();
                 if (closedByUs) return;
                 es = createEventSource();
@@ -189,6 +198,11 @@ export function useSSE(url: string | null, options: UseSSEOptions): void {
             es?.close();
             document.removeEventListener("visibilitychange", handleVisibilityOrOnline);
             window.removeEventListener("online", handleVisibilityOrOnline);
+            // Teardown also runs right before a url change: the new
+            // subscription starts out "disconnected" until its first open.
+            setConnected(false);
         };
     }, [url]);
+
+    return connected;
 }

@@ -47,7 +47,7 @@ func main() {
 	oauth2Handler := oauth2.New(pool)
 
 	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())
-	go apiHandler.SkullKingTableService.ScheduleNextCleanup(context.Background())
+	go apiHandler.TableService.ScheduleNextCleanup(context.Background())
 
 	router := gin.Default()
 
@@ -92,7 +92,7 @@ func main() {
 		return []gin.HandlerFunc{oauth2Handler.DeserializeUser(), apiHandler.RequireEditor()}
 	}
 	// playerAuth is the player-gated chain (valid session + linked player) used
-	// by the Skull King live-table routes.
+	// by the live game-table routes.
 	playerAuth := func() []gin.HandlerFunc {
 		return []gin.HandlerFunc{oauth2Handler.DeserializeUser(), apiHandler.RequirePlayerID()}
 	}
@@ -137,22 +137,28 @@ func main() {
 	// Voice
 	router.POST("/voice/parse", append(editorAuth(), strictWrapper.ParseVoiceInput)...)
 
-	// Skull King calculator
+	// Skull King card recognition
 	router.POST("/skull-king/parse-card-image", apiHandler.ParseSkullKingCardImage)
 
-	// Skull King game tables
-	sk := router.Group("/skull-king/tables")
-	sk.GET("", apiHandler.ListSkullKingTables)
-	sk.POST("", append(playerAuth(), apiHandler.CreateSkullKingTable)...)
-	sk.GET("/:id", apiHandler.GetSkullKingTable)
-	sk.PATCH("/:id/state", append(playerAuth(), apiHandler.UpdateSkullKingTableState)...)
-	sk.POST("/:id/join", append(playerAuth(), apiHandler.JoinSkullKingTable)...)
-	sk.POST("/:id/bid", append(playerAuth(), apiHandler.SubmitSkullKingBid)...)
-	sk.POST("/:id/result", append(playerAuth(), apiHandler.SubmitSkullKingResult)...)
-	sk.DELETE("/:id", append(playerAuth(), apiHandler.DeleteSkullKingTable)...)
-	sk.GET("/:id/events", apiHandler.SkullKingTableEvents)
+	// Live game tables (generic; per-game behavior dispatched by game_id).
+	// The whole group is no-store: table state mutates constantly, and a
+	// stale snapshot served from any HTTP/SW cache is worse than an error.
+	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
+	tbl := router.Group("/tables", noStore)
+	tbl.GET("", apiHandler.ListTables)
+	tbl.POST("", append(playerAuth(), apiHandler.CreateTable)...)
+	tbl.GET("/:id", apiHandler.GetTable)
+	tbl.PATCH("/:id/state", append(playerAuth(), apiHandler.UpdateTableState)...)
+	tbl.POST("/:id/join", append(playerAuth(), apiHandler.JoinTable)...)
+	tbl.POST("/:id/submit", append(playerAuth(), apiHandler.SubmitTable)...)
+	// Takeover needs a session; the handler allows the current host to
+	// re-claim (host resume on another device) and everyone else only with
+	// edit permission.
+	tbl.POST("/:id/takeover", oauth2Handler.DeserializeUser(), apiHandler.TakeoverTable)
+	tbl.DELETE("/:id", append(playerAuth(), apiHandler.DeleteTable)...)
+	tbl.GET("/:id/events", apiHandler.TableEvents)
 	// Lobby SSE — separate path to avoid colliding with the /:id wildcard above
-	router.GET("/skull-king/lobby/events", apiHandler.SkullKingLobbyEvents)
+	router.GET("/tables/lobby/events", noStore, apiHandler.TablesLobbyEvents)
 
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)

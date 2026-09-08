@@ -37,10 +37,13 @@ const serwist = new Serwist({
         {
             // Cacheable API reads: try the network, fall back to the last seen
             // response so player/game/match lists render offline. Excludes /ping
-            // (must reflect real API state), auth, SSE, and the live Skull King
-            // table endpoints (their state mutates constantly during a game and
-            // a stale snapshot from the NetworkFirst timeout is worse than no
-            // data — they fall through to the NetworkOnly rule below).
+            // (must reflect real API state), auth, SSE, and the live game-table
+            // endpoints (their state mutates constantly during a game and a
+            // stale snapshot from the NetworkFirst fallback is worse than no
+            // data — they fall through to the NetworkOnly rule below). Matches
+            // on the path fragment, not the absolute URL: pathname never
+            // includes the origin, and apiBase may carry a path prefix
+            // (…/elo-web-service) in front of /tables.
             matcher: ({ url, request }) =>
                 apiBase !== "" &&
                 request.method === "GET" &&
@@ -48,7 +51,7 @@ const serwist = new Serwist({
                 !url.pathname.endsWith("/ping") &&
                 !url.pathname.includes("/auth/") &&
                 !url.pathname.endsWith("/events") &&
-                !url.pathname.includes("/skull-king/tables"),
+                !url.pathname.includes("/tables"),
             handler: new NetworkFirst({
                 cacheName: "elo-api",
                 networkTimeoutSeconds: 4,
@@ -61,11 +64,13 @@ const serwist = new Serwist({
             }),
         },
         {
-            // Every other API request — /ping, /auth/*, SSE, and all writes
-            // (POST/PUT/DELETE) — always hits the network and is never cached.
-            // This keeps the health check honest and lets failed writes fail fast
-            // (so they get queued offline) instead of being swallowed by the
-            // cross-origin NetworkFirst rule in defaultCache.
+            // Every other API request — /ping, /auth/*, SSE, all writes, and
+            // the live-table reads — always hits the network and is never
+            // cached. This keeps the health check honest, lets failed writes
+            // fail fast (so they get queued offline) instead of being
+            // swallowed by the cross-origin NetworkFirst rule in defaultCache,
+            // and guarantees a table refetch can never resurrect a stale
+            // snapshot while offline.
             matcher: ({ url }) => apiBase !== "" && url.href.startsWith(`${apiBase}/`),
             handler: new NetworkOnly(),
         },

@@ -12,8 +12,8 @@ import (
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 
-func (a *API) ListSkullKingTables(c *gin.Context) {
-	tables, err := a.SkullKingTableService.ListTables(c.Request.Context())
+func (a *API) ListTables(c *gin.Context) {
+	tables, err := a.TableService.ListTables(c.Request.Context())
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -23,7 +23,7 @@ func (a *API) ListSkullKingTables(c *gin.Context) {
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
-func (a *API) CreateSkullKingTable(c *gin.Context) {
+func (a *API) CreateTable(c *gin.Context) {
 	playerID := MustGetCurrentPlayerID(c)
 	userID, err := MustGetCurrentUserId(c)
 	if err != nil {
@@ -31,8 +31,10 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 	}
 
 	var body struct {
-		Id        string          `json:"id"`
-		GameState json.RawMessage `json:"game_state"`
+		Id              string          `json:"id"`
+		GameId          string          `json:"game_id"`
+		HostClientToken string          `json:"host_client_token"`
+		GameState       json.RawMessage `json:"game_state"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
@@ -42,6 +44,10 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 		ErrorResponse(c, http.StatusBadRequest, "id is required")
 		return
 	}
+	if body.GameId == "" {
+		ErrorResponse(c, http.StatusBadRequest, "game_id is required")
+		return
+	}
 	if len(body.GameState) == 0 {
 		ErrorResponse(c, http.StatusBadRequest, "game_state is required")
 		return
@@ -49,15 +55,24 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 
 	_ = playerID // host player_id is embedded in game_state; we use userID for ownership
 
-	// The raw gin body bypasses the typed DTO layer, so the client-minted id
-	// arrives in its wire form (ADR-12).
+	// The raw gin body bypasses the typed DTO layer, so the client-minted ids
+	// arrive in their wire form (ADR-12).
 	tableID, err := id.ParseTolerant(body.Id)
 	if err != nil {
 		ErrorResponse(c, http.StatusBadRequest, "invalid id")
 		return
 	}
+	gameID, err := id.ParseTolerant(body.GameId)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "invalid game_id")
+		return
+	}
 
-	table, err := a.SkullKingTableService.CreateTable(c.Request.Context(), tableID, userID, body.GameState)
+	table, err := a.TableService.CreateTable(c.Request.Context(), tableID, userID, gameID, body.HostClientToken, body.GameState)
+	if errors.Is(err, elo.ErrUnknownGame) || errors.Is(err, elo.ErrInvalidState) {
+		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
@@ -67,9 +82,9 @@ func (a *API) CreateSkullKingTable(c *gin.Context) {
 
 // ─── Get ──────────────────────────────────────────────────────────────────────
 
-func (a *API) GetSkullKingTable(c *gin.Context) {
+func (a *API) GetTable(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
-	table, err := a.SkullKingTableService.GetTable(c.Request.Context(), tableID)
+	table, err := a.TableService.GetTable(c.Request.Context(), tableID)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
@@ -81,9 +96,9 @@ func (a *API) GetSkullKingTable(c *gin.Context) {
 	SuccessDataResponse(c, table)
 }
 
-// ─── Update state (host only) ─────────────────────────────────────────────────
+// ─── Update state (host only, optimistic lock) ───────────────────────────────
 
-func (a *API) UpdateSkullKingTableState(c *gin.Context) {
+func (a *API) UpdateTableState(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
 	userID, err := MustGetCurrentUserId(c)
 	if err != nil {
@@ -91,10 +106,15 @@ func (a *API) UpdateSkullKingTableState(c *gin.Context) {
 	}
 
 	var body struct {
+		Version   *int64          `json:"version"`
 		GameState json.RawMessage `json:"game_state"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
+		return
+	}
+	if body.Version == nil {
+		ErrorResponse(c, http.StatusBadRequest, "version is required")
 		return
 	}
 	if len(body.GameState) == 0 {
@@ -102,13 +122,24 @@ func (a *API) UpdateSkullKingTableState(c *gin.Context) {
 		return
 	}
 
-	table, err := a.SkullKingTableService.UpdateTableState(c.Request.Context(), tableID, userID, body.GameState)
+	table, err := a.TableService.UpdateTableState(c.Request.Context(), tableID, userID, *body.Version, body.GameState)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
 	}
 	if errors.Is(err, elo.ErrNotTableHost) {
 		ErrorResponse(c, http.StatusForbidden, err.Error())
+		return
+	}
+	if errors.Is(err, elo.ErrTableVersionConflict) {
+		// The table changed since the caller last saw it (player submission or
+		// the host's other device). Return the current state so the client can
+		// merge its edit and retry instead of erasing the other writer's input.
+		c.JSON(http.StatusConflict, gin.H{"status": "fail", "message": err.Error(), "data": table})
+		return
+	}
+	if errors.Is(err, elo.ErrInvalidState) || errors.Is(err, elo.ErrUnknownGame) {
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	if err != nil {
@@ -120,11 +151,11 @@ func (a *API) UpdateSkullKingTableState(c *gin.Context) {
 
 // ─── Join ─────────────────────────────────────────────────────────────────────
 
-func (a *API) JoinSkullKingTable(c *gin.Context) {
+func (a *API) JoinTable(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
 	playerID := MustGetCurrentPlayerID(c)
 
-	table, err := a.SkullKingTableService.JoinTable(c.Request.Context(), tableID, playerID)
+	table, err := a.TableService.JoinTable(c.Request.Context(), tableID, playerID)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
@@ -136,27 +167,29 @@ func (a *API) JoinSkullKingTable(c *gin.Context) {
 	SuccessDataResponse(c, table)
 }
 
-// ─── Submit bid ───────────────────────────────────────────────────────────────
+// ─── Submit player input ──────────────────────────────────────────────────────
 
-func (a *API) SubmitSkullKingBid(c *gin.Context) {
+func (a *API) SubmitTable(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
 	playerID := MustGetCurrentPlayerID(c)
 
-	var body struct {
-		Bid int `json:"bid"`
-	}
-	if err := c.ShouldBindJSON(&body); err != nil {
+	var input elo.TableSubmitInput
+	if err := c.ShouldBindJSON(&input); err != nil {
 		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 
-	table, err := a.SkullKingTableService.SubmitBid(c.Request.Context(), tableID, playerID, body.Bid)
+	table, err := a.TableService.SubmitTable(c.Request.Context(), tableID, playerID, input)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
 	}
 	if errors.Is(err, elo.ErrWrongPhase) || errors.Is(err, elo.ErrPlayerNotInGame) || errors.Is(err, elo.ErrSlotAlreadySet) {
 		ErrorResponse(c, http.StatusConflict, err.Error())
+		return
+	}
+	if errors.Is(err, elo.ErrInvalidInput) || errors.Is(err, elo.ErrUnknownGame) || errors.Is(err, elo.ErrInvalidState) {
+		ErrorResponse(c, http.StatusBadRequest, err)
 		return
 	}
 	if err != nil {
@@ -166,28 +199,36 @@ func (a *API) SubmitSkullKingBid(c *gin.Context) {
 	SuccessDataResponse(c, table)
 }
 
-// ─── Submit result ────────────────────────────────────────────────────────────
+// ─── Host takeover ────────────────────────────────────────────────────────────
 
-func (a *API) SubmitSkullKingResult(c *gin.Context) {
+// TakeoverTable claims hosting for the requesting device. The current host
+// may always re-claim (this is also host resume on another device); any
+// other user needs edit permission, checked here from the user record.
+func (a *API) TakeoverTable(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
-	playerID := MustGetCurrentPlayerID(c)
+	userID, err := MustGetCurrentUserId(c)
+	if err != nil {
+		return // error already written by MustGetCurrentUserId
+	}
 
 	var body struct {
-		Actual int `json:"actual"`
-		Bonus  int `json:"bonus"`
+		HostClientToken string `json:"host_client_token"`
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		ErrorResponse(c, http.StatusBadRequest, err)
+	_ = c.ShouldBindJSON(&body) // body is optional
+
+	user, err := MustGetCurrentUser(c, a.UserService)
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	table, err := a.SkullKingTableService.SubmitResult(c.Request.Context(), tableID, playerID, body.Actual, body.Bonus)
+	table, err := a.TableService.TakeoverTable(c.Request.Context(), tableID, userID, body.HostClientToken, user.AllowEditing)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
 	}
-	if errors.Is(err, elo.ErrWrongPhase) || errors.Is(err, elo.ErrPlayerNotInGame) || errors.Is(err, elo.ErrSlotAlreadySet) {
-		ErrorResponse(c, http.StatusConflict, err.Error())
+	if errors.Is(err, elo.ErrNotTableHost) {
+		ErrorResponse(c, http.StatusForbidden, "hosting may only be claimed by the current host or an editor")
 		return
 	}
 	if err != nil {
@@ -199,7 +240,7 @@ func (a *API) SubmitSkullKingResult(c *gin.Context) {
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
-func (a *API) DeleteSkullKingTable(c *gin.Context) {
+func (a *API) DeleteTable(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
 	userID, err := MustGetCurrentUserId(c)
 	if err != nil {
@@ -210,7 +251,7 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 	// can broadcast a "saved" event to connected players before teardown.
 	savedMatchID := parseIDParam(c.Query("match_id"))
 
-	if err := a.SkullKingTableService.DeleteTable(c.Request.Context(), tableID, userID, savedMatchID); err != nil {
+	if err := a.TableService.DeleteTable(c.Request.Context(), tableID, userID, savedMatchID); err != nil {
 		if errors.Is(err, elo.ErrTableNotFound) {
 			ErrorResponse(c, http.StatusNotFound, "table not found")
 			return
@@ -227,12 +268,12 @@ func (a *API) DeleteSkullKingTable(c *gin.Context) {
 
 // ─── SSE events stream ────────────────────────────────────────────────────────
 
-// SkullKingTableEvents streams the full table state: the current snapshot on
-// connect, then every broadcast (state update, join, bid, result, saved).
-func (a *API) SkullKingTableEvents(c *gin.Context) {
+// TableEvents streams the full table state: the current snapshot on connect,
+// then every broadcast (state update, join, submission, saved).
+func (a *API) TableEvents(c *gin.Context) {
 	tableID := parseIDParam(c.Param("id"))
 
-	table, err := a.SkullKingTableService.GetTable(c.Request.Context(), tableID)
+	table, err := a.TableService.GetTable(c.Request.Context(), tableID)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		ErrorResponse(c, http.StatusNotFound, "table not found")
 		return
@@ -250,7 +291,7 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 	}
 
 	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.SkullKingTableTopic(tableID))
+		return a.Hub.Subscribe(elo.TableTopic(tableID))
 	}, initialPayload)
 }
 
@@ -258,8 +299,8 @@ func (a *API) SkullKingTableEvents(c *gin.Context) {
 // Signals subscribers whenever the set of tables changes (create/delete/expiry).
 // Carries no payload — clients refetch the full list on each signal.
 
-func (a *API) SkullKingLobbyEvents(c *gin.Context) {
+func (a *API) TablesLobbyEvents(c *gin.Context) {
 	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.TopicLobbySkullKing)
+		return a.Hub.Subscribe(elo.TopicLobbyTables)
 	}, initialSignalFrame("tables-changed"))
 }

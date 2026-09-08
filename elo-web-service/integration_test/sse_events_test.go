@@ -196,10 +196,10 @@ func TestSSE_MeEvents_MatchRecorded(t *testing.T) {
 	}
 }
 
-// TestSkullKing_CreateTableInvitesLinkedUsers: creating a table with picked
+// TestTables_CreateTableInvitesLinkedUsers: creating a table with picked
 // players sends a table-invite to the user controlling each picked player
 // (except the host) and a tables-changed signal to the lobby.
-func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
+func TestTables_CreateTableInvitesLinkedUsers(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -218,12 +218,12 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 	}
 
 	hub := elo.NewHub()
-	svc := elo.NewSkullKingTableService(pool, hub)
+	svc := elo.NewTableService(pool, hub)
 	guestCh, cancelGuest := hub.Subscribe(elo.UserTopic(idpkg.ID(guestUserID)))
 	defer cancelGuest()
 	hostCh, cancelHost := hub.Subscribe(elo.UserTopic(idpkg.ID(hostUserID)))
 	defer cancelHost()
-	lobbyCh, cancelLobby := hub.Subscribe(elo.TopicLobbySkullKing)
+	lobbyCh, cancelLobby := hub.Subscribe(elo.TopicLobbyTables)
 	defer cancelLobby()
 
 	state, _ := json.Marshal(map[string]any{
@@ -234,7 +234,7 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 		"rounds":             [][]any{nil},
 	})
 	tableID := newID(t)
-	if _, err := svc.CreateTable(context.Background(), tableID, idpkg.ID(hostUserID), state); err != nil {
+	if _, err := svc.CreateTable(context.Background(), tableID, idpkg.ID(hostUserID), elo.GameIDSkullKing, "test-device", state); err != nil {
 		t.Fatalf("CreateTable: %v", err)
 	}
 
@@ -244,6 +244,8 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 			Type string `json:"type"`
 			Data struct {
 				TableID  string `json:"table_id"`
+				GameID   string `json:"game_id"`
+				Game     string `json:"game"`
 				HostName string `json:"host_name"`
 			} `json:"data"`
 		}
@@ -255,6 +257,12 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 		}
 		if evt.Data.TableID != string(tableID.Base58()) {
 			t.Errorf("table_id = %q, want wire form of %s", evt.Data.TableID, tableID)
+		}
+		if evt.Data.GameID != string(elo.GameIDSkullKing.Base58()) {
+			t.Errorf("game_id = %q, want wire form of the Skull King game", evt.Data.GameID)
+		}
+		if evt.Data.Game == "" {
+			t.Error("game title is empty")
 		}
 		if evt.Data.HostName == "" {
 			t.Error("host_name is empty")
@@ -274,28 +282,28 @@ func TestSkullKing_CreateTableInvitesLinkedUsers(t *testing.T) {
 	}
 }
 
-// createSkullKingTableHTTP creates a live table through the API as the given
-// host (who must have a linked player) and returns the wire-form table id.
-func createSkullKingTableHTTP(t *testing.T, router *gin.Engine, hostToken string, tableID idpkg.ID, gameState map[string]any) string {
+// createTableHTTP creates a live table through the API as the given host (who
+// must have a linked player) and returns the wire-form table id.
+func createTableHTTP(t *testing.T, router *gin.Engine, hostToken string, tableID, gameID idpkg.ID, gameState map[string]any) string {
 	t.Helper()
 	wire := string(tableID.Base58())
-	body, _ := json.Marshal(map[string]any{"id": wire, "game_state": gameState})
-	req, _ := http.NewRequest(http.MethodPost, "/skull-king/tables", strings.NewReader(string(body)))
+	body, _ := json.Marshal(map[string]any{"id": wire, "game_id": string(gameID.Base58()), "host_client_token": "creator-device", "game_state": gameState})
+	req, _ := http.NewRequest(http.MethodPost, "/tables", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+hostToken)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
-		t.Fatalf("POST /skull-king/tables: %d: %s", w.Code, w.Body.String())
+		t.Fatalf("POST /tables: %d: %s", w.Code, w.Body.String())
 	}
 	return wire
 }
 
-// TestSkullKing_TableEvents_HostEditPropagatesToSubscribers: when the host
+// TestTables_TableEvents_HostEditPropagatesToSubscribers: when the host
 // PATCHes the table state — e.g. editing a cell in an already-completed round —
 // every table subscriber must receive the updated full snapshot (regression
 // for connected players freezing on host edits of previous rounds).
-func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
+func TestTables_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -319,9 +327,9 @@ func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
 		"currentPlayerIndex": 0,
 		"rounds":             []any{[]any{map[string]any{"bid": 3, "actual": 2, "bonus": 0}, nil}},
 	}
-	wire := createSkullKingTableHTTP(t, router, hostToken, newID(t), initialState)
+	wire := createTableHTTP(t, router, hostToken, newID(t), elo.GameIDSkullKing, initialState)
 
-	frames := openSSE(t, router, "/skull-king/tables/"+wire+"/events", "")
+	frames := openSSE(t, router, "/tables/"+wire+"/events", "")
 	// Consume the connect snapshot, then edit player B's cell in round 1.
 	waitForSSEFrame(t, frames, "initial state", func(p string) bool { return isSignal(p, "state") })
 
@@ -332,8 +340,8 @@ func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
 		"currentPlayerIndex": 0,
 		"rounds":             []any{[]any{map[string]any{"bid": 3, "actual": 2, "bonus": 0}, map[string]any{"bid": 1, "actual": 1, "bonus": 30}}},
 	}
-	body, _ := json.Marshal(map[string]any{"game_state": editedState})
-	req, _ := http.NewRequest(http.MethodPatch, "/skull-king/tables/"+wire+"/state", strings.NewReader(string(body)))
+	body, _ := json.Marshal(map[string]any{"version": 1, "game_state": editedState})
+	req, _ := http.NewRequest(http.MethodPatch, "/tables/"+wire+"/state", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+hostToken)
 	w := httptest.NewRecorder()
@@ -344,17 +352,27 @@ func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
 
 	frame := waitForSSEFrame(t, frames, "edited state", func(p string) bool { return isSignal(p, "state") })
 	var evt struct {
-		Type string              `json:"type"`
-		Data elo.SkullKingTableSummary `json:"data"`
+		Type string           `json:"type"`
+		Data elo.TableSummary `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(frame), &evt); err != nil {
 		t.Fatalf("parse state frame: %v", err)
 	}
-	if len(evt.Data.GameState.Rounds) != 1 || len(evt.Data.GameState.Rounds[0]) != 2 {
-		t.Fatalf("rounds shape = %v, want 1 round × 2 entries", evt.Data.GameState.Rounds)
+	var state struct {
+		Rounds [][]json.RawMessage `json:"rounds"`
 	}
-	var edited elo.SkullKingEntry
-	if err := json.Unmarshal(evt.Data.GameState.Rounds[0][1], &edited); err != nil {
+	if err := json.Unmarshal(evt.Data.GameState, &state); err != nil {
+		t.Fatalf("parse game state: %v", err)
+	}
+	if len(state.Rounds) != 1 || len(state.Rounds[0]) != 2 {
+		t.Fatalf("rounds shape = %v, want 1 round × 2 entries", state.Rounds)
+	}
+	var edited struct {
+		Bid    int  `json:"bid"`
+		Actual *int `json:"actual"`
+		Bonus  int  `json:"bonus"`
+	}
+	if err := json.Unmarshal(state.Rounds[0][1], &edited); err != nil {
 		t.Fatalf("parse edited entry: %v", err)
 	}
 	if edited.Bid != 1 || edited.Actual == nil || *edited.Actual != 1 || edited.Bonus != 30 {
@@ -362,10 +380,10 @@ func TestSkullKing_TableEvents_HostEditPropagatesToSubscribers(t *testing.T) {
 	}
 }
 
-// TestSkullKing_TableEvents_ClosedOnHostReset: deleting a table without a
-// saved match (host pressed "new game") must broadcast a payload-less "closed"
-// event so connected players exit gracefully instead of hitting a 404 later.
-func TestSkullKing_TableEvents_ClosedOnHostReset(t *testing.T) {
+// TestTables_TableEvents_ClosedOnHostReset: deleting a table without a saved
+// match (host closed the table) must broadcast a payload-less "closed" event
+// so connected players exit gracefully instead of hitting a 404 later.
+func TestTables_TableEvents_ClosedOnHostReset(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -389,12 +407,12 @@ func TestSkullKing_TableEvents_ClosedOnHostReset(t *testing.T) {
 		"currentPlayerIndex": 0,
 		"rounds":             []any{nil},
 	}
-	wire := createSkullKingTableHTTP(t, router, hostToken, newID(t), state)
+	wire := createTableHTTP(t, router, hostToken, newID(t), elo.GameIDSkullKing, state)
 
-	frames := openSSE(t, router, "/skull-king/tables/"+wire+"/events", "")
+	frames := openSSE(t, router, "/tables/"+wire+"/events", "")
 	waitForSSEFrame(t, frames, "initial state", func(p string) bool { return isSignal(p, "state") })
 
-	req, _ := http.NewRequest(http.MethodDelete, "/skull-king/tables/"+wire, nil)
+	req, _ := http.NewRequest(http.MethodDelete, "/tables/"+wire, nil)
 	req.Header.Set("Authorization", "Bearer "+hostToken)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

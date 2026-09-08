@@ -8,17 +8,26 @@ import { LoginLink } from "@/components/login-link";
 /**
  * Shows an alert if the user is not logged in or lacks edit permission.
  * Returns null when the user can save matches.
+ *
+ * With `table` (live game-table pages) the sign-in alert is phrased for
+ * tables: the game state lives on the server, so the offline-queue note about
+ * results "temporarily stored in the browser" would be wrong — what matters
+ * there is signing in to create and host a table.
  */
-export function AuthWarning() {
+export function AuthWarning({ table = false }: { table?: boolean }) {
     const me = useMe();
 
     if (!me.id) {
         return (
             <Alert>
                 <AlertCircleIcon />
-                <AlertTitle>Для сохранения партии потребуется выполнить вход</AlertTitle>
+                <AlertTitle>
+                    {table
+                        ? "Чтобы создать стол, выполните вход"
+                        : "Для сохранения партии потребуется выполнить вход"}
+                </AlertTitle>
                 <AlertDescription className="flex flex-col items-start gap-2">
-                    <span>Результаты временно хранятся в браузере</span>
+                    {!table && <span>Результаты временно хранятся в браузере</span>}
                     <LoginLink />
                 </AlertDescription>
             </Alert>

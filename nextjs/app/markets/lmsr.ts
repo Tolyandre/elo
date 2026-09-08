@@ -53,3 +53,38 @@ export function sharesForAmount(q: number[], b: number, i: number, amount: numbe
     const r = s - e[i];
     return b * Math.log((s * Math.exp(amount / b) - r) / e[i]);
 }
+
+/**
+ * Average elo per share of an `amount`-elo buy, i.e. what each delivered share
+ * effectively costs: amount / sharesForAmount. Unlike the marginal
+ * costForShares(·, 1) — the price of the first share only — it includes the
+ * price walk within the buy, so it is the per-share price the bet realizes
+ * (and multiplier × price multiplies out to exactly `amount`).
+ */
+export function averagePricePerShare(q: number[], b: number, i: number, amount: number): number {
+    const shares = sharesForAmount(q, b, i, amount);
+    return amount / shares;
+}
+
+/**
+ * The quote a buy card shows for the pending buy: the per-share price (the
+ * "за 1 голос" caption) and the ×multiplier (voices per 1 elo) — exact
+ * reciprocals, so multiplier × price = 1. In the share mode the buy is one
+ * share at the marginal cost, so the multiplier is 1/price. In the amount
+ * mode the buy spends 1 elo, so the multiplier is sharesForAmount and the
+ * price is the buy's average (it includes the walk and therefore exceeds the
+ * marginal first-share price).
+ */
+export function buyQuote(
+    q: number[],
+    b: number,
+    i: number,
+    mode: "share" | "amount",
+): { pricePerShare: number; multiplier: number } {
+    if (mode === "amount") {
+        const shares = sharesForAmount(q, b, i, 1);
+        return { pricePerShare: 1 / shares, multiplier: shares };
+    }
+    const price = costForShares(q, b, i, 1);
+    return { pricePerShare: price, multiplier: 1 / price };
+}
