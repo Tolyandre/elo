@@ -151,8 +151,6 @@ func main() {
 	tbl.POST("/:id/takeover", oauth2Handler.DeserializeUser(), apiHandler.TakeoverTable)
 	tbl.DELETE("/:id", append(playerAuth(), apiHandler.DeleteTable)...)
 	tbl.GET("/:id/events", apiHandler.TableEvents)
-	// Lobby SSE — separate path to avoid colliding with the /:id wildcard above
-	router.GET("/tables/lobby/events", noStore, apiHandler.TablesLobbyEvents)
 
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
@@ -179,19 +177,18 @@ func main() {
 	router.DELETE("/markets/:id", append(editorAuth(), strictWrapper.DeleteMarket)...)
 	router.POST("/markets/:id/bets", oauth2Handler.DeserializeUser(), strictWrapper.PlaceBet)
 	router.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
-	// Market SSE — lobby path before the /:id wildcard to avoid collision.
-	router.GET("/markets/lobby/events", apiHandler.MarketsLobbyEvents)
 	router.GET("/markets/:id/events", apiHandler.MarketEvents)
 
 	// Audit log — public read, latest first (ADR-14); events are written inside
 	// the audited mutations' transactions.
 	router.GET("/audit", strictWrapper.ListAuditEvents)
 
-	// Realtime SSE — global data-change signals (public) and per-user events
-	// (invites, match notifications). Both paths end in /events so the frontend
-	// service worker's NetworkOnly exclusion covers them.
-	router.GET("/data/events", apiHandler.DataEvents)
-	router.GET("/me/events", oauth2Handler.DeserializeUser(), apiHandler.MeEvents)
+	// Realtime SSE — one multiplexed stream of the app-global topics (global
+	// data-change signals, both lobby signals, per-user events) picked via
+	// ?topics=. Auth is optional: anonymous callers silently get no "me"
+	// topic. The path ends in /events so the frontend service worker's
+	// NetworkOnly exclusion covers it.
+	router.GET("/events", oauth2Handler.OptionalDeserializeUser(), apiHandler.Events)
 
 	// Auth (delegated to oauth2Handler via StrictServer stubs)
 	authRouter := router.Group("/auth")

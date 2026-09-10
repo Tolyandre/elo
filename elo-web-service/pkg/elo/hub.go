@@ -44,6 +44,13 @@ func MarketTopic(marketID id.ID) string { return "market:" + string(marketID) }
 func TableTopic(tableID id.ID) string   { return "table:" + string(tableID) }
 func UserTopic(userID id.ID) string     { return "user:" + string(userID) }
 
+// TaggedFrame pairs a broadcast payload with the topic it arrived on, so one
+// multiplexed subscription can serve several topics at once.
+type TaggedFrame struct {
+	Topic   string
+	Payload []byte
+}
+
 // Subscribe registers a buffered channel for the given topic.
 // The caller MUST invoke cancel() (typically via defer) when the connection closes.
 func (h *Hub) Subscribe(topic string) (<-chan []byte, func()) {
@@ -83,6 +90,46 @@ func (h *Hub) Broadcast(topic string, payload []byte) {
 		default:
 		}
 	}
+}
+
+// SubscribeMany subscribes to several topics at once and fans their frames
+// into a single tagged channel — the multiplexed /events endpoint serves all
+// app-global topics over one SSE connection this way.
+//
+// Slow-client semantics match Subscribe: each per-topic channel drops when the
+// subscriber stalls (Broadcast is non-blocking), so a stalled client only ever
+// loses events, never blocks producers. The caller MUST invoke cancel().
+func (h *Hub) SubscribeMany(topics ...string) (<-chan TaggedFrame, func()) {
+	out := make(chan TaggedFrame, 8)
+	cancels := make([]func(), 0, len(topics))
+	done := make(chan struct{})
+	var forwarders sync.WaitGroup
+
+	for _, topic := range topics {
+		ch, cancel := h.Subscribe(topic)
+		cancels = append(cancels, cancel)
+		forwarders.Add(1)
+		go func(topic string, ch <-chan []byte) {
+			defer forwarders.Done()
+			for payload := range ch {
+				select {
+				case out <- TaggedFrame{Topic: topic, Payload: payload}:
+				case <-done:
+					return
+				}
+			}
+		}(topic, ch)
+	}
+
+	cancel := func() {
+		close(done)
+		for _, c := range cancels {
+			c()
+		}
+		forwarders.Wait()
+		close(out)
+	}
+	return out, cancel
 }
 
 // PublishSignal marshals a payload-less SSEEvent ({"type":"..."}) and

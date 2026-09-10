@@ -9,9 +9,9 @@ import (
 )
 
 // ─── Markets SSE ────────────────────────────────────────────────────────────
-// Two streams, both served through serveSSE (see sse.go):
-//   GET /markets/:id/events       — per-market probability/pool updates (PlaceBet)
-//   GET /markets/lobby/events     — markets-list change signal (refetch client-side)
+// GET /markets/:id/events — per-market probability/pool updates (PlaceBet),
+// served through serveSSE (see sse.go). The markets-list change signal rides
+// the multiplexed /events endpoint (events_mux.go).
 // In-process hub only (no Redis) → single backend instance.
 
 // MarketEvents streams live LMSR probabilities. On connect it sends the current
@@ -58,10 +58,3 @@ func (a *API) MarketEvents(c *gin.Context) {
 	}, initial)
 }
 
-// MarketsLobbyEvents signals subscribers whenever the set of markets changes
-// (create/delete/bet/close). Carries no payload — clients refetch on each signal.
-func (a *API) MarketsLobbyEvents(c *gin.Context) {
-	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.TopicLobbyMarkets)
-	}, initialSignalFrame("markets-changed"))
-}

@@ -34,7 +34,10 @@ liveness/reconnect scaffolding. On top of the duplication, three product gaps:
   | `user:<uuid>` | `GET /me/events` (session required) | invites / notifications |
 
   (Table topics were `skull-king-table:<uuid>` / `lobby:skull-king` before
-  tables were generalized — see [ADR-18](18-game-tables.md).)
+  tables were generalized — see [ADR-18](18-game-tables.md). Amended by
+  [ADR-19](19-sse-multiplexing.md): the four app-global topics (`data`, both
+  lobbies, `user:<uuid>` as `me`) now ride one multiplexed `GET /events?topics=…`
+  connection; only the per-entity streams remain 1:1.)
 
 - **`pkg/api/sse.go`** owns everything an SSE response needs: headers, optional
   initial frame, a `retry:` hint, the 15s heartbeat, and the pump loop.

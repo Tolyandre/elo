@@ -1,9 +1,10 @@
 /**
- * Trailing-debounce batcher for the global data-change SSE stream
- * (`/data/events`). The server broadcasts one payload-less signal per mutation
- * — adding a match emits "matches-changed" + "players-changed" — and bursts
- * happen (offline sync pushes a whole queue of matches at once), so signals are
- * accumulated and flushed as one batch after a quiet window.
+ * Trailing-debounce batcher for the global data-change signals (the "data"
+ * topic of the multiplexed /events SSE stream). The server broadcasts one
+ * payload-less signal per mutation — adding a match emits "matches-changed" +
+ * "players-changed" — and bursts happen (offline sync pushes a whole queue of
+ * matches at once), so signals are accumulated and flushed as one batch after
+ * a quiet window.
  */
 export type DataChangeBatch = {
     matches: boolean;

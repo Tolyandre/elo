@@ -12,21 +12,32 @@ import (
 )
 
 // ─── SSE plumbing ────────────────────────────────────────────────────────────
-// Every SSE stream in the service is served through serveSSE: it owns the
+// Every SSE stream in the service is served through pumpSSE: it owns the
 // response headers, the optional initial frame, the heartbeat that keeps
-// proxies/NATs from reaping idle connections, and the pump loop. Producers
-// broadcast to elo.Hub topics; handlers only pick a topic and an initial frame.
+// proxies/NATs from reaping idle connections, and the send loop. Producers
+// broadcast to elo.Hub topics; handlers pick topics and a frame renderer
+// (serveSSE for single-topic streams, Events for the multiplexed one).
 
 // sseRetryMs is the reconnect interval advertised to browser EventSource
 // clients (the `retry:` field), so auto-reconnects are prompt and predictable.
 const sseRetryMs = 5000
 
-// serveSSE streams events for one hub subscription until the client goes away.
+// serveSSE streams one hub topic as default (payload-only) SSE frames until
+// the client goes away — the per-entity streams (a game table, a market).
 // subscribe is called after the headers are decided; its cancel is deferred.
 // initial (optional) is written as the first data frame so clients sync
 // immediately on connect — pass nil for streams whose consumers already fetch
-// on mount (data/user events), where an initial signal would double-fetch.
+// on mount, where an initial snapshot would double-fetch.
 func (a *API) serveSSE(c *gin.Context, subscribe func() (<-chan []byte, func()), initial []byte) {
+	pumpSSE(c, subscribe, initial, func(msg []byte) string {
+		return fmt.Sprintf("data: %s\n\n", msg)
+	})
+}
+
+// pumpSSE is the single wire-format owner for every SSE stream: headers,
+// reconnect hint, optional initial frame, heartbeat, send loop. render turns
+// one received message into a complete SSE block.
+func pumpSSE[T any](c *gin.Context, subscribe func() (<-chan T, func()), initial []byte, render func(T) string) {
 	ch, cancel := subscribe()
 	defer cancel()
 
@@ -60,49 +71,13 @@ func (a *API) serveSSE(c *gin.Context, subscribe func() (<-chan []byte, func()),
 			if !ok {
 				return
 			}
-			fmt.Fprintf(c.Writer, "data: %s\n\n", msg)
+			fmt.Fprint(c.Writer, render(msg))
 			c.Writer.Flush()
 		case <-heartbeat.C:
 			fmt.Fprintf(c.Writer, "event: heartbeat\ndata: %d\n\n", time.Now().Unix())
 			c.Writer.Flush()
 		}
 	}
-}
-
-// initialSignalFrame marshals a payload-less event for the connect frame.
-func initialSignalFrame(eventType string) []byte {
-	payload, err := json.Marshal(elo.SSEEvent{Type: eventType})
-	if err != nil {
-		return nil
-	}
-	return payload
-}
-
-// ─── Global data-change stream ────────────────────────────────────────────────
-
-// DataEvents signals all connected clients whenever matches or players data
-// changes (match added/edited, corrections, player CRUD). Public like the lobby
-// streams — the underlying lists are public reads. No initial frame: consumers
-// fetch on mount and only react to change signals afterwards.
-func (a *API) DataEvents(c *gin.Context) {
-	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.TopicData)
-	}, nil)
-}
-
-// ─── Per-user event stream ────────────────────────────────────────────────────
-
-// MeEvents streams per-user events: Skull King table invites and
-// match-recorded notifications. Requires a session; the topic is the user id,
-// so events only ever reach their owner. No initial frame (nothing to sync).
-func (a *API) MeEvents(c *gin.Context) {
-	userID, err := MustGetCurrentUserId(c)
-	if err != nil {
-		return // error already written by MustGetCurrentUserId
-	}
-	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.UserTopic(userID))
-	}, nil)
 }
 
 // ─── Producer helpers (handler-side broadcasts) ──────────────────────────────

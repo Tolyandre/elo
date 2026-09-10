@@ -106,27 +106,115 @@ func isSignal(payload, eventType string) bool {
 	return json.Unmarshal([]byte(payload), &evt) == nil && evt.Type == eventType
 }
 
-// TestSSE_DataEvents_MatchAdded: adding a match through the HTTP handler must
-// broadcast matches-changed + players-changed on the global data stream so
-// every connected client refreshes (ADR-13).
-func TestSSE_DataEvents_MatchAdded(t *testing.T) {
+// muxFrame is one SSE frame from the multiplexed /events endpoint: the topic
+// arrives as the SSE event name, the payload as the usual JSON envelope.
+type muxFrame struct {
+	Event   string
+	Payload string
+}
+
+// openSSEMux starts a streaming GET against the multiplexed endpoint and
+// returns frames tagged with their SSE event name (the topic). The stream is
+// torn down via the returned func / t.Cleanup.
+func openSSEMux(t *testing.T, router *gin.Engine, path, token string) <-chan muxFrame {
+	t.Helper()
+
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("open SSE stream %s: %v", path, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("GET %s: %d", path, resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		resp.Body.Close()
+		t.Fatalf("Content-Type = %q, want text/event-stream", ct)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+
+	frames := make(chan muxFrame, 16)
+	go func() {
+		event := ""
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				frames <- muxFrame{Event: event, Payload: strings.TrimPrefix(line, "data: ")}
+				event = ""
+			}
+		}
+		close(frames)
+	}()
+	return frames
+}
+
+// waitForMuxFrame waits for the next frame on the given topic matching the
+// predicate (frames from other topics are skipped).
+func waitForMuxFrame(t *testing.T, frames <-chan muxFrame, topic, what string, match func(payload string) bool) muxFrame {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case frame, ok := <-frames:
+			if !ok {
+				t.Fatalf("SSE stream closed while waiting for %s", what)
+			}
+			if frame.Event == topic && match(frame.Payload) {
+				return frame
+			}
+		case <-deadline:
+			t.Fatalf("timeout waiting for SSE frame %s on topic %q", what, topic)
+		}
+	}
+}
+
+// TestSSE_Events_MatchAddedAndTableLobby: one multiplexed /events connection
+// carries several topics — adding a match must broadcast matches-changed +
+// players-changed on the "data" topic (ADR-13), and creating a table must
+// broadcast tables-changed on "lobby:tables", each tagged with its topic as
+// the SSE event name.
+func TestSSE_Events_MatchAddedAndTableLobby(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	token, _ := createTestUserWithID(t, pool, true)
+	q := db.New(pool)
+	token, hostUserID := createTestUserWithID(t, pool, true)
 	router := setupRouter(pool)
 
-	playerA := createTestPlayer(t, pool, "SsePlayerA")
+	hostPlayer := createTestPlayer(t, pool, "SsePlayerA")
 	playerB := createTestPlayer(t, pool, "SsePlayerB")
 	gameID := createTestGame(t, pool, "SseGame")
+	if err := q.UpdateUserPlayerID(context.Background(), db.UpdateUserPlayerIDParams{
+		ID:       idpkg.ID(hostUserID),
+		PlayerID: &hostPlayer,
+	}); err != nil {
+		t.Fatalf("link host player: %v", err)
+	}
 
-	frames := openSSE(t, router, "/data/events", token)
+	frames := openSSEMux(t, router, "/events?topics=data,lobby:tables", token)
 
 	// POST a match through the same router; the handler broadcasts after commit.
 	body, _ := json.Marshal(map[string]any{
 		"id":      newID(t),
 		"game_id": gameID,
-		"score":   map[string]float64{string(playerA): 5, string(playerB): 3},
+		"score":   map[string]float64{string(hostPlayer): 5, string(playerB): 3},
 	})
 	req, _ := http.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
@@ -137,14 +225,25 @@ func TestSSE_DataEvents_MatchAdded(t *testing.T) {
 		t.Fatalf("POST /matches: %d: %s", w.Code, w.Body.String())
 	}
 
-	waitForSSEFrame(t, frames, "matches-changed", func(p string) bool { return isSignal(p, "matches-changed") })
-	waitForSSEFrame(t, frames, "players-changed", func(p string) bool { return isSignal(p, "players-changed") })
+	waitForMuxFrame(t, frames, "data", "matches-changed", func(p string) bool { return isSignal(p, "matches-changed") })
+	waitForMuxFrame(t, frames, "data", "players-changed", func(p string) bool { return isSignal(p, "players-changed") })
+
+	// A table create on the same connection lands on the lobby topic.
+	state := map[string]any{
+		"phase":              "waiting-for-bids",
+		"players":            []map[string]any{{"id": string(hostPlayer), "name": "SsePlayerA"}, {"id": string(playerB), "name": "SsePlayerB"}},
+		"currentRound":       1,
+		"currentPlayerIndex": 0,
+		"rounds":             []any{nil},
+	}
+	createTableHTTP(t, router, token, newID(t), elo.GameIDSkullKing, state)
+	waitForMuxFrame(t, frames, "lobby:tables", "tables-changed", func(p string) bool { return isSignal(p, "tables-changed") })
 }
 
-// TestSSE_MeEvents_MatchRecorded: when an editor adds a match, the users
+// TestSSE_Events_MatchRecorded: when an editor adds a match, the users
 // controlling the match players (except the actor) get a match-recorded event
-// on their personal stream.
-func TestSSE_MeEvents_MatchRecorded(t *testing.T) {
+// on their personal "me" topic of the multiplexed stream.
+func TestSSE_Events_MatchRecorded(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -164,7 +263,9 @@ func TestSSE_MeEvents_MatchRecorded(t *testing.T) {
 		t.Fatalf("link player: %v", err)
 	}
 
-	frames := openSSE(t, router, "/me/events", playerToken)
+	// Requesting several topics proves the event-name dispatch separates the
+	// personal stream from the shared ones.
+	frames := openSSEMux(t, router, "/events?topics=me,data", playerToken)
 
 	body, _ := json.Marshal(map[string]any{
 		"id":      newID(t),
@@ -180,7 +281,7 @@ func TestSSE_MeEvents_MatchRecorded(t *testing.T) {
 		t.Fatalf("POST /matches: %d: %s", w.Code, w.Body.String())
 	}
 
-	frame := waitForSSEFrame(t, frames, "match-recorded", func(p string) bool { return isSignal(p, "match-recorded") })
+	frame := waitForMuxFrame(t, frames, "me", "match-recorded", func(p string) bool { return isSignal(p, "match-recorded") })
 	var evt struct {
 		Type string `json:"type"`
 		Data struct {
@@ -188,11 +289,73 @@ func TestSSE_MeEvents_MatchRecorded(t *testing.T) {
 			ActorName string `json:"actor_name"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(frame), &evt); err != nil {
+	if err := json.Unmarshal([]byte(frame.Payload), &evt); err != nil {
 		t.Fatalf("parse match-recorded frame: %v", err)
 	}
 	if _, err := idpkg.ParseTolerant(evt.Data.MatchID); err != nil {
 		t.Errorf("match_id %q is not a valid wire-form id: %v", evt.Data.MatchID, err)
+	}
+}
+
+// TestSSE_Events_AnonymousMeSkipped: an anonymous caller requesting "me"
+// still gets a working stream — the personal topic is silently skipped, so a
+// connection that raced a logout degrades to the shared topics instead of
+// erroring into a reconnect loop.
+func TestSSE_Events_AnonymousMeSkipped(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	editorToken, _ := createTestUserWithID(t, pool, true)
+	router := setupRouter(pool)
+
+	playerA := createTestPlayer(t, pool, "AnonSseA")
+	playerB := createTestPlayer(t, pool, "AnonSseB")
+	gameID := createTestGame(t, pool, "AnonSseGame")
+
+	frames := openSSEMux(t, router, "/events?topics=me,data", "")
+
+	body, _ := json.Marshal(map[string]any{
+		"id":      newID(t),
+		"game_id": gameID,
+		"score":   map[string]float64{string(playerA): 5, string(playerB): 3},
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/matches", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+editorToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /matches: %d: %s", w.Code, w.Body.String())
+	}
+
+	// The shared topic still flows; nothing arrives on "me" (waitForMuxFrame
+	// would skip foreign topics, so assert the topic explicitly).
+	frame := waitForMuxFrame(t, frames, "data", "matches-changed", func(p string) bool { return isSignal(p, "matches-changed") })
+	if frame.Event != "data" {
+		t.Errorf("event = %q, want data", frame.Event)
+	}
+}
+
+// TestSSE_Events_UnknownTopicRejected: the topic whitelist rejects anything
+// outside data/lobby:tables/lobby:markets/me with a 400.
+func TestSSE_Events_UnknownTopicRejected(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+
+	req, _ := http.NewRequest(http.MethodGet, "/events?topics=data,user:00000000-0000-0000-0000-000000000001", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("GET /events with a foreign topic: %d, want 400", w.Code)
+	}
+
+	req2, _ := http.NewRequest(http.MethodGet, "/events", nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusBadRequest {
+		t.Fatalf("GET /events without topics: %d, want 400", w2.Code)
 	}
 }
 
@@ -439,7 +602,7 @@ func TestSSE_HeartbeatNamedEventAndRetryHint(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/data/events", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/events?topics=data", nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}

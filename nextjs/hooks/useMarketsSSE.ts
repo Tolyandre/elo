@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { EloWebServiceBaseUrl } from "@/app/api";
 import { useSSE } from "@/hooks/useSSE";
+import { useSSETopic } from "@/hooks/useSSETopic";
 
 export type LiveMarketOutcome = {
     id: string;
@@ -50,9 +51,9 @@ export function useMarketProbabilitiesSSE(marketId: string | null): MarketProbab
 }
 
 /**
- * Subscribes to the markets lobby SSE channel while `enabled`. Returns a tick
- * counter that increments on every "markets-changed" signal, so callers refetch
- * the markets list by depending on it.
+ * Subscribes to the markets lobby topic of the multiplexed SSE stream while
+ * `enabled`. Returns a tick counter that increments on every "markets-changed"
+ * signal, so callers refetch the markets list by depending on it.
  */
 export function useMarketsLobbySSE(enabled: boolean): number {
     const [tick, setTick] = useState(0);
@@ -63,7 +64,7 @@ export function useMarketsLobbySSE(enabled: boolean): number {
         }
     }, []);
 
-    useSSE(enabled ? `${EloWebServiceBaseUrl}/markets/lobby/events` : null, {
+    useSSETopic(enabled ? "lobby:markets" : null, {
         onEvent,
     });
 

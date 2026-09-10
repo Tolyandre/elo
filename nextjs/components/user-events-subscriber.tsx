@@ -3,9 +3,8 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { EloWebServiceBaseUrl } from "@/app/api";
 import { useMe } from "@/app/meContext";
-import { useSSE } from "@/hooks/useSSE";
+import { useSSETopic } from "@/hooks/useSSETopic";
 import { TABLE_SESSION_KEY } from "@/hooks/useTableSession";
 import { gameAppByGameId } from "@/lib/game-apps";
 import { toBase58ID } from "@/lib/id";
@@ -20,8 +19,8 @@ function hasActiveTableSession(): boolean {
 }
 
 /**
- * Invisible app-wide subscriber to the per-user event stream (`GET /me/events`),
- * mounted only for signed-in users. Handles:
+ * Invisible app-wide subscriber to the per-user events (the "me" topic of
+ * the multiplexed /events stream), mounted only for signed-in users. Handles:
  *
  *   - "table-invite": another user created a game table with this user's
  *     player in it → toast with a "Войти" action that deep-links to the game
@@ -66,7 +65,7 @@ export function UserEventsSubscriber() {
         [router],
     );
 
-    useSSE(me.isAuthenticated ? `${EloWebServiceBaseUrl}/me/events` : null, { onEvent });
+    useSSETopic(me.isAuthenticated ? "me" : null, { onEvent });
 
     return null;
 }

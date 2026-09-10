@@ -10,6 +10,7 @@ import {
     TableSummary,
 } from "@/app/api";
 import { useSSE } from "@/hooks/useSSE";
+import { useSSETopic } from "@/hooks/useSSETopic";
 
 export type TableSSE = {
     table: TableSummary | null;
@@ -102,9 +103,9 @@ export function useTableSSE(
 }
 
 /**
- * Subscribes to the tables lobby SSE channel while `enabled`.
- * Returns a tick counter that increments on every "tables-changed" signal,
- * so callers refetch the table list by depending on it.
+ * Subscribes to the tables lobby topic of the multiplexed SSE stream while
+ * `enabled`. Returns a tick counter that increments on every "tables-changed"
+ * signal, so callers refetch the table list by depending on it.
  *
  * Recovery (reopen after error, tab visible again, back online) also bumps the
  * tick — the caller's effect refetches the list; no separate fetch happens here.
@@ -122,7 +123,7 @@ export function useTablesLobbySSE(enabled: boolean): number {
         setTick((t) => t + 1);
     }, []);
 
-    useSSE(enabled ? `${EloWebServiceBaseUrl}/tables/lobby/events` : null, {
+    useSSETopic(enabled ? "lobby:tables" : null, {
         onEvent,
         onRecover,
     });

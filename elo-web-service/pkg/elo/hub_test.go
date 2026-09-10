@@ -117,6 +117,63 @@ func TestHub_PublishSignal(t *testing.T) {
 	}
 }
 
+func TestHub_SubscribeManyFansInTaggedFrames(t *testing.T) {
+	h := NewHub()
+	ch, cancel := h.SubscribeMany(TopicData, TopicLobbyTables)
+	defer cancel()
+
+	h.PublishSignal(TopicData, "players-changed")
+	h.PublishSignal(TopicLobbyTables, "tables-changed")
+
+	got := map[string]string{}
+	for range []int{0, 1} {
+		select {
+		case frame := <-ch:
+			got[frame.Topic] = string(frame.Payload)
+		case <-time.After(time.Second):
+			t.Fatalf("missing frame; got %v", got)
+		}
+	}
+	for topic, want := range map[string]string{
+		TopicData:        "players-changed",
+		TopicLobbyTables: "tables-changed",
+	} {
+		var evt SSEEvent
+		if err := json.Unmarshal([]byte(got[topic]), &evt); err != nil {
+			t.Errorf("%s payload not valid SSEEvent: %v", topic, err)
+			continue
+		}
+		if evt.Type != want {
+			t.Errorf("%s type = %q, want %q", topic, evt.Type, want)
+		}
+	}
+}
+
+func TestHub_SubscribeManyCancelStopsDeliveryAndCleansUp(t *testing.T) {
+	h := NewHub()
+	ch, cancel := h.SubscribeMany(TopicData, TopicLobbyMarkets)
+
+	cancel()
+	// Sending on the closed per-topic channels would panic if the hub still
+	// delivered.
+	h.Broadcast(TopicData, []byte(`{}`))
+	h.Broadcast(TopicLobbyMarkets, []byte(`{}`))
+
+	for topic := range map[string]bool{TopicData: true, TopicLobbyMarkets: true} {
+		h.mu.RLock()
+		_, topicExists := h.subscribers[topic]
+		h.mu.RUnlock()
+		if topicExists {
+			t.Errorf("topic %q must be removed after cancel", topic)
+		}
+	}
+	// The fanned-out channel is closed once the forwarders drain — the same
+	// "cancel closes the channel" contract as Subscribe.
+	if _, open := <-ch; open {
+		t.Error("channel must be closed after cancel")
+	}
+}
+
 // Regression for the broadcast-vs-cancel race: Broadcast used to iterate the
 // subscriber map after releasing RLock while cancel() deleted and closed
 // channels — a concurrent map iteration / send-on-closed-channel crash.

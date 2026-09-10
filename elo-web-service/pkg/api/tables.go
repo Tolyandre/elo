@@ -295,12 +295,3 @@ func (a *API) TableEvents(c *gin.Context) {
 	}, initialPayload)
 }
 
-// ─── Lobby events stream ──────────────────────────────────────────────────────
-// Signals subscribers whenever the set of tables changes (create/delete/expiry).
-// Carries no payload — clients refetch the full list on each signal.
-
-func (a *API) TablesLobbyEvents(c *gin.Context) {
-	a.serveSSE(c, func() (<-chan []byte, func()) {
-		return a.Hub.Subscribe(elo.TopicLobbyTables)
-	}, initialSignalFrame("tables-changed"))
-}

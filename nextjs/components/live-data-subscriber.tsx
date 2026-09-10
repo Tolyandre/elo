@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { EloWebServiceBaseUrl } from "@/app/api";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { useSSE } from "@/hooks/useSSE";
+import { useSSETopic } from "@/hooks/useSSETopic";
 import { createDataEventBatcher } from "@/lib/live-data";
 
 /**
- * Invisible app-wide subscriber to the global data-change stream
- * (`GET /data/events`). Whenever any user adds/edits a match, applies a
- * correction or touches players, every open app invalidates its matches and
- * players contexts, so lists and rating values update live.
+ * Invisible app-wide subscriber to the global data-change signals (the
+ * "data" topic of the multiplexed /events stream). Whenever any user
+ * adds/edits a match, applies a correction or touches players, every open
+ * app invalidates its matches and players contexts, so lists and rating
+ * values update live.
  *
  * Signals are debounced via createDataEventBatcher: a burst of mutations
  * (e.g. offline sync) collapses into a single refetch.
@@ -36,7 +36,7 @@ export function LiveDataSubscriber() {
         [batcher],
     );
 
-    useSSE(`${EloWebServiceBaseUrl}/data/events`, { onEvent });
+    useSSETopic("data", { onEvent });
 
     return null;
 }

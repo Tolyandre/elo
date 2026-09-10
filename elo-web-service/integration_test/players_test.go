@@ -122,10 +122,9 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/markets/:id", strictWrapper.GetMarket)
 	r.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
 	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
-	// Realtime SSE endpoints (ADR-13): global data-change signals and
-	// per-user events.
-	r.GET("/data/events", a.DataEvents)
-	r.GET("/me/events", o.DeserializeUser(), a.MeEvents)
+	// Realtime SSE (ADR-13): the multiplexed global-topics stream; auth is
+	// optional (anonymous callers silently get no "me" topic).
+	r.GET("/events", o.OptionalDeserializeUser(), a.Events)
 	// Live game tables (ADR-13, ADR-15, ADR-16): raw gin handlers mirroring the
 	// route group in main.go.
 	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
@@ -140,7 +139,6 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	tbl.POST("/:id/takeover", o.DeserializeUser(), a.TakeoverTable)
 	tbl.DELETE("/:id", append(tblPlayerAuth, a.DeleteTable)...)
 	tbl.GET("/:id/events", a.TableEvents)
-	r.GET("/tables/lobby/events", noStore, a.TablesLobbyEvents)
 	return r
 }
 
