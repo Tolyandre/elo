@@ -1,4 +1,4 @@
-{ buildGoApplication, pkgs, version }:
+{ buildGoApplication, version }:
 
 buildGoApplication {
   pname = "elo-web-service";
@@ -10,8 +10,6 @@ buildGoApplication {
   # and must be committed alongside go.mod and go.sum.
   modules = ../elo-web-service/gomod2nix.toml;
 
-  nativeBuildInputs = [ pkgs.pkg-config ];
-  buildInputs = [ pkgs.opencv ];
-  CGO_ENABLED = "1";
-  tags = [ "opencv" ];
+  # Pure Go — no cgo, no C toolchain needed.
+  CGO_ENABLED = "0";
 }

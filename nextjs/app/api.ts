@@ -128,7 +128,6 @@ export type MarketOutcome = components["schemas"]["MarketOutcome"];
 export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
 export type WinStreakParams = components["schemas"]["WinStreakParams"];
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
-export type VoiceParseResult = components["schemas"]["VoiceParseResult"];
 export type TableSummary = components["schemas"]["TableSummary"];
 export type TableGameState = components["schemas"]["TableGameState"];
 export type TablePlayer = components["schemas"]["TablePlayer"];
@@ -143,7 +142,6 @@ export type TableSubmitInput =
     | components["schemas"]["SkullKingBidInput"]
     | components["schemas"]["SkullKingResultInput"]
     | components["schemas"]["IawwScoreInput"];
-export type SkullKingCardImageResult = components["schemas"]["SkullKingCardImageResult"];
 export type PlayerStats = components["schemas"]["PlayerStats"];
 export type GameEloStat = components["schemas"]["GameEloStat"];
 export type GameMatchStat = components["schemas"]["GameMatchStat"];
@@ -700,16 +698,6 @@ export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, e
 
 export async function getPlayerStatsPromise(id: Base58ID): Promise<PlayerStats> {
     return (await unwrap(client.GET("/players/{id}/stats", { params: { path: { id } } }))).data;
-}
-
-export async function parseVoiceInput(text: string): Promise<VoiceParseResult> {
-    return (await unwrap(client.POST("/voice/parse", { body: { text } }))).data;
-}
-
-export async function parseSkullKingCardImagePromise(imageBase64: string): Promise<SkullKingCardImageResult> {
-    return (await unwrap(client.POST("/skull-king/parse-card-image", {
-        body: { image: imageBase64 },
-    }))).data;
 }
 
 // ─── Live game table API (generic; per-game payloads, ADR-16) ────────────────

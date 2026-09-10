@@ -102,12 +102,6 @@ components:
     MarketDetail:
       $ref: './markets.yaml#/MarketDetail'
 
-    # Voice
-    VoiceScore:
-      $ref: './voice.yaml#/VoiceScore'
-    VoiceParseResult:
-      $ref: './voice.yaml#/VoiceParseResult'
-
     # Corrections
     Correction:
       $ref: './admin.yaml#/Correction'
@@ -141,10 +135,6 @@ components:
       $ref: './tables.yaml#/IawwGameState'
     IawwEntry:
       $ref: './tables.yaml#/IawwEntry'
-
-    # Skull King
-    SkullKingCardImageResult:
-      $ref: './skull-king.yaml#/SkullKingCardImageResult'
 
 security: []
 
@@ -250,11 +240,6 @@ paths:
   /admin/players/{id}/corrections:
     $ref: './admin.yaml#/AdminPlayerCorrections'
 
-  # Voice
-  /voice/parse:
-    $ref: './voice.yaml#/VoiceParse'
-
-  # Skull King
   # Game tables (generic live tables, ADR-16)
   /tables:
     $ref: './tables.yaml#/TablesCollection'
@@ -268,5 +253,3 @@ paths:
     $ref: './tables.yaml#/TableSubmit'
   /tables/{id}/takeover:
     $ref: './tables.yaml#/TableTakeover'
-  /skull-king/parse-card-image:
-    $ref: './skull-king.yaml#/SkullKingParseCardImage'

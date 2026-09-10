@@ -18,7 +18,6 @@ import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { ClubIcons } from "@/components/player-name";
 import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
-import { VoiceInput } from "@/components/voice-input";
 import { PendingMatch } from "@/lib/offline/types";
 import { toast } from "sonner";
 
@@ -188,22 +187,6 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         );
     };
 
-    const handleVoiceResult = (gameId: Base58ID | undefined, scores: { playerId: Base58ID; points: number }[]) => {
-        if (gameId) setSelectedGameId(gameId);
-        if (scores.length > 0) {
-            const merged = [...participants];
-            for (const { playerId, points } of scores) {
-                const existing = merged.find((p) => p.id === playerId);
-                if (existing) {
-                    existing.points = String(points);
-                } else {
-                    merged.push({ id: playerId, points: String(points), name: resolvePlayerName(playerId) });
-                }
-            }
-            setParticipants(merged);
-        }
-    };
-
     const handlePlayersChange = (newIds: Base58ID[]) => {
         setParticipants(
             newIds.map((id) => {
@@ -310,9 +293,6 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     </AlertDescription>
                 </Alert>
             ))}
-            <div>
-                <VoiceInput onResult={handleVoiceResult} />
-            </div>
             {isEdit && (
                 <div>
                     <label className="block font-semibold mb-2" htmlFor="matchDate">

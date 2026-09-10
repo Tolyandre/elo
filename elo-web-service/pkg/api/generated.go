@@ -264,66 +264,6 @@ func (e MarketDetailStatus) Valid() bool {
 	}
 }
 
-// Defines values for SkullKingCardImageResult0Type.
-const (
-	Chest      SkullKingCardImageResult0Type = "chest"
-	JollyRoger SkullKingCardImageResult0Type = "jolly-roger"
-	Map        SkullKingCardImageResult0Type = "map"
-	Parrot     SkullKingCardImageResult0Type = "parrot"
-)
-
-// Valid indicates whether the value is a known member of the SkullKingCardImageResult0Type enum.
-func (e SkullKingCardImageResult0Type) Valid() bool {
-	switch e {
-	case Chest:
-		return true
-	case JollyRoger:
-		return true
-	case Map:
-		return true
-	case Parrot:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SkullKingCardImageResult1Type.
-const (
-	Escape     SkullKingCardImageResult1Type = "escape"
-	Kraken     SkullKingCardImageResult1Type = "kraken"
-	Loot       SkullKingCardImageResult1Type = "loot"
-	Mermaid    SkullKingCardImageResult1Type = "mermaid"
-	Pirate     SkullKingCardImageResult1Type = "pirate"
-	SkullKing  SkullKingCardImageResult1Type = "skull-king"
-	Tigress    SkullKingCardImageResult1Type = "tigress"
-	WhiteWhale SkullKingCardImageResult1Type = "white-whale"
-)
-
-// Valid indicates whether the value is a known member of the SkullKingCardImageResult1Type enum.
-func (e SkullKingCardImageResult1Type) Valid() bool {
-	switch e {
-	case Escape:
-		return true
-	case Kraken:
-		return true
-	case Loot:
-		return true
-	case Mermaid:
-		return true
-	case Pirate:
-		return true
-	case SkullKing:
-		return true
-	case Tigress:
-		return true
-	case WhiteWhale:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for SkullKingGameStatePhase.
 const (
 	SkullKingGameStatePhaseBidReview      SkullKingGameStatePhase = "bid-review"
@@ -972,28 +912,6 @@ type SettlementDetail struct {
 	Staked     float64  `json:"staked"`
 }
 
-// SkullKingCardImageResult defines model for SkullKingCardImageResult.
-type SkullKingCardImageResult struct {
-	union json.RawMessage
-}
-
-// SkullKingCardImageResult0 Card with a numeric value (jolly roger, chest, parrot, map)
-type SkullKingCardImageResult0 struct {
-	Type  SkullKingCardImageResult0Type `json:"type"`
-	Value int                           `json:"value"`
-}
-
-// SkullKingCardImageResult0Type defines model for SkullKingCardImageResult.0.Type.
-type SkullKingCardImageResult0Type string
-
-// SkullKingCardImageResult1 Special card without a numeric value
-type SkullKingCardImageResult1 struct {
-	Type SkullKingCardImageResult1Type `json:"type"`
-}
-
-// SkullKingCardImageResult1Type defines model for SkullKingCardImageResult.1.Type.
-type SkullKingCardImageResult1Type string
-
 // SkullKingGameState defines model for SkullKingGameState.
 type SkullKingGameState struct {
 	CurrentPlayerIndex int                     `json:"currentPlayerIndex"`
@@ -1102,19 +1020,6 @@ type User struct {
 	Id       Base58ID  `json:"id"`
 	Name     string    `json:"name"`
 	PlayerId *Base58ID `json:"player_id,omitempty"`
-}
-
-// VoiceParseResult defines model for VoiceParseResult.
-type VoiceParseResult struct {
-	GameId *Base58ID    `json:"game_id,omitempty"`
-	Scores []VoiceScore `json:"scores"`
-}
-
-// VoiceScore defines model for VoiceScore.
-type VoiceScore struct {
-	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	PlayerId Base58ID `json:"player_id"`
-	Points   int      `json:"points"`
 }
 
 // WinStreakParams defines model for WinStreakParams.
@@ -1443,12 +1348,6 @@ type CreateSettingsJSONBody struct {
 	WinReward     float64   `json:"win_reward"`
 }
 
-// ParseSkullKingCardImageJSONBody defines parameters for ParseSkullKingCardImage.
-type ParseSkullKingCardImageJSONBody struct {
-	// Image Base64-encoded card image
-	Image string `json:"image"`
-}
-
 // DeleteTableParams defines parameters for DeleteTable.
 type DeleteTableParams struct {
 	// MatchId When provided, the server broadcasts a `saved` SSE event carrying this match id to the table's subscribers before deleting the table, so connected players can be redirected to the saved match. Omitted by the host when closing the table without saving (a `closed` event instead).
@@ -1469,12 +1368,6 @@ type TakeoverTableJSONBody struct {
 // PatchUserJSONBody defines parameters for PatchUser.
 type PatchUserJSONBody struct {
 	CanEdit bool `json:"can_edit"`
-}
-
-// ParseVoiceInputJSONBody defines parameters for ParseVoiceInput.
-type ParseVoiceInputJSONBody struct {
-	// Text Speech-to-text input to parse
-	Text string `json:"text"`
 }
 
 // CreatePlayerCorrectionJSONRequestBody defines body for CreatePlayerCorrection for application/json ContentType.
@@ -1525,9 +1418,6 @@ type DeleteSettingsJSONRequestBody DeleteSettingsJSONBody
 // CreateSettingsJSONRequestBody defines body for CreateSettings for application/json ContentType.
 type CreateSettingsJSONRequestBody CreateSettingsJSONBody
 
-// ParseSkullKingCardImageJSONRequestBody defines body for ParseSkullKingCardImage for application/json ContentType.
-type ParseSkullKingCardImageJSONRequestBody ParseSkullKingCardImageJSONBody
-
 // CreateTableJSONRequestBody defines body for CreateTable for application/json ContentType.
 type CreateTableJSONRequestBody = TablesCreateTableRequest
 
@@ -1548,9 +1438,6 @@ type UpdateTournamentJSONRequestBody = TournamentInput
 
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
-
-// ParseVoiceInputJSONRequestBody defines body for ParseVoiceInput for application/json ContentType.
-type ParseVoiceInputJSONRequestBody ParseVoiceInputJSONBody
 
 // AsAuditEntityDetails returns the union data inside the AuditEntry_Details as a AuditEntityDetails
 func (t AuditEntry_Details) AsAuditEntityDetails() (AuditEntityDetails, error) {
@@ -1760,68 +1647,6 @@ func (t MarketDetail_Params) MarshalJSON() ([]byte, error) {
 }
 
 func (t *MarketDetail_Params) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsSkullKingCardImageResult0 returns the union data inside the SkullKingCardImageResult as a SkullKingCardImageResult0
-func (t SkullKingCardImageResult) AsSkullKingCardImageResult0() (SkullKingCardImageResult0, error) {
-	var body SkullKingCardImageResult0
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromSkullKingCardImageResult0 overwrites any union data inside the SkullKingCardImageResult as the provided SkullKingCardImageResult0
-func (t *SkullKingCardImageResult) FromSkullKingCardImageResult0(v SkullKingCardImageResult0) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeSkullKingCardImageResult0 performs a merge with any union data inside the SkullKingCardImageResult, using the provided SkullKingCardImageResult0
-func (t *SkullKingCardImageResult) MergeSkullKingCardImageResult0(v SkullKingCardImageResult0) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-// AsSkullKingCardImageResult1 returns the union data inside the SkullKingCardImageResult as a SkullKingCardImageResult1
-func (t SkullKingCardImageResult) AsSkullKingCardImageResult1() (SkullKingCardImageResult1, error) {
-	var body SkullKingCardImageResult1
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromSkullKingCardImageResult1 overwrites any union data inside the SkullKingCardImageResult as the provided SkullKingCardImageResult1
-func (t *SkullKingCardImageResult) FromSkullKingCardImageResult1(v SkullKingCardImageResult1) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeSkullKingCardImageResult1 performs a merge with any union data inside the SkullKingCardImageResult, using the provided SkullKingCardImageResult1
-func (t *SkullKingCardImageResult) MergeSkullKingCardImageResult1(v SkullKingCardImageResult1) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t SkullKingCardImageResult) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *SkullKingCardImageResult) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -2110,9 +1935,6 @@ type ServerInterface interface {
 	// ListAllSettings Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(c *gin.Context)
-	// ParseSkullKingCardImage Identify a Skull King card from a base64-encoded image
-	// (POST /skull-king/parse-card-image)
-	ParseSkullKingCardImage(c *gin.Context)
 	// ListTables List all active game tables
 	// (GET /tables)
 	ListTables(c *gin.Context)
@@ -2161,9 +1983,6 @@ type ServerInterface interface {
 	// PatchUser Update user editing permissions
 	// (PATCH /users/{userId})
 	PatchUser(c *gin.Context, userId string)
-	// ParseVoiceInput Parse natural language speech into game scores using Ollama
-	// (POST /voice/parse)
-	ParseVoiceInput(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3152,19 +2971,6 @@ func (siw *ServerInterfaceWrapper) ListAllSettings(c *gin.Context) {
 	siw.Handler.ListAllSettings(c)
 }
 
-// ParseSkullKingCardImage operation middleware
-func (siw *ServerInterfaceWrapper) ParseSkullKingCardImage(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ParseSkullKingCardImage(c)
-}
-
 // ListTables operation middleware
 func (siw *ServerInterfaceWrapper) ListTables(c *gin.Context) {
 
@@ -3516,19 +3322,6 @@ func (siw *ServerInterfaceWrapper) PatchUser(c *gin.Context) {
 	siw.Handler.PatchUser(c, userId)
 }
 
-// ParseVoiceInput operation middleware
-func (siw *ServerInterfaceWrapper) ParseVoiceInput(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ParseVoiceInput(c)
-}
-
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -3600,7 +3393,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/settings", wrapper.GetSettings)
 	router.POST(options.BaseURL+"/settings", wrapper.CreateSettings)
 	router.GET(options.BaseURL+"/settings/all", wrapper.ListAllSettings)
-	router.POST(options.BaseURL+"/skull-king/parse-card-image", wrapper.ParseSkullKingCardImage)
 	router.GET(options.BaseURL+"/tables", wrapper.ListTables)
 	router.POST(options.BaseURL+"/tables", wrapper.CreateTable)
 	router.DELETE(options.BaseURL+"/tables/:id", wrapper.DeleteTable)
@@ -3617,7 +3409,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/tournaments/:id/stats", wrapper.GetTournamentStats)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
-	router.POST(options.BaseURL+"/voice/parse", wrapper.ParseVoiceInput)
 }
 
 type CreatePlayerCorrectionRequestObject struct {
@@ -6045,59 +5836,6 @@ func (response ListAllSettings200JSONResponse) VisitListAllSettingsResponse(w ht
 	return err
 }
 
-type ParseSkullKingCardImageRequestObject struct {
-	Body *ParseSkullKingCardImageJSONRequestBody
-}
-
-type ParseSkullKingCardImageResponseObject interface {
-	VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error
-}
-
-type ParseSkullKingCardImage200JSONResponse struct {
-	Data   SkullKingCardImageResult `json:"data"`
-	Status string                   `json:"status"`
-}
-
-func (response ParseSkullKingCardImage200JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseSkullKingCardImage400JSONResponse ApiError
-
-func (response ParseSkullKingCardImage400JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseSkullKingCardImage500JSONResponse ApiError
-
-func (response ParseSkullKingCardImage500JSONResponse) VisitParseSkullKingCardImageResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListTablesRequestObject struct {
 }
 
@@ -7067,87 +6805,6 @@ func (response PatchUser404JSONResponse) VisitPatchUserResponse(w http.ResponseW
 	return err
 }
 
-type ParseVoiceInputRequestObject struct {
-	Body *ParseVoiceInputJSONRequestBody
-}
-
-type ParseVoiceInputResponseObject interface {
-	VisitParseVoiceInputResponse(w http.ResponseWriter) error
-}
-
-type ParseVoiceInput200JSONResponse struct {
-	Data   VoiceParseResult `json:"data"`
-	Status string           `json:"status"`
-}
-
-func (response ParseVoiceInput200JSONResponse) VisitParseVoiceInputResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseVoiceInput400JSONResponse ApiError
-
-func (response ParseVoiceInput400JSONResponse) VisitParseVoiceInputResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseVoiceInput401JSONResponse ApiError
-
-func (response ParseVoiceInput401JSONResponse) VisitParseVoiceInputResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseVoiceInput403JSONResponse ApiError
-
-func (response ParseVoiceInput403JSONResponse) VisitParseVoiceInputResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ParseVoiceInput500JSONResponse ApiError
-
-func (response ParseVoiceInput500JSONResponse) VisitParseVoiceInputResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// CreatePlayerCorrection Apply a manual rating correction for a player
@@ -7282,9 +6939,6 @@ type StrictServerInterface interface {
 	// ListAllSettings Get all Elo settings entries (historical and future)
 	// (GET /settings/all)
 	ListAllSettings(ctx context.Context, request ListAllSettingsRequestObject) (ListAllSettingsResponseObject, error)
-	// ParseSkullKingCardImage Identify a Skull King card from a base64-encoded image
-	// (POST /skull-king/parse-card-image)
-	ParseSkullKingCardImage(ctx context.Context, request ParseSkullKingCardImageRequestObject) (ParseSkullKingCardImageResponseObject, error)
 	// ListTables List all active game tables
 	// (GET /tables)
 	ListTables(ctx context.Context, request ListTablesRequestObject) (ListTablesResponseObject, error)
@@ -7333,9 +6987,6 @@ type StrictServerInterface interface {
 	// PatchUser Update user editing permissions
 	// (PATCH /users/{userId})
 	PatchUser(ctx context.Context, request PatchUserRequestObject) (PatchUserResponseObject, error)
-	// ParseVoiceInput Parse natural language speech into game scores using Ollama
-	// (POST /voice/parse)
-	ParseVoiceInput(ctx context.Context, request ParseVoiceInputRequestObject) (ParseVoiceInputResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx *gin.Context, request any) (any, error)
@@ -8614,37 +8265,6 @@ func (sh *strictHandler) ListAllSettings(ctx *gin.Context) {
 	}
 }
 
-// ParseSkullKingCardImage operation middleware
-func (sh *strictHandler) ParseSkullKingCardImage(ctx *gin.Context) {
-	var request ParseSkullKingCardImageRequestObject
-
-	var body ParseSkullKingCardImageJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ParseSkullKingCardImage(ctx, request.(ParseSkullKingCardImageRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ParseSkullKingCardImage")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ParseSkullKingCardImageResponseObject); ok {
-		if err := validResponse.VisitParseSkullKingCardImageResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // ListTables operation middleware
 func (sh *strictHandler) ListTables(ctx *gin.Context) {
 	var request ListTablesRequestObject
@@ -9097,37 +8717,6 @@ func (sh *strictHandler) PatchUser(ctx *gin.Context, userId string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchUserResponseObject); ok {
 		if err := validResponse.VisitPatchUserResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ParseVoiceInput operation middleware
-func (sh *strictHandler) ParseVoiceInput(ctx *gin.Context) {
-	var request ParseVoiceInputRequestObject
-
-	var body ParseVoiceInputJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ParseVoiceInput(ctx, request.(ParseVoiceInputRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ParseVoiceInput")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ParseVoiceInputResponseObject); ok {
-		if err := validResponse.VisitParseVoiceInputResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

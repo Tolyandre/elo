@@ -2,7 +2,6 @@ package api
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tolyandre/elo-web-service/pkg/configuration"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
@@ -19,8 +18,6 @@ type API struct {
 	TableService       elo.ITableService
 	AuditService       elo.IAuditService
 	Hub                *elo.Hub
-	CardRecognizer     ICardRecognizer
-	VoiceParser        *VoiceParser
 }
 
 func New(pool *pgxpool.Pool) *API {
@@ -40,7 +37,5 @@ func New(pool *pgxpool.Pool) *API {
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
 		Hub:                hub,
-		CardRecognizer:     newCardRecognizer(),
-		VoiceParser:        NewVoiceParser(configuration.Config.OllamaBaseUrl, configuration.Config.OllamaModel),
 	}
 }

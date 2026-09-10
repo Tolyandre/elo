@@ -27,7 +27,7 @@
         in
         {
           default = pkgs.callPackage ./nix/default.nix {
-              inherit buildGoApplication pkgs;
+              inherit buildGoApplication;
               version = self.rev or self.dirtyRev;
             };
 
@@ -61,17 +61,6 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           lib = pkgs.lib;
-          pythonEnv = pkgs.python3.withPackages (ps: [
-            ps.tkinter
-            ps.ultralytics
-            ps.albumentations
-            ps.opencv4
-            ps.pillow
-            ps.numpy
-            ps.fastapi
-            ps.uvicorn
-            ps.python-multipart
-          ]);
         in
         {
           default = pkgs.mkShell {
@@ -85,35 +74,15 @@
               ++ [
                 pkgs.git
                 pkgs.go
-                pkgs.gcc
-                pkgs.pkg-config
-                pkgs.opencv
                 pkgs.sqlc
                 pkgs.delve
                 pkgs.gopls
-                pythonEnv
-                pkgs.ninja
-                pkgs.meson
-                pkgs.cmake
-                pkgs.zlib
                 gomod2nix.packages.${system}.default
               ];
 
             shellHook = lib.optionalString pkgs.stdenv.isLinux ''
-              export LD_LIBRARY_PATH=${lib.makeLibraryPath [
-                pkgs.stdenv.cc.cc
-                pkgs.zlib
-                pkgs.glib
-                pkgs.libxcb
-                pkgs.libx11
-                pkgs.libxext
-                pkgs.libGL
-                pkgs.libglvnd
-              ]}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-
               # Stable symlinks so VSCode can locate Nix-provided tools.
               # Recreated on every direnv reload when the env changes.
-              ln -sfn ${pythonEnv} "$PWD/.python-nix"
               ln -sfn ${pkgs.delve} "$PWD/.delve-nix"
               ln -sfn ${pkgs.gopls} "$PWD/.gopls-nix"
             '';

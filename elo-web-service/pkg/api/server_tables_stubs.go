@@ -5,10 +5,6 @@ import "context"
 // Table routes are handled by raw Gin handlers on *API (not via StrictServer),
 // so these strict interface stubs are never invoked at runtime.
 
-func (s *StrictServer) ParseSkullKingCardImage(_ context.Context, _ ParseSkullKingCardImageRequestObject) (ParseSkullKingCardImageResponseObject, error) {
-	panic("unreachable: skull king card parsing routed directly")
-}
-
 func (s *StrictServer) ListTables(_ context.Context, _ ListTablesRequestObject) (ListTablesResponseObject, error) {
 	panic("unreachable: tables routed directly")
 }

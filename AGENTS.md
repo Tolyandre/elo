@@ -15,7 +15,6 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
 - `openapi/`: source API specifications. Update these before regenerating API clients/server bindings. Every id-bearing property MUST reference the shared `Base58ID` schema (`openapi/common.yaml`) — the openapilint test fails the build otherwise. Path/query params with id values stay plain `type: string` (parsed via `id.ParseTolerant` in handlers).
 - `nix/`, `flake.nix`, `flake.lock`: Nix development and deployment definitions.
 - `mock-oauth2/`: minimal OAuth2/OIDC mock for local dev (started by `make dev-up`). Its login page lists every user from the dev database (`DB_DSN`) and lets you log in as any of them or as a new display name (sub derived from the name; the backend creates the user on first login) — handy for debugging multi-user flows or after `make copy-prod-db-to-dev`.
-- `recognition/`: Python/OpenCV card recognition tools and datasets.
 - `adr/`: architecture decision records.
 
 ## Build, Test, and Development Commands
@@ -35,11 +34,11 @@ nix develop .# --command bash -lc 'make integration-test-podman'
 
 What's where:
 
-- **Provided by the devShell** (absent or version-different on ambient PATH): the pinned `go`, `gcc`/`pkg-config`/`opencv` (the CGO toolchain for `pkg/cardrecognition`), `sqlc`, `gomod2nix`, `gopls`, and `python3` (the flake's `pythonEnv`, bundling the project's python deps — opencv, numpy, ultralytics, pillow, tkinter, fastapi, uvicorn; also exposed as the `.python-nix` symlink at the repo root). `make` is also reachable inside the devShell (pulled in transitively, not declared in `buildInputs`).
+- **Provided by the devShell** (absent or version-different on ambient PATH): the pinned `go`, `sqlc`, `gomod2nix`, and `gopls`. `make` is also reachable inside the devShell (pulled in transitively, not declared in `buildInputs`).
 - **From the ambient system PATH, not the flake**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; the flake does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm`.
 - **Not a standalone binary**: `oapi-codegen` runs via `go generate` (`make generate-go-api` → `go generate ./pkg/api/...`), so it's built on demand from `go.mod` — no binary needs to be on PATH.
 
-If a Nix build of the CGO code is unavailable (no compiler/libs), build and test with `CGO_ENABLED=0`; the `pkg/cardrecognition` cgo code is `//go:build integration`-gated with a `!cgo` fallback, so the non-integration build still works.
+The service is pure Go (`CGO_ENABLED=0` everywhere, including the Nix build) — no C toolchain is required.
 
 Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are unset in the ambient environment, but the Makefile targets set `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` explicitly. That user-scoped podman socket must exist and be reachable; `podman ps` is the quick reachability check.
 

@@ -27,27 +27,14 @@ jobs:
       with:
         go-version: '1.25.x'
 
-    - name: Cache OpenCV build
-      id: cache-opencv
-      uses: actions/cache@v4
-      with:
-        path: /usr/local/lib/pkgconfig/opencv4.pc
-        key: opencv-4.13.0-ubuntu-latest
-
     - name: Download Go modules
       run: go mod download
 
-    - name: Install OpenCV 4.13.0
-      if: steps.cache-opencv.outputs.cache-hit != 'true'
-      run: |
-        cd $(go env GOPATH)/pkg/mod/gocv.io/x/gocv@v0.43.0
-        sudo make install
-
     - name: Build
-      run: go build -tags opencv -v ./...
+      run: go build -v ./...
 
     - name: Test
-      run: go test -tags opencv -v ./...
+      run: go test -v ./...
 
   integration-test:
     runs-on: ubuntu-latest
@@ -68,5 +55,4 @@ jobs:
     - name: Integration Tests
       # Docker is available on ubuntu-latest; testcontainers-go uses the Docker socket directly.
       # No `services:` block needed — each test spins up its own isolated container.
-      # Targets only ./integration_test/ so OpenCV is not required (noop recognizer is used).
       run: go test -v -tags integration ./integration_test/

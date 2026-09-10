@@ -11,24 +11,20 @@ import (
 )
 
 type Configuration struct {
-	Address                      string  `mapstructure:"address"`
-	Oauth2ClientId               string  `mapstructure:"oauth2_client_id"`
-	Oauth2ClientSecret           string  `mapstructure:"oauth2_client_secret"`
-	Oauth2TokenUri               string  `mapstructure:"oauth2_token_uri"`
-	Oauth2AuthUri                string  `mapstructure:"oauth2_auth_uri"`
-	Oauth2RedirectUri            string  `mapstructure:"oauth2_redirect_uri"`
-	Oauth2UserinfoUri            string  `mapstructure:"oauth2_userinfo_uri"`
-	Oauth2Scopes                 string  `mapstructure:"oauth2_scopes"`
-	CookieJwtSecret              string  `mapstructure:"cookie_jwt_secret"`
-	CookieTtlSeconds             int     `mapstructure:"cookie_ttl_seconds"`
-	CookieName                   string  `mapstructure:"cookie_name"`
-	FrontendUri                  string  `mapstructure:"frontend_uri"`
-	PostgresDSN                  string  `mapstructure:"postgres_dsn"`
-	PostgresPassword             string  `mapstructure:"postgres_password"`
-	OllamaBaseUrl                string  `mapstructure:"ollama_base_url"`
-	OllamaModel                  string  `mapstructure:"ollama_model"`
-	OllamaVisionModel            string  `mapstructure:"ollama_vision_model"`
-	SkullKingConfidenceThreshold float64 `mapstructure:"skull_king_confidence_threshold"`
+	Address            string `mapstructure:"address"`
+	Oauth2ClientId     string `mapstructure:"oauth2_client_id"`
+	Oauth2ClientSecret string `mapstructure:"oauth2_client_secret"`
+	Oauth2TokenUri     string `mapstructure:"oauth2_token_uri"`
+	Oauth2AuthUri      string `mapstructure:"oauth2_auth_uri"`
+	Oauth2RedirectUri  string `mapstructure:"oauth2_redirect_uri"`
+	Oauth2UserinfoUri  string `mapstructure:"oauth2_userinfo_uri"`
+	Oauth2Scopes       string `mapstructure:"oauth2_scopes"`
+	CookieJwtSecret    string `mapstructure:"cookie_jwt_secret"`
+	CookieTtlSeconds   int    `mapstructure:"cookie_ttl_seconds"`
+	CookieName         string `mapstructure:"cookie_name"`
+	FrontendUri        string `mapstructure:"frontend_uri"`
+	PostgresDSN        string `mapstructure:"postgres_dsn"`
+	PostgresPassword   string `mapstructure:"postgres_password"`
 }
 
 var Config Configuration
@@ -57,10 +53,6 @@ func ReadConfiguration() {
 
 	viper.SetConfigFile(*configPath)
 	viper.SetDefault("address", "localhost:8080")
-	viper.SetDefault("ollama_base_url", "http://127.0.0.1:11434")
-	viper.SetDefault("ollama_model", "qwen2.5")
-	viper.SetDefault("ollama_vision_model", "llava")
-	viper.SetDefault("skull_king_confidence_threshold", 0.75)
 	viper.SetEnvPrefix("ELO_WEB_SERVICE")
 	viper.AutomaticEnv()
 
@@ -131,15 +123,11 @@ var configKeys = []string{
 	"frontend_uri",
 	"postgres_dsn",
 	"postgres_password",
-	"ollama_base_url",
-	"ollama_model",
-	"ollama_vision_model",
-	"skull_king_confidence_threshold",
 }
 
 // requiredKeys are the string fields that must be non-empty at startup. Note
 // this is a subset of configKeys: cookie_name/oauth2_scopes/postgres_password
-// and the ollama/skull-king tuning knobs are intentionally optional.
+// are intentionally optional.
 var requiredKeys = []string{
 	"address",
 	"oauth2_client_id",

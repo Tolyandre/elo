@@ -52,14 +52,9 @@
 /result
 .direnv/
 
-# python
-.python-nix
-
 # Go tools (Nix symlinks, see flake.nix shellHook)
 .delve-nix
 .gopls-nix
-recognition/**/__pycache__/
-recognition/**/*.pyc
 
 # golang
 /elo-web-service/__debug_bin*

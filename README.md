@@ -32,7 +32,7 @@ nix-direnv is required to avoid a VSCode restart loop: without it direnv re-eval
 
 Install the [mkhl.direnv](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv) extension. It picks up the flake devShell automatically — no separate Nix extension needed.
 
-The workspace [settings.json](.vscode/settings.json) already sets `python.defaultInterpreterPath` to `.venv/bin/python`, so the Python extension resolves imports correctly once the venv is created (see [Python section](#python-recognition-tools) below).
+The workspace [settings.json](.vscode/settings.json) wires the direnv-provided Go tools (dlv, gopls) for the Go extension.
 
 ## Dependencies and fast startup
 
@@ -86,12 +86,6 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 cd elo-web-service
 go run . --config-path ./config/config.docker.yaml
 ```
-
-## Python (recognition tools)
-
-Card recognition scripts live in `recognition/` and use Python 3.11. All dependencies (`ultralytics`, `albumentations`, `opencv`, `fastapi`, etc.) are declared in `flake.nix` and provided by the Nix devShell — no `pip install` or venv setup required.
-
-After `direnv allow`, `python3.11` in the shell already has all packages available. VSCode's Python extension picks up the interpreter via `.vscode/settings.json`, which points to `.python-nix/bin/python3.11` — a symlink to the current Nix Python env, recreated automatically by the shellHook on each `direnv reload`.
 
 ## Hosting (NixOS)
 

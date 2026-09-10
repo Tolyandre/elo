@@ -421,10 +421,6 @@ schema = 3
     version = 'v3.0.5'
     hash = 'sha256-ygho+GU5kE7vPMx+dZYyNfCaeMjNxj66XmrcVf3afFE='
 
-  [mod.'gocv.io/x/gocv']
-    version = 'v0.43.0'
-    hash = 'sha256-bAzaEV27Xud8x4VueQK0VPK+tx310HojIBQ6W+qiR/8='
-
   [mod.'golang.org/x/arch']
     version = 'v0.29.0'
     hash = 'sha256-CqC8aNJdS0Qtr31j2ao9hTQJk8KRfcHDL7/HL3mbD4g='

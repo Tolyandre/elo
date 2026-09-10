@@ -590,23 +590,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/voice/parse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Parse natural language speech into game scores using Ollama */
-        post: operations["ParseVoiceInput"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/tables": {
         parameters: {
             query?: never;
@@ -711,23 +694,6 @@ export interface paths {
          * @description Claims hosting for the requesting device (host_client_token — a per-browser token; the summary broadcasts it so the same user's other devices step down to player/viewer mode). The current host may always re-claim, which is also how hosting resumes on another device; any other user additionally needs edit permission.
          */
         post: operations["TakeoverTable"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/skull-king/parse-card-image": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Identify a Skull King card from a base64-encoded image */
-        post: operations["ParseSkullKingCardImage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1057,14 +1023,6 @@ export interface components {
             /** Format: double */
             bet_limit?: number | null;
         };
-        VoiceScore: {
-            player_id: components["schemas"]["Base58ID"];
-            points: number;
-        };
-        VoiceParseResult: {
-            game_id?: components["schemas"]["Base58ID"] | null;
-            scores: components["schemas"]["VoiceScore"][];
-        };
         Correction: {
             id: components["schemas"]["Base58ID"];
             player_id: components["schemas"]["Base58ID"];
@@ -1190,14 +1148,6 @@ export interface components {
             cells: components["schemas"]["IawwCell"][];
             /** @description The player has submitted their final scoring */
             done: boolean;
-        };
-        SkullKingCardImageResult: {
-            /** @enum {string} */
-            type: "jolly-roger" | "chest" | "parrot" | "map";
-            value: number;
-        } | {
-            /** @enum {string} */
-            type: "skull-king" | "pirate" | "tigress" | "mermaid" | "escape" | "loot" | "kraken" | "white-whale";
         };
         /** @description One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»). */
         MarketOutcome: {
@@ -3791,72 +3741,6 @@ export interface operations {
             };
         };
     };
-    ParseVoiceInput: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Speech-to-text input to parse */
-                    text: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Parsed game and scores */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["VoiceParseResult"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Ollama error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     ListTables: {
         parameters: {
             query?: never;
@@ -4245,54 +4129,6 @@ export interface operations {
             };
             /** @description Table not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    ParseSkullKingCardImage: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Base64-encoded card image */
-                    image: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Identified card */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["SkullKingCardImageResult"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Image processing error */
-            500: {
                 headers: {
                     [name: string]: unknown;
                 };

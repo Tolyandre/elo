@@ -16,7 +16,6 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
-	gocv.io/x/gocv v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

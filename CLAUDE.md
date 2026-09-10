@@ -15,7 +15,7 @@ Elo rating tracker for board games with a Go backend, Next.js frontend, and Post
 
 This project uses Nix with direnv for reproducible development environments. After initial setup (`direnv allow`), all tools (Go, pnpm, Node.js, etc.) are automatically available.
 
-**Use the Nix dev shell in every mode, including plan mode.** Agents without a direnv hook must wrap every project command: `nix develop .# --command bash -lc '<command>'`. Entering the shell is not a system modification — `nix develop` only materializes the pinned toolchain into the Nix store (a per-user cache) — so it is fine in plan mode even when it downloads or builds packages. Do not fall back to ambient `python3`/`go`/etc. to avoid a Nix download; read-only commands (tests, linters, python analysis) must also run through the wrapper. For Python work use the shell's `python3` (the flake's `pythonEnv`: opencv, numpy, ultralytics, pillow, tkinter, fastapi, uvicorn; also symlinked at `.python-nix` in the repo root).
+**Use the Nix dev shell in every mode, including plan mode.** Agents without a direnv hook must wrap every project command: `nix develop .# --command bash -lc '<command>'`. Entering the shell is not a system modification — `nix develop` only materializes the pinned toolchain into the Nix store (a per-user cache) — so it is fine in plan mode even when it downloads or builds packages. Do not fall back to ambient `go`/etc. to avoid a Nix download; read-only commands (tests, linters) must also run through the wrapper.
 
 Each application (backend and frontend) has its own directory and can be developed independently.
 
@@ -27,7 +27,7 @@ The `Makefile` orchestrates a local stack (postgres on host port **5433**, `mock
 make dev-up          # Start postgres + mock-oauth2, run migrations, seed data
 make dev-seed        # Re-apply idempotent seed data (elo-web-service/testdata/seed.sql)
 make dev-migrate     # Re-apply migrations against the dev DB
-make backend-run     # Run backend with -tags opencv, loads secrets from .env.docker
+make backend-run     # Run backend, loads secrets from .env.docker
 make frontend-run    # Run the Next.js dev server
 make dev-down        # Stop all dev dependencies
 make copy-prod-db-to-dev  # Copy the prod DB (runs on this machine) into the compose postgres via sudo pg_dump (wipes local elo DB)
@@ -46,9 +46,6 @@ pnpm --dir ./nextjs lint         # Lint with next lint
 # Run with config file
 cd elo-web-service
 go run . --config-path ./config/config.dev.yaml
-
-# Run with OpenCV-backed Skull King card recognition (see Card Recognition below)
-go run -tags opencv . --config-path ./config/config.dev.yaml
 
 # Apply database migrations (config-based)
 set -a && source .env && set +a && go run . --config-path ./config/config.dev.yaml --migrate-db
@@ -103,14 +100,10 @@ nix-build test-integration.nix
   - `pkg/db/query/*.sql`: SQL queries for sqlc
   - `pkg/db/*.sql.go`: Generated Go code (do not edit manually)
 - **pkg/elo/**: Core Elo rating calculation logic
-- **pkg/cardrecognition/skull-king/**: OpenCV-based recognition of Skull King cards from images (card location, corner/special/number matching against `templates/`)
 - **pkg/configuration/**: Configuration parsing from YAML and environment variables
 - **elo-web-service/migrations/**: Database migrations, embedded via `embed_migrations.go`. **Up-only** — files are named `NNN_description.up.sql` (no down files).
 
 Database code is generated from SQL queries using sqlc. Edit `.sql` files in `pkg/db/query/`, then run `sqlc generate`.
-
-### Card Recognition (OpenCV build tag)
-The card-recognition feature depends on OpenCV and is gated behind the `opencv` build tag. `pkg/api/recognizer_opencv.go` (`//go:build opencv`) wires the real recognizer; `pkg/api/recognizer_noop.go` (`//go:build !opencv`) is a stub used by default. Build/run with `-tags opencv` to enable it (the Makefile's `backend-run` does this).
 
 ### Frontend Structure (Next.js)
 - **app/**: Next.js App Router pages and layouts
@@ -171,7 +164,7 @@ The custom Elo algorithm (`CalculateNewElo` in pkg/elo/elo.go) handles multi-pla
 
 The contract lives in `openapi/` as domain-specific files:
 - `openapi/openapi.yaml` — entry point with `$ref` to all domain files
-- `openapi/common.yaml`, `players.yaml`, `games.yaml`, `matches.yaml`, `clubs.yaml`, `settings.yaml`, `users.yaml`, `markets.yaml`, `auth.yaml`, `admin.yaml`, `voice.yaml`, `skull-king.yaml`, `analytics.yaml`
+- `openapi/common.yaml`, `players.yaml`, `games.yaml`, `matches.yaml`, `clubs.yaml`, `settings.yaml`, `users.yaml`, `markets.yaml`, `auth.yaml`, `admin.yaml`, `analytics.yaml`
 
 `openapi/bundled.json` is a generated intermediate artifact (gitignored); do not edit it manually.
 

@@ -32,7 +32,7 @@ dev-migrate:
 ## Run the backend (loads secrets from .env.docker)
 backend-run:
 	cd elo-web-service && set -a && . .env.docker && set +a && \
-	  go run -tags opencv . --config-path ./config/config.docker.yaml
+	  go run . --config-path ./config/config.docker.yaml
 
 ## Run the frontend dev server
 frontend-run:

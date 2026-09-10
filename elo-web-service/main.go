@@ -134,12 +134,6 @@ func main() {
 	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
 	router.GET("/corrections", strictWrapper.ListCorrections)
 
-	// Voice
-	router.POST("/voice/parse", append(editorAuth(), strictWrapper.ParseVoiceInput)...)
-
-	// Skull King card recognition
-	router.POST("/skull-king/parse-card-image", apiHandler.ParseSkullKingCardImage)
-
 	// Live game tables (generic; per-game behavior dispatched by game_id).
 	// The whole group is no-store: table state mutates constantly, and a
 	// stale snapshot served from any HTTP/SW cache is worse than an error.
