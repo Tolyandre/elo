@@ -13,9 +13,9 @@ Elo rating tracker for board games with a Go backend, Next.js frontend, and Post
 
 ## Development Setup
 
-This project uses Nix with direnv for reproducible development environments. After initial setup (`direnv allow`), all tools (Go, pnpm, Node.js, etc.) are automatically available.
+This project uses [devenv](https://devenv.sh) for reproducible development environments, defined in `devenv.nix`/`devenv.yaml` and pinned in `devenv.lock`. All tools (Go, sqlc, gomod2nix, make, etc.) are available inside the environment; optional auto-activation on `cd` uses devenv's native shell hook (`eval "$(devenv hook zsh)"` + `devenv allow`).
 
-**Use the Nix dev shell in every mode, including plan mode.** Agents without a direnv hook must wrap every project command: `nix develop .# --command bash -lc '<command>'`. Entering the shell is not a system modification — `nix develop` only materializes the pinned toolchain into the Nix store (a per-user cache) — so it is fine in plan mode even when it downloads or builds packages. Do not fall back to ambient `go`/etc. to avoid a Nix download; read-only commands (tests, linters) must also run through the wrapper.
+**Use the devenv shell in every mode, including plan mode.** Agents have no shell hook, so wrap every project command: `devenv shell -- bash -lc '<command>'`. Entering the shell is not a system modification — `devenv shell` only materializes the pinned toolchain into the Nix store (a per-user cache) — so it is fine in plan mode even when it downloads or builds packages. Do not fall back to ambient `go`/etc. to avoid a Nix download; read-only commands (tests, linters) must also run through the wrapper. The shell exports `CGO_ENABLED=0` (the service is pure Go). `devenv test` runs the backend unit test suite.
 
 Each application (backend and frontend) has its own directory and can be developed independently.
 

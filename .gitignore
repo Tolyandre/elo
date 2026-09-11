@@ -32,7 +32,6 @@
 
 # env files (can opt-in for committing if needed)
 .env*
-!.envrc
 !/nextjs/.env.local
 !/elo-web-service/.env.sample
 !/elo-web-service/.env.docker
@@ -50,11 +49,14 @@
 # nix
 /nix/result
 /result
-.direnv/
 
-# Go tools (Nix symlinks, see flake.nix shellHook)
-.delve-nix
-.gopls-nix
+# devenv state + local overrides (devenv.lock is committed)
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# Tool symlinks recreated by the devenv shell (see enterShell in devenv.nix)
+/.nix-tools/
 
 # golang
 /elo-web-service/__debug_bin*

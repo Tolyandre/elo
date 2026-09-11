@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+inputs:
+  # Same nixpkgs channel as the deployment flake (flake.nix) so the dev
+  # toolchain (go, sqlc, delve, ...) matches what builds and ships the service.
+  nixpkgs:
+    url: github:NixOS/nixpkgs/nixos-26.05
+  # Same gomod2nix as flake.nix, so `gomod2nix generate` emits the exact
+  # gomod2nix.toml format that nix/default.nix consumes.
+  gomod2nix:
+    url: github:nix-community/gomod2nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs

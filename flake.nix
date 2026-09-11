@@ -56,39 +56,8 @@
         _module.args.elo-frontend-pkg = self.packages.${pkgs.system}.frontend;
       };
 
-      devShells = forAllSystems (
-        system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = pkgs.lib;
-        in
-        {
-          default = pkgs.mkShell {
-            hardeningDisable = [ "fortify" ];
-
-            buildInputs =
-              lib.optionals pkgs.stdenv.isLinux [
-                pkgs.libcap
-                pkgs.glibc.static
-              ]
-              ++ [
-                pkgs.git
-                pkgs.go
-                pkgs.sqlc
-                pkgs.delve
-                pkgs.gopls
-                gomod2nix.packages.${system}.default
-              ];
-
-            shellHook = lib.optionalString pkgs.stdenv.isLinux ''
-              # Stable symlinks so VSCode can locate Nix-provided tools.
-              # Recreated on every direnv reload when the env changes.
-              ln -sfn ${pkgs.delve} "$PWD/.delve-nix"
-              ln -sfn ${pkgs.gopls} "$PWD/.gopls-nix"
-            '';
-          };
-        }
-      );
+      # The developer environment lives in devenv.nix / devenv.yaml (see
+      # https://devenv.sh) — this flake only provides the deployment artifacts.
 
       checks = {
         x86_64-linux.integration = import ./nix/test-integration.nix {

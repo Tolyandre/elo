@@ -4,35 +4,45 @@ Track friends elo rating in board games. Try it here: https://tolyandre.github.i
 
 # How to build and run
 
-Development tools are managed via [Nix flakes](https://nix.dev/manual/nix/2.28/quick-start.html) and activated automatically with [direnv](https://direnv.net/) + [nix-direnv](https://github.com/nix-community/nix-direnv).
+Development tools (Go, sqlc, delve, gopls, gomod2nix) are managed by [devenv](https://devenv.sh) — see [devenv.nix](devenv.nix) and [devenv.yaml](devenv.yaml), with the tool versions pinned in [devenv.lock](devenv.lock). The [flake.nix](flake.nix) is used only for packaging and deployment (backend, frontend, NixOS modules, VM integration test), not for the dev shell.
 
 I am using NixOS to develop and host this project. Mac and other Linux users can install the Nix package manager.
 
 ```bash
 # Install Nix package manager
-curl -L https://nixos.org/nix/install | sh
+sh <(curl -L https://nixos.org/nix/install) --daemon
 
-# Install direnv and nix-direnv (or configure via home-manager / NixOS)
-nix profile add nixpkgs#direnv nixpkgs#nix-direnv --extra-experimental-features "flakes nix-command"
+# Install devenv
+nix profile install nixpkgs#devenv --extra-experimental-features "flakes nix-command"
 
-# Register direnv shell hook — add to ~/.zshrc or ~/.bashrc:
-# eval "$(direnv hook zsh)"
+# Enter the environment (cached — only the first entry downloads/builds it)
+devenv shell
 
-# Enable nix-direnv caching — add to ~/.config/direnv/direnvrc:
-# source_url "https://raw.githubusercontent.com/nix-community/nix-direnv/master/direnvrc" "<sha256>"
-# (or configure via home-manager: programs.direnv.nix-direnv.enable = true)
+# Run a single command in the environment without an interactive shell
+devenv shell -- <command>
 
-# Allow direnv in the repo root
-direnv allow
+# Run the backend unit test suite
+devenv test
 ```
 
-nix-direnv is required to avoid a VSCode restart loop: without it direnv re-evaluates the flake on every VSCode start, which triggers another reload prompt indefinitely.
+Optional: activate the environment automatically on `cd` using devenv's built-in shell hook (its direnv replacement):
+
+```bash
+# Register the devenv shell hook — add to ~/.zshrc (or ~/.bashrc):
+# eval "$(devenv hook zsh)"
+
+# Allow auto-activation in the repo root
+devenv allow
+```
 
 ### VSCode setup
 
-Install the [mkhl.direnv](https://marketplace.visualstudio.com/items?itemName=mkhl.direnv) extension. It picks up the flake devShell automatically — no separate Nix extension needed.
+VS Code proposes the recommended extensions on open (see [.vscode/extensions.json](.vscode/extensions.json)):
 
-The workspace [settings.json](.vscode/settings.json) wires the direnv-provided Go tools (dlv, gopls) for the Go extension.
+- [datakurre.devenv](https://marketplace.visualstudio.com/items?itemName=datakurre.devenv) — loads the devenv environment into VS Code (integrated terminal, tasks, debug runs) without direnv.
+- [golang.go](https://marketplace.visualstudio.com/items?itemName=golang.go) — Go language support.
+
+The workspace [settings.json](.vscode/settings.json) wires the Go extension's dlv/gopls to `.nix-tools/` — stable, project-relative symlinks into the Nix store that the devenv shell recreates on every entry. No `/nix/store` paths go stale on tool updates, and the Go extension never downloads its own toolchain.
 
 ## Dependencies and fast startup
 
@@ -93,12 +103,19 @@ go run . --config-path ./config/config.docker.yaml
 
 ```bash
 nix build                # build elo-web-service binary
-nix develop              # enter dev shell (includes gomod2nix, go, sqlc, dlv)
 nix flake check          # evaluate all outputs + run NixOS integration test in VM
 nix flake show           # list all flake outputs
 
 nix flake lock           # pin dependencies (commit flake.lock afterwards)
 nix flake update         # update all inputs to latest
+```
+
+### Updating the dev environment
+
+`devenv.lock` pins the devenv inputs (nixpkgs channel, gomod2nix) and is committed. After editing `devenv.nix`/`devenv.yaml`, the lock updates automatically on the next `devenv shell`; to bump pinned inputs explicitly:
+
+```bash
+devenv update   # re-pin devenv.yaml inputs, commit devenv.lock afterwards
 ```
 
 ### Updating Go dependencies
@@ -116,7 +133,7 @@ if `gomod2nix.toml` is out of sync with `go.mod`.
 
 **First-time setup** (if `gomod2nix.toml` doesn't exist yet):
 ```bash
-nix develop               # enter shell — gomod2nix is available here
+devenv shell              # enter shell — gomod2nix is available here
 cd elo-web-service && gomod2nix generate
 ```
 

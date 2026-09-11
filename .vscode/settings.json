@@ -1,7 +1,7 @@
 {
     "makefile.configureOnOpen": false,
     "go.alternateTools": {
-        "dlv": "${workspaceFolder}/.delve-nix/bin/dlv",
-        "gopls": "${workspaceFolder}/.gopls-nix/bin/gopls"
+        "dlv": "${workspaceFolder}/.nix-tools/delve/bin/dlv",
+        "gopls": "${workspaceFolder}/.nix-tools/gopls/bin/gopls"
     }
 }
