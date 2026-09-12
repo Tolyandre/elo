@@ -68,6 +68,7 @@ describe('streakWindowEnd', () => {
         market_type: 'win_streak' as const,
         outcomes: [],
         liquidity_b: 8,
+        max_guarantor_loss: 16,
         params: streakParams(),
     }
 

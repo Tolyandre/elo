@@ -22,7 +22,7 @@ import { GameMultiSelect } from "@/components/game-multi-select";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
-import { DEFAULT_MAX_GUARANTOR_LOSS, bFromRisk, outcomeCount } from "./liquidity";
+import { DEFAULT_MAX_GUARANTOR_LOSS } from "./liquidity";
 import { matchWinnerFormIssue } from "./validation";
 
 
@@ -38,7 +38,6 @@ const STORAGE_KEYS = [
     "new-market/streakGameIDs",
     "new-market/winsRequired",
     "new-market/maxLosses",
-    "new-market/guarantorIDs",
     "new-market/maxGuarantorLoss",
 ] as const;
 
@@ -60,21 +59,14 @@ export default function NewMarketPage() {
     const [streakGameIDs, setStreakGameIDs] = useSessionStorage<Base58ID[]>("new-market/streakGameIDs", [] as Base58ID[]);
     const [winsRequired, setWinsRequired] = useSessionStorage("new-market/winsRequired", "3");
     const [maxLosses, setMaxLosses] = useSessionStorage("new-market/maxLosses", "");
-    // Fixed-odds guarantors: prefilled with the creator's player. They split the
-    // market's settlement residual (deficit or surplus) — see ADR-10.
-    const [guarantorIDs, setGuarantorIDs] = useSessionStorage<Base58ID[]>(
-        "new-market/guarantorIDs",
-        me.playerId ? [me.playerId] : ([] as Base58ID[]),
-    );
-    // The form asks for the guarantors' worst-case combined loss L; the LMSR
-    // parameter is derived as b = L/ln(n) — see liquidity.ts.
+    // Guarantors are voluntary since ADR-20: the market is created without
+    // them, and players back it afterwards (risk + maker fee) from the market
+    // page. The form only sets the ceiling on their combined risk.
     const [maxGuarantorLoss, setMaxGuarantorLoss] = useSessionStorage(
         "new-market/maxGuarantorLoss",
         String(DEFAULT_MAX_GUARANTOR_LOSS),
     );
 
-    const outcomeN = outcomeCount(marketType, marketType === "match_winner" ? targetPlayerIDs.length : 0);
-    const derivedB = bFromRisk(parseFloat(maxGuarantorLoss), outcomeN);
     const formIssue = marketType === "match_winner" ? matchWinnerFormIssue(targetPlayerIDs.length, allowOtherPlayers) : null;
     // No message for an empty selection — an untouched form stays quiet; the
     // disabled submit does the talking.
@@ -105,10 +97,9 @@ export default function NewMarketPage() {
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
-            payload.guarantor_player_ids = guarantorIDs;
-            if (derivedB !== null) {
-                payload.liquidity_b = derivedB;
-            }
+            payload.max_guarantor_loss = parseFloat(maxGuarantorLoss) > 0
+                ? parseFloat(maxGuarantorLoss)
+                : undefined;
             await createMarketPromise(payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/markets");
@@ -122,8 +113,10 @@ export default function NewMarketPage() {
     function buildPreviewMarket(): Market {
         const startsAtISO = startsAtMode === "specific" && startsAt ? new Date(startsAt).toISOString() : new Date().toISOString();
         const closesAtISO = closesAt ? new Date(closesAt).toISOString() : null;
-        // Falls back to the server-side default risk when the field is empty.
-        const previewB = derivedB ?? bFromRisk(DEFAULT_MAX_GUARANTOR_LOSS, outcomeN) ?? 16;
+        // The preview shows the market as it will be created (ADR-20): no
+        // guarantors yet, so no liquidity — probabilities are the uniform
+        // opening state.
+        const previewL = parseFloat(maxGuarantorLoss) > 0 ? parseFloat(maxGuarantorLoss) : DEFAULT_MAX_GUARANTOR_LOSS;
         if (marketType === "match_winner") {
             // Preview outcomes: one per target plus "other", uniform probabilities.
             const n = targetPlayerIDs.length + 1;
@@ -132,7 +125,8 @@ export default function NewMarketPage() {
                 id: "" as Base58ID, market_type: marketType, status: "open",
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
-                liquidity_b: previewB,
+                liquidity_b: 0,
+                max_guarantor_loss: previewL,
                 outcomes: [
                     ...targetPlayerIDs.map((id) => ({
                         id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
@@ -147,7 +141,8 @@ export default function NewMarketPage() {
             id: "" as Base58ID, market_type: marketType, status: "open",
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
-            liquidity_b: previewB,
+            liquidity_b: 0,
+            max_guarantor_loss: previewL,
             outcomes: [
                 { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", probability: 0.5, shares: 0, pool: 0 },
                 { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", probability: 0.5, shares: 0, pool: 0 },
@@ -295,14 +290,6 @@ export default function NewMarketPage() {
                 <ResolutionDescription market={buildPreviewMarket()} />
 
                 <div className="space-y-1.5">
-                    <Label>Поручители (покрывают остаток рейтинга)</Label>
-                    <PlayerMultiSelect value={guarantorIDs} onChange={setGuarantorIDs} />
-                    <p className="text-xs text-muted-foreground">
-                        Поручители — контрагенты рынка: они делят между собой дефицит или излишек рейтинга при разрешении.
-                    </p>
-                </div>
-
-                <div className="space-y-1.5">
                     <Label htmlFor="max_guarantor_loss">Макс. убыток поручителей (L)</Label>
                     <input
                         id="max_guarantor_loss"
@@ -314,12 +301,12 @@ export default function NewMarketPage() {
                         onChange={e => setMaxGuarantorLoss(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                        Капитализация рынка и предел суммарного риска поручителей: при разрешении рынка они
-                        теряют не больше этой суммы, даже если все ставки сыграют против них.
+                        Чем больше поручителей, тем выше ликвидность рынка и тем плавнее двигаются цены.
+                        Это ограничение задаёт предел суммарного риска поручителей.
+                        Даже если все ставки сыграли против поручителей, они потеряют не больше этой суммы.
                     </p>
                     <p className="text-xs text-muted-foreground">
-                        Ликвидность зависит от капитализации и числа исходов: b = L/ln(n){derivedB !== null ? ` ≈ ${derivedB.toFixed(1)}` : ""}
-                        {targetPlayerIDs.length > 0 && outcomeN > 2 ? " — добавление игроков снижает b, цены двигаются живее" : ""}
+                         Ставки откроются с появлением первого поручителя.
                     </p>
                 </div>
 

@@ -101,6 +101,8 @@ components:
       $ref: './markets.yaml#/Market'
     MarketDetail:
       $ref: './markets.yaml#/MarketDetail'
+    MarketGuarantee:
+      $ref: './markets.yaml#/MarketGuarantee'
 
     # Corrections
     Correction:
@@ -213,6 +215,8 @@ paths:
     $ref: './markets.yaml#/MarketItem'
   /markets/{id}/bets:
     $ref: './markets.yaml#/MarketBets'
+  /markets/{id}/guarantees:
+    $ref: './markets.yaml#/MarketGuarantees'
   /markets/{id}/probability-history:
     $ref: './markets.yaml#/MarketProbabilityHistory'
 

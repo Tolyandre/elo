@@ -46,9 +46,6 @@ func TestShortPathAndQueryParams(t *testing.T) {
 		StartsAt:   time.Now().Add(-time.Minute),
 		ClosesAt:   time.Now().Add(24 * time.Hour),
 		CreatedBy:  idpkg.ID(userID),
-		GuarantorPlayerIDs: []idpkg.ID{
-			playerA.ID,
-		},
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA.ID, playerB.ID},
 			AllowOtherPlayers: true,
@@ -57,6 +54,8 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create market: %v", err)
 	}
+	setBetLimit(t, pool, playerA.ID, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, playerA.ID)
 	_ = token
 
 	// GET /markets/{id} with the SHORT id — regression: returned 404 when the

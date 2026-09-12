@@ -122,6 +122,7 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/markets/:id", strictWrapper.GetMarket)
 	r.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
 	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
+	r.POST("/markets/:id/guarantees", o.DeserializeUser(), strictWrapper.CreateMarketGuarantee)
 	// Realtime SSE (ADR-13): the multiplexed global-topics stream; auth is
 	// optional (anonymous callers silently get no "me" topic).
 	r.GET("/events", o.OptionalDeserializeUser(), a.Events)

@@ -18,6 +18,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle, outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
+import { formatAmount } from "@/app/markets/format";
 import { ProbabilityPoint } from "@/app/markets/probabilityHistory";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime, formatDayMonth, formatTime } from "@/lib/datetime";
@@ -240,16 +241,29 @@ export function MarketCard({ market, probabilityHistory, className }: { market: 
                 {probabilityHistory && probabilityHistory.length > 0 && (
                     <ProbabilityChart points={probabilityHistory} outcomes={market.outcomes} nameOf={nameOf} />
                 )}
-                {(isOpen || isBettingClosed) && market.guarantors && market.guarantors.length > 0 && (
-                    <p className="text-xs text-muted-foreground pt-2">
-                        Поручители: {market.guarantors.map(g => g.player_name).join(", ")}
-                    </p>
-                )}
+                {(isOpen || isBettingClosed) && (market.liquidity_b <= 0
+                    ? (
+                        <p className="text-xs text-muted-foreground pt-2">
+                            Ждёт поручителей: ставки откроются, когда появится первый поручитель.
+                        </p>
+                    )
+                    : market.guarantees && market.guarantees.length > 0 && (
+                        <p className="text-xs text-muted-foreground pt-2">
+                            Поручители обеспечили {formatAmount(market.guarantees.reduce((sum, g) => sum + g.risk_amount, 0))}
+                            {" "}из {formatAmount(market.max_guarantor_loss)}
+                            {" "}({[...new Set(market.guarantees.map(g => g.player_name))].join(", ")})
+                        </p>
+                    ))}
                 {market.settlement && market.settlement.length > 0 && (
                     <div className="space-y-1 pt-2 border-t">
                         <p className="text-xs text-muted-foreground font-medium">Игроки</p>
                         <SettlementList details={market.settlement} />
                     </div>
+                )}
+                {market.fee_collected != null && market.fee_collected > 0 && (
+                    <p className="text-xs text-muted-foreground pt-2 border-t">
+                        Комиссий собрано: {formatAmount(market.fee_collected)}
+                    </p>
                 )}
                 {market.guarantor_settlement && market.guarantor_settlement.length > 0 && (
                     <div className="space-y-1 pt-2 border-t">

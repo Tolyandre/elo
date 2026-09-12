@@ -32,6 +32,7 @@ type Bet struct {
 	Cost     float64            `json:"cost"`
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 	Shares   float64            `json:"shares"`
+	Fee      float64            `json:"fee"`
 }
 
 type Club struct {
@@ -129,11 +130,16 @@ type Market struct {
 	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
+	MaxGuarantorLoss  float64            `json:"max_guarantor_loss"`
 }
 
-type MarketGuarantor struct {
-	MarketID id.ID `json:"market_id"`
-	PlayerID id.ID `json:"player_id"`
+type MarketGuarantee struct {
+	ID         id.ID     `json:"id"`
+	MarketID   id.ID     `json:"market_id"`
+	PlayerID   id.ID     `json:"player_id"`
+	RiskAmount float64   `json:"risk_amount"`
+	FeeRate    float64   `json:"fee_rate"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type MarketMatchWinnerParam struct {

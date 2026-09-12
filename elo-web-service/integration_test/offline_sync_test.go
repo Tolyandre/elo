@@ -197,12 +197,11 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           now.Add(-time.Hour),
-		ClosesAt:           now.Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{playerA},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   now.Add(-time.Hour),
+		ClosesAt:   now.Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -211,6 +210,10 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	// playerA is the sole guarantor and also buys 10 shares: fund both the
+	// wager risk (16) and the buy.
+	setBetLimit(t, pool, playerA, 24)
+	joinGuarantee(ctx, t, marketSvc, market.ID, playerA)
 
 	// Bets placed now.
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)

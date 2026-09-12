@@ -70,6 +70,7 @@ type marketRow struct {
 	ResolvedAt        pgtype.Timestamptz
 	BettingClosedAt   pgtype.Timestamptz
 	LiquidityB        float64
+	MaxGuarantorLoss  float64
 	TargetPlayerIds   []id.ID
 	AllowOtherPlayers pgtype.Bool
 	MwGameIds         []id.ID
@@ -81,13 +82,13 @@ type marketRow struct {
 
 func marketRowFromList(r db.ListMarketsRow) marketRow {
 	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
-		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB,
+		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
 		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses}
 }
 
 func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
-		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB,
+		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
 		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses}
 }
 
@@ -240,11 +241,12 @@ func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map
 // already carrying probabilities.
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	m := Market{
-		Id:         r.ID,
-		MarketType: MarketMarketType(r.MarketType),
-		Status:     MarketStatus(r.Status),
-		LiquidityB: r.LiquidityB,
-		Outcomes:   outcomes,
+		Id:               r.ID,
+		MarketType:       MarketMarketType(r.MarketType),
+		Status:           MarketStatus(r.Status),
+		LiquidityB:       r.LiquidityB,
+		MaxGuarantorLoss: r.MaxGuarantorLoss,
+		Outcomes:         outcomes,
 		Params: buildTypedMarketParams(r.MarketType, r.TargetPlayerIds, r.AllowOtherPlayers,
 			r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses),
 	}
@@ -361,14 +363,18 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	}
 
 	detail := MarketDetail{
-		Id:         row.ID,
-		MarketType: MarketDetailMarketType(row.MarketType),
-		Status:     MarketDetailStatus(row.Status),
-		LiquidityB: row.LiquidityB,
-		Outcomes:   buildOutcomes(outcomeRows, row.LiquidityB),
-		Guarantors: s.marketGuarantors(ctx, marketID),
+		Id:               row.ID,
+		MarketType:       MarketDetailMarketType(row.MarketType),
+		Status:           MarketDetailStatus(row.Status),
+		LiquidityB:       row.LiquidityB,
+		MaxGuarantorLoss: row.MaxGuarantorLoss,
+		Outcomes:         buildOutcomes(outcomeRows, row.LiquidityB),
 		Params: buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerIds, row.AllowOtherPlayers,
 			row.MwGameIds, row.WsTargetPlayerID, row.WsGameIds, row.WinsRequired, row.MaxLosses),
+	}
+	detail.Guarantees, detail.FeeRate = s.marketGuarantees(ctx, marketID)
+	if feeCollected, err := s.api.MarketService.GetMarketFeeCollected(ctx, marketID); err == nil && feeCollected > 0 {
+		detail.FeeCollected = &feeCollected
 	}
 	if row.StartsAt.Valid {
 		t := row.StartsAt.Time
@@ -478,8 +484,8 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 				byOutcome[b.Outcome] = pos
 				order = append(order, b.Outcome)
 			}
-			pos.staked += b.Cost   // elo spent
-			pos.shares += b.Shares // shares held (each pays 1 if the outcome wins)
+			pos.staked += b.Cost + b.Fee // elo spent incl. the maker fee
+			pos.shares += b.Shares       // shares held (each pays 1 if the outcome wins)
 		}
 		if len(order) > 0 {
 			positions := make([]struct {
@@ -544,11 +550,8 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		CreatedBy:  user.ID,
 	}
 
-	if body.GuarantorPlayerIds != nil {
-		params.GuarantorPlayerIDs = *body.GuarantorPlayerIds
-	}
-	if body.LiquidityB != nil {
-		params.LiquidityB = *body.LiquidityB
+	if body.MaxGuarantorLoss != nil {
+		params.MaxGuarantorLoss = *body.MaxGuarantorLoss
 	}
 
 	switch string(body.MarketType) {
@@ -616,9 +619,6 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	market, err := s.api.MarketService.CreateMarket(ctx, params)
 	if err != nil {
-		if errors.Is(err, elo.ErrMarketNeedsGuarantor) {
-			return CreateMarket400JSONResponse{Status: "fail", Message: err.Error()}, nil
-		}
 		return nil, err
 	}
 
@@ -689,7 +689,7 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 			return PlaceBet422JSONResponse{Status: "fail", Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketOutcomeNotFound):
 			return PlaceBet400JSONResponse{Status: "fail", Message: err.Error()}, nil
-		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrProbabilityChanged):
+		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrProbabilityChanged), errors.Is(err, elo.ErrMarketNeedsGuarantor):
 			return PlaceBet409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err
@@ -699,6 +699,59 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	resp := PlaceBet201JSONResponse{Status: "success"}
 	resp.Data.Shares = outcome.Shares
 	resp.Data.CostPerShare = outcome.CostPerShare
+	resp.Data.Fee = outcome.Fee
+	return resp, nil
+}
+
+// CreateMarketGuarantee adds the caller's linked player as a guarantor of an
+// open market: a wager of {risk amount, maker fee rate} that is reserved
+// against the betting limit, is immutable, and grows the market's liquidity
+// without moving prices (ADR-20).
+func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request CreateMarketGuaranteeRequestObject) (CreateMarketGuaranteeResponseObject, error) {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return nil, fmt.Errorf("gin context not available")
+	}
+
+	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	if err != nil {
+		if domainStatusCode(err) == http.StatusNotFound {
+			return CreateMarketGuarantee401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+		}
+		return nil, err
+	}
+	if user.PlayerID == nil {
+		return CreateMarketGuarantee403JSONResponse{Status: "fail", Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
+	}
+
+	body := request.Body
+	if body.RiskAmount <= 0 {
+		return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: elo.ErrGuaranteeRiskNotPositive.Error()}, nil
+	}
+	if body.FeeRate < 0 || body.FeeRate > 0.25 {
+		return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: elo.ErrGuaranteeFeeOutOfRange.Error()}, nil
+	}
+
+	outcome, err := s.api.MarketService.JoinAsGuarantee(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, body.RiskAmount, body.FeeRate)
+	if err != nil {
+		switch {
+		case errors.Is(err, elo.ErrMarketNotOpen):
+			return CreateMarketGuarantee409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case errors.Is(err, elo.ErrBetLimitExceeded),
+			errors.Is(err, elo.ErrGuaranteeRiskNotPositive),
+			errors.Is(err, elo.ErrGuaranteeFeeOutOfRange):
+			return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
+	}
+
+	resp := CreateMarketGuarantee201JSONResponse{Status: "success"}
+	resp.Data.RiskAmount = outcome.RiskAmount
+	resp.Data.FeeRate = outcome.FeeRate
+	resp.Data.LiquidityB = outcome.LiquidityB
+	resp.Data.TotalRisk = outcome.TotalRisk
+	resp.Data.MaxGuarantorLoss = outcome.MaxGuarantorLoss
 	return resp, nil
 }
 

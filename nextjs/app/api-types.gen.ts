@@ -430,6 +430,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/markets/{id}/guarantees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Become a guarantor of a market (place a guarantor wager)
+         * @description Adds the caller's linked player as a guarantor with the given risk amount and maker fee rate (ADR-20). The risk is reserved against the betting limit, the market's liquidity grows (prices are preserved by rescaling), and the wager is immutable. Wagers over-subscribing the market's L are accepted in full but add no liquidity.
+         */
+        post: operations["CreateMarketGuarantee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/markets/{id}/probability-history": {
         parameters: {
             query?: never;
@@ -439,7 +459,7 @@ export interface paths {
         };
         /**
          * Reconstructed per-outcome probability history of a market
-         * @description The probability (LMSR marginal price) of every outcome after every bet, reconstructed by replaying the bet stream through the market's LMSR from its creation state. No probabilities are persisted; the series is derived from bets alone.
+         * @description The probability (LMSR marginal price) of every outcome after every event, reconstructed by replaying the market's timeline — bets and guarantee joins (which change liquidity b and rescale q without moving prices) — from the creation state. No probabilities are persisted; the series is derived from the immutable bets and market_guarantees rows alone.
          */
         get: operations["GetMarketProbabilityHistory"];
         put?: never;
@@ -992,10 +1012,26 @@ export interface components {
             outcomes: components["schemas"]["MarketOutcome"][];
             /**
              * Format: double
-             * @description LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
+             * @description LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
              */
             liquidity_b: number;
-            guarantors?: components["schemas"]["MarketGuarantor"][];
+            /**
+             * Format: double
+             * @description Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
+             */
+            max_guarantor_loss: number;
+            /**
+             * Format: double
+             * @description The market's current maker fee c: the risk-weighted mean of the guarantor wagers' fee rates. Buyers pay the variance-proportional surcharge p + 4c·p(1−p) per share (0 while there are no fee-charging guarantors).
+             */
+            fee_rate?: number;
+            /**
+             * Format: double
+             * @description Total maker fees the market generated (final once resolved).
+             */
+            fee_collected?: number;
+            /** @description The market's guarantor wagers (multiple per player allowed). */
+            guarantees?: components["schemas"]["MarketGuarantee"][];
             /** @description Market-type-specific parameters */
             params?: (components["schemas"]["MatchWinnerParams"] | components["schemas"]["WinStreakParams"]) | null;
             /** @description Buyer settlements (discriminator 'market') for a resolved market. */
@@ -1022,6 +1058,27 @@ export interface components {
             reserved?: number | null;
             /** Format: double */
             bet_limit?: number | null;
+        };
+        /** @description A player's voluntary, immutable guarantor wager: the risk amount (their maximum loss, reserved against the betting limit) and their maker fee rate. A player may hold several wagers on one market; wagers cannot be withdrawn. */
+        MarketGuarantee: {
+            id: components["schemas"]["Base58ID"];
+            player_id: components["schemas"]["Base58ID"];
+            player_name: string;
+            /**
+             * Format: double
+             * @description The maximum the guarantor can lose on this wager.
+             */
+            risk_amount: number;
+            /**
+             * Format: double
+             * @description The wager's maker fee rate (0–25%): raises the market's weighted fee and both the guarantor's share of collected fees and their position in the first-loss waterfall.
+             */
+            fee_rate: number;
+            /**
+             * Format: date-time
+             * @description When the wager was placed.
+             */
+            placed_at: string;
         };
         Correction: {
             id: components["schemas"]["Base58ID"];
@@ -1175,11 +1232,6 @@ export interface components {
              * @description Total elo spent on this outcome.
              */
             pool: number;
-        };
-        /** @description A player who backs a market and splits its settlement residual (deficit or surplus). */
-        MarketGuarantor: {
-            player_id: components["schemas"]["Base58ID"];
-            player_name: string;
         };
         IawwCell: {
             /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
@@ -3062,13 +3114,11 @@ export interface operations {
                     streak_game_ids?: components["schemas"]["Base58ID"][];
                     wins_required?: number;
                     max_losses?: number | null;
-                    /** @description Players who back the market and absorb its settlement residual. */
-                    guarantor_player_ids?: components["schemas"]["Base58ID"][];
                     /**
                      * Format: double
-                     * @description LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
+                     * @description Maximum combined guarantor risk L the market accepts: liquidity is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the amount they risked. Wagers beyond L are accepted in full (they still earn fees) but add no liquidity. Defaults to the settings' market_default_max_guarantor_loss when omitted.
                      */
-                    liquidity_b?: number;
+                    max_guarantor_loss?: number;
                 };
             };
         };
@@ -3327,9 +3377,14 @@ export interface operations {
                             shares: number;
                             /**
                              * Format: double
-                             * @description Effective elo cost paid per share (cost / shares).
+                             * @description Effective elo cost paid per share ((cost + fee) / shares).
                              */
                             cost_per_share: number;
+                            /**
+                             * Format: double
+                             * @description Maker fee part of the payment (ADR-20): the market's guarantors earn it at resolution, weighted fee·risk.
+                             */
+                            fee: number;
                         };
                     };
                 };
@@ -3381,6 +3436,118 @@ export interface operations {
             };
         };
     };
+    CreateMarketGuarantee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id: components["schemas"]["Base58ID"];
+                    /**
+                     * Format: double
+                     * @description The maximum the guarantor can lose; reserved against the betting limit.
+                     */
+                    risk_amount: number;
+                    /**
+                     * Format: double
+                     * @description The wager's maker fee rate, 0–25%: raises the market's weighted fee and both the guarantor's share of collected fees and their position in the first-loss waterfall.
+                     */
+                    fee_rate: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Guarantee placed */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: {
+                            /** Format: double */
+                            risk_amount: number;
+                            /** Format: double */
+                            fee_rate: number;
+                            /**
+                             * Format: double
+                             * @description The market's liquidity after the wager.
+                             */
+                            liquidity_b: number;
+                            /**
+                             * Format: double
+                             * @description Combined risk of all guarantor wagers after this one.
+                             */
+                            total_risk: number;
+                            /** Format: double */
+                            max_guarantor_loss: number;
+                        };
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden (no linked player) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Market not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Market not open */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Invalid wager or bet limit exceeded */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     GetMarketProbabilityHistory: {
         parameters: {
             query?: never;
@@ -3404,10 +3571,10 @@ export interface operations {
                             points: {
                                 /**
                                  * Format: date-time
-                                 * @description When the bet was placed.
+                                 * @description When the event (bet or guarantee join) happened.
                                  */
                                 t: string;
-                                /** @description Probability of every outcome right after the bet; probabilities sum to 1. */
+                                /** @description Probability of every outcome right after the event; probabilities sum to 1. */
                                 probabilities: {
                                     outcome_id: components["schemas"]["Base58ID"];
                                     /**

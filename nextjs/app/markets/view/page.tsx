@@ -17,12 +17,15 @@ import { MarketRelatedMatches } from "@/components/market-related-matches";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { BackButton } from "@/components/back-button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { TriangleAlertIcon } from "lucide-react";
+import { MarketGuarantees } from "@/components/market-guarantees";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
-import { sharesForAmount, buyQuote } from "@/app/markets/lmsr";
+import { sharesForTotal, buyQuote } from "@/app/markets/lmsr";
 import { formatAmount } from "@/app/markets/format";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ProbabilityPoint, mergeProbabilityHistory } from "@/app/markets/probabilityHistory";
@@ -75,12 +78,18 @@ function ProjectedOutcome({ market, nameOf }: { market: MarketDetail; nameOf: (o
 // (the share count comes from inverting the LMSR cost client side).
 type BuyMode = "share" | "amount";
 
+function formatPercent(rate: number): string {
+    const pct = (rate * 100).toFixed(1).replace(/\.0$/, "");
+    return `${pct}%`;
+}
+
 function OutcomeColumn({
     label,
     titleColor,
     probability,
     pricePerShare,
     multiplier,
+    fee,
     buyMode,
     myStaked,
     myShares,
@@ -93,10 +102,12 @@ function OutcomeColumn({
     titleColor?: string;
     /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
     probability: number;
-    /** Elo per share the pending buy effectively pays (see buyQuote) — the "за 1 голос" price. */
+    /** All-in elo per share of the pending buy (LMSR cost + maker fee) — the "за 1 голос" price. */
     pricePerShare?: number;
     /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
     multiplier?: number;
+    /** Maker fee part of the pending buy (ADR-20). */
+    fee?: number;
     buyMode: BuyMode;
     myStaked?: number;
     myShares?: number;
@@ -127,6 +138,9 @@ function OutcomeColumn({
                 <p className="text-2xl font-bold leading-tight">{headline}</p>
                 {headlineCaption && (
                     <p className="text-xs text-muted-foreground leading-tight">{headlineCaption}</p>
+                )}
+                {fee != null && fee > 0 && (
+                    <p className="text-xs text-muted-foreground leading-tight">в т.ч. комиссия {formatAmount(fee)}</p>
                 )}
             </div>
             <div className="text-sm space-y-1">
@@ -171,8 +185,10 @@ function MarketPageContent() {
         () => (id ? getMarketProbabilityHistoryPromise(id) : Promise.reject(new Error('no id'))),
         [id],
     );
-    // Live LMSR probabilities/pools streamed after every purchase (ours and others').
-    const sseProbabilities = useMarketProbabilitiesSSE(id || null);
+    // Live LMSR probabilities/pools streamed after every purchase (ours and
+    // others'); a guarantor join publishes "guarantees-changed" (prices are
+    // preserved by the rescale, but liquidity/limits change → refetch).
+    const sseProbabilities = useMarketProbabilitiesSSE(id || null, invalidate);
 
     // Live points appended onto the replayed history as SSE probabilities tick.
     // A point whose probability vector matches the previous one is dropped by
@@ -229,13 +245,19 @@ function MarketPageContent() {
     const isOpen = displayMarket.status === "open";
     const hasPlayer = !!(me.playerId);
     const isLoggedIn = me.isAuthenticated;
-    const canBuy = isOpen && isLoggedIn && hasPlayer;
+    // Without guarantors (liquidity_b = 0) there is nothing to trade against
+    // (ADR-20): the b→0 LMSR limit would hand out free longshot shares with
+    // nobody to pay the winners.
+    const awaitsGuarantors = displayMarket.liquidity_b <= 0;
+    const canBuy = isOpen && isLoggedIn && hasPlayer && !awaitsGuarantors;
 
     const buyDisabledReason = !isLoggedIn
         ? "Авторизуйтесь и привяжите игрока в Настройках"
         : !hasPlayer
             ? "Привяжите игрока в Настройках"
-            : "";
+            : awaitsGuarantors
+                ? "Рынок ждёт поручителей — ставки пока недоступны"
+                : "";
 
     // Fixed-amount buys (and their headline multiplier) derive from the live
     // q vector: 1 elo buys `sharesForAmount` shares, and that share count is
@@ -245,20 +267,23 @@ function MarketPageContent() {
     // stay equally priced).
     const qVec = displayMarket.outcomes.map((o) => o.shares);
     const liquidityB = displayMarket.liquidity_b;
+    // The market's maker fee (risk-weighted mean of the guarantor wagers'
+    // rates, ADR-20) — added to the LMSR price as p + 4c·p(1−p) per share.
+    const feeRate = displayMarket.fee_rate ?? 0;
 
     // Shares-driven buy (ADR-10): the AMM prices the elo cost. In the share
-    // mode each purchase buys exactly 1 share; in the amount mode the LMSR
-    // cost is inverted client side to buy as many shares as 1 elo buys. The
-    // displayed probability is sent along so the server can reject the buy if
-    // it has moved (409); the spend limit is enforced server side (422); on
-    // failure we refresh.
+    // mode each purchase buys exactly 1 share; in the amount mode the 1 elo
+    // covers the LMSR cost AND the maker fee (the share count solves
+    // cost(s) + fee(s) = 1 client side). The displayed probability is sent
+    // along so the server can reject the buy if it has moved (409); the spend
+    // limit is enforced server side (422); on failure we refresh.
     async function handleBuy(outcome: MarketOutcome) {
         setBuyingOutcome(outcome.id);
         try {
             let shares = 1;
             if (buyMode === "amount") {
                 const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
-                shares = sharesForAmount(qVec, liquidityB, idx, 1);
+                shares = sharesForTotal(qVec, liquidityB, idx, 1, feeRate);
             }
             await placeBetPromise(id!, outcome.id, outcome.probability, shares);
             invalidate();
@@ -290,6 +315,16 @@ function MarketPageContent() {
                 Каждый голос принесёт 1 рейтинг, если исход сбудется.
             </p>
 
+            {awaitsGuarantors && (
+                <Alert variant="warning">
+                    <TriangleAlertIcon />
+                    <AlertTitle>Рынок ждёт поручителей</AlertTitle>
+                    <AlertDescription>
+                        Ставки откроются, когда появится первый поручитель.
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
                 <TabsList className="grid grid-cols-2 w-full">
                     <TabsTrigger value="share">По одному голосу</TabsTrigger>
@@ -299,7 +334,7 @@ function MarketPageContent() {
 
             <div className="grid grid-cols-2 gap-3">
                 {displayMarket.outcomes.map((o, i) => {
-                    const quote = buyQuote(qVec, liquidityB, i, buyMode);
+                    const quote = buyQuote(qVec, liquidityB, i, buyMode, feeRate);
                     return (
                         <OutcomeColumn
                             key={o.id}
@@ -308,6 +343,7 @@ function MarketPageContent() {
                             probability={o.probability}
                             pricePerShare={quote.pricePerShare}
                             multiplier={quote.multiplier}
+                            fee={quote.fee}
                             buyMode={buyMode}
                             myStaked={stakedByOutcome.get(o.id)}
                             myShares={sharesOwnedByOutcome.get(o.id)}
@@ -320,7 +356,23 @@ function MarketPageContent() {
                 })}
             </div>
 
+            {isOpen && feeRate > 0 && (
+                <p className="text-sm text-muted-foreground text-center">
+                    Комиссия рынка: {formatPercent(feeRate)} — идёт поручителям
+                </p>
+            )}
+
             {isOpen && <ProjectedOutcome market={displayMarket} nameOf={nameOf} />}
+
+            <MarketGuarantees
+                market={displayMarket}
+                canJoin={isOpen && isLoggedIn && hasPlayer}
+                disabledReason={buyDisabledReason}
+                onJoined={() => {
+                    invalidate();
+                    invalidateHistory();
+                }}
+            />
 
             {isOpen && !canBuy && buyDisabledReason && (
                 <p className="text-sm text-muted-foreground text-center">{buyDisabledReason}</p>

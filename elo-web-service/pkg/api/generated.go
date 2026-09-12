@@ -692,16 +692,27 @@ type Market struct {
 	ClosesAt        *time.Time `json:"closes_at,omitempty"`
 	CreatedAt       *time.Time `json:"created_at,omitempty"`
 
+	// FeeCollected Total maker fees the market generated (final once resolved).
+	FeeCollected *float64 `json:"fee_collected,omitempty"`
+
+	// FeeRate The market's current maker fee c: the risk-weighted mean of the guarantor wagers' fee rates. Buyers pay the variance-proportional surcharge p + 4c·p(1−p) per share (0 while there are no fee-charging guarantors).
+	FeeRate *float64 `json:"fee_rate,omitempty"`
+
+	// Guarantees The market's guarantor wagers (multiple per player allowed).
+	Guarantees *[]MarketGuarantee `json:"guarantees,omitempty"`
+
 	// GuarantorSettlement Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge).
-	GuarantorSettlement *[]SettlementDetail       `json:"guarantor_settlement,omitempty"`
-	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
+	GuarantorSettlement *[]SettlementDetail `json:"guarantor_settlement,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
+	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
 	LiquidityB float64          `json:"liquidity_b"`
 	MarketType MarketMarketType `json:"market_type"`
+
+	// MaxGuarantorLoss Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
+	MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
 
 	// Outcomes The market's mutually-exclusive outcomes; probabilities sum to 1.
 	Outcomes []MarketsMarketOutcome `json:"outcomes"`
@@ -740,16 +751,27 @@ type MarketDetail struct {
 	ClosesAt        *time.Time `json:"closes_at,omitempty"`
 	CreatedAt       *time.Time `json:"created_at,omitempty"`
 
+	// FeeCollected Total maker fees the market generated (final once resolved).
+	FeeCollected *float64 `json:"fee_collected,omitempty"`
+
+	// FeeRate The market's current maker fee c: the risk-weighted mean of the guarantor wagers' fee rates. Buyers pay the variance-proportional surcharge p + 4c·p(1−p) per share (0 while there are no fee-charging guarantors).
+	FeeRate *float64 `json:"fee_rate,omitempty"`
+
+	// Guarantees The market's guarantor wagers (multiple per player allowed).
+	Guarantees *[]MarketGuarantee `json:"guarantees,omitempty"`
+
 	// GuarantorSettlement Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge).
-	GuarantorSettlement *[]SettlementDetail       `json:"guarantor_settlement,omitempty"`
-	Guarantors          *[]MarketsMarketGuarantor `json:"guarantors,omitempty"`
+	GuarantorSettlement *[]SettlementDetail `json:"guarantor_settlement,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
+	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
 	LiquidityB float64                `json:"liquidity_b"`
 	MarketType MarketDetailMarketType `json:"market_type"`
+
+	// MaxGuarantorLoss Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
+	MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
 
 	// MyPositions The user's per-outcome holdings on this market (empty when none).
 	MyPositions *[]struct {
@@ -793,6 +815,25 @@ type MarketDetail_Params struct {
 
 // MarketDetailStatus defines model for MarketDetail.Status.
 type MarketDetailStatus string
+
+// MarketGuarantee A player's voluntary, immutable guarantor wager: the risk amount (their maximum loss, reserved against the betting limit) and their maker fee rate. A player may hold several wagers on one market; wagers cannot be withdrawn.
+type MarketGuarantee struct {
+	// FeeRate The wager's maker fee rate (0–25%): raises the market's weighted fee and both the guarantor's share of collected fees and their position in the first-loss waterfall.
+	FeeRate float64 `json:"fee_rate"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// PlacedAt When the wager was placed.
+	PlacedAt time.Time `json:"placed_at"`
+
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId   Base58ID `json:"player_id"`
+	PlayerName string   `json:"player_name"`
+
+	// RiskAmount The maximum the guarantor can lose on this wager.
+	RiskAmount float64 `json:"risk_amount"`
+}
 
 // Match defines model for Match.
 type Match struct {
@@ -1032,13 +1073,6 @@ type WinStreakParams struct {
 	WinsRequired   int      `json:"wins_required"`
 }
 
-// MarketsMarketGuarantor A player who backs a market and splits its settlement residual (deficit or surplus).
-type MarketsMarketGuarantor struct {
-	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	PlayerId   Base58ID `json:"player_id"`
-	PlayerName string   `json:"player_name"`
-}
-
 // MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -1211,16 +1245,13 @@ type CreateMarketJSONBody struct {
 	ClosesAt          time.Time   `json:"closes_at"`
 	GameIds           *[]Base58ID `json:"game_ids,omitempty"`
 
-	// GuarantorPlayerIds Players who back the market and absorb its settlement residual.
-	GuarantorPlayerIds *[]Base58ID `json:"guarantor_player_ids,omitempty"`
-
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-
-	// LiquidityB LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
-	LiquidityB *float64                       `json:"liquidity_b,omitempty"`
+	Id         Base58ID                       `json:"id"`
 	MarketType CreateMarketJSONBodyMarketType `json:"market_type"`
-	MaxLosses  *int                           `json:"max_losses,omitempty"`
+
+	// MaxGuarantorLoss Maximum combined guarantor risk L the market accepts: liquidity is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the amount they risked. Wagers beyond L are accepted in full (they still earn fees) but add no liquidity. Defaults to the settings' market_default_max_guarantor_loss when omitted.
+	MaxGuarantorLoss *float64 `json:"max_guarantor_loss,omitempty"`
+	MaxLosses        *int     `json:"max_losses,omitempty"`
 
 	// StartsAt Defaults to now if omitted; must not be in the past if provided
 	StartsAt      *time.Time  `json:"starts_at,omitempty"`
@@ -1258,6 +1289,18 @@ type PlaceBetJSONBody struct {
 
 	// Shares Number of shares to buy (the UI always buys 1; each winning share pays 1). The AMM prices the elo cost, which is reserved against the bet limit.
 	Shares float64 `json:"shares"`
+}
+
+// CreateMarketGuaranteeJSONBody defines parameters for CreateMarketGuarantee.
+type CreateMarketGuaranteeJSONBody struct {
+	// FeeRate The wager's maker fee rate, 0–25%: raises the market's weighted fee and both the guarantor's share of collected fees and their position in the first-loss waterfall.
+	FeeRate float64 `json:"fee_rate"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// RiskAmount The maximum the guarantor can lose; reserved against the betting limit.
+	RiskAmount float64 `json:"risk_amount"`
 }
 
 // ListMatchesParams defines parameters for ListMatches.
@@ -1399,6 +1442,9 @@ type PatchMarketJSONRequestBody PatchMarketJSONBody
 
 // PlaceBetJSONRequestBody defines body for PlaceBet for application/json ContentType.
 type PlaceBetJSONRequestBody PlaceBetJSONBody
+
+// CreateMarketGuaranteeJSONRequestBody defines body for CreateMarketGuarantee for application/json ContentType.
+type CreateMarketGuaranteeJSONRequestBody CreateMarketGuaranteeJSONBody
 
 // AddMatchJSONRequestBody defines body for AddMatch for application/json ContentType.
 type AddMatchJSONRequestBody AddMatchJSONBody
@@ -1887,6 +1933,9 @@ type ServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(c *gin.Context, id string)
+	// CreateMarketGuarantee Become a guarantor of a market (place a guarantor wager)
+	// (POST /markets/{id}/guarantees)
+	CreateMarketGuarantee(c *gin.Context, id string)
 	// GetMarketProbabilityHistory Reconstructed per-outcome probability history of a market
 	// (GET /markets/{id}/probability-history)
 	GetMarketProbabilityHistory(c *gin.Context, id string)
@@ -2633,6 +2682,31 @@ func (siw *ServerInterfaceWrapper) PlaceBet(c *gin.Context) {
 	siw.Handler.PlaceBet(c, id)
 }
 
+// CreateMarketGuarantee operation middleware
+func (siw *ServerInterfaceWrapper) CreateMarketGuarantee(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateMarketGuarantee(c, id)
+}
+
 // GetMarketProbabilityHistory operation middleware
 func (siw *ServerInterfaceWrapper) GetMarketProbabilityHistory(c *gin.Context) {
 
@@ -3377,6 +3451,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/markets/:id", wrapper.GetMarket)
 	router.PATCH(options.BaseURL+"/markets/:id", wrapper.PatchMarket)
 	router.POST(options.BaseURL+"/markets/:id/bets", wrapper.PlaceBet)
+	router.POST(options.BaseURL+"/markets/:id/guarantees", wrapper.CreateMarketGuarantee)
 	router.GET(options.BaseURL+"/markets/:id/probability-history", wrapper.GetMarketProbabilityHistory)
 	router.GET(options.BaseURL+"/matches", wrapper.ListMatches)
 	router.POST(options.BaseURL+"/matches", wrapper.AddMatch)
@@ -4842,8 +4917,11 @@ type PlaceBetResponseObject interface {
 
 type PlaceBet201JSONResponse struct {
 	Data struct {
-		// CostPerShare Effective elo cost paid per share (cost / shares).
+		// CostPerShare Effective elo cost paid per share ((cost + fee) / shares).
 		CostPerShare float64 `json:"cost_per_share"`
+
+		// Fee Maker fee part of the payment (ADR-20): the market's guarantors earn it at resolution, weighted fee·risk.
+		Fee float64 `json:"fee"`
 
 		// Shares Shares received (each pays 1 if the outcome wins).
 		Shares float64 `json:"shares"`
@@ -4933,6 +5011,126 @@ func (response PlaceBet422JSONResponse) VisitPlaceBetResponse(w http.ResponseWri
 	return err
 }
 
+type CreateMarketGuaranteeRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateMarketGuaranteeJSONRequestBody
+}
+
+type CreateMarketGuaranteeResponseObject interface {
+	VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error
+}
+
+type CreateMarketGuarantee201JSONResponse struct {
+	Data struct {
+		FeeRate float64 `json:"fee_rate"`
+
+		// LiquidityB The market's liquidity after the wager.
+		LiquidityB       float64 `json:"liquidity_b"`
+		MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
+		RiskAmount       float64 `json:"risk_amount"`
+
+		// TotalRisk Combined risk of all guarantor wagers after this one.
+		TotalRisk float64 `json:"total_risk"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response CreateMarketGuarantee201JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee400JSONResponse ApiError
+
+func (response CreateMarketGuarantee400JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee401JSONResponse ApiError
+
+func (response CreateMarketGuarantee401JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee403JSONResponse ApiError
+
+func (response CreateMarketGuarantee403JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee404JSONResponse ApiError
+
+func (response CreateMarketGuarantee404JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee409JSONResponse ApiError
+
+func (response CreateMarketGuarantee409JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarketGuarantee422JSONResponse ApiError
+
+func (response CreateMarketGuarantee422JSONResponse) VisitCreateMarketGuaranteeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMarketProbabilityHistoryRequestObject struct {
 	Id string `json:"id"`
 }
@@ -4944,7 +5142,7 @@ type GetMarketProbabilityHistoryResponseObject interface {
 type GetMarketProbabilityHistory200JSONResponse struct {
 	Data struct {
 		Points []struct {
-			// Probabilities Probability of every outcome right after the bet; probabilities sum to 1.
+			// Probabilities Probability of every outcome right after the event; probabilities sum to 1.
 			Probabilities []struct {
 				// OutcomeId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 				OutcomeId Base58ID `json:"outcome_id"`
@@ -4953,7 +5151,7 @@ type GetMarketProbabilityHistory200JSONResponse struct {
 				Probability float64 `json:"probability"`
 			} `json:"probabilities"`
 
-			// T When the bet was placed.
+			// T When the event (bet or guarantee join) happened.
 			T time.Time `json:"t"`
 		} `json:"points"`
 	} `json:"data"`
@@ -6891,6 +7089,9 @@ type StrictServerInterface interface {
 	// PlaceBet Place a bet on a market
 	// (POST /markets/{id}/bets)
 	PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error)
+	// CreateMarketGuarantee Become a guarantor of a market (place a guarantor wager)
+	// (POST /markets/{id}/guarantees)
+	CreateMarketGuarantee(ctx context.Context, request CreateMarketGuaranteeRequestObject) (CreateMarketGuaranteeResponseObject, error)
 	// GetMarketProbabilityHistory Reconstructed per-outcome probability history of a market
 	// (GET /markets/{id}/probability-history)
 	GetMarketProbabilityHistory(ctx context.Context, request GetMarketProbabilityHistoryRequestObject) (GetMarketProbabilityHistoryResponseObject, error)
@@ -7816,6 +8017,39 @@ func (sh *strictHandler) PlaceBet(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PlaceBetResponseObject); ok {
 		if err := validResponse.VisitPlaceBetResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMarketGuarantee operation middleware
+func (sh *strictHandler) CreateMarketGuarantee(ctx *gin.Context, id string) {
+	var request CreateMarketGuaranteeRequestObject
+
+	request.Id = id
+
+	var body CreateMarketGuaranteeJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMarketGuarantee(ctx, request.(CreateMarketGuaranteeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMarketGuarantee")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateMarketGuaranteeResponseObject); ok {
+		if err := validResponse.VisitCreateMarketGuaranteeResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

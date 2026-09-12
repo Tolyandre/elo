@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { sharesForAmount, costForShares, averagePricePerShare, buyQuote } from '../app/markets/lmsr'
+import {
+    sharesForAmount,
+    costForShares,
+    averagePricePerShare,
+    buyQuote,
+    buyFee,
+    priceWithFee,
+    sharesForTotal,
+} from '../app/markets/lmsr'
 import { formatAmount } from '../app/markets/format'
 
 // Independent LMSR cost, mirroring the server's ammCostN (b·ln Σ e^(q_j/b),
@@ -231,5 +239,73 @@ describe('formatAmount', () => {
         expect(formatAmount(1.8893624)).toBe('1.89')
         expect(formatAmount(2.3)).toBe('2.30')
         expect(formatAmount(0.125)).toBe('0.13')
+    })
+})
+
+describe('maker fee (ADR-20)', () => {
+    // The fee is the variance-proportional surcharge p_u = p + 4c·p(1−p) at
+    // the margin; integrated over a buy it has the closed form 4c·b·Δp.
+
+    it('priceWithFee stays within [0,1] for c ≤ 0.25 and equals c at p = 0.5', () => {
+        for (let pi = 0; pi <= 100; pi++) {
+            const p = pi / 100
+            for (let ci = 0; ci <= 25; ci++) {
+                const c = ci / 100
+                const pu = priceWithFee(p, c)
+                expect(pu).toBeGreaterThanOrEqual(0)
+                expect(pu).toBeLessThanOrEqual(1 + 1e-12)
+            }
+        }
+        expect(priceWithFee(0.5, 0.05)).toBeCloseTo(0.55, 12) // +5% at p = 0.5
+        expect(priceWithFee(0.8, 0.05)).toBeCloseTo(0.832, 12) // +4% at p = 0.8
+        expect(priceWithFee(0.9, 0.25)).toBeCloseTo(0.99, 12)
+    })
+
+    it.each([
+        { q: [0, 0], b: 23.1, c: 0.05, i: 0, s: 1 },
+        { q: [10, 4], b: 14.6, c: 0.25, i: 1, s: 7 },
+        { q: [3, 0, 9], b: 30, c: 0.12, i: 2, s: 5 },
+    ])('buyFee matches the numeric integral of 4c·p(1−p) for q=$q b=$b c=$c', ({ q, b, c, i, s }) => {
+        const fee = buyFee(q, b, i, s, c)
+        const steps = 200000
+        const dq = s / steps
+        let numeric = 0
+        const qq = q.slice()
+        for (let k = 0; k < steps; k++) {
+            const m = Math.max(...qq.map((v) => v / b))
+            const e = qq.map((v) => Math.exp(v / b - m))
+            const p = e[i] / e.reduce((sum, v) => sum + v, 0)
+            numeric += 4 * c * p * (1 - p) * dq
+            qq[i] += dq
+        }
+        expect(Math.abs(fee - numeric)).toBeLessThan(1e-6)
+    })
+
+    it('charges nothing without liquidity or fee rate', () => {
+        expect(buyFee([0, 0], 0, 0, 1, 0.05)).toBe(0)
+        expect(buyFee([0, 0], 8, 0, 1, 0)).toBe(0)
+    })
+
+    it('sharesForTotal solves cost(s) + fee(s) = amount exactly', () => {
+        const q = [0, 0]
+        const b = 1 / Math.LN2
+        const c = 0.1
+        const shares = sharesForTotal(q, b, 0, 1, c)
+        const total = costForShares(q, b, 0, shares) + buyFee(q, b, 0, shares, c)
+        expect(total).toBeCloseTo(1, 10)
+        // more fee → fewer shares for the same 1 elo
+        expect(sharesForTotal(q, b, 0, 1, c)).toBeLessThan(sharesForAmount(q, b, 0, 1))
+    })
+
+    it('buyQuote adds the fee to the share-mode price and keeps multiplier × price = 1', () => {
+        const q = [0, 0]
+        const b = 1 / Math.LN2
+        const c = 0.05
+        const quote = buyQuote(q, b, 0, 'share', c)
+        expect(quote.fee).toBeCloseTo(buyFee(q, b, 0, 1, c), 12)
+        expect(quote.pricePerShare).toBeCloseTo(costForShares(q, b, 0, 1) + quote.fee, 12)
+        expect(quote.multiplier * quote.pricePerShare).toBeCloseTo(1, 12)
+        // no fee → identical to the old zero-fee quote
+        expect(buyQuote(q, b, 0, 'share', 0).pricePerShare).toBeCloseTo(buyQuote(q, b, 0, 'share').pricePerShare, 12)
     })
 })

@@ -27,6 +27,25 @@ func newID(t *testing.T) idpkg.ID {
 	return idpkg.ID(u.String())
 }
 
+// joinGuarantee adds a zero-fee guarantor wager of the market's full L —
+// reproducing the pre-ADR-20 default liquidity b = L/ln(n). The player's bet
+// limit must cover the risk (guarantor exposure is reserved since ADR-20).
+func joinGuarantee(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID, playerID idpkg.ID) {
+	t.Helper()
+	if _, err := svc.JoinAsGuarantee(ctx, newID(t), marketID, playerID, 16, 0); err != nil {
+		t.Fatalf("JoinAsGuarantee(%s): %v", playerID, err)
+	}
+}
+
+// setBetLimit overrides a player's bet limit directly (tests use it to fund
+// guarantor risk; recalculation may rewrite it from the elo formula later).
+func setBetLimit(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID, limit float64) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `UPDATE players SET bet_limit = $2 WHERE id = $1`, playerID, limit); err != nil {
+		t.Fatalf("set bet limit for %s: %v", playerID, err)
+	}
+}
+
 // marketOutcomeID returns the market's outcome row id of the given kind — the
 // identifier bets and resolution reference. For kind "player" the target
 // player's outcome is returned.
@@ -266,13 +285,14 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	// Create a match_winner market: who wins a match with playerA and playerB?
+	// Markets are created without guarantors (ADR-20): back it with a voluntary
+	// zero-fee wager so the market becomes tradable.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           time.Now().Add(-time.Minute),
-		ClosesAt:           time.Now().Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -281,6 +301,8 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Give players enough bet limit by adding a warm-up match first
 	_, err = matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t))
@@ -386,10 +408,9 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 		MarketType: "match_winner",
 		// StartsAt must be AFTER t1 so that M1 (at t1) cannot trigger this market
 		// during recalculation (the market didn't exist yet when M1 first ran).
-		StartsAt:           t1.Add(30 * time.Minute),
-		ClosesAt:           now.Add(24 * time.Hour), // well in the future so the expiry timer doesn't fire during the test
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		StartsAt:   t1.Add(30 * time.Minute),
+		ClosesAt:   now.Add(24 * time.Hour), // well in the future so the expiry timer doesn't fire during the test
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -398,6 +419,8 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 1-share buys (cost < 1 elo) to stay within it.
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeOther := marketOutcomeID(t, ctx, marketSvc, market.ID, "other", "")
@@ -482,12 +505,11 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 
 	// 2. Market covering the upcoming game (starts in past, covers tFuture).
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           now.Add(-time.Hour),
-		ClosesAt:           now.Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   now.Add(-time.Hour),
+		ClosesAt:   now.Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -496,6 +518,8 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// 3. Bets placed NOW (placed_at ≈ now, before tFuture = now+2h).
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
@@ -554,12 +578,11 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 
 	// Create a win_streak market that expires before the trigger match.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "win_streak",
-		StartsAt:           now.Add(-time.Minute),
-		ClosesAt:           tExp,
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		ID:         newID(t),
+		MarketType: "win_streak",
+		StartsAt:   now.Add(-time.Minute),
+		ClosesAt:   tExp,
+		CreatedBy:  adminID,
 		WinStreak: &elo.WinStreakCreateParams{
 			TargetPlayerID: playerA,
 			GameIDs:        []idpkg.ID{gameID},
@@ -569,6 +592,8 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Bet limit after starting-Elo warm-up match = K/(1+1) = 16; use 1-share buys.
 	outcomeYes := marketOutcomeID(t, ctx, marketSvc, market.ID, "yes", "")
@@ -606,8 +631,9 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 }
 
 // TestMarketSettlement_FixedOddsZeroSum verifies the share-buying guarantees:
-//   - creating a market without guarantors is rejected (conservation requires a
-//     counterparty for the settlement residual);
+//   - a market without guarantors is created but untradable (b = 0 — ADR-20:
+//     the limit-LMSR would hand out free longshot shares with nobody to pay
+//     the winners), and backing it with a wager makes it tradable;
 //   - each buy stores shares (each winning share pays 1 at resolution);
 //   - after settlement, elo is strictly conserved across buyers + guarantors
 //     (Σ (elo_staked + elo_earned) == 0 over the market's settlement rows);
@@ -626,8 +652,9 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
 	marketSvc := elo.NewMarketService(pool)
 
-	// 1. No-guarantor market must be rejected.
-	if _, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+	// 1. A guarantor-less market is created fine but rejects bets until a
+	// guarantor backs it.
+	bare, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -637,18 +664,22 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
 		},
-	}); !errors.Is(err, elo.ErrMarketNeedsGuarantor) {
-		t.Fatalf("expected ErrMarketNeedsGuarantor, got %v", err)
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket without guarantors: %v", err)
+	}
+	bareOutcome := marketOutcomeID(t, ctx, marketSvc, bare.ID, "player", playerA)
+	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, bare.ID, playerA, bareOutcome, 1); !errors.Is(err, elo.ErrMarketNeedsGuarantor) {
+		t.Fatalf("expected ErrMarketNeedsGuarantor on a guarantor-less market, got %v", err)
 	}
 
 	// 2. Create a market backed by a sole guarantor.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           time.Now().Add(-time.Minute),
-		ClosesAt:           time.Now().Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -657,6 +688,8 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so players have a bet limit > 0.
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
@@ -760,12 +793,11 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           time.Now().Add(-time.Minute),
-		ClosesAt:           time.Now().Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{playerA},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -778,6 +810,11 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
+
+	// playerA becomes the sole guarantor (risk 16) and also buys — the wager
+	// and the buy both reserve against the betting limit, so fund both.
+	setBetLimit(t, pool, playerA, 20)
+	joinGuarantee(ctx, t, marketSvc, market.ID, playerA)
 
 	// The guarantor (playerA) buys 1 share of their own win outcome on their own
 	// market; playerB buys 2 shares of "other" (asymmetric so the residual is
@@ -961,12 +998,11 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:                 newID(t),
-		MarketType:         "match_winner",
-		StartsAt:           time.Now().Add(-time.Minute),
-		ClosesAt:           time.Now().Add(24 * time.Hour),
-		CreatedBy:          adminID,
-		GuarantorPlayerIDs: []idpkg.ID{guarantor},
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -975,6 +1011,8 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so the players have a bet limit.
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {

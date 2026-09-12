@@ -55,14 +55,14 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 	}
 
 	// Create the market through HTTP with SHORT player ids — exercises the
-	// target_player_ids decode on the way in.
+	// target_player_ids decode on the way in. Guarantors are voluntary
+	// (ADR-20): the market gets its liquidity from a separate wager below.
 	createBody := map[string]any{
-		"id":                   uuid.MustParse("00000000-0000-0000-0000-0000000000d5").String(),
-		"market_type":          "match_winner",
-		"closes_at":            time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
-		"target_player_ids":    []string{shortOf(t, playerA.ID), shortOf(t, playerB.ID)},
-		"allow_other_players":  true,
-		"guarantor_player_ids": []string{shortOf(t, guarantor.ID)},
+		"id":                  uuid.MustParse("00000000-0000-0000-0000-0000000000d5").String(),
+		"market_type":         "match_winner",
+		"closes_at":           time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+		"target_player_ids":   []string{shortOf(t, playerA.ID), shortOf(t, playerB.ID)},
+		"allow_other_players": true,
 	}
 	createJSON, _ := json.Marshal(createBody)
 	req := httptest.NewRequest(http.MethodPost, "/markets", strings.NewReader(string(createJSON)))
@@ -74,6 +74,10 @@ func TestMarkets_IDCodecOutcomeRoundtrip(t *testing.T) {
 		t.Fatalf("POST /markets: %d: %s", w.Code, w.Body.String())
 	}
 	marketID := "00000000-0000-0000-0000-0000000000d5"
+
+	// Back the market with a guarantor wager (also through HTTP, short ids).
+	setBetLimit(t, pool, guarantor.ID, 16)
+	joinGuarantee(ctx, t, elo.NewMarketService(pool), idpkg.ID(marketID), guarantor.ID)
 
 	// GET the market: outcomes come back with short ids.
 	w2 := httptest.NewRecorder()

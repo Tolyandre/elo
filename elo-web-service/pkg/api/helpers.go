@@ -302,18 +302,36 @@ func strPtr(v *id.ID) *string {
 // Market helpers (extracted from the former markets.go).
 // ---------------------------------------------------------------------------
 
-// marketGuarantors loads a market's guarantor players for the Market response.
-// Returns nil (omitted from JSON) on error so a read failure never breaks the payload.
-func (s *StrictServer) marketGuarantors(ctx context.Context, marketID id.ID) *[]MarketsMarketGuarantor {
-	rows, err := s.api.MarketService.ListMarketGuarantors(ctx, marketID)
+// marketGuarantees loads a market's guarantor wagers (with the derived
+// market-level maker fee) for the Market response. Returns nil (omitted from
+// JSON) on error or when the market has no wagers yet, so a read failure never
+// breaks the payload.
+func (s *StrictServer) marketGuarantees(ctx context.Context, marketID id.ID) (*[]MarketGuarantee, *float64) {
+	rows, err := s.api.MarketService.ListMarketGuarantees(ctx, marketID)
 	if err != nil || len(rows) == 0 {
-		return nil
+		return nil, nil
 	}
-	out := make([]MarketsMarketGuarantor, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, MarketsMarketGuarantor{PlayerId: r.PlayerID, PlayerName: r.PlayerName})
+	wagers := make([]elo.GuaranteeWager, len(rows))
+	out := make([]MarketGuarantee, 0, len(rows))
+	for i, r := range rows {
+		wagers[i] = elo.GuaranteeWager{
+			ID:         r.ID,
+			PlayerID:   r.PlayerID,
+			RiskAmount: r.RiskAmount,
+			FeeRate:    r.FeeRate,
+			CreatedAt:  r.CreatedAt,
+		}
+		out = append(out, MarketGuarantee{
+			Id:         r.ID,
+			PlayerId:   r.PlayerID,
+			PlayerName: r.PlayerName,
+			RiskAmount: r.RiskAmount,
+			FeeRate:    r.FeeRate,
+			PlacedAt:   r.CreatedAt,
+		})
 	}
-	return &out
+	feeRate := elo.MarketFeeRate(wagers)
+	return &out, &feeRate
 }
 
 // parseIDParam converts a wire-form (Base58 or canonical) path/query parameter

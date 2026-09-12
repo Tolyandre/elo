@@ -22,9 +22,10 @@ type CreateMarketParams struct {
 	ClosesAt   time.Time
 	CreatedBy  id.ID
 
-	// Fixed-odds / LMSR fields.
-	LiquidityB         float64 // <=0 ⇒ derived from elo_settings.market_default_max_guarantor_loss as b = L/ln(n)
-	GuarantorPlayerIDs []id.ID // players who absorb the market's settlement residual
+	// Fixed-odds / LMSR fields. Markets are created without guarantors (ADR-20):
+	// liquidity_b starts at 0 and grows as guarantee wagers arrive, bounded by
+	// MaxGuarantorLoss.
+	MaxGuarantorLoss float64 // <=0 ⇒ derived from elo_settings.market_default_max_guarantor_loss
 
 	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
 	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
@@ -33,6 +34,11 @@ type CreateMarketParams struct {
 type IMarketService interface {
 	CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error)
 	PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedProbability float64) (PlaceBetOutcome, error)
+
+	// JoinAsGuarantee adds the player's voluntary guarantor wager (risk amount
+	// + maker fee rate) to an open market and grows the market's liquidity,
+	// preserving prices (ADR-20). Wagers are immutable.
+	JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, marketID id.ID, playerID id.ID, riskAmount, feeRate float64) (GuaranteeOutcome, error)
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
 	// Must be called within an active transaction (q is transactional).
@@ -75,7 +81,8 @@ type IMarketService interface {
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]db.ListMarketsByResolutionMatchRow, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg db.GetPlayerBetsAggregatedForMarketParams) ([]db.GetPlayerBetsAggregatedForMarketRow, error)
 	GetPlayerBetsForMarket(ctx context.Context, arg db.GetPlayerBetsForMarketParams) ([]db.GetPlayerBetsForMarketRow, error)
-	ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]db.ListMarketGuarantorsRow, error)
+	ListMarketGuarantees(ctx context.Context, marketID id.ID) ([]db.ListMarketGuaranteesRow, error)
+	GetMarketFeeCollected(ctx context.Context, marketID id.ID) (float64, error)
 	GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error)
 	GetPlayerBetLimit(ctx context.Context, playerID id.ID) (float64, error)
 	GetMarketProbabilityHistory(ctx context.Context, marketID id.ID) ([]ProbabilityPoint, error)
@@ -145,8 +152,12 @@ func (s *MarketService) GetPlayerBetsForMarket(ctx context.Context, arg db.GetPl
 	return s.Queries.GetPlayerBetsForMarket(ctx, arg)
 }
 
-func (s *MarketService) ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]db.ListMarketGuarantorsRow, error) {
-	return s.Queries.ListMarketGuarantors(ctx, marketID)
+func (s *MarketService) ListMarketGuarantees(ctx context.Context, marketID id.ID) ([]db.ListMarketGuaranteesRow, error) {
+	return s.Queries.ListMarketGuarantees(ctx, marketID)
+}
+
+func (s *MarketService) GetMarketFeeCollected(ctx context.Context, marketID id.ID) (float64, error) {
+	return s.Queries.GetMarketFeeCollected(ctx, marketID)
 }
 
 func (s *MarketService) GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error) {
@@ -158,8 +169,9 @@ func (s *MarketService) GetPlayerBetLimit(ctx context.Context, playerID id.ID) (
 }
 
 // GetMarketProbabilityHistory reconstructs the market's per-outcome probability
-// series by replaying its bet stream through the LMSR from the creation state
-// q=0. No probabilities are persisted — see price_history.go.
+// series by replaying its timeline (bets + guarantee joins) through the LMSR
+// from the creation state q=0, b=0. No probabilities are persisted — see
+// price_history.go.
 func (s *MarketService) GetMarketProbabilityHistory(ctx context.Context, marketID id.ID) ([]ProbabilityPoint, error) {
 	market, err := s.Queries.GetMarket(ctx, marketID)
 	if err != nil {
@@ -169,7 +181,11 @@ func (s *MarketService) GetMarketProbabilityHistory(ctx context.Context, marketI
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.Queries.GetMarketBetsForPriceHistory(ctx, marketID)
+	betRows, err := s.Queries.GetMarketBetsForPriceHistory(ctx, marketID)
+	if err != nil {
+		return nil, err
+	}
+	wagerRows, err := s.Queries.ListMarketGuaranteeWagers(ctx, marketID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,56 +193,41 @@ func (s *MarketService) GetMarketProbabilityHistory(ctx context.Context, marketI
 	for i, o := range outcomes {
 		outcomeIDs[i] = o.ID
 	}
-	bets := make([]PriceBet, len(rows))
-	for i, r := range rows {
+	bets := make([]PriceBet, len(betRows))
+	for i, r := range betRows {
 		bets[i] = PriceBet{Outcome: r.Outcome, Shares: r.Shares, PlacedAt: r.PlacedAt.Time}
 	}
-	// rows come back ordered by (placed_at, id) — the order ProbabilityHistory expects.
-	return ProbabilityHistory(bets, outcomeIDs, market.LiquidityB), nil
+	// Both streams arrive ordered (placed_at, id) / (created_at, id); the merge
+	// fixes the cross-stream order ProbabilityHistory expects.
+	events := mergeTimeline(bets, guaranteeWagersFromDB(wagerRows))
+	return ProbabilityHistory(events, outcomeIDs, market.MaxGuarantorLoss), nil
 }
 
 // defaultMarketMaxGuarantorLoss mirrors elo_settings.market_default_max_guarantor_loss
 // (DEFAULT 16) and covers degenerate settings rows.
 const defaultMarketMaxGuarantorLoss = 16
 
-// marketOutcomeCount returns the number of LMSR outcomes the market will get:
-// one per target player plus the shared "other" outcome for match_winner, the
-// Да/Нет pair for win_streak. Never below 2 so ln(n) stays positive.
-func marketOutcomeCount(params CreateMarketParams) int {
-	if params.MarketType == "match_winner" && params.MatchWinner != nil {
-		if n := len(params.MatchWinner.TargetPlayerIDs) + 1; n > 2 {
-			return n
-		}
-	}
-	return 2
-}
-
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
 	handler, ok := marketTypeHandlers[params.MarketType]
 	if !ok {
 		return db.Market{}, fmt.Errorf("unknown market_type: %s", params.MarketType)
 	}
-	// Guarantors are the zero-sum counterparty: without at least one, the fixed-odds
-	// settlement residual (deficit or surplus) would have nowhere to go and elo
-	// would not be conserved. The UI prefills the creator's player.
-	if len(params.GuarantorPlayerIDs) == 0 {
-		return db.Market{}, ErrMarketNeedsGuarantor
-	}
 
-	// Resolve the LMSR liquidity parameter: use the caller's value, else derive
-	// it from the configured default max guarantor loss — b·ln(n) bounds the
-	// guarantors' combined worst-case loss for n outcomes (see amm.go).
-	liquidityB := params.LiquidityB
-	if liquidityB <= 0 {
+	// The market is created without guarantors (ADR-20): liquidity_b starts at
+	// 0 — the market is untradable until the first guarantee wager arrives.
+	// MaxGuarantorLoss caps the combined risk the wagers can turn into
+	// liquidity: b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the
+	// amount they risked. Use the caller's L, else the configured default.
+	maxGuarantorLoss := params.MaxGuarantorLoss
+	if maxGuarantorLoss <= 0 {
 		settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: params.StartsAt, Valid: true})
 		if err != nil {
-			return db.Market{}, fmt.Errorf("get elo settings for default liquidity: %w", err)
+			return db.Market{}, fmt.Errorf("get elo settings for default max guarantor loss: %w", err)
 		}
-		loss := settingsRow.MarketDefaultMaxGuarantorLoss
-		if loss <= 0 {
-			loss = defaultMarketMaxGuarantorLoss
+		maxGuarantorLoss = settingsRow.MarketDefaultMaxGuarantorLoss
+		if maxGuarantorLoss <= 0 {
+			maxGuarantorLoss = defaultMarketMaxGuarantorLoss
 		}
-		liquidityB = loss / math.Log(float64(marketOutcomeCount(params)))
 	}
 
 	tx, err := s.Pool.Begin(ctx)
@@ -238,12 +239,13 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 	q := s.Queries.WithTx(tx)
 
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
-		ID:         params.ID,
-		MarketType: params.MarketType,
-		StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
-		ClosesAt:   pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
-		CreatedBy:  params.CreatedBy,
-		LiquidityB: liquidityB,
+		ID:                params.ID,
+		MarketType:        params.MarketType,
+		StartsAt:          pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
+		ClosesAt:          pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
+		CreatedBy:         params.CreatedBy,
+		LiquidityB:        0,
+		MaxGuarantorLoss:  maxGuarantorLoss,
 	})
 	if err != nil {
 		return db.Market{}, fmt.Errorf("insert market: %w", err)
@@ -251,15 +253,6 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 
 	if err := handler.CreateParams(ctx, q, market.ID, params); err != nil {
 		return db.Market{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
-	}
-
-	if len(params.GuarantorPlayerIDs) > 0 {
-		if err := q.CreateMarketGuarantors(ctx, db.CreateMarketGuarantorsParams{
-			MarketID:  market.ID,
-			PlayerIds: params.GuarantorPlayerIDs,
-		}); err != nil {
-			return db.Market{}, fmt.Errorf("insert guarantors: %w", err)
-		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -281,12 +274,13 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 // buy once other participants have moved the market.
 const ProbabilityTolerance = 0.01
 
-// PlaceBetOutcome is returned to the buyer: the shares received and the
-// effective elo cost paid per share (amount / shares) — a cost, not the
-// outcome's probability.
+// PlaceBetOutcome is returned to the buyer: the shares received, the effective
+// elo cost paid per share (LMSR cost + maker fee, per share) and the maker fee
+// part — a cost, not the outcome's probability.
 type PlaceBetOutcome struct {
 	Shares       float64
 	CostPerShare float64
+	Fee          float64
 }
 
 func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedProbability float64) (PlaceBetOutcome, error) {
@@ -302,12 +296,24 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 		return PlaceBetOutcome{}, fmt.Errorf("lock player: %w", err)
 	}
 
+	// Serialize AMM mutations on the market row so a concurrent guarantee join
+	// (which rescales q) cannot interleave with this bet's read-compute-write.
+	if err := q.LockMarket(ctx, marketID); err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("lock market: %w", err)
+	}
+
 	market, err := q.GetMarket(ctx, marketID)
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("get market: %w", err)
 	}
 	if market.Status != "open" {
 		return PlaceBetOutcome{}, ErrMarketNotOpen
+	}
+	// Without guarantors there is no liquidity to trade against: the b→0 limit
+	// of the LMSR makes underdog shares free lottery tickets with nobody to
+	// pay the winners (ADR-20), so bets are rejected outright.
+	if market.LiquidityB <= 0 {
+		return PlaceBetOutcome{}, ErrMarketNeedsGuarantor
 	}
 
 	// The outcome rows fix the AMM q-vector layout; the bet's outcome must be
@@ -336,14 +342,20 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 		return PlaceBetOutcome{}, ErrProbabilityChanged
 	}
 
-	// A guarantor may also buy on their own market (the creator's player is
-	// prefilled as guarantor): at settlement they get separate buyer and
-	// guarantor rows (ADR-10).
+	// A guarantor may also buy on their own market: at settlement they get
+	// separate buyer and guarantor rows (ADR-10).
 
 	// Shares-driven buy per ADR-10: the buyer asks for `shares` tokens (the UI
-	// always buys 1) and pays the AMM cost amount = C(q+shares·e_i) − C(q).
-	// `amount` is what is reserved against the buyer's bet_limit.
+	// always buys 1) and pays the AMM cost amount = C(q+shares·e_i) − C(q)
+	// plus the variance-proportional maker fee of the guarantors (ADR-20).
+	// `amount + fee` is what is reserved against the buyer's bet_limit.
+	wagers, err := q.ListMarketGuaranteeWagers(ctx, marketID)
+	if err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("list guarantee wagers: %w", err)
+	}
+	feeRate := MarketFeeRate(guaranteeWagersFromDB(wagers))
 	newQ, amount := ApplyBetN(qVec, market.LiquidityB, outcomeIdx, shares)
+	fee := BuyFeeN(qVec, market.LiquidityB, outcomeIdx, shares, feeRate)
 
 	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
 	if err != nil {
@@ -353,7 +365,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("get bet limit: %w", err)
 	}
-	if reserved+amount > limit {
+	if reserved+amount+fee > limit {
 		return PlaceBetOutcome{}, ErrBetLimitExceeded
 	}
 
@@ -363,6 +375,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 		PlayerID: playerID,
 		Outcome:  outcome,
 		Cost:     amount,
+		Fee:      fee,
 		Shares:   shares,
 	}); err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("insert bet: %w", err)
@@ -386,7 +399,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 		for i, o := range outcomes {
 			pool := o.Pool
 			if i == outcomeIdx {
-				pool += amount
+				pool += amount + fee
 			}
 			// SSE frames bypass the JSON DTO layer, so the wire-form encoding
 			// is applied here, at construction (ADR-12).
@@ -397,9 +410,151 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 
 	costPerShare := 0.0
 	if shares > 0 {
-		costPerShare = amount / shares
+		costPerShare = (amount + fee) / shares
 	}
-	return PlaceBetOutcome{Shares: shares, CostPerShare: costPerShare}, nil
+	return PlaceBetOutcome{Shares: shares, CostPerShare: costPerShare, Fee: fee}, nil
+}
+
+// GuaranteeOutcome is returned when a player becomes a guarantor.
+type GuaranteeOutcome struct {
+	RiskAmount       float64
+	FeeRate          float64
+	LiquidityB       float64
+	TotalRisk        float64
+	MaxGuarantorLoss float64
+}
+
+// JoinAsGuarantee adds the player's voluntary guarantor wager to an open
+// market: the risk amount (their maximum loss) is reserved against the betting
+// limit, and the market's liquidity grows to b = min(L, Σrisk)/ln(n) — capped
+// by L even when wagers over-subscribe it, with all earnings and losses staying
+// proportional to the risked amounts. The q vector is rescaled together with b
+// so displayed prices do not move (ADR-20). Wagers are immutable.
+func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, marketID id.ID, playerID id.ID, riskAmount, feeRate float64) (GuaranteeOutcome, error) {
+	if riskAmount <= 0 {
+		return GuaranteeOutcome{}, ErrGuaranteeRiskNotPositive
+	}
+	if feeRate < 0 || feeRate > maxGuaranteeFeeRate {
+		return GuaranteeOutcome{}, ErrGuaranteeFeeOutOfRange
+	}
+
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	q := s.Queries.WithTx(tx)
+
+	if _, err := q.LockPlayerForEloCalculation(ctx, playerID); err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("lock player: %w", err)
+	}
+	if err := q.LockMarket(ctx, marketID); err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("lock market: %w", err)
+	}
+
+	market, err := q.GetMarket(ctx, marketID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("get market: %w", err)
+	}
+	if market.Status != "open" {
+		return GuaranteeOutcome{}, ErrMarketNotOpen
+	}
+
+	wagers, err := q.ListMarketGuaranteeWagers(ctx, marketID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("list guarantee wagers: %w", err)
+	}
+	totalRisk := riskAmount
+	for _, w := range wagers {
+		totalRisk += w.RiskAmount
+	}
+
+	// Guarantor exposure is reserved against the betting limit (ADR-20).
+	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("get reserved amount: %w", err)
+	}
+	limit, err := q.GetPlayerBetLimit(ctx, playerID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("get bet limit: %w", err)
+	}
+	if reserved+riskAmount > limit {
+		return GuaranteeOutcome{}, ErrBetLimitExceeded
+	}
+
+	outcomes, err := q.ListMarketOutcomes(ctx, marketID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("list market outcomes: %w", err)
+	}
+	newB := liquidityBForRisk(market.MaxGuarantorLoss, totalRisk, len(outcomes))
+
+	// Price-preserving liquidity injection: scale every q component by
+	// b_new/b_old so the probabilities stay identical (with b_old = 0 the
+	// market has not traded and q is the zero vector — nothing to rescale).
+	if market.LiquidityB > 0 && newB > 0 {
+		if err := q.RescaleMarketOutcomeQ(ctx, db.RescaleMarketOutcomeQParams{
+			MarketID: marketID,
+			Q:        newB / market.LiquidityB,
+		}); err != nil {
+			return GuaranteeOutcome{}, fmt.Errorf("rescale amm state: %w", err)
+		}
+	}
+	if err := q.UpdateMarketLiquidityB(ctx, db.UpdateMarketLiquidityBParams{
+		ID:         marketID,
+		LiquidityB: newB,
+	}); err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("update liquidity: %w", err)
+	}
+
+	if _, err := q.InsertMarketGuarantee(ctx, db.InsertMarketGuaranteeParams{
+		ID:         guaranteeID,
+		MarketID:   marketID,
+		PlayerID:   playerID,
+		RiskAmount: riskAmount,
+		FeeRate:    feeRate,
+	}); err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("insert guarantee: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("commit tx: %w", err)
+	}
+
+	if s.Hub != nil {
+		// Prices are unchanged by construction (the rescale preserves them), so
+		// no probabilities frame is needed — but market-page and lobby readers
+		// must refresh their guarantee/liquidity state.
+		s.Hub.PublishSignal(MarketTopic(marketID), "guarantees-changed")
+		s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
+	}
+
+	return GuaranteeOutcome{
+		RiskAmount:       riskAmount,
+		FeeRate:          feeRate,
+		LiquidityB:       newB,
+		TotalRisk:        totalRisk,
+		MaxGuarantorLoss: market.MaxGuarantorLoss,
+	}, nil
+}
+
+// maxGuaranteeFeeRate caps each guarantor's maker fee: with c ≤ 0.25 the
+// fee-inclusive marginal price p_u = p + 4c·p(1−p) never exceeds 1 (ADR-20).
+const maxGuaranteeFeeRate = 0.25
+
+// guaranteeWagersFromDB projects the wager rows onto the settlement type.
+func guaranteeWagersFromDB(rows []db.ListMarketGuaranteeWagersRow) []GuaranteeWager {
+	wagers := make([]GuaranteeWager, len(rows))
+	for i, r := range rows {
+		wagers[i] = GuaranteeWager{
+			ID:         r.ID,
+			PlayerID:   r.PlayerID,
+			RiskAmount: r.RiskAmount,
+			FeeRate:    r.FeeRate,
+			CreatedAt:  r.CreatedAt,
+		}
+	}
+	return wagers
 }
 
 // LiveOutcome is one outcome's live state in the SSE probabilities payload:
@@ -501,75 +656,77 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	if err != nil {
 		return fmt.Errorf("get bets for market %s: %w", marketID, err)
 	}
-	guarantors, err := q.ListMarketGuarantors(ctx, marketID)
+	wagerRows, err := q.ListMarketGuaranteeWagers(ctx, marketID)
 	if err != nil {
-		return fmt.Errorf("get guarantors for market %s: %w", marketID, err)
+		return fmt.Errorf("get guarantee wagers for market %s: %w", marketID, err)
 	}
+	wagers := guaranteeWagersFromDB(wagerRows)
 
 	isCancelled := outcome == OutcomeCancelled
 	winningSide := id.ID(outcome) // the winning outcome row id, or the "cancelled" pseudo-value
 
-	// Per-player buy P&L. staked is the elo spent (positive magnitude); earned is
-	// the payout (shares × 1 for the winning side, or the stake refunded on cancel).
-	// Losers earn 0.
+	// Per-player buy P&L. staked is the elo spent (cost + maker fee, positive
+	// magnitude); earned is the payout (shares × 1 for the winning side, or the
+	// full spend refunded on cancel). Losers earn 0.
 	type playerData struct {
 		staked float64
 		earned float64
 	}
 	players := make(map[id.ID]*playerData)
-	totalCollected := 0.0
+	totalCollected := 0.0 // LMSR costs only — the maker fee goes to the guarantors' fee pool
 	totalPaid := 0.0
-	for _, b := range bets {
+	betRecs := make([]betRecord, len(bets))
+	for i, b := range bets {
 		pd := players[b.PlayerID]
 		if pd == nil {
 			pd = &playerData{}
 			players[b.PlayerID] = pd
 		}
-		pd.staked += b.Cost
+		pd.staked += b.Cost + b.Fee
 		totalCollected += b.Cost
+		betRecs[i] = betRecord{
+			PlayerID: b.PlayerID,
+			Outcome:  b.Outcome,
+			Cost:     b.Cost,
+			Fee:      b.Fee,
+			Shares:   b.Shares,
+			PlacedAt: b.PlacedAt.Time,
+		}
 		if isCancelled {
-			pd.earned += b.Cost // refund of elo spent
+			pd.earned += b.Cost + b.Fee // refund of elo spent incl. the maker fee
 		} else if b.Outcome == winningSide {
 			pd.earned += b.Shares // each winning share pays 1
 			totalPaid += b.Shares
 		}
 	}
 
-	// Guarantor residual = collected − paid. Split equally across guarantors,
-	// assigning the FP remainder to the last guarantor so the shares sum to the
-	// residual exactly (strict conservation).
-	guarantorSet := make(map[id.ID]bool, len(guarantors))
-	guarantorIDs := make([]id.ID, 0, len(guarantors))
-	for _, g := range guarantors {
-		if !guarantorSet[g.PlayerID] {
-			guarantorSet[g.PlayerID] = true
-			guarantorIDs = append(guarantorIDs, g.PlayerID)
-		}
-	}
-	sortPlayerIDs(guarantorIDs)
-	shares := make(map[id.ID]float64, len(guarantorIDs))
-	if !isCancelled && len(guarantorIDs) > 0 {
+	// Guarantor result (ADR-20): the fee pool (time-windowed, weighted fee·risk)
+	// plus the equity residual (collected − paid) — pro-rata by risk on surplus,
+	// first-loss waterfall on deficit. Cancellation refunds everything, so
+	// guarantors have nothing to settle. A bet-less market leaves the wagers'
+	// surplus at 0 — no rows. Shares sum to residual + feePool exactly, keeping
+	// elo strictly conserved (zero-sum across buyers + guarantors).
+	var shares map[id.ID]float64
+	if !isCancelled && len(wagers) > 0 {
 		residual := totalCollected - totalPaid // +surplus / −deficit
-		n := len(guarantorIDs)
-		perShare := residual / float64(n)
-		for i := 0; i < n-1; i++ {
-			shares[guarantorIDs[i]] = perShare
-		}
-		shares[guarantorIDs[n-1]] = residual - perShare*float64(n-1)
+		shares = settleGuarantors(betRecs, wagers, residual)
 	}
 
-	// A player may be both buyer and guarantor (the creator's player is prefilled
-	// as guarantor, and guarantors may buy). They get one settlement row per role
-	// (UNIQUE (market_id, player_id, discriminator), ADR-10): the 'market' row
-	// carries the buy P&L, the 'market_guarantor' row carries their residual
-	// share — so the value change per bet and the guarantor payout/surcharge are
-	// individually visible. Pure guarantors keep the 'market_guarantor'
-	// discriminator for the guarantor-payout rollup.
-	allPlayerIDSet := make(map[id.ID]bool, len(players)+len(guarantorIDs))
+	// A player may be both buyer and guarantor (guarantors may buy). They get
+	// one settlement row per role (UNIQUE (market_id, player_id, discriminator),
+	// ADR-10): the 'market' row carries the buy P&L, the 'market_guarantor' row
+	// carries their aggregate guarantor result (a player may hold several
+	// wagers). Pure guarantors keep the 'market_guarantor' discriminator for the
+	// guarantor-payout rollup.
+	guarantorSet := make(map[id.ID]bool, len(wagers))
+	for _, w := range wagers {
+		guarantorSet[w.PlayerID] = true
+	}
+	allPlayerIDSet := make(map[id.ID]bool, len(players)+len(guarantorSet))
 	for pid := range players {
 		allPlayerIDSet[pid] = true
 	}
-	for _, pid := range guarantorIDs {
+	for pid := range guarantorSet {
 		allPlayerIDSet[pid] = true
 	}
 	allPlayerIDs := make([]id.ID, 0, len(allPlayerIDSet))

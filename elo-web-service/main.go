@@ -176,6 +176,7 @@ func main() {
 	router.PATCH("/markets/:id", append(editorAuth(), strictWrapper.PatchMarket)...)
 	router.DELETE("/markets/:id", append(editorAuth(), strictWrapper.DeleteMarket)...)
 	router.POST("/markets/:id/bets", oauth2Handler.DeserializeUser(), strictWrapper.PlaceBet)
+	router.POST("/markets/:id/guarantees", oauth2Handler.DeserializeUser(), strictWrapper.CreateMarketGuarantee)
 	router.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
 	router.GET("/markets/:id/events", apiHandler.MarketEvents)
 

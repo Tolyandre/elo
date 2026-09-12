@@ -26,8 +26,6 @@ type Querier interface {
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateGameTable(ctx context.Context, arg CreateGameTableParams) (GameTable, error)
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
-	// Bulk-inserts the market's guarantor players (zero-sum counterparties).
-	CreateMarketGuarantors(ctx context.Context, arg CreateMarketGuarantorsParams) error
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	// The "other" outcome of a match_winner market: tie at first place or a
@@ -65,7 +63,8 @@ type Querier interface {
 	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error)
-	// Per-buy rows (each carries the shares bought) used by share settlement.
+	// Per-buy rows (each carries the shares bought and the maker fee charged) used
+	// by share settlement.
 	GetBetsForSettlement(ctx context.Context, marketID id.ID) ([]GetBetsForSettlementRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
 	GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error)
@@ -83,10 +82,14 @@ type Querier interface {
 	// Ordered bet stream used to reconstruct the market's price history by
 	// replaying the LMSR from its creation state q=0.
 	GetMarketBetsForPriceHistory(ctx context.Context, marketID id.ID) ([]GetMarketBetsForPriceHistoryRow, error)
+	// Total maker fees the market generated (the commission rollup of ADR-20).
+	GetMarketFeeCollected(ctx context.Context, marketID id.ID) (float64, error)
 	// Guarantor-role settlement rows (discriminator 'market_guarantor') — the
 	// per-guarantor payout rollup. A player who is both buyer and guarantor has a
 	// separate buyer row (discriminator 'market'), so their entry here carries only
-	// the house result (ADR-10).
+	// the house result (ADR-10). DISTINCT because a player may hold several
+	// guarantee wagers but settles as one guarantor row; the sort key is selected
+	// so DISTINCT accepts the ORDER BY.
 	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
 	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]id.ID, error)
@@ -106,7 +109,8 @@ type Querier interface {
 	GetPlayer(ctx context.Context, argID id.ID) (Player, error)
 	GetPlayerBetLimit(ctx context.Context, argID id.ID) (float64, error)
 	GetPlayerBetsAggregatedForMarket(ctx context.Context, arg GetPlayerBetsAggregatedForMarketParams) ([]GetPlayerBetsAggregatedForMarketRow, error)
-	// Per-buy rows for one player, used to show shares held / elo spent on the detail page.
+	// Per-buy rows for one player, used to show shares held / elo spent (cost +
+	// maker fee) on the detail page.
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error)
@@ -137,7 +141,10 @@ type Querier interface {
 	// Same-date matches/markets (discriminator != 'correction') come before corrections.
 	// Earlier same-date corrections (correction_id < $3) are also included.
 	GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestGlobalStateBeforeCorrectionParams) (GetPlayerLatestGlobalStateBeforeCorrectionRow, error)
-	GetPlayerReservedAmount(ctx context.Context, playerID id.ID) (float64, error)
+	// The player's outstanding exposure: bet costs + maker fees on open/betting-closed
+	// markets plus the risk of their guarantee wagers (ADR-20 reserves guarantor
+	// exposure against the betting limit).
+	GetPlayerReservedAmount(ctx context.Context, argID id.ID) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTournament(ctx context.Context, argID id.ID) ([]GetTournamentRow, error)
@@ -156,6 +163,10 @@ type Querier interface {
 	// details (e.g. match "created").
 	InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error
 	InsertBet(ctx context.Context, arg InsertBetParams) (InsertBetRow, error)
+	// A guarantee is a player's immutable guarantor wager: risk amount (their
+	// maximum loss) and maker fee rate (ADR-20). The client-generated id doubles
+	// as the idempotency key.
+	InsertMarketGuarantee(ctx context.Context, arg InsertMarketGuaranteeParams) (InsertMarketGuaranteeRow, error)
 	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
 	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]id.ID, error)
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
@@ -172,12 +183,16 @@ type Querier interface {
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error)
 	ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error)
-	ListMarketGuarantors(ctx context.Context, marketID id.ID) ([]ListMarketGuarantorsRow, error)
+	// Raw wager rows (no join) used by settlement and the price-history replay.
+	ListMarketGuaranteeWagers(ctx context.Context, marketID id.ID) ([]ListMarketGuaranteeWagersRow, error)
+	// The market's guarantee wagers with player names, in join order.
+	ListMarketGuarantees(ctx context.Context, marketID id.ID) ([]ListMarketGuaranteesRow, error)
 	// Outcome rows in the canonical order: yes/no first (win_streak), then player
 	// outcomes, 'other' last. This order fixes the AMM q-vector layout.
 	ListMarketOutcomes(ctx context.Context, marketID id.ID) ([]MarketOutcome, error)
 	// Outcome rows with derived display name (players.name for player outcomes)
-	// and the elo spent per outcome, in the canonical order (see ListMarketOutcomes).
+	// and the elo spent per outcome (cost + maker fee), in the canonical order
+	// (see ListMarketOutcomes).
 	ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]ListMarketOutcomesWithPoolsRow, error)
 	ListMarkets(ctx context.Context) ([]ListMarketsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error)
@@ -201,6 +216,9 @@ type Querier interface {
 	// per-user SSE events (table invites, match notifications).
 	ListUserIDsByPlayerIDs(ctx context.Context, dollar_1 []id.ID) ([]ListUserIDsByPlayerIDsRow, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	// Serializes market mutations (bets and guarantee joins) on the market row so
+	// concurrent writers cannot compute the AMM state from stale b/q.
+	LockMarket(ctx context.Context, argID id.ID) error
 	// Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 	// Only succeeds if current status = 'open'; the caller must check affected rows or
 	// fetch the market first to return a proper domain error.
@@ -211,6 +229,10 @@ type Querier interface {
 	RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
+	// Price-preserving liquidity injection (ADR-20): scales every q component by
+	// the same factor b_new/b_old so probabilities stay identical after a
+	// guarantee join changes b.
+	RescaleMarketOutcomeQ(ctx context.Context, arg RescaleMarketOutcomeQParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
@@ -223,6 +245,7 @@ type Querier interface {
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
 	UpdateGameTableState(ctx context.Context, arg UpdateGameTableStateParams) (GameTable, error)
+	UpdateMarketLiquidityB(ctx context.Context, arg UpdateMarketLiquidityBParams) error
 	// Persists one component of the LMSR state vector after a bet shifts the
 	// outstanding shares of an outcome.
 	UpdateMarketOutcomeQ(ctx context.Context, arg UpdateMarketOutcomeQParams) error

@@ -1,7 +1,21 @@
 -- name: CreateMarket :one
-INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b;
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b, max_guarantor_loss)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, max_guarantor_loss;
+
+-- name: LockMarket :exec
+-- Serializes market mutations (bets and guarantee joins) on the market row so
+-- concurrent writers cannot compute the AMM state from stale b/q.
+SELECT id FROM markets WHERE id = $1 FOR UPDATE;
+
+-- name: UpdateMarketLiquidityB :exec
+UPDATE markets SET liquidity_b = $2 WHERE id = $1;
+
+-- name: RescaleMarketOutcomeQ :exec
+-- Price-preserving liquidity injection (ADR-20): scales every q component by
+-- the same factor b_new/b_old so probabilities stay identical after a
+-- guarantee join changes b.
+UPDATE market_outcomes SET q = q * $2 WHERE market_id = $1;
 
 -- name: UpdateMarketOutcomeQ :exec
 -- Persists one component of the LMSR state vector after a bet shifts the
@@ -33,13 +47,14 @@ ORDER BY (CASE kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE
 
 -- name: ListMarketOutcomesWithPools :many
 -- Outcome rows with derived display name (players.name for player outcomes)
--- and the elo spent per outcome, in the canonical order (see ListMarketOutcomes).
+-- and the elo spent per outcome (cost + maker fee), in the canonical order
+-- (see ListMarketOutcomes).
 SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
        COALESCE(bp.pool, 0)::float8 AS pool
 FROM market_outcomes o
 LEFT JOIN players p ON p.id = o.player_id
 LEFT JOIN (
-    SELECT bets.outcome, SUM(bets.cost) AS pool FROM bets WHERE bets.market_id = $1 GROUP BY bets.outcome
+    SELECT bets.outcome, SUM(bets.cost + bets.fee) AS pool FROM bets WHERE bets.market_id = $1 GROUP BY bets.outcome
 ) bp ON bp.outcome = o.id
 WHERE o.market_id = $1
 ORDER BY (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
@@ -52,21 +67,32 @@ SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
 FROM market_outcomes o
 LEFT JOIN players p ON p.id = o.player_id
 LEFT JOIN (
-    SELECT bets.market_id, bets.outcome, SUM(bets.cost) AS pool FROM bets GROUP BY bets.market_id, bets.outcome
+    SELECT bets.market_id, bets.outcome, SUM(bets.cost + bets.fee) AS pool FROM bets GROUP BY bets.market_id, bets.outcome
 ) bp ON bp.market_id = o.market_id AND bp.outcome = o.id
 ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
 
--- name: CreateMarketGuarantors :exec
--- Bulk-inserts the market's guarantor players (zero-sum counterparties).
-INSERT INTO market_guarantors (market_id, player_id)
-SELECT sqlc.arg('market_id'), t.player_id FROM unnest(sqlc.arg('player_ids')::uuid[]) AS t(player_id);
+-- name: InsertMarketGuarantee :one
+-- A guarantee is a player's immutable guarantor wager: risk amount (their
+-- maximum loss) and maker fee rate (ADR-20). The client-generated id doubles
+-- as the idempotency key.
+INSERT INTO market_guarantees (id, market_id, player_id, risk_amount, fee_rate)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, created_at;
 
--- name: ListMarketGuarantors :many
-SELECT g.player_id, p.name AS player_name
-FROM market_guarantors g
+-- name: ListMarketGuarantees :many
+-- The market's guarantee wagers with player names, in join order.
+SELECT g.id, g.market_id, g.player_id, p.name AS player_name, g.risk_amount, g.fee_rate, g.created_at
+FROM market_guarantees g
 JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1
-ORDER BY p.name;
+ORDER BY g.created_at, g.id;
+
+-- name: ListMarketGuaranteeWagers :many
+-- Raw wager rows (no join) used by settlement and the price-history replay.
+SELECT id, player_id, risk_amount, fee_rate, created_at
+FROM market_guarantees
+WHERE market_id = $1
+ORDER BY created_at, id;
 
 -- name: CreateMatchWinnerParams :exec
 INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
@@ -80,7 +106,7 @@ VALUES ($1, $2, $3, $4, $5);
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b,
+    om.liquidity_b, om.max_guarantor_loss,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -97,7 +123,7 @@ WHERE om.id = $1;
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b,
+    om.liquidity_b, om.max_guarantor_loss,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -114,7 +140,7 @@ ORDER BY om.created_at DESC;
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b,
+    om.liquidity_b, om.max_guarantor_loss,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -221,39 +247,65 @@ WHERE market_id = $1
   AND placed_at < $3;
 
 -- name: InsertBet :one
-INSERT INTO bets (id, market_id, player_id, outcome, cost, shares)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO bets (id, market_id, player_id, outcome, cost, fee, shares)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING id, placed_at;
 
 -- name: GetPlayerReservedAmount :one
-SELECT COALESCE(SUM(ob.cost), 0)::float8 AS reserved
-FROM bets ob
-JOIN markets om ON om.id = ob.market_id
-WHERE ob.player_id = $1 AND om.status IN ('open', 'betting_closed');
+-- The player's outstanding exposure: bet costs + maker fees on open/betting-closed
+-- markets plus the risk of their guarantee wagers (ADR-20 reserves guarantor
+-- exposure against the betting limit).
+SELECT (
+    COALESCE(bets_sum.reserved, 0) + COALESCE(guarantees_sum.reserved, 0)
+)::float8 AS reserved
+FROM players p
+LEFT JOIN (
+    SELECT ob.player_id, SUM(ob.cost + ob.fee) AS reserved
+    FROM bets ob
+    JOIN markets om ON om.id = ob.market_id
+    WHERE om.status IN ('open', 'betting_closed')
+    GROUP BY ob.player_id
+) bets_sum ON bets_sum.player_id = p.id
+LEFT JOIN (
+    SELECT g.player_id, SUM(g.risk_amount) AS reserved
+    FROM market_guarantees g
+    JOIN markets om ON om.id = g.market_id
+    WHERE om.status IN ('open', 'betting_closed')
+    GROUP BY g.player_id
+) guarantees_sum ON guarantees_sum.player_id = p.id
+WHERE p.id = $1;
+
+-- name: GetMarketFeeCollected :one
+-- Total maker fees the market generated (the commission rollup of ADR-20).
+SELECT COALESCE(SUM(fee), 0)::float8 AS fee_collected
+FROM bets
+WHERE market_id = $1;
 
 -- name: GetBetsAggregatedByOutcome :many
-SELECT player_id, outcome, SUM(cost)::float8 AS total_cost
+SELECT player_id, outcome, SUM(cost + fee)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1
 GROUP BY player_id, outcome
 ORDER BY player_id, outcome;
 
 -- name: GetPlayerBetsAggregatedForMarket :many
-SELECT outcome, SUM(cost)::float8 AS total_cost
+SELECT outcome, SUM(cost + fee)::float8 AS total_cost
 FROM bets
 WHERE market_id = $1 AND player_id = $2
 GROUP BY outcome;
 
 -- name: GetBetsForSettlement :many
--- Per-buy rows (each carries the shares bought) used by share settlement.
-SELECT player_id, outcome, cost, shares
+-- Per-buy rows (each carries the shares bought and the maker fee charged) used
+-- by share settlement.
+SELECT player_id, outcome, cost, fee, shares, placed_at
 FROM bets
 WHERE market_id = $1
 ORDER BY placed_at, id;
 
 -- name: GetPlayerBetsForMarket :many
--- Per-buy rows for one player, used to show shares held / elo spent on the detail page.
-SELECT outcome, cost, shares
+-- Per-buy rows for one player, used to show shares held / elo spent (cost +
+-- maker fee) on the detail page.
+SELECT outcome, cost, fee, shares
 FROM bets
 WHERE market_id = $1 AND player_id = $2
 ORDER BY placed_at, id;
@@ -302,14 +354,17 @@ ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 -- Guarantor-role settlement rows (discriminator 'market_guarantor') — the
 -- per-guarantor payout rollup. A player who is both buyer and guarantor has a
 -- separate buyer row (discriminator 'market'), so their entry here carries only
--- the house result (ADR-10).
-SELECT bsd.player_id, p.name AS player_name,
-       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
-FROM market_guarantors g
+-- the house result (ADR-10). DISTINCT because a player may hold several
+-- guarantee wagers but settles as one guarantor row; the sort key is selected
+-- so DISTINCT accepts the ORDER BY.
+SELECT DISTINCT bsd.player_id, p.name AS player_name,
+       (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned,
+       (bsd.elo_earned + bsd.elo_staked)::float8 AS sort_key
+FROM market_guarantees g
 JOIN global_arena_settlement bsd ON bsd.market_id = g.market_id AND bsd.player_id = g.player_id
 JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
-ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
+ORDER BY sort_key DESC;
 
 -- name: GetPlayerBetLimit :one
 SELECT bet_limit FROM players WHERE id = $1;

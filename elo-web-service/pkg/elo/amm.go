@@ -26,7 +26,24 @@ import "math"
 // maps onto the first two vector components.
 //
 // Guarantors are the zero-sum counterparty: their combined worst-case loss is
-// bounded by b · ln(n) per market with n outcomes.
+// bounded by b · ln(n) per market with n outcomes. Since guarantees became
+// voluntary (ADR-20), b is dynamic — b = min(max_guarantor_loss, Σ risk)/ln(n)
+// — and grows as guarantor wagers arrive. A market with no guarantors yet has
+// b = 0: bets are rejected and prices display the uniform 1/n vector (the exact
+// q=0 limit of the LMSR). Raising b while rescaling q ← q·(b_new/b_old)
+// preserves all probabilities (the cost function scales by b_new/b_old, and
+// settlement never reads it), so liquidity can be injected mid-market without
+// moving prices.
+//
+// Guarantors charge a maker fee c (the risk-weighted mean of their wager fee
+// rates, capped at 0.25 each). The buyer's marginal price becomes
+//
+//	p_u = p + 4c·p·(1−p)
+//
+// — a variance-proportional fee (the schedule Kalshi uses in production): the
+// surcharge peaks at c for p = 0.5 and vanishes at p → 0/1, and c ≤ 0.25 keeps
+// p_u ≤ 1. Because a buy moves only one q component, the total fee for buying
+// s shares has the closed form 4c·b·Δp_i (amm.BuyFeeN).
 
 // ammCostN returns the LMSR market cost C(q) = b·ln(Σ e^(q_i/b)).
 // Uses log-sum-exp stabilization so large q/b cannot overflow.
@@ -60,10 +77,19 @@ func buyCostN(q []float64, b float64, i int, shares float64) float64 {
 
 // MarginalProbabilitiesN returns the live probabilities of all outcomes in
 // (0,1), derived from the market's current LMSR state. They sum to 1.
+// A market without guarantors (b = 0) has not traded yet, so its q is provably
+// the zero vector and the exact limit prices are uniform 1/n — returned so
+// callers can display an "awaiting guarantors" market sensibly.
 // Exported for the API layer.
 func MarginalProbabilitiesN(q []float64, b float64) []float64 {
 	probabilities := make([]float64, len(q))
-	if len(q) == 0 || b <= 0 {
+	if len(q) == 0 {
+		return probabilities
+	}
+	if b <= 0 {
+		for i := range probabilities {
+			probabilities[i] = 1 / float64(len(q))
+		}
 		return probabilities
 	}
 	m := q[0] / b
@@ -103,4 +129,27 @@ func ApplyBetN(q []float64, b float64, i int, shares float64) ([]float64, float6
 	newQ := append([]float64(nil), q...)
 	newQ[i] += shares
 	return newQ, buyCostN(q, b, i, shares)
+}
+
+// BuyFeeN returns the maker fee charged for buying `shares` of outcome i at
+// fee rate c (the market's risk-weighted mean of guarantor fee rates). The
+// buyer's marginal price is p_u = p + 4c·p(1−p); since a buy moves only q_i and
+// dp_i/dq_i = p_i(1−p_i)/b along that path, integrating the surcharge over the
+// buy gives the closed form fee = 4c·b·(p_i(q + shares·e_i) − p_i(q)) for any
+// number of outcomes. Zero for non-positive shares, b or c.
+func BuyFeeN(q []float64, b float64, i int, shares float64, feeRate float64) float64 {
+	if len(q) == 0 || i < 0 || i >= len(q) || shares <= 0 || b <= 0 || feeRate <= 0 {
+		return 0
+	}
+	before := MarginalProbabilitiesN(q, b)[i]
+	after := append([]float64(nil), q...)
+	after[i] += shares
+	afterP := MarginalProbabilitiesN(after, b)[i]
+	return 4 * feeRate * b * (afterP - before)
+}
+
+// PriceWithFee returns the buyer's marginal price including the maker fee:
+// p_u = p + 4c·p(1−p). c ≤ 0.25 guarantees p_u ≤ 1 (binding only as p → 1).
+func PriceWithFee(p, feeRate float64) float64 {
+	return p + 4*feeRate*p*(1-p)
 }

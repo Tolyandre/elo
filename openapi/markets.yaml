@@ -85,17 +85,17 @@ MarketsCollection:
                 type: integer
                 nullable: true
               # fixed-odds / LMSR fields
-              guarantor_player_ids:
-                type: array
-                description: Players who back the market and absorb its settlement residual.
-                items:
-                  $ref: './common.yaml#/Base58ID'
-              liquidity_b:
+              max_guarantor_loss:
                 type: number
                 format: double
                 minimum: 0
                 exclusiveMinimum: true
-                description: LMSR liquidity parameter; when omitted it is derived from the settings default max guarantor loss as b = L/ln(n), where n is the market's outcome count (b·ln(n) bounds the guarantors' combined worst-case loss).
+                description: >-
+                  Maximum combined guarantor risk L the market accepts: liquidity
+                  is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is
+                  the amount they risked. Wagers beyond L are accepted in full
+                  (they still earn fees) but add no liquidity. Defaults to the
+                  settings' market_default_max_guarantor_loss when omitted.
             required: [market_type, closes_at, id]
     responses:
       "201":
@@ -329,8 +329,14 @@ MarketBets:
                     cost_per_share:
                       type: number
                       format: double
-                      description: Effective elo cost paid per share (cost / shares).
-                  required: [shares, cost_per_share]
+                      description: Effective elo cost paid per share ((cost + fee) / shares).
+                    fee:
+                      type: number
+                      format: double
+                      description: >-
+                        Maker fee part of the payment (ADR-20): the market's
+                        guarantors earn it at resolution, weighted fee·risk.
+                  required: [shares, cost_per_share, fee]
               required: [status, data]
       "400":
         description: Bad request
@@ -363,16 +369,130 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
 
+MarketGuarantees:
+  post:
+    operationId: CreateMarketGuarantee
+    tags: [markets]
+    summary: Become a guarantor of a market (place a guarantor wager)
+    description: >-
+      Adds the caller's linked player as a guarantor with the given risk amount
+      and maker fee rate (ADR-20). The risk is reserved against the betting
+      limit, the market's liquidity grows (prices are preserved by rescaling),
+      and the wager is immutable. Wagers over-subscribing the market's L are
+      accepted in full but add no liquidity.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id:
+                $ref: './common.yaml#/Base58ID'
+              risk_amount:
+                type: number
+                format: double
+                minimum: 0
+                exclusiveMinimum: true
+                description: The maximum the guarantor can lose; reserved against the betting limit.
+              fee_rate:
+                type: number
+                format: double
+                minimum: 0
+                maximum: 0.25
+                description: >-
+                  The wager's maker fee rate, 0–25%: raises the market's
+                  weighted fee and both the guarantor's share of collected fees
+                  and their position in the first-loss waterfall.
+            required: [id, risk_amount, fee_rate]
+    responses:
+      "201":
+        description: Guarantee placed
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: object
+                  properties:
+                    risk_amount:
+                      type: number
+                      format: double
+                    fee_rate:
+                      type: number
+                      format: double
+                    liquidity_b:
+                      type: number
+                      format: double
+                      description: The market's liquidity after the wager.
+                    total_risk:
+                      type: number
+                      format: double
+                      description: Combined risk of all guarantor wagers after this one.
+                    max_guarantor_loss:
+                      type: number
+                      format: double
+                  required: [risk_amount, fee_rate, liquidity_b, total_risk, max_guarantor_loss]
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden (no linked player)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Market not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Market not open
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "422":
+        description: Invalid wager or bet limit exceeded
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 MarketProbabilityHistory:
   get:
     operationId: GetMarketProbabilityHistory
     tags: [markets]
     summary: Reconstructed per-outcome probability history of a market
     description: >-
-      The probability (LMSR marginal price) of every outcome after every bet,
-      reconstructed by replaying the bet stream through the market's LMSR from
-      its creation state. No probabilities are persisted; the series is derived
-      from bets alone.
+      The probability (LMSR marginal price) of every outcome after every event,
+      reconstructed by replaying the market's timeline — bets and guarantee
+      joins (which change liquidity b and rescale q without moving prices) —
+      from the creation state. No probabilities are persisted; the series is
+      derived from the immutable bets and market_guarantees rows alone.
     parameters:
       - name: id
         in: path
@@ -400,10 +520,10 @@ MarketProbabilityHistory:
                           t:
                             type: string
                             format: date-time
-                            description: When the bet was placed.
+                            description: When the event (bet or guarantee join) happened.
                           probabilities:
                             type: array
-                            description: Probability of every outcome right after the bet; probabilities sum to 1.
+                            description: Probability of every outcome right after the event; probabilities sum to 1.
                             items:
                               type: object
                               properties:
@@ -492,15 +612,39 @@ SettlementDetail:
       format: double
   required: [player_id, player_name, staked, earned]
 
-MarketGuarantor:
+MarketGuarantee:
   type: object
-  description: A player who backs a market and splits its settlement residual (deficit or surplus).
+  description: >-
+    A player's voluntary, immutable guarantor wager: the risk amount (their
+    maximum loss, reserved against the betting limit) and their maker fee rate.
+    A player may hold several wagers on one market; wagers cannot be withdrawn.
   properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
     player_id:
       $ref: './common.yaml#/Base58ID'
     player_name:
       type: string
-  required: [player_id, player_name]
+    risk_amount:
+      type: number
+      format: double
+      minimum: 0
+      exclusiveMinimum: true
+      description: The maximum the guarantor can lose on this wager.
+    fee_rate:
+      type: number
+      format: double
+      minimum: 0
+      maximum: 0.25
+      description: >-
+        The wager's maker fee rate (0–25%): raises the market's weighted fee
+        and both the guarantor's share of collected fees and their position in
+        the first-loss waterfall.
+    placed_at:
+      type: string
+      format: date-time
+      description: When the wager was placed.
+  required: [id, player_id, player_name, risk_amount, fee_rate, placed_at]
 
 MatchWinnerParams:
   type: object
@@ -590,11 +734,32 @@ Market:
     liquidity_b:
       type: number
       format: double
-      description: LMSR liquidity parameter (bounds guarantor worst-case loss at b·ln n for n outcomes).
-    guarantors:
+      description: >-
+        LMSR liquidity parameter, dynamic since guarantees became voluntary
+        (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor
+        wagers arrive. 0 while the market awaits its first guarantor.
+    max_guarantor_loss:
+      type: number
+      format: double
+      description: >-
+        Maximum combined guarantor risk L: bounds b (and with it the guarantors'
+        combined worst-case loss at their risked amounts).
+    fee_rate:
+      type: number
+      format: double
+      description: >-
+        The market's current maker fee c: the risk-weighted mean of the guarantor
+        wagers' fee rates. Buyers pay the variance-proportional surcharge
+        p + 4c·p(1−p) per share (0 while there are no fee-charging guarantors).
+    fee_collected:
+      type: number
+      format: double
+      description: Total maker fees the market generated (final once resolved).
+    guarantees:
       type: array
       items:
-        $ref: '#/MarketGuarantor'
+        $ref: '#/MarketGuarantee'
+      description: The market's guarantor wagers (multiple per player allowed).
     params:
       nullable: true
       description: Market-type-specific parameters
@@ -616,7 +781,7 @@ Market:
         who also bought on the market has a separate buyer row (shown in
         `settlement`), so their entry here carries only the house result
         (payout/surcharge).
-  required: [id, market_type, status, outcomes, liquidity_b]
+  required: [id, market_type, status, outcomes, liquidity_b, max_guarantor_loss]
 
 MarketDetail:
   allOf:
