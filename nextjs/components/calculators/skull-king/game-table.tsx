@@ -51,7 +51,11 @@ export function GameTable({
 
     return (
         <div className="overflow-x-auto max-w-full">
-            <table className="border-collapse text-sm md:text-base">
+            {/* w-full: stretch to the available width so wide screens use the
+                space for bigger cells (the cqi font sizes follow along); the
+                min-w-* floors + this wrapper still scroll when there are more
+                players than fit. */}
+            <table className="w-full border-collapse text-sm md:text-base">
                 <thead>
                     <tr>{headerCells}</tr>
                 </thead>

@@ -392,7 +392,7 @@ function IawwTable() {
     // which would invite creating a duplicate table.
     if (connecting) {
         return (
-            <main className="max-w-sm md:max-w-5xl mx-auto space-y-4">
+            <main className="max-w-sm sm:max-w-5xl landscape:max-w-5xl mx-auto space-y-4">
                 <PageHeader title="Этот Безумный Мир" />
                 <Card>
                     <CardContent className="py-8 flex items-center justify-center gap-2 text-muted-foreground">
@@ -406,7 +406,7 @@ function IawwTable() {
 
     if (gameState.phase === "setup") {
         return (
-            <main className="max-w-sm md:max-w-2xl mx-auto space-y-4">
+            <main className="max-w-sm sm:max-w-2xl landscape:max-w-2xl mx-auto space-y-4">
                 <PageHeader title="Этот Безумный Мир" />
                 <Card>
                     <CardHeader>
@@ -431,7 +431,7 @@ function IawwTable() {
     }
 
     return (
-        <main className="p-3 sm:p-4 space-y-4 max-w-sm md:max-w-5xl mx-auto">
+        <main className="p-3 sm:p-4 space-y-4 max-w-sm sm:max-w-5xl landscape:max-w-5xl mx-auto">
             {/* Only the host can save; the auth warning is irrelevant for
                 connected players and viewers. */}
             {isHost && <AuthWarning table />}

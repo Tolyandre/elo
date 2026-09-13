@@ -457,7 +457,9 @@ function SkullKingGame() {
     const connecting = !hydrated || awaitingSnapshot;
 
     return (
-        <main className="max-w-sm md:max-w-5xl mx-auto space-y-4 overflow-x-hidden">
+        // Compact column only on narrow portrait phones; landscape phones and
+        // tablets use the full shell width (the score table stretches with it).
+        <main className="max-w-sm sm:max-w-5xl landscape:max-w-5xl mx-auto space-y-4 overflow-x-hidden">
             <PageHeader
                 title="Skull King"
                 action={

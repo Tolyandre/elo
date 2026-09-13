@@ -27,7 +27,7 @@ export function ScoringTable({
 }) {
     return (
         <div className="overflow-x-auto">
-            <table className="border-collapse text-sm">
+            <table className="w-full border-collapse text-sm">
                 <thead>
                     <tr>
                         <th className="sticky left-0 z-20 bg-background border border-border p-1 min-w-[3.5rem] sm:min-w-[5rem]" />
