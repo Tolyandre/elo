@@ -260,16 +260,18 @@ export function MarketCard({ market, probabilityHistory, className }: { market: 
                         <SettlementList details={market.settlement} />
                     </div>
                 )}
-                {market.fee_collected != null && market.fee_collected > 0 && (
-                    <p className="text-xs text-muted-foreground pt-2 border-t">
-                        Комиссий собрано: {formatAmount(market.fee_collected)}
-                    </p>
-                )}
                 {market.guarantor_settlement && market.guarantor_settlement.length > 0 && (
                     <div className="space-y-1 pt-2 border-t">
                         <p className="text-xs text-muted-foreground font-medium">Поручители</p>
                         <SettlementList details={market.guarantor_settlement} showFlow={false} />
                     </div>
+                )}
+                {/* The collected fees are what the guarantor list above was paid
+                    from — they read as its total, so they come after it. */}
+                {market.fee_collected != null && market.fee_collected > 0 && (
+                    <p className="text-xs text-muted-foreground pt-2 border-t">
+                        Комиссий собрано: {formatAmount(market.fee_collected)}
+                    </p>
                 )}
             </CardContent>
         </Card>

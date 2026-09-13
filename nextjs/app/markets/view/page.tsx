@@ -106,7 +106,7 @@ function OutcomeColumn({
     pricePerShare?: number;
     /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
     multiplier?: number;
-    /** Maker fee part of the pending buy (ADR-20). */
+    /** Maker fee part of one share's price (ADR-20), same per-voice units as pricePerShare. */
     fee?: number;
     buyMode: BuyMode;
     myStaked?: number;
@@ -356,7 +356,10 @@ function MarketPageContent() {
                 })}
             </div>
 
-            {isOpen && feeRate > 0 && (
+            {/* The fee line accompanies the buy cards on open markets and keeps
+                explaining the settled bets' fees on closed ones (only a
+                cancelled market never charged one). */}
+            {feeRate > 0 && displayMarket.status !== "cancelled" && (
                 <p className="text-sm text-muted-foreground text-center">
                     Комиссия рынка: {formatPercent(feeRate)} — идёт поручителям
                 </p>
