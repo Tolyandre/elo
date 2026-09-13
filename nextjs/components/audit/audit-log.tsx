@@ -9,8 +9,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { AuditEntryRow } from "./audit-entry-row";
 
 /**
- * Audit feed for one entity type (admin tabs) or one entity (match history).
- * Latest first; "Показать ещё" follows the cursor while one is offered.
+ * Audit feed for one or more entity types (admin tabs — the games tab mixes
+ * game and tag events) or one entity (match history). Latest first;
+ * "Показать ещё" follows the cursor while one is offered.
  */
 export function AuditLog({
     entityType,
@@ -18,7 +19,7 @@ export function AuditLog({
     emptyText = "Событий пока нет",
     className,
 }: {
-    entityType: AuditEntityType;
+    entityType: AuditEntityType | AuditEntityType[];
     entityId?: Base58ID;
     emptyText?: string;
     className?: string;
@@ -29,13 +30,18 @@ export function AuditLog({
     const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Callers may pass an inline array literal (new identity every render), so
+    // the refetch effect keys on the canonical string form instead.
+    const typesKey = Array.isArray(entityType) ? entityType.join(",") : entityType;
+
     useEffect(() => {
         let cancelled = false;
+        const types = typesKey.split(",").map((t) => t.trim()) as AuditEntityType[];
         // eslint-disable-next-line react-hooks/set-state-in-effect -- loading indicator before async fetch
         setLoading(true);
         setError(null);
         getAuditPagePromise({
-            entity_type: entityType,
+            entity_type: types.length === 1 ? types[0] : types,
             entity_id: entityId ? String(entityId) : undefined,
         })
             .then((page) => {
@@ -52,7 +58,7 @@ export function AuditLog({
         return () => {
             cancelled = true;
         };
-    }, [entityType, entityId]);
+    }, [typesKey, entityId]);
 
     const loadMore = useCallback(async () => {
         if (!next || loadingMore) return;

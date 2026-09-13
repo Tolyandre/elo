@@ -16,6 +16,7 @@ type Querier interface {
 	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
+	AddGameTag(ctx context.Context, arg AddGameTagParams) error
 	AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error)
 	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	CreatePlayer(ctx context.Context, arg CreatePlayerParams) (Player, error)
 	// Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
 	CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutcomesParams) error
+	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
@@ -62,6 +64,7 @@ type Querier interface {
 	DeleteMatchTournamentsByMatch(ctx context.Context, matchID id.ID) error
 	// Returns the deleted row so the audit trail can capture the player's name.
 	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
+	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error)
@@ -149,6 +152,8 @@ type Querier interface {
 	GetPlayerReservedAmount(ctx context.Context, argID id.ID) (float64, error)
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
+	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
+	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
 	GetTournament(ctx context.Context, argID id.ID) ([]GetTournamentRow, error)
 	// HAVING guards the aggregate: with no matches it returns zero rows (ErrNoRows)
 	// instead of a (NULL, NULL) row that can't scan into the non-nullable time.Time.
@@ -174,14 +179,16 @@ type Querier interface {
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
-	// Latest-first audit feed. Optional entity_type / entity_id filters serve both
-	// the per-entity history (match view) and the per-type feed (admin tabs). The
+	// Latest-first audit feed. Optional entity filter (one or more entity types)
+	// and entity_id filter serve both the per-entity history (match view) and the
+	// per-type feed (admin tabs — the games tab mixes game and tag events). The
 	// cursor is the (created_at, id) row of the last returned event.
 	ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
 	ListGameTables(ctx context.Context) ([]GameTable, error)
+	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error)
 	ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error)
@@ -212,6 +219,7 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	ListTags(ctx context.Context) ([]ListTagsRow, error)
 	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
 	ListTournamentsByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListTournamentsByMatchIDsRow, error)
 	// Resolves the (unique) controlling user for each linked player; used to route
@@ -230,6 +238,7 @@ type Querier interface {
 	// Returns rating_after and elo_after ordered by date for the player graph.
 	RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error)
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
+	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
 	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
 	// Price-preserving liquidity injection (ADR-20): scales every q component by
 	// the same factor b_new/b_old so probabilities stay identical after a
@@ -254,6 +263,7 @@ type Querier interface {
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
+	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
 	UpdateTournament(ctx context.Context, arg UpdateTournamentParams) (Tournament, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error

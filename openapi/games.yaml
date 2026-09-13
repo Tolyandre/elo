@@ -252,6 +252,99 @@ GameMatchesPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
+GameTagsPath:
+  post:
+    operationId: AddGameTag
+    tags: [games]
+    summary: Attach a tag to a game (idempotent)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              tag_id:
+                $ref: './common.yaml#/Base58ID'
+            required: [tag_id]
+    responses:
+      "200":
+        description: Tag attached
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request (game or tag not found)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+GameTagItem:
+  delete:
+    operationId: RemoveGameTag
+    tags: [games]
+    summary: Detach a tag from a game
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: tagId
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Tag detached
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 GameListItem:
@@ -265,7 +358,21 @@ GameListItem:
       type: integer
     total_matches:
       type: integer
-  required: [id, name, last_played_order, total_matches]
+    tags:
+      type: array
+      items:
+        $ref: '#/GameTag'
+      description: Tags attached to the game, ordered by tag name
+  required: [id, name, last_played_order, total_matches, tags]
+
+GameTag:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+  required: [id, name]
 
 GameList:
   type: object

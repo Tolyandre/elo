@@ -23,7 +23,17 @@ export type PendingPlayer = PendingBase & {
      */
     clubIds: Base58ID[];
 };
-export type PendingGame = PendingBase & { name: string };
+export type PendingGame = PendingBase & {
+    name: string;
+    /**
+     * Server tag ids to attach once the game exists on the server. Applied
+     * (POST /games/{id}/tags) right after the game is created during sync, the
+     * same way club memberships follow a player create. Empty/omitted for games
+     * created before this field existed. Tags themselves are never created
+     * offline — they are picked from the server vocabulary.
+     */
+    tagIds?: Base58ID[];
+};
 
 export type PendingMatch = PendingBase & {
     /** Server game id, or clientId of a pending game. */

@@ -163,6 +163,14 @@ func main() {
 	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
 	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)
 
+	// Tags — shared game-tag vocabulary (many-to-many via /games/:id/tags).
+	router.GET("/tags", strictWrapper.ListTags)
+	router.POST("/tags", append(editorAuth(), strictWrapper.CreateTag)...)
+	router.PATCH("/tags/:id", append(editorAuth(), strictWrapper.PatchTag)...)
+	router.DELETE("/tags/:id", append(editorAuth(), strictWrapper.DeleteTag)...)
+	router.POST("/games/:id/tags", append(editorAuth(), strictWrapper.AddGameTag)...)
+	router.DELETE("/games/:id/tags/:tagId", append(editorAuth(), strictWrapper.RemoveGameTag)...)
+
 	// Tournaments
 	router.GET("/tournaments", strictWrapper.ListTournaments)
 	router.GET("/tournaments/:id", strictWrapper.GetTournament)

@@ -17,24 +17,27 @@ import (
 // row of the last returned event — the tie-break that keeps ordering stable
 // when several events share a timestamp (same millisecond in one tx).
 type auditCursor struct {
-	EntityType *string `json:"entity_type,omitempty"`
-	EntityID   *string `json:"entity_id,omitempty"`
-	CreatedAt  string  `json:"created_at"` // RFC3339Nano
-	ID         string  `json:"id"`         // canonical UUID
+	EntityTypes []string `json:"entity_types,omitempty"`
+	// LegacyEntityType carries cursors issued before the filter became a list;
+	// still decoded so an in-flight pagination survives a deploy.
+	LegacyEntityType *string `json:"entity_type,omitempty"`
+	EntityID         *string `json:"entity_id,omitempty"`
+	CreatedAt        string  `json:"created_at"` // RFC3339Nano
+	ID               string  `json:"id"`         // canonical UUID
 }
 
-func encodeAuditCursor(entityType *string, entityID *string, createdAt time.Time, id string) string {
+func encodeAuditCursor(entityTypes []string, entityID *string, createdAt time.Time, id string) string {
 	c := auditCursor{
-		EntityType: entityType,
-		EntityID:   entityID,
-		CreatedAt:  createdAt.UTC().Format(time.RFC3339Nano),
-		ID:         id,
+		EntityTypes: entityTypes,
+		EntityID:    entityID,
+		CreatedAt:   createdAt.UTC().Format(time.RFC3339Nano),
+		ID:          id,
 	}
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func decodeAuditCursor(token string) (entityType *string, entityID *string, createdAt time.Time, id string, err error) {
+func decodeAuditCursor(token string) (entityTypes []string, entityID *string, createdAt time.Time, id string, err error) {
 	b, derr := base64.StdEncoding.DecodeString(token)
 	if derr != nil {
 		return nil, nil, time.Time{}, "", derr
@@ -47,7 +50,12 @@ func decodeAuditCursor(token string) (entityType *string, entityID *string, crea
 	if terr != nil {
 		return nil, nil, time.Time{}, "", terr
 	}
-	return c.EntityType, c.EntityID, t, c.ID, nil
+	if len(c.EntityTypes) > 0 {
+		entityTypes = c.EntityTypes
+	} else if c.LegacyEntityType != nil {
+		entityTypes = []string{*c.LegacyEntityType}
+	}
+	return entityTypes, c.EntityID, t, c.ID, nil
 }
 
 // ListAuditEvents serves the public audit feed (ADR-14): latest first,
@@ -55,7 +63,7 @@ func decodeAuditCursor(token string) (entityType *string, entityID *string, crea
 // (match history).
 func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEventsRequestObject) (ListAuditEventsResponseObject, error) {
 	params := request.Params
-	var entityType *string
+	var entityTypes []string
 	var entityID *string
 	var cursorCreatedAt pgtype.Timestamptz
 	var cursorID *string
@@ -64,7 +72,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		var createdAt time.Time
 		var id string
 		var err error
-		entityType, entityID, createdAt, id, err = decodeAuditCursor(*params.Next)
+		entityTypes, entityID, createdAt, id, err = decodeAuditCursor(*params.Next)
 		if err != nil {
 			return ListAuditEvents400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
 		}
@@ -72,8 +80,9 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		cursorID = &id
 	} else {
 		if params.EntityType != nil {
-			et := string(*params.EntityType)
-			entityType = &et
+			for _, t := range *params.EntityType {
+				entityTypes = append(entityTypes, string(t))
+			}
 		}
 		if params.EntityId != nil {
 			eid := parseIDParam(*params.EntityId)
@@ -90,13 +99,10 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		limit = int32(*params.Limit)
 	}
 
-	entityTypeText := pgtype.Text{}
-	if entityType != nil {
-		entityTypeText = pgtype.Text{String: *entityType, Valid: true}
-	}
-
+	// A nil slice means "no type filter" (NULL ::text[] in the query); an
+	// empty array would filter everything out.
 	rows, err := s.api.AuditService.ListAuditEvents(ctx, db.ListAuditEventsParams{
-		EntityType:      entityTypeText,
+		EntityTypes:     entityTypes,
 		EntityID:        idPtr(entityID),
 		CursorCreatedAt: cursorCreatedAt,
 		CursorID:        idPtr(cursorID),
@@ -130,7 +136,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 	var next *string
 	if int32(len(rows)) == limit {
 		lastRow := rows[len(rows)-1]
-		token := encodeAuditCursor(entityType, entityID, lastRow.CreatedAt, string(lastRow.ID))
+		token := encodeAuditCursor(entityTypes, entityID, lastRow.CreatedAt, string(lastRow.ID))
 		next = &token
 	}
 

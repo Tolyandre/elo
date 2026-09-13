@@ -12,10 +12,14 @@ AuditCollection:
     parameters:
       - name: entity_type
         in: query
+        style: form
+        explode: true
         schema:
-          type: string
-          enum: [match, game, player, club]
-        description: Filter by entity type
+          type: array
+          items:
+            type: string
+            enum: [match, game, player, club, tag]
+        description: Filter by entity type(s); repeated for several types
       - name: entity_id
         in: query
         schema:
@@ -66,7 +70,7 @@ AuditEntry:
       description: Display name of the acting user at read time
     entity_type:
       type: string
-      enum: [match, game, player, club]
+      enum: [match, game, player, club, tag]
     entity_id:
       $ref: './common.yaml#/Base58ID'
     action:
@@ -76,7 +80,7 @@ AuditEntry:
       description: >-
         Action-specific payload; null when the event carries no details (match
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
-        of game/player/club), renamed → AuditRenameDetails, updated →
+        of game/player/club/tag), renamed → AuditRenameDetails, updated →
         AuditMatchUpdateDetails.
       oneOf:
         - $ref: '#/AuditEntityDetails'

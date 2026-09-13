@@ -78,6 +78,7 @@ const (
 	AuditEntryEntityTypeGame   AuditEntryEntityType = "game"
 	AuditEntryEntityTypeMatch  AuditEntryEntityType = "match"
 	AuditEntryEntityTypePlayer AuditEntryEntityType = "player"
+	AuditEntryEntityTypeTag    AuditEntryEntityType = "tag"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryEntityType enum.
@@ -90,6 +91,8 @@ func (e AuditEntryEntityType) Valid() bool {
 	case AuditEntryEntityTypeMatch:
 		return true
 	case AuditEntryEntityTypePlayer:
+		return true
+	case AuditEntryEntityTypeTag:
 		return true
 	default:
 		return false
@@ -339,6 +342,7 @@ const (
 	ListAuditEventsParamsEntityTypeGame   ListAuditEventsParamsEntityType = "game"
 	ListAuditEventsParamsEntityTypeMatch  ListAuditEventsParamsEntityType = "match"
 	ListAuditEventsParamsEntityTypePlayer ListAuditEventsParamsEntityType = "player"
+	ListAuditEventsParamsEntityTypeTag    ListAuditEventsParamsEntityType = "tag"
 )
 
 // Valid indicates whether the value is a known member of the ListAuditEventsParamsEntityType enum.
@@ -351,6 +355,8 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 	case ListAuditEventsParamsEntityTypeMatch:
 		return true
 	case ListAuditEventsParamsEntityTypePlayer:
+		return true
+	case ListAuditEventsParamsEntityTypeTag:
 		return true
 	default:
 		return false
@@ -426,7 +432,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -440,7 +446,7 @@ type AuditEntry struct {
 // AuditEntryAction defines model for AuditEntry.Action.
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -590,7 +596,10 @@ type GameListItem struct {
 	Id              Base58ID `json:"id"`
 	LastPlayedOrder int      `json:"last_played_order"`
 	Name            string   `json:"name"`
-	TotalMatches    int      `json:"total_matches"`
+
+	// Tags Tags attached to the game, ordered by tag name
+	Tags         []GameTag `json:"tags"`
+	TotalMatches int       `json:"total_matches"`
 }
 
 // GameMatch defines model for GameMatch.
@@ -650,6 +659,13 @@ type GamePlayer struct {
 
 // GamePlayerLeague defines model for GamePlayer.League.
 type GamePlayerLeague string
+
+// GameTag defines model for GameTag.
+type GameTag struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+}
 
 // GlobalReplayReport defines model for GlobalReplayReport.
 type GlobalReplayReport struct {
@@ -1037,6 +1053,16 @@ type TableSummary struct {
 	Version int64 `json:"version"`
 }
 
+// Tag defines model for Tag.
+type Tag struct {
+	// GameCount Number of games carrying this tag
+	GameCount int `json:"game_count"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+}
+
 // Tournament defines model for Tournament.
 type Tournament struct {
 	EndDate time.Time `json:"end_date"`
@@ -1192,8 +1218,8 @@ type CreatePlayerCorrectionJSONBodyDiscriminator string
 
 // ListAuditEventsParams defines parameters for ListAuditEvents.
 type ListAuditEventsParams struct {
-	// EntityType Filter by entity type
-	EntityType *ListAuditEventsParamsEntityType `form:"entity_type,omitempty" json:"entity_type,omitempty"`
+	// EntityType Filter by entity type(s); repeated for several types
+	EntityType *[]ListAuditEventsParamsEntityType `form:"entity_type,omitempty" json:"entity_type,omitempty"`
 
 	// EntityId Filter by entity ID (requires entity_type)
 	EntityId *string `form:"entity_id,omitempty" json:"entity_id,omitempty"`
@@ -1263,6 +1289,12 @@ type CreateGameJSONBody struct {
 // PatchGameJSONBody defines parameters for PatchGame.
 type PatchGameJSONBody struct {
 	Name string `json:"name"`
+}
+
+// AddGameTagJSONBody defines parameters for AddGameTag.
+type AddGameTagJSONBody struct {
+	// TagId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TagId Base58ID `json:"tag_id"`
 }
 
 // CreateMarketJSONBody defines parameters for CreateMarket.
@@ -1435,6 +1467,18 @@ type TakeoverTableJSONBody struct {
 	HostClientToken *string `json:"host_client_token,omitempty"`
 }
 
+// CreateTagJSONBody defines parameters for CreateTag.
+type CreateTagJSONBody struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+}
+
+// PatchTagJSONBody defines parameters for PatchTag.
+type PatchTagJSONBody struct {
+	Name string `json:"name"`
+}
+
 // PatchUserJSONBody defines parameters for PatchUser.
 type PatchUserJSONBody struct {
 	CanEdit bool `json:"can_edit"`
@@ -1460,6 +1504,9 @@ type CreateGameJSONRequestBody CreateGameJSONBody
 
 // PatchGameJSONRequestBody defines body for PatchGame for application/json ContentType.
 type PatchGameJSONRequestBody PatchGameJSONBody
+
+// AddGameTagJSONRequestBody defines body for AddGameTag for application/json ContentType.
+type AddGameTagJSONRequestBody AddGameTagJSONBody
 
 // CreateMarketJSONRequestBody defines body for CreateMarket for application/json ContentType.
 type CreateMarketJSONRequestBody CreateMarketJSONBody
@@ -1502,6 +1549,12 @@ type SubmitTableJSONRequestBody SubmitTableJSONBody
 
 // TakeoverTableJSONRequestBody defines body for TakeoverTable for application/json ContentType.
 type TakeoverTableJSONRequestBody TakeoverTableJSONBody
+
+// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
+type CreateTagJSONRequestBody CreateTagJSONBody
+
+// PatchTagJSONRequestBody defines body for PatchTag for application/json ContentType.
+type PatchTagJSONRequestBody PatchTagJSONBody
 
 // CreateTournamentJSONRequestBody defines body for CreateTournament for application/json ContentType.
 type CreateTournamentJSONRequestBody = TournamentInput
@@ -1942,6 +1995,12 @@ type ServerInterface interface {
 	// GetGameMatches Get all matches for a game
 	// (GET /games/{id}/matches)
 	GetGameMatches(c *gin.Context, id string)
+	// AddGameTag Attach a tag to a game (idempotent)
+	// (POST /games/{id}/tags)
+	AddGameTag(c *gin.Context, id string)
+	// RemoveGameTag Detach a tag from a game
+	// (DELETE /games/{id}/tags/{tagId})
+	RemoveGameTag(c *gin.Context, id string, tagId string)
 	// ListMarkets List active and closed markets
 	// (GET /markets)
 	ListMarkets(c *gin.Context)
@@ -2035,6 +2094,18 @@ type ServerInterface interface {
 	// TakeoverTable Claim hosting of the table for this device
 	// (POST /tables/{id}/takeover)
 	TakeoverTable(c *gin.Context, id string)
+	// ListTags List all tags with their usage counts, ordered by name
+	// (GET /tags)
+	ListTags(c *gin.Context)
+	// CreateTag Create a new tag
+	// (POST /tags)
+	CreateTag(c *gin.Context)
+	// DeleteTag Delete a tag (detaches it from every game)
+	// (DELETE /tags/{id})
+	DeleteTag(c *gin.Context, id string)
+	// PatchTag Rename a tag (applies to every game carrying it)
+	// (PATCH /tags/{id})
+	PatchTag(c *gin.Context, id string)
 	// ListTournaments List all tournaments (newest start date first)
 	// (GET /tournaments)
 	ListTournaments(c *gin.Context)
@@ -2119,7 +2190,7 @@ func (siw *ServerInterfaceWrapper) ListAuditEvents(c *gin.Context) {
 
 	// ------------- Optional query parameter "entity_type" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "entity_type", c.Request.URL.Query(), &params.EntityType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "entity_type", c.Request.URL.Query(), &params.EntityType, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter entity_type: %w", err), http.StatusBadRequest)
 		return
@@ -2581,6 +2652,65 @@ func (siw *ServerInterfaceWrapper) GetGameMatches(c *gin.Context) {
 	}
 
 	siw.Handler.GetGameMatches(c, id)
+}
+
+// AddGameTag operation middleware
+func (siw *ServerInterfaceWrapper) AddGameTag(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AddGameTag(c, id)
+}
+
+// RemoveGameTag operation middleware
+func (siw *ServerInterfaceWrapper) RemoveGameTag(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", c.Param("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RemoveGameTag(c, id, tagId)
 }
 
 // ListMarkets operation middleware
@@ -3259,6 +3389,82 @@ func (siw *ServerInterfaceWrapper) TakeoverTable(c *gin.Context) {
 	siw.Handler.TakeoverTable(c, id)
 }
 
+// ListTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTags(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTags(c)
+}
+
+// CreateTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTag(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTag(c)
+}
+
+// DeleteTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTag(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteTag(c, id)
+}
+
+// PatchTag operation middleware
+func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchTag(c, id)
+}
+
 // ListTournaments operation middleware
 func (siw *ServerInterfaceWrapper) ListTournaments(c *gin.Context) {
 
@@ -3472,6 +3678,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/games/:id", wrapper.GetGame)
 	router.PATCH(options.BaseURL+"/games/:id", wrapper.PatchGame)
 	router.GET(options.BaseURL+"/games/:id/matches", wrapper.GetGameMatches)
+	router.POST(options.BaseURL+"/games/:id/tags", wrapper.AddGameTag)
+	router.DELETE(options.BaseURL+"/games/:id/tags/:tagId", wrapper.RemoveGameTag)
 	router.GET(options.BaseURL+"/markets", wrapper.ListMarkets)
 	router.POST(options.BaseURL+"/markets", wrapper.CreateMarket)
 	router.DELETE(options.BaseURL+"/markets/:id", wrapper.DeleteMarket)
@@ -3503,6 +3711,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/tables/:id/state", wrapper.UpdateTableState)
 	router.POST(options.BaseURL+"/tables/:id/submit", wrapper.SubmitTable)
 	router.POST(options.BaseURL+"/tables/:id/takeover", wrapper.TakeoverTable)
+	router.GET(options.BaseURL+"/tags", wrapper.ListTags)
+	router.POST(options.BaseURL+"/tags", wrapper.CreateTag)
+	router.DELETE(options.BaseURL+"/tags/:id", wrapper.DeleteTag)
+	router.PATCH(options.BaseURL+"/tags/:id", wrapper.PatchTag)
 	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
 	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
 	router.DELETE(options.BaseURL+"/tournaments/:id", wrapper.DeleteTournament)
@@ -4636,6 +4848,136 @@ func (response GetGameMatches400JSONResponse) VisitGetGameMatchesResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGameTagRequestObject struct {
+	Id   string `json:"id"`
+	Body *AddGameTagJSONRequestBody
+}
+
+type AddGameTagResponseObject interface {
+	VisitAddGameTagResponse(w http.ResponseWriter) error
+}
+
+type AddGameTag200JSONResponse ApiSuccessMessage
+
+func (response AddGameTag200JSONResponse) VisitAddGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGameTag400JSONResponse ApiError
+
+func (response AddGameTag400JSONResponse) VisitAddGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGameTag401JSONResponse ApiError
+
+func (response AddGameTag401JSONResponse) VisitAddGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddGameTag403JSONResponse ApiError
+
+func (response AddGameTag403JSONResponse) VisitAddGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGameTagRequestObject struct {
+	Id    string `json:"id"`
+	TagId string `json:"tagId"`
+}
+
+type RemoveGameTagResponseObject interface {
+	VisitRemoveGameTagResponse(w http.ResponseWriter) error
+}
+
+type RemoveGameTag200JSONResponse ApiSuccessMessage
+
+func (response RemoveGameTag200JSONResponse) VisitRemoveGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGameTag400JSONResponse ApiError
+
+func (response RemoveGameTag400JSONResponse) VisitRemoveGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGameTag401JSONResponse ApiError
+
+func (response RemoveGameTag401JSONResponse) VisitRemoveGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveGameTag403JSONResponse ApiError
+
+func (response RemoveGameTag403JSONResponse) VisitRemoveGameTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -6553,6 +6895,285 @@ func (response TakeoverTable404JSONResponse) VisitTakeoverTableResponse(w http.R
 	return err
 }
 
+type ListTagsRequestObject struct {
+}
+
+type ListTagsResponseObject interface {
+	VisitListTagsResponse(w http.ResponseWriter) error
+}
+
+type ListTags200JSONResponse struct {
+	Data   []Tag  `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response ListTags200JSONResponse) VisitListTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTagRequestObject struct {
+	Body *CreateTagJSONRequestBody
+}
+
+type CreateTagResponseObject interface {
+	VisitCreateTagResponse(w http.ResponseWriter) error
+}
+
+type CreateTag200JSONResponse struct {
+	Data   Tag    `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response CreateTag200JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTag400JSONResponse ApiError
+
+func (response CreateTag400JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTag401JSONResponse ApiError
+
+func (response CreateTag401JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTag403JSONResponse ApiError
+
+func (response CreateTag403JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTag409JSONResponse ApiError
+
+func (response CreateTag409JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTagRequestObject struct {
+	Id string `json:"id"`
+}
+
+type DeleteTagResponseObject interface {
+	VisitDeleteTagResponse(w http.ResponseWriter) error
+}
+
+type DeleteTag200JSONResponse ApiSuccessMessage
+
+func (response DeleteTag200JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag400JSONResponse ApiError
+
+func (response DeleteTag400JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag401JSONResponse ApiError
+
+func (response DeleteTag401JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag403JSONResponse ApiError
+
+func (response DeleteTag403JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteTag404JSONResponse ApiError
+
+func (response DeleteTag404JSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTagRequestObject struct {
+	Id   string `json:"id"`
+	Body *PatchTagJSONRequestBody
+}
+
+type PatchTagResponseObject interface {
+	VisitPatchTagResponse(w http.ResponseWriter) error
+}
+
+type PatchTag200JSONResponse struct {
+	Data   Tag    `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response PatchTag200JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTag400JSONResponse ApiError
+
+func (response PatchTag400JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTag401JSONResponse ApiError
+
+func (response PatchTag401JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTag403JSONResponse ApiError
+
+func (response PatchTag403JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTag404JSONResponse ApiError
+
+func (response PatchTag404JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTag409JSONResponse ApiError
+
+func (response PatchTag409JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTournamentsRequestObject struct {
 }
 
@@ -7112,6 +7733,12 @@ type StrictServerInterface interface {
 	// GetGameMatches Get all matches for a game
 	// (GET /games/{id}/matches)
 	GetGameMatches(ctx context.Context, request GetGameMatchesRequestObject) (GetGameMatchesResponseObject, error)
+	// AddGameTag Attach a tag to a game (idempotent)
+	// (POST /games/{id}/tags)
+	AddGameTag(ctx context.Context, request AddGameTagRequestObject) (AddGameTagResponseObject, error)
+	// RemoveGameTag Detach a tag from a game
+	// (DELETE /games/{id}/tags/{tagId})
+	RemoveGameTag(ctx context.Context, request RemoveGameTagRequestObject) (RemoveGameTagResponseObject, error)
 	// ListMarkets List active and closed markets
 	// (GET /markets)
 	ListMarkets(ctx context.Context, request ListMarketsRequestObject) (ListMarketsResponseObject, error)
@@ -7205,6 +7832,18 @@ type StrictServerInterface interface {
 	// TakeoverTable Claim hosting of the table for this device
 	// (POST /tables/{id}/takeover)
 	TakeoverTable(ctx context.Context, request TakeoverTableRequestObject) (TakeoverTableResponseObject, error)
+	// ListTags List all tags with their usage counts, ordered by name
+	// (GET /tags)
+	ListTags(ctx context.Context, request ListTagsRequestObject) (ListTagsResponseObject, error)
+	// CreateTag Create a new tag
+	// (POST /tags)
+	CreateTag(ctx context.Context, request CreateTagRequestObject) (CreateTagResponseObject, error)
+	// DeleteTag Delete a tag (detaches it from every game)
+	// (DELETE /tags/{id})
+	DeleteTag(ctx context.Context, request DeleteTagRequestObject) (DeleteTagResponseObject, error)
+	// PatchTag Rename a tag (applies to every game carrying it)
+	// (PATCH /tags/{id})
+	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
 	// ListTournaments List all tournaments (newest start date first)
 	// (GET /tournaments)
 	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
@@ -7885,6 +8524,66 @@ func (sh *strictHandler) GetGameMatches(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(GetGameMatchesResponseObject); ok {
 		if err := validResponse.VisitGetGameMatchesResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddGameTag operation middleware
+func (sh *strictHandler) AddGameTag(ctx *gin.Context, id string) {
+	var request AddGameTagRequestObject
+
+	request.Id = id
+
+	var body AddGameTagJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AddGameTag(ctx, request.(AddGameTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddGameTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(AddGameTagResponseObject); ok {
+		if err := validResponse.VisitAddGameTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveGameTag operation middleware
+func (sh *strictHandler) RemoveGameTag(ctx *gin.Context, id string, tagId string) {
+	var request RemoveGameTagRequestObject
+
+	request.Id = id
+	request.TagId = tagId
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveGameTag(ctx, request.(RemoveGameTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveGameTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(RemoveGameTagResponseObject); ok {
+		if err := validResponse.VisitRemoveGameTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -8769,6 +9468,120 @@ func (sh *strictHandler) TakeoverTable(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(TakeoverTableResponseObject); ok {
 		if err := validResponse.VisitTakeoverTableResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTags operation middleware
+func (sh *strictHandler) ListTags(ctx *gin.Context) {
+	var request ListTagsRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTags(ctx, request.(ListTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTags")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListTagsResponseObject); ok {
+		if err := validResponse.VisitListTagsResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTag operation middleware
+func (sh *strictHandler) CreateTag(ctx *gin.Context) {
+	var request CreateTagRequestObject
+
+	var body CreateTagJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTag(ctx, request.(CreateTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTagResponseObject); ok {
+		if err := validResponse.VisitCreateTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteTag operation middleware
+func (sh *strictHandler) DeleteTag(ctx *gin.Context, id string) {
+	var request DeleteTagRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTag(ctx, request.(DeleteTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(DeleteTagResponseObject); ok {
+		if err := validResponse.VisitDeleteTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchTag operation middleware
+func (sh *strictHandler) PatchTag(ctx *gin.Context, id string) {
+	var request PatchTagRequestObject
+
+	request.Id = id
+
+	var body PatchTagJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchTag(ctx, request.(PatchTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(PatchTagResponseObject); ok {
+		if err := validResponse.VisitPatchTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

@@ -10,6 +10,7 @@ const ENTITY_NOUN: Record<AuditEntityType, string> = {
     game: "игру",
     player: "игрока",
     club: "клуб",
+    tag: "тег",
 };
 
 /** One row of the expanded match-edit diff. */

@@ -17,11 +17,16 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 
 	gameList := make([]GameListItem, 0, len(games))
 	for i, g := range games {
+		tags := make([]GameTag, 0, len(g.Tags))
+		for _, t := range g.Tags {
+			tags = append(tags, GameTag{Id: t.Id, Name: t.Name})
+		}
 		gameList = append(gameList, GameListItem{
 			Id:              g.Id,
 			Name:            g.Name,
 			LastPlayedOrder: i,
 			TotalMatches:    g.TotalMatches,
+			Tags:            tags,
 		})
 	}
 

@@ -125,6 +125,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/games/{id}/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a tag to a game (idempotent) */
+        post: operations["AddGameTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/games/{id}/tags/{tagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a tag from a game */
+        delete: operations["RemoveGameTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all tags with their usage counts, ordered by name */
+        get: operations["ListTags"];
+        put?: never;
+        /** Create a new tag */
+        post: operations["CreateTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a tag (detaches it from every game) */
+        delete: operations["DeleteTag"];
+        options?: never;
+        head?: never;
+        /** Rename a tag (applies to every game carrying it) */
+        patch: operations["PatchTag"];
+        trace?: never;
+    };
     "/matches": {
         parameters: {
             query?: never;
@@ -803,6 +873,8 @@ export interface components {
             name: string;
             last_played_order: number;
             total_matches: number;
+            /** @description Tags attached to the game, ordered by tag name */
+            tags: components["schemas"]["GameTag"][];
         };
         GameList: {
             games: components["schemas"]["GameListItem"][];
@@ -844,6 +916,10 @@ export interface components {
             players: components["schemas"]["GameMatchPlayer"][];
             /** @description Tournaments this match belongs to */
             tournaments?: components["schemas"]["MatchTournament"][];
+        };
+        GameTag: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
         };
         /** @description Per-player data within a match (keyed by player_id in the score map) */
         MatchPlayer: {
@@ -893,6 +969,12 @@ export interface components {
             icon?: string | null;
             /** @description List of player IDs */
             player_ids: components["schemas"]["Base58ID"][];
+        };
+        Tag: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            /** @description Number of games carrying this tag */
+            game_count: number;
         };
         TournamentInput: {
             id: components["schemas"]["Base58ID"];
@@ -1128,11 +1210,11 @@ export interface components {
             /** @description Display name of the acting user at read time */
             actor_name: string;
             /** @enum {string} */
-            entity_type: "match" | "game" | "player" | "club";
+            entity_type: "match" | "game" | "player" | "club" | "tag";
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails. */
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails. */
             details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"]) | null;
         };
         AuditEntityDetails: {
@@ -1868,6 +1950,334 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    AddGameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    tag_id: components["schemas"]["Base58ID"];
+                };
+            };
+        };
+        responses: {
+            /** @description Tag attached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Bad request (game or tag not found) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    RemoveGameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                tagId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag detached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of tags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tag"][];
+                    };
+                };
+            };
+        };
+    };
+    CreateTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id: components["schemas"]["Base58ID"];
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tag"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tag with this name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    DeleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tag deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    PatchTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Renamed tag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tag"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tag not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tag with this name already exists */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3820,8 +4230,8 @@ export interface operations {
     ListAuditEvents: {
         parameters: {
             query?: {
-                /** @description Filter by entity type */
-                entity_type?: "match" | "game" | "player" | "club";
+                /** @description Filter by entity type(s); repeated for several types */
+                entity_type?: ("match" | "game" | "player" | "club" | "tag")[];
                 /** @description Filter by entity ID (requires entity_type) */
                 entity_id?: string;
                 /** @description Cursor token from previous page's "next" field */

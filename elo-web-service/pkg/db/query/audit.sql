@@ -6,8 +6,9 @@ INSERT INTO audit_log (id, actor_user_id, entity_type, entity_id, action, detail
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
 
 -- name: ListAuditEvents :many
--- Latest-first audit feed. Optional entity_type / entity_id filters serve both
--- the per-entity history (match view) and the per-type feed (admin tabs). The
+-- Latest-first audit feed. Optional entity filter (one or more entity types)
+-- and entity_id filter serve both the per-entity history (match view) and the
+-- per-type feed (admin tabs — the games tab mixes game and tag events). The
 -- cursor is the (created_at, id) row of the last returned event.
 SELECT
     a.id,
@@ -21,7 +22,7 @@ SELECT
     a.details
 FROM audit_log a
 JOIN users u ON u.id = a.actor_user_id
-WHERE (sqlc.narg('entity_type')::text IS NULL OR a.entity_type = sqlc.narg('entity_type')::text)
+WHERE (sqlc.narg('entity_types')::text[] IS NULL OR a.entity_type = ANY(sqlc.narg('entity_types')::text[]))
   AND (sqlc.narg('entity_id')::uuid IS NULL OR a.entity_id = sqlc.narg('entity_id')::uuid)
   AND (
       sqlc.narg('cursor_created_at')::timestamptz IS NULL

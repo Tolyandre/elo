@@ -34,6 +34,7 @@ type GameTitles struct {
 	Id           id.ID
 	Name         string
 	TotalMatches int
+	Tags         []TagRef
 }
 
 type GameMatchPlayer struct {
@@ -80,12 +81,26 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 		return nil, fmt.Errorf("unable to retrieve games from db: %w", err)
 	}
 
+	tagRows, err := s.Queries.ListGameTags(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve game tags from db: %w", err)
+	}
+	tagsByGame := make(map[id.ID][]TagRef, len(rows))
+	for _, t := range tagRows {
+		tagsByGame[t.GameID] = append(tagsByGame[t.GameID], TagRef{Id: t.TagID, Name: t.TagName})
+	}
+
 	gameList := make([]GameTitles, 0, len(rows))
 	for _, r := range rows {
+		tags := tagsByGame[r.ID]
+		if tags == nil {
+			tags = []TagRef{}
+		}
 		gameList = append(gameList, GameTitles{
 			Id:           r.ID,
 			Name:         r.Name,
 			TotalMatches: int(r.TotalMatches),
+			Tags:         tags,
 		})
 	}
 

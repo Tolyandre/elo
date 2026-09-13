@@ -65,7 +65,7 @@ type  OfflineState = {
     addPendingPlayer: (name: string, clubIds?: Base58ID[]) => PendingPlayer;
     updatePendingPlayer: (clientId: Base58ID, name: string) => void;
     deletePendingPlayer: (clientId: Base58ID) => void;
-    addPendingGame: (name: string) => PendingGame;
+    addPendingGame: (name: string, tagIds?: Base58ID[]) => PendingGame;
     updatePendingGame: (clientId: Base58ID, name: string) => void;
     deletePendingGame: (clientId: Base58ID) => void;
     /**
@@ -118,7 +118,15 @@ export function loadOfflineStore(): OfflineStore {
             calculatorKind: m.calculatorKind ?? null,
             calculatorData: m.calculatorData ?? null,
         }));
-        return { games: parsed.games ?? [], players, matches };
+        const rawGames = (parsed.games ?? []) as Array<Partial<PendingGame>>;
+        const games: PendingGame[] = rawGames.map((g) => ({
+            clientId: g.clientId!,
+            createdAt: g.createdAt!,
+            status: g.status ?? "pending",
+            name: g.name!,
+            tagIds: g.tagIds ?? [],
+        }));
+        return { games, players, matches };
     } catch {
         // corrupted store — start fresh
     }
@@ -136,6 +144,14 @@ const syncApi: SyncApi = {
         const { data, error, response } = await client.POST("/games", { body });
         if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
         return { ok: true, data: { id: data.data.id } };
+    },
+    async addGameTag({ game_id, tag_id }): Promise<SyncCallResult<null>> {
+        const { error, response } = await client.POST("/games/{id}/tags", {
+            params: { path: { id: game_id } },
+            body: { tag_id },
+        });
+        if (error) return { ok: false, status: response.status, message: error.message ?? `Ошибка ${response.status}` };
+        return { ok: true, data: null };
     },
     async createPlayer(body): Promise<SyncCallResult<{ id: Base58ID }>> {
         const { data, error, response } = await client.POST("/players", { body });
@@ -402,12 +418,13 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const addPendingGame = useCallback(
-        (name: string) => {
+        (name: string, tagIds: Base58ID[] = []) => {
             const game: PendingGame = {
                 clientId: newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 name,
+                tagIds,
             };
             mutateStore((s) => ({ ...s, games: [...s.games, game] }));
             return game;

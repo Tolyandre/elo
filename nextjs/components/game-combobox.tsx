@@ -16,7 +16,17 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Spinner } from "@/components/ui/spinner"
 import { useGames } from "@/app/gamesContext"
+import { useTags } from "@/app/tagsContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
@@ -33,7 +43,7 @@ export function GameCombobox({
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [creating, setCreating] = React.useState(false)
+  const [createOpen, setCreateOpen] = React.useState(false)
 
   const value = controlledValue !== undefined ? controlledValue : internalValue
 
@@ -41,7 +51,7 @@ export function GameCombobox({
   const { matches } = useMatches();
   const { playerId } = useMe();
   const { isMobile } = useIsMobile();
-  const { pendingGames, addPendingGame } = useOffline();
+  const { pendingGames } = useOffline();
 
   const groups = React.useMemo(() => {
     const base = buildGameGroups(games, matches, playerId);
@@ -78,21 +88,20 @@ export function GameCombobox({
         onChange(id);
       }
       setOpen(false);
-      setSearchQuery("");
-      setCreating(false);
     }, 100);
   };
 
   const handleCreateGame = () => {
-    if (!searchQuery.trim() || creating) return;
+    if (!searchQuery.trim()) return;
+    // Confirm step: the dialog lets the user check the name and pick tags (the
+    // way clubs are picked for a new player) before the game is queued.
+    setOpen(false);
+    setCreateOpen(true);
+  };
 
-    setCreating(true);
-    const name = searchQuery.trim();
-    // Creates always queue: the pending game's clientId is its final server
-    // id, so a lost response or retry can never mint a second id and end up
-    // stuck behind the unique-name index. While online the queue flushes
-    // within a round trip.
-    selectCreated(addPendingGame(name).clientId);
+  const handleCreated = (id: Base58ID) => {
+    setSearchQuery("");
+    selectCreated(id);
   };
 
   const trigger = (
@@ -126,10 +135,10 @@ export function GameCombobox({
               variant="ghost"
               className="w-full justify-start text-sm"
               onClick={handleCreateGame}
-              disabled={creating || !searchQuery.trim()}
+              disabled={!searchQuery.trim()}
             >
               <Plus className="mr-2 h-4 w-4" />
-              {creating ? "Создание..." : `Создать "${searchQuery}"`}
+              {`Создать "${searchQuery}"`}
             </Button>
           </div>
         </CommandEmpty>
@@ -161,11 +170,153 @@ export function GameCombobox({
   )
 
   return (
-    <ResponsiveCommandPopover
-      open={open}
-      onOpenChange={setOpen}
-      trigger={trigger}
-      content={content}
-    />
+    <>
+      <ResponsiveCommandPopover
+        open={open}
+        onOpenChange={setOpen}
+        trigger={trigger}
+        content={content}
+      />
+      <GameCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        initialName={searchQuery.trim()}
+        onCreated={handleCreated}
+      />
+    </>
+  )
+}
+
+/**
+ * Confirm-create dialog for a brand-new game picked from the search: name
+ * (pre-filled from the search, editable) plus toggleable tag chips — the same
+ * flow as creating a player with clubs in the player picker.
+ *
+ * Creates always queue via the offline store (the pending game's clientId is
+ * its final server id); the sync engine attaches the chosen tags right after
+ * the create lands.
+ */
+function GameCreateDialog({
+  open,
+  onOpenChange,
+  initialName,
+  onCreated,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  initialName: string
+  onCreated: (id: Base58ID) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Новая игра</DialogTitle>
+          <DialogDescription>
+            Проверьте название и при необходимости выберите теги.
+          </DialogDescription>
+        </DialogHeader>
+        {/* Inside the (unmounted-when-closed) dialog content, so the draft
+            state re-seeds from the picker's search text on every open. */}
+        <GameCreateForm
+          initialName={initialName}
+          onCreated={onCreated}
+          onClose={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function GameCreateForm({
+  initialName,
+  onCreated,
+  onClose,
+}: {
+  initialName: string
+  onCreated: (id: Base58ID) => void
+  onClose: () => void
+}) {
+  const { tags } = useTags()
+  const { canEdit } = useMe()
+  const { addPendingGame } = useOffline()
+
+  const [name, setName] = React.useState(initialName)
+  const [selectedTagIds, setSelectedTagIds] = React.useState<Set<Base58ID>>(new Set())
+  const [creating, setCreating] = React.useState(false)
+
+  const sortedTags = React.useMemo(
+    () => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [tags],
+  )
+
+  function toggleTag(tagId: Base58ID) {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+  }
+
+  async function confirmCreate() {
+    const trimmed = name.trim()
+    if (!trimmed || creating) return
+    setCreating(true)
+    try {
+      const game = addPendingGame(trimmed, [...selectedTagIds])
+      onClose()
+      onCreated(game.clientId)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <>
+      <input
+        className="w-full rounded border p-2"
+        placeholder="Название игры"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmCreate(); } }}
+        autoFocus
+        aria-label="Название новой игры"
+      />
+      {sortedTags.length > 0 && (
+        <div className="flex flex-wrap gap-1 items-center">
+          {sortedTags.map((tag) => {
+            const selected = selectedTagIds.has(tag.id);
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => toggleTag(tag.id)}
+                disabled={!canEdit}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                  selected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-transparent text-muted-foreground hover:bg-accent",
+                  !canEdit && "opacity-50 cursor-not-allowed",
+                )}
+                aria-pressed={selected}
+              >
+                {tag.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose} disabled={creating}>
+          Отмена
+        </Button>
+        <Button onClick={confirmCreate} disabled={creating || !name.trim()} aria-busy={creating}>
+          {creating && <Spinner className="size-4" />}
+          Сохранить
+        </Button>
+      </DialogFooter>
+    </>
   )
 }

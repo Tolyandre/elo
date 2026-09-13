@@ -60,7 +60,7 @@ SELECT
     a.details
 FROM audit_log a
 JOIN users u ON u.id = a.actor_user_id
-WHERE ($1::text IS NULL OR a.entity_type = $1::text)
+WHERE ($1::text[] IS NULL OR a.entity_type = ANY($1::text[]))
   AND ($2::uuid IS NULL OR a.entity_id = $2::uuid)
   AND (
       $3::timestamptz IS NULL
@@ -72,7 +72,7 @@ LIMIT $5::int4
 `
 
 type ListAuditEventsParams struct {
-	EntityType      pgtype.Text        `json:"entity_type"`
+	EntityTypes     []string           `json:"entity_types"`
 	EntityID        *id.ID             `json:"entity_id"`
 	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
 	CursorID        *id.ID             `json:"cursor_id"`
@@ -91,12 +91,13 @@ type ListAuditEventsRow struct {
 	Details     json.RawMessage `json:"details"`
 }
 
-// Latest-first audit feed. Optional entity_type / entity_id filters serve both
-// the per-entity history (match view) and the per-type feed (admin tabs). The
+// Latest-first audit feed. Optional entity filter (one or more entity types)
+// and entity_id filter serve both the per-entity history (match view) and the
+// per-type feed (admin tabs — the games tab mixes game and tag events). The
 // cursor is the (created_at, id) row of the last returned event.
 func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEvents,
-		arg.EntityType,
+		arg.EntityTypes,
 		arg.EntityID,
 		arg.CursorCreatedAt,
 		arg.CursorID,

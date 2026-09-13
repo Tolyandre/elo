@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { SyncApi, SyncCallResult, syncOffline } from '../lib/offline/sync';
-import { OfflineStore, PendingMatch, PendingPlayer } from '../lib/offline/types';
+import { OfflineStore, PendingGame, PendingMatch, PendingPlayer } from '../lib/offline/types';
 import { Base58ID } from '../lib/id';
 
 const noopPersist = () => { };
@@ -25,6 +25,10 @@ function okApi(): SyncApi & { calls: string[] } {
             calls.push(`game:${body.name}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
         }),
+        addGameTag: vi.fn(async ({ game_id, tag_id }) => {
+            calls.push(`tag:${game_id}:${tag_id}`);
+            return { ok: true, data: null } as SyncCallResult<null>;
+        }),
         createPlayer: vi.fn(async (body) => {
             calls.push(`player:${body.name}`);
             return { ok: true, data: { id: body.id } } as SyncCallResult<{ id: Base58ID }>;
@@ -40,8 +44,8 @@ function okApi(): SyncApi & { calls: string[] } {
     };
 }
 
-const pendingGame = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z') =>
-    ({ clientId, name, createdAt, status: 'pending' as const });
+const pendingGame = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z', tagIds: Base58ID[] = []): PendingGame =>
+    ({ clientId, name, createdAt, status: 'pending' as const, tagIds });
 const pendingPlayer = (clientId: Base58ID, name: string, createdAt = '2026-06-01T10:00:00Z', clubIds: Base58ID[] = []): PendingPlayer =>
     ({ clientId, name, createdAt, status: 'pending', clubIds });
 
@@ -120,6 +124,46 @@ describe('syncOffline', () => {
         await syncOffline(store, api, noopPersist);
 
         expect(api.calls).toEqual(['game:Первая', 'game:Вторая']);
+    });
+
+    it('applies game tags right after the game is created', async () => {
+        const api = okApi();
+        const gameId = uuidv7() as Base58ID;
+        const tagA = '7' as Base58ID;
+        const tagB = '9' as Base58ID;
+        const store = makeStore({
+            games: [pendingGame(gameId, 'Каркассон', '2026-06-01T10:00:00Z', [tagA, tagB])],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist);
+
+        expect(outcome.aborted).toBe(false);
+        expect(outcome.syncedCount).toBe(1);
+        expect(outcome.store.games).toHaveLength(0);
+        expect(api.calls).toEqual([`game:Каркассон`, `tag:${gameId}:${tagA}`, `tag:${gameId}:${tagB}`]);
+        expect(api.addGameTag).toHaveBeenCalledWith({ game_id: gameId, tag_id: tagA });
+        expect(api.addGameTag).toHaveBeenCalledWith({ game_id: gameId, tag_id: tagB });
+    });
+
+    it('keeps the game pending when a tag is rejected, so tags are retried', async () => {
+        const api = okApi();
+        const gameId = uuidv7() as Base58ID;
+        api.addGameTag = vi.fn(async ({ tag_id }) =>
+            tag_id === ('7' as Base58ID)
+                ? { ok: false as const, status: 400, message: 'game or tag not found' }
+                : { ok: true as const, data: null });
+        const store = makeStore({
+            games: [pendingGame(gameId, 'С тегами', '2026-06-01T10:00:00Z', ['7' as Base58ID, '9' as Base58ID])],
+        });
+
+        const outcome = await syncOffline(store, api, noopPersist);
+
+        expect(outcome.aborted).toBe(false);
+        expect(outcome.syncedCount).toBe(1); // the game itself synced
+        expect(outcome.store.games).toHaveLength(1);
+        expect(outcome.store.games[0]).toMatchObject({ clientId: gameId, status: 'error' });
+        // Both tags were attempted even after the first one failed.
+        expect(api.addGameTag).toHaveBeenCalledTimes(2);
     });
 
     it('keeps an HTTP-rejected item as error and continues with the rest', async () => {

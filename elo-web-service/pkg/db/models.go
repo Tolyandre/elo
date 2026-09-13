@@ -107,6 +107,11 @@ type GameTable struct {
 	HostClientToken    string          `json:"host_client_token"`
 }
 
+type GameTag struct {
+	GameID id.ID `json:"game_id"`
+	TagID  id.ID `json:"tag_id"`
+}
+
 type GlobalArenaSettlement struct {
 	ID       id.ID              `json:"id"`
 	PlayerID id.ID              `json:"player_id"`
@@ -209,6 +214,11 @@ type Player struct {
 type PlayerClubMembership struct {
 	ClubID   id.ID `json:"club_id"`
 	PlayerID id.ID `json:"player_id"`
+}
+
+type Tag struct {
+	ID   id.ID  `json:"id"`
+	Name string `json:"name"`
 }
 
 type Tournament struct {

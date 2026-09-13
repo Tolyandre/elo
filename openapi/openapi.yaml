@@ -55,6 +55,8 @@ components:
       $ref: './games.yaml#/GameMatchPlayer'
     GameMatch:
       $ref: './games.yaml#/GameMatch'
+    GameTag:
+      $ref: './games.yaml#/GameTag'
 
     # Matches
     MatchPlayer:
@@ -69,6 +71,10 @@ components:
     # Clubs
     Club:
       $ref: './clubs.yaml#/Club'
+
+    # Tags
+    Tag:
+      $ref: './tags.yaml#/Tag'
 
     # Tournaments
     TournamentInput:
@@ -177,6 +183,16 @@ paths:
     $ref: './games.yaml#/GameItem'
   /games/{id}/matches:
     $ref: './games.yaml#/GameMatchesPath'
+  /games/{id}/tags:
+    $ref: './games.yaml#/GameTagsPath'
+  /games/{id}/tags/{tagId}:
+    $ref: './games.yaml#/GameTagItem'
+
+  # Tags
+  /tags:
+    $ref: './tags.yaml#/TagsCollection'
+  /tags/{id}:
+    $ref: './tags.yaml#/TagItem'
 
   # Matches
   /matches:

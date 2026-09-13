@@ -1,0 +1,201 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+TagsCollection:
+  get:
+    operationId: ListTags
+    tags: [tags]
+    summary: List all tags with their usage counts, ordered by name
+    responses:
+      "200":
+        description: List of tags
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/Tag'
+              required: [status, data]
+  post:
+    operationId: CreateTag
+    tags: [tags]
+    summary: Create a new tag
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id:
+                $ref: './common.yaml#/Base58ID'
+              name:
+                type: string
+            required: [id, name]
+    responses:
+      "200":
+        description: Created tag
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tag'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tag with this name already exists
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TagItem:
+  patch:
+    operationId: PatchTag
+    tags: [tags]
+    summary: Rename a tag (applies to every game carrying it)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+            required: [name]
+    responses:
+      "200":
+        description: Renamed tag
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tag'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tag not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tag with this name already exists
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteTag
+    tags: [tags]
+    summary: Delete a tag (detaches it from every game)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Tag deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tag not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+Tag:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    game_count:
+      type: integer
+      description: Number of games carrying this tag
+  required: [id, name, game_count]

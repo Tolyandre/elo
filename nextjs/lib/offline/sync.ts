@@ -13,6 +13,7 @@ export type SyncCallResult<T> = { ok: true; data: T } | { ok: false; status: num
 
 export type SyncApi = {
     createGame(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
+    addGameTag(body: { game_id: Base58ID; tag_id: Base58ID }): Promise<SyncCallResult<null>>;
     createPlayer(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
     addClubMember(body: { club_id: Base58ID; player_id: Base58ID }): Promise<SyncCallResult<null>>;
     addMatch(body: {
@@ -82,7 +83,10 @@ export async function syncOffline(
         return { store, authRequired, aborted, syncedCount };
     };
 
-    // 1. Games.
+    // 1. Games — create, then apply tags. The game create is idempotent on id
+    // and AddGameTag is ON CONFLICT DO NOTHING, so a network failure after
+    // either step is safe to retry: re-running resends the same game id (a
+    // no-op upsert) and re-adds the same tags (no-ops).
     for (const item of [...store.games]) {
         markSyncing(update, store, "games", item.clientId);
         let result: SyncCallResult<{ id: Base58ID }>;
@@ -91,13 +95,36 @@ export async function syncOffline(
         } catch {
             return finish(false, true);
         }
-        if (result.ok) {
-            syncedCount++;
-            update({ ...store, games: store.games.filter((g) => g.clientId !== item.clientId) });
-        } else if (result.status === 401) {
-            return finish(true, false);
-        } else {
+        if (!result.ok) {
+            if (result.status === 401) return finish(true, false);
             markError(update, store, "games", item.clientId, result.message);
+            continue;
+        }
+        syncedCount++;
+        // Apply tags before removing the game so a failure here leaves the game
+        // pending (retryable) rather than silently losing them.
+        const tagIds = item.tagIds ?? [];
+        let tagError: string | null = null;
+        for (const tagId of tagIds) {
+            let tagResult: SyncCallResult<null>;
+            try {
+                tagResult = await api.addGameTag({ game_id: item.clientId, tag_id: tagId });
+            } catch {
+                // Network died mid-tag — keep the game pending so the remaining
+                // tags are retried on the next sync.
+                return finish(false, true);
+            }
+            if (!tagResult.ok) {
+                if (tagResult.status === 401) return finish(true, false);
+                tagError = tagResult.message;
+            }
+        }
+        if (tagError) {
+            // A server-rejected tag (e.g. tag deleted elsewhere) — surface it
+            // but keep the game pending so the error is visible.
+            markError(update, store, "games", item.clientId, tagError);
+        } else {
+            update({ ...store, games: store.games.filter((g) => g.clientId !== item.clientId) });
         }
     }
 

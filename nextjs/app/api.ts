@@ -119,6 +119,8 @@ export type TournamentStats = components["schemas"]["TournamentStats"];
 export type TournamentStatsPlayer = components["schemas"]["TournamentStatsPlayer"];
 export type GameList = components["schemas"]["GameList"];
 export type GameListItem = components["schemas"]["GameListItem"];
+export type GameTag = components["schemas"]["GameTag"];
+export type Tag = components["schemas"]["Tag"];
 export type Game = components["schemas"]["Game"];
 export type GameMatchPlayer = components["schemas"]["GameMatchPlayer"];
 export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
@@ -221,7 +223,7 @@ export type CorrectionsPage = {
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
-export type AuditEntityType = "match" | "game" | "player" | "club";
+export type AuditEntityType = "match" | "game" | "player" | "club" | "tag";
 export type AuditAction = "created" | "updated" | "renamed" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */
@@ -270,12 +272,14 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
 }
 
 export async function getAuditPagePromise(params?: {
-    entity_type?: AuditEntityType;
+    entity_type?: AuditEntityType | AuditEntityType[];
     entity_id?: string;
     next?: string;
     limit?: number;
 }): Promise<AuditPage> {
-    const query: Record<string, string> = {};
+    // openapi-fetch serializes array values as repeated query keys
+    // (?entity_type=game&entity_type=tag), which the API binds to a list.
+    const query: Record<string, string | string[]> = {};
     if (params?.next) {
         // The cursor token embeds the filters; only limit is repeated.
         query.next = params.next;
@@ -584,6 +588,38 @@ export async function addClubMemberPromise(clubId: Base58ID, playerId: Base58ID)
 export async function removeClubMemberPromise(clubId: Base58ID, playerId: Base58ID) {
     return unwrap(client.DELETE("/clubs/{id}/members/{playerId}", {
         params: { path: { id: clubId, playerId } },
+    }));
+}
+
+export async function listTagsPromise(): Promise<Tag[]> {
+    return (await unwrap(client.GET("/tags"))).data;
+}
+
+export async function createTagPromise(payload: { name: string }): Promise<Tag> {
+    return (await unwrap(client.POST("/tags", { body: { id: newId(), ...payload } }))).data;
+}
+
+export async function patchTagPromise(id: Base58ID, payload: { name: string }): Promise<Tag> {
+    return (await unwrap(client.PATCH("/tags/{id}", {
+        params: { path: { id } },
+        body: payload,
+    }))).data;
+}
+
+export async function deleteTagPromise(id: Base58ID) {
+    return unwrap(client.DELETE("/tags/{id}", { params: { path: { id } } }));
+}
+
+export async function addGameTagPromise(gameId: Base58ID, tagId: Base58ID) {
+    return unwrap(client.POST("/games/{id}/tags", {
+        params: { path: { id: gameId } },
+        body: { tag_id: tagId },
+    }));
+}
+
+export async function removeGameTagPromise(gameId: Base58ID, tagId: Base58ID) {
+    return unwrap(client.DELETE("/games/{id}/tags/{tagId}", {
+        params: { path: { id: gameId, tagId } },
     }));
 }
 
