@@ -237,3 +237,8 @@ WHERE match_id = $1;
 SELECT COUNT(DISTINCT m.id) AS total_matches
 FROM matches m
 WHERE m.game_id = $1;
+
+-- name: CountMatchesFromDate :one
+SELECT COUNT(*) AS count
+FROM matches m
+WHERE m.date >= $1;

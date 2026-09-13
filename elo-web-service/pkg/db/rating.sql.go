@@ -397,6 +397,54 @@ func (q *Queries) ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.I
 	return items, nil
 }
 
+const listLatestGlobalStatePerPlayer = `-- name: ListLatestGlobalStatePerPlayer :many
+SELECT DISTINCT ON (gas.player_id)
+  gas.player_id,
+  p.name AS player_name,
+  gas.rating_after,
+  gas.elo_after,
+  gas.league
+FROM global_arena_settlement gas
+JOIN players p ON p.id = gas.player_id
+ORDER BY gas.player_id, gas.date DESC, gas.id DESC
+`
+
+type ListLatestGlobalStatePerPlayerRow struct {
+	PlayerID    id.ID   `json:"player_id"`
+	PlayerName  string  `json:"player_name"`
+	RatingAfter float64 `json:"rating_after"`
+	EloAfter    float64 `json:"elo_after"`
+	League      string  `json:"league"`
+}
+
+// The current global arena state (latest settlement row) of every player.
+// Used to diff the state before and after a full recalculation replay.
+func (q *Queries) ListLatestGlobalStatePerPlayer(ctx context.Context) ([]ListLatestGlobalStatePerPlayerRow, error) {
+	rows, err := q.db.Query(ctx, listLatestGlobalStatePerPlayer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLatestGlobalStatePerPlayerRow{}
+	for rows.Next() {
+		var i ListLatestGlobalStatePerPlayerRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.RatingAfter,
+			&i.EloAfter,
+			&i.League,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMatchesWithPlayersByGameFromDB = `-- name: ListMatchesWithPlayersByGameFromDB :many
 SELECT
     m.id AS match_id,

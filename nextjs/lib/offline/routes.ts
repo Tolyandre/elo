@@ -3,6 +3,8 @@
 // HTML file, so a constant list is the simplest correct manifest.
 //
 // KEEP IN SYNC with app/**/page.tsx: add new routes here when adding pages.
+// ("/debug" is deliberately absent: it is an unlinked monitoring tool that
+// only makes sense with a live backend.)
 export const PAGES = [
     "/",
     "/admin",

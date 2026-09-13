@@ -13,6 +13,19 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+const countMatchesFromDate = `-- name: CountMatchesFromDate :one
+SELECT COUNT(*) AS count
+FROM matches m
+WHERE m.date >= $1
+`
+
+func (q *Queries) CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error) {
+	row := q.db.QueryRow(ctx, countMatchesFromDate, date)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMatch = `-- name: CreateMatch :one
 INSERT INTO matches (id, date, game_id, calculator_kind, calculator_schema_version, calculator_data)
 VALUES ($1, $2, $3, $4, $5, $6)

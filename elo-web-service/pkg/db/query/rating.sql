@@ -126,6 +126,19 @@ WHERE gas.player_id = $1
 ORDER BY gas.date DESC, gas.match_id DESC
 LIMIT 1;
 
+-- name: ListLatestGlobalStatePerPlayer :many
+-- The current global arena state (latest settlement row) of every player.
+-- Used to diff the state before and after a full recalculation replay.
+SELECT DISTINCT ON (gas.player_id)
+  gas.player_id,
+  p.name AS player_name,
+  gas.rating_after,
+  gas.elo_after,
+  gas.league
+FROM global_arena_settlement gas
+JOIN players p ON p.id = gas.player_id
+ORDER BY gas.player_id, gas.date DESC, gas.id DESC;
+
 -- name: ListLatestGameEloPerPlayer :many
 SELECT DISTINCT ON (gas.player_id) gas.player_id, gas.elo_after AS game_elo_after
 FROM game_arena_settlement gas

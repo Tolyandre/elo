@@ -129,6 +129,9 @@ export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
 export type WinStreakParams = components["schemas"]["WinStreakParams"];
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
 export type MarketGuarantee = components["schemas"]["MarketGuarantee"];
+export type PlayerGlobalStateChange = components["schemas"]["PlayerGlobalStateChange"];
+export type GlobalReplayReport = components["schemas"]["GlobalReplayReport"];
+export type RecalculateGlobalEloResult = components["schemas"]["RecalculateGlobalEloResult"];
 export type TableSummary = components["schemas"]["TableSummary"];
 export type TableGameState = components["schemas"]["TableGameState"];
 export type TablePlayer = components["schemas"]["TablePlayer"];
@@ -533,6 +536,16 @@ export async function createPlayerCorrectionPromise(playerId: Base58ID, diff: nu
         params: { path: { id: playerId } },
         body: { id: newId(), discriminator: "correction", diff },
     }));
+}
+
+/**
+ * Debug/monitoring: replay the whole settlement history from the beginning
+ * (the same computation an edit+save of the chronologically first match
+ * triggers) and report every player whose global arena rating changed.
+ * A stable recalculation reports no changed players.
+ */
+export async function recalculateGlobalEloPromise(): Promise<GlobalReplayReport> {
+    return (await unwrap(client.POST("/admin/recalculate-global-elo"))).data;
 }
 
 export async function listClubsPromise(): Promise<Club[]> {

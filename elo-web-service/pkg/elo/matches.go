@@ -84,7 +84,12 @@ type CalculatorUpdate struct {
 type IMatchService interface {
 	AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error)
 	UpdateMatch(ctx context.Context, matchID id.ID, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts UpdateMatchOpts) (db.Match, error)
-	RecalculateAllGameElo(ctx context.Context) error
+
+	// RecalculateAllGlobalElo replays the whole settlement history from the
+	// beginning (the computation an edit+save of the first match triggers) and
+	// reports every player whose global arena state changed. Debug/monitoring
+	// tool: a stable recalculation must report no changed players.
+	RecalculateAllGlobalElo(ctx context.Context) (GlobalReplayReport, error)
 
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
@@ -360,26 +365,6 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		return db.Match{}, fmt.Errorf("unable to fetch updated match: %v", matchID)
 	}
 	return updatedMatch, nil
-}
-
-// RecalculateAllGameElo recalculates game Elo for all matches from the beginning of time.
-// Used as a one-time backfill after the game Elo columns were added.
-func (s *MatchService) RecalculateAllGameElo(ctx context.Context) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("unable to begin tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	q := s.Queries.WithTx(tx)
-
-	if err := s.recalculateEloFromDate(ctx, q, time.Time{}); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
 }
 
 // DeleteMarketAndRecalculate hard-deletes an open market and recalculates Elo

@@ -234,3 +234,29 @@ func TestCalculateNewElo(t *testing.T) {
 		}
 	})
 }
+
+// TestEloMathDeterministic pins the multiplayer settlement math to
+// bit-identical results across repeated invocations. These sums run over
+// player maps, and Go randomizes map range order — unordered accumulation
+// made a full replay drift from the stored state at the last bits (the
+// /debug recalculation reported phantom changes on unchanged history).
+func TestEloMathDeterministic(t *testing.T) {
+	scores := map[id.ID]float64{"a": 10, "b": 7, "c": 5, "d": 2}
+	prevElo := map[id.ID]float64{"a": 1040.3, "b": 998.1, "c": 1002.7, "d": 960.5}
+
+	wantStake := math.Float64bits(WinExpectation(prevElo["a"], scores, testStartingElo, prevElo, testD))
+	wantNorm := math.Float64bits(NormalizedScore(scores["c"], scores, GetAbsoluteLoserScore(scores), testWinReward))
+	wantElo := math.Float64bits(CalculateNewElo(prevElo, testStartingElo, scores, testK, testD, testWinReward)["a"])
+
+	for i := 0; i < 5000; i++ {
+		if got := math.Float64bits(WinExpectation(prevElo["a"], scores, testStartingElo, prevElo, testD)); got != wantStake {
+			t.Fatalf("WinExpectation is not deterministic: %b vs %b", got, wantStake)
+		}
+		if got := math.Float64bits(NormalizedScore(scores["c"], scores, GetAbsoluteLoserScore(scores), testWinReward)); got != wantNorm {
+			t.Fatalf("NormalizedScore is not deterministic: %b vs %b", got, wantNorm)
+		}
+		if got := math.Float64bits(CalculateNewElo(prevElo, testStartingElo, scores, testK, testD, testWinReward)["a"]); got != wantElo {
+			t.Fatalf("CalculateNewElo is not deterministic: %b vs %b", got, wantElo)
+		}
+	}
+}

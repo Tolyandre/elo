@@ -651,6 +651,13 @@ type GamePlayer struct {
 // GamePlayerLeague defines model for GamePlayer.League.
 type GamePlayerLeague string
 
+// GlobalReplayReport defines model for GlobalReplayReport.
+type GlobalReplayReport struct {
+	ChangedPlayers      []PlayerGlobalStateChange `json:"changed_players"`
+	CorrectionsReplayed int64                     `json:"corrections_replayed"`
+	MatchesReplayed     int64                     `json:"matches_replayed"`
+}
+
 // HistoryRank defines model for HistoryRank.
 type HistoryRank struct {
 	DayAgo  EloRank `json:"day_ago"`
@@ -904,6 +911,20 @@ type Player struct {
 	UserId *Base58ID   `json:"user_id,omitempty"`
 }
 
+// PlayerGlobalStateChange defines model for PlayerGlobalStateChange.
+type PlayerGlobalStateChange struct {
+	EloAfter     float64 `json:"elo_after"`
+	EloBefore    float64 `json:"elo_before"`
+	LeagueAfter  string  `json:"league_after"`
+	LeagueBefore string  `json:"league_before"`
+
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId     Base58ID `json:"player_id"`
+	PlayerName   string   `json:"player_name"`
+	RatingAfter  float64  `json:"rating_after"`
+	RatingBefore float64  `json:"rating_before"`
+}
+
 // PlayerRef Minimal player object returned after create/patch
 type PlayerRef struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -925,6 +946,12 @@ type RatingPoint struct {
 	Date   time.Time `json:"date"`
 	Elo    float64   `json:"elo"`
 	Rating float64   `json:"rating"`
+}
+
+// RecalculateGlobalEloResult defines model for RecalculateGlobalEloResult.
+type RecalculateGlobalEloResult struct {
+	Data   GlobalReplayReport `json:"data"`
+	Status string             `json:"status"`
 }
 
 // Settings defines model for Settings.
@@ -1852,9 +1879,9 @@ type ServerInterface interface {
 	// CreatePlayerCorrection Apply a manual rating correction for a player
 	// (POST /admin/players/{id}/corrections)
 	CreatePlayerCorrection(c *gin.Context, id string)
-	// RecalculateGameElo Recalculate all game-specific Elo ratings
-	// (POST /admin/recalculate-game-elo)
-	RecalculateGameElo(c *gin.Context)
+	// RecalculateGlobalElo Reapply the whole settlement history (matches, corrections and market settlements) from the beginning — the same computation an edit+save of the chronologically first match triggers — and report every player whose global arena state changed. A stable recalculation reports no changed players.
+	// (POST /admin/recalculate-global-elo)
+	RecalculateGlobalElo(c *gin.Context)
 	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
 	// (GET /audit)
 	ListAuditEvents(c *gin.Context, params ListAuditEventsParams)
@@ -2068,8 +2095,8 @@ func (siw *ServerInterfaceWrapper) CreatePlayerCorrection(c *gin.Context) {
 	siw.Handler.CreatePlayerCorrection(c, id)
 }
 
-// RecalculateGameElo operation middleware
-func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
+// RecalculateGlobalElo operation middleware
+func (siw *ServerInterfaceWrapper) RecalculateGlobalElo(c *gin.Context) {
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -2078,7 +2105,7 @@ func (siw *ServerInterfaceWrapper) RecalculateGameElo(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.RecalculateGameElo(c)
+	siw.Handler.RecalculateGlobalElo(c)
 }
 
 // ListAuditEvents operation middleware
@@ -3424,7 +3451,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.POST(options.BaseURL+"/admin/players/:id/corrections", wrapper.CreatePlayerCorrection)
-	router.POST(options.BaseURL+"/admin/recalculate-game-elo", wrapper.RecalculateGameElo)
+	router.POST(options.BaseURL+"/admin/recalculate-global-elo", wrapper.RecalculateGlobalElo)
 	router.GET(options.BaseURL+"/audit", wrapper.ListAuditEvents)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
 	router.POST(options.BaseURL+"/auth/logout", wrapper.AuthLogout)
@@ -3537,16 +3564,16 @@ func (response CreatePlayerCorrection500JSONResponse) VisitCreatePlayerCorrectio
 	return err
 }
 
-type RecalculateGameEloRequestObject struct {
+type RecalculateGlobalEloRequestObject struct {
 }
 
-type RecalculateGameEloResponseObject interface {
-	VisitRecalculateGameEloResponse(w http.ResponseWriter) error
+type RecalculateGlobalEloResponseObject interface {
+	VisitRecalculateGlobalEloResponse(w http.ResponseWriter) error
 }
 
-type RecalculateGameElo200JSONResponse ApiSuccessMessage
+type RecalculateGlobalElo200JSONResponse RecalculateGlobalEloResult
 
-func (response RecalculateGameElo200JSONResponse) VisitRecalculateGameEloResponse(w http.ResponseWriter) error {
+func (response RecalculateGlobalElo200JSONResponse) VisitRecalculateGlobalEloResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3558,9 +3585,23 @@ func (response RecalculateGameElo200JSONResponse) VisitRecalculateGameEloRespons
 	return err
 }
 
-type RecalculateGameElo500JSONResponse ApiError
+type RecalculateGlobalElo409JSONResponse ApiError
 
-func (response RecalculateGameElo500JSONResponse) VisitRecalculateGameEloResponse(w http.ResponseWriter) error {
+func (response RecalculateGlobalElo409JSONResponse) VisitRecalculateGlobalEloResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RecalculateGlobalElo500JSONResponse ApiError
+
+func (response RecalculateGlobalElo500JSONResponse) VisitRecalculateGlobalEloResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7008,9 +7049,9 @@ type StrictServerInterface interface {
 	// CreatePlayerCorrection Apply a manual rating correction for a player
 	// (POST /admin/players/{id}/corrections)
 	CreatePlayerCorrection(ctx context.Context, request CreatePlayerCorrectionRequestObject) (CreatePlayerCorrectionResponseObject, error)
-	// RecalculateGameElo Recalculate all game-specific Elo ratings
-	// (POST /admin/recalculate-game-elo)
-	RecalculateGameElo(ctx context.Context, request RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error)
+	// RecalculateGlobalElo Reapply the whole settlement history (matches, corrections and market settlements) from the beginning — the same computation an edit+save of the chronologically first match triggers — and report every player whose global arena state changed. A stable recalculation reports no changed players.
+	// (POST /admin/recalculate-global-elo)
+	RecalculateGlobalElo(ctx context.Context, request RecalculateGlobalEloRequestObject) (RecalculateGlobalEloResponseObject, error)
 	// ListAuditEvents List audit events (who did what and when) with cursor-based pagination
 	// (GET /audit)
 	ListAuditEvents(ctx context.Context, request ListAuditEventsRequestObject) (ListAuditEventsResponseObject, error)
@@ -7280,23 +7321,23 @@ func (sh *strictHandler) CreatePlayerCorrection(ctx *gin.Context, id string) {
 	}
 }
 
-// RecalculateGameElo operation middleware
-func (sh *strictHandler) RecalculateGameElo(ctx *gin.Context) {
-	var request RecalculateGameEloRequestObject
+// RecalculateGlobalElo operation middleware
+func (sh *strictHandler) RecalculateGlobalElo(ctx *gin.Context) {
+	var request RecalculateGlobalEloRequestObject
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.RecalculateGameElo(ctx, request.(RecalculateGameEloRequestObject))
+		return sh.ssi.RecalculateGlobalElo(ctx, request.(RecalculateGlobalEloRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RecalculateGameElo")
+		handler = middleware(handler, "RecalculateGlobalElo")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(RecalculateGameEloResponseObject); ok {
-		if err := validResponse.VisitRecalculateGameEloResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(RecalculateGlobalEloResponseObject); ok {
+		if err := validResponse.VisitRecalculateGlobalEloResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

@@ -64,3 +64,8 @@ WHERE gas.player_id = $1
        OR (gas.date = $2 AND gas.discriminator = 'correction' AND gas.correction_id < $3))
 ORDER BY gas.date DESC, gas.id DESC
 LIMIT 1;
+
+-- name: CountCorrectionsFromDate :one
+SELECT COUNT(*) AS count
+FROM corrections
+WHERE date >= $1;

@@ -12,6 +12,19 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+const countCorrectionsFromDate = `-- name: CountCorrectionsFromDate :one
+SELECT COUNT(*) AS count
+FROM corrections
+WHERE date >= $1
+`
+
+func (q *Queries) CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error) {
+	row := q.db.QueryRow(ctx, countCorrectionsFromDate, date)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCorrection = `-- name: CreateCorrection :one
 INSERT INTO corrections (id, player_id, discriminator, diff)
 VALUES ($1, $2, $3, $4) RETURNING id, player_id, discriminator, diff, date

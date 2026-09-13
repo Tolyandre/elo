@@ -1,9 +1,11 @@
 package id
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -199,5 +201,39 @@ func TestScanValue(t *testing.T) {
 	v, err := ID(canonical).Value()
 	if err != nil || v != canonical {
 		t.Errorf("Value() = %v, %v", v, err)
+	}
+}
+
+// NewMonotonic must produce strictly increasing ids even when many are minted
+// within the same millisecond: settlement rows tie-break equal dates by
+// (date, id DESC), so a same-ms random id could reorder a player's history.
+func TestNewMonotonicStrictlyIncreasing(t *testing.T) {
+	prev := NewMonotonic()
+	for i := 0; i < 10000; i++ {
+		next := NewMonotonic()
+		if next <= prev {
+			t.Fatalf("NewMonotonic not strictly increasing at %d: %s then %s", i, prev, next)
+		}
+		prev = next
+	}
+}
+
+func TestNewMonotonicValidUUIDv7(t *testing.T) {
+	got := NewMonotonic()
+	u, err := got.UUID()
+	if err != nil {
+		t.Fatalf("NewMonotonic produced %q: %v", got, err)
+	}
+	if v := u.Version(); v != 7 {
+		t.Errorf("version = %d, want 7", v)
+	}
+	if varBits := u.Variant(); varBits != uuid.RFC4122 {
+		t.Errorf("variant = %v, want RFC4122", varBits)
+	}
+	// The timestamp must be the real wall clock, not the counter.
+	ms := time.Now().UnixMilli()
+	uMS := int64(binary.BigEndian.Uint64(u[:8]) >> 16)
+	if diff := ms - uMS; diff < 0 || diff > 5000 {
+		t.Errorf("timestamp %d is not within 5s of now %d", uMS, ms)
 	}
 }

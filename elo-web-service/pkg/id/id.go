@@ -13,9 +13,14 @@
 package id
 
 import (
+	crand "crypto/rand"
 	"database/sql/driver"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -36,6 +41,66 @@ func New() ID {
 		panic(err) // uuid.NewV7 only fails on a broken entropy source
 	}
 	return ID(u.String())
+}
+
+// Monotonic UUIDv7 state. Two ids minted in the same millisecond by New()
+// order randomly (the non-timestamp bits are random), which is fine for entity
+// ids but wrong for settlement rows: the rating queries tie-break equal
+// settlement dates by (date, id DESC), so the id must order by creation time
+// even within one millisecond.
+var (
+	monoMu      sync.Mutex
+	monoMS      int64 = math.MinInt64
+	monoCounter uint64
+	monoPrefix  uint16
+	monoSeeded  bool
+)
+
+// NewMonotonic returns a UUIDv7 that sorts strictly after every id previously
+// returned by this function in this process, even within the same millisecond:
+// the 12 random bits after the version field carry a per-process prefix, and
+// the trailing 62 bits are a monotonically increasing counter (RFC 9562
+// "monotonic counter" method). A clock regression is clamped to the last
+// timestamp so the ordering guarantee survives NTP adjustments.
+func NewMonotonic() ID {
+	monoMu.Lock()
+	defer monoMu.Unlock()
+	if !monoSeeded {
+		var b [2]byte
+		if _, err := crand.Read(b[:]); err != nil {
+			panic(err) // broken entropy source, same failure mode as uuid.NewV7
+		}
+		monoPrefix = binary.BigEndian.Uint16(b[:]) & 0x0FFF
+		monoSeeded = true
+	}
+
+	ms := time.Now().UnixMilli()
+	if ms <= monoMS {
+		ms = monoMS
+		monoCounter++
+	} else {
+		monoMS = ms
+		monoCounter = 0
+	}
+
+	var b [16]byte
+	b[0] = byte(ms >> 40)
+	b[1] = byte(ms >> 32)
+	b[2] = byte(ms >> 24)
+	b[3] = byte(ms >> 16)
+	b[4] = byte(ms >> 8)
+	b[5] = byte(ms)
+	b[6] = 0x70 | byte(monoPrefix>>8) // version 7
+	b[7] = byte(monoPrefix)
+	b[8] = 0x80 | byte(monoCounter>>56) // RFC 4122 variant
+	b[9] = byte(monoCounter >> 48)
+	b[10] = byte(monoCounter >> 40)
+	b[11] = byte(monoCounter >> 32)
+	b[12] = byte(monoCounter >> 24)
+	b[13] = byte(monoCounter >> 16)
+	b[14] = byte(monoCounter >> 8)
+	b[15] = byte(monoCounter)
+	return ID(uuid.UUID(b).String())
 }
 
 // Parse parses a canonical UUID string into an ID.

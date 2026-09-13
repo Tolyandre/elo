@@ -110,6 +110,14 @@ components:
     CorrectionsPage:
       $ref: './admin.yaml#/CorrectionsPage'
 
+    # Admin / debug
+    PlayerGlobalStateChange:
+      $ref: './admin.yaml#/PlayerGlobalStateChange'
+    GlobalReplayReport:
+      $ref: './admin.yaml#/GlobalReplayReport'
+    RecalculateGlobalEloResult:
+      $ref: './admin.yaml#/RecalculateGlobalEloResult'
+
     # Audit
     AuditEntry:
       $ref: './audit.yaml#/AuditEntry'
@@ -239,8 +247,8 @@ paths:
     $ref: './audit.yaml#/AuditCollection'
 
   # Admin
-  /admin/recalculate-game-elo:
-    $ref: './admin.yaml#/RecalculateGameElo'
+  /admin/recalculate-global-elo:
+    $ref: './admin.yaml#/RecalculateGlobalElo'
   /admin/players/{id}/corrections:
     $ref: './admin.yaml#/AdminPlayerCorrections'
 

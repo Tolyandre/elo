@@ -130,7 +130,9 @@ func main() {
 	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)
 	router.PATCH("/games/:id", append(editorAuth(), strictWrapper.PatchGame)...)
 	router.POST("/games", append(editorAuth(), strictWrapper.CreateGame)...)
-	router.POST("/admin/recalculate-game-elo", strictWrapper.RecalculateGameElo)
+	// Debug/monitoring: full history replay with a rating diff. Editor-gated
+	// like every other write route; the page for it is /debug (unlinked).
+	router.POST("/admin/recalculate-global-elo", append(editorAuth(), strictWrapper.RecalculateGlobalElo)...)
 	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
 	router.GET("/corrections", strictWrapper.ListCorrections)
 

@@ -9,15 +9,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-func (s *StrictServer) RecalculateGameElo(ctx context.Context, _ RecalculateGameEloRequestObject) (RecalculateGameEloResponseObject, error) {
-	if err := s.api.MatchService.RecalculateAllGameElo(ctx); err != nil {
-		return nil, err
-	}
-	// A full recalculation rewrites every rating.
-	s.api.broadcastDataChange(true, true)
-	return RecalculateGameElo200JSONResponse{Status: "success", Message: "Game Elo recalculated successfully"}, nil
-}
-
 func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) (ListGamesResponseObject, error) {
 	games, err := s.api.GameService.GetGameTitlesOrderedByLastPlayed(ctx)
 	if err != nil {

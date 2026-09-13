@@ -123,21 +123,83 @@ CorrectionsPage:
       description: Cursor token for the next page; null if no more pages
   required: [status, data]
 
-RecalculateGameElo:
+RecalculateGlobalElo:
   post:
-    operationId: RecalculateGameElo
+    operationId: RecalculateGlobalElo
     tags: [admin]
-    summary: Recalculate all game-specific Elo ratings
+    summary: >-
+      Reapply the whole settlement history (matches, corrections and market
+      settlements) from the beginning — the same computation an edit+save of
+      the chronologically first match triggers — and report every player whose
+      global arena state changed. A stable recalculation reports no changed
+      players.
+    security:
+      - cookieAuth: []
     responses:
       "200":
-        description: Recalculation complete
+        description: Replay complete, with the before/after rating diff
         content:
           application/json:
             schema:
-              $ref: './common.yaml#/ApiSuccessMessage'
+              $ref: '#/RecalculateGlobalEloResult'
+      "409":
+        description: History change conflict during the replay
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
       "500":
         description: Internal server error
         content:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
+
+PlayerGlobalStateChange:
+  type: object
+  properties:
+    player_id:
+      $ref: './common.yaml#/Base58ID'
+    player_name:
+      type: string
+    elo_before:
+      type: number
+      format: double
+    elo_after:
+      type: number
+      format: double
+    rating_before:
+      type: number
+      format: double
+    rating_after:
+      type: number
+      format: double
+    league_before:
+      type: string
+    league_after:
+      type: string
+  required: [player_id, player_name, elo_before, elo_after, rating_before, rating_after, league_before, league_after]
+
+GlobalReplayReport:
+  type: object
+  properties:
+    matches_replayed:
+      type: integer
+      format: int64
+    corrections_replayed:
+      type: integer
+      format: int64
+    changed_players:
+      type: array
+      items:
+        $ref: '#/PlayerGlobalStateChange'
+  required: [matches_replayed, corrections_replayed, changed_players]
+
+RecalculateGlobalEloResult:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      $ref: '#/GlobalReplayReport'
+  required: [status, data]

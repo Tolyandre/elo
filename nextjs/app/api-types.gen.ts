@@ -576,7 +576,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/recalculate-game-elo": {
+    "/admin/recalculate-global-elo": {
         parameters: {
             query?: never;
             header?: never;
@@ -585,8 +585,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Recalculate all game-specific Elo ratings */
-        post: operations["RecalculateGameElo"];
+        /** Reapply the whole settlement history (matches, corrections and market settlements) from the beginning — the same computation an edit+save of the chronologically first match triggers — and report every player whose global arena state changed. A stable recalculation reports no changed players. */
+        post: operations["RecalculateGlobalElo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1094,6 +1094,31 @@ export interface components {
             data: components["schemas"]["Correction"][];
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
+        };
+        PlayerGlobalStateChange: {
+            player_id: components["schemas"]["Base58ID"];
+            player_name: string;
+            /** Format: double */
+            elo_before: number;
+            /** Format: double */
+            elo_after: number;
+            /** Format: double */
+            rating_before: number;
+            /** Format: double */
+            rating_after: number;
+            league_before: string;
+            league_after: string;
+        };
+        GlobalReplayReport: {
+            /** Format: int64 */
+            matches_replayed: number;
+            /** Format: int64 */
+            corrections_replayed: number;
+            changed_players: components["schemas"]["PlayerGlobalStateChange"][];
+        };
+        RecalculateGlobalEloResult: {
+            status: string;
+            data: components["schemas"]["GlobalReplayReport"];
         };
         AuditEntry: {
             id: components["schemas"]["Base58ID"];
@@ -3830,7 +3855,7 @@ export interface operations {
             };
         };
     };
-    RecalculateGameElo: {
+    RecalculateGlobalElo: {
         parameters: {
             query?: never;
             header?: never;
@@ -3839,13 +3864,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Recalculation complete */
+            /** @description Replay complete, with the before/after rating diff */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                    "application/json": components["schemas"]["RecalculateGlobalEloResult"];
+                };
+            };
+            /** @description History change conflict during the replay */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
             /** @description Internal server error */

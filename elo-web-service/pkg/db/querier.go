@@ -20,6 +20,8 @@ type Querier interface {
 	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
+	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
+	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountTournamentMembers(ctx context.Context, tournamentID id.ID) (int32, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
@@ -183,6 +185,9 @@ type Querier interface {
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error)
 	ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error)
+	// The current global arena state (latest settlement row) of every player.
+	// Used to diff the state before and after a full recalculation replay.
+	ListLatestGlobalStatePerPlayer(ctx context.Context) ([]ListLatestGlobalStatePerPlayerRow, error)
 	// Raw wager rows (no join) used by settlement and the price-history replay.
 	ListMarketGuaranteeWagers(ctx context.Context, marketID id.ID) ([]ListMarketGuaranteeWagersRow, error)
 	// The market's guarantee wagers with player names, in join order.
