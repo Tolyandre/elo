@@ -99,3 +99,19 @@ export function formatRemainingTime(until: Date, now: Date = new Date()): string
     if (days === 0 && mins > 0) parts.push(`${mins} ${plural(mins, "минута", "минуты", "минут")}`);
     return parts.join(", ");
 }
+
+/**
+ * The time row of the streak progress box. While the market lives it is the
+ * countdown to `closes_at`; once resolved the race is over, so the row shows
+ * «время истекло» only when expiry is what ended the market — a market
+ * resolved by a match (streak reached / loss limit hit) carries its
+ * resolution match and gets no time row at all.
+ */
+export function streakTimeRow(market: Market, now: Date = new Date()): { label: string; value: string } | null {
+    if (market.status === "resolved") {
+        return market.resolution_match_id ? null : { label: "Время", value: "истекло" };
+    }
+    if (market.status === "cancelled") return null;
+    const remaining = market.closes_at ? formatRemainingTime(new Date(market.closes_at), now) : null;
+    return remaining ? { label: "Осталось", value: remaining } : null;
+}

@@ -13,7 +13,7 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 import {
     computeStreakProgress,
     fetchStreakMatches,
-    formatRemainingTime,
+    streakTimeRow,
     streakWindowEnd,
 } from "@/app/markets/progress";
 
@@ -71,7 +71,7 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
     if (!params || !start) return null;
 
     const progress = matches ? computeStreakProgress(matches, params.target_player_id) : null;
-    const remaining = market.closes_at ? formatRemainingTime(new Date(market.closes_at), now) : null;
+    const timeRow = streakTimeRow(market, now);
     return (
         <div className="space-y-3">
             {progress && (
@@ -90,10 +90,10 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
                             {params.max_losses != null && <> из {params.max_losses}</>}
                         </span>
                     </div>
-                    {remaining && (
+                    {timeRow && (
                         <div className="flex justify-between">
-                            <span className="text-muted-foreground">Осталось</span>
-                            <span className="font-medium">{remaining}</span>
+                            <span className="text-muted-foreground">{timeRow.label}</span>
+                            <span className="font-medium">{timeRow.value}</span>
                         </div>
                     )}
                 </div>

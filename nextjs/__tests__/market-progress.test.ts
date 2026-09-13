@@ -11,6 +11,7 @@ import {
     computeStreakProgress,
     fetchStreakMatches,
     formatRemainingTime,
+    streakTimeRow,
     streakWindowEnd,
 } from '../app/markets/progress'
 
@@ -116,6 +117,57 @@ describe('formatRemainingTime', () => {
     it('reports sub-minute time and the past', () => {
         expect(formatRemainingTime(left(30_000), now)).toBe('меньше минуты')
         expect(formatRemainingTime(left(-1000), now)).toBeNull()
+    })
+})
+
+describe('streakTimeRow', () => {
+    const now = new Date('2026-09-10T12:00:00Z')
+    const base = {
+        id: 'mk1' as Base58ID,
+        market_type: 'win_streak' as const,
+        outcomes: [],
+        liquidity_b: 8,
+        max_guarantor_loss: 16,
+        params: streakParams(),
+        closes_at: '2026-09-30T00:00:00Z',
+    }
+
+    it('counts down to closes_at while the market lives', () => {
+        expect(streakTimeRow({ ...base, status: 'open' }, now)).toEqual({
+            label: 'Осталось',
+            value: '19 дней, 12 часов',
+        })
+        expect(streakTimeRow({ ...base, status: 'betting_closed' }, now)).toEqual({
+            label: 'Осталось',
+            value: '19 дней, 12 часов',
+        })
+    })
+
+    it('hides the row when a match ended the market early', () => {
+        // The streak was reached (or the loss limit hit) before closes_at —
+        // "осталось 20 дней" over a finished race reads as nonsense.
+        const market = {
+            ...base,
+            status: 'resolved' as const,
+            resolved_at: '2026-09-05T12:00:00Z',
+            resolution_match_id: 'm1' as Base58ID,
+        }
+        expect(streakTimeRow(market, now)).toBeNull()
+    })
+
+    it('reports expired time when expiry is what resolved the market', () => {
+        // A win_streak market resolved without a resolution match was ended
+        // by the overdue path at closes_at.
+        const market = {
+            ...base,
+            status: 'resolved' as const,
+            resolved_at: '2026-09-30T00:00:00Z',
+        }
+        expect(streakTimeRow(market, now)).toEqual({ label: 'Время', value: 'истекло' })
+    })
+
+    it('shows nothing for cancelled markets', () => {
+        expect(streakTimeRow({ ...base, status: 'cancelled' }, now)).toBeNull()
     })
 })
 
