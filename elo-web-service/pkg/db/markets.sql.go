@@ -649,23 +649,21 @@ func (q *Queries) GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsF
 
 const getPlayerReservedAmount = `-- name: GetPlayerReservedAmount :one
 SELECT (
-    COALESCE(bets_sum.reserved, 0) + COALESCE(guarantees_sum.reserved, 0)
+    COALESCE((
+        SELECT SUM(ob.cost + ob.fee)
+        FROM bets ob
+        JOIN markets om ON om.id = ob.market_id
+        WHERE ob.player_id = p.id AND om.status IN ('open', 'betting_closed')
+    ), 0)
+    +
+    COALESCE((
+        SELECT SUM(g.risk_amount)
+        FROM market_guarantees g
+        JOIN markets om ON om.id = g.market_id
+        WHERE g.player_id = p.id AND om.status IN ('open', 'betting_closed')
+    ), 0)
 )::float8 AS reserved
 FROM players p
-LEFT JOIN (
-    SELECT ob.player_id, SUM(ob.cost + ob.fee) AS reserved
-    FROM bets ob
-    JOIN markets om ON om.id = ob.market_id
-    WHERE om.status IN ('open', 'betting_closed')
-    GROUP BY ob.player_id
-) bets_sum ON bets_sum.player_id = p.id
-LEFT JOIN (
-    SELECT g.player_id, SUM(g.risk_amount) AS reserved
-    FROM market_guarantees g
-    JOIN markets om ON om.id = g.market_id
-    WHERE om.status IN ('open', 'betting_closed')
-    GROUP BY g.player_id
-) guarantees_sum ON guarantees_sum.player_id = p.id
 WHERE p.id = $1
 `
 
