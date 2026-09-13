@@ -116,7 +116,9 @@ const winStreakStrategy: MarketTypeStrategy = {
         const inGame = gameNames.length === 1 ? ` в ${gameNames[0]}` : gameNames.length > 1 ? ` в ${gameNames.join(" / ")}` : "";
         let title = `${targetName} победит${inGame} ${wins} ${pluralizeRaz(params?.wins_required ?? 0)}`;
         if (params?.max_losses != null) {
-            title += `, не проиграв более ${params.max_losses} раз`;
+            // max_losses is the defeat count that resolves Нет, so Да means
+            // staying under it: "не проиграв N раз".
+            title += `, не проиграв ${params.max_losses} ${pluralizeRaz(params.max_losses)}`;
         }
         return title;
     },
@@ -131,11 +133,15 @@ const winStreakStrategy: MarketTypeStrategy = {
 
         const inGameNode = gameNames.length > 0 ? <> в <H>{gameNames.join(" / ")}</H></> : null;
         const periodNode = period ? <> в период {period}</> : null;
-        const lossNode = lossLimit != null ? <>, допустив не более <H>{lossLimit}</H> поражений</> : null;
+        // max_losses anchors both outcomes at the same boundary: the Nth defeat
+        // resolves Нет, so Да means winning the streak with fewer than N defeats.
+        const lossNode = lossLimit != null
+            ? <>, допустив менее <H>{lossLimit}</H> {lossLimit === 1 ? "поражения" : "поражений"}</>
+            : null;
 
         const yesNode = <><H>{targetName}</H> одерживает <H>{wins}</H> побед{inGameNode}{lossNode}{periodNode}</>;
         const noNode = lossLimit != null
-            ? <><H>{targetName}</H> не одерживает <H>{wins}</H> побед{inGameNode}{periodNode}, либо допускает более <H>{lossLimit}</H> поражений</>
+            ? <><H>{targetName}</H> не одерживает <H>{wins}</H> побед{inGameNode}{periodNode}, либо допускает <H>{lossLimit}</H> {pluralizeDefeat(lossLimit)}</>
             : <><H>{targetName}</H> не одерживает <H>{wins}</H> побед{inGameNode}{periodNode}</>;
 
         const label = (kind: "yes" | "no") => (kind === "yes" ? "Да" : "Нет");
@@ -157,6 +163,16 @@ function pluralizeRaz(n: number): string {
     if (mod10 === 1) return "раз";
     if (mod10 >= 2 && mod10 <= 4) return "раза";
     return "раз";
+}
+
+/** "1 поражение / 2 поражения / 5 поражений" — the counted form of «поражение». */
+function pluralizeDefeat(n: number): string {
+    const mod100 = n % 100;
+    const mod10 = n % 10;
+    if (mod100 >= 11 && mod100 <= 19) return "поражений";
+    if (mod10 === 1) return "поражение";
+    if (mod10 >= 2 && mod10 <= 4) return "поражения";
+    return "поражений";
 }
 
 const marketTypeRegistry: Record<string, MarketTypeStrategy> = {

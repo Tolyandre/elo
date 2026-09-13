@@ -81,13 +81,17 @@ func (c MatchWinnerCondition) Evaluate(match MatchInfo, window TimeWindow) (bool
 // The caller is responsible for: window check, participant check, and querying streak stats.
 type WinStreakCondition struct {
 	WinsRequired int32
-	MaxLosses    *int32
+	// MaxLosses is the number of defeats that resolves OutcomeNo: the target
+	// "допускает MaxLosses поражений". Values < 1 are clamped to 1 (a market
+	// that tolerates no losses resolves No on the first defeat), so a
+	// hand-crafted 0 behaves like 1 instead of resolving instantly.
+	MaxLosses *int32
 }
 
 // Evaluate returns (resolved, outcome) given streak counts.
 // Loss limit is checked before win target so that hitting both on the same match resolves OutcomeNo.
 func (c WinStreakCondition) Evaluate(wins, losses int32) (bool, MarketOutcome) {
-	if c.MaxLosses != nil && losses > *c.MaxLosses {
+	if c.MaxLosses != nil && losses >= max(*c.MaxLosses, 1) {
 		return true, OutcomeNo
 	}
 	if wins >= c.WinsRequired {

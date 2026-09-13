@@ -233,8 +233,8 @@ func TestWinStreakCondition_Evaluate(t *testing.T) {
 		}
 	})
 
-	t.Run("resolved_no when losses exceed limit", func(t *testing.T) {
-		maxLosses := int32(1)
+	t.Run("resolved_no when losses reach the limit (the Nth defeat loses)", func(t *testing.T) {
+		maxLosses := int32(2)
 		cond := WinStreakCondition{WinsRequired: 5, MaxLosses: &maxLosses}
 		resolved, outcome := cond.Evaluate(4, 2)
 		if !resolved || outcome != OutcomeNo {
@@ -242,10 +242,30 @@ func TestWinStreakCondition_Evaluate(t *testing.T) {
 		}
 	})
 
+	t.Run("one defeat below the limit stays unresolved", func(t *testing.T) {
+		maxLosses := int32(2)
+		cond := WinStreakCondition{WinsRequired: 5, MaxLosses: &maxLosses}
+		resolved, _ := cond.Evaluate(4, 1)
+		if resolved {
+			t.Error("expected not resolved at maxLosses-1 defeats")
+		}
+	})
+
+	t.Run("a non-positive limit is clamped to one defeat", func(t *testing.T) {
+		zero := int32(0)
+		cond := WinStreakCondition{WinsRequired: 5, MaxLosses: &zero}
+		if resolved, _ := cond.Evaluate(0, 0); resolved {
+			t.Error("expected not resolved at zero defeats")
+		}
+		if resolved, outcome := cond.Evaluate(0, 1); !resolved || outcome != OutcomeNo {
+			t.Errorf("got resolved=%v outcome=%q, want true/no at the first defeat", resolved, outcome)
+		}
+	})
+
 	t.Run("loss limit checked before win target — both hit on same match resolves_no", func(t *testing.T) {
 		maxLosses := int32(1)
 		cond := WinStreakCondition{WinsRequired: 3, MaxLosses: &maxLosses}
-		resolved, outcome := cond.Evaluate(3, 2) // wins=3 AND losses=2 > maxLosses=1
+		resolved, outcome := cond.Evaluate(3, 1) // wins=3 AND losses=1 reached maxLosses=1
 		if !resolved || outcome != OutcomeNo {
 			t.Errorf("got resolved=%v outcome=%q, want true/no", resolved, outcome)
 		}

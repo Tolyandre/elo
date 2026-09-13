@@ -273,11 +273,13 @@ export default function NewMarketPage() {
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="max_losses">Макс. поражений (необязательно)</Label>
+                            {/* max_losses is the defeat count that resolves «Нет»:
+                                the Nth defeat ends the streak race. */}
+                            <Label htmlFor="max_losses">Поражений до «Нет» (необязательно)</Label>
                             <input
                                 id="max_losses"
                                 type="number"
-                                min={0}
+                                min={1}
                                 className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                 value={maxLosses}
                                 onChange={e => setMaxLosses(e.target.value)}
