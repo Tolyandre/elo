@@ -73,19 +73,26 @@ type Game struct {
 }
 
 type GameArenaSettlement struct {
-	ID            id.ID              `json:"id"`
-	GameID        id.ID              `json:"game_id"`
-	PlayerID      id.ID              `json:"player_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	RatingAfter   float64            `json:"rating_after"`
-	EloAfter      float64            `json:"elo_after"`
-	Discriminator string             `json:"discriminator"`
-	MatchID       *id.ID             `json:"match_id"`
-	EloStaked     float64            `json:"elo_staked"`
-	EloEarned     float64            `json:"elo_earned"`
-	RatingStaked  float64            `json:"rating_staked"`
-	RatingEarned  float64            `json:"rating_earned"`
-	League        string             `json:"league"`
+	ID       id.ID              `json:"id"`
+	GameID   id.ID              `json:"game_id"`
+	PlayerID id.ID              `json:"player_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+	// Display-rating balance after applying this row's deltas (per-row checkpoint).
+	RatingAfter float64 `json:"rating_after"`
+	// True-Elo balance after applying this row's deltas (per-row checkpoint).
+	EloAfter      float64 `json:"elo_after"`
+	Discriminator string  `json:"discriminator"`
+	MatchID       *id.ID  `json:"match_id"`
+	// This row's Elo risk delta (≤ 0).
+	EloStaked float64 `json:"elo_staked"`
+	// This row's Elo payout delta (≥ 0).
+	EloEarned float64 `json:"elo_earned"`
+	// This row's rating risk delta (≤ 0).
+	RatingStaked float64 `json:"rating_staked"`
+	// This row's rating payout delta (≥ 0).
+	RatingEarned float64 `json:"rating_earned"`
+	// League after this match settlement.
+	League string `json:"league"`
 }
 
 type GameTable struct {
@@ -101,20 +108,27 @@ type GameTable struct {
 }
 
 type GlobalArenaSettlement struct {
-	ID            id.ID              `json:"id"`
-	PlayerID      id.ID              `json:"player_id"`
-	Date          pgtype.Timestamptz `json:"date"`
-	RatingAfter   float64            `json:"rating_after"`
-	EloAfter      float64            `json:"elo_after"`
-	Discriminator string             `json:"discriminator"`
-	MatchID       *id.ID             `json:"match_id"`
-	MarketID      *id.ID             `json:"market_id"`
-	CorrectionID  *id.ID             `json:"correction_id"`
-	EloStaked     float64            `json:"elo_staked"`
-	EloEarned     float64            `json:"elo_earned"`
-	RatingStaked  float64            `json:"rating_staked"`
-	RatingEarned  float64            `json:"rating_earned"`
-	League        string             `json:"league"`
+	ID       id.ID              `json:"id"`
+	PlayerID id.ID              `json:"player_id"`
+	Date     pgtype.Timestamptz `json:"date"`
+	// Display-rating balance after applying this row's deltas (per-row checkpoint).
+	RatingAfter float64 `json:"rating_after"`
+	// True-Elo balance after applying this row's deltas (per-row checkpoint).
+	EloAfter      float64 `json:"elo_after"`
+	Discriminator string  `json:"discriminator"`
+	MatchID       *id.ID  `json:"match_id"`
+	MarketID      *id.ID  `json:"market_id"`
+	CorrectionID  *id.ID  `json:"correction_id"`
+	// This row's Elo risk delta (≤ 0).
+	EloStaked float64 `json:"elo_staked"`
+	// This row's Elo payout delta (≥ 0).
+	EloEarned float64 `json:"elo_earned"`
+	// This row's rating risk delta (≤ 0).
+	RatingStaked float64 `json:"rating_staked"`
+	// This row's rating payout delta (≥ 0).
+	RatingEarned float64 `json:"rating_earned"`
+	// Post-event league: both role rows of one market carry the same value.
+	League string `json:"league"`
 }
 
 type Market struct {

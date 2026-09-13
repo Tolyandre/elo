@@ -850,9 +850,10 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 		t.Errorf("playerA: expected 2 settlement rows (buyer + guarantor), got %d", rowCount)
 	}
 
-	// Both rows share the same post-market balances (computed from the total
-	// delta across both roles), so the latest-at-date elo/rating read is correct
-	// whichever row wins the id tie-break.
+	// The rows are per-row checkpoints (ADR-21): the buyer row applies its P&L
+	// to the pre-market balance, and the guarantor row (written second, higher
+	// id) accumulates the residual share on top — landing on the post-market
+	// balance that latest-at-date reads pick up.
 	var buyerElo, buyerRating, guarantorElo, guarantorRating float64
 	if err := pool.QueryRow(ctx,
 		`SELECT elo_after, rating_after FROM global_arena_settlement
@@ -868,14 +869,20 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	).Scan(&guarantorElo, &guarantorRating); err != nil {
 		t.Fatalf("read playerA guarantor row: %v", err)
 	}
-	if buyerElo != guarantorElo || buyerRating != guarantorRating {
-		t.Errorf("playerA rows carry different balances: elo %.6f/%.6f rating %.6f/%.6f",
-			buyerElo, guarantorElo, buyerRating, guarantorRating)
-	}
 
 	// Total delta: −amountA (bought) + sharesA (won) + residual (sole guarantor)
 	// = amountB; playerB loses amountB. Strict zero-sum overall.
 	const epsilon = 1e-6
+	expectedResidual := (amountA + amountB) - sharesA
+	if math.Abs((guarantorElo-buyerElo)-expectedResidual) > epsilon {
+		t.Errorf("playerA rows: guarantor−buyer elo after = %.6f, want residual %.6f",
+			guarantorElo-buyerElo, expectedResidual)
+	}
+	if math.Abs((guarantorRating-buyerRating)-expectedResidual) > epsilon {
+		t.Errorf("playerA rows: guarantor−buyer rating after = %.6f, want residual %.6f",
+			guarantorRating-buyerRating, expectedResidual)
+	}
+
 	if got := playerMarketDelta(t, pool, market.ID, playerA); math.Abs(got-amountB) > epsilon {
 		t.Errorf("playerA total delta = %.6f, want +%.6f (amountB)", got, amountB)
 	}
@@ -903,7 +910,6 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 
 	// The per-guarantor payout rollup must include only playerA's guarantor-role
 	// row (the house result: the residual share, without the buy P&L).
-	expectedResidual := (amountA + amountB) - sharesA
 	expGuarantorStaked := math.Max(-expectedResidual, 0)
 	expGuarantorEarned := math.Max(expectedResidual, 0)
 	rollup, err := db.New(pool).GetMarketGuarantorPayouts(ctx, market.ID)

@@ -749,10 +749,12 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	// One settlement row per role per player over buyers ∪ guarantors: elo spent
 	// as negative staked, payout (winning shares × 1, or refund on cancel) as
 	// earned for the 'market' row; the guarantor residual share (deficit as
-	// staked, surplus as earned) for the 'market_guarantor' row. Both rows of a
-	// buyer∩guarantor player share the same total-based *_after balances so the
-	// latest-at-date elo/rating read stays correct whichever row the id tie-break
-	// picks — hence the balances are read once, before either row is written.
+	// staked, surplus as earned) for the 'market_guarantor' row. The balances
+	// are read once, before either row is written — a later read would observe
+	// the 'market' row just written — and the rows carry per-row checkpoints
+	// (ADR-21): each row's *_after applies its own deltas, so the guarantor
+	// row, written second with the higher id, lands on the event-final balance
+	// that latest-at-date reads pick up.
 	for _, pid := range allPlayerIDs {
 		var buyerStaked, buyerEarned float64
 		if pd := players[pid]; pd != nil {
@@ -779,15 +781,21 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		newRating := balances.currentRating + totalStaked + totalEarned
 		newLeague := determineGlobalLeague(balances.prevLeague, newRating, newElo, balances.count6M, balances.count2M, settings)
 
+		afterElo := balances.currentElo
+		afterRating := balances.currentRating
 		if buyerStaked != 0 || buyerEarned != 0 {
+			afterElo += buyerStaked + buyerEarned
+			afterRating += buyerStaked + buyerEarned
 			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market",
-				buyerStaked, buyerEarned, newElo, newRating, newLeague, resolvedAtTz); err != nil {
+				buyerStaked, buyerEarned, afterElo, afterRating, newLeague, resolvedAtTz); err != nil {
 				return fmt.Errorf("upsert settlement for %s: %w", pid, err)
 			}
 		}
 		if guarantorStaked != 0 || guarantorEarned != 0 {
+			afterElo += guarantorStaked + guarantorEarned
+			afterRating += guarantorStaked + guarantorEarned
 			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market_guarantor",
-				guarantorStaked, guarantorEarned, newElo, newRating, newLeague, resolvedAtTz); err != nil {
+				guarantorStaked, guarantorEarned, afterElo, afterRating, newLeague, resolvedAtTz); err != nil {
 				return fmt.Errorf("upsert guarantor settlement for %s: %w", pid, err)
 			}
 		}
@@ -816,8 +824,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	return nil
 }
 
-// marketSettlementBalances is the pre-market state one settlement row pair is
-// computed from.
+// marketSettlementBalances is the pre-event state a player's role rows
+// accumulate from.
 type marketSettlementBalances struct {
 	currentElo    float64
 	currentRating float64
@@ -875,29 +883,30 @@ func (s *MarketService) readMarketSettlementBalances(
 
 // upsertMarketSettlement persists one role's settlement row. eloStaked (≤ 0) and
 // eloEarned (≥ 0) are that role's delta (buyer P&L or guarantor residual share)
-// and feed the display + zero-sum invariant; newElo/newRating/newLeague are the
-// player's post-market balances (computed by the caller from the total delta
-// across both roles) and must be identical on both rows of a buyer∩guarantor
-// player. The rating track mirrors the elo track (markets apply no newbie
-// scaling).
+// and feed the display + zero-sum invariant; eloAfter/ratingAfter are the
+// per-row checkpoint balances after this row's deltas — the caller accumulates
+// them across the role rows, so the last-written row carries the post-market
+// balance — and league is the post-event league (identical on both rows of a
+// buyer∩guarantor player). The rating track mirrors the elo track (markets
+// apply no newbie scaling).
 func (s *MarketService) upsertMarketSettlement(
 	ctx context.Context, q *db.Queries, playerID, marketID id.ID, discriminator string,
-	eloStaked, eloEarned, newElo, newRating float64, newLeague string,
+	eloStaked, eloEarned, eloAfter, ratingAfter float64, league string,
 	resolvedAtTz pgtype.Timestamptz,
 ) error {
 	return q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
 		ID:            newSettlementID(),
 		PlayerID:      playerID,
 		Date:          resolvedAtTz,
-		RatingAfter:   newRating,
-		EloAfter:      newElo,
+		RatingAfter:   ratingAfter,
+		EloAfter:      eloAfter,
 		MarketID:      &marketID,
 		Discriminator: discriminator,
 		EloStaked:     eloStaked,
 		EloEarned:     eloEarned,
 		RatingStaked:  eloStaked,
 		RatingEarned:  eloEarned,
-		League:        newLeague,
+		League:        league,
 	})
 }
 
