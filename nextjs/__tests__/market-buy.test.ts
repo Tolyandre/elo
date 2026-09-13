@@ -308,4 +308,32 @@ describe('maker fee (ADR-20)', () => {
         // no fee → identical to the old zero-fee quote
         expect(buyQuote(q, b, 0, 'share', 0).pricePerShare).toBeCloseTo(buyQuote(q, b, 0, 'share').pricePerShare, 12)
     })
+
+    it('buyQuote reports the fee per share in both modes — never above the per-share price', () => {
+        // The reported bug: in the amount mode the caption showed the WHOLE
+        // buy's fee (0.20 for all ~7.6 shares a 1-elo stake delivers) under a
+        // per-share price (0.13), reading as "0.13 за 1 голос, в т.ч.
+        // комиссия 0.20" — an impossibility if the fee is inside the price.
+        // Live state of market CezHbbAzmrsnTafuBh8Bu.
+        const q = [2, 55.41859658018812]
+        const b = 23.083120654223414
+        const c = 0.07
+        for (const mode of ['share', 'amount'] as const) {
+            const { pricePerShare, fee } = buyQuote(q, b, 0, mode, c)
+            expect(fee).toBeGreaterThan(0)
+            expect(fee).toBeLessThan(pricePerShare)
+            // per-share price splits exactly into the fee-free cost and the fee
+            expect(pricePerShare - fee).toBeGreaterThan(0)
+        }
+        const amount = buyQuote(q, b, 0, 'amount', c)
+        const totalFee = buyFee(q, b, 0, amount.multiplier, c)
+        // the caption fee × delivered shares reconstructs the whole buy's fee,
+        // and the all-in price is (stake − total fee) / shares + per-share fee
+        expect(amount.fee * amount.multiplier).toBeCloseTo(totalFee, 10)
+        expect(amount.pricePerShare).toBeCloseTo((1 - totalFee) / amount.multiplier + amount.fee, 10)
+        // the whole quote accounts for the fee in the share count: more fee →
+        // fewer voices per 1 elo, and cost(s) + fee(s) still spends exactly 1
+        expect(amount.multiplier).toBeLessThan(buyQuote(q, b, 0, 'amount', 0).multiplier)
+        expect(costForShares(q, b, 0, amount.multiplier) + totalFee).toBeCloseTo(1, 10)
+    })
 })
