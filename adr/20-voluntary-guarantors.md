@@ -45,15 +45,17 @@ limit (supersedes the ADR-10 exemption).
   free lottery tickets with nobody to pay the winners. Bets on a guarantor-less
   market are rejected (409); the UI shows the uniform 1/n prices (the exact
   q=0 limit) and "ждёт поручителей".
-- **Price-preserving injection.** Raising b with q fixed snaps prices toward
-  1/n — a phantom chart move and an arbitrage against the new guarantor. Instead
-  every join rescales `q ← q·(b_new/b_old)`, which preserves all probabilities
-  exactly (`p_i` depends only on `q/b` ratios). Shares live in `bets` and
-  payouts read them, so settlement is untouched by rescales; a join also cannot
-  trigger a spurious "probability changed" 409.
+- **Price-preserving injection — REVISED in ADR-22.** This bullet as
+  originally written had the join rescale `q ← q·(b_new/b_old)` to preserve
+  probabilities. That detached the AMM's cost function from the unscaled,
+  real collected elo and bet shares and broke the `b·ln(n) ≤ Σrisk` solvency
+  bound (a saturated market sold underdog shares near 0 against a small risk
+  pool). A join now changes only `b`; prices move toward 1/n honestly. See
+  ADR-22 for the full analysis, the hard-capped waterfall and the startup
+  repair of affected markets.
 - **Price history** is replayed from the merged timeline of bets and wagers
-  (ordered `(at, kind, id)`, guarantee before bet at equal time): wagers change
-  b and rescale q in the replay. Nothing price-shaped is persisted.
+  (ordered `(at, kind, id)`, guarantee before bet at equal time): wagers
+  change b (no q rescale — ADR-22). Nothing price-shaped is persisted.
 
 ### Maker fee: variance-proportional (Kalshi-style)
 
@@ -87,7 +89,9 @@ integration, exact for any outcome count. The fee is snapshotted on the bet row
     pro-rata by remaining risk. Zero-fee guarantors are the senior tranche.
 
 The combined worst case is `b·ln(n) = min(L, Σrisk) ≤ Σrisk`, so the waterfall
-always fully allocates. Buyers' stakes include the fee; cancelled markets refund
+fully allocates whenever the AMM accounting is consistent (ADR-22 hard-caps
+the wagers and drops any remainder if it ever is not). Buyers' stakes include
+the fee; cancelled markets refund
 cost + fee. Each distribution assigns the FP remainder deterministically
 (sorted-by-id last), so the per-wager results sum to the pots exactly and elo
 stays strictly conserved — and settlement remains replay-safe

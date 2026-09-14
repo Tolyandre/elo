@@ -11,11 +11,21 @@ SELECT id FROM markets WHERE id = $1 FOR UPDATE;
 -- name: UpdateMarketLiquidityB :exec
 UPDATE markets SET liquidity_b = $2 WHERE id = $1;
 
--- name: RescaleMarketOutcomeQ :exec
--- Price-preserving liquidity injection (ADR-20): scales every q component by
--- the same factor b_new/b_old so probabilities stay identical after a
--- guarantee join changes b.
-UPDATE market_outcomes SET q = q * $2 WHERE market_id = $1;
+-- name: ListMarketsWithDivergedQ :many
+-- Live markets whose AMM state vector diverged from the outstanding shares
+-- stored in bets — the signature of the removed price-preserving rescale
+-- (ADR-22). Resolved markets get the same q repair but need no settlement.
+SELECT DISTINCT m.id
+FROM markets m
+JOIN market_outcomes o ON o.market_id = m.id
+WHERE o.q <> COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0)
+  AND m.status IN ('open', 'betting_closed');
+
+-- name: RecomputeOutcomeQFromBets :exec
+-- Restores the q = Σ bets.shares invariant across every market.
+UPDATE market_outcomes AS o
+SET q = COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0)
+WHERE o.q <> COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0);
 
 -- name: UpdateMarketOutcomeQ :exec
 -- Persists one component of the LMSR state vector after a bet shifts the

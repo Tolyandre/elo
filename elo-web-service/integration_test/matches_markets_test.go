@@ -76,26 +76,8 @@ func marketOutcomeID(t *testing.T, ctx context.Context, svc elo.IMarketService, 
 // what the UI sends for the probability it displays.
 func placeBetAtCurrentPrice(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID idpkg.ID, playerID idpkg.ID, outcomeID idpkg.ID, shares float64) error {
 	t.Helper()
-	m, err := svc.GetMarket(ctx, marketID)
-	if err != nil {
-		t.Fatalf("GetMarket: %v", err)
-	}
-	outcomes, err := svc.ListMarketOutcomesWithPools(ctx, marketID)
-	if err != nil {
-		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
-	}
-	q := make([]float64, len(outcomes))
-	price := -1.0
-	for i, o := range outcomes {
-		q[i] = o.Q
-		if o.ID == outcomeID {
-			price = elo.MarginalProbabilitiesN(q, m.LiquidityB)[i]
-		}
-	}
-	if price < 0 {
-		t.Fatalf("outcome %s not found on market %s", outcomeID, marketID)
-	}
-	_, err = svc.PlaceBet(ctx, newID(t), marketID, playerID, outcomeID, shares, price)
+	price := liveProbability(t, ctx, svc, marketID, outcomeID)
+	_, err := svc.PlaceBet(ctx, newID(t), marketID, playerID, outcomeID, shares, price)
 	return err
 }
 

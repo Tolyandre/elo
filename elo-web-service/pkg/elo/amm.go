@@ -30,10 +30,13 @@ import "math"
 // voluntary (ADR-20), b is dynamic — b = min(max_guarantor_loss, Σ risk)/ln(n)
 // — and grows as guarantor wagers arrive. A market with no guarantors yet has
 // b = 0: bets are rejected and prices display the uniform 1/n vector (the exact
-// q=0 limit of the LMSR). Raising b while rescaling q ← q·(b_new/b_old)
-// preserves all probabilities (the cost function scales by b_new/b_old, and
-// settlement never reads it), so liquidity can be injected mid-market without
-// moving prices.
+// q=0 limit of the LMSR). Raising b over the fixed q moves prices toward the
+// uniform vector — the honest repricing of the same order flow against deeper
+// backing. Scaling q along with b would preserve prices but silently multiply
+// the cost function while the collected elo and the bet rows' shares stay
+// unscaled: the b·ln(n) bound (proved over costs accumulated from q=0) breaks,
+// and a saturated market sells underdog shares near 0 against a small risk
+// pool (ADR-22 removed the rescale).
 //
 // Guarantors charge a maker fee c (the risk-weighted mean of their wager fee
 // rates, capped at 0.25 each). The buyer's marginal price becomes

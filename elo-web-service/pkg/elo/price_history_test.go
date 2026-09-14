@@ -150,10 +150,11 @@ func TestProbabilityHistorySkipsNonPositiveSharesAndUnknownOutcomes(t *testing.T
 	}
 }
 
-func TestProbabilityHistoryGuaranteeJoinPreservesPrices(t *testing.T) {
-	// A mid-market guarantee join must not move any probability: the replay
-	// rescales q together with b. The join also caps at L: the second wager's
-	// risk pushes Σrisk past L, so b grows only to L/ln(3).
+func TestProbabilityHistoryGuaranteeJoinReprices(t *testing.T) {
+	// A mid-market guarantee join raises b over the fixed q, moving prices
+	// toward the uniform 1/n vector (ADR-22 removed the price-preserving q
+	// rescale, which broke settlement solvency). The join also caps at L: the
+	// second wager's risk pushes Σrisk past L, so b grows only to L/ln(3).
 	base := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	events := []TimelineEvent{
 		{Kind: TimelineGuarantee, At: base, RiskAmount: 50},
@@ -168,14 +169,13 @@ func TestProbabilityHistoryGuaranteeJoinPreservesPrices(t *testing.T) {
 	}
 	before := priceOf(t, pts[1], "o1") // after the o1 buy
 	after := priceOf(t, pts[2], "o1")  // after the guarantee join
-	if !approxEq(before, after) {
-		t.Errorf("guarantee join must preserve probabilities: before %v, after %v", before, after)
+	if before <= after {
+		t.Errorf("the join must deepen the market and lower the favourite: before %v, after %v", before, after)
 	}
+
 	// The final live state the replay reaches must match MarginalProbabilitiesN
-	// at b = L/ln(3) with the rescaled q: the first bet's 12 shares were
-	// rescaled by b_new/b_old = (70/ln3)/(50/ln3) = 70/50 when the second
-	// wager pushed Σrisk past L.
-	q := []float64{12 * 70 / 50.0, 2, 0}
+	// at the final b with the RAW accumulated shares (no rescale).
+	q := []float64{12, 2, 0}
 	bFinal := liquidityBForRisk(L, 80, 3)
 	live := MarginalProbabilitiesN(q, bFinal)
 	for i, oid := range threeOutcomes {

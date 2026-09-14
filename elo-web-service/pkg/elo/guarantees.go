@@ -79,8 +79,11 @@ func liquidityBForRisk(maxLoss, totalRisk float64, outcomeCount int) float64 {
 // settleGuarantors computes the per-player guarantor net result (positive =
 // earned, negative = staked) from the bet stream and wagers. residual is the
 // equity residual (collected − paid, fees excluded). The returned shares sum to
-// residual + feePool exactly. Empty wagers yield nil (callers skip guarantor
-// rows entirely — possible only for bet-less markets).
+// residual + feePool exactly, except when the deficit exceeds the combined
+// risk (insolvency): then no wager is charged beyond its risk and the
+// uncovered remainder is dropped (see cappedProportional). Empty wagers yield
+// nil (callers skip guarantor rows entirely — possible only for bet-less
+// markets).
 func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, residual float64) map[id.ID]float64 {
 	if len(wagers) == 0 {
 		return nil
@@ -267,16 +270,23 @@ func cappedProportional(total float64, weights, caps []float64) []float64 {
 		}
 	}
 	if total > 1e-12 {
-		// FP dust beyond all caps (mathematically impossible: caps always
-		// cover the deficit). Park it on the largest cap so the sum stays
-		// exact.
+		// Uncovered remainder after every cap bound. Up to capSlack it is FP
+		// dust — park it on the largest cap so the split stays exact. Beyond
+		// that the market is insolvent (the deficit exceeds the combined
+		// risk): impossible under consistent AMM accounting (loss ≤ b·ln(n) ≤
+		// Σrisk, ADR-22) and reachable only from pre-repair rescaled states —
+		// the remainder is dropped, never charged to a guarantor beyond their
+		// wager. The dropped elo is the deliberate, bounded cost of that
+		// historical inconsistency.
 		best := 0
 		for i := range caps {
 			if caps[i] > caps[best] {
 				best = i
 			}
 		}
-		alloc[best] += total
+		if total <= capSlack(caps[best]) {
+			alloc[best] += total
+		}
 	} else if total < 0 {
 		// Over-allocated by FP dust after capping: trim the last filled wager.
 		for i := len(alloc) - 1; i >= 0; i-- {

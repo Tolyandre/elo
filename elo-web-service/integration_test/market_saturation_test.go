@@ -157,9 +157,11 @@ func liveProbability(t *testing.T, ctx context.Context, svc elo.IMarketService, 
 		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
 	}
 	q := make([]float64, len(outcomes))
-	price := -1.0
 	for i, o := range outcomes {
 		q[i] = o.Q
+	}
+	price := -1.0
+	for i, o := range outcomes {
 		if o.ID == outcomeID {
 			price = elo.MarginalProbabilitiesN(q, m.LiquidityB)[i]
 		}

@@ -10,18 +10,20 @@ import (
 // This file reconstructs a market's probability history by replaying its
 // timeline — the ordered stream of bets and guarantee joins — through the
 // LMSR. Every bet shifts the AMM state vector q by its shares on one outcome;
-// every guarantee join raises b = min(L, Σrisk)/ln(n) and rescales q by
-// b_new/b_old, which preserves prices (ADR-20). Replaying the merged stream
-// from the creation state q=0, b=0 reproduces the probability of every outcome
-// after every event. No probabilities are persisted — the series is derived
-// from the immutable bets and market_guarantees rows alone.
+// every guarantee join raises b = min(L, Σrisk)/ln(n) over the fixed q, which
+// moves prices toward the uniform 1/n vector (ADR-22 — the earlier
+// price-preserving q rescale detached the AMM from settlement accounting and
+// was removed). Replaying the merged stream from the creation state q=0, b=0
+// reproduces the probability of every outcome after every event. No
+// probabilities are persisted — the series is derived from the immutable bets
+// and market_guarantees rows alone.
 
 // TimelineEventKind discriminates the replay steps.
 type TimelineEventKind int
 
 const (
-	// TimelineGuarantee is a guarantor wager join: liquidity grows and q is
-	// rescaled.
+	// TimelineGuarantee is a guarantor wager join: liquidity grows over the
+	// fixed q.
 	TimelineGuarantee TimelineEventKind = iota
 	// TimelineBet is a buy: the outcome's q component grows by the shares.
 	TimelineBet
@@ -70,14 +72,7 @@ func ProbabilityHistory(events []TimelineEvent, outcomeIDs []id.ID, maxGuarantor
 		switch ev.Kind {
 		case TimelineGuarantee:
 			totalRisk += ev.RiskAmount
-			newB := liquidityBForRisk(maxGuarantorLoss, totalRisk, len(outcomeIDs))
-			if b > 0 && newB > 0 {
-				factor := newB / b
-				for i := range q {
-					q[i] *= factor
-				}
-			}
-			b = newB
+			b = liquidityBForRisk(maxGuarantorLoss, totalRisk, len(outcomeIDs))
 		case TimelineBet:
 			i, ok := index[ev.Outcome]
 			if !ok || ev.Shares <= 0 {

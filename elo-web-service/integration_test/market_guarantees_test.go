@@ -69,7 +69,7 @@ func liveProbabilities(t *testing.T, svc elo.IMarketService, marketID idpkg.ID) 
 // opens trading, a mid-market wager grows b while preserving every probability
 // (q is rescaled), wagers over-subscribing L stop growing b, and a
 // fee-charging guarantor makes buys pay a maker fee.
-func TestMarketGuarantees_LiquidityGrowsAndPricesArePreserved(t *testing.T) {
+func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -131,17 +131,28 @@ func TestMarketGuarantees_LiquidityGrowsAndPricesArePreserved(t *testing.T) {
 	postBet := liveProbabilities(t, marketSvc, market.ID)
 
 	// A second, fee-charging wager joins mid-market: b grows from 6/ln(3) to
-	// 10/ln(3) (Σrisk 12 capped at L = 10) and every probability must stay
-	// exactly where it was (price-preserving rescale).
+	// 10/ln(3) (Σrisk 12 capped at L = 10). The join reprices the market
+	// toward uniform over the fixed q (ADR-22 — no rescale): the favourite's
+	// price drops, the others rise, Σ stays 1.
 	setBetLimit(t, pool, g2, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, g2, 6, 0.25); err != nil {
 		t.Fatalf("JoinAsGuarantee g2: %v", err)
 	}
 	afterJoin := liveProbabilities(t, marketSvc, market.ID)
+	sumAfter := 0.0
 	for oid, before := range postBet {
-		if math.Abs(afterJoin[oid]-before) > 1e-9 {
-			t.Errorf("guarantee join moved p(%s): before %v, after %v", oid, before, afterJoin[oid])
+		after := afterJoin[oid]
+		sumAfter += after
+		if oid == outcomeA {
+			if after >= before {
+				t.Errorf("the join must lower the favourite: p(%s) before %v, after %v", oid, before, after)
+			}
+		} else if after <= before {
+			t.Errorf("the join must raise the underdogs: p(%s) before %v, after %v", oid, before, after)
 		}
+	}
+	if math.Abs(sumAfter-1) > 1e-9 {
+		t.Errorf("repriced probabilities must sum to 1, got %v", sumAfter)
 	}
 
 	m, err := db.New(pool).GetMarket(ctx, market.ID)

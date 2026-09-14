@@ -257,9 +257,11 @@ func TestSettleGuarantorsDeficitWaterfall(t *testing.T) {
 	}
 
 	// A deficit beyond tier 1 spills to the zero-fee senior tranche pro-rata by
-	// remaining risk: deficit 20 exhausts p1 (2) and p2 (6), leaving 12 for p3.
-	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -20)
-	if !approxEq(shares["p1"], -2) || !approxEq(shares["p2"], -6) || !approxEq(shares["p3"], -12) {
+	// remaining risk: deficit 17 exhausts p1 (2) and p2 (6), leaving 9 for p3
+	// (within its 10 risk — deficits beyond Σrisk are the insolvency case
+	// covered by TestSettleGuarantorsInsolventDeficitDropped).
+	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -17)
+	if !approxEq(shares["p1"], -2) || !approxEq(shares["p2"], -6) || !approxEq(shares["p3"], -9) {
 		t.Errorf("waterfall spill to senior: %v", shares)
 	}
 }
@@ -355,5 +357,30 @@ func TestGuarantorLossBoundedByRisk(t *testing.T) {
 	}
 	if residual > 0 {
 		t.Errorf("a fully-bought leader market must be at deficit or break-even, got surplus %v", residual)
+	}
+}
+
+// TestSettleGuarantorsInsolventDeficitDropped covers the state left behind by
+// the removed q rescale (ADR-22): the deficit exceeds the combined risk, so
+// the waterfall cannot cover it. The wagers must pay at most their risk (the
+// old code parked the whole uncovered remainder on the largest cap,
+// bankrupting that guarantor) and the remainder is dropped — the guarantor
+// pot lands at exactly −Σrisk.
+func TestSettleGuarantorsInsolventDeficitDropped(t *testing.T) {
+	wagers := []GuaranteeWager{
+		wagerAt(id.ID("p-insolv-1"), 0.1, 0, gBase),
+		wagerAt(id.ID("p-insolv-2"), 4, 0, gBase),
+	}
+	shares := settleGuarantors(nil, wagers, -118.6)
+
+	total := 0.0
+	for _, w := range wagers {
+		if got := shares[w.PlayerID]; got < -w.RiskAmount-capSlack(w.RiskAmount) {
+			t.Errorf("wager %s charged %.6f beyond its risk %.6f", w.PlayerID, -got, w.RiskAmount)
+		}
+		total += shares[w.PlayerID]
+	}
+	if !approxEq(total, -4.1) {
+		t.Errorf("insolvent guarantor pot = %.6f, want exactly −Σrisk = −4.1", total)
 	}
 }

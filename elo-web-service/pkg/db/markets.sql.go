@@ -1239,6 +1239,37 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 	return items, nil
 }
 
+const listMarketsWithDivergedQ = `-- name: ListMarketsWithDivergedQ :many
+SELECT DISTINCT m.id
+FROM markets m
+JOIN market_outcomes o ON o.market_id = m.id
+WHERE o.q <> COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0)
+  AND m.status IN ('open', 'betting_closed')
+`
+
+// Live markets whose AMM state vector diverged from the outstanding shares
+// stored in bets — the signature of the removed price-preserving rescale
+// (ADR-22). Resolved markets get the same q repair but need no settlement.
+func (q *Queries) ListMarketsWithDivergedQ(ctx context.Context) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listMarketsWithDivergedQ)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenMatchWinnerMarkets = `-- name: ListOpenMatchWinnerMarkets :many
 SELECT om.id, om.starts_at, om.closes_at,
     mwp.target_player_ids, mwp.allow_other_players, mwp.game_ids
@@ -1511,20 +1542,15 @@ func (q *Queries) LockMarketBetting(ctx context.Context, argID id.ID) error {
 	return err
 }
 
-const rescaleMarketOutcomeQ = `-- name: RescaleMarketOutcomeQ :exec
-UPDATE market_outcomes SET q = q * $2 WHERE market_id = $1
+const recomputeOutcomeQFromBets = `-- name: RecomputeOutcomeQFromBets :exec
+UPDATE market_outcomes AS o
+SET q = COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0)
+WHERE o.q <> COALESCE((SELECT SUM(b.shares) FROM bets b WHERE b.outcome = o.id), 0)
 `
 
-type RescaleMarketOutcomeQParams struct {
-	MarketID id.ID   `json:"market_id"`
-	Q        float64 `json:"q"`
-}
-
-// Price-preserving liquidity injection (ADR-20): scales every q component by
-// the same factor b_new/b_old so probabilities stay identical after a
-// guarantee join changes b.
-func (q *Queries) RescaleMarketOutcomeQ(ctx context.Context, arg RescaleMarketOutcomeQParams) error {
-	_, err := q.db.Exec(ctx, rescaleMarketOutcomeQ, arg.MarketID, arg.Q)
+// Restores the q = Σ bets.shares invariant across every market.
+func (q *Queries) RecomputeOutcomeQFromBets(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, recomputeOutcomeQFromBets)
 	return err
 }
 

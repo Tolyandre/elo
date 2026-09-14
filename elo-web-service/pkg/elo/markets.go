@@ -36,8 +36,11 @@ type IMarketService interface {
 	PlaceBet(ctx context.Context, betID id.ID, marketID id.ID, playerID id.ID, outcome id.ID, shares float64, expectedProbability float64) (PlaceBetOutcome, error)
 
 	// JoinAsGuarantee adds the player's voluntary guarantor wager (risk amount
-	// + maker fee rate) to an open market and grows the market's liquidity,
-	// preserving prices (ADR-20). Wagers are immutable.
+	// + maker fee rate) to an open market and grows the market's liquidity.
+	// Prices are NOT preserved: with q fixed, raising b moves them toward the
+	// uniform 1/n vector — the honest repricing of the same order flow against
+	// deeper backing (ADR-22 removed the price-preserving q rescale, whose
+	// inflated q broke settlement solvency). Wagers are immutable.
 	JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, marketID id.ID, playerID id.ID, riskAmount, feeRate float64) (GuaranteeOutcome, error)
 
 	// TriggerResolutionForMatch checks open markets and resolves/settles them based on the given match.
@@ -56,6 +59,12 @@ type IMarketService interface {
 
 	// ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 	ExpireOverdueMarkets(ctx context.Context) error
+
+	// RepairRescaledMarkets undoes the removed price-preserving q rescale
+	// (ADR-22): recomputes q from the stored bets and cancels live markets
+	// whose repaired state the guarantors can no longer cover. Idempotent;
+	// runs once at startup before serving.
+	RepairRescaledMarkets(ctx context.Context) error
 
 	// ExpireMarketsAtDate settles markets whose closes_at <= date.
 	// Used by the sequential event processor to integrate time-based expiry into
@@ -297,7 +306,7 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 	}
 
 	// Serialize AMM mutations on the market row so a concurrent guarantee join
-	// (which rescales q) cannot interleave with this bet's read-compute-write.
+	// (which changes b) cannot interleave with this bet's read-compute-write.
 	if err := q.LockMarket(ctx, marketID); err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("lock market: %w", err)
 	}
@@ -428,8 +437,11 @@ type GuaranteeOutcome struct {
 // market: the risk amount (their maximum loss) is reserved against the betting
 // limit, and the market's liquidity grows to b = min(L, Σrisk)/ln(n) — capped
 // by L even when wagers over-subscribe it, with all earnings and losses staying
-// proportional to the risked amounts. The q vector is rescaled together with b
-// so displayed prices do not move (ADR-20). Wagers are immutable.
+// proportional to the risked amounts. b rises over a fixed q, so prices move
+// toward the uniform 1/n vector (the market deepens; ADR-22) — scaling q with
+// b would preserve prices but detach the AMM's cost function from the
+// unscaled, real collected elo and bet shares, letting post-join buys amass
+// payouts far beyond the guarantors' risk. Wagers are immutable.
 func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, marketID id.ID, playerID id.ID, riskAmount, feeRate float64) (GuaranteeOutcome, error) {
 	if riskAmount <= 0 {
 		return GuaranteeOutcome{}, ErrGuaranteeRiskNotPositive
@@ -483,23 +495,16 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 		return GuaranteeOutcome{}, ErrBetLimitExceeded
 	}
 
-	outcomes, err := q.ListMarketOutcomes(ctx, marketID)
+	outcomes, err := q.ListMarketOutcomesWithPools(ctx, marketID)
 	if err != nil {
 		return GuaranteeOutcome{}, fmt.Errorf("list market outcomes: %w", err)
 	}
 	newB := liquidityBForRisk(market.MaxGuarantorLoss, totalRisk, len(outcomes))
 
-	// Price-preserving liquidity injection: scale every q component by
-	// b_new/b_old so the probabilities stay identical (with b_old = 0 the
-	// market has not traded and q is the zero vector — nothing to rescale).
-	if market.LiquidityB > 0 && newB > 0 {
-		if err := q.RescaleMarketOutcomeQ(ctx, db.RescaleMarketOutcomeQParams{
-			MarketID: marketID,
-			Q:        newB / market.LiquidityB,
-		}); err != nil {
-			return GuaranteeOutcome{}, fmt.Errorf("rescale amm state: %w", err)
-		}
-	}
+	// Liquidity injection with q fixed: the probabilities move toward the
+	// uniform 1/n vector (ADR-22). q must never be scaled along with b —
+	// the stored bets' shares and costs are real and unscaled, so a scaled
+	// q would price post-join buys against backing that does not exist.
 	if err := q.UpdateMarketLiquidityB(ctx, db.UpdateMarketLiquidityBParams{
 		ID:         marketID,
 		LiquidityB: newB,
@@ -522,11 +527,21 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 	}
 
 	if s.Hub != nil {
-		// Prices are unchanged by construction (the rescale preserves them), so
-		// no probabilities frame is needed — but market-page and lobby readers
-		// must refresh their guarantee/liquidity state.
+		// The join repriced the market (b rose over a fixed q, ADR-22): push
+		// the new probabilities so open market pages update without a refetch.
+		qVec := make([]float64, len(outcomes))
+		for i, o := range outcomes {
+			qVec[i] = o.Q
+		}
+		probabilities := MarginalProbabilitiesN(qVec, newB)
+		live := make([]LiveOutcome, len(outcomes))
+		for i, o := range outcomes {
+			// SSE frames bypass the JSON DTO layer, so the wire-form encoding
+			// is applied here, at construction (ADR-12).
+			live[i] = LiveOutcome{ID: string(o.ID.Base58()), Probability: probabilities[i], Shares: o.Q, Pool: o.Pool}
+		}
+		s.broadcastProbabilities(marketID, live)
 		s.Hub.PublishSignal(MarketTopic(marketID), "guarantees-changed")
-		s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
 	}
 
 	return GuaranteeOutcome{

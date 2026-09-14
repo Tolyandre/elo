@@ -208,6 +208,10 @@ type Querier interface {
 	ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]ListMarketOutcomesWithPoolsRow, error)
 	ListMarkets(ctx context.Context) ([]ListMarketsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error)
+	// Live markets whose AMM state vector diverged from the outstanding shares
+	// stored in bets — the signature of the removed price-preserving rescale
+	// (ADR-22). Resolved markets get the same q repair but need no settlement.
+	ListMarketsWithDivergedQ(ctx context.Context) ([]id.ID, error)
 	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID id.ID) ([]ListMatchesWithPlayersByGameFromDBRow, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
@@ -237,13 +241,11 @@ type Querier interface {
 	PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error)
 	// Returns rating_after and elo_after ordered by date for the player graph.
 	RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error)
+	// Restores the q = Σ bets.shares invariant across every market.
+	RecomputeOutcomeQFromBets(ctx context.Context) error
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
 	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
-	// Price-preserving liquidity injection (ADR-20): scales every q component by
-	// the same factor b_new/b_old so probabilities stay identical after a
-	// guarantee join changes b.
-	RescaleMarketOutcomeQ(ctx context.Context, arg RescaleMarketOutcomeQParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
