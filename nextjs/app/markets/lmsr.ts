@@ -12,17 +12,6 @@
 // closed form 4c·b·Δp_i — mirrored in buyFee below.
 
 /**
- * The LMSR cost of a q-vector, C(q) = b·ln(Σ_j e^(q_j/b)), with the exponents
- * shifted by max(q_j/b) so large q values don't overflow (same stabilization
- * as the server's log-sum-exp).
- */
-function cost(q: number[], b: number): number {
-    const m = Math.max(...q.map((v) => v / b));
-    const sum = q.reduce((acc, v) => acc + Math.exp(v / b - m), 0);
-    return b * (m + Math.log(sum));
-}
-
-/**
  * The LMSR marginal price (probability) of outcome i — what the donut and the
  * chart show, and the pre-fee per-share price.
  */
@@ -59,41 +48,88 @@ export function buyFee(q: number[], b: number, i: number, shares: number, feeRat
 }
 
 /**
+ * Smallest chargeable LMSR cost — mirrors the server's minBetCost floor
+ * (elo-web-service/pkg/elo/amm.go): past a q gap of ~745·b the exact
+ * underdog-share cost underflows to exactly 0, which the bets.cost > 0
+ * constraint forbids. Rounding up to this dust floor overcharges by less
+ * than any displayable amount and is conservation-safe (the surplus lands
+ * with the guarantors at settlement).
+ */
+const MIN_BET_COST = 1e-300;
+
+/** ln Σ_{j≠skip} e^(q_j/b), max-shifted so large q/b cannot overflow. skip < 0 skips nothing. */
+function logSumExpSkip(q: number[], b: number, skip: number): number {
+    let m = -Infinity;
+    for (let j = 0; j < q.length; j++) {
+        if (j === skip) continue;
+        const v = q[j] / b;
+        if (v > m) m = v;
+    }
+    let sum = 0;
+    for (let j = 0; j < q.length; j++) {
+        if (j !== skip) sum += Math.exp(q[j] / b - m);
+    }
+    return m + Math.log(sum);
+}
+
+/**
  * Elo cost of buying `shares` of outcome `i` at the current q:
  * C(q + shares·e_i) − C(q). This is what a buy actually charges — distinct
  * from the outcome's probability (the LMSR marginal price), which it equals
  * only for an infinitesimal share. With thin markets (small b) the cost of
  * the first share is noticeably above the opening probability.
+ *
+ * Computed as the server's stable paired log-sum-exp difference (amm.go),
+ * never as a difference of two near-equal C values: at market saturation
+ * (a one-sided q gap of ~37·b) the exact underdog-share cost (~1e-16·b) is
+ * below one ulp of C(q), so the naive subtraction cancels to exactly 0 and
+ * the server would reject the bet (bets.cost > 0). The dominant term is
+ * cancelled algebraically per regime instead, keeping ~1e-16 relative
+ * accuracy on the cost itself for any b — down to the ~1e-5 liquidity of a
+ * guarantor risking 0.00001.
  */
 export function costForShares(q: number[], b: number, i: number, shares: number): number {
     if (!(b > 0) || !(shares > 0) || q.length < 2 || i < 0 || i >= q.length) {
         return NaN;
     }
-    const after = q.slice();
-    after[i] += shares;
-    return cost(after, b) - cost(q, b);
+    const u = q[i] / b;
+    const v = u + shares / b;
+    const w = logSumExpSkip(q, b, i);
+    let delta: number;
+    if (u >= w) {
+        delta = shares / b + Math.log1p(Math.exp(w - v)) - Math.log1p(Math.exp(w - u));
+    } else if (v >= w) {
+        delta = v - w + Math.log1p(Math.exp(w - v)) - Math.log1p(Math.exp(u - w));
+    } else {
+        delta = Math.log1p(Math.exp(v - w)) - Math.log1p(Math.exp(u - w));
+    }
+    const cost = b * delta;
+    return cost < MIN_BET_COST ? MIN_BET_COST : cost;
 }
 
 /**
  * Number of shares of outcome `i` that `amount` elo buys at the current q,
  * i.e. the exact inverse of the LMSR cost (closed form, no numeric search):
  *
- *   b·ln((R + e^((q_i+s)/b)) / S) = amount
- *   →  s = b·ln((S·e^(amount/b) − R) / e^(q_i/b))
+ *   e^{(q_i+s)/b} + R = e^{amount/b}·(e^{q_i/b} + R)
+ *   →  s = b·(L + amount/b − q_i/b + ln(1 − e^{r−L−amount/b}))
  *
- * where S = Σ_j e^(q_j/b) and R = Σ_{j≠i} e^(q_j/b). Exponents are shifted by
- * max(q_j/b) so large q values don't overflow (same stabilization as the
- * server's log-sum-exp).
+ * where L = ln Σ_j e^(q_j/b) and r = ln Σ_{j≠i} e^(q_j/b) (both log-sum-exps).
+ * Everything stays in log space: the previous form computed S·e^(amount/b)
+ * directly, which overflows to Infinity once amount/b > ~709 — i.e. on any
+ * market with b < ~0.0014, such as one backed by a guarantor risking 0.00001
+ * (b ≈ 1e-5 → amount/b ≈ 110,000) — making the amount mode unquotable. The
+ * exponent r−L−amount/b is always < 0 (buying power strictly exceeds the
+ * rest of the market), so the ln(1−e^x) term is finite.
  */
 export function sharesForAmount(q: number[], b: number, i: number, amount: number): number {
     if (!(b > 0) || !(amount > 0) || q.length < 2 || i < 0 || i >= q.length) {
         return NaN;
     }
-    const m = Math.max(...q.map((v) => v / b));
-    const e = q.map((v) => Math.exp(v / b - m));
-    const s = e.reduce((sum, v) => sum + v, 0);
-    const r = s - e[i];
-    return b * Math.log((s * Math.exp(amount / b) - r) / e[i]);
+    const l = logSumExpSkip(q, b, -1);
+    const r = logSumExpSkip(q, b, i);
+    const shares = b * (l - q[i] / b + amount / b + Math.log1p(-Math.exp(r - l - amount / b)));
+    return shares > 0 ? shares : NaN;
 }
 
 /**

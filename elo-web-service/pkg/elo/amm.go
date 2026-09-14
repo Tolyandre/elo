@@ -45,6 +45,14 @@ import "math"
 // p_u ≤ 1. Because a buy moves only one q component, the total fee for buying
 // s shares has the closed form 4c·b·Δp_i (amm.BuyFeeN).
 
+// minBetCost is a dust floor on the buy cost. The exact cost of a deeply
+// saturated underdog share decays like b·e^(−gap/b) and past a q gap of ~745·b
+// even the stable formulation underflows to exactly 0 — which the schema
+// forbids (bets.cost > 0). Rounding up is always conservation-safe: the dust
+// lands with the guarantors' surplus at settlement, and 1e-300 is far below
+// any amount the UI can display.
+const minBetCost = 1e-300
+
 // ammCostN returns the LMSR market cost C(q) = b·ln(Σ e^(q_i/b)).
 // Uses log-sum-exp stabilization so large q/b cannot overflow.
 func ammCostN(q []float64, b float64) float64 {
@@ -65,14 +73,65 @@ func ammCostN(q []float64, b float64) float64 {
 }
 
 // buyCostN returns the elo cost of buying `shares` of outcome i at the current
-// q: C(q + shares·e_i) − C(q).
+// q: C(q + shares·e_i) − C(q). The naive difference of the two ammCostN values
+// cancels catastrophically at market saturation: with a one-sided q gap of
+// ~37·b the exact underdog-share cost (~1e-16·b) sits far below one ulp of
+// C(q), so the subtraction yields exactly 0 and violates bets.cost > 0.
+// Instead the dominant term is cancelled algebraically before evaluation:
+// with u = q_i/b, v = u + shares/b and w = ln Σ_{j≠i} e^{q_j/b} the cost is
+// b·(lse(v, w) − lse(u, w)), evaluated per regime so the large term never
+// touches float arithmetic:
+//
+//	u ≥ w:  shares/b + log1p(e^{w−v}) − log1p(e^{w−u})  // leader stays on top
+//	v ≥ w:  (v−w) + log1p(e^{w−v}) − log1p(e^{u−w})     // the buy crosses the rest
+//	w > v:  log1p(e^{v−w}) − log1p(e^{u−w})             // deep underdog: w is never added
+//
+// Every exponential argument is ≤ 0, so nothing overflows, and each branch is
+// exact to ~1e-16 relative to the cost itself — for any liquidity, down to
+// the b ≈ 1e-5 of a guarantor risking 0.00001. The minBetCost floor covers
+// the sub-underflow regime (q gap ≳ 745·b).
 func buyCostN(q []float64, b float64, i int, shares float64) float64 {
-	after := append([]float64(nil), q...)
-	if i < 0 || i >= len(after) {
+	if i < 0 || i >= len(q) || len(q) < 2 || b <= 0 || shares <= 0 {
 		return 0
 	}
-	after[i] += shares
-	return ammCostN(after, b) - ammCostN(q, b)
+	u := q[i] / b
+	v := u + shares/b
+	w := logSumExpSkip(q, b, i)
+	var delta float64
+	switch {
+	case u >= w:
+		delta = shares/b + math.Log1p(math.Exp(w-v)) - math.Log1p(math.Exp(w-u))
+	case v >= w:
+		delta = (v - w) + math.Log1p(math.Exp(w-v)) - math.Log1p(math.Exp(u-w))
+	default:
+		delta = math.Log1p(math.Exp(v-w)) - math.Log1p(math.Exp(u-w))
+	}
+	if cost := b * delta; cost >= minBetCost {
+		return cost
+	}
+	return minBetCost
+}
+
+// logSumExpSkip returns ln Σ_{j≠skip} e^{q_j/b}, max-shifted so large q/b
+// cannot overflow the exponentials. The caller guarantees b > 0 and at least
+// one non-skipped component.
+func logSumExpSkip(q []float64, b float64, skip int) float64 {
+	m := math.Inf(-1)
+	for j := range q {
+		if j == skip {
+			continue
+		}
+		if v := q[j] / b; v > m {
+			m = v
+		}
+	}
+	sum := 0.0
+	for j := range q {
+		if j != skip {
+			sum += math.Exp(q[j]/b - m)
+		}
+	}
+	return m + math.Log(sum)
 }
 
 // MarginalProbabilitiesN returns the live probabilities of all outcomes in

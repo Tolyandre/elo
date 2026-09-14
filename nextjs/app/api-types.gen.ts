@@ -3789,7 +3789,7 @@ export interface operations {
                     shares: number;
                     /**
                      * Format: double
-                     * @description The outcome probability the buyer saw and agrees to buy around. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
+                     * @description The outcome probability the buyer saw and agrees to buy around, in the closed interval [0, 1] — in a one-sided market the live probability saturates to exactly 0 or 1 in float64, and the client sends back what it displays. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
                      */
                     expected_probability: number;
                 };

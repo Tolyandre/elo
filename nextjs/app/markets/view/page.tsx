@@ -119,17 +119,25 @@ function OutcomeColumn({
     // The card quotes the pending buy — a ×multiplier headline (voices per
     // elo) over its per-share price; the two are reciprocals. The modes
     // differ in what the buy button actually spends: the price of one share
-    // ("По одному голосу") or a fixed 1 elo ("По стоимости 1").
+    // ("По одному голосу") or a fixed 1 elo ("По стоимости 1"). In a saturated
+    // market the underdog share costs a float-dust ~0: its true multiplier
+    // (~×1e16) is capped at ×1000+ and the sub-0.005 price renders as <0.01 —
+    // the buy itself still charges the exact LMSR cost.
     const headline = multiplier != null && Number.isFinite(multiplier)
-        ? `×${multiplier.toFixed(2)}`
+        ? multiplier > 1000
+            ? "×1000+"
+            : `×${multiplier.toFixed(2)}`
         : probability.toFixed(2);
-    const headlineCaption = pricePerShare != null && Number.isFinite(pricePerShare)
-        ? `${formatAmount(pricePerShare)} за 1 голос`
+    const quotePrice = pricePerShare != null && Number.isFinite(pricePerShare)
+        ? pricePerShare > 0 && pricePerShare < 0.005
+            ? "<0.01"
+            : formatAmount(pricePerShare)
         : null;
+    const headlineCaption = quotePrice != null ? `${quotePrice} за 1 голос` : null;
     const buyLabel = buyMode === "amount"
         ? "Поставить 1"
-        : pricePerShare != null && Number.isFinite(pricePerShare)
-            ? `Поставить ${formatAmount(pricePerShare)}`
+        : quotePrice != null
+            ? `Поставить ${quotePrice}`
             : "Поставить";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
@@ -139,7 +147,7 @@ function OutcomeColumn({
                 {headlineCaption && (
                     <p className="text-xs text-muted-foreground leading-tight">{headlineCaption}</p>
                 )}
-                {fee != null && fee > 0 && (
+                {fee != null && fee >= 0.005 && (
                     <p className="text-xs text-muted-foreground leading-tight">в т.ч. комиссия {formatAmount(fee)}</p>
                 )}
             </div>

@@ -198,12 +198,19 @@ func allocate(total float64, weights, acc []float64) {
 	acc[last] += total - assigned
 }
 
+// capSlack is the FP slack allowed on a waterfall cap comparison: relative to
+// the cap plus an absolute dust floor. It bounds a wager's loss overshoot at
+// max(1e-9·risk, 1e-12) — the historical absolute 1e-9 was 10% of the risk of
+// a 1e-5 wager (a guarantor risking 0.00001), which is where the "multiplier
+// exceeds all guarantors total risks" margin came from.
+func capSlack(cap float64) float64 { return cap*1e-9 + 1e-12 }
+
 // cappedProportional splits `total` across wagers proportionally to `weights`,
-// never exceeding the per-wager `caps` — classic water-filling: wagers whose
-// proportional share exceeds their cap are fixed at the cap and the remainder
-// is redistributed among the rest. The final pass assigns the exact remainder
-// to the last open wager so allocations sum to total. Returns per-wager
-// allocations (all zero for non-positive total).
+// never exceeding the per-wager `caps` beyond capSlack — classic water-filling:
+// wagers whose proportional share exceeds their cap are fixed at the cap and
+// the remainder is redistributed among the rest. The final pass assigns the
+// exact remainder to the last open wager so allocations sum to total. Returns
+// per-wager allocations (all zero for non-positive total).
 func cappedProportional(total float64, weights, caps []float64) []float64 {
 	alloc := make([]float64, len(weights))
 	if total <= 0 {
@@ -252,14 +259,14 @@ func cappedProportional(total float64, weights, caps []float64) []float64 {
 		}
 		// Fix every over-cap wager at its cap and continue with the remainder.
 		for i := range weights {
-			if open[i] && total*weights[i]/wsum > caps[i]+1e-9 {
+			if open[i] && total*weights[i]/wsum > caps[i]+capSlack(caps[i]) {
 				alloc[i] += caps[i]
 				total -= caps[i]
 				open[i] = false
 			}
 		}
 	}
-	if total > 1e-9 {
+	if total > 1e-12 {
 		// FP dust beyond all caps (mathematically impossible: caps always
 		// cover the deficit). Park it on the largest cap so the sum stays
 		// exact.
@@ -287,7 +294,7 @@ func cappedProportional(total float64, weights, caps []float64) []float64 {
 
 func anyOverCap(total, wsum float64, weights, caps []float64, open []bool) bool {
 	for i := range weights {
-		if open[i] && total*weights[i]/wsum > caps[i]+1e-9 {
+		if open[i] && total*weights[i]/wsum > caps[i]+capSlack(caps[i]) {
 			return true
 		}
 	}

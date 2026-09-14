@@ -1337,7 +1337,7 @@ type PatchMarketJSONBodyStatus string
 
 // PlaceBetJSONBody defines parameters for PlaceBet.
 type PlaceBetJSONBody struct {
-	// ExpectedProbability The outcome probability the buyer saw and agrees to buy around. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
+	// ExpectedProbability The outcome probability the buyer saw and agrees to buy around, in the closed interval [0, 1] — in a one-sided market the live probability saturates to exactly 0 or 1 in float64, and the client sends back what it displays. The server rejects the bet (409) if the live probability has moved away from it beyond a small tolerance.
 	ExpectedProbability float64 `json:"expected_probability"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.

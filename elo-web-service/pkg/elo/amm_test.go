@@ -166,3 +166,91 @@ func TestAMMZeroSharesIsZero(t *testing.T) {
 		t.Fatalf("zero-shares ApplyBetN must be a no-op: newQ=%v a=%v", newQ, amount)
 	}
 }
+
+// TestAMMSaturatedMarketCosts reproduces the dev-market failure (market
+// Cf2zAhhjiGU9n1zyfD2JD): a sole guarantor risking 1 on a 3-outcome market
+// (b = 1/ln 3) after 34 one-share buys of one outcome. The leader's
+// probability rounds to exactly 1.0 in float64, and the old C(q+s·e_i)−C(q)
+// difference cancelled the underdog cost (true value ~1e-16) to exactly 0,
+// tripping the bets cost > 0 constraint.
+func TestAMMSaturatedMarketCosts(t *testing.T) {
+	b := liquidityBForRisk(16, 1, 3)
+	q := []float64{34.000000000000014, 0, 0}
+
+	p := MarginalProbabilitiesN(q, b)
+	if p[0] != 1 {
+		t.Fatalf("leader probability = %v, want the float64 saturation to exactly 1", p[0])
+	}
+	if p[1] <= 0 || p[2] <= 0 {
+		t.Fatalf("underdog probabilities = %v/%v, want positive dust", p[1], p[2])
+	}
+
+	// The 1.00 leader still charges ~1 per share (a hair under, at float dust).
+	if _, cost := ApplyBetN(q, b, 0, 1); !approxEq(cost, 1) || cost <= 0 {
+		t.Fatalf("leader share cost = %v, want ~1", cost)
+	}
+
+	// The ~0.00 underdog charges its true dust cost — not the cancelled 0 —
+	// and it matches the closed form b·log1p((e^{1/b}−1)·p_i).
+	_, cost := ApplyBetN(q, b, 1, 1)
+	if cost <= 0 || cost > 1e-15 {
+		t.Fatalf("underdog share cost = %v, want the true cost in (0, 1e-15]", cost)
+	}
+	want := b * math.Log1p(math.Expm1(1/b)*p[1])
+	if rel := math.Abs(cost-want) / want; rel > 1e-9 {
+		t.Fatalf("underdog cost %v disagrees with closed form %v (rel %v)", cost, want, rel)
+	}
+
+	// A bulk underdog buy that crosses the leader stays on the ~1-per-share
+	// band past the crossover (34 dust shares + the price walk above 0.5).
+	if _, cost := ApplyBetN(q, b, 1, 40); cost <= 5 || cost >= 7 {
+		t.Fatalf("40-share underdog buy cost = %v, want ~6 (crossover price walk)", cost)
+	}
+}
+
+// TestAMMExtremeGapCostFloor: past a q gap of ~745·b even the stable
+// formulation underflows to 0; the minBetCost floor keeps the cost positive
+// so the bet row stays insertable.
+func TestAMMExtremeGapCostFloor(t *testing.T) {
+	if _, cost := ApplyBetN([]float64{0, 1000, 0}, 1, 0, 1); cost != minBetCost {
+		t.Fatalf("underflowed underdog cost = %v, want the %v floor", cost, minBetCost)
+	}
+}
+
+// TestAMMTinyLiquidity covers a guarantor risking 0.00001: b = 1e-5/ln 3, so
+// one share moves q/b by ~110k — the market saturates after a single buy and
+// e^{anything/b} is far past the exp overflow boundary. All costs must stay
+// exact and positive.
+func TestAMMTinyLiquidity(t *testing.T) {
+	const risk = 0.00001
+	b := liquidityBForRisk(16, risk, 3)
+	if !approxEq(b, risk/math.Log(3)) {
+		t.Fatalf("b = %v, want risk/ln 3", b)
+	}
+
+	// First share: b·ln((e^{1/b}+2)/3) = 1 − b·ln 3 once e^{−1/b} underflows.
+	q0 := []float64{0, 0, 0}
+	_, cost := ApplyBetN(q0, b, 0, 1)
+	if !approxEq(cost, 1-b*math.Log(3)) {
+		t.Fatalf("first share cost = %v, want 1 − b·ln3 = %v", cost, 1-b*math.Log(3))
+	}
+
+	// After it, prices are float64-exact [1, 0, 0] — the closed [0,1]
+	// expected_probability interval keeps the market tradable.
+	q1 := []float64{1, 0, 0}
+	p := MarginalProbabilitiesN(q1, b)
+	if p[0] != 1 || p[1] != 0 || p[2] != 0 {
+		t.Fatalf("saturated prices = %v, want exactly [1, 0, 0]", p)
+	}
+
+	// The leader keeps charging exactly 1/share (the corrections e^{−1/b}
+	// underflow to 0, so only b·(1/b) rounding remains).
+	if _, cost := ApplyBetN(q1, b, 0, 1); !approxEq(cost, 1) {
+		t.Fatalf("leader share cost = %v, want ~1", cost)
+	}
+	// The underdog share costs b·ln 2 — the doubled-leader log-ratio — far
+	// above the dust floor and never zero.
+	if _, cost := ApplyBetN(q1, b, 1, 1); !approxEq(cost, b*math.Log(2)) {
+		t.Fatalf("underdog share cost = %v, want b·ln2 = %v", cost, b*math.Log(2))
+	}
+}

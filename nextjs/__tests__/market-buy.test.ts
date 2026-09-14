@@ -59,6 +59,32 @@ describe('sharesForAmount', () => {
         expect(sharesForAmount([5], 8, 0, 1)).toBeNaN()
         expect(sharesForAmount([0, 0], 8, 5, 1)).toBeNaN()
     })
+
+    it('survives exp overflow on tiny-liquidity markets (b < ~0.0014)', () => {
+        // The old closed form computed S·e^{amount/b} directly, which
+        // overflows to Infinity once amount/b > 709 — a guarantor risking
+        // 0.00001 gives b ≈ 1e-5 (amount/b ≈ 110k) and made the amount mode
+        // unquotable. The log-space inversion must stay finite and exact.
+        const b = 0.00001 / Math.log(3)
+        const shares = sharesForAmount([1, 0, 0], b, 1, 1)
+        expect(Number.isFinite(shares)).toBe(true)
+        // Buying the underdog at ~p=0 with 1 elo: the first share costs dust,
+        // the price crosses to ~1 at s = 1, so ~2 shares for ~1 elo.
+        expect(shares).toBeCloseTo(2, 6)
+        expect(buyCost([1, 0, 0], b, 1, shares)).not.toBeNaN()
+        // The leader is ~1/share: 1 elo buys exactly ~1 share.
+        expect(sharesForAmount([1, 0, 0], b, 0, 1)).toBeCloseTo(1, 6)
+    })
+
+    it('inverts exactly on a saturated market', () => {
+        // Dev-market shape: q gap 34, b = 1/ln 3. The 1-elo underdog buy
+        // costs exactly 1 by construction — 1 + b·ln 2 shares in closed form.
+        const b = 1 / Math.log(3)
+        const q = [34.000000000000014, 0, 0]
+        const shares = sharesForAmount(q, b, 1, 1)
+        expect(shares).toBeCloseTo(34 + b * Math.LN2, 6)
+        expect(costForShares(q, b, 1, shares)).toBeCloseTo(1, 10)
+    })
 })
 
 describe('buy mode price equivalence', () => {
@@ -132,6 +158,43 @@ describe('costForShares', () => {
         expect(costForShares([0, 0], 8, 0, 0)).toBeNaN()
         expect(costForShares([5], 8, 0, 1)).toBeNaN()
         expect(costForShares([0, 0], 8, 5, 1)).toBeNaN()
+    })
+
+    it('charges the true dust cost on a saturated market, not the cancelled 0', () => {
+        // The reported bug (dev market Cf2zAhhjiGU9n1zyfD2JD): one guarantor
+        // risking 1 on a 3-outcome market (b = 1/ln 3) after 34 one-share buys
+        // of one outcome. The naive cost(after) − cost(q) subtraction cancels
+        // the underdog share's true cost (~1e-16) to exactly 0 — the card
+        // showed "0 за 1 голос" and the server rejected the insert
+        // (bets.cost > 0). The stable form must return the true cost.
+        const b = 1 / Math.log(3)
+        const q = [34.000000000000014, 0, 0]
+        const underdogCost = costForShares(q, b, 1, 1)
+        expect(underdogCost).toBeGreaterThan(0)
+        expect(underdogCost).toBeLessThanOrEqual(1e-15)
+        // and it agrees with the closed form b·log1p((e^{1/b}−1)·p_i)
+        const m = Math.max(...q.map((v) => v / b))
+        const e = q.map((v) => Math.exp(v / b - m))
+        const p1 = e[1] / e.reduce((sum, v) => sum + v, 0)
+        expect(underdogCost / (b * Math.log1p(Math.expm1(1 / b) * p1))).toBeCloseTo(1, 9)
+        // the 1.00 leader still charges ~1 per share
+        expect(costForShares(q, b, 0, 1)).toBeCloseTo(1, 10)
+    })
+
+    it('floors the cost past the exp underflow regime (q gap ≳ 745·b)', () => {
+        expect(costForShares([0, 1000, 0], 1, 0, 1)).toBe(1e-300)
+    })
+
+    it('stays exact with tiny liquidity (a guarantor risking 0.00001)', () => {
+        // b = 1e-5/ln 3: one share moves q/b by ~110k, past the exp overflow
+        // boundary — everything must stay finite, positive and exact.
+        const b = 0.00001 / Math.log(3)
+        // first share: b·ln((e^{1/b}+2)/3) = 1 − b·ln 3 once e^{−1/b} underflows
+        expect(costForShares([0, 0, 0], b, 0, 1)).toBeCloseTo(1 - b * Math.log(3), 10)
+        // after one buy the market is saturated: the leader charges ~1/share,
+        // the underdog b·ln 2 — never 0, never Infinity.
+        expect(costForShares([1, 0, 0], b, 0, 1)).toBeCloseTo(1, 10)
+        expect(costForShares([1, 0, 0], b, 1, 1)).toBeCloseTo(b * Math.LN2, 10)
     })
 })
 

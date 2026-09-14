@@ -678,8 +678,13 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	if body.Shares <= 0 {
 		return PlaceBet400JSONResponse{Status: "fail", Message: "shares must be positive"}, nil
 	}
-	if body.ExpectedProbability <= 0 || body.ExpectedProbability >= 1 {
-		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_probability must be in (0, 1)"}, nil
+	// Closed interval: in a one-sided market the live probability legitimately
+	// saturates to exactly 0.0 or 1.0 in float64 (a q gap of ~37·b is enough),
+	// and the UI sends back the value it displays. The drift check inside
+	// PlaceBet compares against the same server-computed value, so the
+	// endpoints pass it trivially; values outside [0, 1] are the only garbage.
+	if body.ExpectedProbability < 0 || body.ExpectedProbability > 1 {
+		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_probability must be in [0, 1]"}, nil
 	}
 
 	outcome, err := s.api.MarketService.PlaceBet(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, id.ID(body.OutcomeId), body.Shares, body.ExpectedProbability)

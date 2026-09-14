@@ -213,7 +213,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 	earlyFee := wagerAt("p1", 4, 0.05, gBase)
 	lateFee := wagerAt("p2", 4, 0.20, gBase.Add(2*time.Hour))
 	bets = []betRecord{
-		betAt("buyer", 1.0, gBase.Add(time.Hour)),  // between: only p1 active
+		betAt("buyer", 1.0, gBase.Add(time.Hour)),   // between: only p1 active
 		betAt("buyer", 3.0, gBase.Add(3*time.Hour)), // after: weights 0.2 vs 0.8
 	}
 	shares = settleGuarantors(bets, []GuaranteeWager{earlyFee, lateFee}, 0)
@@ -296,5 +296,64 @@ func TestSettleGuarantorsCombinesPotsExactly(t *testing.T) {
 func TestSettleGuarantorsEmptyWagers(t *testing.T) {
 	if shares := settleGuarantors(nil, nil, 5); shares != nil {
 		t.Errorf("no wagers must yield nil, got %v", shares)
+	}
+}
+
+// TestGuarantorLossBoundedByRisk replays a saturated market — the dev-market
+// shape (market Cf2zAhhjiGU9n1zyfD2JD): one zero-fee guarantor risking 1 on a
+// 3-outcome market, 35 one-share buys of the leader, plus a dust-cost underdog
+// buy — through settlement and asserts the margin-of-error invariant the FP
+// epsilons must respect: a wager's loss never exceeds its risk beyond
+// capSlack, whatever the bet stream's float dust does.
+func TestGuarantorLossBoundedByRisk(t *testing.T) {
+	b := liquidityBForRisk(16, 1, 3)
+	q := []float64{0, 0, 0}
+	wagers := []GuaranteeWager{wagerAt(id.ID("0196-sat-guarantor"), 1, 0, gBase)}
+
+	bets := make([]betRecord, 0, 36)
+	placed := gBase
+	for range 35 {
+		var amount float64
+		q, amount = ApplyBetN(q, b, 0, 1)
+		bets = append(bets, betRecord{
+			PlayerID: id.ID("0196-sat-buyer"),
+			Outcome:  id.ID("0196-sat-leader"),
+			Cost:     amount,
+			Shares:   1,
+			PlacedAt: placed,
+		})
+		placed = placed.Add(time.Second)
+	}
+	// The ~0-cost underdog share (the buy this fix re-enabled).
+	var dust float64
+	q, dust = ApplyBetN(q, b, 1, 1)
+	if dust <= 0 || dust > 1e-15 {
+		t.Fatalf("underdog cost = %v, want the tiny true cost", dust)
+	}
+	bets = append(bets, betRecord{
+		PlayerID: id.ID("0196-sat-underdog"),
+		Outcome:  id.ID("0196-sat-underdog-outcome"),
+		Cost:     dust,
+		Shares:   1,
+		PlacedAt: placed,
+	})
+
+	// The leader wins: paid = 35 shares, collected = Σ costs.
+	collected := 0.0
+	for _, bet := range bets {
+		collected += bet.Cost
+	}
+	residual := collected - 35
+	shares := settleGuarantors(bets, wagers, residual)
+
+	var loss float64
+	for _, share := range shares {
+		loss += math.Min(share, 0)
+	}
+	if loss > 1+capSlack(1) {
+		t.Errorf("guarantor loss %.17g exceeds the 1 risk beyond the capSlack margin", -loss)
+	}
+	if residual > 0 {
+		t.Errorf("a fully-bought leader market must be at deficit or break-even, got surplus %v", residual)
 	}
 }
