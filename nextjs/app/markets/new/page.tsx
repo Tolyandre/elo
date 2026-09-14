@@ -257,7 +257,7 @@ export default function NewMarketPage() {
                             <PlayerCombobox value={streakTargetPlayerID || undefined} onChange={v => setStreakTargetPlayerID((v ?? "") as Base58ID | "")} allowClear />
                         </div>
                         <div className="space-y-1.5">
-                            <Label>Игры</Label>
+                            <Label>Игры (необязательно)</Label>
                             <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} />
                         </div>
                         <div className="space-y-1.5">

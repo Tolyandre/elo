@@ -72,6 +72,7 @@ MarketsCollection:
                 type: array
                 items:
                     $ref: './common.yaml#/Base58ID'
+                description: Games the match must belong to; empty means any game.
               # win_streak fields
               target_player_id:
                 $ref: './common.yaml#/Base58ID'
@@ -79,6 +80,7 @@ MarketsCollection:
                 type: array
                 items:
                     $ref: './common.yaml#/Base58ID'
+                description: Games the matches must belong to; empty means any game.
               wins_required:
                 type: integer
               max_losses:

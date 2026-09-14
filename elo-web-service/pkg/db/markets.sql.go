@@ -689,7 +689,7 @@ JOIN (
     GROUP BY match_id
 ) max_scores ON max_scores.match_id = ms.match_id
 WHERE ms.player_id = $1
-    AND m.game_id = ANY($2::uuid[])
+    AND (cardinality($2::uuid[]) = 0 OR m.game_id = ANY($2::uuid[]))
     AND m.date >= $3
     AND m.date <= $4
 `
@@ -706,6 +706,8 @@ type GetPlayerStreakStatsRow struct {
 	Losses int32 `json:"losses"`
 }
 
+// An empty game-id list counts matches from every game (the market's "any
+// game" setting, same convention as match_winner's game_ids).
 func (q *Queries) GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error) {
 	row := q.db.QueryRow(ctx, getPlayerStreakStats,
 		arg.PlayerID,

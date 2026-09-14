@@ -52,7 +52,10 @@ func (t *winStreakTrigger) OnMatch(ctx context.Context, q *db.Queries, match Mat
 	matchDate := match.Match.Date.Time
 
 	for _, m := range markets {
-		if !match.ParticipantSet[m.TargetPlayerID] || !slices.Contains(m.GameIds, match.Match.GameID) {
+		// An empty GameIds list means "any game" (same convention as
+		// match_winner's game_ids), so the game check applies only when some
+		// games were selected.
+		if !match.ParticipantSet[m.TargetPlayerID] || (len(m.GameIds) > 0 && !slices.Contains(m.GameIds, match.Match.GameID)) {
 			continue
 		}
 

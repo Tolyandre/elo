@@ -150,6 +150,8 @@ type Querier interface {
 	// markets plus the risk of their guarantee wagers (ADR-20 reserves guarantor
 	// exposure against the betting limit).
 	GetPlayerReservedAmount(ctx context.Context, argID id.ID) (float64, error)
+	// An empty game-id list counts matches from every game (the market's "any
+	// game" setting, same convention as match_winner's game_ids).
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)

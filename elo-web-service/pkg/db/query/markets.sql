@@ -393,6 +393,8 @@ WHERE id = $1 AND status = 'open';
 DELETE FROM markets WHERE id = $1;
 
 -- name: GetPlayerStreakStats :one
+-- An empty game-id list counts matches from every game (the market's "any
+-- game" setting, same convention as match_winner's game_ids).
 SELECT
     COUNT(CASE WHEN ms.score = max_scores.max_score THEN 1 END)::int AS wins,
     COUNT(CASE WHEN ms.score < max_scores.max_score THEN 1 END)::int AS losses
@@ -404,6 +406,6 @@ JOIN (
     GROUP BY match_id
 ) max_scores ON max_scores.match_id = ms.match_id
 WHERE ms.player_id = $1
-    AND m.game_id = ANY($2::uuid[])
+    AND (cardinality($2::uuid[]) = 0 OR m.game_id = ANY($2::uuid[]))
     AND m.date >= $3
     AND m.date <= $4;

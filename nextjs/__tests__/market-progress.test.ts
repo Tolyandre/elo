@@ -227,4 +227,19 @@ describe('fetchStreakMatches', () => {
         expect(matches).toEqual([])
         expect(mockedGet).toHaveBeenCalledTimes(1)
     })
+
+    it('treats an empty game list as any game — one unfiltered fetch', async () => {
+        mockedGet.mockResolvedValue({
+            items: [makeMatch('m1', '2026-09-05T00:00:00Z', { [TARGET]: 10, [RIVAL]: 80 })],
+            next: null,
+        })
+        const matches = await fetchStreakMatches(
+            streakParams([]),
+            new Date('2026-09-01T00:00:00Z'),
+            null,
+        )
+        expect(matches.map((m) => m.id)).toEqual(['m1'])
+        expect(mockedGet).toHaveBeenCalledTimes(1)
+        expect(mockedGet.mock.calls[0][0]?.game_id).toBeUndefined()
+    })
 })

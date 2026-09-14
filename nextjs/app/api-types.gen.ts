@@ -3544,8 +3544,10 @@ export interface operations {
                     target_player_ids?: components["schemas"]["Base58ID"][];
                     /** @description When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome. */
                     allow_other_players?: boolean;
+                    /** @description Games the match must belong to; empty means any game. */
                     game_ids?: components["schemas"]["Base58ID"][];
                     target_player_id?: components["schemas"]["Base58ID"];
+                    /** @description Games the matches must belong to; empty means any game. */
                     streak_game_ids?: components["schemas"]["Base58ID"][];
                     wins_required?: number;
                     max_losses?: number | null;

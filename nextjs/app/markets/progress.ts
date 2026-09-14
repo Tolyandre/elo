@@ -25,13 +25,15 @@ export function streakWindowEnd(market: Market): Date | null {
 
 /**
  * Matches counting for a win_streak market: the target player's matches in the
- * market's games within [starts_at, end]. Composed from the same paginated
- * global feed the /matches page uses; pages are followed until a page is
- * entirely older than the window start.
+ * market's games within [starts_at, end]. An empty game list means "any game"
+ * (the server's convention, same as match_winner), so the player's whole feed
+ * counts. Composed from the same paginated global feed the /matches page uses;
+ * pages are followed until a page is entirely older than the window start.
  */
 export async function fetchStreakMatches(params: WinStreakParams, start: Date, end: Date | null): Promise<Match[]> {
     const byId = new Map<string, Match>();
-    await Promise.all(params.game_ids.map(async (gameId) => {
+    const gameIds: (string | undefined)[] = params.game_ids.length > 0 ? params.game_ids : [undefined];
+    await Promise.all(gameIds.map(async (gameId) => {
         let next: string | undefined;
         for (let page = 0; page < MAX_PAGES_PER_GAME; page++) {
             const res = await getMatchesPagePromise({
