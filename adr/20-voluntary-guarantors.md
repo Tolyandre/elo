@@ -83,7 +83,9 @@ integration, exact for any outcome count. The fee is snapshotted on the bet row
   shared only among wagers placed no later than the bet, weighted `fee·risk` —
   a late joiner cannot free-ride on fees charged before they joined.
 - **Equity residual** (Σ costs − Σ winning shares, fees excluded):
-  - surplus → pro-rata by risk over all wagers;
+  - surplus → split by exposure accrual (REVISED in ADR-23; originally
+    pro-rata by risk over all wagers, which ignored when and for what a
+    guarantor's capital was actually at stake);
   - deficit → first-loss waterfall: fee-charging wagers pay first (weighted
     `fee·risk`, each capped at their risk), everyone else backs them up
     pro-rata by remaining risk. Zero-fee guarantors are the senior tranche.

@@ -162,7 +162,7 @@ func TestSettleGuarantorsEqualZeroFeeMatchesLegacySplit(t *testing.T) {
 		wagerAt("p2", 8, 0, gBase),
 		wagerAt("p3", 8, 0, gBase),
 	}
-	shares := settleGuarantors(nil, wagers, 6) // surplus 6
+	shares := settleGuarantors(nil, wagers, 16, 6) // surplus 6
 	if len(shares) != 3 {
 		t.Fatalf("expected 3 guarantors, got %d", len(shares))
 	}
@@ -171,7 +171,7 @@ func TestSettleGuarantorsEqualZeroFeeMatchesLegacySplit(t *testing.T) {
 			t.Errorf("equal zero-fee wagers must split the surplus equally: %s got %v", pid, s)
 		}
 	}
-	shares = settleGuarantors(nil, wagers, -6) // deficit 6
+	shares = settleGuarantors(nil, wagers, 16, -6) // deficit 6
 	for pid, s := range shares {
 		if !approxEq(s, -2) {
 			t.Errorf("equal zero-fee wagers must split the deficit equally: %s got %v", pid, s)
@@ -192,7 +192,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 	bets := []betRecord{
 		betAt("buyer", 1.0, gBase.Add(3*time.Hour)), // after both: weights 0 vs 0.4
 	}
-	shares := settleGuarantors(bets, []GuaranteeWager{early, late}, 0)
+	shares := settleGuarantors(bets, []GuaranteeWager{early, late}, 16, 0)
 	if !approxEq(shares["p2"], 1.0) || !approxEq(shares["p1"], 0) {
 		t.Errorf("fee after both joins must go to the fee-charging wager: %v", shares)
 	}
@@ -203,7 +203,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 	// i.e. again to the fee-charging wager. The property that matters (and is
 	// tested here) is exact conservation either way.
 	bets = []betRecord{betAt("buyer", 1.0, gBase.Add(time.Hour))}
-	shares = settleGuarantors(bets, []GuaranteeWager{early, late}, 0)
+	shares = settleGuarantors(bets, []GuaranteeWager{early, late}, 16, 0)
 	if !approxEq(shares["p1"]+shares["p2"], 1.0) {
 		t.Errorf("fee pool must be fully attributed: %v", shares)
 	}
@@ -216,7 +216,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 		betAt("buyer", 1.0, gBase.Add(time.Hour)),   // between: only p1 active
 		betAt("buyer", 3.0, gBase.Add(3*time.Hour)), // after: weights 0.2 vs 0.8
 	}
-	shares = settleGuarantors(bets, []GuaranteeWager{earlyFee, lateFee}, 0)
+	shares = settleGuarantors(bets, []GuaranteeWager{earlyFee, lateFee}, 16, 0)
 	// Between: 1.0 → p1. After: 3.0 split 1:4 → 0.6 p1, 2.4 p2.
 	if !approxEq(shares["p1"], 1.6) || !approxEq(shares["p2"], 2.4) {
 		t.Errorf("time-windowed fee attribution: want p1=1.6 p2=2.4, got %v", shares)
@@ -224,15 +224,79 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 }
 
 func TestSettleGuarantorsSurplusProRataByRisk(t *testing.T) {
-	// Equity surplus is split pro-rata by risk regardless of fees (fees only
-	// shape the fee pool and the deficit waterfall).
+	// Degenerate surplus (no bet events ever sampled): the split falls back
+	// to plain pro-rata by risk regardless of fees (fees only shape the fee
+	// pool and the deficit waterfall).
 	wagers := []GuaranteeWager{
 		wagerAt("p1", 3, 0.10, gBase),
 		wagerAt("p2", 1, 0.00, gBase),
 	}
-	shares := settleGuarantors(nil, wagers, 8)
+	shares := settleGuarantors(nil, wagers, 16, 8)
 	if !approxEq(shares["p1"], 6) || !approxEq(shares["p2"], 2) {
 		t.Errorf("surplus must be pro-rata by risk: %v", shares)
+	}
+}
+
+// betOn is a betRecord with a real outcome/shares/cost body for accrual
+// replays (betAt only carries fees).
+func betOn(outcome string, shares, cost float64, at time.Time) betRecord {
+	return betRecord{PlayerID: id.ID("buyer"), Outcome: id.ID(outcome), Shares: shares, Cost: cost, PlacedAt: at}
+}
+
+func TestSettleGuarantorsExposureAccrualSequenceOnly(t *testing.T) {
+	// ADR-23 worked example: equal risks, two bets, the first one creating
+	// real liability while only G1 was active. The accrual is sequence-only —
+	// wall-clock gaps between events are irrelevant.
+	g1 := wagerAt("g1", 8, 0, gBase)
+	g2 := wagerAt("g2", 8, 0, gBase.Add(2*time.Hour)) // joins after bet 1
+	bets := []betRecord{
+		// Active {G1}: q=[A]=2, collected 1.1 → V_raw = 0.9 > floor 0.8 → G1 +0.9.
+		betOn("A", 2, 1.10, gBase.Add(time.Hour)),
+		// Active {G1, G2}: q=[A,B]=2, collected 2.4 → V_raw < 0, floor 1.6 → +0.8 each.
+		betOn("B", 2, 1.30, gBase.Add(3*time.Hour)),
+	}
+	shares := settleGuarantors(bets, []GuaranteeWager{g1, g2}, 16, 0.4)
+	if !approxEq(shares["g1"], 0.272) || !approxEq(shares["g2"], 0.128) {
+		t.Errorf("exposure accrual split: want g1=0.272 g2=0.128, got %v", shares)
+	}
+
+	// The identical sequence at different wall-clock times must split
+	// identically.
+	spacedWagers := []GuaranteeWager{
+		wagerAt("g1", 8, 0, gBase),
+		wagerAt("g2", 8, 0, gBase.Add(100*time.Hour)),
+	}
+	spacedBets := []betRecord{
+		betOn("A", 2, 1.10, gBase.Add(50*time.Hour)),
+		betOn("B", 2, 1.30, gBase.Add(200*time.Hour)),
+	}
+	spaced := settleGuarantors(spacedBets, spacedWagers, 16, 0.4)
+	if !approxEq(spaced["g1"], shares["g1"]) || !approxEq(spaced["g2"], shares["g2"]) {
+		t.Errorf("accrual must be sequence-only: %v vs %v", spaced, shares)
+	}
+}
+
+func TestSettleGuarantorsStandbyFloorSplitsByBackedTrades(t *testing.T) {
+	// A saturated market (every buy ≈ 1.00, V_raw ≈ 0): the standby floor
+	// pays a per-trade royalty ∝ active risk share. The dev-market shape:
+	// a thin early guarantor backing 2 trades alone, a deep late one present
+	// for 3 more.
+	thin := wagerAt("thin", 0.1, 0, gBase)
+	deep := wagerAt("deep", 4, 0, gBase.Add(time.Hour))
+	bets := []betRecord{
+		betOn("ilya", 1, 1, gBase.Add(10*time.Minute)),
+		betOn("ilya", 1, 1, gBase.Add(20*time.Minute)),
+		// deep joins after these two:
+		betOn("ilya", 1, 1, gBase.Add(2*time.Hour)),
+		betOn("ilya", 1, 1, gBase.Add(3*time.Hour)),
+		betOn("ilya", 1, 1, gBase.Add(4*time.Hour)),
+	}
+	// Envelope 0.1 while thin is alone (floor 0.01/trade), 4.1 afterwards
+	// (floor 0.41/trade at 0.1/4.1 vs 4/4.1 shares): thin = 2·0.01 +
+	// 3·0.41·(0.1/4.1) = 0.05; deep = 3·0.41·(4/4.1) = 1.2.
+	shares := settleGuarantors(bets, []GuaranteeWager{thin, deep}, 16, 13)
+	if !approxEq(shares["thin"], 13*0.05/1.25) || !approxEq(shares["deep"], 13*1.2/1.25) {
+		t.Errorf("standby-only split: want thin=%.4f deep=%.4f, got %v", 13*0.05/1.25, 13*1.2/1.25, shares)
 	}
 }
 
@@ -245,7 +309,7 @@ func TestSettleGuarantorsDeficitWaterfall(t *testing.T) {
 	// Deficit 8: tier1 = weights {0.5, 0.3, 0} over {p1, p2}: proportional would
 	// be 5 and 3 — p1 caps at its risk 2, so the remaining 6 goes to p2 (exactly
 	// p2's risk).
-	shares := settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -8)
+	shares := settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, 16, -8)
 	if !approxEq(shares["p1"], -2) {
 		t.Errorf("high-fee wager must pay exactly its risk: %v", shares["p1"])
 	}
@@ -260,7 +324,7 @@ func TestSettleGuarantorsDeficitWaterfall(t *testing.T) {
 	// remaining risk: deficit 17 exhausts p1 (2) and p2 (6), leaving 9 for p3
 	// (within its 10 risk — deficits beyond Σrisk are the insolvency case
 	// covered by TestSettleGuarantorsInsolventDeficitDropped).
-	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -17)
+	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, 16, -17)
 	if !approxEq(shares["p1"], -2) || !approxEq(shares["p2"], -6) || !approxEq(shares["p3"], -9) {
 		t.Errorf("waterfall spill to senior: %v", shares)
 	}
@@ -281,7 +345,7 @@ func TestSettleGuarantorsCombinesPotsExactly(t *testing.T) {
 	}
 	feePool := 0.9 + 1.6
 	residual := -5.0
-	shares := settleGuarantors(bets, wagers, residual)
+	shares := settleGuarantors(bets, wagers, 16, residual)
 	var total float64
 	for _, s := range shares {
 		total += s
@@ -296,7 +360,7 @@ func TestSettleGuarantorsCombinesPotsExactly(t *testing.T) {
 }
 
 func TestSettleGuarantorsEmptyWagers(t *testing.T) {
-	if shares := settleGuarantors(nil, nil, 5); shares != nil {
+	if shares := settleGuarantors(nil, nil, 16, 5); shares != nil {
 		t.Errorf("no wagers must yield nil, got %v", shares)
 	}
 }
@@ -346,7 +410,7 @@ func TestGuarantorLossBoundedByRisk(t *testing.T) {
 		collected += bet.Cost
 	}
 	residual := collected - 35
-	shares := settleGuarantors(bets, wagers, residual)
+	shares := settleGuarantors(bets, wagers, 16, residual)
 
 	var loss float64
 	for _, share := range shares {
@@ -371,7 +435,7 @@ func TestSettleGuarantorsInsolventDeficitDropped(t *testing.T) {
 		wagerAt(id.ID("p-insolv-1"), 0.1, 0, gBase),
 		wagerAt(id.ID("p-insolv-2"), 4, 0, gBase),
 	}
-	shares := settleGuarantors(nil, wagers, -118.6)
+	shares := settleGuarantors(nil, wagers, 16, -118.6)
 
 	total := 0.0
 	for _, w := range wagers {

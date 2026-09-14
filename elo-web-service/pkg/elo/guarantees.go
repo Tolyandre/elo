@@ -8,20 +8,23 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// Guarantor economics (ADR-20). Guarantors are voluntary liquidity providers:
-// each guarantee is an immutable wager of {risk amount, maker fee rate}. The
-// market's maker fee c is the risk-weighted mean of the wager fee rates; buys
-// pay the variance-proportional surcharge (amm.go). At settlement the guarantors
-// receive two pots:
+// Guarantor economics (ADR-20, surplus split revised in ADR-23). Guarantors
+// are voluntary liquidity providers: each guarantee is an immutable wager of
+// {risk amount, maker fee rate}. The market's maker fee c is the risk-weighted
+// mean of the wager fee rates; buys pay the variance-proportional surcharge
+// (amm.go). At settlement the guarantors receive two pots:
 //
 //   - the fee pool: every charged fee, attributed time-windowed — each bet's
 //     fee is shared only among wagers placed no later than the bet, weighted
 //     fee·risk, so a late joiner cannot free-ride on earlier fees;
 //   - the equity residual (collected − paid, fees excluded): a surplus is
-//     split pro-rata by risk; a deficit is covered by the first-loss waterfall
-//     — fee-charging wagers pay first (weighted fee·risk, capped at their
-//     risk), everyone else backs them up pro-rata by risk. Zero-fee guarantors
-//     are therefore the senior tranche.
+//     split by exposure accrual (ADR-23) — replaying the bet stream, every
+//     wager active at a bet accrues the house's live worst-case liability
+//     V = max(max_i Q_i − collected, standbyRate·envelope) times its risk
+//     share; a deficit is covered by the first-loss waterfall — fee-charging
+//     wagers pay first (weighted fee·risk, capped at their risk), everyone
+//     else backs them up pro-rata by risk. Zero-fee guarantors are therefore
+//     the senior tranche.
 //
 // Every distribution is a pure function of the immutable bet and wager rows, so
 // settlement stays replay-safe (unsettle → re-settle is byte-identical), and
@@ -76,15 +79,83 @@ func liquidityBForRisk(maxLoss, totalRisk float64, outcomeCount int) float64 {
 	return effective / math.Log(float64(outcomeCount))
 }
 
+// standbyRate is the standby fraction ρ of the current liquidity envelope
+// (min(maxGuarantorLoss, Σrisk) — the b·ln(n) worst case) that every backed
+// trade accrues as a floor, even when the book itself carries no uncovered
+// liability: idle-but-present capital earns a per-trade royalty in proportion
+// to the trading it enabled. Deliberately hardcoded (ADR-23) — not expected
+// to be tuned per deployment.
+const standbyRate = 0.1
+
+// exposureAccruals replays the bet stream (in placed_at order, as delivered
+// by GetBetsForSettlement) and samples, at every bet, the house's live
+// worst-case liability
+//
+//	V = max( max_i Q_i − collected , standbyRate·min(maxGuarantorLoss, Σrisk_active) )
+//
+// (uncovered outstanding shares, floored at the standby rate of the current
+// liquidity envelope), crediting it to the wagers active at that bet
+// (created no later than the bet — the fee pool's window) in proportion to
+// their risk. The weights are sequence-only: identical event sequences yield
+// identical accruals regardless of wall-clock spacing (ADR-23).
+func exposureAccruals(bets []betRecord, ordered []GuaranteeWager, maxGuarantorLoss float64) []float64 {
+	accruals := make([]float64, len(ordered))
+	risk := make([]float64, len(ordered))
+	var totalRisk float64
+	for i, w := range ordered {
+		risk[i] = w.RiskAmount
+		totalRisk += w.RiskAmount
+	}
+	q := make(map[id.ID]float64)
+	collected := 0.0
+	for _, b := range bets {
+		q[b.Outcome] += b.Shares
+		collected += b.Cost
+
+		var maxQ float64
+		for _, v := range q {
+			if v > maxQ {
+				maxQ = v
+			}
+		}
+		sumRisk := 0.0
+		for i, w := range ordered {
+			if !w.CreatedAt.After(b.PlacedAt) {
+				sumRisk += risk[i]
+			}
+		}
+		// Timestamp inversion (no wager created yet): treat all wagers as
+		// active — the same conservation fallback activeFeeWeights uses.
+		allActive := sumRisk <= 0
+		if allActive {
+			sumRisk = totalRisk
+		}
+		v := maxQ - collected
+		if floor := standbyRate * min(maxGuarantorLoss, sumRisk); floor > v {
+			v = floor
+		}
+		if v <= 0 {
+			continue
+		}
+		for i, w := range ordered {
+			if allActive || !w.CreatedAt.After(b.PlacedAt) {
+				accruals[i] += v * risk[i] / sumRisk
+			}
+		}
+	}
+	return accruals
+}
+
 // settleGuarantors computes the per-player guarantor net result (positive =
 // earned, negative = staked) from the bet stream and wagers. residual is the
-// equity residual (collected − paid, fees excluded). The returned shares sum to
-// residual + feePool exactly, except when the deficit exceeds the combined
-// risk (insolvency): then no wager is charged beyond its risk and the
-// uncovered remainder is dropped (see cappedProportional). Empty wagers yield
-// nil (callers skip guarantor rows entirely — possible only for bet-less
+// equity residual (collected − paid, fees excluded); maxGuarantorLoss is the
+// market's immutable liquidity cap L. The returned shares sum to residual +
+// feePool exactly, except when the deficit exceeds the combined risk
+// (insolvency): then no wager is charged beyond its risk and the uncovered
+// remainder is dropped (see cappedProportional). Empty wagers yield nil
+// (callers skip guarantor rows entirely — possible only for bet-less
 // markets).
-func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, residual float64) map[id.ID]float64 {
+func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, maxGuarantorLoss float64, residual float64) map[id.ID]float64 {
 	if len(wagers) == 0 {
 		return nil
 	}
@@ -115,9 +186,20 @@ func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, residual float6
 		allocate(b.Fee, weights, perWager)
 	}
 
-	// Equity residual: pro-rata surplus or first-loss waterfall deficit.
+	// Equity residual: exposure-accrual split on surplus (ADR-23), first-loss
+	// waterfall on deficit.
 	if residual >= 0 {
-		allocate(residual, risk, perWager)
+		weights := exposureAccruals(bets, ordered, maxGuarantorLoss)
+		var sumWeights float64
+		for _, w := range weights {
+			sumWeights += w
+		}
+		if sumWeights <= 0 {
+			// Degenerate (a surplus with no bet events ever sampled): fall
+			// back to the plain risk-proportional split.
+			weights = risk
+		}
+		allocate(residual, weights, perWager)
 	} else {
 		deficit := -residual
 		// Tier 1: fee-charging wagers, weighted fee·risk, capped at their risk.

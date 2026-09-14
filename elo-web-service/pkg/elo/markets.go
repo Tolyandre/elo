@@ -715,16 +715,22 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		}
 	}
 
-	// Guarantor result (ADR-20): the fee pool (time-windowed, weighted fee·risk)
-	// plus the equity residual (collected − paid) — pro-rata by risk on surplus,
-	// first-loss waterfall on deficit. Cancellation refunds everything, so
-	// guarantors have nothing to settle. A bet-less market leaves the wagers'
-	// surplus at 0 — no rows. Shares sum to residual + feePool exactly, keeping
-	// elo strictly conserved (zero-sum across buyers + guarantors).
+	// Guarantor result (ADR-20, surplus split per ADR-23): the fee pool
+	// (time-windowed, weighted fee·risk) plus the equity residual (collected −
+	// paid) — exposure-accrual split on surplus, first-loss waterfall on
+	// deficit. Cancellation refunds everything, so guarantors have nothing to
+	// settle. A bet-less market leaves the wagers' surplus at 0 — no rows.
+	// Shares sum to residual + feePool exactly (barring the insolvency
+	// remainder), keeping elo strictly conserved (zero-sum across buyers +
+	// guarantors).
 	var shares map[id.ID]float64
 	if !isCancelled && len(wagers) > 0 {
+		market, err := q.GetMarket(ctx, marketID)
+		if err != nil {
+			return fmt.Errorf("get market %s for settlement: %w", marketID, err)
+		}
 		residual := totalCollected - totalPaid // +surplus / −deficit
-		shares = settleGuarantors(betRecs, wagers, residual)
+		shares = settleGuarantors(betRecs, wagers, market.MaxGuarantorLoss, residual)
 	}
 
 	// A player may be both buyer and guarantor (guarantors may buy). They get
