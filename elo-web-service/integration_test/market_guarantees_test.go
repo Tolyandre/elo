@@ -8,61 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
-
-// readBetFee returns the maker fee stored on a player's latest bet.
-func readBetFee(t *testing.T, pool *pgxpool.Pool, marketID, playerID idpkg.ID) float64 {
-	t.Helper()
-	var fee float64
-	err := pool.QueryRow(context.Background(),
-		`SELECT fee FROM bets WHERE market_id = $1 AND player_id = $2 ORDER BY placed_at DESC, id`,
-		marketID, playerID).Scan(&fee)
-	if err != nil {
-		t.Fatalf("read bet fee for %s: %v", playerID, err)
-	}
-	return fee
-}
-
-// guarantorRoleDelta returns the 'market_guarantor' settlement delta for a player.
-func guarantorRoleDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID idpkg.ID) float64 {
-	t.Helper()
-	var delta float64
-	err := pool.QueryRow(context.Background(),
-		`SELECT COALESCE(elo_staked + elo_earned, 0) FROM global_arena_settlement
-		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market_guarantor'`,
-		marketID, playerID).Scan(&delta)
-	if err != nil {
-		t.Fatalf("guarantor delta for %s: %v", playerID, err)
-	}
-	return delta
-}
-
-// liveProbabilities returns the market's current per-outcome probabilities.
-func liveProbabilities(t *testing.T, svc elo.IMarketService, marketID idpkg.ID) map[idpkg.ID]float64 {
-	t.Helper()
-	m, err := svc.GetMarket(context.Background(), marketID)
-	if err != nil {
-		t.Fatalf("GetMarket: %v", err)
-	}
-	outcomes, err := svc.ListMarketOutcomesWithPools(context.Background(), marketID)
-	if err != nil {
-		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
-	}
-	q := make([]float64, len(outcomes))
-	for i, o := range outcomes {
-		q[i] = o.Q
-	}
-	probs := elo.MarginalProbabilitiesN(q, m.LiquidityB)
-	out := make(map[idpkg.ID]float64, len(outcomes))
-	for i, o := range outcomes {
-		out[o.ID] = probs[i]
-	}
-	return out
-}
 
 // TestMarketGuarantees_LiquidityGrowsAndPricesArePreserved walks the voluntary
 // guarantor lifecycle: a guarantor-less market rejects bets, the first wager
@@ -107,7 +56,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	// No guarantors yet: betting is refused.
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeOther := marketOutcomeID(t, ctx, marketSvc, market.ID, "other", "")
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err == nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err == nil {
 		t.Fatal("PlaceBet on a guarantor-less market must fail")
 	}
 
@@ -122,7 +71,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 
 	// A bet moves the price; the guarantor charges no fee (fee_rate 0), so the
 	// stored fee is zero.
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 3); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 3); err != nil {
 		t.Fatalf("PlaceBet after first wager: %v", err)
 	}
 	if fee := readBetFee(t, pool, market.ID, playerA); fee != 0 {
@@ -166,7 +115,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	// The fee-charging guarantor makes the next buy pay a maker fee: the
 	// weighted market fee is (0·6 + 0.25·6)/12 = 0.125, and the fee equals
 	// 4c·b·Δp of the buy.
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 1); err != nil {
 		t.Fatalf("PlaceBet with fee: %v", err)
 	}
 	if fee := readBetFee(t, pool, market.ID, playerB); fee <= 0 {
@@ -226,10 +175,10 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeOther := marketOutcomeID(t, ctx, marketSvc, market.ID, "other", "")
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 2); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 2); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 	feeA := readBetFee(t, pool, market.ID, playerA)
@@ -317,7 +266,7 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 		t.Fatalf("JoinAsGuarantee: %v", err)
 	}
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 10); err == nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 10); err == nil {
 		t.Fatal("a buy that exceeds the limit minus reserved risk must fail")
 	}
 }

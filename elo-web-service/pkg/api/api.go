@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
@@ -11,6 +12,7 @@ type API struct {
 	PlayerService      elo.IPlayerService
 	MatchService       elo.IMatchService
 	MarketService      elo.IMarketService
+	MarketQueries      *db.Queries // read-side market queries for the handlers
 	CorrectionService  elo.ICorrectionService
 	EloSettingsService elo.IEloSettingsService
 	ClubService        elo.IClubService
@@ -31,6 +33,7 @@ func New(pool *pgxpool.Pool) *API {
 		PlayerService:      elo.NewPlayerService(pool),
 		MatchService:       elo.NewMatchService(pool, marketService),
 		MarketService:      marketService,
+		MarketQueries:      db.New(pool),
 		CorrectionService:  elo.NewCorrectionService(pool),
 		EloSettingsService: elo.NewEloSettingsService(pool),
 		ClubService:        elo.NewClubService(pool),

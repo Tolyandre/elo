@@ -282,11 +282,11 @@ func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 }
 
 func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObject) (ListMarketsResponseObject, error) {
-	rows, err := s.api.MarketService.ListMarkets(ctx)
+	rows, err := s.api.MarketQueries.ListMarkets(ctx)
 	if err != nil {
 		return nil, err
 	}
-	outcomeRows, err := s.api.MarketService.ListAllMarketOutcomesWithPools(ctx)
+	outcomeRows, err := s.api.MarketQueries.ListAllMarketOutcomesWithPools(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -306,10 +306,10 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 			active = append(active, m)
 		} else {
 			if r.Status == "resolved" {
-				if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
+				if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
 					m.Settlement = convertSettlement(details)
 				}
-				if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
+				if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
 					m.GuarantorSettlement = convertGuarantorPayouts(gp)
 				}
 			}
@@ -344,20 +344,20 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestObject) (GetMarketResponseObject, error) {
 	marketID := parseIDParam(request.Id)
 
-	row, err := s.api.MarketService.GetMarket(ctx, marketID)
+	row, err := s.api.MarketQueries.GetMarket(ctx, marketID)
 	if err != nil {
 		return GetMarket404JSONResponse{Status: "fail", Message: "market not found"}, nil
 	}
 
 	if (row.Status == "open" || row.Status == "betting_closed") && row.ClosesAt.Valid && row.ClosesAt.Time.Before(time.Now()) {
 		_ = s.api.MarketService.ExpireOverdueMarkets(ctx)
-		row, err = s.api.MarketService.GetMarket(ctx, marketID)
+		row, err = s.api.MarketQueries.GetMarket(ctx, marketID)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	outcomeRows, err := s.api.MarketService.ListMarketOutcomesWithPools(ctx, marketID)
+	outcomeRows, err := s.api.MarketQueries.ListMarketOutcomesWithPools(ctx, marketID)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +373,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 			row.MwGameIds, row.WsTargetPlayerID, row.WsGameIds, row.WinsRequired, row.MaxLosses),
 	}
 	detail.Guarantees, detail.FeeRate = s.marketGuarantees(ctx, marketID)
-	if feeCollected, err := s.api.MarketService.GetMarketFeeCollected(ctx, marketID); err == nil && feeCollected > 0 {
+	if feeCollected, err := s.api.MarketQueries.GetMarketFeeCollected(ctx, marketID); err == nil && feeCollected > 0 {
 		detail.FeeCollected = &feeCollected
 	}
 	if row.StartsAt.Valid {
@@ -405,10 +405,10 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		detail.ResolutionMatchId = &v
 	}
 	if row.Status == "resolved" {
-		if details, err := s.api.MarketService.GetSettlementDetails(ctx, &marketID); err == nil {
+		if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &marketID); err == nil {
 			detail.Settlement = convertSettlement(details)
 		}
-		if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, marketID); err == nil {
+		if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, marketID); err == nil {
 			detail.GuarantorSettlement = convertGuarantorPayouts(gp)
 		}
 	}
@@ -419,7 +419,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 }
 
 func (s *StrictServer) GetMarketProbabilityHistory(ctx context.Context, request GetMarketProbabilityHistoryRequestObject) (GetMarketProbabilityHistoryResponseObject, error) {
-	points, err := s.api.MarketService.GetMarketProbabilityHistory(ctx, parseIDParam(request.Id))
+	points, err := elo.MarketProbabilityHistory(ctx, s.api.MarketQueries, parseIDParam(request.Id))
 	if err != nil {
 		return GetMarketProbabilityHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
 	}
@@ -465,7 +465,7 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 	}
 	playerID := *user.PlayerID
 
-	myBets, err := s.api.MarketService.GetPlayerBetsForMarket(ctx, db.GetPlayerBetsForMarketParams{
+	myBets, err := s.api.MarketQueries.GetPlayerBetsForMarket(ctx, db.GetPlayerBetsForMarketParams{
 		MarketID: marketID,
 		PlayerID: playerID,
 	})
@@ -505,10 +505,10 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 		}
 	}
 
-	if reserved, err := s.api.MarketService.GetPlayerReservedAmount(ctx, playerID); err == nil {
+	if reserved, err := s.api.MarketQueries.GetPlayerReservedAmount(ctx, playerID); err == nil {
 		detail.Reserved = &reserved
 	}
-	if limit, err := s.api.MarketService.GetPlayerBetLimit(ctx, playerID); err == nil {
+	if limit, err := s.api.MarketQueries.GetPlayerBetLimit(ctx, playerID); err == nil {
 		detail.BetLimit = &limit
 	}
 }
@@ -763,7 +763,7 @@ func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request Create
 func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarketsByMatchIdRequestObject) (GetMarketsByMatchIdResponseObject, error) {
 	matchID := parseIDParam(request.Id)
 
-	rows, err := s.api.MarketService.ListMarketsByResolutionMatch(ctx, &matchID)
+	rows, err := s.api.MarketQueries.ListMarketsByResolutionMatch(ctx, &matchID)
 	if err != nil {
 		return nil, err
 	}
@@ -777,16 +777,16 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 	}
 	result := make([]Market, 0, len(rows))
 	for _, r := range rows {
-		outcomeRows, err := s.api.MarketService.ListMarketOutcomesWithPools(ctx, r.ID)
+		outcomeRows, err := s.api.MarketQueries.ListMarketOutcomesWithPools(ctx, r.ID)
 		if err != nil {
 			return nil, err
 		}
 		m := buildMarket(marketRowFromByMatch(r), buildOutcomes(outcomeRows, r.LiquidityB))
 		if r.Status == "resolved" {
-			if details, err := s.api.MarketService.GetSettlementDetails(ctx, &r.ID); err == nil {
+			if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
 				m.Settlement = convertSettlement(details)
 			}
-			if gp, err := s.api.MarketService.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
+			if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
 				m.GuarantorSettlement = convertGuarantorPayouts(gp)
 			}
 		}

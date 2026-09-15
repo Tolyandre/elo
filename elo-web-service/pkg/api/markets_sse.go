@@ -20,12 +20,12 @@ func (a *API) MarketEvents(c *gin.Context) {
 	marketID := parseIDParam(c.Param("id"))
 	ctx := c.Request.Context()
 
-	row, err := a.MarketService.GetMarket(ctx, marketID)
+	row, err := a.MarketQueries.GetMarket(ctx, marketID)
 	if err != nil {
 		ErrorResponse(c, http.StatusNotFound, "market not found")
 		return
 	}
-	outcomeRows, err := a.MarketService.ListMarketOutcomesWithPools(ctx, marketID)
+	outcomeRows, err := a.MarketQueries.ListMarketOutcomesWithPools(ctx, marketID)
 	if err != nil {
 		ErrorResponse(c, http.StatusInternalServerError, "failed to load outcomes")
 		return
@@ -57,4 +57,3 @@ func (a *API) MarketEvents(c *gin.Context) {
 		return a.Hub.Subscribe(elo.MarketTopic(marketID))
 	}, initial)
 }
-

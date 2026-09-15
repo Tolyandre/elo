@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -83,3 +83,31 @@ integration-test-podman:
 	TESTCONTAINERS_RYUK_DISABLED=true \
 	CGO_ENABLED=0 \
 	go test -C elo-web-service -tags integration ./integration_test/ -v
+
+## Run a single integration test: make integration-test-one T=TestPlaceBet_ExpectedProbabilityValidation
+integration-test-one:
+	DOCKER_HOST=unix:///run/user/1000/podman/podman.sock \
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	CGO_ENABLED=0 \
+	go test -C elo-web-service -tags integration ./integration_test/ -run '^$(T)$$' -v
+
+## Decode an entity id between its Base58 wire form and the canonical UUID
+## stored in the database; also prints the UUIDv7 creation time.
+##   make decode-id ID=4kRhVeNBDGBSMYcmWf7NxB
+decode-id:
+	cd elo-web-service && CGO_ENABLED=0 go run ./cmd/decodeid $(ID)
+
+## Dump one market's full row set (market, outcomes, guarantee wagers,
+## guarantor pairs, bets, settlement rows) from the local compose postgres in
+## a single psql call. Accepts either id form (Base58 or canonical UUID):
+##   make db-market ID=4kRhVeNBDGBSMYcmWf7NxB
+db-market:
+	@CANON=$$(cd elo-web-service && CGO_ENABLED=0 go run ./cmd/decodeid -canonical $(ID)) && \
+	  echo "market $${CANON}" && \
+	  docker compose exec -T postgres psql -U elo -d elo -P pager=off \
+	    -c "SELECT * FROM markets WHERE id = '$${CANON}'" \
+	    -c "SELECT * FROM market_outcomes WHERE market_id = '$${CANON}' ORDER BY id" \
+	    -c "SELECT * FROM market_guarantees WHERE market_id = '$${CANON}' ORDER BY created_at, id" \
+	    -c "SELECT * FROM market_guarantors WHERE market_id = '$${CANON}'" \
+	    -c "SELECT * FROM bets WHERE market_id = '$${CANON}' ORDER BY placed_at, id" \
+	    -c "SELECT * FROM global_arena_settlement WHERE market_id = '$${CANON}' ORDER BY id"

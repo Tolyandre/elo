@@ -64,10 +64,10 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeOther := marketOutcomeID(t, ctx, marketSvc, market.ID, "other", "")
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
 		t.Fatalf("PlaceBet playerA: %v", err)
 	}
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerB, outcomeOther, 1); err != nil {
 		t.Fatalf("PlaceBet playerB: %v", err)
 	}
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, t2, newMatchOpts(t)); err != nil {

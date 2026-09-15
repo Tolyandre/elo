@@ -69,7 +69,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 
 	// Event 1: buyerA takes 1 share of A at the fresh 1/3 market — the buy
 	// creates real uncovered liability (1 share outstanding vs ~0.36 collected).
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, buyerA, outcomeA, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, buyerA, outcomeA, 1); err != nil {
 		t.Fatalf("buyerA bet: %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 
 	// …and event 2: buyerB takes 1 share of B (the buy re-collateralizes the
 	// book below the floor).
-	if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, buyerB, outcomeB, 1); err != nil {
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, buyerB, outcomeB, 1); err != nil {
 		t.Fatalf("buyerB bet: %v", err)
 	}
 

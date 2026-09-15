@@ -11,137 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
-	mainapi "github.com/tolyandre/elo-web-service/pkg/api"
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
-	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-const testJWTSecret = "integration-test-jwt-secret"
-
-// setupTestDB starts a postgres container, applies migrations, and returns the pool + cleanup func.
-func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
-	t.Helper()
-	pool, _, cleanup := setupTestDBWithDSN(t)
-	return pool, cleanup
-}
-
-// setupTestDBWithDSN is like setupTestDB but also returns the connection string,
-// so tests can exercise the in-process data-migration runner (MigrateCalculatorData),
-// which opens its own pool from the DSN.
-func setupTestDBWithDSN(t *testing.T) (*pgxpool.Pool, string, func()) {
-	t.Helper()
-	ctx := context.Background()
-
-	pgContainer, err := tcpostgres.Run(ctx, "docker.io/postgres:16-alpine",
-		tcpostgres.WithDatabase("elo_test"),
-		tcpostgres.WithUsername("elo_test"),
-		tcpostgres.WithPassword("test_secret"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("get connection string: %v", err)
-	}
-
-	if err := db.MigrateUpWithDSN(connStr); err != nil {
-		t.Fatalf("apply migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, connStr)
-	if err != nil {
-		t.Fatalf("create pool: %v", err)
-	}
-
-	return pool, connStr, func() {
-		pool.Close()
-		if err := pgContainer.Terminate(ctx); err != nil {
-			t.Logf("terminate container: %v", err)
-		}
-	}
-}
-
-// setupRouter builds a router identical to main.go for use in httptest requests.
-func setupRouter(pool *pgxpool.Pool) *gin.Engine {
-	gin.SetMode(gin.TestMode)
-	cfg.Config.CookieJwtSecret = testJWTSecret
-	cfg.Config.CookieTtlSeconds = 3600
-	cfg.Config.FrontendUri = "http://localhost:3000"
-
-	r := gin.New()
-	a := mainapi.New(pool)
-	o := apioauth2.New(pool)
-
-	strictWrapper := &mainapi.ServerInterfaceWrapper{
-		Handler: mainapi.NewStrictHandler(mainapi.NewStrictServer(a, o), nil),
-	}
-
-	r.GET("/ping", strictWrapper.GetPing)
-	r.GET("/players", strictWrapper.ListPlayers)
-	r.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
-	r.POST("/players", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreatePlayer)
-	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)
-	r.DELETE("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeletePlayer)
-	// Matches: needed by the calculator-data idcodec roundtrip test and any
-	// future match-level integration test.
-	r.GET("/matches", strictWrapper.ListMatches)
-	r.GET("/matches/:id", strictWrapper.GetMatchById)
-	r.POST("/matches", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddMatch)
-	r.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
-	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
-	// Games and clubs: needed by the audit-log integration test (ADR-14).
-	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)
-	r.PATCH("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchGame)
-	r.DELETE("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteGame)
-	r.POST("/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClub)
-	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
-	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
-	r.GET("/audit", strictWrapper.ListAuditEvents)
-	// Auth /me: raw gin handlers on the oauth2 handler, mirroring main.go.
-	r.GET("/auth/me", o.DeserializeUser(), o.GetMe)
-	r.PATCH("/auth/me", o.DeserializeUser(), o.PatchMe)
-	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
-	// and the resolved-market outcome id).
-	r.GET("/markets", strictWrapper.ListMarkets)
-	r.POST("/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateMarket)
-	r.GET("/markets/:id", strictWrapper.GetMarket)
-	r.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
-	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
-	r.POST("/markets/:id/guarantees", o.DeserializeUser(), strictWrapper.CreateMarketGuarantee)
-	// Realtime SSE (ADR-13): the multiplexed global-topics stream; auth is
-	// optional (anonymous callers silently get no "me" topic).
-	r.GET("/events", o.OptionalDeserializeUser(), a.Events)
-	// Live game tables (ADR-13, ADR-15, ADR-16): raw gin handlers mirroring the
-	// route group in main.go.
-	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
-	tblPlayerAuth := []gin.HandlerFunc{o.DeserializeUser(), a.RequirePlayerID()}
-	tbl := r.Group("/tables", noStore)
-	tbl.GET("", a.ListTables)
-	tbl.POST("", append(tblPlayerAuth, a.CreateTable)...)
-	tbl.GET("/:id", a.GetTable)
-	tbl.PATCH("/:id/state", append(tblPlayerAuth, a.UpdateTableState)...)
-	tbl.POST("/:id/join", append(tblPlayerAuth, a.JoinTable)...)
-	tbl.POST("/:id/submit", append(tblPlayerAuth, a.SubmitTable)...)
-	tbl.POST("/:id/takeover", o.DeserializeUser(), a.TakeoverTable)
-	tbl.DELETE("/:id", append(tblPlayerAuth, a.DeleteTable)...)
-	tbl.GET("/:id/events", a.TableEvents)
-	return r
-}
+// createTestUser inserts a user row and returns a signed JWT for that user.
 
 // createTestUser inserts a user row and returns a signed JWT for that user.
 func createTestUser(t *testing.T, pool *pgxpool.Pool, allowEditing bool) string {

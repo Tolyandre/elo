@@ -307,7 +307,7 @@ func strPtr(v *id.ID) *string {
 // JSON) on error or when the market has no wagers yet, so a read failure never
 // breaks the payload.
 func (s *StrictServer) marketGuarantees(ctx context.Context, marketID id.ID) (*[]MarketGuarantee, *float64) {
-	rows, err := s.api.MarketService.ListMarketGuarantees(ctx, marketID)
+	rows, err := s.api.MarketQueries.ListMarketGuarantees(ctx, marketID)
 	if err != nil || len(rows) == 0 {
 		return nil, nil
 	}

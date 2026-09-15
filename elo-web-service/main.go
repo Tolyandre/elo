@@ -45,11 +45,6 @@ func main() {
 	}
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
-	// One-time repair of markets touched by the removed q rescale (ADR-22);
-	// idempotent no-op on healthy databases. Must run before serving.
-	if err := apiHandler.MarketService.RepairRescaledMarkets(context.Background()); err != nil {
-		log.Fatalf("market rescale repair failed: %v", err)
-	}
 
 	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())
 	go apiHandler.TableService.ScheduleNextCleanup(context.Background())

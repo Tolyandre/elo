@@ -63,7 +63,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, guarantor, 1, 0); err != nil {
 		t.Fatalf("JoinAsGuarantee(risk 1): %v", err)
 	}
-	m, err := marketSvc.GetMarket(ctx, market.ID)
+	m, err := marketSvc.Queries.GetMarket(ctx, market.ID)
 	if err != nil {
 		t.Fatalf("GetMarket: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	// Saturate: 40 one-share buys of playerA drive its probability to exactly
 	// 1.0 (a q gap of ~37·b is enough; 40 leaves margin).
 	for i := 0; i < 40; i++ {
-		if err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
+		if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerA, outcomeA, 1); err != nil {
 			t.Fatalf("saturation buy %d: %v", i+1, err)
 		}
 	}
@@ -105,7 +105,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	// 2. The underdog share at displayed price 0.00 — the true dust cost must
 	// be charged (positive, far below display precision) instead of the
 	// cancelled 0 that tripped the cost > 0 constraint.
-	underdogBet, err := placeBetAtCurrentPriceReturningOutcome(ctx, t, marketSvc, market.ID, playerU, outcomeU, 1)
+	underdogBet, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, playerU, outcomeU, 1)
 	if err != nil {
 		t.Fatalf("PlaceBet on the saturated underdog: %v", err)
 	}
@@ -143,43 +143,4 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	if guarantorDelta < -(1 + 1e-9) {
 		t.Errorf("guarantor delta = %.17g, loss exceeds the risked 1 beyond FP dust", guarantorDelta)
 	}
-}
-
-// liveProbability returns the outcome's current LMSR probability.
-func liveProbability(t *testing.T, ctx context.Context, svc elo.IMarketService, marketID, outcomeID idpkg.ID) float64 {
-	t.Helper()
-	m, err := svc.GetMarket(ctx, marketID)
-	if err != nil {
-		t.Fatalf("GetMarket: %v", err)
-	}
-	outcomes, err := svc.ListMarketOutcomesWithPools(ctx, marketID)
-	if err != nil {
-		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
-	}
-	q := make([]float64, len(outcomes))
-	for i, o := range outcomes {
-		q[i] = o.Q
-	}
-	price := -1.0
-	for i, o := range outcomes {
-		if o.ID == outcomeID {
-			price = elo.MarginalProbabilitiesN(q, m.LiquidityB)[i]
-		}
-	}
-	if price < 0 {
-		t.Fatalf("outcome %s not found on market %s", outcomeID, marketID)
-	}
-	return price
-}
-
-// placeBetAtCurrentPriceReturningOutcome is placeBetAtCurrentPrice with the
-// PlaceBetOutcome returned, so callers can assert the charged cost.
-func placeBetAtCurrentPriceReturningOutcome(ctx context.Context, t *testing.T, svc elo.IMarketService, marketID, playerID idpkg.ID, outcomeID idpkg.ID, shares float64) (elo.PlaceBetOutcome, error) {
-	t.Helper()
-	price := liveProbability(t, ctx, svc, marketID, outcomeID)
-	return svc.PlaceBet(ctx, newID(t), marketID, playerID, outcomeID, shares, price)
-}
-
-func approxEqRel(a, b, rel float64) bool {
-	return math.Abs(a-b) <= rel*math.Max(math.Abs(a), math.Abs(b))
 }
