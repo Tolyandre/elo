@@ -34,7 +34,7 @@ export default function Oauth2CallbackClient() {
                 await oauth2Callback(params);
                 toast.success('Authentication successful', { id: toastId, position: 'top-center' });
                 me.invalidate();
-                router.push("/players");
+                router.push("/arenas/view");
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 toast.error('Authentication failed', { id: toastId, description: message, position: 'top-center' });

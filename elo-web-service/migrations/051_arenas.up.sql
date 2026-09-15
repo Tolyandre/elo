@@ -147,7 +147,7 @@ WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
 INSERT INTO arenas (id, name, match_filter_id, settings, game_id)
 SELECT
     gen_random_uuid(),
-    'Арена: ' || g.name,
+    g.name,
     f.id,
     jsonb_build_object(
         'starting_rating', s.starting_rating_game_arena,
@@ -177,7 +177,7 @@ WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
 INSERT INTO arenas (id, name, match_filter_id, settings, tournament_id, stale_at)
 SELECT
     gen_random_uuid(),
-    'Арена: ' || t.name,
+    t.name,
     f.id,
     jsonb_build_object(
         'starting_rating', s.starting_elo,

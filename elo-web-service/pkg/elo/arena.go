@@ -772,7 +772,9 @@ func (s *ArenaService) SyncArenaName(ctx context.Context, q *db.Queries, arena A
 	return q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: arenaName(entityName)})
 }
 
-func arenaName(entityName string) string { return "Арена: " + entityName }
+// arenaName names an auto-managed arena after its entity — no prefix: the
+// arena of game "Skull King" is just "Skull King".
+func arenaName(entityName string) string { return entityName }
 
 // startingRatingGameArenaDefault preserves the pre-rework per-game starting
 // rating (elo_settings.starting_rating_game_arena default).

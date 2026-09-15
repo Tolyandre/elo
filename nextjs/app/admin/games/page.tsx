@@ -148,7 +148,7 @@ export default function GamesAdminPage() {
                                 <div key={game.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
                                         <div>
-                                            <Link className="underline font-medium" href={`/matches?game=${game.id}`}>{game.name}</Link>
+                                            <Link className="underline font-medium" href={`/games/view?id=`}>{game.name}</Link>
                                             <div className="text-sm text-muted-foreground">Партий: {game.total_matches}</div>
                                         </div>
                                         <div className="flex gap-2 ml-4">
@@ -190,7 +190,7 @@ export default function GamesAdminPage() {
                                     {games.map((game) => (
                                         <tr key={game.id} className="align-top">
                                             <td className="px-4 py-2">
-                                                <Link className="underline" href={`/matches?game=${game.id}`}>{game.name}</Link>
+                                                <Link className="underline" href={`/games/view?id=`}>{game.name}</Link>
                                             </td>
                                             <td className="px-4 py-2">{game.total_matches}</td>
                                             <td className="px-4 py-2">
