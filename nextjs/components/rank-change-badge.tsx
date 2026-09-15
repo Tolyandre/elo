@@ -41,18 +41,22 @@ export function RankChangeBadge({
   );
 }
 
-/** Rating diff next to the current value, like /players' EloValueAndDiff. */
+/**
+ * Rating cell: the value in a fixed-width right-aligned slot with the diff in
+ * its own fixed-width slot after it, so numbers stay in a column and don't
+ * shift when the diff appears or disappears between periods.
+ */
 export function RatingDiff({ current, previous }: { current: number; previous?: number | null }) {
-  if (previous == null || previous === current) {
-    return <span className="tabular-nums">{current.toFixed(0)}</span>;
-  }
-  const diff = current - previous;
+  const diff = previous != null && previous !== current ? current - previous : null;
   return (
-    <span className="tabular-nums">
-      {current.toFixed(0)}{" "}
-      <span className={`text-xs ${diff > 0 ? "text-green-600" : "text-destructive"}`}>
-        ({diff > 0 ? "+" : ""}
-        {diff.toFixed(1)})
+    <span className="whitespace-nowrap">
+      <span className="inline-block min-w-10 text-right tabular-nums">{current.toFixed(0)}</span>
+      <span
+        className={`inline-block min-w-14 text-xs ${
+          diff == null ? "" : diff > 0 ? "text-green-600" : "text-destructive"
+        }`}
+      >
+        {diff == null ? "" : `(${diff > 0 ? "+" : ""}${diff.toFixed(1)})`}
       </span>
     </span>
   );

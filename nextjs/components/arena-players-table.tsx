@@ -87,10 +87,10 @@ export function ArenaPlayersTable({
           const point = period != null && history ? history[period] : null;
           return (
             <tr key={player.player_id}>
-              <td className="px-1 py-2 min-w-7">
+              <td className="px-1 py-2 text-center min-w-7">
                 {displayRank != null ? <RankIcon rank={displayRank} /> : null}
               </td>
-              <td className="px-1 py-2 min-w-7">
+              <td className="px-1 py-2 min-w-10">
                 <RankChangeBadge
                   current={displayRank}
                   previous={point ? point.rank : null}

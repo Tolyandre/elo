@@ -184,24 +184,22 @@ function ArenaViewWrapped() {
             )}
 
             <TabsContent value="players" className="space-y-4">
+              <ClubSelect value={clubId} onChange={setClubId} />
               <div className="flex gap-2 items-center">
-                <ClubSelect value={clubId} onChange={setClubId} />
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPeriod("day_ago")}
-                    className={`px-2 py-1 rounded text-sm ${period === "day_ago" ? "" : "text-blue-600 underline decoration-dashed"}`}
-                  >
-                    за день
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPeriod("week_ago")}
-                    className={`px-2 py-1 rounded text-sm ${period === "week_ago" ? "" : "text-blue-600 underline decoration-dashed"}`}
-                  >
-                    за неделю
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPeriod("day_ago")}
+                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                >
+                  за день
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriod("week_ago")}
+                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                >
+                  за неделю
+                </button>
               </div>
               <ArenaPlayersGroups
                 players={displayedPlayers}
