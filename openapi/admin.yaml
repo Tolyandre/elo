@@ -123,27 +123,28 @@ CorrectionsPage:
       description: Cursor token for the next page; null if no more pages
   required: [status, data]
 
-RecalculateGlobalElo:
+UpdateArenas:
   post:
-    operationId: RecalculateGlobalElo
+    operationId: UpdateArenas
     tags: [admin]
     summary: >-
-      Reapply the whole settlement history (matches, corrections and market
-      settlements) from the beginning — the same computation an edit+save of
-      the chronologically first match triggers — and report every player whose
-      global arena state changed. A stable recalculation reports no changed
-      players.
+      Recalculate every arena to the actual state (ADR-24): the global arena by
+      replaying the whole settlement history (matches, corrections and market
+      settlements — the same computation an edit+save of the chronologically
+      first match triggers), and every other arena by a full replay of its
+      filtered matches. A stable recalculation reports no changed players.
+      Invoked manually after deployments via the /debug page.
     security:
       - cookieAuth: []
     responses:
       "200":
-        description: Replay complete, with the before/after rating diff
+        description: Update complete, with the per-arena before/after diff
         content:
           application/json:
             schema:
-              $ref: '#/RecalculateGlobalEloResult'
+              $ref: '#/UpdateArenasResult'
       "409":
-        description: History change conflict during the replay
+        description: History change conflict during the global replay
         content:
           application/json:
             schema:
@@ -155,7 +156,7 @@ RecalculateGlobalElo:
             schema:
               $ref: './common.yaml#/ApiError'
 
-PlayerGlobalStateChange:
+PlayerStateChange:
   type: object
   properties:
     player_id:
@@ -176,8 +177,10 @@ PlayerGlobalStateChange:
       format: double
     league_before:
       type: string
+      nullable: true
     league_after:
       type: string
+      nullable: true
   required: [player_id, player_name, elo_before, elo_after, rating_before, rating_after, league_before, league_after]
 
 GlobalReplayReport:
@@ -192,14 +195,38 @@ GlobalReplayReport:
     changed_players:
       type: array
       items:
-        $ref: '#/PlayerGlobalStateChange'
+        $ref: '#/PlayerStateChange'
   required: [matches_replayed, corrections_replayed, changed_players]
 
-RecalculateGlobalEloResult:
+ArenaUpdateReport:
+  type: object
+  properties:
+    arena_id:
+      $ref: './common.yaml#/Base58ID'
+    arena_name:
+      type: string
+    matches_replayed:
+      type: integer
+      format: int64
+    changed_players:
+      type: array
+      items:
+        $ref: '#/PlayerStateChange'
+  required: [arena_id, arena_name, matches_replayed, changed_players]
+
+UpdateArenasResult:
   type: object
   properties:
     status:
       type: string
     data:
-      $ref: '#/GlobalReplayReport'
+      type: object
+      properties:
+        global:
+          $ref: '#/GlobalReplayReport'
+        arenas:
+          type: array
+          items:
+            $ref: '#/ArenaUpdateReport'
+      required: [global, arenas]
   required: [status, data]

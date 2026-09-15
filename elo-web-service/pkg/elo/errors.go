@@ -22,4 +22,7 @@ var (
 	ErrTournamentMemberHasMatches    = errors.New("нельзя удалить участника, сыгравшего партии в турнире")
 	ErrTournamentDatesNarrowEloRange = errors.New("даты турнира не охватывают уже сыгранные партии")
 	ErrTournamentHasMembers          = errors.New("нельзя удалить турнир с участниками")
+
+	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")
+	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
 )

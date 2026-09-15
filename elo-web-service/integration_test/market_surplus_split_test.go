@@ -33,7 +33,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 	gameID := createTestGame(t, pool, "SplGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match, then fund everyone above its recalculation.
@@ -116,7 +116,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 
 	// Buyers lose their stakes; the whole market stays zero-sum.
 	var deltaSum float64
-	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1`, market.ID)
 	if err != nil {
 		t.Fatalf("query settlements: %v", err)
 	}

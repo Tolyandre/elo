@@ -3,32 +3,12 @@ package elo
 import (
 	"context"
 	"fmt"
-	"math"
-	"slices"
-	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
-
-type GamePlayerStat struct {
-	Id                        id.ID
-	Elo                       float64
-	League                    string
-	Rank                      int
-	WinsNeededForAmateurLower int
-	WinsNeededForAmateurUpper int
-}
-
-type GameStatistics struct {
-	Id           id.ID
-	Name         string
-	TotalMatches int
-	Players      []GamePlayerStat
-}
 
 type GameTitles struct {
 	Id           id.ID
@@ -37,25 +17,17 @@ type GameTitles struct {
 	Tags         []TagRef
 }
 
-type GameMatchPlayer struct {
-	Id           id.ID
+// GameInfo is the slim single-game read (the game's arena data lives under
+// the arena endpoints since ADR-24).
+type GameInfo struct {
+	ID           id.ID
 	Name         string
-	Score        float64
-	RatingStaked float64
-	RatingEarned float64
-	RatingAfter  float64
-}
-
-type GameMatch struct {
-	Id      id.ID
-	Date    interface{} // pgtype.Timestamptz
-	Players []GameMatchPlayer
+	TotalMatches int
 }
 
 type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
-	GetGameStatistics(ctx context.Context, gameID id.ID) (*GameStatistics, error)
-	GetGameMatches(ctx context.Context, gameID id.ID) ([]GameMatch, error)
+	GetGameInfo(ctx context.Context, gameID id.ID) (*GameInfo, error)
 	// DeleteGame/UpdateGameName/AddGame record audit events for the actor
 	// (ADR-14); a zero actor skips the audit row.
 	DeleteGame(ctx context.Context, gameID id.ID, actor id.ID) (*db.Game, error)
@@ -66,12 +38,14 @@ type IGameService interface {
 type GameService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Arenas  *ArenaService
 }
 
-func NewGameService(pool *pgxpool.Pool) IGameService {
+func NewGameService(pool *pgxpool.Pool, arenas *ArenaService) IGameService {
 	return &GameService{
 		Queries: db.New(pool),
 		Pool:    pool,
+		Arenas:  arenas,
 	}
 }
 
@@ -107,134 +81,19 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 	return gameList, nil
 }
 
-func (s *GameService) GetGameStatistics(ctx context.Context, gameID id.ID) (*GameStatistics, error) {
-	// Read latest game rating per player from DB (display rating + league)
-	ratingRows, err := s.Queries.ListLatestGameRatingPerPlayer(ctx, gameID)
+// GetGameInfo returns the game's name and total match count. The game row is
+// read FOR UPDATE-free by pk; a missing game surfaces as the raw no-rows
+// error, which the handler maps to 404.
+func (s *GameService) GetGameInfo(ctx context.Context, gameID id.ID) (*GameInfo, error) {
+	game, err := s.Queries.GetGameByID(ctx, gameID)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve game rating from db: %w", err)
+		return nil, err
 	}
-
-	// Get total match count for the game
-	totalMatches, err := s.Queries.GetCountMatchesByGame(ctx, gameID)
+	total, err := s.Queries.GetCountMatchesByGame(ctx, gameID)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get match count: %w", err)
+		return nil, fmt.Errorf("get match count: %w", err)
 	}
-
-	// Get game name from the games list (reuse existing query)
-	gameRows, err := s.Queries.ListGamesOrderedByLastPlayed(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get game name: %w", err)
-	}
-	gameName := string(gameID)
-	for _, g := range gameRows {
-		if g.ID == gameID {
-			gameName = g.Name
-			break
-		}
-	}
-
-	settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
-	if err != nil {
-		return nil, fmt.Errorf("unable to get elo settings: %w", err)
-	}
-	settings := EloSettingsFromDB(settingsRow)
-
-	players := make([]GamePlayerStat, 0, len(ratingRows))
-	for _, r := range ratingRows {
-		var winsLower, winsUpper int
-		if r.League == "newbie" {
-			gap := r.GameEloAfter - r.GameRatingAfter
-			winsLower, winsUpper = calcWinsNeededForAmateur(gap, settings)
-		}
-
-		players = append(players, GamePlayerStat{
-			Id:                        r.PlayerID,
-			Elo:                       r.GameRatingAfter,
-			League:                    r.League,
-			WinsNeededForAmateurLower: winsLower,
-			WinsNeededForAmateurUpper: winsUpper,
-		})
-	}
-
-	// Sort: amateur first, then newbie; within each league by rating descending.
-	slices.SortFunc(players, func(a, b GamePlayerStat) int {
-		pa, pb := leaguePriority(a.League), leaguePriority(b.League)
-		if pa != pb {
-			return pa - pb
-		}
-		if b.Elo-a.Elo > 0 {
-			return 1
-		}
-		if b.Elo-a.Elo < 0 {
-			return -1
-		}
-		return 0
-	})
-
-	// Assign continuous ranks; ties share rank only within the same league.
-	rank := 0
-	var prevRoundElo float64 = math.NaN()
-	var prevRank int
-	var prevLeague string
-	for i := range players {
-		rounded := math.Round(players[i].Elo)
-		if !math.IsNaN(prevRoundElo) && rounded == prevRoundElo && players[i].League == prevLeague {
-			players[i].Rank = prevRank
-		} else {
-			players[i].Rank = rank + 1
-			prevRank = players[i].Rank
-			prevRoundElo = rounded
-			prevLeague = players[i].League
-		}
-		rank++
-	}
-
-	return &GameStatistics{
-		Id:           gameID,
-		Name:         gameName,
-		TotalMatches: int(totalMatches),
-		Players:      players,
-	}, nil
-}
-
-func (s *GameService) GetGameMatches(ctx context.Context, gameID id.ID) ([]GameMatch, error) {
-	rows, err := s.Queries.ListMatchesWithPlayersByGameFromDB(ctx, gameID)
-	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve game matches from db: %w", err)
-	}
-
-	// Group rows by match (already ordered ASC by date/id)
-	matchMap := make(map[id.ID]*GameMatch)
-	order := make([]id.ID, 0)
-
-	for _, r := range rows {
-		mid := r.MatchID
-		if _, ok := matchMap[mid]; !ok {
-			m := &GameMatch{
-				Id:      mid,
-				Date:    r.Date,
-				Players: make([]GameMatchPlayer, 0),
-			}
-			matchMap[mid] = m
-			order = append(order, mid)
-		}
-
-		matchMap[mid].Players = append(matchMap[mid].Players, GameMatchPlayer{
-			Id:           r.PlayerID,
-			Name:         r.PlayerName,
-			Score:        r.Score,
-			RatingStaked: r.GameRatingStaked.Float64,
-			RatingEarned: r.GameRatingEarned.Float64,
-			RatingAfter:  r.GameRatingAfter.Float64,
-		})
-	}
-
-	result := make([]GameMatch, 0, len(order))
-	for _, mid := range order {
-		result = append(result, *matchMap[mid])
-	}
-
-	return result, nil
+	return &GameInfo{ID: game.ID, Name: game.Name, TotalMatches: int(total)}, nil
 }
 
 func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID, actor id.ID) (*db.Game, error) {
@@ -270,6 +129,20 @@ func (s *GameService) UpdateGameName(ctx context.Context, gameID id.ID, name str
 			return err
 		}
 		updated = &g
+		// The game's arena is auto-managed: its name follows the game's.
+		if arena, aerr := q.GetArenaByGame(ctx, &gameID); aerr == nil {
+			a, err := arenaFromParts(arena.ID, arena.Name, arena.Settings, arena.SettingsSchemaVersion,
+				arena.GameID, arena.TournamentID, arena.RecalcFrom, arena.StaleAt,
+				arena.DateFrom, arena.DateTo, arena.FilterGameIds, arena.FilterTagIds, arena.FilterTournamentID)
+			if err != nil {
+				return err
+			}
+			if err := s.Arenas.SyncArenaName(ctx, q, a, name); err != nil {
+				return err
+			}
+		} else if !db.IsNoRows(aerr) {
+			return aerr
+		}
 		if old.Name != name {
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionRenamed, gameID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
 		}
@@ -303,7 +176,12 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 			return err
 		}
 		added = &g
+		// Every game gets its own arena (ADR-24); it starts stale and the
+		// background worker fills it.
 		if isNew {
+			if err := s.Arenas.EnsureGameArena(ctx, q, gameID, name); err != nil {
+				return err
+			}
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionCreated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
 		}
 		return nil

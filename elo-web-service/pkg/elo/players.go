@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -34,7 +35,7 @@ type IPlayerService interface {
 	GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error)
 	ListPlayers(ctx context.Context) ([]db.Player, error)
 	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
-	RatingHistory(ctx context.Context, playerID id.ID) ([]db.RatingHistoryRow, error)
+	RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error)
 	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
 }
@@ -52,7 +53,8 @@ func NewPlayerService(pool *pgxpool.Pool) IPlayerService {
 }
 
 // calcWinsNeededForAmateur estimates the range [lower, upper] of wins needed to close
-// the directed gap (elo − rating) to NewbieLeagueGoalGap, assuming the player wins every match.
+// the directed gap (elo − rating) to the newbie league's goal gap, assuming the player
+// wins every match.
 //
 // Lower bound: elo stays fixed (only rating grows).
 //
@@ -63,8 +65,8 @@ func NewPlayerService(pool *pgxpool.Pool) IPlayerService {
 //	n_upper = ∫ dg / (Δ_win(g) − K/2)
 //
 // E(g) = 1/(1+10^(g/D)): 2-player win expectation at rating gap g.
-func calcWinsNeededForAmateur(gap float64, s EloSettings) (lower, upper int) {
-	goalGap := s.NewbieLeagueGoalGap
+func calcWinsNeededForAmateur(gap float64, nl arenasettings.League, s EloSettings) (lower, upper int) {
+	goalGap := nl.GoalGap
 	if gap <= goalGap || s.D == 0 {
 		return 0, 0
 	}
@@ -74,7 +76,7 @@ func calcWinsNeededForAmateur(gap float64, s EloSettings) (lower, upper int) {
 	for g := goalGap; g < gap; g += step {
 		delta := math.Min(step, gap-g)
 		mid := g + delta/2
-		earnedMax := s.K + (s.NewbieLeagueEarnedMax-s.K)*(1-math.Exp(-mid/s.NewbieLeagueEarnedTau))
+		earnedMax := s.K + (nl.EarnedMax-s.K)*(1-math.Exp(-mid/nl.Tau))
 		eWin := 1.0 / (1.0 + math.Pow(10, mid/s.D))
 		netRating := earnedMax - s.K*eWin
 		if netRating > 0 {
@@ -100,7 +102,8 @@ func leaguePriority(league string) int {
 	}
 }
 
-// GetPlayersWithRank returns players with their Elo and rank as of `when` (or now if nil).
+// GetPlayersWithRank returns players with their Elo and rank as of `when` (or
+// now if nil). The ranking is the global arena's (ADR-24).
 func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error) {
 	ref := time.Now()
 	if when != nil {
@@ -115,6 +118,15 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
+	globalArena, err := s.Queries.GetArena(ctx, GlobalArenaID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get global arena: %w", err)
+	}
+	arena, err := arenaFromGetArenaRow(globalArena)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := s.Queries.ListPlayersWithStats(ctx, dt)
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve players from db: %w", err)
@@ -122,7 +134,7 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 
 	players := make([]Player, 0, len(rows))
 	for _, r := range rows {
-		ratingVal := settings.StartingRatingGlobal
+		ratingVal := arena.Settings.StartingRating
 		if r.Rating != nil {
 			ratingVal = r.Rating.(float64)
 		}
@@ -135,25 +147,29 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 		// for existing players, correct stale elite based on current match counts.
 		var league string
 		if r.Rating == nil {
-			league = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
+			league = *initialArenaLeague(arena, settings)
 		} else {
-			league = effectiveLeague(r.League, int(r.Cnt60), int(r.Cnt180), settings)
+			league = *effectiveArenaLeague(&r.League, int(r.Cnt60), int(r.Cnt180), arena)
 		}
 
 		matchesLeftForElite := 0
-		if league == "amateur" {
-			deficit6M := settings.EliteMatches6M - int(r.Cnt180)
-			deficit2M := settings.EliteMatches2M - int(r.Cnt60)
-			deficit := max(deficit6M, deficit2M)
-			if deficit > 0 {
-				matchesLeftForElite = deficit
+		if league == LeagueAmateur {
+			if el, ok := arena.Settings.Elite(); ok {
+				deficit6M := el.Matches6M - int(r.Cnt180)
+				deficit2M := el.Matches2M - int(r.Cnt60)
+				deficit := max(deficit6M, deficit2M)
+				if deficit > 0 {
+					matchesLeftForElite = deficit
+				}
 			}
 		}
 
 		var winsLower, winsUpper int
-		if league == "newbie" {
-			gap := eloVal - ratingVal // directed: only positive when elo > rating
-			winsLower, winsUpper = calcWinsNeededForAmateur(gap, settings)
+		if league == LeagueNewbie {
+			if nl, ok := arena.Settings.Newbie(); ok {
+				gap := eloVal - ratingVal // directed: only positive when elo > rating
+				winsLower, winsUpper = calcWinsNeededForAmateur(gap, nl, settings)
+			}
 		}
 
 		players = append(players, Player{
@@ -283,8 +299,11 @@ func (s *PlayerService) ListPlayerUserLinks(ctx context.Context) ([]db.ListPlaye
 	return s.Queries.ListPlayerUserLinks(ctx)
 }
 
-func (s *PlayerService) RatingHistory(ctx context.Context, playerID id.ID) ([]db.RatingHistoryRow, error) {
-	return s.Queries.RatingHistory(ctx, playerID)
+func (s *PlayerService) RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error) {
+	return s.Queries.ArenaRatingHistory(ctx, db.ArenaRatingHistoryParams{
+		ArenaID:  GlobalArenaID,
+		PlayerID: playerID,
+	})
 }
 
 func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error) {

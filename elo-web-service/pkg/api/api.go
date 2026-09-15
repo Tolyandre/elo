@@ -20,27 +20,32 @@ type API struct {
 	TournamentService  elo.ITournamentService
 	TableService       elo.ITableService
 	AuditService       elo.IAuditService
+	ArenaService       *elo.ArenaService
+	MatchQueries       *db.Queries // read-side arena matches queries for the handlers
 	Hub                *elo.Hub
 }
 
 func New(pool *pgxpool.Pool) *API {
 	hub := elo.NewHub()
 	marketService := elo.NewMarketServiceWithHub(pool, hub)
+	arenaService := elo.NewArenaService(pool, hub)
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
-		GameService:        elo.NewGameService(pool),
+		GameService:        elo.NewGameService(pool, arenaService),
 		PlayerService:      elo.NewPlayerService(pool),
-		MatchService:       elo.NewMatchService(pool, marketService),
+		MatchService:       elo.NewMatchService(pool, marketService, arenaService),
 		MarketService:      marketService,
 		MarketQueries:      db.New(pool),
-		CorrectionService:  elo.NewCorrectionService(pool),
+		CorrectionService:  elo.NewCorrectionService(pool, arenaService),
 		EloSettingsService: elo.NewEloSettingsService(pool),
 		ClubService:        elo.NewClubService(pool),
-		TagService:         elo.NewTagService(pool),
-		TournamentService:  elo.NewTournamentService(pool),
+		TagService:         elo.NewTagService(pool, arenaService),
+		TournamentService:  elo.NewTournamentService(pool, arenaService),
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
+		ArenaService:       arenaService,
+		MatchQueries:       db.New(pool),
 		Hub:                hub,
 	}
 }

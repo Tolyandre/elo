@@ -35,12 +35,14 @@ type ITagService interface {
 type TagService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Arenas  *ArenaService
 }
 
-func NewTagService(pool *pgxpool.Pool) ITagService {
+func NewTagService(pool *pgxpool.Pool, arenas *ArenaService) ITagService {
 	return &TagService{
 		Queries: db.New(pool),
 		Pool:    pool,
+		Arenas:  arenas,
 	}
 }
 
@@ -122,10 +124,23 @@ func (s *TagService) DeleteTag(ctx context.Context, tagID id.ID, actor id.ID) (d
 	return deleted, err
 }
 
+// AddGameTag/RemoveGameTag change which matches a tag-conditioned arena sees
+// (ADR-24): the arenas are marked for a full recalculation and the background
+// worker drains them (debounced — tag toggling can come in bursts).
 func (s *TagService) AddGameTag(ctx context.Context, gameID, tagID id.ID) error {
-	return s.Queries.AddGameTag(ctx, db.AddGameTagParams{GameID: gameID, TagID: tagID})
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := q.AddGameTag(ctx, db.AddGameTagParams{GameID: gameID, TagID: tagID}); err != nil {
+			return err
+		}
+		return s.Arenas.MarkTagFilteredArenasStale(ctx, q)
+	})
 }
 
 func (s *TagService) RemoveGameTag(ctx context.Context, gameID, tagID id.ID) error {
-	return s.Queries.RemoveGameTag(ctx, db.RemoveGameTagParams{GameID: gameID, TagID: tagID})
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := q.RemoveGameTag(ctx, db.RemoveGameTagParams{GameID: gameID, TagID: tagID}); err != nil {
+			return err
+		}
+		return s.Arenas.MarkTagFilteredArenasStale(ctx, q)
+	})
 }

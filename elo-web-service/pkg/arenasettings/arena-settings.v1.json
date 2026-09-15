@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Arena settings",
+  "description": "Versioned settings document for an arena instance (ADR-24), stored in arenas.settings. Unlike elo_settings (a date-keyed series) these settings are date-independent: changing them affects every match of the arena. League parameters live here; the shared formula constants (K, D, starting_elo, win_reward) stay in elo_settings. leagues lists the leagues that exist in the arena in promotion order; an empty array means no leagues (league is NULL on settlements, display rating equals true Elo). v1 carries no entity references, so no x-entity-id marking is needed yet.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["starting_rating", "leagues"],
+  "properties": {
+    "starting_rating": {
+      "type": "number",
+      "description": "Initial display rating for players with no prior settlement in this arena."
+    },
+    "leagues": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/league_newbie" },
+          { "$ref": "#/$defs/league_amateur" },
+          { "$ref": "#/$defs/league_elite" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "league_newbie": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "goal_gap", "earned_min", "earned_max", "tau"],
+      "properties": {
+        "kind": { "const": "newbie" },
+        "goal_gap": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Player stays in newbie while elo - rating > goal_gap."
+        },
+        "earned_min": { "type": "number", "minimum": 0 },
+        "earned_max": { "type": "number", "minimum": 0 },
+        "tau": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "league_amateur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "amateur" }
+      }
+    },
+    "league_elite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "matches_6m", "matches_2m"],
+      "properties": {
+        "kind": { "const": "elite" },
+        "matches_6m": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Matches within the last 6 months required to reach/stay in elite."
+        },
+        "matches_2m": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Matches within the last 2 months required to reach/stay in elite."
+        }
+      }
+    }
+  }
+}

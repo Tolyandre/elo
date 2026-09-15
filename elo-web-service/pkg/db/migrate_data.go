@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/calculator"
 )
@@ -24,13 +25,16 @@ func init() {
 }
 
 // runDataMigrations applies every in-process data migration family: calculator
-// documents (ADR-09) and audit details documents (ADR-14). Each family is a
-// no-op when nothing is out of date.
+// documents (ADR-09), audit details documents (ADR-14) and arena settings
+// documents (ADR-24). Each family is a no-op when nothing is out of date.
 func runDataMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := migrateCalculatorData(ctx, pool); err != nil {
 		return err
 	}
-	return migrateAuditDetailsData(ctx, pool)
+	if err := migrateAuditDetailsData(ctx, pool); err != nil {
+		return err
+	}
+	return migrateArenaSettingsData(ctx, pool)
 }
 
 // migrateCalculatorData walks every match whose calculator_schema_version is
@@ -258,4 +262,89 @@ func updateAuditDetails(ctx context.Context, pool *pgxpool.Pool, eventID string,
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+// migrateArenaSettingsData walks every arena whose settings_schema_version is
+// behind the current version (ADR-24), applies the registered migrators, and
+// writes the upgraded document back. Mirrors the audit migration: each row is
+// upgraded in its own transaction, and any error is fatal for startup.
+func migrateArenaSettingsData(ctx context.Context, pool *pgxpool.Pool) error {
+	// No migrators registered → nothing to do (saves a table scan).
+	if !arenasettings.HasMigrators() {
+		return nil
+	}
+
+	rows, err := pool.Query(ctx, `
+		SELECT id, settings_schema_version, settings
+		FROM arenas
+		WHERE settings_schema_version < $1
+	`, arenasettings.CurrentVersion)
+	if err != nil {
+		return fmt.Errorf("query stale rows: %w", err)
+	}
+	defer rows.Close()
+
+	type staleSettingsRow struct {
+		ID            string
+		SchemaVersion int
+		Data          json.RawMessage
+	}
+	stale := make([]staleSettingsRow, 0)
+	for rows.Next() {
+		var r staleSettingsRow
+		var version *int32
+		if err := rows.Scan(&r.ID, &version, &r.Data); err != nil {
+			return fmt.Errorf("scan row: %w", err)
+		}
+		if version == nil {
+			continue // defensive: excluded by the WHERE clause
+		}
+		r.SchemaVersion = int(*version)
+		stale = append(stale, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate rows: %w", err)
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	log.Printf("arena settings migration: upgrading %d arenas from older versions", len(stale))
+	for _, r := range stale {
+		newData, newVersion, err := arenasettings.MigrateData(r.SchemaVersion, r.Data)
+		if err != nil {
+			return fmt.Errorf("migrate arena %s: %w", r.ID, err)
+		}
+		if newVersion == r.SchemaVersion {
+			continue // no-op
+		}
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin tx: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE arenas
+			SET settings_schema_version = $2, settings = $3
+			WHERE id = $1
+		`, r.ID, newVersion, []byte(newData)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("update arena %s: %w", r.ID, err)
+		}
+		// Re-read and re-validate the persisted form to catch a migrator that
+		// wrote a structurally-invalid document.
+		var stored []byte
+		if err := tx.QueryRow(ctx, `SELECT settings FROM arenas WHERE id = $1`, r.ID).Scan(&stored); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("re-read arena %s: %w", r.ID, err)
+		}
+		if err := arenasettings.Validate(json.RawMessage(stored)); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("post-write validation arena %s: %w", r.ID, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit tx: %w", err)
+		}
+		log.Printf("arena settings migration: arena %s v%d→v%d", r.ID, r.SchemaVersion, newVersion)
+	}
+	return nil
 }

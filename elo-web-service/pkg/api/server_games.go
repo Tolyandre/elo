@@ -3,10 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) (ListGamesResponseObject, error) {
@@ -35,39 +31,20 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 
 func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject) (GetGameResponseObject, error) {
 	gameID := parseIDParam(request.Id)
-	gameStatistics, err := s.api.GameService.GetGameStatistics(ctx, gameID)
+	game, err := s.api.GameService.GetGameInfo(ctx, gameID)
 	if err != nil {
+		if gameNotFound(err) {
+			return GetGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
+		}
 		return GetGame400JSONResponse{Status: "fail", Message: err.Error()}, nil
-	}
-
-	players := make([]GamePlayer, 0, len(gameStatistics.Players))
-	for _, p := range gameStatistics.Players {
-		var winsLower, winsUpper *int
-		if p.League == "newbie" && p.WinsNeededForAmateurLower > 0 {
-			v := p.WinsNeededForAmateurLower
-			winsLower = &v
-		}
-		if p.League == "newbie" && p.WinsNeededForAmateurUpper > 0 {
-			v := p.WinsNeededForAmateurUpper
-			winsUpper = &v
-		}
-		players = append(players, GamePlayer{
-			Id:                        p.Id,
-			Rating:                    p.Elo,
-			League:                    GamePlayerLeague(p.League),
-			Rank:                      p.Rank,
-			WinsNeededForAmateur:      winsLower,
-			WinsNeededForAmateurUpper: winsUpper,
-		})
 	}
 
 	return GetGame200JSONResponse{
 		Status: "success",
 		Data: Game{
-			Id:           gameID,
-			Name:         gameStatistics.Name,
-			TotalMatches: gameStatistics.TotalMatches,
-			Players:      players,
+			Id:           game.ID,
+			Name:         game.Name,
+			TotalMatches: game.TotalMatches,
 		},
 	}, nil
 }
@@ -122,49 +99,7 @@ func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequest
 	return DeleteGame200JSONResponse{Status: "success", Message: "Game deleted"}, nil
 }
 
-func (s *StrictServer) GetGameMatches(ctx context.Context, request GetGameMatchesRequestObject) (GetGameMatchesResponseObject, error) {
-	matches, err := s.api.GameService.GetGameMatches(ctx, parseIDParam(request.Id))
-	if err != nil {
-		return GetGameMatches400JSONResponse{Status: "fail", Message: err.Error()}, nil
-	}
-
-	matchIDs := make([]id.ID, 0, len(matches))
-	for _, m := range matches {
-		matchIDs = append(matchIDs, m.Id)
-	}
-	tournamentsByMatch, err := s.tournamentsByMatch(ctx, matchIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]GameMatch, 0, len(matches))
-	for _, m := range matches {
-		players := make([]GameMatchPlayer, 0, len(m.Players))
-		for _, p := range m.Players {
-			players = append(players, GameMatchPlayer{
-				Id:           p.Id,
-				Name:         p.Name,
-				Score:        p.Score,
-				RatingStaked: p.RatingStaked,
-				RatingEarned: p.RatingEarned,
-				RatingAfter:  p.RatingAfter,
-			})
-		}
-		gm := GameMatch{
-			Id:      m.Id,
-			Players: players,
-		}
-		if ts, ok := m.Date.(pgtype.Timestamptz); ok && ts.Valid {
-			t := ts.Time
-			gm.Date = &t
-		} else if t, ok := m.Date.(time.Time); ok {
-			gm.Date = &t
-		}
-		if tours := tournamentsByMatch[m.Id]; len(tours) > 0 {
-			gm.Tournaments = &tours
-		}
-		result = append(result, gm)
-	}
-
-	return GetGameMatches200JSONResponse{Status: "success", Data: result}, nil
+// gameNotFound reports whether err is the games table's no-rows error.
+func gameNotFound(err error) bool {
+	return err != nil && domainStatusCode(err) == http.StatusNotFound
 }

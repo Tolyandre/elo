@@ -32,3 +32,14 @@ func runInTx(ctx context.Context, pool *pgxpool.Pool, fn func(q *db.Queries) err
 	}
 	return nil
 }
+
+// runInTxResult is runInTx for linear transactional flows that produce a value.
+func runInTxResult[T any](ctx context.Context, pool *pgxpool.Pool, fn func(q *db.Queries) (T, error)) (T, error) {
+	var out T
+	err := runInTx(ctx, pool, func(q *db.Queries) error {
+		var err error
+		out, err = fn(q)
+		return err
+	})
+	return out, err
+}

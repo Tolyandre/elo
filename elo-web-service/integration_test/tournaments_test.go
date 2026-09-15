@@ -25,8 +25,8 @@ func TestTournamentStats(t *testing.T) {
 	c := createTestPlayer(t, pool, "TC")
 	gameID := createTestGame(t, pool, "TGame")
 
-	tSvc := elo.NewTournamentService(pool)
-	mSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	tSvc := newTournamentService(pool)
+	mSvc := newMatchService(pool)
 
 	now := time.Now().Truncate(time.Second)
 	tour, err := tSvc.CreateTournament(ctx, newID(t), "Camp", now.Add(-time.Hour), now.Add(time.Hour), nil)
@@ -97,8 +97,8 @@ func TestMatchAutoJoinsActiveTournament(t *testing.T) {
 	c := createTestPlayer(t, pool, "AC")
 	gameID := createTestGame(t, pool, "AGame")
 
-	tSvc := elo.NewTournamentService(pool)
-	mSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	tSvc := newTournamentService(pool)
+	mSvc := newMatchService(pool)
 	q := db.New(pool)
 
 	now := time.Now().Truncate(time.Second)
@@ -181,8 +181,8 @@ func TestTournamentUpdateValidations(t *testing.T) {
 	b := createTestPlayer(t, pool, "VB")
 	gameID := createTestGame(t, pool, "VGame")
 
-	tSvc := elo.NewTournamentService(pool)
-	mSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	tSvc := newTournamentService(pool)
+	mSvc := newMatchService(pool)
 
 	now := time.Now().Truncate(time.Second)
 	start := now.Add(-time.Hour)

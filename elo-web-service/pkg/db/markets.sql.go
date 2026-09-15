@@ -142,15 +142,20 @@ func (q *Queries) CreateYesNoOutcomes(ctx context.Context, marketID id.ID) error
 	return err
 }
 
-const deleteGlobalArenaSettlementByMarket = `-- name: DeleteGlobalArenaSettlementByMarket :exec
-DELETE FROM global_arena_settlement
-WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor')
+const deleteArenaSettlementByMarket = `-- name: DeleteArenaSettlementByMarket :exec
+DELETE FROM arena_settlements
+WHERE arena_id = $1 AND market_id = $2 AND discriminator IN ('market', 'market_guarantor')
 `
+
+type DeleteArenaSettlementByMarketParams struct {
+	ArenaID  id.ID  `json:"arena_id"`
+	MarketID *id.ID `json:"market_id"`
+}
 
 // Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 // rows for a market (used by unsettle/recalculation).
-func (q *Queries) DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *id.ID) error {
-	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMarket, marketID)
+func (q *Queries) DeleteArenaSettlementByMarket(ctx context.Context, arg DeleteArenaSettlementByMarketParams) error {
+	_, err := q.db.Exec(ctx, deleteArenaSettlementByMarket, arg.ArenaID, arg.MarketID)
 	return err
 }
 
@@ -404,7 +409,8 @@ SELECT DISTINCT bsd.player_id, p.name AS player_name,
        (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned,
        (bsd.elo_earned + bsd.elo_staked)::float8 AS sort_key
 FROM market_guarantees g
-JOIN global_arena_settlement bsd ON bsd.market_id = g.market_id AND bsd.player_id = g.player_id
+JOIN arena_settlements bsd ON bsd.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    AND bsd.market_id = g.market_id AND bsd.player_id = g.player_id
 JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
 ORDER BY sort_key DESC
@@ -423,7 +429,8 @@ type GetMarketGuarantorPayoutsRow struct {
 // separate buyer row (discriminator 'market'), so their entry here carries only
 // the house result (ADR-10). DISTINCT because a player may hold several
 // guarantee wagers but settles as one guarantor row; the sort key is selected
-// so DISTINCT accepts the ORDER BY.
+// so DISTINCT accepts the ORDER BY. Markets settle only into the global arena,
+// hence the fixed arena id.
 func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error) {
 	rows, err := q.db.Query(ctx, getMarketGuarantorPayouts, marketID)
 	if err != nil {
@@ -723,9 +730,10 @@ func (q *Queries) GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakS
 const getSettlementDetails = `-- name: GetSettlementDetails :many
 SELECT bsd.player_id, p.name AS player_name,
        (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
-FROM global_arena_settlement bsd
+FROM arena_settlements bsd
 JOIN players p ON p.id = bsd.player_id
-WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
+WHERE bsd.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  AND bsd.market_id = $1 AND bsd.discriminator = 'market'
 ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC
 `
 
@@ -736,6 +744,7 @@ type GetSettlementDetailsRow struct {
 	Earned     float64 `json:"earned"`
 }
 
+// Markets settle only into the global arena, hence the fixed arena id.
 func (q *Queries) GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error) {
 	rows, err := q.db.Query(ctx, getSettlementDetails, marketID)
 	if err != nil {
@@ -1645,12 +1654,12 @@ func (q *Queries) UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetL
 	return err
 }
 
-const upsertGlobalArenaSettlementByMarket = `-- name: UpsertGlobalArenaSettlementByMarket :exec
-INSERT INTO global_arena_settlement
-    (id, player_id, date, rating_after, elo_after, discriminator, market_id,
+const upsertArenaSettlementByMarket = `-- name: UpsertArenaSettlementByMarket :exec
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, market_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, $5, $12, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, $6, $13, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (arena_id, market_id, player_id, discriminator) WHERE market_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -1661,8 +1670,9 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               league        = EXCLUDED.league
 `
 
-type UpsertGlobalArenaSettlementByMarketParams struct {
+type UpsertArenaSettlementByMarketParams struct {
 	ID            id.ID              `json:"id"`
+	ArenaID       id.ID              `json:"arena_id"`
 	PlayerID      id.ID              `json:"player_id"`
 	Date          pgtype.Timestamptz `json:"date"`
 	RatingAfter   float64            `json:"rating_after"`
@@ -1672,16 +1682,17 @@ type UpsertGlobalArenaSettlementByMarketParams struct {
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
 	RatingEarned  float64            `json:"rating_earned"`
-	League        string             `json:"league"`
+	League        pgtype.Text        `json:"league"`
 	Discriminator string             `json:"discriminator"`
 }
 
 // One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 // a player who is both gets two rows, hence the discriminator in the conflict
-// target.
-func (q *Queries) UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error {
-	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByMarket,
+// target. Markets settle only into the global arena (ADR-24); callers pass it.
+func (q *Queries) UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error {
+	_, err := q.db.Exec(ctx, upsertArenaSettlementByMarket,
 		arg.ID,
+		arg.ArenaID,
 		arg.PlayerID,
 		arg.Date,
 		arg.RatingAfter,

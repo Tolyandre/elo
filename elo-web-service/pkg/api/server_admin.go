@@ -4,42 +4,70 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 )
 
-func (s *StrictServer) RecalculateGlobalElo(ctx context.Context, _ RecalculateGlobalEloRequestObject) (RecalculateGlobalEloResponseObject, error) {
+func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestObject) (UpdateArenasResponseObject, error) {
+	// Global arena: exact-replay with the player-state diff.
 	report, err := s.api.MatchService.RecalculateAllGlobalElo(ctx)
 	if err != nil {
 		// A moved market resolution can hit the same history-conflict guard
 		// the edit+save flow uses; surface it as a real status, not a 500.
 		if domainStatusCode(err) == http.StatusConflict {
-			return RecalculateGlobalElo409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateArenas409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		}
 		return nil, err
 	}
 
-	changes := make([]PlayerGlobalStateChange, len(report.ChangedPlayers))
-	for i, c := range report.ChangedPlayers {
-		changes[i] = PlayerGlobalStateChange{
-			PlayerId:     c.PlayerID,
-			PlayerName:   c.PlayerName,
-			EloBefore:    c.EloBefore,
-			EloAfter:     c.EloAfter,
-			RatingBefore: c.RatingBefore,
-			RatingAfter:  c.RatingAfter,
-			LeagueBefore: c.LeagueBefore,
-			LeagueAfter:  c.LeagueAfter,
-		}
+	// Every other arena: full replay of its filtered matches.
+	reports, err := s.api.ArenaService.RecalculateArenas(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	// The replay rewrites every settlement — all connected clients are stale.
+	changedToAPI := func(changes []elo.PlayerStateChange) []PlayerStateChange {
+		out := make([]PlayerStateChange, len(changes))
+		for i, c := range changes {
+			out[i] = PlayerStateChange{
+				PlayerId:     c.PlayerID,
+				PlayerName:   c.PlayerName,
+				EloBefore:    c.EloBefore,
+				EloAfter:     c.EloAfter,
+				RatingBefore: c.RatingBefore,
+				RatingAfter:  c.RatingAfter,
+				LeagueBefore: c.LeagueBefore,
+				LeagueAfter:  c.LeagueAfter,
+			}
+		}
+		return out
+	}
+
+	arenaReports := make([]ArenaUpdateReport, 0, len(reports))
+	for _, r := range reports {
+		arenaReports = append(arenaReports, ArenaUpdateReport{
+			ArenaId:         Base58ID(r.ArenaID),
+			ArenaName:       r.ArenaName,
+			MatchesReplayed: int64(r.MatchesReplayed),
+			ChangedPlayers:  changedToAPI(r.ChangedPlayers),
+		})
+	}
+
+	// The replays rewrite every settlement — all connected clients are stale.
 	s.api.broadcastDataChange(true, true)
 
-	return RecalculateGlobalElo200JSONResponse{
+	return UpdateArenas200JSONResponse{
 		Status: "success",
-		Data: GlobalReplayReport{
-			MatchesReplayed:     int64(report.MatchesReplayed),
-			CorrectionsReplayed: int64(report.CorrectionsReplayed),
-			ChangedPlayers:      changes,
+		Data: struct {
+			Arenas []ArenaUpdateReport `json:"arenas"`
+			Global GlobalReplayReport  `json:"global"`
+		}{
+			Global: GlobalReplayReport{
+				MatchesReplayed:     int64(report.MatchesReplayed),
+				CorrectionsReplayed: int64(report.CorrectionsReplayed),
+				ChangedPlayers:      changedToAPI(report.ChangedPlayers),
+			},
+			Arenas: arenaReports,
 		},
 	}, nil
 }

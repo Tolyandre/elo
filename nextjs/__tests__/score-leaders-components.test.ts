@@ -1,29 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { Base58ID } from "@/lib/id";
-import type { GameMatch, GameMatchPlayer } from "@/app/api";
+import type { ScoreLeadersMatch } from "@/components/score-leaders-stats";
 import {
     computeWinnerScoreStats,
     formatPlayerCount,
-} from "@/app/games/view/score-leaders-stats";
+} from "@/components/score-leaders-stats";
 
-function player(id: string, score: number): GameMatchPlayer {
-    return {
-        id: id as Base58ID,
-        name: id,
-        score,
-        rating_staked: 0,
-        rating_earned: 0,
-        rating_after: 0,
-    };
+function player(name: string, score: number): { name: string; score: number } {
+    return { name, score };
 }
 
-function match(players: GameMatchPlayer[]): GameMatch {
-    return {
-        id: Math.random().toString(36).slice(2) as Base58ID,
-        date: null,
-        players,
-        tournaments: [],
-    };
+function match(players: { name: string; score: number }[]): ScoreLeadersMatch {
+    return { players };
 }
 
 describe("computeWinnerScoreStats", () => {

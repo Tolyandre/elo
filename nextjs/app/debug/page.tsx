@@ -7,7 +7,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { GlobalReplayReport, PlayerGlobalStateChange, recalculateGlobalEloPromise } from "../api";
+import { ArenaUpdateReport, PlayerStateChange, UpdateArenasResult, updateArenasPromise } from "../api";
+
+// The unwrapped response payload (the wrapper already strips the status envelope).
+type UpdateArenasData = UpdateArenasResult["data"];
 import { AlertCircleIcon, CheckCircle2Icon } from "lucide-react";
 
 /**
@@ -31,7 +34,7 @@ function ValueDiff({ before, after }: { before: number; after: number }) {
   );
 }
 
-function LeagueDiff({ before, after }: { before: string; after: string }) {
+function LeagueDiff({ before, after }: { before: string | null; after: string | null }) {
   if (before === after) return <span>{before || "—"}</span>;
   return (
     <span>
@@ -41,7 +44,7 @@ function LeagueDiff({ before, after }: { before: string; after: string }) {
   );
 }
 
-function ChangeRow({ change }: { change: PlayerGlobalStateChange }) {
+function ChangeRow({ change }: { change: PlayerStateChange }) {
   return (
     <tr className="border-b">
       <td className="px-2 py-1.5">{change.player_name}</td>
@@ -58,16 +61,58 @@ function ChangeRow({ change }: { change: PlayerGlobalStateChange }) {
   );
 }
 
+function ChangedPlayersTable({ changed }: { changed: PlayerStateChange[] }) {
+  if (changed.length === 0) {
+    return (
+      <Alert>
+        <CheckCircle2Icon />
+        <AlertTitle>Расхождений нет</AlertTitle>
+        <AlertDescription>
+          Повторный пересчёт воспроизвёл те же рейтинги.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  return (
+    <>
+      <Alert variant="destructive">
+        <AlertCircleIcon />
+        <AlertTitle>Обнаружены расхождения: {changed.length}</AlertTitle>
+        <AlertDescription>
+          Повторный пересчёт изменил рейтинг перечисленных игроков.
+        </AlertDescription>
+      </Alert>
+      <div className="overflow-x-auto">
+        <table className="w-full table-auto border-collapse text-sm">
+          <thead>
+            <tr className="border-b text-left text-muted-foreground">
+              <th className="px-2 py-1.5 font-medium">Игрок</th>
+              <th className="px-2 py-1.5 font-medium">Elo</th>
+              <th className="px-2 py-1.5 font-medium">Рейтинг</th>
+              <th className="px-2 py-1.5 font-medium">Лига</th>
+            </tr>
+          </thead>
+          <tbody>
+            {changed.map((c) => (
+              <ChangeRow key={c.player_id} change={c} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 export default function DebugPage() {
   const me = useMe();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [running, setRunning] = React.useState(false);
-  const [report, setReport] = React.useState<GlobalReplayReport | null>(null);
+  const [report, setReport] = React.useState<UpdateArenasData | null>(null);
 
-  async function runRecalc(): Promise<boolean> {
+  async function runUpdate(): Promise<boolean> {
     setRunning(true);
     try {
-      setReport(await recalculateGlobalEloPromise());
+      setReport(await updateArenasPromise());
       return true;
     } catch {
       // error toast already shown by the API layer
@@ -77,7 +122,7 @@ export default function DebugPage() {
     }
   }
 
-  const changed = report?.changed_players ?? [];
+  const globalChanged = report?.global.changed_players ?? [];
 
   return (
     <main className="p-4 max-w-2xl mx-auto space-y-4">
@@ -85,17 +130,19 @@ export default function DebugPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Полный пересчёт рейтингов</CardTitle>
+          <CardTitle>Обновить арены</CardTitle>
           <CardDescription>
-            Повторно применяет все партии, коррекции и расчёты рынков с самого начала — тот же
-            расчёт, что запускается при сохранении самой первой партии без изменений. Стабильный
-            пересчёт не должен менять рейтинги: любые расхождения ниже — признак ошибки.
+            Пересчитывает все арены до актуального состояния: глобальная арена
+            переигрывается с самого начала (те же партии, коррекции и расчёты
+            рынков), остальные арены — по их отфильтрованным партиям. Стабильный
+            пересчёт не должен менять рейтинги: любые расхождения ниже — признак
+            ошибки. Запускайте вручную после деплоя.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <AuthWarning />
           <Button disabled={!me.canEdit || running} onClick={() => setConfirmOpen(true)}>
-            Пересчитать всё
+            Обновить арены
           </Button>
         </CardContent>
       </Card>
@@ -105,45 +152,35 @@ export default function DebugPage() {
           <CardHeader>
             <CardTitle>Результат</CardTitle>
             <CardDescription>
-              Переиграно партий: {report.matches_replayed}, коррекций: {report.corrections_replayed}.
+              Глобальная арена: переиграно партий {report.global.matches_replayed}, коррекций{" "}
+              {report.global.corrections_replayed}.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {changed.length === 0 ? (
-              <Alert>
-                <CheckCircle2Icon />
-                <AlertTitle>Расхождений нет</AlertTitle>
-                <AlertDescription>
-                  Повторный пересчёт воспроизвёл те же глобальные рейтинги.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <>
-                <Alert variant="destructive">
-                  <AlertCircleIcon />
-                  <AlertTitle>Обнаружены расхождения: {changed.length}</AlertTitle>
-                  <AlertDescription>
-                    Повторный пересчёт изменил глобальный рейтинг перечисленных игроков.
-                  </AlertDescription>
-                </Alert>
-                <div className="overflow-x-auto">
-                  <table className="w-full table-auto border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="px-2 py-1.5 font-medium">Игрок</th>
-                        <th className="px-2 py-1.5 font-medium">Elo</th>
-                        <th className="px-2 py-1.5 font-medium">Рейтинг</th>
-                        <th className="px-2 py-1.5 font-medium">Лига</th>
+          <CardContent className="space-y-4">
+            <ChangedPlayersTable changed={globalChanged} />
+
+            {report.arenas.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Остальные арены</h3>
+                <table className="w-full table-auto border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="px-2 py-1.5 font-medium">Арена</th>
+                      <th className="px-2 py-1.5 font-medium">Партий переиграно</th>
+                      <th className="px-2 py-1.5 font-medium">Изменений</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.arenas.map((a: ArenaUpdateReport) => (
+                      <tr key={a.arena_id} className="border-b">
+                        <td className="px-2 py-1.5">{a.arena_name}</td>
+                        <td className="px-2 py-1.5 tabular-nums">{a.matches_replayed}</td>
+                        <td className="px-2 py-1.5 tabular-nums">{a.changed_players.length}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {changed.map((c) => (
-                        <ChangeRow key={c.player_id} change={c} />
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -152,12 +189,12 @@ export default function DebugPage() {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Пересчитать все рейтинги?"
+        title="Обновить все арены?"
         description="Полный повтор истории расчётов может занять время. Итог покажет, изменились ли чьи-то рейтинги."
-        confirmText="Пересчитать"
+        confirmText="Обновить"
         loading={running}
         onConfirm={async () => {
-          if (await runRecalc()) setConfirmOpen(false);
+          if (await runUpdate()) setConfirmOpen(false);
         }}
       />
     </main>

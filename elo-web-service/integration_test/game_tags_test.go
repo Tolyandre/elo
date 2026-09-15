@@ -24,8 +24,8 @@ func TestTagLifecycleAndGameAttachment(t *testing.T) {
 	// which also proves the audit_log CHECK constraint was widened.
 	actor := createTestAdmin(t, pool)
 
-	tagSvc := elo.NewTagService(pool)
-	gameSvc := elo.NewGameService(pool)
+	tagSvc := newTagService(pool)
+	gameSvc := newGameService(pool)
 
 	tag, err := tagSvc.CreateTag(ctx, newID(t), "кооператив", actor)
 	if err != nil {
@@ -143,8 +143,8 @@ func TestAuditFilter_MultipleEntityTypes(t *testing.T) {
 
 	ctx := context.Background()
 	actor := createTestAdmin(t, pool)
-	tagSvc := elo.NewTagService(pool)
-	gameSvc := elo.NewGameService(pool)
+	tagSvc := newTagService(pool)
+	gameSvc := newGameService(pool)
 	auditSvc := elo.NewAuditService(pool)
 
 	gameID := createTestGame(t, pool, "Аудит-игра")
@@ -213,7 +213,7 @@ func TestAddGameTag_UnknownReferences(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	tagSvc := elo.NewTagService(pool)
+	tagSvc := newTagService(pool)
 
 	tag, err := tagSvc.CreateTag(ctx, newID(t), "сирота", createTestAdmin(t, pool))
 	if err != nil {

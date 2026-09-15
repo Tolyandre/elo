@@ -31,7 +31,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	tExp := now.Add(30 * time.Minute)
 	tMatch := now.Add(2 * time.Hour)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match (before market creation) to initialise bet limits.

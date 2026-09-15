@@ -12,6 +12,46 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+type Arena struct {
+	ID                    id.ID              `json:"id"`
+	Name                  string             `json:"name"`
+	MatchFilterID         id.ID              `json:"match_filter_id"`
+	Settings              json.RawMessage    `json:"settings"`
+	SettingsSchemaVersion int32              `json:"settings_schema_version"`
+	GameID                *id.ID             `json:"game_id"`
+	TournamentID          *id.ID             `json:"tournament_id"`
+	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
+	StaleAt               pgtype.Timestamptz `json:"stale_at"`
+}
+
+type ArenaPlayerStat struct {
+	ArenaID      id.ID `json:"arena_id"`
+	PlayerID     id.ID `json:"player_id"`
+	MatchesCount int32 `json:"matches_count"`
+	FirstCount   int32 `json:"first_count"`
+	SecondCount  int32 `json:"second_count"`
+	ThirdCount   int32 `json:"third_count"`
+	FourthCount  int32 `json:"fourth_count"`
+}
+
+type ArenaSettlement struct {
+	ID            id.ID              `json:"id"`
+	ArenaID       id.ID              `json:"arena_id"`
+	PlayerID      id.ID              `json:"player_id"`
+	Date          pgtype.Timestamptz `json:"date"`
+	RatingAfter   float64            `json:"rating_after"`
+	EloAfter      float64            `json:"elo_after"`
+	Discriminator string             `json:"discriminator"`
+	MatchID       *id.ID             `json:"match_id"`
+	MarketID      *id.ID             `json:"market_id"`
+	CorrectionID  *id.ID             `json:"correction_id"`
+	EloStaked     float64            `json:"elo_staked"`
+	EloEarned     float64            `json:"elo_earned"`
+	RatingStaked  float64            `json:"rating_staked"`
+	RatingEarned  float64            `json:"rating_earned"`
+	League        pgtype.Text        `json:"league"`
+}
+
 type AuditLog struct {
 	ID                   id.ID           `json:"id"`
 	CreatedAt            time.Time       `json:"created_at"`
@@ -72,29 +112,6 @@ type Game struct {
 	Name string `json:"name"`
 }
 
-type GameArenaSettlement struct {
-	ID       id.ID              `json:"id"`
-	GameID   id.ID              `json:"game_id"`
-	PlayerID id.ID              `json:"player_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	// Display-rating balance after applying this row's deltas (per-row checkpoint).
-	RatingAfter float64 `json:"rating_after"`
-	// True-Elo balance after applying this row's deltas (per-row checkpoint).
-	EloAfter      float64 `json:"elo_after"`
-	Discriminator string  `json:"discriminator"`
-	MatchID       *id.ID  `json:"match_id"`
-	// This row's Elo risk delta (≤ 0).
-	EloStaked float64 `json:"elo_staked"`
-	// This row's Elo payout delta (≥ 0).
-	EloEarned float64 `json:"elo_earned"`
-	// This row's rating risk delta (≤ 0).
-	RatingStaked float64 `json:"rating_staked"`
-	// This row's rating payout delta (≥ 0).
-	RatingEarned float64 `json:"rating_earned"`
-	// League after this match settlement.
-	League string `json:"league"`
-}
-
 type GameTable struct {
 	ID                 id.ID           `json:"id"`
 	HostUserID         id.ID           `json:"host_user_id"`
@@ -110,30 +127,6 @@ type GameTable struct {
 type GameTag struct {
 	GameID id.ID `json:"game_id"`
 	TagID  id.ID `json:"tag_id"`
-}
-
-type GlobalArenaSettlement struct {
-	ID       id.ID              `json:"id"`
-	PlayerID id.ID              `json:"player_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	// Display-rating balance after applying this row's deltas (per-row checkpoint).
-	RatingAfter float64 `json:"rating_after"`
-	// True-Elo balance after applying this row's deltas (per-row checkpoint).
-	EloAfter      float64 `json:"elo_after"`
-	Discriminator string  `json:"discriminator"`
-	MatchID       *id.ID  `json:"match_id"`
-	MarketID      *id.ID  `json:"market_id"`
-	CorrectionID  *id.ID  `json:"correction_id"`
-	// This row's Elo risk delta (≤ 0).
-	EloStaked float64 `json:"elo_staked"`
-	// This row's Elo payout delta (≥ 0).
-	EloEarned float64 `json:"elo_earned"`
-	// This row's rating risk delta (≤ 0).
-	RatingStaked float64 `json:"rating_staked"`
-	// This row's rating payout delta (≥ 0).
-	RatingEarned float64 `json:"rating_earned"`
-	// Post-event league: both role rows of one market carry the same value.
-	League string `json:"league"`
 }
 
 type Market struct {
@@ -191,6 +184,15 @@ type Match struct {
 	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
 	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
 	CalculatorData          json.RawMessage    `json:"calculator_data"`
+}
+
+type MatchFilter struct {
+	ID           id.ID              `json:"id"`
+	DateFrom     pgtype.Timestamptz `json:"date_from"`
+	DateTo       pgtype.Timestamptz `json:"date_to"`
+	GameIds      []id.ID            `json:"game_ids"`
+	TagIds       []id.ID            `json:"tag_ids"`
+	TournamentID *id.ID             `json:"tournament_id"`
 }
 
 type MatchScore struct {

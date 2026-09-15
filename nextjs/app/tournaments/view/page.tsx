@@ -5,12 +5,15 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { getTournamentPromise, getTournamentStatsPromise } from "@/app/api";
+import { getTournamentPromise, getTournamentStatsPromise, getArenasPromise, getArenaPlayersPromise } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { RankIcon } from "@/components/rank-icon";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Trophy } from "lucide-react";
+import type { Base58ID } from "@/lib/id";
 
 function TournamentContent() {
     const searchParams = useSearchParams();
@@ -20,12 +23,17 @@ function TournamentContent() {
 
     const { data, loading } = useAsyncResource(async () => {
         if (!id) throw new Error("no id");
-        const [t, s] = await Promise.all([getTournamentPromise(id), getTournamentStatsPromise(id)]);
-        return { tournament: t, stats: s };
+        const [t, s, arenas] = await Promise.all([
+            getTournamentPromise(id),
+            getTournamentStatsPromise(id),
+            getArenasPromise({ tournament_id: id }),
+        ]);
+        return { tournament: t, stats: s, arena: arenas[0] ?? null };
     }, [id]);
 
     const tournament = data?.tournament ?? null;
     const stats = data?.stats ?? null;
+    const arena = data?.arena ?? null;
 
     if (!id) return <p>Не указан ID турнира.</p>;
     if (loading) return <p>Загрузка...</p>;
@@ -77,7 +85,48 @@ function TournamentContent() {
                     </tbody>
                 </table>
             )}
+
+            {/* The tournament's own arena (ADR-24): rating over the attached matches. */}
+            {arena && (
+                <div className="pt-4 space-y-2">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Trophy className="h-5 w-5 text-muted-foreground" />
+                        <Link href={`/arenas/view?id=${arena.id}`} className="hover:underline">
+                            {arena.name}
+                        </Link>
+                    </h2>
+                    <ArenaRating arenaId={arena.id} />
+                </div>
+            )}
         </>
+    );
+}
+
+/** Compact arena players table for the tournament page (top of the arena ranking). */
+function ArenaRating({ arenaId }: { arenaId: Base58ID | null }) {
+    const { data: players, loading, error } = useAsyncResource(
+        () => (arenaId ? getArenaPlayersPromise(arenaId) : Promise.resolve([])),
+        [arenaId],
+    );
+    if (error) return null;
+    if (loading) return <Skeleton className="h-24 w-full rounded-xl" />;
+    if (!players || players.length === 0) {
+        return <p className="text-sm text-muted-foreground">Рейтинг арены появится после пересчёта партий.</p>;
+    }
+    return (
+        <table className="table-auto border-collapse w-full text-sm">
+            <tbody>
+                {players.slice(0, 10).map((p) => (
+                    <tr key={p.player_id}>
+                        <td className="px-1 py-1.5">
+                            {p.rank != null ? <RankIcon rank={p.rank} /> : null}
+                        </td>
+                        <td className="px-4 py-1.5">{p.name}</td>
+                        <td className="px-1 py-1.5 tabular-nums text-right">{p.rating.toFixed(0)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     );
 }
 

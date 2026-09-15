@@ -26,7 +26,7 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	gameID := createTestGame(t, pool, "Poker")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{

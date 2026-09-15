@@ -21,15 +21,26 @@ type Querier interface {
 	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
+	// Returns rating_after and elo_after ordered by date for the player graph.
+	ArenaRatingHistory(ctx context.Context, arg ArenaRatingHistoryParams) ([]ArenaRatingHistoryRow, error)
+	// Conditional clear: stale_at must still be the mark the recalculation
+	// started from; a re-mark during the run leaves the arena stale (staleness
+	// cancellation, ADR-24).
+	ClearArenaStale(ctx context.Context, arg ClearArenaStaleParams) error
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
+	// Matches of one player inside the arena (filter applied) within
+	// [date_from, date_to] — the elite promotion counters.
+	CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error)
 	CountTournamentMembers(ctx context.Context, tournamentID id.ID) (int32, error)
+	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateGameTable(ctx context.Context, arg CreateGameTableParams) (GameTable, error)
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
+	CreateMatchFilter(ctx context.Context, arg CreateMatchFilterParams) (id.ID, error)
 	CreateMatchWinnerParams(ctx context.Context, arg CreateMatchWinnerParamsParams) error
 	// The "other" outcome of a match_winner market: tie at first place or a
 	// non-target winner.
@@ -45,20 +56,28 @@ type Querier interface {
 	CreateYesNoOutcomes(ctx context.Context, marketID id.ID) error
 	DeleteAllMatchScores(ctx context.Context) error
 	DeleteAllMatches(ctx context.Context) error
-	// Single delete covering match, market, AND correction settlements.
-	// Called at the start of RecalculateFrom so per-market deletes in
-	// UnsettleMarketsFromDate become harmless no-ops.
-	DeleteAllSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
+	// Returns the deleted row so the audit trail can capture the name.
+	DeleteArena(ctx context.Context, argID id.ID) (DeleteArenaRow, error)
+	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
+	// rows for a market (used by unsettle/recalculation).
+	DeleteArenaSettlementByMarket(ctx context.Context, arg DeleteArenaSettlementByMarketParams) error
+	// Replay support: removes every settlement row (match, market, correction) of
+	// the arena from the date on. For non-global arenas only 'match' rows exist.
+	DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error
+	// ---------------------------------------------------------------------------
+	// Precalculated stats
+	// ---------------------------------------------------------------------------
+	DeleteArenaStats(ctx context.Context, arenaID id.ID) error
 	DeleteClub(ctx context.Context, argID id.ID) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredGameTables(ctx context.Context) error
 	DeleteGame(ctx context.Context, argID id.ID) (Game, error)
-	DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error
 	DeleteGameTable(ctx context.Context, argID id.ID) error
-	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
-	// rows for a market (used by unsettle/recalculation).
-	DeleteGlobalArenaSettlementByMarket(ctx context.Context, marketID *id.ID) error
-	DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error
+	// Single delete covering match, market, AND correction settlements of the
+	// global arena (the only arena markets and corrections touch).
+	// Called at the start of RecalculateFrom so per-market deletes in
+	// UnsettleMarketsFromDate become harmless no-ops.
+	DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteMarket(ctx context.Context, argID id.ID) error
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
 	DeleteMatchTournamentsByMatch(ctx context.Context, matchID id.ID) error
@@ -67,6 +86,22 @@ type Querier interface {
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
+	// Arena queries (ADR-24). The reusable match-filter condition is repeated in
+	// the queries that evaluate it — the canonical definition lives here:
+	//
+	//   A match m meets filter f iff ALL present conditions hold (NULL = absent):
+	//     date range:   f.date_from <= m.date <= f.date_to
+	//     game OR tag:  m.game_id listed in f.game_ids, or m's game carries one of
+	//                   f.tag_ids; both empty (NULL or []) → any game
+	//     tournament:   m attached to f.tournament_id via match_tournament
+	//
+	// Do not change one copy without the others.
+	GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error)
+	GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaByGameRow, error)
+	GetArenaByTournament(ctx context.Context, tournamentID *id.ID) (GetArenaByTournamentRow, error)
+	// Row-locked variant used by the recalculation updater: concurrent dirty marks
+	// queue behind the lock and apply after the recalculation commits.
+	GetArenaForUpdate(ctx context.Context, argID id.ID) (GetArenaForUpdateRow, error)
 	GetBetsAggregatedByOutcome(ctx context.Context, marketID id.ID) ([]GetBetsAggregatedByOutcomeRow, error)
 	// Per-buy rows (each carries the shares bought and the maker fee charged) used
 	// by share settlement.
@@ -94,7 +129,8 @@ type Querier interface {
 	// separate buyer row (discriminator 'market'), so their entry here carries only
 	// the house result (ADR-10). DISTINCT because a player may hold several
 	// guarantee wagers but settles as one guarantor row; the sort key is selected
-	// so DISTINCT accepts the ORDER BY.
+	// so DISTINCT accepts the ORDER BY. Markets settle only into the global arena,
+	// hence the fixed arena id.
 	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
 	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]id.ID, error)
@@ -119,33 +155,26 @@ type Querier interface {
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error)
-	// Counts game-specific matches a player participated in within [from_date, to_date].
-	GetPlayerGameMatchCountInPeriod(ctx context.Context, arg GetPlayerGameMatchCountInPeriodParams) (int32, error)
 	// Per-game stats for the player profile "Частые игры" table: match count plus
 	//   gold/silver/bronze counts from ranking players by score within each match.
 	//   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 	//   every player in each of the target player's matches and the outer query then
 	//   filters down to the target player's own rows.
 	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error)
-	// Counts matches a player participated in within [from_date, to_date].
-	GetPlayerGlobalMatchCountInPeriod(ctx context.Context, arg GetPlayerGlobalMatchCountInPeriodParams) (int32, error)
-	GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error)
-	GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error)
-	// Returns the display game rating and current game league.
-	GetPlayerLatestGameRating(ctx context.Context, arg GetPlayerLatestGameRatingParams) (GetPlayerLatestGameRatingRow, error)
-	GetPlayerLatestGameRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGameRatingBeforeMatchParams) (GetPlayerLatestGameRatingBeforeMatchRow, error)
 	// Returns the true Elo value (elo_after) for Elo calculations.
-	GetPlayerLatestGlobalElo(ctx context.Context, playerID id.ID) (float64, error)
-	GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error)
-	GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error)
-	// Returns the display rating (rating_after) and current league for rating-track calculations.
-	GetPlayerLatestGlobalRating(ctx context.Context, playerID id.ID) (GetPlayerLatestGlobalRatingRow, error)
-	GetPlayerLatestGlobalRatingAtDate(ctx context.Context, arg GetPlayerLatestGlobalRatingAtDateParams) (GetPlayerLatestGlobalRatingAtDateRow, error)
-	GetPlayerLatestGlobalRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalRatingBeforeMatchParams) (GetPlayerLatestGlobalRatingBeforeMatchRow, error)
-	// Picks the latest settlement before correction $3 for player $1 at date $2.
-	// Same-date matches/markets (discriminator != 'correction') come before corrections.
-	// Earlier same-date corrections (correction_id < $3) are also included.
-	GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestGlobalStateBeforeCorrectionParams) (GetPlayerLatestGlobalStateBeforeCorrectionRow, error)
+	GetPlayerLatestArenaElo(ctx context.Context, arg GetPlayerLatestArenaEloParams) (float64, error)
+	GetPlayerLatestArenaEloAtDate(ctx context.Context, arg GetPlayerLatestArenaEloAtDateParams) (float64, error)
+	GetPlayerLatestArenaEloBeforeMatch(ctx context.Context, arg GetPlayerLatestArenaEloBeforeMatchParams) (float64, error)
+	// Returns the display rating (rating_after) and current league for
+	// rating-track calculations.
+	GetPlayerLatestArenaRating(ctx context.Context, arg GetPlayerLatestArenaRatingParams) (GetPlayerLatestArenaRatingRow, error)
+	GetPlayerLatestArenaRatingAtDate(ctx context.Context, arg GetPlayerLatestArenaRatingAtDateParams) (GetPlayerLatestArenaRatingAtDateRow, error)
+	GetPlayerLatestArenaRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestArenaRatingBeforeMatchParams) (GetPlayerLatestArenaRatingBeforeMatchRow, error)
+	// Picks the latest settlement before correction $4 for player $2 at date $3
+	// in arena $1. Same-date matches/markets (discriminator != 'correction') come
+	// before corrections. Earlier same-date corrections (correction_id < $4) are
+	// also included.
+	GetPlayerLatestArenaStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestArenaStateBeforeCorrectionParams) (GetPlayerLatestArenaStateBeforeCorrectionRow, error)
 	// The player's outstanding exposure: bet costs + maker fees on open/betting-closed
 	// markets plus the risk of their guarantee wagers (ADR-20 reserves guarantor
 	// exposure against the betting limit).
@@ -153,6 +182,7 @@ type Querier interface {
 	// An empty game-id list counts matches from every game (the market's "any
 	// game" setting, same convention as match_winner's game_ids).
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
+	// Markets settle only into the global arena, hence the fixed arena id.
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
@@ -167,6 +197,9 @@ type Querier interface {
 	// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
 	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error)
+	// Recompute places 1..4 per match (RANK over the match's scores, tournament
+	// stats semantics) for every match meeting the arena's filter.
+	InsertArenaStats(ctx context.Context, arenaID id.ID) error
 	// Appends one audit_log row. Called inside the same transaction as the write
 	// it describes (ADR-14). details_* are all NULL together for events without
 	// details (e.g. match "created").
@@ -181,6 +214,22 @@ type Querier interface {
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
+	// Cursor-paginated match list of one arena, same envelope as /matches.
+	ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMatchesPaginatedParams) ([]ListArenaMatchesPaginatedRow, error)
+	// ---------------------------------------------------------------------------
+	// Arena page reads
+	// ---------------------------------------------------------------------------
+	// Latest settlement state joined with the precalculated stats. Final ranking
+	// (league priority, then rating) is applied by the service.
+	ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListArenaPlayersRow, error)
+	ListArenas(ctx context.Context) ([]ListArenasRow, error)
+	// Arenas whose filter includes game @game_id or one of its tags, plus
+	// unconditional (global) arenas — the /games page arena list.
+	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)
+	// Arena ids whose filter matches the given match — the synchronous-drain
+	// affected set on match writes. Joining the single match row gives the
+	// condition its m.* values.
+	ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([]id.ID, error)
 	// Latest-first audit feed. Optional entity filter (one or more entity types)
 	// and entity_id filter serve both the per-entity history (match view) and the
 	// per-type feed (admin tabs — the games tab mixes game and tag events). The
@@ -192,11 +241,9 @@ type Querier interface {
 	ListGameTables(ctx context.Context) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
-	ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error)
-	ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error)
-	// The current global arena state (latest settlement row) of every player.
+	// The current state (latest settlement row) of every player in the arena.
 	// Used to diff the state before and after a full recalculation replay.
-	ListLatestGlobalStatePerPlayer(ctx context.Context) ([]ListLatestGlobalStatePerPlayerRow, error)
+	ListLatestArenaStatePerPlayer(ctx context.Context, arenaID id.ID) ([]ListLatestArenaStatePerPlayerRow, error)
 	// Raw wager rows (no join) used by settlement and the price-history replay.
 	ListMarketGuaranteeWagers(ctx context.Context, marketID id.ID) ([]ListMarketGuaranteeWagersRow, error)
 	// The market's guarantee wagers with player names, in join order.
@@ -214,7 +261,9 @@ type Querier interface {
 	// stored in bets — the signature of the removed price-preserving rescale
 	// (ADR-22). Resolved markets get the same q repair but need no settlement.
 	ListMarketsWithDivergedQ(ctx context.Context) ([]id.ID, error)
-	ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID id.ID) ([]ListMatchesWithPlayersByGameFromDBRow, error)
+	// Filtered matches of the arena from @from_date on, in event order — the
+	// updater's replay input.
+	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinStreakMarketsRow, error)
@@ -225,6 +274,10 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	ListStaleArenas(ctx context.Context, dueBefore time.Time) ([]ListStaleArenasRow, error)
+	// Arenas whose filter has a game-tag condition — the conservative mark set
+	// when any game's tags change (a tag toggle can flip any of them).
+	ListTagFilteredArenaIds(ctx context.Context) ([]id.ID, error)
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
 	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
 	ListTournamentsByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListTournamentsByMatchIDsRow, error)
@@ -240,9 +293,14 @@ type Querier interface {
 	// fetch the market first to return a proper domain error.
 	LockMarketBetting(ctx context.Context, argID id.ID) error
 	LockPlayerForEloCalculation(ctx context.Context, argID id.ID) (id.ID, error)
+	// Incremental mark: widen the pending replay window to include @from_date.
+	// A pending full recalc (recalc_from IS NULL while stale) wins over dates.
+	MarkArenasStaleFromDate(ctx context.Context, arg MarkArenasStaleFromDateParams) error
+	// ---------------------------------------------------------------------------
+	// Dirty queue
+	// ---------------------------------------------------------------------------
+	MarkArenasStaleFull(ctx context.Context, arenaIds []id.ID) error
 	PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error)
-	// Returns rating_after and elo_after ordered by date for the player graph.
-	RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error)
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
@@ -256,6 +314,9 @@ type Querier interface {
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 	// a user event and must never be cleared by recalculation.
 	UnsettleMarket(ctx context.Context, argID id.ID) error
+	UpdateArena(ctx context.Context, arg UpdateArenaParams) (Arena, error)
+	// Name sync for auto-managed arenas when their game/tournament is renamed.
+	UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error)
@@ -272,13 +333,17 @@ type Querier interface {
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
-	UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error
-	UpsertGlobalArenaSettlementByCorrection(ctx context.Context, arg UpsertGlobalArenaSettlementByCorrectionParams) error
+	UpsertArenaSettlementByCorrection(ctx context.Context, arg UpsertArenaSettlementByCorrectionParams) error
 	// One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 	// a player who is both gets two rows, hence the discriminator in the conflict
-	// target.
-	UpsertGlobalArenaSettlementByMarket(ctx context.Context, arg UpsertGlobalArenaSettlementByMarketParams) error
-	UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error
+	// target. Markets settle only into the global arena (ADR-24); callers pass it.
+	UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error
+	// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
+	// working with the global arena pass elo.GlobalArenaID. The global arena is
+	// seeded by migration 051 with the well-known id below; SQL literals of the
+	// same value (matches.sql, players.sql, player_ranks.sql, corrections.sql,
+	// markets.sql display reads) must be kept in sync with it.
+	UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
 }
 

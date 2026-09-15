@@ -1,13 +1,13 @@
 "use client"
 
-import { GameMatch } from "@/app/api";
+import { ScoreLeadersMatch } from "@/components/score-leaders-stats";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { computeWinnerScoreStats, formatPlayerCount, ScoreLeadersSection } from "./score-leaders-stats";
+import { computeWinnerScoreStats, formatPlayerCount, ScoreLeadersSection } from "@/components/score-leaders-stats";
 
-export function ScoreLeadersTab({ matches, loading, gameName }: { matches: GameMatch[]; loading: boolean; gameName?: string }) {
+export function ScoreLeadersTab({ matches, loading, gameName }: { matches: ScoreLeadersMatch[]; loading: boolean; gameName?: string }) {
     if (loading) {
         return (
             <div className="space-y-2">

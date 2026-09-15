@@ -30,7 +30,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	gameID := createTestGame(t, pool, "GuarGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
@@ -139,7 +139,7 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 	gameID := createTestGame(t, pool, "FeeGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
@@ -206,7 +206,7 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 
 	// Strict zero-sum across all market settlement rows (buyers + guarantors).
 	var deltaSum float64
-	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1`, market.ID)
 	if err != nil {
 		t.Fatalf("query settlements: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 	gameID := createTestGame(t, pool, "ResGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {

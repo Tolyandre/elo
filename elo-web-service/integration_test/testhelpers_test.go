@@ -182,6 +182,16 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)
 	r.PATCH("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchGame)
 	r.DELETE("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteGame)
+	// Arenas (ADR-24): public reads, editor-gated writes.
+	r.GET("/arenas", strictWrapper.ListArenas)
+	r.POST("/arenas", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateArena)
+	r.GET("/arenas/:id", strictWrapper.GetArena)
+	r.GET("/arenas/:id/players", strictWrapper.GetArenaPlayers)
+	r.GET("/arenas/:id/matches", strictWrapper.ListArenaMatches)
+	r.PATCH("/arenas/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateArena)
+	r.DELETE("/arenas/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteArena)
+	// Admin update-arenas (ADR-24): the /debug page action.
+	r.POST("/admin/update-arenas", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateArenas)
 	r.POST("/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClub)
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
@@ -423,10 +433,13 @@ func shortOf(t *testing.T, canonical idpkg.ID) string {
 	return string(canonical.Base58())
 }
 
-// playerRatingRows returns all global_arena_settlement rows for a player, ordered by date.
-func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) []db.RatingHistoryRow {
+// playerRatingRows returns all global arena settlement rows for a player, ordered by date.
+func playerRatingRows(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) []db.ArenaRatingHistoryRow {
 	t.Helper()
-	rows, err := db.New(pool).RatingHistory(context.Background(), playerID)
+	rows, err := db.New(pool).ArenaRatingHistory(context.Background(), db.ArenaRatingHistoryParams{
+		ArenaID:  "a2ea0000-0000-0000-0000-000000000001",
+		PlayerID: playerID,
+	})
 	if err != nil {
 		t.Fatalf("rating history for player %s: %v", playerID, err)
 	}
@@ -448,7 +461,7 @@ func latestElo(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) float64 {
 	t.Helper()
 	var elo float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT elo_after FROM global_arena_settlement WHERE player_id = $1 ORDER BY date DESC, id DESC LIMIT 1`,
+		`SELECT elo_after FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND player_id = $1 ORDER BY date DESC, id DESC LIMIT 1`,
 		playerID,
 	).Scan(&elo)
 	if err != nil {
@@ -457,12 +470,12 @@ func latestElo(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) float64 {
 	return elo
 }
 
-// marketSettlementRatingCount returns how many global_arena_settlement rows exist for a player with discriminator='market'.
+// marketSettlementRatingCount returns how many global arena settlement rows exist for a player with discriminator='market'.
 func marketSettlementRatingCount(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID) int {
 	t.Helper()
 	var count int
 	err := pool.QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM global_arena_settlement WHERE player_id = $1 AND discriminator = 'market'`,
+		`SELECT COUNT(*) FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND player_id = $1 AND discriminator = 'market'`,
 		playerID,
 	).Scan(&count)
 	if err != nil {
@@ -515,7 +528,7 @@ func playerMarketEarned(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, pla
 	t.Helper()
 	var earned float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT COALESCE(SUM(elo_earned), 0) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		`SELECT COALESCE(SUM(elo_earned), 0) FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1 AND player_id = $2`,
 		marketID, playerID,
 	).Scan(&earned)
 	if err != nil {
@@ -530,7 +543,7 @@ func playerMarketDelta(t *testing.T, pool *pgxpool.Pool, marketID idpkg.ID, play
 	t.Helper()
 	var delta float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT COALESCE(SUM(elo_staked + elo_earned), 0) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		`SELECT COALESCE(SUM(elo_staked + elo_earned), 0) FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1 AND player_id = $2`,
 		marketID, playerID,
 	).Scan(&delta)
 	if err != nil {
@@ -544,7 +557,7 @@ func guarantorRoleDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID idp
 	t.Helper()
 	var delta float64
 	err := pool.QueryRow(context.Background(),
-		`SELECT COALESCE(elo_staked + elo_earned, 0) FROM global_arena_settlement
+		`SELECT COALESCE(elo_staked + elo_earned, 0) FROM arena_settlements
 		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market_guarantor'`,
 		marketID, playerID).Scan(&delta)
 	if err != nil {
@@ -552,3 +565,33 @@ func guarantorRoleDelta(t *testing.T, pool *pgxpool.Pool, marketID, playerID idp
 	}
 	return delta
 }
+
+// Service constructors with the arena service wired (ADR-24): tests build the
+// same dependency graph main.go does.
+func newArenaService(pool *pgxpool.Pool) *elo.ArenaService {
+	return elo.NewArenaService(pool, nil)
+}
+
+func newMatchService(pool *pgxpool.Pool) elo.IMatchService {
+	return elo.NewMatchService(pool, elo.NewMarketService(pool), newArenaService(pool))
+}
+
+func newTournamentService(pool *pgxpool.Pool) elo.ITournamentService {
+	return elo.NewTournamentService(pool, newArenaService(pool))
+}
+
+func newTagService(pool *pgxpool.Pool) elo.ITagService {
+	return elo.NewTagService(pool, newArenaService(pool))
+}
+
+func newGameService(pool *pgxpool.Pool) elo.IGameService {
+	return elo.NewGameService(pool, newArenaService(pool))
+}
+
+func newCorrectionService(pool *pgxpool.Pool) elo.ICorrectionService {
+	return elo.NewCorrectionService(pool, newArenaService(pool))
+}
+
+// GlobalArenaID re-exported for raw SQL assertions against the unified
+// settlement table.
+var globalArenaUUID = "a2ea0000-0000-0000-0000-000000000001"

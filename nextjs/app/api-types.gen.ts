@@ -96,7 +96,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get game details and player Elo rankings */
+        /** Get basic game info (the game's arena lives under /arenas, ADR-24) */
         get: operations["GetGame"];
         put?: never;
         post?: never;
@@ -106,23 +106,6 @@ export interface paths {
         head?: never;
         /** Update game name */
         patch: operations["PatchGame"];
-        trace?: never;
-    };
-    "/games/{id}/matches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get all matches for a game */
-        get: operations["GetGameMatches"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/games/{id}/tags": {
@@ -154,6 +137,77 @@ export interface paths {
         post?: never;
         /** Detach a tag from a game */
         delete: operations["RemoveGameTag"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arenas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List arenas, optionally narrowed to a game or a tournament */
+        get: operations["ListArenas"];
+        put?: never;
+        /** Create an arena (editor only) */
+        post: operations["CreateArena"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arenas/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an arena by ID */
+        get: operations["GetArena"];
+        put?: never;
+        post?: never;
+        /** Delete a user-created arena (editor only) */
+        delete: operations["DeleteArena"];
+        options?: never;
+        head?: never;
+        /** Update a user-created arena's name, filter and settings (editor only) */
+        patch: operations["UpdateArena"];
+        trace?: never;
+    };
+    "/arenas/{id}/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Arena players ranked, with precalculated match and medal stats */
+        get: operations["GetArenaPlayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arenas/{id}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the arena's matches with cursor-based pagination */
+        get: operations["ListArenaMatches"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -646,7 +700,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/recalculate-global-elo": {
+    "/admin/update-arenas": {
         parameters: {
             query?: never;
             header?: never;
@@ -655,8 +709,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reapply the whole settlement history (matches, corrections and market settlements) from the beginning — the same computation an edit+save of the chronologically first match triggers — and report every player whose global arena state changed. A stable recalculation reports no changed players. */
-        post: operations["RecalculateGlobalElo"];
+        /** Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches, corrections and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page. */
+        post: operations["UpdateArenas"];
         delete?: never;
         options?: never;
         head?: never;
@@ -879,47 +933,82 @@ export interface components {
         GameList: {
             games: components["schemas"]["GameListItem"][];
         };
-        GamePlayer: {
-            id: components["schemas"]["Base58ID"];
-            /** Format: double */
-            rating: number;
-            /** @enum {string} */
-            league: "newbie" | "amateur";
-            rank: number;
-            /** @description Lower bound of wins needed to reach amateur league (elo treated as fixed). */
-            wins_needed_for_amateur?: number | null;
-            /** @description Upper bound of wins needed (accounts for elo growth ≈ K/2 per win). */
-            wins_needed_for_amateur_upper?: number | null;
-        };
         Game: {
             id: components["schemas"]["Base58ID"];
             name: string;
             total_matches: number;
-            players: components["schemas"]["GamePlayer"][];
-        };
-        GameMatchPlayer: {
-            id: components["schemas"]["Base58ID"];
-            name: string;
-            /** Format: double */
-            score: number;
-            /** Format: double */
-            rating_staked: number;
-            /** Format: double */
-            rating_earned: number;
-            /** Format: double */
-            rating_after: number;
-        };
-        GameMatch: {
-            id: components["schemas"]["Base58ID"];
-            /** Format: date-time */
-            date?: string | null;
-            players: components["schemas"]["GameMatchPlayer"][];
-            /** @description Tournaments this match belongs to */
-            tournaments?: components["schemas"]["MatchTournament"][];
         };
         GameTag: {
             id: components["schemas"]["Base58ID"];
             name: string;
+        };
+        /** @description The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. */
+        MatchFilter: {
+            /** Format: date-time */
+            date_from?: string | null;
+            /** Format: date-time */
+            date_to?: string | null;
+            game_ids: components["schemas"]["Base58ID"][];
+            tag_ids: components["schemas"]["Base58ID"][];
+            tournament_id?: components["schemas"]["Base58ID"];
+        };
+        /** @description Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}. */
+        ArenaSettings: {
+            [key: string]: unknown;
+        };
+        Arena: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            filter: components["schemas"]["MatchFilter"];
+            settings: components["schemas"]["ArenaSettings"];
+            settings_schema_version: number;
+            /** @description Set for the auto-managed per-game arena. */
+            game_id?: components["schemas"]["Base58ID"];
+            /** @description Set for the auto-managed per-tournament arena. */
+            tournament_id?: components["schemas"]["Base58ID"];
+            /**
+             * Format: date-time
+             * @description Not null while the arena waits for a background recalculation.
+             */
+            stale_at?: string | null;
+            /** @description Number of matches meeting the arena's filter (list responses only). */
+            matches_count?: number;
+        };
+        /** @description Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there. */
+        ArenaInput: {
+            name: string;
+            filter: components["schemas"]["MatchFilter"];
+            settings: components["schemas"]["ArenaSettings"];
+        };
+        ArenaResult: {
+            status: string;
+            data: components["schemas"]["Arena"];
+        };
+        ArenaList: {
+            status: string;
+            data: components["schemas"]["Arena"][];
+        };
+        /** @description One row of the arena players tab — latest settlement state joined with the precalculated stats. */
+        ArenaPlayer: {
+            player_id: components["schemas"]["Base58ID"];
+            name: string;
+            /** Format: double */
+            rating: number;
+            /** @description null when the arena has no leagues. */
+            league: string | null;
+            rank: number | null;
+            matches_count: number;
+            first_count: number;
+            second_count: number;
+            third_count: number;
+            fourth_count: number;
+            matches_left_for_elite: number;
+            wins_needed_for_amateur: number;
+            wins_needed_for_amateur_upper: number;
+        };
+        ArenaPlayersList: {
+            status: string;
+            data: components["schemas"]["ArenaPlayer"][];
         };
         /** @description Per-player data within a match (keyed by player_id in the score map) */
         MatchPlayer: {
@@ -1177,7 +1266,7 @@ export interface components {
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
         };
-        PlayerGlobalStateChange: {
+        PlayerStateChange: {
             player_id: components["schemas"]["Base58ID"];
             player_name: string;
             /** Format: double */
@@ -1188,19 +1277,29 @@ export interface components {
             rating_before: number;
             /** Format: double */
             rating_after: number;
-            league_before: string;
-            league_after: string;
+            league_before: string | null;
+            league_after: string | null;
         };
         GlobalReplayReport: {
             /** Format: int64 */
             matches_replayed: number;
             /** Format: int64 */
             corrections_replayed: number;
-            changed_players: components["schemas"]["PlayerGlobalStateChange"][];
+            changed_players: components["schemas"]["PlayerStateChange"][];
         };
-        RecalculateGlobalEloResult: {
+        ArenaUpdateReport: {
+            arena_id: components["schemas"]["Base58ID"];
+            arena_name: string;
+            /** Format: int64 */
+            matches_replayed: number;
+            changed_players: components["schemas"]["PlayerStateChange"][];
+        };
+        UpdateArenasResult: {
             status: string;
-            data: components["schemas"]["GlobalReplayReport"];
+            data: {
+                global: components["schemas"]["GlobalReplayReport"];
+                arenas: components["schemas"]["ArenaUpdateReport"][];
+            };
         };
         AuditEntry: {
             id: components["schemas"]["Base58ID"];
@@ -1774,7 +1873,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Game details */
+            /** @description Game info */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1788,6 +1887,15 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Game not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1925,40 +2033,6 @@ export interface operations {
             };
         };
     };
-    GetGameMatches: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Matches for the game */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["GameMatch"][];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     AddGameTag: {
         parameters: {
             query?: never;
@@ -2055,6 +2129,327 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListArenas: {
+        parameters: {
+            query?: {
+                /** @description Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included. */
+                game_id?: string;
+                /** @description Return the tournament's arena. */
+                tournament_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Arena list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaList"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateArena: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArenaInput"];
+            };
+        };
+        responses: {
+            /** @description Created arena (data not yet calculated; the updater fills it) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaResult"];
+                };
+            };
+            /** @description Bad request (invalid settings document or filter) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetArena: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Arena details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaResult"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Arena not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    DeleteArena: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Arena deleted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Arena not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The global arena cannot be deleted; auto-managed arenas follow their entity */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    UpdateArena: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArenaInput"];
+            };
+        };
+        responses: {
+            /** @description Updated arena */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaResult"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Arena not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The arena is auto-managed (per-game or per-tournament) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetArenaPlayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ranked players */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArenaPlayersList"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Arena not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListArenaMatches: {
+        parameters: {
+            query?: {
+                /** @description Cursor token from previous page's "next" field */
+                next?: string;
+                /** @description Number of matches per page */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated match list (same Match shape as /matches) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchesPage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Arena not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4267,7 +4662,7 @@ export interface operations {
             };
         };
     };
-    RecalculateGlobalElo: {
+    UpdateArenas: {
         parameters: {
             query?: never;
             header?: never;
@@ -4276,16 +4671,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Replay complete, with the before/after rating diff */
+            /** @description Update complete, with the per-arena before/after diff */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecalculateGlobalEloResult"];
+                    "application/json": components["schemas"]["UpdateArenasResult"];
                 };
             };
-            /** @description History change conflict during the replay */
+            /** @description History change conflict during the global replay */
             409: {
                 headers: {
                     [name: string]: unknown;

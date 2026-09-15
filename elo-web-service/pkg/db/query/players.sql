@@ -59,13 +59,14 @@ SELECT
   COUNT(*) FILTER (WHERE ranked.place = 1)::int AS gold_count,
   COUNT(*) FILTER (WHERE ranked.place = 2)::int AS silver_count,
   COUNT(*) FILTER (WHERE ranked.place = 3)::int AS bronze_count
-FROM global_arena_settlement gas
+FROM arena_settlements gas
 JOIN ranked
   ON ranked.match_id = gas.match_id
   AND ranked.player_id = gas.player_id
 JOIN matches m ON m.id = gas.match_id
 JOIN games g ON g.id = m.game_id
-WHERE gas.player_id = $1
+WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  AND gas.player_id = $1
   AND gas.discriminator = 'match'
 GROUP BY g.id, g.name
 ORDER BY matches_count DESC
@@ -82,7 +83,8 @@ SELECT
 FROM match_scores ms
 JOIN matches m ON ms.match_id = m.id
 JOIN games g ON m.game_id = g.id
-JOIN global_arena_settlement gas ON gas.match_id = ms.match_id AND gas.player_id = ms.player_id AND gas.discriminator = 'match'
+JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  AND gas.match_id = ms.match_id AND gas.player_id = ms.player_id AND gas.discriminator = 'match'
 WHERE ms.player_id = $1
 GROUP BY g.id, g.name
 ORDER BY elo_earned DESC;

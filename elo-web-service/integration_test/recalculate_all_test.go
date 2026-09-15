@@ -37,7 +37,7 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 	t2 := now.Add(-2 * time.Hour)
 	t3 := now.Add(-1 * time.Hour)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// M1, then a match_winner market (starts after M1 so only M2 can resolve
@@ -78,7 +78,7 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 	}
 
 	// A manual correction after all matches: the replay's third event kind.
-	correctionSvc := elo.NewCorrectionService(pool)
+	correctionSvc := newCorrectionService(pool)
 	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), playerB, 3.5); err != nil {
 		t.Fatalf("CreateGlobalArenaRatingCorrection: %v", err)
 	}

@@ -38,7 +38,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000e3", Name: "PathGame"})
 
 	marketSvc := elo.NewMarketService(pool)
-	matchSvc := elo.NewMatchService(pool, marketSvc)
+	matchSvc := newMatchService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		ID:         idpkg.ID("00000000-0000-0000-0000-0000000000e4"),

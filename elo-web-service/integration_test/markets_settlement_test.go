@@ -15,7 +15,7 @@ import (
 )
 
 // TestMarketSettlement_MatchTriggered verifies that adding a match that satisfies a
-// match_winner market resolves the market and creates market_settlement global_arena_settlement rows.
+// match_winner market resolves the market and creates global arena market settlement rows.
 func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -27,7 +27,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	gameID := createTestGame(t, pool, "Poker")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// Create a match_winner market: who wins a match with playerA and playerB?
@@ -139,7 +139,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	t2 := now.Add(-2 * time.Hour)
 	t3 := now.Add(-1 * time.Hour)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. M1
@@ -232,7 +232,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	gameID := createTestGame(t, pool, "FixGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. A guarantor-less market is created fine but rejects bets until a
@@ -313,7 +313,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 
 	// 5. Strict zero-sum across all market settlement rows (buyers + guarantor).
 	var deltaSum float64
-	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1`, market.ID)
 	if err != nil {
 		t.Fatalf("query settlements: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	gameID := createTestGame(t, pool, "OwnGuarGame")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
@@ -424,7 +424,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	// guarantor residual share in 'market_guarantor'.
 	var rowCount int
 	if err := pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM global_arena_settlement WHERE market_id = $1 AND player_id = $2`,
+		`SELECT COUNT(*) FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1 AND player_id = $2`,
 		market.ID, playerA,
 	).Scan(&rowCount); err != nil {
 		t.Fatalf("count playerA rows: %v", err)
@@ -439,15 +439,15 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	// balance that latest-at-date reads pick up.
 	var buyerElo, buyerRating, guarantorElo, guarantorRating float64
 	if err := pool.QueryRow(ctx,
-		`SELECT elo_after, rating_after FROM global_arena_settlement
-		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market'`,
+		`SELECT elo_after, rating_after FROM arena_settlements
+		 WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1 AND player_id = $2 AND discriminator = 'market'`,
 		market.ID, playerA,
 	).Scan(&buyerElo, &buyerRating); err != nil {
 		t.Fatalf("read playerA buyer row: %v", err)
 	}
 	if err := pool.QueryRow(ctx,
-		`SELECT elo_after, rating_after FROM global_arena_settlement
-		 WHERE market_id = $1 AND player_id = $2 AND discriminator = 'market_guarantor'`,
+		`SELECT elo_after, rating_after FROM arena_settlements
+		 WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1 AND player_id = $2 AND discriminator = 'market_guarantor'`,
 		market.ID, playerA,
 	).Scan(&guarantorElo, &guarantorRating); err != nil {
 		t.Fatalf("read playerA guarantor row: %v", err)
@@ -474,7 +474,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	}
 
 	var deltaSum float64
-	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM global_arena_settlement WHERE market_id = $1`, market.ID)
+	rows, err := pool.Query(ctx, `SELECT elo_staked, elo_earned FROM arena_settlements WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND market_id = $1`, market.ID)
 	if err != nil {
 		t.Fatalf("query settlements: %v", err)
 	}

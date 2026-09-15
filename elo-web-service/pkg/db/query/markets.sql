@@ -326,15 +326,15 @@ FROM bets
 WHERE market_id = $1
 ORDER BY placed_at, id;
 
--- name: UpsertGlobalArenaSettlementByMarket :exec
+-- name: UpsertArenaSettlementByMarket :exec
 -- One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 -- a player who is both gets two rows, hence the discriminator in the conflict
--- target.
-INSERT INTO global_arena_settlement
-    (id, player_id, date, rating_after, elo_after, discriminator, market_id,
+-- target. Markets settle only into the global arena (ADR-24); callers pass it.
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, market_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, $5, sqlc.arg('discriminator'), $6, $7, $8, $9, $10, $11)
-ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, $6, sqlc.arg('discriminator'), $7, $8, $9, $10, $11, $12)
+ON CONFLICT (arena_id, market_id, player_id, discriminator) WHERE market_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -344,18 +344,20 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               rating_earned = EXCLUDED.rating_earned,
               league        = EXCLUDED.league;
 
--- name: DeleteGlobalArenaSettlementByMarket :exec
+-- name: DeleteArenaSettlementByMarket :exec
 -- Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 -- rows for a market (used by unsettle/recalculation).
-DELETE FROM global_arena_settlement
-WHERE market_id = $1 AND discriminator IN ('market', 'market_guarantor');
+DELETE FROM arena_settlements
+WHERE arena_id = $1 AND market_id = $2 AND discriminator IN ('market', 'market_guarantor');
 
 -- name: GetSettlementDetails :many
+-- Markets settle only into the global arena, hence the fixed arena id.
 SELECT bsd.player_id, p.name AS player_name,
        (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned
-FROM global_arena_settlement bsd
+FROM arena_settlements bsd
 JOIN players p ON p.id = bsd.player_id
-WHERE bsd.market_id = $1 AND bsd.discriminator = 'market'
+WHERE bsd.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  AND bsd.market_id = $1 AND bsd.discriminator = 'market'
 ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 
 -- name: GetMarketGuarantorPayouts :many
@@ -364,12 +366,14 @@ ORDER BY (bsd.elo_earned + bsd.elo_staked) DESC;
 -- separate buyer row (discriminator 'market'), so their entry here carries only
 -- the house result (ADR-10). DISTINCT because a player may hold several
 -- guarantee wagers but settles as one guarantor row; the sort key is selected
--- so DISTINCT accepts the ORDER BY.
+-- so DISTINCT accepts the ORDER BY. Markets settle only into the global arena,
+-- hence the fixed arena id.
 SELECT DISTINCT bsd.player_id, p.name AS player_name,
        (-bsd.elo_staked)::float8 AS staked, bsd.elo_earned AS earned,
        (bsd.elo_earned + bsd.elo_staked)::float8 AS sort_key
 FROM market_guarantees g
-JOIN global_arena_settlement bsd ON bsd.market_id = g.market_id AND bsd.player_id = g.player_id
+JOIN arena_settlements bsd ON bsd.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    AND bsd.market_id = g.market_id AND bsd.player_id = g.player_id
 JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
 ORDER BY sort_key DESC;

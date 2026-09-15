@@ -32,7 +32,10 @@ func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []id.ID)
 
 	for _, playerID := range playerIDs {
 		var playerElo float64
-		elo, err := q.GetPlayerLatestGlobalElo(ctx, playerID)
+		elo, err := q.GetPlayerLatestArenaElo(ctx, db.GetPlayerLatestArenaEloParams{
+			ArenaID:  GlobalArenaID,
+			PlayerID: playerID,
+		})
 		if err != nil {
 			playerElo = settings.StartingElo
 		} else {

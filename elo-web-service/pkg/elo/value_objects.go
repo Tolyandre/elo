@@ -50,14 +50,16 @@ func EloSettingsFromDB(row db.GetEloSettingsForDateRow) EloSettings {
 	}
 }
 
-// MatchPrevState bundles all per-player prior state needed to compute one match's settlements.
+// MatchPrevState bundles all per-player prior state needed to compute one
+// match's settlements. Since ADR-24 every arena computes its own settlements;
+// the state is per-arena and carries the arena itself (its settings drive the
+// league logic and the newbie rating scaling).
 type MatchPrevState struct {
-	Elo        map[id.ID]float64 // true global Elo before this match
-	GameElo    map[id.ID]float64 // true game Elo before this match
-	Rating     map[id.ID]float64 // display global rating before this match
-	GameRating map[id.ID]float64 // display game rating before this match
-	League     map[id.ID]string  // global league before this match ("newbie"/"amateur"/"elite")
-	GameLeague map[id.ID]string  // game league before this match ("newbie"/"amateur")
+	Arena Arena
+
+	Elo    map[id.ID]float64 // true Elo before this match
+	Rating map[id.ID]float64 // display rating before this match
+	League map[id.ID]*string // league before this match (nil when the arena has no leagues)
 
 	// Elite promotion match counts for the match date (includes the current match).
 	Count6M map[id.ID]int // matches in last 6 months
@@ -71,7 +73,7 @@ type MatchPrevState struct {
 type EloCalcFunc func(
 	ctx context.Context,
 	q *db.Queries,
-	matchID, gameID id.ID,
+	matchID id.ID,
 	playerScores map[id.ID]float64,
 	state MatchPrevState,
 ) error

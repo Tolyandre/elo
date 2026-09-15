@@ -37,7 +37,7 @@ func TestAddMatch_PersistsCalculatorData(t *testing.T) {
 	playerA := createTestPlayer(t, pool, "CalcA")
 	playerB := createTestPlayer(t, pool, "CalcB")
 	gameID := createTestGame(t, pool, "Skull King")
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
 	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{
@@ -81,7 +81,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	playerA := createTestPlayer(t, pool, "RTA")
 	playerB := createTestPlayer(t, pool, "RTB")
 	gameID := createTestGame(t, pool, "IAWW")
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 
 	doc := map[string]any{
 		"schema_version": 2,
@@ -149,7 +149,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 	playerA := createTestPlayer(t, pool, "LVA")
 	playerB := createTestPlayer(t, pool, "LVB")
 	gameID := createTestGame(t, pool, "Both")
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 
 	data, _ := json.Marshal(validSKState(playerA, playerB))
 	created, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, time.Now().Add(-time.Hour), elo.AddMatchOpts{

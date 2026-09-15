@@ -61,7 +61,10 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
 	for _, marketID := range marketIDs {
-		if err := q.DeleteGlobalArenaSettlementByMarket(ctx, &marketID); err != nil {
+		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
+			ArenaID:  GlobalArenaID,
+			MarketID: &marketID,
+		}); err != nil {
 			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
 		}
 		if err := q.UnsettleMarket(ctx, marketID); err != nil {
@@ -167,6 +170,13 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 
 	resolvedAtTz := pgtype.Timestamptz{Time: resolvedAt, Valid: true}
 
+	// Markets settle only into the global arena (ADR-24); its settings carry
+	// the league parameters the settlement league is determined from.
+	arena, err := globalArena(ctx, q)
+	if err != nil {
+		return err
+	}
+
 	settingsRow, err := q.GetEloSettingsForDate(ctx, resolvedAtTz)
 	if err != nil {
 		return fmt.Errorf("get elo settings: %w", err)
@@ -203,13 +213,13 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 			continue
 		}
 
-		balances, err := s.readMarketSettlementBalances(ctx, q, pid, resolvedAtTz, settings, date6MAgo, date2MAgo)
+		balances, err := s.readMarketSettlementBalances(ctx, q, arena, pid, resolvedAtTz, settings, date6MAgo, date2MAgo)
 		if err != nil {
 			return fmt.Errorf("read balances for %s: %w", pid, err)
 		}
 		newElo := balances.currentElo + totalStaked + totalEarned
 		newRating := balances.currentRating + totalStaked + totalEarned
-		newLeague := determineGlobalLeague(balances.prevLeague, newRating, newElo, balances.count6M, balances.count2M, settings)
+		newLeague := determineArenaLeague(balances.prevLeague, newRating, newElo, balances.count6M, balances.count2M, arena)
 
 		afterElo := balances.currentElo
 		afterRating := balances.currentRating
@@ -259,20 +269,22 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 type marketSettlementBalances struct {
 	currentElo    float64
 	currentRating float64
-	prevLeague    string
+	prevLeague    *string
 	count6M       int
 	count2M       int
 }
 
 // readMarketSettlementBalances reads the player's pre-market elo/rating/league
-// state. Called once per player before any of their rows are written, so the
-// second role row cannot observe the first one (they share the settlement date).
+// state in the global arena. Called once per player before any of their rows
+// are written, so the second role row cannot observe the first one (they share
+// the settlement date).
 func (s *MarketService) readMarketSettlementBalances(
-	ctx context.Context, q *db.Queries, playerID id.ID,
+	ctx context.Context, q *db.Queries, arena Arena, playerID id.ID,
 	resolvedAtTz pgtype.Timestamptz, settings EloSettings, date6MAgo, date2MAgo pgtype.Timestamptz,
 ) (marketSettlementBalances, error) {
 	var b marketSettlementBalances
-	latestElo, err := q.GetPlayerLatestGlobalEloAtDate(ctx, db.GetPlayerLatestGlobalEloAtDateParams{
+	latestElo, err := q.GetPlayerLatestArenaEloAtDate(ctx, db.GetPlayerLatestArenaEloAtDateParams{
+		ArenaID:  GlobalArenaID,
 		PlayerID: playerID,
 		Date:     resolvedAtTz,
 	})
@@ -282,32 +294,35 @@ func (s *MarketService) readMarketSettlementBalances(
 		b.currentElo = latestElo
 	}
 
-	var storedLeague string
-	latestRating, err := q.GetPlayerLatestGlobalRatingAtDate(ctx, db.GetPlayerLatestGlobalRatingAtDateParams{
+	var storedLeague *string
+	latestRating, err := q.GetPlayerLatestArenaRatingAtDate(ctx, db.GetPlayerLatestArenaRatingAtDateParams{
+		ArenaID:  GlobalArenaID,
 		PlayerID: playerID,
 		Date:     resolvedAtTz,
 	})
 	if err != nil {
-		b.currentRating = settings.StartingRatingGlobal
-		storedLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
+		b.currentRating = arena.Settings.StartingRating
+		storedLeague = initialArenaLeague(arena, settings)
 	} else {
 		b.currentRating = latestRating.Rating
-		storedLeague = latestRating.League
+		storedLeague = textPtr(latestRating.League)
 	}
 
-	count6M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+	count6M, _ := q.CountPlayerMatchesInArenaInPeriod(ctx, db.CountPlayerMatchesInArenaInPeriodParams{
+		ArenaID:  GlobalArenaID,
 		PlayerID: playerID,
-		Date:     date6MAgo,
-		Date_2:   resolvedAtTz,
+		DateFrom: date6MAgo.Time,
+		DateTo:   resolvedAtTz.Time,
 	})
-	count2M, _ := q.GetPlayerGlobalMatchCountInPeriod(ctx, db.GetPlayerGlobalMatchCountInPeriodParams{
+	count2M, _ := q.CountPlayerMatchesInArenaInPeriod(ctx, db.CountPlayerMatchesInArenaInPeriodParams{
+		ArenaID:  GlobalArenaID,
 		PlayerID: playerID,
-		Date:     date2MAgo,
-		Date_2:   resolvedAtTz,
+		DateFrom: date2MAgo.Time,
+		DateTo:   resolvedAtTz.Time,
 	})
 	b.count6M = int(count6M)
 	b.count2M = int(count2M)
-	b.prevLeague = effectiveLeague(storedLeague, b.count2M, b.count6M, settings)
+	b.prevLeague = effectiveArenaLeague(storedLeague, b.count2M, b.count6M, arena)
 	return b, nil
 }
 
@@ -321,11 +336,12 @@ func (s *MarketService) readMarketSettlementBalances(
 // apply no newbie scaling).
 func (s *MarketService) upsertMarketSettlement(
 	ctx context.Context, q *db.Queries, playerID, marketID id.ID, discriminator string,
-	eloStaked, eloEarned, eloAfter, ratingAfter float64, league string,
+	eloStaked, eloEarned, eloAfter, ratingAfter float64, league *string,
 	resolvedAtTz pgtype.Timestamptz,
 ) error {
-	return q.UpsertGlobalArenaSettlementByMarket(ctx, db.UpsertGlobalArenaSettlementByMarketParams{
+	return q.UpsertArenaSettlementByMarket(ctx, db.UpsertArenaSettlementByMarketParams{
 		ID:            newSettlementID(),
+		ArenaID:       GlobalArenaID,
 		PlayerID:      playerID,
 		Date:          resolvedAtTz,
 		RatingAfter:   ratingAfter,
@@ -336,7 +352,7 @@ func (s *MarketService) upsertMarketSettlement(
 		EloEarned:     eloEarned,
 		RatingStaked:  eloStaked,
 		RatingEarned:  eloEarned,
-		League:        league,
+		League:        ptrText(league),
 	})
 }
 

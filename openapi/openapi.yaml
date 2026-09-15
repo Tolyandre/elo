@@ -47,16 +47,28 @@ components:
       $ref: './games.yaml#/GameListItem'
     GameList:
       $ref: './games.yaml#/GameList'
-    GamePlayer:
-      $ref: './games.yaml#/GamePlayer'
     Game:
       $ref: './games.yaml#/Game'
-    GameMatchPlayer:
-      $ref: './games.yaml#/GameMatchPlayer'
-    GameMatch:
-      $ref: './games.yaml#/GameMatch'
     GameTag:
       $ref: './games.yaml#/GameTag'
+
+    # Arenas (ADR-24)
+    MatchFilter:
+      $ref: './arenas.yaml#/MatchFilter'
+    ArenaSettings:
+      $ref: './arenas.yaml#/ArenaSettings'
+    Arena:
+      $ref: './arenas.yaml#/Arena'
+    ArenaInput:
+      $ref: './arenas.yaml#/ArenaInput'
+    ArenaResult:
+      $ref: './arenas.yaml#/ArenaResult'
+    ArenaList:
+      $ref: './arenas.yaml#/ArenaList'
+    ArenaPlayer:
+      $ref: './arenas.yaml#/ArenaPlayer'
+    ArenaPlayersList:
+      $ref: './arenas.yaml#/ArenaPlayersList'
 
     # Matches
     MatchPlayer:
@@ -117,12 +129,14 @@ components:
       $ref: './admin.yaml#/CorrectionsPage'
 
     # Admin / debug
-    PlayerGlobalStateChange:
-      $ref: './admin.yaml#/PlayerGlobalStateChange'
+    PlayerStateChange:
+      $ref: './admin.yaml#/PlayerStateChange'
     GlobalReplayReport:
       $ref: './admin.yaml#/GlobalReplayReport'
-    RecalculateGlobalEloResult:
-      $ref: './admin.yaml#/RecalculateGlobalEloResult'
+    ArenaUpdateReport:
+      $ref: './admin.yaml#/ArenaUpdateReport'
+    UpdateArenasResult:
+      $ref: './admin.yaml#/UpdateArenasResult'
 
     # Audit
     AuditEntry:
@@ -181,12 +195,20 @@ paths:
     $ref: './games.yaml#/GamesCollection'
   /games/{id}:
     $ref: './games.yaml#/GameItem'
-  /games/{id}/matches:
-    $ref: './games.yaml#/GameMatchesPath'
   /games/{id}/tags:
     $ref: './games.yaml#/GameTagsPath'
   /games/{id}/tags/{tagId}:
     $ref: './games.yaml#/GameTagItem'
+
+  # Arenas (ADR-24)
+  /arenas:
+    $ref: './arenas.yaml#/ArenasCollection'
+  /arenas/{id}:
+    $ref: './arenas.yaml#/ArenaItem'
+  /arenas/{id}/players:
+    $ref: './arenas.yaml#/ArenaPlayersPath'
+  /arenas/{id}/matches:
+    $ref: './arenas.yaml#/ArenaMatchesPath'
 
   # Tags
   /tags:
@@ -263,8 +285,8 @@ paths:
     $ref: './audit.yaml#/AuditCollection'
 
   # Admin
-  /admin/recalculate-global-elo:
-    $ref: './admin.yaml#/RecalculateGlobalElo'
+  /admin/update-arenas:
+    $ref: './admin.yaml#/UpdateArenas'
   /admin/players/{id}/corrections:
     $ref: './admin.yaml#/AdminPlayerCorrections'
 

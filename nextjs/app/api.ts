@@ -122,7 +122,6 @@ export type GameListItem = components["schemas"]["GameListItem"];
 export type GameTag = components["schemas"]["GameTag"];
 export type Tag = components["schemas"]["Tag"];
 export type Game = components["schemas"]["Game"];
-export type GameMatchPlayer = components["schemas"]["GameMatchPlayer"];
 export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
 export type Market = components["schemas"]["Market"];
 export type MarketDetail = components["schemas"]["MarketDetail"];
@@ -131,9 +130,14 @@ export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
 export type WinStreakParams = components["schemas"]["WinStreakParams"];
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
 export type MarketGuarantee = components["schemas"]["MarketGuarantee"];
-export type PlayerGlobalStateChange = components["schemas"]["PlayerGlobalStateChange"];
+export type PlayerStateChange = components["schemas"]["PlayerStateChange"];
 export type GlobalReplayReport = components["schemas"]["GlobalReplayReport"];
-export type RecalculateGlobalEloResult = components["schemas"]["RecalculateGlobalEloResult"];
+export type ArenaUpdateReport = components["schemas"]["ArenaUpdateReport"];
+export type UpdateArenasResult = components["schemas"]["UpdateArenasResult"];
+export type MatchFilter = components["schemas"]["MatchFilter"];
+export type ArenaSettings = components["schemas"]["ArenaSettings"];
+export type Arena = components["schemas"]["Arena"];
+export type ArenaPlayer = components["schemas"]["ArenaPlayer"];
 export type TableSummary = components["schemas"]["TableSummary"];
 export type TableGameState = components["schemas"]["TableGameState"];
 export type TablePlayer = components["schemas"]["TablePlayer"];
@@ -185,14 +189,6 @@ export type Match = {
     calculator_kind?: string | null;
     /** Intermediate calculator state (opaque to the API layer). */
     calculator_data?: Record<string, unknown> | null;
-};
-
-// date is a Date object
-export type GameMatch = {
-    id: Base58ID;
-    date: Date | null;
-    players: GameMatchPlayer[];
-    tournaments: MatchTournament[];
 };
 
 export type Status = {
@@ -439,16 +435,6 @@ export async function getGamePromise(id: Base58ID): Promise<Game> {
     return (await unwrap(client.GET("/games/{id}", { params: { path: { id } } }))).data;
 }
 
-export async function getGameMatchesPromise(gameId: Base58ID): Promise<GameMatch[]> {
-    const data = await unwrap(client.GET("/games/{id}/matches", { params: { path: { id: gameId } } }));
-    return data.data.map(m => ({
-        id: m.id,
-        date: m.date ? new Date(m.date) : null,
-        players: m.players,
-        tournaments: m.tournaments ?? [],
-    }));
-}
-
 export async function patchGamePromise(id: Base58ID, payload: { name: string }) {
     return (await unwrap(client.PATCH("/games/{id}", { params: { path: { id } }, body: payload }))).data;
 }
@@ -543,13 +529,14 @@ export async function createPlayerCorrectionPromise(playerId: Base58ID, diff: nu
 }
 
 /**
- * Debug/monitoring: replay the whole settlement history from the beginning
- * (the same computation an edit+save of the chronologically first match
- * triggers) and report every player whose global arena rating changed.
- * A stable recalculation reports no changed players.
+ * Debug/monitoring: recalculate every arena to the actual state (ADR-24). The
+ * global arena is replayed from the beginning (the same computation an
+ * edit+save of the chronologically first match triggers); every other arena
+ * gets a full replay of its filtered matches. A stable recalculation reports
+ * no changed players.
  */
-export async function recalculateGlobalEloPromise(): Promise<GlobalReplayReport> {
-    return (await unwrap(client.POST("/admin/recalculate-global-elo"))).data;
+export async function updateArenasPromise(): Promise<UpdateArenasResult["data"]> {
+    return (await unwrap(client.POST("/admin/update-arenas"))).data;
 }
 
 export async function listClubsPromise(): Promise<Club[]> {
@@ -838,4 +825,71 @@ export async function deleteTablePromise(tableId: Base58ID, matchId?: string): P
             ...(matchId ? { query: { match_id: matchId } } : {}),
         },
     }));
+}
+
+// ─── Arenas (ADR-24) ──────────────────────────────────────────────────────────
+
+export async function getArenasPromise(params?: {
+    game_id?: Base58ID;
+    tournament_id?: Base58ID;
+}): Promise<Arena[]> {
+    const query: Record<string, string> = {};
+    if (params?.game_id) query.game_id = params.game_id;
+    if (params?.tournament_id) query.tournament_id = params.tournament_id;
+    return (await unwrap(client.GET("/arenas", { params: { query } }))).data;
+}
+
+export async function getArenaPromise(id: Base58ID): Promise<Arena> {
+    return (await unwrap(client.GET("/arenas/{id}", { params: { path: { id } } }))).data;
+}
+
+export async function getArenaPlayersPromise(id: Base58ID): Promise<ArenaPlayer[]> {
+    return (await unwrap(client.GET("/arenas/{id}/players", { params: { path: { id } } }))).data;
+}
+
+export async function getArenaMatchesPagePromise(params: {
+    id: Base58ID;
+    next?: string;
+    limit?: number;
+}): Promise<MatchesPage> {
+    const query: Record<string, string | number> = {};
+    if (params.next) query.next = params.next;
+    if (params.limit) query.limit = params.limit;
+    const data = await unwrap(client.GET("/arenas/{id}/matches", {
+        params: { path: { id: params.id }, query },
+    }));
+    return { items: data.data.map(mapMatch), next: data.next ?? null };
+}
+
+export async function createArenaPromise(payload: {
+    name: string;
+    filter: MatchFilter;
+    settings: ArenaSettings;
+}): Promise<Arena> {
+    return (await unwrap(client.POST("/arenas", { body: payload }))).data;
+}
+
+export async function updateArenaPromise(
+    id: Base58ID,
+    payload: { name: string; filter: MatchFilter; settings: ArenaSettings },
+): Promise<Arena> {
+    return (await unwrap(client.PATCH("/arenas/{id}", { params: { path: { id } }, body: payload }))).data;
+}
+
+export async function deleteArenaPromise(id: Base58ID) {
+    return unwrap(client.DELETE("/arenas/{id}", { params: { path: { id } } }));
+}
+
+/**
+ * Typed view of the arena settings document (ADR-24). The wire type is an
+ * opaque object — the server validates it against the versioned JSON Schema
+ * in pkg/arenasettings; v1 shape reproduced here for rendering.
+ */
+export type ArenaSettingsDoc = {
+    starting_rating: number;
+    leagues: { kind: "newbie" | "amateur" | "elite" }[];
+};
+
+export function parseArenaSettings(settings: ArenaSettings): ArenaSettingsDoc {
+    return settings as unknown as ArenaSettingsDoc;
 }

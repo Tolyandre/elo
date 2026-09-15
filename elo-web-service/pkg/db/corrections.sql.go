@@ -55,15 +55,17 @@ func (q *Queries) CreateCorrection(ctx context.Context, arg CreateCorrectionPara
 	return i, err
 }
 
-const deleteAllSettlementsFromDate = `-- name: DeleteAllSettlementsFromDate :exec
-DELETE FROM global_arena_settlement WHERE date >= $1
+const deleteGlobalSettlementsFromDate = `-- name: DeleteGlobalSettlementsFromDate :exec
+DELETE FROM arena_settlements
+WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1
 `
 
-// Single delete covering match, market, AND correction settlements.
+// Single delete covering match, market, AND correction settlements of the
+// global arena (the only arena markets and corrections touch).
 // Called at the start of RecalculateFrom so per-market deletes in
 // UnsettleMarketsFromDate become harmless no-ops.
-func (q *Queries) DeleteAllSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
-	_, err := q.db.Exec(ctx, deleteAllSettlementsFromDate, date)
+func (q *Queries) DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteGlobalSettlementsFromDate, date)
 	return err
 }
 
@@ -97,35 +99,43 @@ func (q *Queries) GetCorrectionsFromDate(ctx context.Context, date pgtype.Timest
 	return items, nil
 }
 
-const getPlayerLatestGlobalStateBeforeCorrection = `-- name: GetPlayerLatestGlobalStateBeforeCorrection :one
+const getPlayerLatestArenaStateBeforeCorrection = `-- name: GetPlayerLatestArenaStateBeforeCorrection :one
 SELECT gas.rating_after AS rating, gas.elo_after AS elo, gas.league
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-  AND (gas.date < $2
-       OR (gas.date = $2 AND gas.discriminator != 'correction')
-       OR (gas.date = $2 AND gas.discriminator = 'correction' AND gas.correction_id < $3))
+FROM arena_settlements gas
+WHERE gas.arena_id = $1
+  AND gas.player_id = $2
+  AND (gas.date < $3
+       OR (gas.date = $3 AND gas.discriminator != 'correction')
+       OR (gas.date = $3 AND gas.discriminator = 'correction' AND gas.correction_id < $4))
 ORDER BY gas.date DESC, gas.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalStateBeforeCorrectionParams struct {
+type GetPlayerLatestArenaStateBeforeCorrectionParams struct {
+	ArenaID      id.ID              `json:"arena_id"`
 	PlayerID     id.ID              `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	CorrectionID *id.ID             `json:"correction_id"`
 }
 
-type GetPlayerLatestGlobalStateBeforeCorrectionRow struct {
-	Rating float64 `json:"rating"`
-	Elo    float64 `json:"elo"`
-	League string  `json:"league"`
+type GetPlayerLatestArenaStateBeforeCorrectionRow struct {
+	Rating float64     `json:"rating"`
+	Elo    float64     `json:"elo"`
+	League pgtype.Text `json:"league"`
 }
 
-// Picks the latest settlement before correction $3 for player $1 at date $2.
-// Same-date matches/markets (discriminator != 'correction') come before corrections.
-// Earlier same-date corrections (correction_id < $3) are also included.
-func (q *Queries) GetPlayerLatestGlobalStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestGlobalStateBeforeCorrectionParams) (GetPlayerLatestGlobalStateBeforeCorrectionRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalStateBeforeCorrection, arg.PlayerID, arg.Date, arg.CorrectionID)
-	var i GetPlayerLatestGlobalStateBeforeCorrectionRow
+// Picks the latest settlement before correction $4 for player $2 at date $3
+// in arena $1. Same-date matches/markets (discriminator != 'correction') come
+// before corrections. Earlier same-date corrections (correction_id < $4) are
+// also included.
+func (q *Queries) GetPlayerLatestArenaStateBeforeCorrection(ctx context.Context, arg GetPlayerLatestArenaStateBeforeCorrectionParams) (GetPlayerLatestArenaStateBeforeCorrectionRow, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaStateBeforeCorrection,
+		arg.ArenaID,
+		arg.PlayerID,
+		arg.Date,
+		arg.CorrectionID,
+	)
+	var i GetPlayerLatestArenaStateBeforeCorrectionRow
 	err := row.Scan(&i.Rating, &i.Elo, &i.League)
 	return i, err
 }
@@ -207,12 +217,12 @@ func (q *Queries) ListCorrectionsPaginated(ctx context.Context, arg ListCorrecti
 	return items, nil
 }
 
-const upsertGlobalArenaSettlementByCorrection = `-- name: UpsertGlobalArenaSettlementByCorrection :exec
-INSERT INTO global_arena_settlement
-    (id, player_id, date, rating_after, elo_after, discriminator, correction_id,
+const upsertArenaSettlementByCorrection = `-- name: UpsertArenaSettlementByCorrection :exec
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, correction_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-VALUES ($1, $2, $3, $4, $5, 'correction', $6, 0, 0, $7, $8, $9)
-ON CONFLICT (correction_id, player_id) WHERE correction_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, $6, 'correction', $7, 0, 0, $8, $9, $10)
+ON CONFLICT (arena_id, correction_id, player_id) WHERE correction_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -221,8 +231,9 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               league        = EXCLUDED.league
 `
 
-type UpsertGlobalArenaSettlementByCorrectionParams struct {
+type UpsertArenaSettlementByCorrectionParams struct {
 	ID           id.ID              `json:"id"`
+	ArenaID      id.ID              `json:"arena_id"`
 	PlayerID     id.ID              `json:"player_id"`
 	Date         pgtype.Timestamptz `json:"date"`
 	RatingAfter  float64            `json:"rating_after"`
@@ -230,12 +241,13 @@ type UpsertGlobalArenaSettlementByCorrectionParams struct {
 	CorrectionID *id.ID             `json:"correction_id"`
 	RatingStaked float64            `json:"rating_staked"`
 	RatingEarned float64            `json:"rating_earned"`
-	League       string             `json:"league"`
+	League       pgtype.Text        `json:"league"`
 }
 
-func (q *Queries) UpsertGlobalArenaSettlementByCorrection(ctx context.Context, arg UpsertGlobalArenaSettlementByCorrectionParams) error {
-	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByCorrection,
+func (q *Queries) UpsertArenaSettlementByCorrection(ctx context.Context, arg UpsertArenaSettlementByCorrectionParams) error {
+	_, err := q.db.Exec(ctx, upsertArenaSettlementByCorrection,
 		arg.ID,
+		arg.ArenaID,
 		arg.PlayerID,
 		arg.Date,
 		arg.RatingAfter,

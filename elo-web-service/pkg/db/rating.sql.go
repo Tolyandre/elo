@@ -12,422 +12,249 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-const deleteGameArenaSettlementByMatch = `-- name: DeleteGameArenaSettlementByMatch :exec
-DELETE FROM game_arena_settlement WHERE match_id = $1
+const arenaRatingHistory = `-- name: ArenaRatingHistory :many
+SELECT s.date, s.rating_after AS rating, s.elo_after AS elo
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2
+ORDER BY s.date
 `
 
-func (q *Queries) DeleteGameArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error {
-	_, err := q.db.Exec(ctx, deleteGameArenaSettlementByMatch, matchID)
+type ArenaRatingHistoryParams struct {
+	ArenaID  id.ID `json:"arena_id"`
+	PlayerID id.ID `json:"player_id"`
+}
+
+type ArenaRatingHistoryRow struct {
+	Date   pgtype.Timestamptz `json:"date"`
+	Rating float64            `json:"rating"`
+	Elo    float64            `json:"elo"`
+}
+
+// Returns rating_after and elo_after ordered by date for the player graph.
+func (q *Queries) ArenaRatingHistory(ctx context.Context, arg ArenaRatingHistoryParams) ([]ArenaRatingHistoryRow, error) {
+	rows, err := q.db.Query(ctx, arenaRatingHistory, arg.ArenaID, arg.PlayerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ArenaRatingHistoryRow{}
+	for rows.Next() {
+		var i ArenaRatingHistoryRow
+		if err := rows.Scan(&i.Date, &i.Rating, &i.Elo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteArenaSettlementsFromDate = `-- name: DeleteArenaSettlementsFromDate :exec
+DELETE FROM arena_settlements WHERE arena_id = $1 AND date >= $2
+`
+
+type DeleteArenaSettlementsFromDateParams struct {
+	ArenaID id.ID              `json:"arena_id"`
+	Date    pgtype.Timestamptz `json:"date"`
+}
+
+// Replay support: removes every settlement row (match, market, correction) of
+// the arena from the date on. For non-global arenas only 'match' rows exist.
+func (q *Queries) DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error {
+	_, err := q.db.Exec(ctx, deleteArenaSettlementsFromDate, arg.ArenaID, arg.Date)
 	return err
 }
 
-const deleteGlobalArenaSettlementByMatch = `-- name: DeleteGlobalArenaSettlementByMatch :exec
-DELETE FROM global_arena_settlement WHERE match_id = $1 AND discriminator = 'match'
-`
-
-func (q *Queries) DeleteGlobalArenaSettlementByMatch(ctx context.Context, matchID *id.ID) error {
-	_, err := q.db.Exec(ctx, deleteGlobalArenaSettlementByMatch, matchID)
-	return err
-}
-
-const getPlayerGameMatchCountInPeriod = `-- name: GetPlayerGameMatchCountInPeriod :one
-SELECT COUNT(*)::int AS count
-FROM matches m
-JOIN match_scores ms ON ms.match_id = m.id
-WHERE ms.player_id = $1 AND m.game_id = $2 AND m.date >= $3 AND m.date <= $4
-`
-
-type GetPlayerGameMatchCountInPeriodParams struct {
-	PlayerID id.ID              `json:"player_id"`
-	GameID   id.ID              `json:"game_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	Date_2   pgtype.Timestamptz `json:"date_2"`
-}
-
-// Counts game-specific matches a player participated in within [from_date, to_date].
-func (q *Queries) GetPlayerGameMatchCountInPeriod(ctx context.Context, arg GetPlayerGameMatchCountInPeriodParams) (int32, error) {
-	row := q.db.QueryRow(ctx, getPlayerGameMatchCountInPeriod,
-		arg.PlayerID,
-		arg.GameID,
-		arg.Date,
-		arg.Date_2,
-	)
-	var count int32
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getPlayerGlobalMatchCountInPeriod = `-- name: GetPlayerGlobalMatchCountInPeriod :one
-SELECT COUNT(*)::int AS count
-FROM matches m
-JOIN match_scores ms ON ms.match_id = m.id
-WHERE ms.player_id = $1 AND m.date >= $2 AND m.date <= $3
-`
-
-type GetPlayerGlobalMatchCountInPeriodParams struct {
-	PlayerID id.ID              `json:"player_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	Date_2   pgtype.Timestamptz `json:"date_2"`
-}
-
-// Counts matches a player participated in within [from_date, to_date].
-func (q *Queries) GetPlayerGlobalMatchCountInPeriod(ctx context.Context, arg GetPlayerGlobalMatchCountInPeriodParams) (int32, error) {
-	row := q.db.QueryRow(ctx, getPlayerGlobalMatchCountInPeriod, arg.PlayerID, arg.Date, arg.Date_2)
-	var count int32
-	err := row.Scan(&count)
-	return count, err
-}
-
-const getPlayerLatestGameElo = `-- name: GetPlayerLatestGameElo :one
-SELECT gas.elo_after AS game_elo_after
-FROM game_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.game_id = $2
-ORDER BY gas.date DESC, gas.match_id DESC
+const getPlayerLatestArenaElo = `-- name: GetPlayerLatestArenaElo :one
+SELECT s.elo_after AS rating
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGameEloParams struct {
+type GetPlayerLatestArenaEloParams struct {
+	ArenaID  id.ID `json:"arena_id"`
 	PlayerID id.ID `json:"player_id"`
-	GameID   id.ID `json:"game_id"`
 }
-
-func (q *Queries) GetPlayerLatestGameElo(ctx context.Context, arg GetPlayerLatestGameEloParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameElo, arg.PlayerID, arg.GameID)
-	var game_elo_after float64
-	err := row.Scan(&game_elo_after)
-	return game_elo_after, err
-}
-
-const getPlayerLatestGameEloBeforeMatch = `-- name: GetPlayerLatestGameEloBeforeMatch :one
-SELECT gas.elo_after AS game_elo_after
-FROM game_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.game_id = $2
-  AND (gas.date < $3 OR (gas.date = $3 AND gas.match_id < $4))
-ORDER BY gas.date DESC, gas.match_id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGameEloBeforeMatchParams struct {
-	PlayerID id.ID              `json:"player_id"`
-	GameID   id.ID              `json:"game_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *id.ID             `json:"match_id"`
-}
-
-func (q *Queries) GetPlayerLatestGameEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGameEloBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameEloBeforeMatch,
-		arg.PlayerID,
-		arg.GameID,
-		arg.Date,
-		arg.MatchID,
-	)
-	var game_elo_after float64
-	err := row.Scan(&game_elo_after)
-	return game_elo_after, err
-}
-
-const getPlayerLatestGameRating = `-- name: GetPlayerLatestGameRating :one
-SELECT gas.rating_after AS game_rating_after, gas.league
-FROM game_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.game_id = $2
-ORDER BY gas.date DESC, gas.match_id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGameRatingParams struct {
-	PlayerID id.ID `json:"player_id"`
-	GameID   id.ID `json:"game_id"`
-}
-
-type GetPlayerLatestGameRatingRow struct {
-	GameRatingAfter float64 `json:"game_rating_after"`
-	League          string  `json:"league"`
-}
-
-// Returns the display game rating and current game league.
-func (q *Queries) GetPlayerLatestGameRating(ctx context.Context, arg GetPlayerLatestGameRatingParams) (GetPlayerLatestGameRatingRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameRating, arg.PlayerID, arg.GameID)
-	var i GetPlayerLatestGameRatingRow
-	err := row.Scan(&i.GameRatingAfter, &i.League)
-	return i, err
-}
-
-const getPlayerLatestGameRatingBeforeMatch = `-- name: GetPlayerLatestGameRatingBeforeMatch :one
-SELECT gas.rating_after AS game_rating_after, gas.league
-FROM game_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.game_id = $2
-  AND (gas.date < $3 OR (gas.date = $3 AND gas.match_id < $4))
-ORDER BY gas.date DESC, gas.match_id DESC
-LIMIT 1
-`
-
-type GetPlayerLatestGameRatingBeforeMatchParams struct {
-	PlayerID id.ID              `json:"player_id"`
-	GameID   id.ID              `json:"game_id"`
-	Date     pgtype.Timestamptz `json:"date"`
-	MatchID  *id.ID             `json:"match_id"`
-}
-
-type GetPlayerLatestGameRatingBeforeMatchRow struct {
-	GameRatingAfter float64 `json:"game_rating_after"`
-	League          string  `json:"league"`
-}
-
-func (q *Queries) GetPlayerLatestGameRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGameRatingBeforeMatchParams) (GetPlayerLatestGameRatingBeforeMatchRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGameRatingBeforeMatch,
-		arg.PlayerID,
-		arg.GameID,
-		arg.Date,
-		arg.MatchID,
-	)
-	var i GetPlayerLatestGameRatingBeforeMatchRow
-	err := row.Scan(&i.GameRatingAfter, &i.League)
-	return i, err
-}
-
-const getPlayerLatestGlobalElo = `-- name: GetPlayerLatestGlobalElo :one
-SELECT gas.elo_after AS rating
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-ORDER BY gas.date DESC, gas.id DESC
-LIMIT 1
-`
 
 // Returns the true Elo value (elo_after) for Elo calculations.
-func (q *Queries) GetPlayerLatestGlobalElo(ctx context.Context, playerID id.ID) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalElo, playerID)
+func (q *Queries) GetPlayerLatestArenaElo(ctx context.Context, arg GetPlayerLatestArenaEloParams) (float64, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaElo, arg.ArenaID, arg.PlayerID)
 	var rating float64
 	err := row.Scan(&rating)
 	return rating, err
 }
 
-const getPlayerLatestGlobalEloAtDate = `-- name: GetPlayerLatestGlobalEloAtDate :one
-SELECT gas.elo_after AS rating
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.date <= $2
-ORDER BY gas.date DESC, gas.id DESC
+const getPlayerLatestArenaEloAtDate = `-- name: GetPlayerLatestArenaEloAtDate :one
+SELECT s.elo_after AS rating
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2 AND s.date <= $3
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalEloAtDateParams struct {
+type GetPlayerLatestArenaEloAtDateParams struct {
+	ArenaID  id.ID              `json:"arena_id"`
 	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 }
 
-func (q *Queries) GetPlayerLatestGlobalEloAtDate(ctx context.Context, arg GetPlayerLatestGlobalEloAtDateParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloAtDate, arg.PlayerID, arg.Date)
+func (q *Queries) GetPlayerLatestArenaEloAtDate(ctx context.Context, arg GetPlayerLatestArenaEloAtDateParams) (float64, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaEloAtDate, arg.ArenaID, arg.PlayerID, arg.Date)
 	var rating float64
 	err := row.Scan(&rating)
 	return rating, err
 }
 
-const getPlayerLatestGlobalEloBeforeMatch = `-- name: GetPlayerLatestGlobalEloBeforeMatch :one
-SELECT gas.elo_after AS rating
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-  AND (gas.date < $2 OR (gas.date = $2 AND gas.match_id IS NOT NULL AND gas.match_id < $3))
-ORDER BY gas.date DESC, gas.id DESC
+const getPlayerLatestArenaEloBeforeMatch = `-- name: GetPlayerLatestArenaEloBeforeMatch :one
+SELECT s.elo_after AS rating
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2
+  AND (s.date < $3 OR (s.date = $3 AND s.match_id IS NOT NULL AND s.match_id < $4))
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalEloBeforeMatchParams struct {
+type GetPlayerLatestArenaEloBeforeMatchParams struct {
+	ArenaID  id.ID              `json:"arena_id"`
 	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 	MatchID  *id.ID             `json:"match_id"`
 }
 
-func (q *Queries) GetPlayerLatestGlobalEloBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalEloBeforeMatchParams) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalEloBeforeMatch, arg.PlayerID, arg.Date, arg.MatchID)
+func (q *Queries) GetPlayerLatestArenaEloBeforeMatch(ctx context.Context, arg GetPlayerLatestArenaEloBeforeMatchParams) (float64, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaEloBeforeMatch,
+		arg.ArenaID,
+		arg.PlayerID,
+		arg.Date,
+		arg.MatchID,
+	)
 	var rating float64
 	err := row.Scan(&rating)
 	return rating, err
 }
 
-const getPlayerLatestGlobalRating = `-- name: GetPlayerLatestGlobalRating :one
-SELECT gas.rating_after AS rating, gas.league
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-ORDER BY gas.date DESC, gas.id DESC
+const getPlayerLatestArenaRating = `-- name: GetPlayerLatestArenaRating :one
+SELECT s.rating_after AS rating, s.league
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalRatingRow struct {
-	Rating float64 `json:"rating"`
-	League string  `json:"league"`
+type GetPlayerLatestArenaRatingParams struct {
+	ArenaID  id.ID `json:"arena_id"`
+	PlayerID id.ID `json:"player_id"`
 }
 
-// Returns the display rating (rating_after) and current league for rating-track calculations.
-func (q *Queries) GetPlayerLatestGlobalRating(ctx context.Context, playerID id.ID) (GetPlayerLatestGlobalRatingRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalRating, playerID)
-	var i GetPlayerLatestGlobalRatingRow
+type GetPlayerLatestArenaRatingRow struct {
+	Rating float64     `json:"rating"`
+	League pgtype.Text `json:"league"`
+}
+
+// Returns the display rating (rating_after) and current league for
+// rating-track calculations.
+func (q *Queries) GetPlayerLatestArenaRating(ctx context.Context, arg GetPlayerLatestArenaRatingParams) (GetPlayerLatestArenaRatingRow, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaRating, arg.ArenaID, arg.PlayerID)
+	var i GetPlayerLatestArenaRatingRow
 	err := row.Scan(&i.Rating, &i.League)
 	return i, err
 }
 
-const getPlayerLatestGlobalRatingAtDate = `-- name: GetPlayerLatestGlobalRatingAtDate :one
-SELECT gas.rating_after AS rating, gas.league
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-  AND gas.date <= $2
-ORDER BY gas.date DESC, gas.id DESC
+const getPlayerLatestArenaRatingAtDate = `-- name: GetPlayerLatestArenaRatingAtDate :one
+SELECT s.rating_after AS rating, s.league
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2 AND s.date <= $3
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalRatingAtDateParams struct {
+type GetPlayerLatestArenaRatingAtDateParams struct {
+	ArenaID  id.ID              `json:"arena_id"`
 	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 }
 
-type GetPlayerLatestGlobalRatingAtDateRow struct {
-	Rating float64 `json:"rating"`
-	League string  `json:"league"`
+type GetPlayerLatestArenaRatingAtDateRow struct {
+	Rating float64     `json:"rating"`
+	League pgtype.Text `json:"league"`
 }
 
-func (q *Queries) GetPlayerLatestGlobalRatingAtDate(ctx context.Context, arg GetPlayerLatestGlobalRatingAtDateParams) (GetPlayerLatestGlobalRatingAtDateRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalRatingAtDate, arg.PlayerID, arg.Date)
-	var i GetPlayerLatestGlobalRatingAtDateRow
+func (q *Queries) GetPlayerLatestArenaRatingAtDate(ctx context.Context, arg GetPlayerLatestArenaRatingAtDateParams) (GetPlayerLatestArenaRatingAtDateRow, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaRatingAtDate, arg.ArenaID, arg.PlayerID, arg.Date)
+	var i GetPlayerLatestArenaRatingAtDateRow
 	err := row.Scan(&i.Rating, &i.League)
 	return i, err
 }
 
-const getPlayerLatestGlobalRatingBeforeMatch = `-- name: GetPlayerLatestGlobalRatingBeforeMatch :one
-SELECT gas.rating_after AS rating, gas.league
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-  AND (gas.date < $2 OR (gas.date = $2 AND gas.match_id IS NOT NULL AND gas.match_id < $3))
-ORDER BY gas.date DESC, gas.id DESC
+const getPlayerLatestArenaRatingBeforeMatch = `-- name: GetPlayerLatestArenaRatingBeforeMatch :one
+SELECT s.rating_after AS rating, s.league
+FROM arena_settlements s
+WHERE s.arena_id = $1 AND s.player_id = $2
+  AND (s.date < $3 OR (s.date = $3 AND s.match_id IS NOT NULL AND s.match_id < $4))
+ORDER BY s.date DESC, s.id DESC
 LIMIT 1
 `
 
-type GetPlayerLatestGlobalRatingBeforeMatchParams struct {
+type GetPlayerLatestArenaRatingBeforeMatchParams struct {
+	ArenaID  id.ID              `json:"arena_id"`
 	PlayerID id.ID              `json:"player_id"`
 	Date     pgtype.Timestamptz `json:"date"`
 	MatchID  *id.ID             `json:"match_id"`
 }
 
-type GetPlayerLatestGlobalRatingBeforeMatchRow struct {
-	Rating float64 `json:"rating"`
-	League string  `json:"league"`
+type GetPlayerLatestArenaRatingBeforeMatchRow struct {
+	Rating float64     `json:"rating"`
+	League pgtype.Text `json:"league"`
 }
 
-func (q *Queries) GetPlayerLatestGlobalRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestGlobalRatingBeforeMatchParams) (GetPlayerLatestGlobalRatingBeforeMatchRow, error) {
-	row := q.db.QueryRow(ctx, getPlayerLatestGlobalRatingBeforeMatch, arg.PlayerID, arg.Date, arg.MatchID)
-	var i GetPlayerLatestGlobalRatingBeforeMatchRow
+func (q *Queries) GetPlayerLatestArenaRatingBeforeMatch(ctx context.Context, arg GetPlayerLatestArenaRatingBeforeMatchParams) (GetPlayerLatestArenaRatingBeforeMatchRow, error) {
+	row := q.db.QueryRow(ctx, getPlayerLatestArenaRatingBeforeMatch,
+		arg.ArenaID,
+		arg.PlayerID,
+		arg.Date,
+		arg.MatchID,
+	)
+	var i GetPlayerLatestArenaRatingBeforeMatchRow
 	err := row.Scan(&i.Rating, &i.League)
 	return i, err
 }
 
-const listLatestGameEloPerPlayer = `-- name: ListLatestGameEloPerPlayer :many
-SELECT DISTINCT ON (gas.player_id) gas.player_id, gas.elo_after AS game_elo_after
-FROM game_arena_settlement gas
-WHERE gas.game_id = $1
-ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
-`
-
-type ListLatestGameEloPerPlayerRow struct {
-	PlayerID     id.ID   `json:"player_id"`
-	GameEloAfter float64 `json:"game_elo_after"`
-}
-
-func (q *Queries) ListLatestGameEloPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameEloPerPlayerRow, error) {
-	rows, err := q.db.Query(ctx, listLatestGameEloPerPlayer, gameID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListLatestGameEloPerPlayerRow{}
-	for rows.Next() {
-		var i ListLatestGameEloPerPlayerRow
-		if err := rows.Scan(&i.PlayerID, &i.GameEloAfter); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLatestGameRatingPerPlayer = `-- name: ListLatestGameRatingPerPlayer :many
-SELECT DISTINCT ON (gas.player_id)
-  gas.player_id,
-  gas.rating_after AS game_rating_after,
-  gas.elo_after    AS game_elo_after,
-  gas.league
-FROM game_arena_settlement gas
-WHERE gas.game_id = $1
-ORDER BY gas.player_id, gas.date DESC, gas.match_id DESC
-`
-
-type ListLatestGameRatingPerPlayerRow struct {
-	PlayerID        id.ID   `json:"player_id"`
-	GameRatingAfter float64 `json:"game_rating_after"`
-	GameEloAfter    float64 `json:"game_elo_after"`
-	League          string  `json:"league"`
-}
-
-func (q *Queries) ListLatestGameRatingPerPlayer(ctx context.Context, gameID id.ID) ([]ListLatestGameRatingPerPlayerRow, error) {
-	rows, err := q.db.Query(ctx, listLatestGameRatingPerPlayer, gameID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListLatestGameRatingPerPlayerRow{}
-	for rows.Next() {
-		var i ListLatestGameRatingPerPlayerRow
-		if err := rows.Scan(
-			&i.PlayerID,
-			&i.GameRatingAfter,
-			&i.GameEloAfter,
-			&i.League,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLatestGlobalStatePerPlayer = `-- name: ListLatestGlobalStatePerPlayer :many
-SELECT DISTINCT ON (gas.player_id)
-  gas.player_id,
+const listLatestArenaStatePerPlayer = `-- name: ListLatestArenaStatePerPlayer :many
+SELECT DISTINCT ON (s.player_id)
+  s.player_id,
   p.name AS player_name,
-  gas.rating_after,
-  gas.elo_after,
-  gas.league
-FROM global_arena_settlement gas
-JOIN players p ON p.id = gas.player_id
-ORDER BY gas.player_id, gas.date DESC, gas.id DESC
+  s.rating_after,
+  s.elo_after,
+  s.league
+FROM arena_settlements s
+JOIN players p ON p.id = s.player_id
+WHERE s.arena_id = $1
+ORDER BY s.player_id, s.date DESC, s.id DESC
 `
 
-type ListLatestGlobalStatePerPlayerRow struct {
-	PlayerID    id.ID   `json:"player_id"`
-	PlayerName  string  `json:"player_name"`
-	RatingAfter float64 `json:"rating_after"`
-	EloAfter    float64 `json:"elo_after"`
-	League      string  `json:"league"`
+type ListLatestArenaStatePerPlayerRow struct {
+	PlayerID    id.ID       `json:"player_id"`
+	PlayerName  string      `json:"player_name"`
+	RatingAfter float64     `json:"rating_after"`
+	EloAfter    float64     `json:"elo_after"`
+	League      pgtype.Text `json:"league"`
 }
 
-// The current global arena state (latest settlement row) of every player.
+// The current state (latest settlement row) of every player in the arena.
 // Used to diff the state before and after a full recalculation replay.
-func (q *Queries) ListLatestGlobalStatePerPlayer(ctx context.Context) ([]ListLatestGlobalStatePerPlayerRow, error) {
-	rows, err := q.db.Query(ctx, listLatestGlobalStatePerPlayer)
+func (q *Queries) ListLatestArenaStatePerPlayer(ctx context.Context, arenaID id.ID) ([]ListLatestArenaStatePerPlayerRow, error) {
+	rows, err := q.db.Query(ctx, listLatestArenaStatePerPlayer, arenaID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListLatestGlobalStatePerPlayerRow{}
+	items := []ListLatestArenaStatePerPlayerRow{}
 	for rows.Next() {
-		var i ListLatestGlobalStatePerPlayerRow
+		var i ListLatestArenaStatePerPlayerRow
 		if err := rows.Scan(
 			&i.PlayerID,
 			&i.PlayerName,
@@ -445,105 +272,13 @@ func (q *Queries) ListLatestGlobalStatePerPlayer(ctx context.Context) ([]ListLat
 	return items, nil
 }
 
-const listMatchesWithPlayersByGameFromDB = `-- name: ListMatchesWithPlayersByGameFromDB :many
-SELECT
-    m.id AS match_id,
-    m.date,
-    p.id AS player_id,
-    p.name AS player_name,
-    s.score,
-    gas.rating_staked AS game_rating_staked,
-    gas.rating_earned AS game_rating_earned,
-    gas.rating_after  AS game_rating_after
-FROM matches m
-JOIN match_scores s ON s.match_id = m.id
-JOIN players p ON p.id = s.player_id
-LEFT JOIN game_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id
-WHERE m.game_id = $1
-ORDER BY m.date ASC, m.id ASC, s.score DESC
-`
+const upsertArenaSettlementByMatch = `-- name: UpsertArenaSettlementByMatch :exec
 
-type ListMatchesWithPlayersByGameFromDBRow struct {
-	MatchID          id.ID              `json:"match_id"`
-	Date             pgtype.Timestamptz `json:"date"`
-	PlayerID         id.ID              `json:"player_id"`
-	PlayerName       string             `json:"player_name"`
-	Score            float64            `json:"score"`
-	GameRatingStaked pgtype.Float8      `json:"game_rating_staked"`
-	GameRatingEarned pgtype.Float8      `json:"game_rating_earned"`
-	GameRatingAfter  pgtype.Float8      `json:"game_rating_after"`
-}
-
-func (q *Queries) ListMatchesWithPlayersByGameFromDB(ctx context.Context, gameID id.ID) ([]ListMatchesWithPlayersByGameFromDBRow, error) {
-	rows, err := q.db.Query(ctx, listMatchesWithPlayersByGameFromDB, gameID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListMatchesWithPlayersByGameFromDBRow{}
-	for rows.Next() {
-		var i ListMatchesWithPlayersByGameFromDBRow
-		if err := rows.Scan(
-			&i.MatchID,
-			&i.Date,
-			&i.PlayerID,
-			&i.PlayerName,
-			&i.Score,
-			&i.GameRatingStaked,
-			&i.GameRatingEarned,
-			&i.GameRatingAfter,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const ratingHistory = `-- name: RatingHistory :many
-SELECT gas.date, gas.rating_after AS rating, gas.elo_after AS elo
-FROM global_arena_settlement gas
-WHERE gas.player_id = $1
-ORDER BY gas.date
-`
-
-type RatingHistoryRow struct {
-	Date   pgtype.Timestamptz `json:"date"`
-	Rating float64            `json:"rating"`
-	Elo    float64            `json:"elo"`
-}
-
-// Returns rating_after and elo_after ordered by date for the player graph.
-func (q *Queries) RatingHistory(ctx context.Context, playerID id.ID) ([]RatingHistoryRow, error) {
-	rows, err := q.db.Query(ctx, ratingHistory, playerID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []RatingHistoryRow{}
-	for rows.Next() {
-		var i RatingHistoryRow
-		if err := rows.Scan(&i.Date, &i.Rating, &i.Elo); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const upsertGameArenaSettlementByMatch = `-- name: UpsertGameArenaSettlementByMatch :exec
-INSERT INTO game_arena_settlement
-    (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id,
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, match_id,
      elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, $3, $4, m.date, $5, $6, 'match', $1, $7, $8, $9, $10, $11
-FROM matches m WHERE m.id = $1
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
+VALUES ($1, $2, $3, $4, $5, $6, 'match', $7, $8, $9, $10, $11, $12)
+ON CONFLICT (arena_id, match_id, player_id) WHERE match_id IS NOT NULL
 DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               elo_after     = EXCLUDED.elo_after,
               date          = EXCLUDED.date,
@@ -554,74 +289,35 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               league        = EXCLUDED.league
 `
 
-type UpsertGameArenaSettlementByMatchParams struct {
-	MatchID      *id.ID  `json:"match_id"`
-	ID           id.ID   `json:"id"`
-	GameID       id.ID   `json:"game_id"`
-	PlayerID     id.ID   `json:"player_id"`
-	RatingAfter  float64 `json:"rating_after"`
-	EloAfter     float64 `json:"elo_after"`
-	EloStaked    float64 `json:"elo_staked"`
-	EloEarned    float64 `json:"elo_earned"`
-	RatingStaked float64 `json:"rating_staked"`
-	RatingEarned float64 `json:"rating_earned"`
-	League       string  `json:"league"`
+type UpsertArenaSettlementByMatchParams struct {
+	ID           id.ID              `json:"id"`
+	ArenaID      id.ID              `json:"arena_id"`
+	PlayerID     id.ID              `json:"player_id"`
+	Date         pgtype.Timestamptz `json:"date"`
+	RatingAfter  float64            `json:"rating_after"`
+	EloAfter     float64            `json:"elo_after"`
+	MatchID      *id.ID             `json:"match_id"`
+	EloStaked    float64            `json:"elo_staked"`
+	EloEarned    float64            `json:"elo_earned"`
+	RatingStaked float64            `json:"rating_staked"`
+	RatingEarned float64            `json:"rating_earned"`
+	League       pgtype.Text        `json:"league"`
 }
 
-func (q *Queries) UpsertGameArenaSettlementByMatch(ctx context.Context, arg UpsertGameArenaSettlementByMatchParams) error {
-	_, err := q.db.Exec(ctx, upsertGameArenaSettlementByMatch,
-		arg.MatchID,
+// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
+// working with the global arena pass elo.GlobalArenaID. The global arena is
+// seeded by migration 051 with the well-known id below; SQL literals of the
+// same value (matches.sql, players.sql, player_ranks.sql, corrections.sql,
+// markets.sql display reads) must be kept in sync with it.
+func (q *Queries) UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error {
+	_, err := q.db.Exec(ctx, upsertArenaSettlementByMatch,
 		arg.ID,
-		arg.GameID,
+		arg.ArenaID,
 		arg.PlayerID,
+		arg.Date,
 		arg.RatingAfter,
 		arg.EloAfter,
-		arg.EloStaked,
-		arg.EloEarned,
-		arg.RatingStaked,
-		arg.RatingEarned,
-		arg.League,
-	)
-	return err
-}
-
-const upsertGlobalArenaSettlementByMatch = `-- name: UpsertGlobalArenaSettlementByMatch :exec
-INSERT INTO global_arena_settlement
-    (id, player_id, date, rating_after, elo_after, discriminator, match_id,
-     elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT $2, $3, m.date, $4, $5, 'match', $1, $6, $7, $8, $9, $10
-FROM matches m WHERE m.id = $1
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL
-DO UPDATE SET rating_after  = EXCLUDED.rating_after,
-              elo_after     = EXCLUDED.elo_after,
-              date          = EXCLUDED.date,
-              elo_staked    = EXCLUDED.elo_staked,
-              elo_earned    = EXCLUDED.elo_earned,
-              rating_staked = EXCLUDED.rating_staked,
-              rating_earned = EXCLUDED.rating_earned,
-              league        = EXCLUDED.league
-`
-
-type UpsertGlobalArenaSettlementByMatchParams struct {
-	MatchID      *id.ID  `json:"match_id"`
-	ID           id.ID   `json:"id"`
-	PlayerID     id.ID   `json:"player_id"`
-	RatingAfter  float64 `json:"rating_after"`
-	EloAfter     float64 `json:"elo_after"`
-	EloStaked    float64 `json:"elo_staked"`
-	EloEarned    float64 `json:"elo_earned"`
-	RatingStaked float64 `json:"rating_staked"`
-	RatingEarned float64 `json:"rating_earned"`
-	League       string  `json:"league"`
-}
-
-func (q *Queries) UpsertGlobalArenaSettlementByMatch(ctx context.Context, arg UpsertGlobalArenaSettlementByMatchParams) error {
-	_, err := q.db.Exec(ctx, upsertGlobalArenaSettlementByMatch,
 		arg.MatchID,
-		arg.ID,
-		arg.PlayerID,
-		arg.RatingAfter,
-		arg.EloAfter,
 		arg.EloStaked,
 		arg.EloEarned,
 		arg.RatingStaked,

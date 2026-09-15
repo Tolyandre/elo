@@ -27,10 +27,11 @@ type ITournamentService interface {
 type TournamentService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Arenas  *ArenaService
 }
 
-func NewTournamentService(pool *pgxpool.Pool) ITournamentService {
-	return &TournamentService{Queries: db.New(pool), Pool: pool}
+func NewTournamentService(pool *pgxpool.Pool, arenas *ArenaService) ITournamentService {
+	return &TournamentService{Queries: db.New(pool), Pool: pool, Arenas: arenas}
 }
 
 func (s *TournamentService) ListTournaments(ctx context.Context) ([]db.ListTournamentsRow, error) {
@@ -66,6 +67,11 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tournamentID i
 		if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: created.ID, PlayerID: pid}); err != nil {
 			return db.Tournament{}, fmt.Errorf("add member %s: %w", pid, err)
 		}
+	}
+	// Every tournament gets its own arena (ADR-24); it starts stale and the
+	// background worker fills it.
+	if err := s.Arenas.EnsureTournamentArena(ctx, q, created.ID, created.Name); err != nil {
+		return db.Tournament{}, fmt.Errorf("create tournament arena: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return db.Tournament{}, fmt.Errorf("commit tx: %w", err)
@@ -128,6 +134,21 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tournamentID i
 		// ErrNoRows (tournament not found) and unique-violation are returned raw so
 		// the handler can map them to 404 / 409.
 		return db.Tournament{}, err
+	}
+
+	// The tournament's arena is auto-managed: its name follows the tournament's.
+	if arenaRow, aerr := q.GetArenaByTournament(ctx, &tournamentID); aerr == nil {
+		arena, err := arenaFromParts(arenaRow.ID, arenaRow.Name, arenaRow.Settings, arenaRow.SettingsSchemaVersion,
+			arenaRow.GameID, arenaRow.TournamentID, arenaRow.RecalcFrom, arenaRow.StaleAt,
+			arenaRow.DateFrom, arenaRow.DateTo, arenaRow.FilterGameIds, arenaRow.FilterTagIds, arenaRow.FilterTournamentID)
+		if err != nil {
+			return db.Tournament{}, err
+		}
+		if err := s.Arenas.SyncArenaName(ctx, q, arena, name); err != nil {
+			return db.Tournament{}, fmt.Errorf("sync tournament arena name: %w", err)
+		}
+	} else if !db.IsNoRows(aerr) {
+		return db.Tournament{}, aerr
 	}
 
 	for pid := range desired {

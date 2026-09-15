@@ -84,7 +84,7 @@ GameItem:
   get:
     operationId: GetGame
     tags: [games]
-    summary: Get game details and player Elo rankings
+    summary: Get basic game info (the game's arena lives under /arenas, ADR-24)
     parameters:
       - name: id
         in: path
@@ -93,7 +93,7 @@ GameItem:
           type: string
     responses:
       "200":
-        description: Game details
+        description: Game info
         content:
           application/json:
             schema:
@@ -106,6 +106,12 @@ GameItem:
               required: [status, data]
       "400":
         description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Game not found
         content:
           application/json:
             schema:
@@ -214,39 +220,6 @@ GameItem:
               $ref: './common.yaml#/ApiError'
       "404":
         description: Game not found
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-
-GameMatchesPath:
-  get:
-    operationId: GetGameMatches
-    tags: [games]
-    summary: Get all matches for a game
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-    responses:
-      "200":
-        description: Matches for the game
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                data:
-                  type: array
-                  items:
-                    $ref: '#/GameMatch'
-              required: [status, data]
-      "400":
-        description: Bad request
         content:
           application/json:
             schema:
@@ -383,29 +356,6 @@ GameList:
         $ref: '#/GameListItem'
   required: [games]
 
-GamePlayer:
-  type: object
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    rating:
-      type: number
-      format: double
-    league:
-      type: string
-      enum: [newbie, amateur]
-    rank:
-      type: integer
-    wins_needed_for_amateur:
-      type: integer
-      nullable: true
-      description: Lower bound of wins needed to reach amateur league (elo treated as fixed).
-    wins_needed_for_amateur_upper:
-      type: integer
-      nullable: true
-      description: Upper bound of wins needed (accounts for elo growth ≈ K/2 per win).
-  required: [id, rating, league, rank]
-
 Game:
   type: object
   properties:
@@ -415,49 +365,4 @@ Game:
       type: string
     total_matches:
       type: integer
-    players:
-      type: array
-      items:
-        $ref: '#/GamePlayer'
-  required: [id, name, total_matches, players]
-
-GameMatchPlayer:
-  type: object
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    name:
-      type: string
-    score:
-      type: number
-      format: double
-    rating_staked:
-      type: number
-      format: double
-    rating_earned:
-      type: number
-      format: double
-    rating_after:
-      type: number
-      format: double
-  required: [id, name, score, rating_staked, rating_earned, rating_after]
-
-GameMatch:
-  type: object
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    date:
-      type: string
-      format: date-time
-      nullable: true
-    players:
-      type: array
-      items:
-        $ref: '#/GameMatchPlayer'
-    tournaments:
-      type: array
-      items:
-        $ref: './matches.yaml#/MatchTournament'
-      description: Tournaments this match belongs to
-  required: [id, players]
+  required: [id, name, total_matches]

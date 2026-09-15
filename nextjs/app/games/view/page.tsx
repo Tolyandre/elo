@@ -1,74 +1,40 @@
-"use client"
-import { GameMatch, getGameMatchesPromise, getGamePromise, Match } from "@/app/api";
-import { PageHeader } from "@/app/pageHeaderContext";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { toBase58ID } from "@/lib/id";
+"use client";
+
 import React, { Suspense } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScoreLeadersTab } from "@/app/games/view/score-leaders-tab";
-import { usePlayers } from "@/app/players/PlayersContext";
-import { useMe } from "@/app/meContext";
-import { useSettings } from "@/app/settingsContext";
-import { winsNeededForAmateur } from "@/app/eloCalculation";
-import { MatchCard } from "@/components/match-card";
-import { PendingMatchCard } from "@/components/pending-match-card";
-import { ErrorAlert } from "@/components/error-alert";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useOffline } from "@/app/offline/OfflineContext";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { toBase58ID } from "@/lib/id";
+import { PageHeader } from "@/app/pageHeaderContext";
+import { Arena, getArenasPromise, getGamePromise, parseArenaSettings } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
+import { ErrorAlert } from "@/components/error-alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Trophy } from "lucide-react";
 
 // We cannot use /games/<GAME_ID> path in exported application.
 // So use query parameters instead /games/view?id=<GAME_ID>
-const GAME_TABS = ["arena", "history", "leaders"] as const;
-type GameTab = (typeof GAME_TABS)[number];
+//
+// Since ADR-24 the page lists the arenas whose filter includes this game or
+// its tags (the game's own arena and the global arena included) instead of
+// hosting the per-game rating tabs — the arena page owns ranking, matches,
+// medals and score leaders now.
 
-function parseTab(value: string | null): GameTab {
-  return (GAME_TABS as readonly string[]).includes(value ?? "") ? (value as GameTab) : "arena";
-}
-export default function GamePage() {
-  return (
-    <Suspense>
-      <GameWrapped />
-    </Suspense>
-  )
-}
+const LEAGUE_TITLES: Record<string, string> = {
+  elite: "высшая лига",
+  amateur: "любители",
+  newbie: "новички",
+};
 
-function GameWrapped() {
-  const searchParams = useSearchParams()
-  const idParam = searchParams.get('id') ?? ""
-  const id = toBase58ID(idParam)
+function GameContent() {
+  const searchParams = useSearchParams();
+  const id = toBase58ID(searchParams.get("id") ?? "");
 
-  const router = useRouter()
-  const pathname = usePathname()
-  const tab = parseTab(searchParams.get('tab'))
-
-  function setTab(value: string) {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.set('tab', value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }
-
-  const { data: game, loading: loadingGame, error } = useAsyncResource(
-    () => (id ? getGamePromise(id) : Promise.reject(new Error('no id'))),
-    [id],
-  );
-  const { data: gameMatchesData, loading: loadingMatches } = useAsyncResource(
-    () => (id ? getGameMatchesPromise(id) : Promise.resolve([] as GameMatch[])),
-    [id],
-  );
-
-  const gameMatches = gameMatchesData ?? [];
-  const { players: allPlayers } = usePlayers();
-  const { roundToInteger } = useMe();
-  const { pendingMatches } = useOffline();
-  const { newbieLeagueGoalGap, startingRatingGameArena, startingElo,
-          eloConstK, eloConstD, newbieLeagueEarnedMax, newbieLeagueEarnedTau } = useSettings();
-
-  const [typicalWinsLower, typicalWinsUpper] = winsNeededForAmateur(
-    startingElo - startingRatingGameArena,
-    newbieLeagueGoalGap, eloConstK, newbieLeagueEarnedMax, newbieLeagueEarnedTau, eloConstD
-  );
+  const { data, loading, error } = useAsyncResource(async () => {
+    if (!id) throw new Error("no id");
+    const [game, arenas] = await Promise.all([getGamePromise(id), getArenasPromise({ game_id: id })]);
+    return { game, arenas };
+  }, [id]);
 
   if (!id) {
     return (
@@ -79,132 +45,62 @@ function GameWrapped() {
     );
   }
 
-  // Convert GameMatch to Match format for MatchCard reuse,
-  // mapping game Elo values into the score record.
-  function toMatchCardFormat(gm: GameMatch): Match {
-    const score: Match["score"] = {};
-    for (const p of gm.players) {
-      score[p.id] = {
-        ratingStaked: p.rating_staked,
-        ratingEarned: p.rating_earned,
-        score: p.score,
-        ratingAfter: p.rating_after,
-      };
-    }
-    return {
-      id: gm.id,
-      game_id: id!,
-      game_name: game?.name ?? "",
-      date: gm.date,
-      // Display-only conversion (MatchCard); never resubmitted.
-      dateISO: null,
-      score,
-      has_markets: false,
-      tournaments: gm.tournaments,
-    };
-  }
+  const game = data?.game ?? null;
+  const arenas = data?.arenas ?? [];
 
   return (
     <main className="max-w-sm mx-auto">
       <BackButton href="/games" label="Назад к играм" />
       <div className="space-y-4">
-        <div className=" max-w-sm">
-          <PageHeader title={game?.name ?? ""} />
-        </div>
+        <PageHeader title={game?.name ?? ""} />
+        <p className="text-sm text-muted-foreground">Партий: {game?.total_matches ?? "…"}</p>
 
         {error && <ErrorAlert message={error} />}
-
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="arena" className="px-1 text-xs">Рейтинг</TabsTrigger>
-            <TabsTrigger value="history" className="px-1 text-xs">История партий</TabsTrigger>
-            <TabsTrigger value="leaders" className="px-1 text-xs">Лидеры по очкам</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="arena" className="space-y-4">
-            <p className="text-gray-600">Партий: {game?.total_matches ?? "…"}</p>
-
-            <p className="text-sm text-muted-foreground">
-              Это рейтинг по партиям одной игры, рассчитывается независимо от
-              общего рейтинга по тем же формулам.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Если бы все играли только в {game?.name}, то значения совпадали бы с общим рейтингом.
-            </p>
-
-        {!game ? (
-          // Skeleton while loading; nothing on error (the ErrorAlert above covers it).
-          // Never fall through to the league list with a null game, or it would
-          // wrongly render "Нет игроков" before the data has loaded.
-          loadingGame ? (
-            <div className="space-y-2">
-              <Skeleton className="h-6 w-32" />
-              <Skeleton className="h-24 w-full rounded-xl" />
-            </div>
-          ) : null
-        ) : (["amateur", "newbie"] as const).map((league) => {
-          const leaguePlayers = game?.players.filter(p => p.league === league) ?? [];
-          const title = league === "amateur" ? "Любители" : "Новички";
-          return (
-            <div key={league}>
-              <h2 className="text-lg font-semibold mb-2 mt-4">{title}</h2>
-              {leaguePlayers.length === 0
-                ? <p className="text-sm text-muted-foreground mb-2">Нет игроков</p>
-                : <table className="table-auto border-collapse mb-2">
-                  <tbody>
-                    {leaguePlayers.map((player) => (
-                      <tr key={player.id}>
-                        <td className="px-1 py-2"><span>{player.rank}</span></td>
-                        <td className="px-4 py-2">
-                          {allPlayers.find(p => p.id === player.id)?.name}
-                          {player.wins_needed_for_amateur != null && player.wins_needed_for_amateur > 0 && (
-                            <span className="text-xs text-muted-foreground ml-1">
-                              ещё ~{player.wins_needed_for_amateur}{player.wins_needed_for_amateur_upper != null && player.wins_needed_for_amateur_upper > player.wins_needed_for_amateur ? `–${player.wins_needed_for_amateur_upper}` : ""} побед
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-1 py-2">{player.rating.toFixed(0)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              }
-              {league === "amateur" && (
-                <p className="text-xs text-muted-foreground mb-2">
-                  Для Лиги Любителей нужно совпадение рейтинга с эло (эло − рейтинг ≤ {newbieLeagueGoalGap}), примерно {typicalWinsLower}–{typicalWinsUpper} побед
-                </p>
-              )}
-            </div>
-          );
-        })}
-
-          </TabsContent>
-
-          <TabsContent value="history" className="space-y-2">
-        {pendingMatches
-          .filter((pm) => pm.gameId === id)
-          .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt))
-          .map((pm) => (
-            <PendingMatchCard key={pm.clientId} match={pm} />
-          ))}
-        {loadingMatches ? (
-          <>
+        {loading && (
+          <div className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-28 w-full rounded-xl" />
+              <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
-          </>
-        ) : (
-          [...gameMatches].reverse().map((gm) => (
-            <MatchCard key={gm.id} match={toMatchCardFormat(gm)} roundToInteger={roundToInteger} />
-          ))
+          </div>
         )}
-          </TabsContent>
 
-          <TabsContent value="leaders" className="space-y-4">
-            <ScoreLeadersTab matches={gameMatches} loading={loadingMatches} gameName={game?.name} />
-          </TabsContent>
-        </Tabs>
+        <h2 className="text-lg font-semibold pt-2">Арены</h2>
+        {arenas.map((arena) => (
+          <ArenaCard key={arena.id} arena={arena} />
+        ))}
       </div>
     </main>
+  );
+}
+
+function ArenaCard({ arena }: { arena: Arena }) {
+  const { leagues } = parseArenaSettings(arena.settings);
+  const leagueTitles = leagues.length > 0
+    ? leagues.map((l) => LEAGUE_TITLES[l.kind] ?? l.kind).join(" · ")
+    : "без лиг";
+  return (
+    <Link
+      href={`/arenas/view?id=${arena.id}`}
+      className="block rounded-xl border p-4 hover:bg-muted/50 transition-colors"
+    >
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Trophy className="h-4 w-4 text-muted-foreground" />
+        {arena.name}
+      </div>
+      <div className="text-sm text-muted-foreground mt-1">
+        {arena.game_id ? "арена игры" : arena.tournament_id ? "арена турнира" : "серия игр"}
+        {arena.matches_count != null && <> · партий: {arena.matches_count}</>}
+        {arena.stale_at && <> · обновляется…</>}
+      </div>
+      <div className="text-sm text-muted-foreground">{leagueTitles}</div>
+    </Link>
+  );
+}
+
+export default function GamePage() {
+  return (
+    <Suspense>
+      <GameContent />
+    </Suspense>
   );
 }

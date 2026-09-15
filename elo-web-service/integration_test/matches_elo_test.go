@@ -12,7 +12,7 @@ import (
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// TestAddMatch_PlayerRatingsCreated verifies that adding a match creates global_arena_settlement rows
+// TestAddMatch_PlayerRatingsCreated verifies that adding a match creates global arena settlement rows
 // for every participant and that Elo deltas (pay + earn) sum to approximately zero.
 func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
@@ -24,7 +24,7 @@ func TestAddMatch_PlayerRatingsCreated(t *testing.T) {
 	p3 := createTestPlayer(t, pool, "Carol")
 	gameID := createTestGame(t, pool, "Catan")
 
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{p1: 10, p2: 5, p3: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
@@ -62,7 +62,7 @@ func TestAddMatch_EloOrderPreserved(t *testing.T) {
 	loser := createTestPlayer(t, pool, "Loser")
 	gameID := createTestGame(t, pool, "Chess")
 
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 	_, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{winner: 10, loser: 1}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
@@ -103,7 +103,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	tFuture := now.Add(2 * time.Hour)   // M2 original date (future game)
 	tPast := now.Add(-30 * time.Minute) // target date for M2 (before bets placed at ~now)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// 1. Warm-up match: gives players a bet limit of K/(1+1) ≈ 16.

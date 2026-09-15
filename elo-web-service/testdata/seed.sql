@@ -40,7 +40,7 @@ INSERT INTO matches (id, date, game_id) VALUES
     ('00000000-0000-0000-0000-0000000000ca', NOW() - INTERVAL '1 day',  '00000000-0000-0000-0000-000000000188')
 ON CONFLICT (id) DO NOTHING;
 
--- match_scores: only score, no Elo columns (moved to global_arena_settlement / game_arena_settlement)
+-- match_scores: only score, no Elo columns (moved to arena_settlements, ADR-24)
 INSERT INTO match_scores (match_id, player_id, score) VALUES
     ('00000000-0000-0000-0000-0000000000c8', '00000000-0000-0000-0000-000000000064', 120.0),
     ('00000000-0000-0000-0000-0000000000c8', '00000000-0000-0000-0000-000000000065',  80.0),
@@ -88,13 +88,13 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id
     WHERE ms.match_id IN ('00000000-0000-0000-0000-0000000000c8'::uuid, '00000000-0000-0000-0000-0000000000c9'::uuid)
 )
-INSERT INTO global_arena_settlement
-    (id, date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+INSERT INTO arena_settlements
+    (id, arena_id, date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+SELECT gen_random_uuid(), 'a2ea0000-0000-0000-0000-000000000001'::uuid, date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+ON CONFLICT (arena_id, match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
--- global_arena_settlement for match 202
+-- global arena settlements for match 202
 WITH base AS (
     SELECT m.date, ms.player_id, ms.match_id,
         CASE (ms.match_id, ms.player_id)
@@ -118,14 +118,15 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id
     WHERE ms.match_id = '00000000-0000-0000-0000-0000000000ca'::uuid
 )
-INSERT INTO global_arena_settlement
-    (id, date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+INSERT INTO arena_settlements
+    (id, arena_id, date, player_id, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+SELECT gen_random_uuid(), 'a2ea0000-0000-0000-0000-000000000001'::uuid, date, player_id, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+ON CONFLICT (arena_id, match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
--- game_arena_settlement: per-game Elo after each match.
--- All matches are Skull King (game_id=0x188), so game Elo equals global Elo here.
+-- Per-game arena settlements: all matches are Skull King (game 0x188), so game
+-- Elo equals global Elo here. The per-game arena is auto-created by migration
+-- 051 (fresh id); look it up by anchor.
 WITH base AS (
     SELECT m.date, ms.player_id, ms.match_id,
         CASE (ms.match_id, ms.player_id)
@@ -155,11 +156,13 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id
     WHERE ms.match_id IN ('00000000-0000-0000-0000-0000000000c8'::uuid, '00000000-0000-0000-0000-0000000000c9'::uuid)
 )
-INSERT INTO game_arena_settlement
-    (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000188'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+SELECT gen_random_uuid(),
+       (SELECT id FROM arenas WHERE game_id = '00000000-0000-0000-0000-000000000188'::uuid),
+       player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+ON CONFLICT (arena_id, match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
 WITH base AS (
     SELECT m.date, ms.player_id, ms.match_id,
@@ -184,11 +187,13 @@ WITH base AS (
     FROM match_scores ms JOIN matches m ON m.id = ms.match_id
     WHERE ms.match_id = '00000000-0000-0000-0000-0000000000ca'::uuid
 )
-INSERT INTO game_arena_settlement
-    (id, game_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
-SELECT gen_random_uuid(), '00000000-0000-0000-0000-000000000188'::uuid, player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
+INSERT INTO arena_settlements
+    (id, arena_id, player_id, date, rating_after, elo_after, discriminator, match_id, elo_staked, elo_earned, rating_staked, rating_earned, league)
+SELECT gen_random_uuid(),
+       (SELECT id FROM arenas WHERE game_id = '00000000-0000-0000-0000-000000000188'::uuid),
+       player_id, date, new_rating, new_rating, 'match', match_id, staked, earned, staked, earned, 'amateur'
 FROM base
-ON CONFLICT (match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
+ON CONFLICT (arena_id, match_id, player_id) WHERE match_id IS NOT NULL DO NOTHING;
 
 -- markets: test markets in various statuses (n-outcome model, ADR-11).
 -- market_outcomes.q mirrors the outstanding shares of the seeded bets below
@@ -312,25 +317,62 @@ BEGIN
         ('00000000-0000-0000-0000-000000000433', '00000000-0000-0000-0000-000000000004', 'other',  NULL, 0)
     ON CONFLICT (id) DO NOTHING;
 
-    -- global_arena_settlement for market 3 (discriminator='market').
+    -- Global arena settlement for market 3 (discriminator='market').
     -- Settlement: Alice (won): earned=20, staked=-8; Bob: earned=0, staked=-5; Carol: earned=0, staked=-7.
     -- Prev Elo at resolution date (after match 201, before match 202):
     --   Alice=1002.0534, Bob=1008.1226, Carol=989.8239
-    INSERT INTO global_arena_settlement
-        (id, date, player_id, rating_after, elo_after, discriminator, market_id,
+    INSERT INTO arena_settlements
+        (id, arena_id, date, player_id, rating_after, elo_after, discriminator, market_id,
          elo_staked, elo_earned, rating_staked, rating_earned, league)
     VALUES
-        (gen_random_uuid(), NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000064'::uuid,
+        (gen_random_uuid(), 'a2ea0000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000064'::uuid,
             1002.0534023250732 + (20.0 - 8.0),
             1002.0534023250732 + (20.0 - 8.0),
             'market', '00000000-0000-0000-0000-000000000003'::uuid, -8.0, 20.0, -8.0, 20.0, 'amateur'),
-        (gen_random_uuid(), NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000065'::uuid,
+        (gen_random_uuid(), 'a2ea0000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000065'::uuid,
             1008.1226527581842 + (0.0  - 5.0),
             1008.1226527581842 + (0.0  - 5.0),
             'market', '00000000-0000-0000-0000-000000000003'::uuid, -5.0,  0.0, -5.0,  0.0, 'amateur'),
-        (gen_random_uuid(), NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000066'::uuid,
+        (gen_random_uuid(), 'a2ea0000-0000-0000-0000-000000000001'::uuid, NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000066'::uuid,
             989.8239449167427  + (0.0  - 7.0),
             989.8239449167427  + (0.0  - 7.0),
             'market', '00000000-0000-0000-0000-000000000003'::uuid, -7.0,  0.0, -7.0,  0.0, 'amateur')
-    ON CONFLICT (market_id, player_id, discriminator) WHERE market_id IS NOT NULL DO NOTHING;
+    ON CONFLICT (arena_id, market_id, player_id, discriminator) WHERE market_id IS NOT NULL DO NOTHING;
 END $$;
+
+-- Recompute the precalculated arena stats (migration 051 backfilled them
+-- before the seeded matches existed).
+DELETE FROM arena_player_stats
+WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001'::uuid
+   OR arena_id IN (SELECT id FROM arenas WHERE game_id IS NOT NULL);
+
+INSERT INTO arena_player_stats (arena_id, player_id, matches_count,
+                                first_count, second_count, third_count, fourth_count)
+SELECT 'a2ea0000-0000-0000-0000-000000000001'::uuid, r.player_id, COUNT(*)::int,
+       COUNT(*) FILTER (WHERE r.place = 1)::int,
+       COUNT(*) FILTER (WHERE r.place = 2)::int,
+       COUNT(*) FILTER (WHERE r.place = 3)::int,
+       COUNT(*) FILTER (WHERE r.place = 4)::int
+FROM (
+    SELECT ms.player_id,
+           RANK() OVER (PARTITION BY ms.match_id ORDER BY ms.score DESC) AS place
+    FROM match_scores ms
+) r
+GROUP BY r.player_id;
+
+INSERT INTO arena_player_stats (arena_id, player_id, matches_count,
+                                first_count, second_count, third_count, fourth_count)
+SELECT a.id, r.player_id, COUNT(*)::int,
+       COUNT(*) FILTER (WHERE r.place = 1)::int,
+       COUNT(*) FILTER (WHERE r.place = 2)::int,
+       COUNT(*) FILTER (WHERE r.place = 3)::int,
+       COUNT(*) FILTER (WHERE r.place = 4)::int
+FROM arenas a
+JOIN (
+    SELECT m.game_id, ms.player_id,
+           RANK() OVER (PARTITION BY ms.match_id ORDER BY ms.score DESC) AS place
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+) r ON r.game_id = a.game_id
+WHERE a.game_id IS NOT NULL
+GROUP BY a.id, r.player_id;

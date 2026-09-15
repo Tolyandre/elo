@@ -18,10 +18,11 @@ type ICorrectionService interface {
 type CorrectionService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Arenas  *ArenaService
 }
 
-func NewCorrectionService(pool *pgxpool.Pool) ICorrectionService {
-	return &CorrectionService{Queries: db.New(pool), Pool: pool}
+func NewCorrectionService(pool *pgxpool.Pool, arenas *ArenaService) ICorrectionService {
+	return &CorrectionService{Queries: db.New(pool), Pool: pool, Arenas: arenas}
 }
 
 // ListCorrectionsPaginated exposes the paginated corrections read behind the
@@ -49,100 +50,56 @@ func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Contex
 		return fmt.Errorf("create correction: %w", err)
 	}
 
-	settingsRow, err := q.GetEloSettingsForDate(ctx, correction.Date)
-	if err != nil {
-		return fmt.Errorf("get elo settings: %w", err)
-	}
-	settings := EloSettingsFromDB(settingsRow)
-
-	prevRow, err := q.GetPlayerLatestGlobalStateBeforeCorrection(ctx, db.GetPlayerLatestGlobalStateBeforeCorrectionParams{
-		PlayerID:     playerID,
-		Date:         correction.Date,
-		CorrectionID: &correction.ID,
-	})
-
-	var prevRating, prevElo float64
-	var prevLeague string
-	if err != nil {
-		prevRating = settings.StartingRatingGlobal
-		prevElo = settings.StartingElo
-		prevLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
-	} else {
-		prevRating = prevRow.Rating
-		prevElo = prevRow.Elo
-		prevLeague = prevRow.League
-	}
-
-	newRating := prevRating + diff
-	ratingStaked := math.Min(diff, 0)
-	ratingEarned := math.Max(diff, 0)
-	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
-
-	if err := q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
-		ID:           newSettlementID(),
-		PlayerID:     playerID,
-		Date:         correction.Date,
-		RatingAfter:  newRating,
-		EloAfter:     prevElo,
-		CorrectionID: &correction.ID,
-		RatingStaked: ratingStaked,
-		RatingEarned: ratingEarned,
-		League:       league,
-	}); err != nil {
-		return fmt.Errorf("upsert correction settlement: %w", err)
+	if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
+		return fmt.Errorf("apply correction: %w", err)
 	}
 
 	return tx.Commit(ctx)
 }
 
-// determineCorrectionLeague returns the league after a manual rating correction.
-// Uses isInNewbieLeague (shared with match settlements) to check the gap condition.
-// Corrections can demote any player to newbie if the gap opens (elo - rating > goalGap),
-// unlike match settlements which only check the gap for players already in the newbie league.
-func determineCorrectionLeague(prev string, newRating, prevElo float64, s EloSettings) string {
-	if isInNewbieLeague(newRating, prevElo, s) { // prevElo - newRating > goalGap
-		return "newbie"
-	}
-	if prev == "newbie" {
-		return "amateur"
-	}
-	return prev
-}
-
-// applyCorrectionWithinTx applies a correction settlement inside an already-open transaction.
-// Used by EventProcessor.RecalculateFrom when replaying corrections.
+// applyCorrectionWithinTx applies a rating correction to the global arena
+// (the only arena corrections touch) inside an already-open transaction. Used
+// by CreateGlobalArenaRatingCorrection and by EventProcessor.RecalculateFrom
+// when replaying corrections.
 func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.Correction) error {
+	arena, err := globalArena(ctx, q)
+	if err != nil {
+		return err
+	}
+
 	settingsRow, err := q.GetEloSettingsForDate(ctx, correction.Date)
 	if err != nil {
 		return fmt.Errorf("get elo settings for correction %s: %w", correction.ID, err)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
-	prevRow, err := q.GetPlayerLatestGlobalStateBeforeCorrection(ctx, db.GetPlayerLatestGlobalStateBeforeCorrectionParams{
+	prevRow, err := q.GetPlayerLatestArenaStateBeforeCorrection(ctx, db.GetPlayerLatestArenaStateBeforeCorrectionParams{
+		ArenaID:      GlobalArenaID,
 		PlayerID:     correction.PlayerID,
 		Date:         correction.Date,
 		CorrectionID: &correction.ID,
 	})
 
 	var prevRating, prevElo float64
-	var prevLeague string
+	var prevLeague *string
 	if err != nil {
-		prevRating = settings.StartingRatingGlobal
+		prevRating = arena.Settings.StartingRating
 		prevElo = settings.StartingElo
-		prevLeague = initialLeagueForStarting(settings.StartingRatingGlobal, settings.StartingElo, settings)
+		prevLeague = initialArenaLeague(arena, settings)
 	} else {
 		prevRating = prevRow.Rating
 		prevElo = prevRow.Elo
-		prevLeague = prevRow.League
+		prevLeague = textPtr(prevRow.League)
 	}
 
 	newRating := prevRating + correction.Diff
 	ratingStaked := math.Min(correction.Diff, 0)
 	ratingEarned := math.Max(correction.Diff, 0)
-	league := determineCorrectionLeague(prevLeague, newRating, prevElo, settings)
+	league := determineCorrectionLeague(prevLeague, newRating, prevElo, arena)
 
-	return q.UpsertGlobalArenaSettlementByCorrection(ctx, db.UpsertGlobalArenaSettlementByCorrectionParams{
+	return q.UpsertArenaSettlementByCorrection(ctx, db.UpsertArenaSettlementByCorrectionParams{
 		ID:           newSettlementID(),
+		ArenaID:      GlobalArenaID,
 		PlayerID:     correction.PlayerID,
 		Date:         correction.Date,
 		RatingAfter:  newRating,
@@ -150,6 +107,16 @@ func applyCorrectionWithinTx(ctx context.Context, q *db.Queries, correction db.C
 		CorrectionID: &correction.ID,
 		RatingStaked: ratingStaked,
 		RatingEarned: ratingEarned,
-		League:       league,
+		League:       ptrText(league),
 	})
+}
+
+// globalArena reads the global arena row with its settings parsed inside an
+// open transaction.
+func globalArena(ctx context.Context, q *db.Queries) (Arena, error) {
+	r, err := q.GetArena(ctx, GlobalArenaID)
+	if err != nil {
+		return Arena{}, fmt.Errorf("get global arena: %w", err)
+	}
+	return arenaFromGetArenaRow(r)
 }

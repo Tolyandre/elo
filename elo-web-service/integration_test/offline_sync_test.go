@@ -30,7 +30,7 @@ func TestAddMatch_BackdatedRecalculatesLaterMatches(t *testing.T) {
 	t2 := now.Add(-1 * time.Hour)
 	tBackdated := now.Add(-90 * time.Minute) // between t1 and t2
 
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 
 	if _, err := svc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 5}, t1, newMatchOpts(t)); err != nil {
 		t.Fatalf("M1 AddMatch: %v", err)
@@ -83,7 +83,7 @@ func TestAddMatch_IdempotencyKeyDeduplicates(t *testing.T) {
 	playerB := createTestPlayer(t, pool, "IdemB")
 	gameID := createTestGame(t, pool, "Splendor")
 
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 	key := newID(t)
 	date := time.Now().Add(-time.Hour)
 	opts := elo.AddMatchOpts{ClientDate: true, ID: key}
@@ -117,7 +117,7 @@ func TestAddMatch_ClientDateValidation(t *testing.T) {
 	playerB := createTestPlayer(t, pool, "DateB")
 	gameID := createTestGame(t, pool, "Azul")
 
-	svc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	svc := newMatchService(pool)
 	scores := map[idpkg.ID]float64{playerA: 10, playerB: 5}
 
 	_, err := svc.AddMatch(ctx, gameID, scores, time.Now().Add(time.Hour), elo.AddMatchOpts{ClientDate: true, ID: newID(t)})
@@ -139,7 +139,7 @@ func TestCreatePlayerAndGame_IdempotencyKey(t *testing.T) {
 
 	ctx := context.Background()
 	playerSvc := elo.NewPlayerService(pool)
-	gameSvc := elo.NewGameService(pool)
+	gameSvc := newGameService(pool)
 
 	playerKey := newID(t)
 	p1, err := playerSvc.CreatePlayer(ctx, playerKey, "Оффлайн Игрок", "")
@@ -188,7 +188,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	adminID := createTestAdmin(t, pool)
 
 	now := time.Now().Truncate(time.Second)
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match for bet limits.

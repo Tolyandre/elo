@@ -28,7 +28,7 @@ func TestWinStreak_EmptyGameListMeansAnyGame(t *testing.T) {
 	game2 := createTestGame(t, pool, "StreakGame2")
 	adminID := createTestAdmin(t, pool)
 
-	matchSvc := elo.NewMatchService(pool, elo.NewMarketService(pool))
+	matchSvc := newMatchService(pool)
 	marketSvc := elo.NewMarketService(pool)
 
 	// Warm-up match to initialise bet limits (keeps the fixture close to the

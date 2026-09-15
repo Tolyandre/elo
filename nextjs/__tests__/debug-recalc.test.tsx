@@ -8,7 +8,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Base58ID } from "@/lib/id";
 import { PageHeaderProvider } from "@/app/pageHeaderContext";
-import type { GlobalReplayReport } from "@/app/api";
+import type { UpdateArenasResult } from "@/app/api";
 
 const mocks = vi.hoisted(() => ({
     me: {
@@ -17,11 +17,11 @@ const mocks = vi.hoisted(() => ({
         canEdit: true,
         loading: false,
     },
-    recalculate: vi.fn<() => Promise<GlobalReplayReport>>(),
+    updateArenas: vi.fn<() => Promise<UpdateArenasData>>(),
 }));
 
 vi.mock("@/app/api", () => ({
-    recalculateGlobalEloPromise: mocks.recalculate,
+    updateArenasPromise: mocks.updateArenas,
 }));
 
 vi.mock("@/app/meContext", () => ({
@@ -51,8 +51,13 @@ import DebugPage from "@/app/debug/page";
 
 const pid = (s: string) => s as Base58ID;
 
-function report(overrides: Partial<GlobalReplayReport> = {}): GlobalReplayReport {
-    return { matches_replayed: 3, corrections_replayed: 1, changed_players: [], ...overrides };
+type UpdateArenasData = UpdateArenasResult["data"];
+
+function report(overrides: Partial<UpdateArenasData["global"]> = {}): UpdateArenasData {
+    return {
+        global: { matches_replayed: 3, corrections_replayed: 1, changed_players: [], ...overrides },
+        arenas: [],
+    };
 }
 
 function renderPage() {
@@ -88,39 +93,39 @@ beforeEach(() => {
     mocks.me = { id: "user1", name: "Danis", canEdit: true, loading: false };
 });
 
-describe("DebugPage full recalculation", () => {
+describe("DebugPage arena update", () => {
     it("disables the button and warns a non-editor", () => {
         mocks.me = { id: "user1", name: "Danis", canEdit: false, loading: false };
         const view = renderPage();
 
-        expect(view.buttonWithText("Пересчитать всё")?.disabled).toBe(true);
+        expect(view.buttonWithText("Обновить арены")?.disabled).toBe(true);
         expect(view.text()).toContain("пока не можете добавлять партии");
         view.unmount();
     });
 
-    it("runs the recalculation after confirm and reports no drift", async () => {
-        mocks.recalculate.mockResolvedValue(report());
+    it("runs the update after confirm and reports no drift", async () => {
+        mocks.updateArenas.mockResolvedValue(report());
         const view = renderPage();
 
         act(() => {
-            view.buttonWithText("Пересчитать всё")!.click();
+            view.buttonWithText("Обновить арены")!.click();
         });
         expect(view.dialog()).not.toBeNull();
 
         await act(async () => {
-            view.buttonWithText("Пересчитать")!.click();
+            view.buttonWithText("Обновить")!.click();
             await Promise.resolve();
         });
 
-        expect(mocks.recalculate).toHaveBeenCalledTimes(1);
+        expect(mocks.updateArenas).toHaveBeenCalledTimes(1);
         expect(view.text()).toContain("Расхождений нет");
-        expect(view.text()).toContain("Переиграно партий: 3, коррекций: 1");
+        expect(view.text()).toContain("переиграно партий 3, коррекций 1");
         expect(view.dialog()).toBeNull();
         view.unmount();
     });
 
     it("lists every changed player with full-precision before → after values", async () => {
-        mocks.recalculate.mockResolvedValue(
+        mocks.updateArenas.mockResolvedValue(
             report({
                 changed_players: [
                     {
@@ -139,10 +144,10 @@ describe("DebugPage full recalculation", () => {
         const view = renderPage();
 
         act(() => {
-            view.buttonWithText("Пересчитать всё")!.click();
+            view.buttonWithText("Обновить арены")!.click();
         });
         await act(async () => {
-            view.buttonWithText("Пересчитать")!.click();
+            view.buttonWithText("Обновить")!.click();
             await Promise.resolve();
         });
 
@@ -156,15 +161,42 @@ describe("DebugPage full recalculation", () => {
         view.unmount();
     });
 
-    it("keeps the dialog open when the recalculation fails", async () => {
-        mocks.recalculate.mockRejectedValue(new Error("boom"));
+    it("summarizes the other arenas' reports", async () => {
+        mocks.updateArenas.mockResolvedValue({
+            global: { matches_replayed: 1, corrections_replayed: 0, changed_players: [] },
+            arenas: [
+                {
+                    arena_id: pid("a1"),
+                    arena_name: "Арена: Skull King",
+                    matches_replayed: 12,
+                    changed_players: [],
+                },
+            ],
+        });
         const view = renderPage();
 
         act(() => {
-            view.buttonWithText("Пересчитать всё")!.click();
+            view.buttonWithText("Обновить арены")!.click();
         });
         await act(async () => {
-            view.buttonWithText("Пересчитать")!.click();
+            view.buttonWithText("Обновить")!.click();
+            await Promise.resolve();
+        });
+
+        expect(view.text()).toContain("Арена: Skull King");
+        expect(view.text()).toContain("12");
+        view.unmount();
+    });
+
+    it("keeps the dialog open when the update fails", async () => {
+        mocks.updateArenas.mockRejectedValue(new Error("boom"));
+        const view = renderPage();
+
+        act(() => {
+            view.buttonWithText("Обновить арены")!.click();
+        });
+        await act(async () => {
+            view.buttonWithText("Обновить")!.click();
             await Promise.resolve();
         });
 

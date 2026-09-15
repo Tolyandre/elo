@@ -22,8 +22,9 @@ SELECT p.id, p.name,
 FROM players p
 LEFT JOIN LATERAL (
   SELECT gas.rating_after, gas.elo_after, gas.league
-  FROM global_arena_settlement gas
-  WHERE gas.player_id = p.id AND gas.date <= $1
+  FROM arena_settlements gas
+  WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    AND gas.player_id = p.id AND gas.date <= $1
   ORDER BY gas.date DESC, gas.id DESC
   LIMIT 1
 ) latest_elo ON true

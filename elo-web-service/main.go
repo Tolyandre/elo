@@ -48,6 +48,9 @@ func main() {
 
 	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())
 	go apiHandler.TableService.ScheduleNextCleanup(context.Background())
+	// Arena updater (ADR-24): recalculates stale arenas (tag-driven filter
+	// changes, new arenas) after a debounce; match writes drain synchronously.
+	go apiHandler.ArenaService.ScheduleNextUpdate(context.Background())
 
 	router := gin.Default()
 
@@ -126,15 +129,24 @@ func main() {
 	// Games
 	router.GET("/games", strictWrapper.ListGames)
 	router.GET("/games/:id", strictWrapper.GetGame)
-	router.GET("/games/:id/matches", strictWrapper.GetGameMatches)
 	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)
 	router.PATCH("/games/:id", append(editorAuth(), strictWrapper.PatchGame)...)
 	router.POST("/games", append(editorAuth(), strictWrapper.CreateGame)...)
-	// Debug/monitoring: full history replay with a rating diff. Editor-gated
-	// like every other write route; the page for it is /debug (unlinked).
-	router.POST("/admin/recalculate-global-elo", append(editorAuth(), strictWrapper.RecalculateGlobalElo)...)
+	// Debug/monitoring: update all arenas to the actual state (full replay
+	// with a per-arena diff). Editor-gated like every other write route; the
+	// page for it is /debug (unlinked).
+	router.POST("/admin/update-arenas", append(editorAuth(), strictWrapper.UpdateArenas)...)
 	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
 	router.GET("/corrections", strictWrapper.ListCorrections)
+
+	// Arenas (ADR-24) — public reads, editor-gated writes.
+	router.GET("/arenas", strictWrapper.ListArenas)
+	router.POST("/arenas", append(editorAuth(), strictWrapper.CreateArena)...)
+	router.GET("/arenas/:id", strictWrapper.GetArena)
+	router.GET("/arenas/:id/players", strictWrapper.GetArenaPlayers)
+	router.GET("/arenas/:id/matches", strictWrapper.ListArenaMatches)
+	router.PATCH("/arenas/:id", append(editorAuth(), strictWrapper.UpdateArena)...)
+	router.DELETE("/arenas/:id", append(editorAuth(), strictWrapper.DeleteArena)...)
 
 	// Live game tables (generic; per-game behavior dispatched by game_id).
 	// The whole group is no-store: table state mutates constantly, and a

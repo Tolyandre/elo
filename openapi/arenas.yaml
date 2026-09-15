@@ -1,0 +1,412 @@
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+ArenasCollection:
+  get:
+    operationId: ListArenas
+    tags: [arenas]
+    summary: List arenas, optionally narrowed to a game or a tournament
+    parameters:
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: >-
+          Return arenas whose filter includes this game or one of its tags;
+          the global arena (unconditional filter) is always included.
+      - name: tournament_id
+        in: query
+        schema:
+          type: string
+        description: Return the tournament's arena.
+    responses:
+      "200":
+        description: Arena list
+        content:
+          application/json:
+            schema:
+              $ref: '#/ArenaList'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  post:
+    operationId: CreateArena
+    tags: [arenas]
+    summary: Create an arena (editor only)
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/ArenaInput'
+    responses:
+      "200":
+        description: Created arena (data not yet calculated; the updater fills it)
+        content:
+          application/json:
+            schema:
+              $ref: '#/ArenaResult'
+      "400":
+        description: Bad request (invalid settings document or filter)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+ArenaItem:
+  get:
+    operationId: GetArena
+    tags: [arenas]
+    summary: Get an arena by ID
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Arena details
+        content:
+          application/json:
+            schema:
+              $ref: '#/ArenaResult'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  patch:
+    operationId: UpdateArena
+    tags: [arenas]
+    summary: Update a user-created arena's name, filter and settings (editor only)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/ArenaInput'
+    responses:
+      "200":
+        description: Updated arena
+        content:
+          application/json:
+            schema:
+              $ref: '#/ArenaResult'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: The arena is auto-managed (per-game or per-tournament)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: DeleteArena
+    tags: [arenas]
+    summary: Delete a user-created arena (editor only)
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Arena deleted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: The global arena cannot be deleted; auto-managed arenas follow their entity
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+ArenaPlayersPath:
+  get:
+    operationId: GetArenaPlayers
+    tags: [arenas]
+    summary: Arena players ranked, with precalculated match and medal stats
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Ranked players
+        content:
+          application/json:
+            schema:
+              $ref: '#/ArenaPlayersList'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+ArenaMatchesPath:
+  get:
+    operationId: ListArenaMatches
+    tags: [arenas]
+    summary: List the arena's matches with cursor-based pagination
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of matches per page
+    responses:
+      "200":
+        description: Paginated match list (same Match shape as /matches)
+        content:
+          application/json:
+            schema:
+              $ref: './matches.yaml#/MatchesPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+MatchFilter:
+  type: object
+  description: >-
+    The arena's match filter (ADR-24): a match meets the filter iff it
+    satisfies every present condition; null conditions are absent. game_ids and
+    tag_ids are OR'd; both empty mean any game.
+  properties:
+    date_from:
+      type: string
+      format: date-time
+      nullable: true
+    date_to:
+      type: string
+      format: date-time
+      nullable: true
+    game_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+    tag_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+    tournament_id:
+      $ref: './common.yaml#/Base58ID'
+  required: [game_ids, tag_ids]
+
+ArenaSettings:
+  type: object
+  description: >-
+    Versioned arena settings document (ADR-24), validated server-side against
+    the JSON Schema in pkg/arenasettings. Shape v1:
+    {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+  additionalProperties: true
+
+Arena:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    filter:
+      $ref: '#/MatchFilter'
+    settings:
+      $ref: '#/ArenaSettings'
+    settings_schema_version:
+      type: integer
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+      description: Set for the auto-managed per-game arena.
+    tournament_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+      description: Set for the auto-managed per-tournament arena.
+    stale_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: Not null while the arena waits for a background recalculation.
+    matches_count:
+      type: integer
+      description: Number of matches meeting the arena's filter (list responses only).
+  required: [id, name, filter, settings, settings_schema_version]
+
+ArenaInput:
+  type: object
+  description: >-
+    Create/update body. The settings object is validated server-side against
+    the current arena-settings JSON Schema; league parameters live there.
+  properties:
+    name:
+      type: string
+    filter:
+      $ref: '#/MatchFilter'
+    settings:
+      $ref: '#/ArenaSettings'
+  required: [name, filter, settings]
+
+ArenaResult:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      $ref: '#/Arena'
+  required: [status, data]
+
+ArenaList:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/Arena'
+  required: [status, data]
+
+ArenaPlayer:
+  type: object
+  description: One row of the arena players tab — latest settlement state joined
+    with the precalculated stats.
+  properties:
+    player_id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    rating:
+      type: number
+      format: double
+    league:
+      type: string
+      nullable: true
+      description: null when the arena has no leagues.
+    rank:
+      type: integer
+      nullable: true
+    matches_count:
+      type: integer
+    first_count:
+      type: integer
+    second_count:
+      type: integer
+    third_count:
+      type: integer
+    fourth_count:
+      type: integer
+    matches_left_for_elite:
+      type: integer
+    wins_needed_for_amateur:
+      type: integer
+    wins_needed_for_amateur_upper:
+      type: integer
+  required: [player_id, name, rating, league, rank, matches_count, first_count, second_count, third_count, fourth_count, matches_left_for_elite, wins_needed_for_amateur, wins_needed_for_amateur_upper]
+
+ArenaPlayersList:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/ArenaPlayer'
+  required: [status, data]

@@ -1,5 +1,3 @@
-import { GameMatch } from "@/app/api";
-
 // Statistics for the "Лидеры по очкам" tab: per player count, only the
 // winner's score matters (second and lower places are never included).
 
@@ -23,6 +21,12 @@ export type WinnerScoreTop = {
     achievers: WinnerScoreAchiever[];
 };
 
+// The input is structural so both the /matches shape (score map per player)
+// and the old per-game match shape can feed it (see ScoreLeadersTab).
+export type ScoreLeadersMatch = {
+    players: { name: string; score: number }[];
+};
+
 export type ScoreLeadersSection = {
     playerCount: number;
     matchCount: number;
@@ -33,8 +37,8 @@ export type ScoreLeadersSection = {
 const MAX_BINS = 15;
 const TOP_SCORES = 5;
 
-export function computeWinnerScoreStats(matches: GameMatch[]): ScoreLeadersSection[] {
-    const byPlayerCount = new Map<number, GameMatch[]>();
+export function computeWinnerScoreStats(matches: ScoreLeadersMatch[]): ScoreLeadersSection[] {
+    const byPlayerCount = new Map<number, ScoreLeadersMatch[]>();
     for (const match of matches) {
         if (match.players.length === 0) continue;
         const group = byPlayerCount.get(match.players.length);
@@ -64,7 +68,7 @@ export function computeWinnerScoreStats(matches: GameMatch[]): ScoreLeadersSecti
  * MatchCard uses to assign rank 1 on a tie. The match still contributes one
  * score to the distribution; only the achiever list holds several names.
  */
-function winnerOf(match: GameMatch): { score: number; names: string[] } {
+function winnerOf(match: ScoreLeadersMatch): { score: number; names: string[] } {
     const max = Math.max(...match.players.map(p => p.score));
     return { score: max, names: match.players.filter(p => p.score === max).map(p => p.name) };
 }

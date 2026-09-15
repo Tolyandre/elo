@@ -44,14 +44,13 @@ func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
 	matchID id.ID,
-	gameID id.ID,
 	playerScores map[id.ID]float64,
 	state MatchPrevState,
 	matchDate time.Time,
 	eloCalcFn EloCalcFunc,
 ) error {
-	// Steps 1 & 2: Calculate and store/update rating + game_elo
-	if err := eloCalcFn(ctx, q, matchID, gameID, playerScores, state); err != nil {
+	// Steps 1 & 2: Calculate and store/update the global arena settlement
+	if err := eloCalcFn(ctx, q, matchID, playerScores, state); err != nil {
 		return fmt.Errorf("elo calc for match %s: %w", matchID, err)
 	}
 
@@ -86,7 +85,7 @@ func (p *EventProcessor) RecalculateFrom(
 
 	// Delete all settlement rows from startDate in one query (match, market, and correction).
 	// The per-market deletes inside UnsettleMarketsFromDate will become no-ops.
-	if err := q.DeleteAllSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
+	if err := q.DeleteGlobalSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
 		return fmt.Errorf("delete settlements from date: %w", err)
 	}
 
@@ -133,7 +132,7 @@ func (p *EventProcessor) RecalculateFrom(
 				return fmt.Errorf("lock/get prev elos for match %s: %w", match.ID, err)
 			}
 
-			if err := p.processMatchSettlements(ctx, q, match.ID, match.GameID, playerScores,
+			if err := p.processMatchSettlements(ctx, q, match.ID, playerScores,
 				state, match.Date.Time, calcAndUpdateElo); err != nil {
 				return err
 			}

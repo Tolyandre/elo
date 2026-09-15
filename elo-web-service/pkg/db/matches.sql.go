@@ -207,11 +207,13 @@ FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
+LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
-    FROM global_arena_settlement gas2
-    WHERE gas2.player_id = p.id AND gas2.date < m.date
+    FROM arena_settlements gas2
+    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+      AND gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
@@ -353,11 +355,13 @@ FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN global_arena_settlement gas ON gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
+LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
-    FROM global_arena_settlement gas2
-    WHERE gas2.player_id = p.id AND gas2.date < pm.date
+    FROM arena_settlements gas2
+    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+      AND gas2.player_id = p.id AND gas2.date < pm.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
 ) prev_player_rating ON true
