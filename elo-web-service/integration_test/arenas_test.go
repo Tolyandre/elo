@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -366,5 +367,113 @@ func TestArena_GlobalArenaBacksPlayersPage(t *testing.T) {
 	}
 	if found.MatchesCount != 1 || found.FirstCount != 1 {
 		t.Fatalf("global arena stats: %+v", found)
+	}
+}
+
+// TestArena_MatchesFiltersAndCursor covers the player filter and the cursor
+// pagination of the arena match list (the filter travels inside the token).
+func TestArena_MatchesFiltersAndCursor(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	editor := createNamedTestUser(t, pool, "arenas-editor-4", "Арена Редактор 4")
+	router := setupRouter(pool)
+	_ = editor // reads are public; the editor token exercises nothing extra here
+
+	p1 := createTestPlayer(t, pool, "Фильтр1")
+	p2 := createTestPlayer(t, pool, "Фильтр2")
+	p3 := createTestPlayer(t, pool, "Фильтр3")
+	// Through the service so the per-game arena exists.
+	gameSvc := newGameService(pool)
+	gameRec, err := gameSvc.AddGame(context.Background(), newID(t), "Фильтр игра", idpkg.ID(""))
+	if err != nil {
+		t.Fatalf("AddGame: %v", err)
+	}
+	gameID := gameRec.ID
+
+	svc := newMatchService(pool)
+	for i := range 3 {
+		if _, err := svc.AddMatch(context.Background(), gameID, map[idpkg.ID]float64{p1: 100, p2: 50, p3: 10 + float64(i)}, time.Now().Add(-time.Duration(i)*time.Hour), newMatchOpts(t)); err != nil {
+			t.Fatalf("AddMatch %d: %v", i, err)
+		}
+	}
+
+	arenaID := gameArenaID(t, pool, gameID)
+
+	var page struct {
+		Data []struct {
+			MatchId string `json:"id"`
+			Score   map[string]struct {
+				PlayerScore float64 `json:"score"`
+			} `json:"score"`
+		} `json:"data"`
+		Next *string `json:"next"`
+	}
+	decode := func(w *httptest.ResponseRecorder) {
+		t.Helper()
+		// Responses omit "next" when exhausted; clear the stale pointer so a
+		// missing key is not mistaken for a cursor.
+		page.Next = nil
+		if w.Code != http.StatusOK {
+			t.Fatalf("list arena matches: %d %s", w.Code, w.Body.String())
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+			t.Fatalf("decode page: %v", err)
+		}
+	}
+
+	// Unfiltered page 1 with limit=1: newest match, cursor for the rest.
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?limit=1", "", ""))
+	if len(page.Data) != 1 || page.Next == nil {
+		t.Fatalf("page1 must hold one match and a cursor: %+v", page)
+	}
+
+	// Follow the cursor: continuations use the default page size, so one more
+	// request returns the remaining matches. Every returned match must be new.
+	seen := map[string]bool{page.Data[0].MatchId: true}
+	next := *page.Next
+	for next != "" {
+		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?next="+next, "", ""))
+		for _, m := range page.Data {
+			if seen[m.MatchId] {
+				t.Fatalf("cursor repeated match %s", m.MatchId)
+			}
+			seen[m.MatchId] = true
+		}
+		if page.Next == nil {
+			break
+		}
+		next = *page.Next
+	}
+	if len(seen) != 3 {
+		t.Fatalf("expected 3 distinct matches over the cursor, got %d", len(seen))
+	}
+
+	// Player filter: selects the matches p2 played (each still shows all
+	// its players, same as the /matches page).
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?player_id="+string(p2), "", ""))
+	if len(page.Data) != 3 {
+		t.Fatalf("player p2 played 3 matches, got %d match groups", len(page.Data))
+	}
+
+
+	// The filter survives inside the cursor: start a filtered walk with
+	// limit=1, then follow the token (default page size) to the end.
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?player_id="+string(p2)+"&limit=1", "", ""))
+	if len(page.Data) != 1 || page.Next == nil {
+		t.Fatalf("filtered page1 shape: %+v", page)
+	}
+	filteredGroups := 1
+	next = *page.Next
+	for {
+		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?next="+next, "", ""))
+		filteredGroups += len(page.Data)
+		if page.Next == nil {
+			break
+		}
+		next = *page.Next
+	}
+	if filteredGroups != 3 {
+		t.Fatalf("expected 3 filtered matches over the cursor, walked %d", filteredGroups)
 	}
 }

@@ -228,6 +228,21 @@ ArenaMatchesPath:
         required: true
         schema:
           type: string
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter by player ID
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter by club ID
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter by game ID
       - name: next
         in: query
         schema:

@@ -1,17 +1,10 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, useCallback, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
-import {
-    Arena,
-    getArenaPlayersPromise,
-    getArenaPromise,
-    getArenaMatchesPagePromise,
-    Match,
-    parseArenaSettings,
-} from "@/app/api";
+import { Arena, Match, getArenaPlayersPromise, getArenaPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
@@ -22,6 +15,7 @@ import { ScoreLeadersTab } from "@/components/score-leaders-tab";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { ArenaMedalsTab } from "./arena-medals-tab";
 import { ArenaMatchesTab } from "./arena-matches-tab";
+import { useArenaMatches, type ArenaMatchFilters } from "./use-arena-matches";
 
 // We cannot use /arenas/<ARENA_ID> path in exported application.
 // So use query parameters instead /arenas/view?id=<ARENA_ID>
@@ -30,6 +24,22 @@ type ArenaTab = (typeof ARENA_TABS)[number];
 
 function parseTab(value: string | null): ArenaTab {
   return (ARENA_TABS as readonly string[]).includes(value ?? "") ? (value as ArenaTab) : "players";
+}
+
+/**
+ * Corrections settle only into the global arena (ADR-24), so its timeline —
+ * the arena whose filter admits every match — is the only one that merges
+ * them in.
+ */
+function isGlobalArena(arena: Arena): boolean {
+  const f = arena.filter;
+  return (
+    f.game_ids.length === 0 &&
+    f.tag_ids.length === 0 &&
+    f.tournament_id == null &&
+    f.date_from == null &&
+    f.date_to == null
+  );
 }
 
 export default function ArenaViewPage() {
@@ -61,77 +71,49 @@ function ArenaViewWrapped() {
   const arena = data?.arena ?? null;
   const players = data?.players ?? [];
 
-  // Matches are shared by the Партии and Лидеры tabs: one cursor-paginated
-  // loader. The cursor lives in a ref (not state) so loadMore reads it
-  // without re-creating the callback.
-  const [matches, setMatches] = useState<Match[]>([]);
-  const nextCursorRef = useRef<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMatches, setLoadingMatches] = useState(false);
+  // Match filters, mirrored into the URL like on /matches. Read once per
+  // arena on mount; subsequent changes go through handleFiltersChange.
+  const [filters, setFilters] = useState<ArenaMatchFilters>({});
+  React.useEffect(() => {
+    if (!arena) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- initialize from URL once per arena */
+    setFilters({
+      playerId: toBase58ID(searchParams.get("player") ?? "") ?? undefined,
+      clubId: toBase58ID(searchParams.get("club") ?? "") ?? undefined,
+      gameId: toBase58ID(searchParams.get("game") ?? "") ?? undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read URL once per arena
+  }, [arena?.id]);
 
-  // Load page 1 whenever the arena changes.
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before async fetch */
-    setLoadingMatches(true);
-    getArenaMatchesPagePromise({ id, limit: 30 })
-      .then((page) => {
-        if (cancelled) return;
-        nextCursorRef.current = page.next;
-        setMatches(page.items);
-        setHasMore(page.next !== null);
-      })
-      .catch(() => {
-        // toast shown by API helper
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingMatches(false);
-      });
-    return () => { cancelled = true; };
-  }, [id]);
+  const includeCorrections = arena != null && isGlobalArena(arena);
+  const timeline = useArenaMatches(id, filters, includeCorrections);
 
-  const loadMore = useCallback(() => {
-    if (!id || loadingMatches) return;
-    const cursor = nextCursorRef.current;
-    if (!cursor) return;
-    setLoadingMatches(true);
-    getArenaMatchesPagePromise({ id, next: cursor, limit: 30 })
-      .then((page) => {
-        nextCursorRef.current = page.next;
-        setHasMore(page.next !== null);
-        setMatches((prev) => [...prev, ...page.items]);
-      })
-      .catch(() => {
-        // toast shown by API helper
-      })
-      .finally(() => setLoadingMatches(false));
-  }, [id, loadingMatches]);
-
-  // The leaders tab needs the full match set: pull all remaining pages.
-  const loadAllMatches = useCallback(async () => {
-    if (!id) return;
-    setLoadingMatches(true);
-    try {
-      let cursor = nextCursorRef.current;
-      while (cursor) {
-        const page = await getArenaMatchesPagePromise({ id, next: cursor, limit: 100 });
-        nextCursorRef.current = page.next;
-        setMatches((prev) => [...prev, ...page.items]);
-        cursor = page.next;
+  const updateFilterParam = useCallback(
+    (key: string, value: string | undefined) => {
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      if (value == null) {
+        params.delete(key);
+      } else {
+        params.set(key, value);
       }
-      setHasMore(false);
-    } finally {
-      setLoadingMatches(false);
-    }
-  }, [id]);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [searchParams, pathname, router],
+  );
+
+  function handleFiltersChange(next: ArenaMatchFilters) {
+    setFilters(next);
+    updateFilterParam("player", next.playerId);
+    updateFilterParam("club", next.clubId);
+    updateFilterParam("game", next.gameId);
+  }
 
   function setTab(value: string) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.set("tab", value);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    if (value === "leaders" && hasMore && !loadingMatches) {
-      void loadAllMatches();
+    if (value === "leaders" && timeline.hasMore) {
+      void timeline.loadAll();
     }
   }
 
@@ -143,8 +125,6 @@ function ArenaViewWrapped() {
       </main>
     );
   }
-
-  const leagues = arena ? parseLeagueKinds(arena) : [];
 
   return (
     <main className="max-w-sm mx-auto">
@@ -173,15 +153,19 @@ function ArenaViewWrapped() {
             </TabsList>
 
             <TabsContent value="players" className="space-y-4">
-              <ArenaPlayersGroups players={players} leagues={leagues} />
+              <ArenaPlayersGroups players={players} arena={arena} />
             </TabsContent>
 
             <TabsContent value="matches" className="space-y-2">
               <ArenaMatchesTab
-                matches={matches}
-                loading={loadingMatches}
-                hasMore={hasMore}
-                onLoadMore={loadMore}
+                arena={arena}
+                items={timeline.items}
+                loading={timeline.loading}
+                loadingMore={timeline.loadingMore}
+                hasMore={timeline.hasMore}
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                onLoadMore={timeline.loadMore}
               />
             </TabsContent>
 
@@ -190,18 +174,13 @@ function ArenaViewWrapped() {
             </TabsContent>
 
             <TabsContent value="leaders" className="space-y-4">
-              <ArenaLeadersTab matches={matches} loading={loadingMatches} />
+              <ArenaLeadersTab matches={timeline.matches} loading={timeline.loading} />
             </TabsContent>
           </Tabs>
         )}
       </div>
     </main>
   );
-}
-
-function parseLeagueKinds(arena: Arena): string[] {
-  const { leagues } = parseArenaSettings(arena.settings);
-  return leagues.map((l) => l.kind);
 }
 
 /**

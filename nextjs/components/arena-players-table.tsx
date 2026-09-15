@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArenaPlayer } from "@/app/api";
+import { Arena, ArenaPlayer, parseArenaSettings } from "@/app/api";
 import { RankIcon } from "@/components/rank-icon";
+import { ClubIcons } from "@/components/player-name";
+import { useSettings } from "@/app/settingsContext";
+import { winsNeededForAmateur } from "@/app/eloCalculation";
 
 const LEAGUE_TITLES: Record<string, string> = {
   elite: "Высшая лига",
@@ -11,9 +14,8 @@ const LEAGUE_TITLES: Record<string, string> = {
 };
 
 /**
- * Ranked arena players table (ADR-24): rank icon, name, rating and the
- * newbie/elite hints. When the arena has leagues, players arrive grouped —
- * the caller passes the groups; otherwise a single list is rendered.
+ * Ranked arena players table (ADR-24): rank icon, club icons, name, rating
+ * and the newbie/elite hints — styled like the /players page.
  */
 export function ArenaPlayersTable({ players }: { players: ArenaPlayer[] }) {
   if (players.length === 0) {
@@ -24,11 +26,14 @@ export function ArenaPlayersTable({ players }: { players: ArenaPlayer[] }) {
       <tbody>
         {players.map((player) => (
           <tr key={player.player_id}>
-            <td className="px-1 py-2">
+            <td className="px-1 py-2 min-w-7">
               {player.rank != null ? <RankIcon rank={player.rank} /> : null}
             </td>
-            <td className="px-4 py-2">
-              <PlayerName player={player} />
+            <td className="px-1 py-2">
+              <ClubIcons playerId={player.player_id} className="mr-1 align-text-bottom" />
+              <Link href={`/players/view?id=${player.player_id}`} className="hover:underline">
+                {player.name}
+              </Link>
               {player.league === "newbie" && player.wins_needed_for_amateur > 0 && (
                 <span className="text-xs text-muted-foreground ml-1">
                   ещё ~{player.wins_needed_for_amateur}
@@ -52,36 +57,28 @@ export function ArenaPlayersTable({ players }: { players: ArenaPlayer[] }) {
   );
 }
 
-function PlayerName({ player }: { player: ArenaPlayer }) {
-  return (
-    <Link href={`/players/view?id=${player.player_id}`} className="hover:underline">
-      {player.name}
-    </Link>
-  );
-}
-
 /**
- * Players grouped by league in promotion order (elite → amateur → newbie when
- * present). A league-less arena renders one table without headers.
+ * Players grouped by league in descending promotion order — elite on top, then
+ * amateur, then newbie — matching the /players page (the settings list is in
+ * promotion order, so it renders reversed). A league-less arena renders one
+ * table without headers. Each league keeps its promotion description footer.
  */
-export function ArenaPlayersGroups({
-  players,
-  leagues,
-}: {
-  players: ArenaPlayer[];
-  leagues: string[];
-}) {
+export function ArenaPlayersGroups({ players, arena }: { players: ArenaPlayer[]; arena: Arena }) {
+  const { leagues } = parseArenaSettings(arena.settings);
   if (leagues.length === 0) {
     return <ArenaPlayersTable players={players} />;
   }
   return (
     <>
-      {leagues.map((league) => {
-        const leaguePlayers = players.filter((p) => p.league === league);
+      {[...leagues].reverse().map((league) => {
+        const leaguePlayers = players.filter((p) => p.league === league.kind);
         return (
-          <div key={league}>
-            <h2 className="text-lg font-semibold mb-2 mt-4">{LEAGUE_TITLES[league] ?? league}</h2>
+          <div key={league.kind}>
+            <h2 className="text-xl font-semibold mb-2 mt-4">
+              {LEAGUE_TITLES[league.kind] ?? league.kind}
+            </h2>
             <ArenaPlayersTable players={leaguePlayers} />
+            <LeagueFooter kind={league.kind} arena={arena} />
           </div>
         );
       })}
@@ -89,3 +86,38 @@ export function ArenaPlayersGroups({
   );
 }
 
+function LeagueFooter({ kind, arena }: { kind: string; arena: Arena }) {
+  const { startingElo, eloConstK, eloConstD } = useSettings();
+  const { starting_rating: startingRating, leagues } = parseArenaSettings(arena.settings);
+  const newbie = leagues.find((l) => l.kind === "newbie");
+  const elite = leagues.find((l) => l.kind === "elite");
+
+  if (kind === "elite" && elite) {
+    return (
+      <p className="text-xs text-muted-foreground mb-2">
+        Для Высшей Лиги нужно {elite.matches_6m} партий за последние 6 месяцев, среди них{" "}
+        {elite.matches_2m} за последние 2 месяца
+      </p>
+    );
+  }
+  if (kind === "amateur" && newbie) {
+    // The catch-up description only makes sense when the arena actually has
+    // the newbie league below (with starting rating = starting elo there is
+    // no gap to close). The schema requires these params on a newbie league.
+    const [lower, upper] = winsNeededForAmateur(
+      startingElo - startingRating,
+      newbie.goal_gap ?? 0,
+      eloConstK,
+      newbie.earned_max ?? 0,
+      newbie.tau ?? 1,
+      eloConstD,
+    );
+    return (
+      <p className="text-xs text-muted-foreground mb-2">
+        Для Лиги Любителей нужно совпадение рейтинга с эло (эло − рейтинг ≤ {newbie.goal_gap}),
+        примерно {lower}–{upper} побед
+      </p>
+    );
+  }
+  return null;
+}

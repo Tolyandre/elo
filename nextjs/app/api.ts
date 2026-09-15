@@ -849,11 +849,20 @@ export async function getArenaPlayersPromise(id: Base58ID): Promise<ArenaPlayer[
 
 export async function getArenaMatchesPagePromise(params: {
     id: Base58ID;
+    player_id?: Base58ID;
+    club_id?: Base58ID;
+    game_id?: Base58ID;
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
     const query: Record<string, string | number> = {};
-    if (params.next) query.next = params.next;
+    if (params.next) {
+        query.next = params.next;
+    } else {
+        if (params.player_id) query.player_id = params.player_id;
+        if (params.club_id) query.club_id = params.club_id;
+        if (params.game_id) query.game_id = params.game_id;
+    }
     if (params.limit) query.limit = params.limit;
     const data = await unwrap(client.GET("/arenas/{id}/matches", {
         params: { path: { id: params.id }, query },
@@ -887,7 +896,15 @@ export async function deleteArenaPromise(id: Base58ID) {
  */
 export type ArenaSettingsDoc = {
     starting_rating: number;
-    leagues: { kind: "newbie" | "amateur" | "elite" }[];
+    leagues: {
+        kind: "newbie" | "amateur" | "elite";
+        goal_gap?: number;
+        earned_min?: number;
+        earned_max?: number;
+        tau?: number;
+        matches_6m?: number;
+        matches_2m?: number;
+    }[];
 };
 
 export function parseArenaSettings(settings: ArenaSettings): ArenaSettingsDoc {

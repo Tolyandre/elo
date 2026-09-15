@@ -215,6 +215,8 @@ type Querier interface {
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
 	// Cursor-paginated match list of one arena, same envelope as /matches.
+	// Optional player/club/game filters mirror /matches; the cursor token carries
+	// them, so continuation requests pass only the token.
 	ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMatchesPaginatedParams) ([]ListArenaMatchesPaginatedRow, error)
 	// ---------------------------------------------------------------------------
 	// Arena page reads

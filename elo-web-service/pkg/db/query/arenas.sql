@@ -260,11 +260,14 @@ ORDER BY p.name;
 
 -- name: ListArenaMatchesPaginated :many
 -- Cursor-paginated match list of one arena, same envelope as /matches.
+-- Optional player/club/game filters mirror /matches; the cursor token carries
+-- them, so continuation requests pass only the token.
 WITH paginated_matches AS (
-    SELECT m.id, m.date, m.game_id, m.calculator_kind
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
     FROM arenas a
     JOIN match_filters f ON f.id = a.match_filter_id
     CROSS JOIN matches m
+    JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = sqlc.arg('arena_id')
       AND (f.date_from IS NULL OR m.date >= f.date_from)
       AND (f.date_to IS NULL OR m.date <= f.date_to)
@@ -280,6 +283,20 @@ WITH paginated_matches AS (
       AND (
           sqlc.narg('cursor_date')::timestamptz IS NULL
           OR m.date < sqlc.narg('cursor_date')::timestamptz
+      )
+      AND (
+          sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid
+      )
+      AND (
+          sqlc.narg('club_id')::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND pcm.player_id = ms.player_id
+          )
+      )
+      AND (
+          sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
       )
     ORDER BY m.date DESC, m.id DESC
     LIMIT sqlc.arg('limit')::int4

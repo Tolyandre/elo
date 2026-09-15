@@ -3,30 +3,18 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { Arena, getArenasPromise, parseArenaSettings } from "@/app/api";
+import { Arena, getArenasPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy } from "lucide-react";
 
-const LEAGUE_TITLES: Record<string, string> = {
-  elite: "высшая лига",
-  amateur: "любители",
-  newbie: "новички",
-};
-
 function arenaSubtitle(arena: Arena): string {
   if (arena.game_id) return "арена игры";
   if (arena.tournament_id) return "арена турнира";
   if (arena.filter.game_ids.length > 0 || arena.filter.tag_ids.length > 0) return "серия игр";
   return "все партии";
-}
-
-function leagueBadges(arena: Arena): string {
-  const { leagues } = parseArenaSettings(arena.settings);
-  if (leagues.length === 0) return "без лиг";
-  return leagues.map((l) => LEAGUE_TITLES[l.kind] ?? l.kind).join(" · ");
 }
 
 function ArenasContent() {
@@ -67,7 +55,6 @@ function ArenasContent() {
                   {arena.matches_count != null && <> · партий: {arena.matches_count}</>}
                   {arena.stale_at && <> · обновляется…</>}
                 </p>
-                <p>{leagueBadges(arena)}</p>
               </CardContent>
             </Card>
           ))}

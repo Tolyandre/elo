@@ -1268,6 +1268,15 @@ type ListArenasParams struct {
 
 // ListArenaMatchesParams defines parameters for ListArenaMatches.
 type ListArenaMatchesParams struct {
+	// PlayerId Filter by player ID
+	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
+
+	// ClubId Filter by club ID
+	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
+
+	// GameId Filter by game ID
+	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
+
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
 
@@ -2406,6 +2415,30 @@ func (siw *ServerInterfaceWrapper) ListArenaMatches(c *gin.Context) {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListArenaMatchesParams
+
+	// ------------- Optional query parameter "player_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "club_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "club_id", c.Request.URL.Query(), &params.ClubId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter club_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "game_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	// ------------- Optional query parameter "next" -------------
 

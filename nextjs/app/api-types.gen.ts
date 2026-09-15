@@ -2417,6 +2417,12 @@ export interface operations {
     ListArenaMatches: {
         parameters: {
             query?: {
+                /** @description Filter by player ID */
+                player_id?: string;
+                /** @description Filter by club ID */
+                club_id?: string;
+                /** @description Filter by game ID */
+                game_id?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of matches per page */

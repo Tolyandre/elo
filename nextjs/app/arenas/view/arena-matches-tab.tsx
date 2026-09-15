@@ -1,61 +1,131 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Match } from "@/app/api";
-import { MatchCard } from "@/components/match-card";
+import { Arena } from "@/app/api";
+import { MatchWithMarkets } from "@/components/match-with-markets";
+import { CorrectionCard } from "@/components/correction-card";
+import { PlayerCombobox } from "@/components/player-combobox";
+import { GameCombobox } from "@/components/game-combobox";
+import { ClubSelect } from "@/components/club-select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field, FieldLabel, FieldContent, FieldGroup } from "@/components/ui/field";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "@/app/meContext";
+import type { ArenaMatchFilters, TimelineItem } from "./use-arena-matches";
 
 /**
- * Arena match list (ADR-24): same MatchCard rendering as /matches, fed by the
- * cursor-paginated arena matches endpoint. The sentinel div triggers the next
- * page when scrolled into view.
+ * Arena match timeline (ADR-24): the same rendering as /matches — filter card,
+ * matches with lazily loaded markets, correction cards (global arena only,
+ * since corrections settle only there) — over the cursor-paginated arena
+ * matches endpoint. The game filter is hidden when the arena's filter pins it
+ * to exactly one game.
  */
 export function ArenaMatchesTab({
-  matches,
-  loading,
-  hasMore,
-  onLoadMore,
+    arena,
+    items,
+    loading,
+    loadingMore,
+    hasMore,
+    filters,
+    onFiltersChange,
+    onLoadMore,
 }: {
-  matches: Match[];
-  loading: boolean;
-  hasMore: boolean;
-  onLoadMore: () => void;
+    arena: Arena;
+    items: TimelineItem[];
+    loading: boolean;
+    loadingMore: boolean;
+    hasMore: boolean;
+    filters: ArenaMatchFilters;
+    onFiltersChange: (filters: ArenaMatchFilters) => void;
+    onLoadMore: () => void;
 }) {
-  const { roundToInteger } = useMe();
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+    const { roundToInteger } = useMe();
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting) && hasMore && !loading) {
-          onLoadMore();
-        }
-      },
-      { rootMargin: "200px" },
+    useEffect(() => {
+        const node = sentinelRef.current;
+        if (!node) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting) && hasMore && !loadingMore) {
+                    onLoadMore();
+                }
+            },
+            { rootMargin: "200px" },
+        );
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [hasMore, loadingMore, onLoadMore]);
+
+    // Hide the game select when the arena's match filter pins one game.
+    const showGameFilter = arena.filter.game_ids.length !== 1;
+
+    return (
+        <div className="space-y-2">
+            <Card>
+                <CardContent>
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel className="sr-only">Клуб</FieldLabel>
+                            <FieldContent>
+                                <ClubSelect
+                                    value={filters.clubId ?? null}
+                                    onChange={(id) => onFiltersChange({ ...filters, clubId: id ?? undefined })}
+                                />
+                            </FieldContent>
+                        </Field>
+
+                        <Field>
+                            <FieldLabel className="sr-only">Игрок</FieldLabel>
+                            <FieldContent>
+                                <PlayerCombobox
+                                    value={filters.playerId}
+                                    onChange={(id) => onFiltersChange({ ...filters, playerId: id })}
+                                />
+                            </FieldContent>
+                        </Field>
+
+                        {showGameFilter && (
+                            <Field>
+                                <FieldLabel className="sr-only">Игра</FieldLabel>
+                                <FieldContent>
+                                    <GameCombobox
+                                        value={filters.gameId}
+                                        onChange={(id) => onFiltersChange({ ...filters, gameId: id })}
+                                    />
+                                </FieldContent>
+                            </Field>
+                        )}
+                    </FieldGroup>
+                </CardContent>
+            </Card>
+
+            {loading ? (
+                <>
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-28 w-full rounded-xl" />
+                    ))}
+                </>
+            ) : items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет партий</p>
+            ) : (
+                items.map((item) =>
+                    item.type === "match" ? (
+                        <MatchWithMarkets
+                            key={`m-${item.data.id}`}
+                            match={item.data}
+                            roundToInteger={roundToInteger}
+                        />
+                    ) : (
+                        <CorrectionCard key={`c-${item.data.id}`} correction={item.data} />
+                    ),
+                )
+            )}
+
+            <div ref={sentinelRef} className="flex justify-center py-4">
+                {loadingMore && <Spinner className="size-6" />}
+            </div>
+        </div>
     );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, loading, onLoadMore]);
-
-  if (matches.length === 0 && loading) {
-    return <Spinner className="mx-auto my-4" />;
-  }
-
-  if (matches.length === 0) {
-    return <p className="text-sm text-muted-foreground">Нет партий</p>;
-  }
-
-  return (
-    <>
-      {matches.map((match) => (
-        <MatchCard key={match.id} match={match} roundToInteger={roundToInteger} />
-      ))}
-      <div ref={sentinelRef} className="h-1">
-        {loading && hasMore && <Spinner className="mx-auto my-4" />}
-      </div>
-    </>
-  );
 }

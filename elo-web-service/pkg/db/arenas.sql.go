@@ -426,10 +426,11 @@ func (q *Queries) InsertArenaStats(ctx context.Context, arenaID id.ID) error {
 
 const listArenaMatchesPaginated = `-- name: ListArenaMatchesPaginated :many
 WITH paginated_matches AS (
-    SELECT m.id, m.date, m.game_id, m.calculator_kind
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
     FROM arenas a
     JOIN match_filters f ON f.id = a.match_filter_id
     CROSS JOIN matches m
+    JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = $1
       AND (f.date_from IS NULL OR m.date >= f.date_from)
       AND (f.date_to IS NULL OR m.date <= f.date_to)
@@ -446,8 +447,22 @@ WITH paginated_matches AS (
           $2::timestamptz IS NULL
           OR m.date < $2::timestamptz
       )
+      AND (
+          $3::uuid IS NULL OR ms.player_id = $3::uuid
+      )
+      AND (
+          $4::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = $4::uuid
+                AND pcm.player_id = ms.player_id
+          )
+      )
+      AND (
+          $5::uuid IS NULL OR m.game_id = $5::uuid
+      )
     ORDER BY m.date DESC, m.id DESC
-    LIMIT $3::int4
+    LIMIT $6::int4
 )
 SELECT
     pm.id AS match_id,
@@ -482,6 +497,9 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 type ListArenaMatchesPaginatedParams struct {
 	ArenaID    id.ID              `json:"arena_id"`
 	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	PlayerID   *id.ID             `json:"player_id"`
+	ClubID     *id.ID             `json:"club_id"`
+	GameID     *id.ID             `json:"game_id"`
 	Limit      int32              `json:"limit"`
 }
 
@@ -502,8 +520,17 @@ type ListArenaMatchesPaginatedRow struct {
 }
 
 // Cursor-paginated match list of one arena, same envelope as /matches.
+// Optional player/club/game filters mirror /matches; the cursor token carries
+// them, so continuation requests pass only the token.
 func (q *Queries) ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMatchesPaginatedParams) ([]ListArenaMatchesPaginatedRow, error) {
-	rows, err := q.db.Query(ctx, listArenaMatchesPaginated, arg.ArenaID, arg.CursorDate, arg.Limit)
+	rows, err := q.db.Query(ctx, listArenaMatchesPaginated,
+		arg.ArenaID,
+		arg.CursorDate,
+		arg.PlayerID,
+		arg.ClubID,
+		arg.GameID,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

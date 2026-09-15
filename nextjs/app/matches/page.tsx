@@ -13,8 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup, FieldTitle } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { MatchCard } from "@/components/match-card";
-import { MarketCard } from "@/components/market-card";
+import { MatchWithMarkets } from "@/components/match-with-markets";
 import { CorrectionCard } from "@/components/correction-card";
 import { PendingMatchCard } from "@/components/pending-match-card";
 import { RunningTables } from "@/components/tables/running-tables";
@@ -23,35 +22,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
-import { getMarketsByMatchIdPromise, Match, Market } from "../api";
-
-function MatchWithMarkets({ match, roundToInteger }: { match: Match; roundToInteger: boolean }) {
-  const [relatedMarkets, setRelatedMarkets] = React.useState<Market[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (!match.has_markets) return;
-    getMarketsByMatchIdPromise(match.id)
-      .then((data) => setRelatedMarkets(data ?? []))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Ошибка загрузки ставок"));
-  }, [match.id, match.has_markets]);
-
-  return (
-    <div>
-      <MatchCard match={match} roundToInteger={roundToInteger} clickable />
-      {error && <ErrorAlert message={error} className="mt-2" />}
-      {relatedMarkets.length > 0 && (
-        <div className="space-y-3 mt-3">
-          {relatedMarkets.map((market) => (
-            <Link key={market.id} href={`/markets/view?id=${market.id}`}>
-              <MarketCard market={market} className="hover:bg-accent transition-colors cursor-pointer" />
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function MatchesPage() {
   return (

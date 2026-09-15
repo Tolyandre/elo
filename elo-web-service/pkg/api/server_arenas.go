@@ -251,30 +251,65 @@ func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlay
 	return GetArenaPlayers200JSONResponse{Status: "success", Data: data}, nil
 }
 
-// encodeArenaMatchCursor tokens paginate by match date only (an arena's match
-// set has no other filter dimensions to carry).
-func encodeArenaMatchCursor(date time.Time) string {
-	return base64.URLEncoding.EncodeToString([]byte(date.Format(time.RFC3339Nano)))
+// arenaMatchCursor is the pagination token for the arena match list: the last
+// date plus the active filters, so continuation requests carry only the token.
+type arenaMatchCursor struct {
+	Date     string  `json:"date"`
+	PlayerID *string `json:"player_id,omitempty"`
+	ClubID   *string `json:"club_id,omitempty"`
+	GameID   *string `json:"game_id,omitempty"`
 }
 
-func decodeArenaMatchCursor(token string) (pgtype.Timestamptz, error) {
-	raw, err := base64.URLEncoding.DecodeString(token)
+func encodeArenaMatchCursor(playerID, clubID, gameID *string, date time.Time) string {
+	token, _ := json.Marshal(arenaMatchCursor{
+		Date:     date.UTC().Format(time.RFC3339Nano),
+		PlayerID: playerID,
+		ClubID:   clubID,
+		GameID:   gameID,
+	})
+	return base64.StdEncoding.EncodeToString(token)
+}
+
+func decodeArenaMatchCursor(token string) (arenaMatchCursor, pgtype.Timestamptz, error) {
+	raw, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return pgtype.Timestamptz{}, err
+		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
 	}
-	t, err := time.Parse(time.RFC3339Nano, string(raw))
+	var c arenaMatchCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
+	}
+	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return pgtype.Timestamptz{}, err
+		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
 	}
-	return pgtype.Timestamptz{Time: t, Valid: true}, nil
+	return c, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMatchesRequestObject) (ListArenaMatchesResponseObject, error) {
+	var playerID, clubID, gameID *string
 	var cursorDate pgtype.Timestamptz
 	if request.Params.Next != nil && *request.Params.Next != "" {
-		var err error
-		if cursorDate, err = decodeArenaMatchCursor(*request.Params.Next); err != nil {
+		c, date, err := decodeArenaMatchCursor(*request.Params.Next)
+		if err != nil {
 			return ListArenaMatches400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
+		}
+		playerID, clubID, gameID = c.PlayerID, c.ClubID, c.GameID
+		cursorDate = date
+	} else {
+		// Query params carry wire-form ids (Base58 or canonical); the cursor
+		// path above already holds canonical ones.
+		if request.Params.PlayerId != nil && *request.Params.PlayerId != "" {
+			p := string(parseIDParam(*request.Params.PlayerId))
+			playerID = &p
+		}
+		if request.Params.ClubId != nil && *request.Params.ClubId != "" {
+			cl := string(parseIDParam(*request.Params.ClubId))
+			clubID = &cl
+		}
+		if request.Params.GameId != nil && *request.Params.GameId != "" {
+			g := string(parseIDParam(*request.Params.GameId))
+			gameID = &g
 		}
 	}
 
@@ -286,6 +321,9 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 	rows, err := s.api.ArenaService.ListArenaMatchesPaginated(ctx, db.ListArenaMatchesPaginatedParams{
 		ArenaID:    parseIDParam(request.Id),
 		CursorDate: cursorDate,
+		PlayerID:   idPtr(playerID),
+		ClubID:     idPtr(clubID),
+		GameID:     idPtr(gameID),
 		Limit:      limit,
 	})
 	if err != nil {
@@ -357,7 +395,7 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 	var next *string
 	if int32(len(order)) == limit {
 		lastID := order[len(order)-1]
-		token := encodeArenaMatchCursor(matchesMap[lastID].Date)
+		token := encodeArenaMatchCursor(playerID, clubID, gameID, matchesMap[lastID].Date)
 		next = &token
 	}
 
