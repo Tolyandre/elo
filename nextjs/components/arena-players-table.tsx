@@ -5,7 +5,7 @@ import type { Arena, ArenaPlayer } from "@/app/api";
 import { parseArenaSettings } from "@/app/api";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
-import { RankChangeBadge, RatingDiff } from "@/components/rank-change-badge";
+import { RankChangeIndicator, RatingDiff } from "@/components/rank-change-indicator";
 import { useSettings } from "@/app/settingsContext";
 import { winsNeededForAmateur } from "@/app/eloCalculation";
 
@@ -91,7 +91,7 @@ export function ArenaPlayersTable({
                 {displayRank != null ? <RankIcon rank={displayRank} /> : null}
               </td>
               <td className="px-1 py-2 min-w-10">
-                <RankChangeBadge
+                <RankChangeIndicator
                   current={displayRank}
                   previous={point ? point.rank : null}
                 />
