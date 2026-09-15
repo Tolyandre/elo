@@ -87,3 +87,10 @@ export function toBase58ID(s: string): Base58ID | null {
     }
     return isBase58(s) ? (s as Base58ID) : null;
 }
+
+/**
+ * The global arena (ADR-24) — the backend pins it to this canonical UUID
+ * (migration 051 / pkg/elo/arena.go). It is the main arena: /arenas/view
+ * without an id renders it.
+ */
+export const GLOBAL_ARENA_ID = encodeId("a2ea0000-0000-0000-0000-000000000001");

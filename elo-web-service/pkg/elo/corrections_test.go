@@ -89,3 +89,29 @@ func TestInitialArenaLeague(t *testing.T) {
 		t.Errorf("league-less arena: got %v, want nil", got)
 	}
 }
+
+func TestArenaLeaguePriority(t *testing.T) {
+	global := Arena{Settings: arenasettings.Settings{Leagues: []arenasettings.League{
+		{Kind: LeagueNewbie, GoalGap: 16},
+		{Kind: LeagueAmateur},
+		{Kind: LeagueElite, Matches6M: 20, Matches2M: 3},
+	}}}
+
+	// Elite ranks first, newbie last — the settings list is promotion order,
+	// the priority inverts it.
+	newbie, amateur, elite := LeagueNewbie, LeagueAmateur, LeagueElite
+	if got := arenaLeaguePriority(&elite, global); got != 0 {
+		t.Errorf("elite priority = %d, want 0", got)
+	}
+	if got := arenaLeaguePriority(&amateur, global); got != 1 {
+		t.Errorf("amateur priority = %d, want 1", got)
+	}
+	if got := arenaLeaguePriority(&newbie, global); got != 2 {
+		t.Errorf("newbie priority = %d, want 2", got)
+	}
+
+	// League-less arenas: everyone equal (ties resolved by rating).
+	if got := arenaLeaguePriority(nil, Arena{}); got != 0 {
+		t.Errorf("nil league priority = %d, want 0", got)
+	}
+}

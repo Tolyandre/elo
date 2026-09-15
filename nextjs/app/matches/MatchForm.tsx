@@ -252,13 +252,14 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 return;
             }
 
-            const result = await submitMatch({ game_id: selectedGameId, score, tournament_ids: tournamentIdsToSubmit });
+            await submitMatch({ game_id: selectedGameId, score, tournament_ids: tournamentIdsToSubmit });
             setSuccess(true);
             clearDraft();
             // The match is queued under its final id; the sync (triggered right
-            // away while online) invalidates the lists once it lands. The view
-            // page shows the pending card, then the saved one with the ratings.
-            router.push(`/matches/view?id=${result.id}`);
+            // away while online) invalidates the lists once it lands. The global
+            // arena's match timeline shows the pending card, then the saved one
+            // with the ratings.
+            router.push(`/arenas/view?tab=matches`);
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {

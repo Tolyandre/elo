@@ -224,7 +224,14 @@ type Querier interface {
 	// Latest settlement state joined with the precalculated stats. Final ranking
 	// (league priority, then rating) is applied by the service.
 	ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListArenaPlayersRow, error)
-	ListArenas(ctx context.Context) ([]ListArenasRow, error)
+	// Point-in-time standings of one arena (for rank-change history): the latest
+	// settlement at or before @at, plus the arena-filtered match counts the elite
+	// staleness check needs. Lists players with at least one settlement.
+	ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error)
+	// kind narrows the list for the /arenas page tabs: 'games' returns every
+	// non-tournament arena except the global one (which is the main page, not a
+	// list entry); 'tournaments' returns only the tournament arenas.
+	ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArenasRow, error)
 	// Arenas whose filter includes game @game_id or one of its tags, plus
 	// unconditional (global) arenas — the /games page arena list.
 	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)

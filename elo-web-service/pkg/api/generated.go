@@ -318,6 +318,24 @@ func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
 	}
 }
 
+// Defines values for ListArenasParamsKind.
+const (
+	Games       ListArenasParamsKind = "games"
+	Tournaments ListArenasParamsKind = "tournaments"
+)
+
+// Valid indicates whether the value is a known member of the ListArenasParamsKind enum.
+func (e ListArenasParamsKind) Valid() bool {
+	switch e {
+	case Games:
+		return true
+	case Tournaments:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListAuditEventsParamsEntityType.
 const (
 	ListAuditEventsParamsEntityTypeClub   ListAuditEventsParamsEntityType = "club"
@@ -450,19 +468,32 @@ type ArenaPlayer struct {
 	Name                string  `json:"name"`
 
 	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	PlayerId                  Base58ID `json:"player_id"`
-	Rank                      *int     `json:"rank"`
-	Rating                    float64  `json:"rating"`
-	SecondCount               int      `json:"second_count"`
-	ThirdCount                int      `json:"third_count"`
-	WinsNeededForAmateur      int      `json:"wins_needed_for_amateur"`
-	WinsNeededForAmateurUpper int      `json:"wins_needed_for_amateur_upper"`
+	PlayerId Base58ID `json:"player_id"`
+	Rank     *int     `json:"rank"`
+
+	// RankHistory Rank/rating snapshots used for the change indicators; null league means the arena has no leagues, a null point means no settlement existed at that moment.
+	RankHistory *struct {
+		DayAgo  ArenaRankPoint `json:"day_ago"`
+		WeekAgo ArenaRankPoint `json:"week_ago"`
+	} `json:"rank_history,omitempty"`
+	Rating                    float64 `json:"rating"`
+	SecondCount               int     `json:"second_count"`
+	ThirdCount                int     `json:"third_count"`
+	WinsNeededForAmateur      int     `json:"wins_needed_for_amateur"`
+	WinsNeededForAmateurUpper int     `json:"wins_needed_for_amateur_upper"`
 }
 
 // ArenaPlayersList defines model for ArenaPlayersList.
 type ArenaPlayersList struct {
 	Data   []ArenaPlayer `json:"data"`
 	Status string        `json:"status"`
+}
+
+// ArenaRankPoint defines model for ArenaRankPoint.
+type ArenaRankPoint struct {
+	League *string `json:"league"`
+	Rank   *int    `json:"rank"`
+	Rating float64 `json:"rating"`
 }
 
 // ArenaResult defines model for ArenaResult.
@@ -1259,12 +1290,18 @@ type CreatePlayerCorrectionJSONBodyDiscriminator string
 
 // ListArenasParams defines parameters for ListArenas.
 type ListArenasParams struct {
+	// Kind games returns every non-tournament arena except the global one; tournaments returns only the tournament arenas.
+	Kind *ListArenasParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// GameId Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included.
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// TournamentId Return the tournament's arena.
 	TournamentId *string `form:"tournament_id,omitempty" json:"tournament_id,omitempty"`
 }
+
+// ListArenasParamsKind defines parameters for ListArenas.
+type ListArenasParamsKind string
 
 // ListArenaMatchesParams defines parameters for ListArenaMatches.
 type ListArenaMatchesParams struct {
@@ -2283,6 +2320,14 @@ func (siw *ServerInterfaceWrapper) ListArenas(c *gin.Context) {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListArenasParams
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", c.Request.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter kind: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	// ------------- Optional query parameter "game_id" -------------
 

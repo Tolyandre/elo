@@ -69,6 +69,8 @@ components:
       $ref: './arenas.yaml#/ArenaPlayer'
     ArenaPlayersList:
       $ref: './arenas.yaml#/ArenaPlayersList'
+    ArenaRankPoint:
+      $ref: './arenas.yaml#/ArenaRankPoint'
 
     # Matches
     MatchPlayer:

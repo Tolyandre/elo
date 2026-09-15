@@ -456,7 +456,6 @@ func TestArena_MatchesFiltersAndCursor(t *testing.T) {
 		t.Fatalf("player p2 played 3 matches, got %d match groups", len(page.Data))
 	}
 
-
 	// The filter survives inside the cursor: start a filtered walk with
 	// limit=1, then follow the token (default page size) to the end.
 	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?player_id="+string(p2)+"&limit=1", "", ""))

@@ -1,43 +1,97 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { Base58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Arena, getArenasPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GameCombobox } from "@/components/game-combobox";
 import { Trophy } from "lucide-react";
 
-function arenaSubtitle(arena: Arena): string {
-  if (arena.game_id) return "арена игры";
-  if (arena.tournament_id) return "арена турнира";
-  if (arena.filter.game_ids.length > 0 || arena.filter.tag_ids.length > 0) return "серия игр";
-  return "все партии";
+const ARENAS_TABS = ["games", "tournaments"] as const;
+type ArenasTab = (typeof ARENAS_TABS)[number];
+
+function parseTab(value: string | null): ArenasTab {
+  return (ARENAS_TABS as readonly string[]).includes(value ?? "") ? (value as ArenasTab) : "games";
+}
+
+export default function ArenasPage() {
+  return (
+    <main className="max-w-sm mx-auto space-y-6">
+      <PageHeader title="Арены" />
+      <Suspense>
+        <ArenasContent />
+      </Suspense>
+    </main>
+  );
 }
 
 function ArenasContent() {
-  const { data: arenas, loading, error } = useAsyncResource(() => getArenasPromise(), []);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab = parseTab(searchParams.get("tab"));
+
+  // The games tab carries a game filter; the selection narrows the list to the
+  // arenas related to that game (by game or by tag), tournament arenas excluded.
+  const [gameId, setGameId] = useState<Base58ID | undefined>(undefined);
+
+  const { data: arenas, loading, error } = useAsyncResource(async () => {
+    if (tab === "tournaments") {
+      return getArenasPromise({ kind: "tournaments" });
+    }
+    if (gameId) {
+      const all = await getArenasPromise({ game_id: gameId });
+      // The by-game lookup also matches the global (unconditional) arena and
+      // tournament arenas — neither belongs to the games tab.
+      return all.filter((a) => !isUnconditional(a) && a.tournament_id == null);
+    }
+    return getArenasPromise({ kind: "games" });
+  }, [tab, gameId]);
+
+  function setTab(value: string) {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.set("tab", value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  function handleGameChange(id?: typeof gameId) {
+    setGameId(id);
+  }
 
   return (
     <>
-      <PageHeader title="Арены" />
-      <p className="text-sm text-muted-foreground">
-        Арена — соревновательный режим, который учитывает только избранные партии
-        и ведёт независимый рейтинг игроков.
-      </p>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="games">По играм</TabsTrigger>
+          <TabsTrigger value="tournaments">Турниры</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {tab === "games" && (
+        <GameCombobox value={gameId as never} onChange={handleGameChange} />
+      )}
 
       {error && <ErrorAlert message={error} />}
       {loading && (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full rounded-xl" />
+            <Skeleton key={i} className="h-16 w-full rounded-xl" />
           ))}
         </div>
       )}
 
-      {arenas && (
+      {arenas && arenas.length === 0 && (
+        <p className="text-sm text-muted-foreground">Нет арен</p>
+      )}
+
+      {arenas && arenas.length > 0 && (
         <div className="space-y-2">
           {arenas.map((arena) => (
             <Card key={arena.id}>
@@ -49,10 +103,9 @@ function ArenasContent() {
                   </Link>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-sm text-muted-foreground space-y-1">
+              <CardContent className="text-sm text-muted-foreground">
                 <p>
-                  {arenaSubtitle(arena)}
-                  {arena.matches_count != null && <> · партий: {arena.matches_count}</>}
+                  {arena.matches_count != null && <>Партий: {arena.matches_count}</>}
                   {arena.stale_at && <> · обновляется…</>}
                 </p>
               </CardContent>
@@ -64,12 +117,13 @@ function ArenasContent() {
   );
 }
 
-export default function ArenasPage() {
+function isUnconditional(arena: Arena): boolean {
+  const f = arena.filter;
   return (
-    <main className="max-w-sm mx-auto space-y-6">
-      <Suspense fallback={<p>Загрузка...</p>}>
-        <ArenasContent />
-      </Suspense>
-    </main>
+    f.game_ids.length === 0 &&
+    f.tag_ids.length === 0 &&
+    f.tournament_id == null &&
+    f.date_from == null &&
+    f.date_to == null
   );
 }

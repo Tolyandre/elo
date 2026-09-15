@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArenaPlayer } from "@/app/api";
+import type { ArenaPlayer } from "@/app/api";
 import { RankIcon } from "@/components/rank-icon";
+import { ClubIcons } from "@/components/player-name";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -48,6 +49,7 @@ export function ArenaMedalsTab({ players, loading }: { players: ArenaPlayer[]; l
         {sorted.map((p) => (
           <tr key={p.player_id} className="border-t">
             <td className="py-2 pr-2">
+              <ClubIcons playerId={p.player_id} className="mr-1 align-text-bottom" />
               <Link href={`/players/view?id=${p.player_id}`} className="hover:underline">{p.name}</Link>
             </td>
             <td className="py-2 px-1 text-center tabular-nums">{p.first_count || ""}</td>

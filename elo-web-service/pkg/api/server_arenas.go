@@ -88,7 +88,24 @@ func invalidSettings(err error) (string, bool) {
 
 func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequestObject) (ListArenasResponseObject, error) {
 	data := make([]Arena, 0)
+	appendAll := func(arenas []elo.ArenaWithCount, err error) error {
+		if err != nil {
+			return err
+		}
+		for _, a := range arenas {
+			out := arenaToAPI(a.Arena)
+			count := a.MatchesCount
+			out.MatchesCount = &count
+			data = append(data, out)
+		}
+		return nil
+	}
+
 	switch {
+	case request.Params.Kind != nil && *request.Params.Kind != "":
+		if err := appendAll(s.api.ArenaService.ListArenasByKind(ctx, string(*request.Params.Kind))); err != nil {
+			return nil, err
+		}
 	case request.Params.TournamentId != nil && *request.Params.TournamentId != "":
 		arena, err := s.api.ArenaService.GetArenaByTournament(ctx, parseIDParam(*request.Params.TournamentId))
 		if err != nil {
@@ -119,15 +136,8 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 			data = append(data, out)
 		}
 	default:
-		arenas, err := s.api.ArenaService.ListArenas(ctx)
-		if err != nil {
+		if err := appendAll(s.api.ArenaService.ListArenas(ctx)); err != nil {
 			return nil, err
-		}
-		for _, a := range arenas {
-			out := arenaToAPI(a.Arena)
-			count := a.MatchesCount
-			out.MatchesCount = &count
-			data = append(data, out)
 		}
 	}
 
@@ -223,16 +233,32 @@ func (s *StrictServer) DeleteArena(ctx context.Context, request DeleteArenaReque
 }
 
 func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlayersRequestObject) (GetArenaPlayersResponseObject, error) {
-	players, err := s.api.ArenaService.GetArenaPlayers(ctx, parseIDParam(request.Id))
+	arenaID := parseIDParam(request.Id)
+	players, err := s.api.ArenaService.GetArenaPlayers(ctx, arenaID)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return GetArenaPlayers404JSONResponse{Status: "fail", Message: "Arena not found"}, nil
 		}
 		return nil, err
 	}
+
+	// Rank-change history: the same snapshot offsets the /players page uses.
+	// A missing point (no settlement yet at that moment) stays nil.
+	now := time.Now()
+	dayAgo, err := s.api.ArenaService.GetArenaPlayersAt(ctx, arenaID, now.Add(-12*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	weekAgo, err := s.api.ArenaService.GetArenaPlayersAt(ctx, arenaID, now.Add(-7*24*time.Hour+12*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	dayByPlayer := arenaPlayersByID(dayAgo)
+	weekByPlayer := arenaPlayersByID(weekAgo)
+
 	data := make([]ArenaPlayer, 0, len(players))
 	for _, p := range players {
-		data = append(data, ArenaPlayer{
+		ap := ArenaPlayer{
 			PlayerId:                  Base58ID(p.ID),
 			Name:                      p.Name,
 			Rating:                    p.Rating,
@@ -246,9 +272,34 @@ func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlay
 			MatchesLeftForElite:       p.MatchesLeftForElite,
 			WinsNeededForAmateur:      p.WinsNeededForAmateurLower,
 			WinsNeededForAmateurUpper: p.WinsNeededForAmateurUpper,
-		})
+		}
+		dayPoint, dayOK := dayByPlayer[p.ID]
+		weekPoint, weekOK := weekByPlayer[p.ID]
+		ap.RankHistory = &struct {
+			DayAgo  ArenaRankPoint `json:"day_ago"`
+			WeekAgo ArenaRankPoint `json:"week_ago"`
+		}{
+			DayAgo:  arenaRankPoint(dayPoint, dayOK),
+			WeekAgo: arenaRankPoint(weekPoint, weekOK),
+		}
+		data = append(data, ap)
 	}
 	return GetArenaPlayers200JSONResponse{Status: "success", Data: data}, nil
+}
+
+func arenaPlayersByID(players []elo.ArenaPlayer) map[id.ID]elo.ArenaPlayer {
+	out := make(map[id.ID]elo.ArenaPlayer, len(players))
+	for _, p := range players {
+		out[p.ID] = p
+	}
+	return out
+}
+
+func arenaRankPoint(p elo.ArenaPlayer, ok bool) ArenaRankPoint {
+	if !ok {
+		return ArenaRankPoint{Rating: 0, League: nil, Rank: nil}
+	}
+	return ArenaRankPoint{Rating: p.Rating, League: p.League, Rank: p.Rank}
 }
 
 // arenaMatchCursor is the pagination token for the arena match list: the last

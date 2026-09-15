@@ -832,10 +832,12 @@ export async function deleteTablePromise(tableId: Base58ID, matchId?: string): P
 export async function getArenasPromise(params?: {
     game_id?: Base58ID;
     tournament_id?: Base58ID;
+    kind?: "games" | "tournaments";
 }): Promise<Arena[]> {
     const query: Record<string, string> = {};
     if (params?.game_id) query.game_id = params.game_id;
     if (params?.tournament_id) query.tournament_id = params.tournament_id;
+    if (params?.kind) query.kind = params.kind;
     return (await unwrap(client.GET("/arenas", { params: { query } }))).data;
 }
 

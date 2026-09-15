@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// ClubIcons pulls the clubs context (and the API module); the medals table
+// only renders it, so a stub keeps the test focused.
+vi.mock("@/components/player-name", () => ({
+    ClubIcons: () => null,
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

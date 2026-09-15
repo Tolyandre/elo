@@ -44,15 +44,17 @@ type arenaPlayerResult struct {
 
 func strPtr(s string) *string { return &s }
 
-// arenaLeaguePriority orders leagues by their position in the arena's list
-// (lower = ranked higher). League-less arenas put everyone in one bucket.
+// arenaLeaguePriority orders leagues for ranking: lower = ranked higher.
+// The settings list is in promotion order (newbie → amateur → elite), so the
+// priority inverts it: elite sorts first. League-less arenas put everyone in
+// one bucket (all equal, ties broken by rating).
 func arenaLeaguePriority(league *string, arena Arena) int {
 	if league == nil {
 		return len(arena.Settings.Leagues)
 	}
 	for i, l := range arena.Settings.Leagues {
 		if l.Kind == *league {
-			return i
+			return len(arena.Settings.Leagues) - 1 - i
 		}
 	}
 	return len(arena.Settings.Leagues)

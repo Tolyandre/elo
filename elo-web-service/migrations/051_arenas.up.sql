@@ -115,7 +115,7 @@ WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
 INSERT INTO arenas (id, name, match_filter_id, settings, game_id, tournament_id)
 SELECT
     'a2ea0000-0000-0000-0000-000000000001',
-    'Общая арена',
+    'Главная',
     'a2ea0000-0000-0000-0000-000000000002',
     jsonb_build_object(
         'starting_rating', s.starting_rating_global_arena,

@@ -566,7 +566,11 @@ func (q *Queries) ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMa
 const listArenaPlayers = `-- name: ListArenaPlayers :many
 
 SELECT p.id AS player_id, p.name AS player_name,
-       latest.rating_after, latest.elo_after, latest.league,
+       -- CASE forces sqlc to infer a nullable type: a player whose latest
+       -- settlement is after  (or who has none yet) yields a NULL row.
+       CASE WHEN latest.rating_after IS NULL THEN NULL ELSE latest.rating_after END AS rating_after,
+       CASE WHEN latest.elo_after IS NULL THEN NULL ELSE latest.elo_after END AS elo_after,
+       latest.league,
        st.matches_count, st.first_count, st.second_count, st.third_count, st.fourth_count
 FROM arena_player_stats st
 JOIN players p ON p.id = st.player_id
@@ -584,8 +588,8 @@ ORDER BY p.name
 type ListArenaPlayersRow struct {
 	PlayerID     id.ID       `json:"player_id"`
 	PlayerName   string      `json:"player_name"`
-	RatingAfter  float64     `json:"rating_after"`
-	EloAfter     float64     `json:"elo_after"`
+	RatingAfter  interface{} `json:"rating_after"`
+	EloAfter     interface{} `json:"elo_after"`
 	League       pgtype.Text `json:"league"`
 	MatchesCount int32       `json:"matches_count"`
 	FirstCount   int32       `json:"first_count"`
@@ -630,6 +634,114 @@ func (q *Queries) ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListAr
 	return items, nil
 }
 
+const listArenaPlayersAt = `-- name: ListArenaPlayersAt :many
+SELECT p.id AS player_id, p.name AS player_name,
+       -- CASE forces sqlc to infer a nullable type: a player whose latest
+       -- settlement is after @at (or who has none yet) yields a NULL row.
+       CASE WHEN latest.rating_after IS NULL THEN NULL ELSE latest.rating_after END AS rating_after,
+       CASE WHEN latest.elo_after IS NULL THEN NULL ELSE latest.elo_after END AS elo_after,
+       latest.league,
+       COALESCE(cnt60.cnt, 0) AS cnt_60, COALESCE(cnt180.cnt, 0) AS cnt_180
+FROM players p
+JOIN LATERAL (
+    SELECT 1 FROM arena_settlements s WHERE s.arena_id = $1 AND s.player_id = p.id LIMIT 1
+) has_settlement ON true
+LEFT JOIN LATERAL (
+    SELECT s.rating_after, s.elo_after, s.league
+    FROM arena_settlements s
+    WHERE s.arena_id = $1 AND s.player_id = p.id AND s.date <= $2
+    ORDER BY s.date DESC, s.id DESC
+    LIMIT 1
+) latest ON true
+LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS cnt
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = $1
+    JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE ms.player_id = p.id
+      AND m.date >= ($2 - interval '60 days') AND m.date <= $2
+      AND (f.date_from IS NULL OR m.date >= f.date_from)
+      AND (f.date_to IS NULL OR m.date <= f.date_to)
+      AND (
+          (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
+          OR f.game_ids @> ARRAY[m.game_id]
+          OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+      )
+      AND (f.tournament_id IS NULL OR EXISTS (
+          SELECT 1 FROM match_tournament mt
+          WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
+      ))
+) cnt60 ON true
+LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS cnt
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = $1
+    JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE ms.player_id = p.id
+      AND m.date >= ($2 - interval '180 days') AND m.date <= $2
+      AND (f.date_from IS NULL OR m.date >= f.date_from)
+      AND (f.date_to IS NULL OR m.date <= f.date_to)
+      AND (
+          (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
+          OR f.game_ids @> ARRAY[m.game_id]
+          OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+      )
+      AND (f.tournament_id IS NULL OR EXISTS (
+          SELECT 1 FROM match_tournament mt
+          WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
+      ))
+) cnt180 ON true
+ORDER BY p.name
+`
+
+type ListArenaPlayersAtParams struct {
+	ArenaID id.ID              `json:"arena_id"`
+	Date    pgtype.Timestamptz `json:"date"`
+}
+
+type ListArenaPlayersAtRow struct {
+	PlayerID    id.ID       `json:"player_id"`
+	PlayerName  string      `json:"player_name"`
+	RatingAfter interface{} `json:"rating_after"`
+	EloAfter    interface{} `json:"elo_after"`
+	League      pgtype.Text `json:"league"`
+	Cnt60       int32       `json:"cnt_60"`
+	Cnt180      int32       `json:"cnt_180"`
+}
+
+// Point-in-time standings of one arena (for rank-change history): the latest
+// settlement at or before @at, plus the arena-filtered match counts the elite
+// staleness check needs. Lists players with at least one settlement.
+func (q *Queries) ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error) {
+	rows, err := q.db.Query(ctx, listArenaPlayersAt, arg.ArenaID, arg.Date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListArenaPlayersAtRow{}
+	for rows.Next() {
+		var i ListArenaPlayersAtRow
+		if err := rows.Scan(
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.RatingAfter,
+			&i.EloAfter,
+			&i.League,
+			&i.Cnt60,
+			&i.Cnt180,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listArenas = `-- name: ListArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
@@ -652,6 +764,19 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        ) AS matches_count
 FROM arenas a
 JOIN match_filters f ON f.id = a.match_filter_id
+WHERE (
+    $1::text IS NULL
+    OR ($1::text = 'tournaments' AND a.tournament_id IS NOT NULL)
+    OR ($1::text = 'games' AND a.tournament_id IS NULL
+        AND a.id <> 'a2ea0000-0000-0000-0000-000000000001'
+        AND NOT (
+            coalesce(cardinality(f.game_ids), 0) = 0
+            AND coalesce(cardinality(f.tag_ids), 0) = 0
+            AND f.tournament_id IS NULL
+            AND f.date_from IS NULL
+            AND f.date_to IS NULL
+        ))
+)
 ORDER BY a.name
 `
 
@@ -672,8 +797,11 @@ type ListArenasRow struct {
 	MatchesCount          int64              `json:"matches_count"`
 }
 
-func (q *Queries) ListArenas(ctx context.Context) ([]ListArenasRow, error) {
-	rows, err := q.db.Query(ctx, listArenas)
+// kind narrows the list for the /arenas page tabs: 'games' returns every
+// non-tournament arena except the global one (which is the main page, not a
+// list entry); 'tournaments' returns only the tournament arenas.
+func (q *Queries) ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArenasRow, error) {
+	rows, err := q.db.Query(ctx, listArenas, kind)
 	if err != nil {
 		return nil, err
 	}

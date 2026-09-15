@@ -1005,10 +1005,21 @@ export interface components {
             matches_left_for_elite: number;
             wins_needed_for_amateur: number;
             wins_needed_for_amateur_upper: number;
+            /** @description Rank/rating snapshots used for the change indicators; null league means the arena has no leagues, a null point means no settlement existed at that moment. */
+            rank_history?: {
+                day_ago: components["schemas"]["ArenaRankPoint"];
+                week_ago: components["schemas"]["ArenaRankPoint"];
+            } | null;
         };
         ArenaPlayersList: {
             status: string;
             data: components["schemas"]["ArenaPlayer"][];
+        };
+        ArenaRankPoint: {
+            /** Format: double */
+            rating: number;
+            league: string | null;
+            rank: number | null;
         };
         /** @description Per-player data within a match (keyed by player_id in the score map) */
         MatchPlayer: {
@@ -2141,6 +2152,8 @@ export interface operations {
     ListArenas: {
         parameters: {
             query?: {
+                /** @description games returns every non-tournament arena except the global one; tournaments returns only the tournament arenas. */
+                kind?: "games" | "tournaments";
                 /** @description Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included. */
                 game_id?: string;
                 /** @description Return the tournament's arena. */

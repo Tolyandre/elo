@@ -125,11 +125,17 @@ type ArenaUpdateReport struct {
 type IArenaService interface {
 	// Reads.
 	ListArenas(ctx context.Context) ([]ArenaWithCount, error)
+	// ListArenasByKind narrows the list: "games" returns every non-tournament
+	// arena except the global one, "tournaments" only the tournament arenas.
+	ListArenasByKind(ctx context.Context, kind string) ([]ArenaWithCount, error)
 	GetArena(ctx context.Context, arenaID id.ID) (Arena, error)
 	ListArenasForGame(ctx context.Context, gameID id.ID) ([]Arena, error)
 	GetArenaByGame(ctx context.Context, gameID id.ID) (Arena, error)
 	GetArenaByTournament(ctx context.Context, tournamentID id.ID) (Arena, error)
 	GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]ArenaPlayer, error)
+	// GetArenaPlayersAt computes the arena standings as of a past moment
+	// (read-time over the settlement ledger) for the rank-change history.
+	GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at time.Time) ([]ArenaPlayer, error)
 	ListArenaMatchesPaginated(ctx context.Context, arg db.ListArenaMatchesPaginatedParams) ([]db.ListArenaMatchesPaginatedRow, error)
 
 	// CRUD (editor-gated at the handler). Settings must be a document valid
@@ -253,7 +259,15 @@ func arenaFromStaleRow(r db.ListStaleArenasRow) (Arena, error) {
 // ---------------------------------------------------------------------------
 
 func (s *ArenaService) ListArenas(ctx context.Context) ([]ArenaWithCount, error) {
-	rows, err := s.Queries.ListArenas(ctx)
+	return s.listArenas(ctx, nil)
+}
+
+func (s *ArenaService) ListArenasByKind(ctx context.Context, kind string) ([]ArenaWithCount, error) {
+	return s.listArenas(ctx, &kind)
+}
+
+func (s *ArenaService) listArenas(ctx context.Context, kind *string) ([]ArenaWithCount, error) {
+	rows, err := s.Queries.ListArenas(ctx, ptrText(kind))
 	if err != nil {
 		return nil, fmt.Errorf("list arenas: %w", err)
 	}
@@ -314,20 +328,20 @@ func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
 }
 
-// GetArenaPlayers returns the arena's players ranked: leagues in promotion
-// order (later = higher) when the arena has them, rating descending within a
-// league, ties sharing a rank. When the arena has no leagues everyone sits in
-// one list ordered by rating.
+// GetArenaPlayers returns the arena's current players ranked, with the
+// precalculated medal stats. Leagues sort elite → amateur → newbie (the
+// settings list is promotion order, ranking inverts it), rating descending
+// within a league, ties sharing a rank. When the arena has no leagues
+// everyone sits in one list ordered by rating.
 func (s *ArenaService) GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]ArenaPlayer, error) {
 	arena, err := s.GetArena(ctx, arenaID)
 	if err != nil {
 		return nil, err
 	}
-	settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
+	eloSettings, err := s.eloSettingsAt(ctx, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("get elo settings: %w", err)
+		return nil, err
 	}
-	eloSettings := EloSettingsFromDB(settingsRow)
 
 	rows, err := s.Queries.ListArenaPlayers(ctx, arenaID)
 	if err != nil {
@@ -339,35 +353,96 @@ func (s *ArenaService) GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]Ar
 		league := textPtr(r.League)
 		p := ArenaPlayer{
 			ID: r.PlayerID, Name: r.PlayerName,
-			Rating: r.RatingAfter, League: league,
+			Rating: float64Or(r.RatingAfter, arena.Settings.StartingRating), League: league,
 			MatchesCount: int(r.MatchesCount),
 			FirstCount:   int(r.FirstCount), SecondCount: int(r.SecondCount),
 			ThirdCount: int(r.ThirdCount), FourthCount: int(r.FourthCount),
 		}
-		if league != nil {
-			if *league == LeagueNewbie {
-				if gap := r.EloAfter - r.RatingAfter; gap > 0 {
-					if nl, ok := arena.Settings.Newbie(); ok {
-						p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, eloSettings)
-					}
-				}
-			}
-			if *league == LeagueAmateur {
-				if el, ok := arena.Settings.Elite(); ok {
-					// r.MatchesCount is the all-time count; the elite hints need
-					// the recent counts, which only the global arena endpoint
-					// surfaces — approximate with the all-time count (the hints
-					// are informational).
-					deficit := max(el.Matches6M-p.MatchesCount, el.Matches2M-p.MatchesCount)
-					if deficit > 0 {
-						p.MatchesLeftForElite = deficit
-					}
-				}
-			}
-		}
+		applyArenaPlayerHints(&p, float64Or(r.EloAfter, eloSettings.StartingElo), 0, 0, arena, eloSettings)
 		players = append(players, p)
 	}
 
+	sortAndRankArenaPlayers(players, arena)
+	return players, nil
+}
+
+// GetArenaPlayersAt returns the arena's point-in-time standings (read-time
+// computation over the settlement ledger) — the basis of the rank-change
+// history. Medal stats are not computed here.
+func (s *ArenaService) GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at time.Time) ([]ArenaPlayer, error) {
+	arena, err := s.GetArena(ctx, arenaID)
+	if err != nil {
+		return nil, err
+	}
+	eloSettings, err := s.eloSettingsAt(ctx, at)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.Queries.ListArenaPlayersAt(ctx, db.ListArenaPlayersAtParams{
+		ArenaID: arenaID,
+		Date:    pgtype.Timestamptz{Time: at, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list arena players at %v: %w", at, err)
+	}
+
+	players := make([]ArenaPlayer, 0, len(rows))
+	for _, r := range rows {
+		league := textPtr(r.League)
+		p := ArenaPlayer{
+			ID: r.PlayerID, Name: r.PlayerName,
+			Rating: float64Or(r.RatingAfter, arena.Settings.StartingRating), League: league,
+		}
+		applyArenaPlayerHints(&p, float64Or(r.EloAfter, eloSettings.StartingElo), int(r.Cnt60), int(r.Cnt180), arena, eloSettings)
+		players = append(players, p)
+	}
+
+	sortAndRankArenaPlayers(players, arena)
+	return players, nil
+}
+
+// float64Or asserts a nullable-column value, falling back to def when the row
+// (or the LATERAL join) produced NULL.
+func float64Or(v any, def float64) float64 {
+	if f, ok := v.(float64); ok {
+		return f
+	}
+	return def
+}
+
+func (s *ArenaService) eloSettingsAt(ctx context.Context, at time.Time) (EloSettings, error) {
+	row, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: at, Valid: true})
+	if err != nil {
+		return EloSettings{}, fmt.Errorf("get elo settings: %w", err)
+	}
+	return EloSettingsFromDB(row), nil
+}
+
+// applyArenaPlayerHints fills the informational newbie/elite promotion
+// counters when the player is in the matching league.
+func applyArenaPlayerHints(p *ArenaPlayer, eloAfter float64, cnt60, cnt180 int, arena Arena, s EloSettings) {
+	if p.League == nil {
+		return
+	}
+	if *p.League == LeagueNewbie {
+		if gap := eloAfter - p.Rating; gap > 0 {
+			if nl, ok := arena.Settings.Newbie(); ok {
+				p.WinsNeededForAmateurLower, p.WinsNeededForAmateurUpper = calcWinsNeededForAmateur(gap, nl, s)
+			}
+		}
+	}
+	if *p.League == LeagueAmateur {
+		if el, ok := arena.Settings.Elite(); ok {
+			deficit := max(el.Matches6M-cnt180, el.Matches2M-cnt60)
+			if deficit > 0 {
+				p.MatchesLeftForElite = deficit
+			}
+		}
+	}
+}
+
+func sortAndRankArenaPlayers(players []ArenaPlayer, arena Arena) {
 	slices.SortFunc(players, func(a, b ArenaPlayer) int {
 		pa, pb := arenaLeaguePriority(a.League, arena), arenaLeaguePriority(b.League, arena)
 		if pa != pb {
@@ -399,7 +474,6 @@ func (s *ArenaService) GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]Ar
 		}
 		rank++
 	}
-	return players, nil
 }
 
 func leaguePtrEqual(a, b *string) bool {

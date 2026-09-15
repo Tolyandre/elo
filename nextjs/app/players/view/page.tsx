@@ -122,7 +122,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 
     return (
         <div className="space-y-6 p-4 max-w-3xl mx-auto">
-            <BackButton href="/players" label="Назад к игрокам" />
+            <BackButton href="/arenas/view?tab=players" label="Назад к рейтингу" />
             <PageHeader title={stats.player_name} />
 
             <Card>
