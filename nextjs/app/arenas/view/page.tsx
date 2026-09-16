@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { GLOBAL_ARENA_ID, toBase58ID, type Base58ID } from "@/lib/id";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { Arena, Match, getArenaPlayersPromise, getArenaPromise } from "@/app/api";
+import { Arena, Match, getArenaPlayersPromise, getArenaSafePromise, getArenasPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { BackButton } from "@/components/back-button";
@@ -47,22 +47,38 @@ export default function ArenaViewPage() {
 function ArenaViewWrapped() {
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id") ?? "";
-  const id = toBase58ID(idParam) ?? GLOBAL_ARENA_ID;
+  const explicitId = toBase58ID(idParam);
+  const id = explicitId ?? GLOBAL_ARENA_ID;
   const isGlobal = id === GLOBAL_ARENA_ID;
 
   const router = useRouter();
   const pathname = usePathname();
 
-  const { data, loading, error } = useAsyncResource(async () => {
-    const [arena, players] = await Promise.all([
-      getArenaPromise(id),
-      getArenaPlayersPromise(id),
-    ]);
-    return { arena, players };
-  }, [id]);
+  // A missing arena (stale id in the URL, or the global arena absent from a
+  // not-yet-migrated database) must not brick the main page: when the id-less
+  // global arena 404s, self-heal by resolving the unconditional arena from
+  // the list. An explicitly requested arena that is gone renders a friendly
+  // not-found state instead of an error.
+  const [overrideId, setOverrideId] = useState<Base58ID | null>(null);
+  const effectiveId = overrideId ?? id;
 
-  const arena = data?.arena ?? null;
-  const players = useMemo(() => data?.players ?? [], [data]);
+  const { data, loading, error, invalidate } = useAsyncResource(async () => {
+    let arena = await getArenaSafePromise(effectiveId);
+    if (arena == null && explicitId == null) {
+      const list = await getArenasPromise();
+      arena = list.find(isUnconditional) ?? null;
+      if (arena != null) setOverrideId(arena.id);
+    }
+    if (arena == null) {
+      return { notFound: true as const };
+    }
+    const players = await getArenaPlayersPromise(arena.id);
+    return { notFound: false as const, arena, players };
+  }, [effectiveId, explicitId]);
+
+  const notFound = data?.notFound === true;
+  const arena = notFound ? null : data?.arena ?? null;
+  const players = useMemo(() => (notFound ? [] : data?.players ?? []), [data, notFound]);
 
   // Match filters, mirrored into the URL like on /matches. Read once per
   // arena on mount; subsequent changes go through handleFiltersChange.
@@ -75,13 +91,13 @@ function ArenaViewWrapped() {
       gameId: toBase58ID(searchParams.get("game") ?? "") ?? undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- read URL once per arena
-  }, [id]);
+  }, [effectiveId]);
 
   // Corrections settle only into the global arena (ADR-24), so its timeline —
   // the arena whose filter admits every match — is the only one that merges
   // them in.
   const isGlobalArena = arena != null && isUnconditional(arena);
-  const timeline = useArenaMatches(id, filters, isGlobalArena);
+  const timeline = useArenaMatches(effectiveId, filters, isGlobalArena);
 
   // Players tab: period for the change indicators, club filter with
   // client-side rank recompute (same as the /players page had).
@@ -163,6 +179,24 @@ function ArenaViewWrapped() {
           <div className="space-y-2">
             <Skeleton className="h-6 w-40" />
             <Skeleton className="h-48 w-full rounded-xl" />
+          </div>
+        )}
+
+        {notFound && !loading && (
+          <div className="space-y-3">
+            <p className="text-muted-foreground">
+              {isGlobal
+                ? "Главная арена пока не создана — база данных, похоже, ещё не обновлена. Она появится после применения миграций."
+                : "Арена не найдена — возможно, она была удалена."}
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" size="sm" onClick={invalidate}>
+                Повторить
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href="/arenas">Все арены</Link>
+              </Button>
+            </div>
           </div>
         )}
 

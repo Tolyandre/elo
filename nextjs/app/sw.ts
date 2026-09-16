@@ -1,5 +1,5 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
+import { CacheableResponsePlugin, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 
 declare global {
@@ -56,6 +56,11 @@ const serwist = new Serwist({
                 cacheName: "elo-api",
                 networkTimeoutSeconds: 4,
                 plugins: [
+                    // Only 2xx responses enter the cache: an error snapshot
+                    // (404 arena-not-found from before a database migration,
+                    // a 5xx blip) must never be served as the offline/
+                    // timeout fallback later.
+                    new CacheableResponsePlugin({ statuses: [200] }),
                     new ExpirationPlugin({
                         maxEntries: 200,
                         maxAgeSeconds: 7 * 24 * 60 * 60,

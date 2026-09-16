@@ -845,6 +845,20 @@ export async function getArenaPromise(id: Base58ID): Promise<Arena> {
     return (await unwrap(client.GET("/arenas/{id}", { params: { path: { id } } }))).data;
 }
 
+/**
+ * 404-safe arena probe: returns null instead of throwing (and without the
+ * error toast) when the arena does not exist. Used by /arenas/view to detect
+ * a missing arena — e.g. a stale id in the URL or the global arena missing
+ * from a not-yet-migrated database — and self-heal.
+ */
+export async function getArenaSafePromise(id: Base58ID): Promise<Arena | null> {
+    const res = await fetch(`${EloWebServiceBaseUrl}/arenas/${id}`, { credentials: "include" });
+    if (res.status === 404) return null;
+    const body = await res.json();
+    if (body.status === "fail") throw new Error(body.message);
+    return body.data as Arena;
+}
+
 export async function getArenaPlayersPromise(id: Base58ID): Promise<ArenaPlayer[]> {
     return (await unwrap(client.GET("/arenas/{id}/players", { params: { path: { id } } }))).data;
 }
