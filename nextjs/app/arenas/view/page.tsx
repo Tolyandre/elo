@@ -126,7 +126,26 @@ function ArenaViewWrapped() {
   const singleGameId =
     arena?.game_id ?? (arena && arena.filter.game_ids.length === 1 ? arena.filter.game_ids[0] : null);
   const hasLeaders = singleGameId != null;
-  const tab = parseTab(searchParams.get("tab"), hasLeaders);
+
+  // The active tab lives in local state — the URL mirrors it for deep links,
+  // but switching never depends on the router reacting to the replace. (A
+  // state-driven tab keeps working even when client navigation misbehaves.)
+  const [tabOverride, setTabOverride] = useState<string | null>(null);
+  const availableTabs: readonly string[] = hasLeaders
+    ? ARENA_TABS_PLAYERS_MATCHES
+    : ARENA_TABS_NO_LEADERS;
+  const tab =
+    tabOverride != null && (availableTabs as readonly string[]).includes(tabOverride)
+      ? tabOverride
+      : parseTab(searchParams.get("tab"), hasLeaders);
+
+  // A fresh arena starts on its default tab ("Лидеры" exists only on
+  // single-game arenas, so a carried-over override could point at a hidden
+  // tab).
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset UI state on arena change */
+    setTabOverride(null);
+  }, [effectiveId]);
 
   function updateFilterParam(key: string, value: string | undefined) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
@@ -146,6 +165,7 @@ function ArenaViewWrapped() {
   }
 
   function setTab(value: string) {
+    setTabOverride(value);
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.set("tab", value);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });

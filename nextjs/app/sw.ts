@@ -53,7 +53,10 @@ const serwist = new Serwist({
                 !url.pathname.endsWith("/events") &&
                 !url.pathname.includes("/tables"),
             handler: new NetworkFirst({
-                cacheName: "elo-api",
+                // v2: entries from v1 were stored before the 200-only rule and
+                // may hold 404 error snapshots; renaming orphans them for
+                // every existing client.
+                cacheName: "elo-api-v2",
                 networkTimeoutSeconds: 4,
                 plugins: [
                     // Only 2xx responses enter the cache: an error snapshot
