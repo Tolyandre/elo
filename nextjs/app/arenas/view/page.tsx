@@ -152,11 +152,15 @@ function ArenaViewWrapped() {
   // it), which left the URL and navigations stale. React state + these
   // history updates are the source of truth; the query-only `useSearchParams`
   // values are only the deep-link initial values.
+  // usePathname() excludes the deployment basePath (/elo-stage on stage), so
+  // it must be prepended back or replaceState strips the prefix from the
+  // address bar and a later refresh 404s.
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   function replaceQueryParams(update: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     update(params);
     const query = params.toString();
-    const url = query ? `${pathname}?${query}` : pathname;
+    const url = query ? `${basePath}${pathname}?${query}` : `${basePath}${pathname}`;
     window.history.replaceState(null, "", url);
   }
 
