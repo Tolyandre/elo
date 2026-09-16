@@ -65,7 +65,7 @@ function NotFound() {
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>Партия не найдена</AlertDescription>
       </Alert>
-      <BackButton href="/arenas/view?tab=matches" label="Вернуться к списку партий" />
+      <BackButton href="/?tab=matches" label="Вернуться к списку партий" />
     </main>
   );
 }
@@ -147,7 +147,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   return (
     <main className="max-w-sm mx-auto p-4 space-y-4">
-      <BackButton href="/arenas/view?tab=matches" label="Назад к партиям" />
+      <BackButton href="/?tab=matches" label="Назад к партиям" />
 
       <PageHeader title="Просмотр партии" action={<EditAction id={match.id} viaCalculator={!!match.calculator_kind} />} />
 
@@ -213,7 +213,7 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
 
   return (
     <main className="max-w-sm mx-auto p-4 space-y-4">
-      <BackButton href="/arenas/view?tab=matches" label="Назад к партиям" />
+      <BackButton href="/?tab=matches" label="Назад к партиям" />
 
       <PageHeader
         title="Просмотр партии"

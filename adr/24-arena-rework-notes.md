@@ -76,11 +76,11 @@ day_ago/week_ago, same snapshot offsets as the old /players: −12h,
 Frontend (`nextjs/`):
 
 - `app/arenas/page.tsx` — По играм / Турниры tabs (kind param), game filter.
-- `app/arenas/view/page.tsx` — id-less → global arena (`GLOBAL_ARENA_ID` from
-  `lib/id.ts`, computed via `encodeId`); missing arena → self-heal via the
-  unconditional-arena list lookup, else friendly not-found state;
-  URL query mirrored through `window.history.replaceState` (NOT
-  `router.replace` — see Traps); tab in local state.
+- `app/arenas/view/page.tsx` — now a thin wrapper; the view itself is
+  `app/arenas/view/arena-view.tsx`, rendered by both `/` (the main page) and
+  `/arenas/view?id=`. Missing arena → self-heal via the unconditional-arena
+  list lookup, else friendly not-found state; id/tab/filters live in the URL
+  query via `lib/url-state.ts` (ADR-25) — never `router.replace` (see Traps).
 - `components/arena-players-table.tsx` — league sections reversed
   (elite→amateur→newbie), club icons, `computeDisplayRanks` for the club
   filter, `LeagueFooter` promotion descriptions from arena settings.
@@ -108,10 +108,12 @@ Frontend (`nextjs/`):
    `router.replace('/arenas/view?tab=x')` from `/arenas/view` and a
    `<Link href="/arenas/view">` (query removed) do nothing on stage, while
    cross-route navigation works and dev (SSR) works. Never drive UI from
-   `useSearchParams` after a same-route replace — keep local state and mirror
-   the URL with `window.history.replaceState`. Fixed in
-   `app/arenas/view/page.tsx` + `components/navigation-bar.tsx` (Главная link
-   falls back to `window.location.assign` when already on `/arenas/view`).
+   `useSearchParams` after a same-route replace and never navigate
+   query-only through the router — use `lib/url-state.ts` (`useUrlQuery` +
+   `setUrlQuery`, ADR-25), which reads window.location and writes through
+   the History API. Originally worked around with local state + `replaceState`
+   mirroring and a `window.location.assign` fallback on the Главная link
+   (a full reload); replaced by the ADR-25 design.
 1b. **`usePathname()` excludes the deployment basePath.** Any hand-built URL
    (`history.replaceState`, `router.push`) must prepend
    `process.env.NEXT_PUBLIC_BASE_PATH` or stage strips `/elo-stage` from the
@@ -189,10 +191,10 @@ Frontend (`nextjs/`):
   (`__tests__/score-leaders-components.test.ts`); `mergeTimelineItems`
   (`app/arenas/view/use-arena-matches.ts`) and `computeDisplayRanks`
   (`components/arena-players-table.tsx`) are pure and untested — cheap wins.
-- The `/admin/games` → `/games/view?id=` links and the auth redirect
-  (`/arenas/view`) were the last link-structure changes; if new pages appear,
+- The `/admin/games` → `/games/view?id=` links and the auth redirect (`/`)
+  were the last link-structure changes; if new pages appear,
   update `lib/offline/routes.ts`, `public/sitemap.xml` and
   `components/navigation-bar.tsx` together.
 - Same-route query-only navigation is broken in static export generally: any
-  new page that needs it must copy the `use-arena-matches`/state+history
-  pattern, never `router.replace`.
+  new page that needs it must use `lib/url-state.ts` (ADR-25), never
+  `router.replace`.

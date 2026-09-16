@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
@@ -40,7 +41,10 @@ export default function ErrorPage({
                     Повторить
                 </Button>
                 <Button asChild variant="outline" size="sm">
-                    <a href="/arenas/view">На главную</a>
+                    {/* Next Link, not a plain <a>: only Link prepends the
+                    deployment basePath, a hand-written href 404s on GitHub
+                    Pages (ADR-24 session notes, trap 1b). */}
+                    <Link href="/">На главную</Link>
                 </Button>
             </div>
         </main>

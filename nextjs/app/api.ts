@@ -847,7 +847,8 @@ export async function getArenaPromise(id: Base58ID): Promise<Arena> {
 
 /**
  * 404-safe arena probe: returns null instead of throwing (and without the
- * error toast) when the arena does not exist. Used by /arenas/view to detect
+ * error toast) when the arena does not exist. Used by the arena view
+ * (/, /arenas/view) to detect
  * a missing arena — e.g. a stale id in the URL or the global arena missing
  * from a not-yet-migrated database — and self-heal.
  */
