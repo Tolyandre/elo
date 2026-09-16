@@ -22,3 +22,8 @@ CREATE INDEX game_tag_tag_idx ON game_tag (tag_id);
 ALTER TABLE audit_log DROP CONSTRAINT audit_log_entity_type_check;
 ALTER TABLE audit_log ADD CONSTRAINT audit_log_entity_type_check
     CHECK (entity_type IN ('match', 'game', 'player', 'club', 'tag'));
+
+INSERT INTO public.tags (id,"name") VALUES
+	 ('01a09d03-b49e-7799-ada3-6ffa44981686'::uuid,'Евро'),
+	 ('01a09d04-cff6-7ef1-be97-267e89b470b1'::uuid,'Взятки и избавление от карт'),
+	 ('01a09d04-e2a3-772c-97fa-59ac147df7be'::uuid,'Кланк');
