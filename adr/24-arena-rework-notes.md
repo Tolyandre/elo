@@ -112,6 +112,11 @@ Frontend (`nextjs/`):
    the URL with `window.history.replaceState`. Fixed in
    `app/arenas/view/page.tsx` + `components/navigation-bar.tsx` (Главная link
    falls back to `window.location.assign` when already on `/arenas/view`).
+1b. **`usePathname()` excludes the deployment basePath.** Any hand-built URL
+   (`history.replaceState`, `router.push`) must prepend
+   `process.env.NEXT_PUBLIC_BASE_PATH` or stage strips `/elo-stage` from the
+   address bar and a refresh 404s. Next `<Link>` prepends it automatically —
+   only hand-built URLs are affected.
 2. **SW runtime cache cached error responses.** `elo-api` NetworkFirst had no
    status filter: a 404 from before a DB migration was served as fallback for
    up to 7 days ("stale id" symptom). Now 200-only + cache renamed
