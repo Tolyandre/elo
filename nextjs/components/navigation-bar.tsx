@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import {
@@ -19,9 +20,23 @@ import { useMe } from "@/app/meContext"
 import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Tent, Trophy } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 export function NavigationBar() {
   const isMobile = useIsMobile()
   const me = useMe();
+  const pathname = usePathname();
+
+  // On the statically exported stage a client-side navigation to the route we
+  // are already on (query-only change) is silently dropped by the router, so
+  // "Главная" clicked from the arena page must be a full-page navigation.
+  const onMainArena = pathname === "/arenas/view";
+  function goMainArena(e: React.MouseEvent) {
+    if (onMainArena) {
+      e.preventDefault();
+      window.location.assign(`${basePath}/arenas/view`);
+    }
+  }
 
   return (
     <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
@@ -111,7 +126,7 @@ export function NavigationBar() {
 
         <NavigationMenuItem>
           <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2")}>
-            <Link href="/arenas/view">Главная</Link>
+            <Link href="/arenas/view" onClick={goMainArena}>Главная</Link>
           </NavigationMenuLink>
         </NavigationMenuItem>
 

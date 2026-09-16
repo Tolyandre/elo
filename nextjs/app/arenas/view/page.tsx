@@ -2,7 +2,7 @@
 
 import React, { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { GLOBAL_ARENA_ID, toBase58ID, type Base58ID } from "@/lib/id";
 import { NO_CLUB_ID } from "@/lib/player-groups";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -51,7 +51,6 @@ function ArenaViewWrapped() {
   const id = explicitId ?? GLOBAL_ARENA_ID;
   const isGlobal = id === GLOBAL_ARENA_ID;
 
-  const router = useRouter();
   const pathname = usePathname();
 
   // A missing arena (stale id in the URL, or the global arena absent from a
@@ -147,28 +146,35 @@ function ArenaViewWrapped() {
     setTabOverride(null);
   }, [effectiveId]);
 
-  function updateFilterParam(key: string, value: string | undefined) {
+  // Same-route query-only updates go through window.history directly: on the
+  // statically exported stage, router.replace with a query-only change to the
+  // current route is a silent no-op (the export lacks a dynamic payload for
+  // it), which left the URL and navigations stale. React state + these
+  // history updates are the source of truth; the query-only `useSearchParams`
+  // values are only the deep-link initial values.
+  function replaceQueryParams(update: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (value == null) {
-      params.delete(key);
-    } else {
-      params.set(key, value);
-    }
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    update(params);
+    const query = params.toString();
+    const url = query ? `${pathname}?${query}` : pathname;
+    window.history.replaceState(null, "", url);
   }
 
   function handleFiltersChange(next: ArenaMatchFilters) {
     setFilters(next);
-    updateFilterParam("player", next.playerId);
-    updateFilterParam("club", next.clubId);
-    updateFilterParam("game", next.gameId);
+    replaceQueryParams((params) => {
+      if (next.playerId) params.set("player", next.playerId);
+      else params.delete("player");
+      if (next.clubId) params.set("club", next.clubId);
+      else params.delete("club");
+      if (next.gameId) params.set("game", next.gameId);
+      else params.delete("game");
+    });
   }
 
   function setTab(value: string) {
     setTabOverride(value);
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.set("tab", value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    replaceQueryParams((params) => params.set("tab", value));
     if (value === "leaders" && timeline.hasMore) {
       void timeline.loadAll();
     }
