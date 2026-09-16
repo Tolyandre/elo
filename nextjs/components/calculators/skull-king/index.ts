@@ -1,5 +1,6 @@
 export { GameTable } from "./game-table";
 export { EditCellDialog, BidButtons } from "./edit-cell-dialog";
+export { ScoreChart, buildScoreChartData } from "./score-chart";
 export {
     calcRoundScore,
     playerTotal,

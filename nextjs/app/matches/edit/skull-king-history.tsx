@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { EditCellDialog, GameTable, TOTAL_ROUNDS } from "@/components/calculators/skull-king";
+import { EditCellDialog, GameTable, ScoreChart, TOTAL_ROUNDS } from "@/components/calculators/skull-king";
 import { fromStorage } from "@/components/calculators/skull-king/storage";
 import type { SkullKingStorage } from "@/components/calculators/skull-king/storage";
 import type { GameState, RoundEntry } from "@/components/calculators/skull-king";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * Skull King calculator in history mode — re-opens a saved match's
@@ -44,6 +45,14 @@ export function SkullKingHistory({
     return (
         <div className="space-y-3">
             <GameTable state={state} onCellClick={readOnly ? undefined : (r, p) => setEditCell({ round: r, player: p })} />
+            <Card>
+                <CardHeader>
+                    <CardTitle>График очков</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <ScoreChart state={state} />
+                </CardContent>
+            </Card>
             <EditCellDialog
                 open={!!editCell}
                 onClose={() => setEditCell(null)}

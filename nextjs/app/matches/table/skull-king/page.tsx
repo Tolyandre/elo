@@ -17,6 +17,7 @@ import {
     GameTable,
     EditCellDialog,
     BidButtons,
+    ScoreChart,
     playerTotal, findNextUnfilled, TOTAL_ROUNDS,
     initialState,
 } from "@/components/calculators/skull-king";
@@ -451,6 +452,13 @@ function SkullKingGame() {
         ? (rounds[currentRound - 1]?.[myPlayerIndex]?.actual ?? null) !== null
         : false;
 
+    // Running totals of players without a recorded result for the current round
+    // stay hidden from a connected player (both in the table's Σ row and in the
+    // score chart) until the host enters the results.
+    const hiddenTotalPlayerIndices = phase === "result-entry" && !isHost
+        ? players.map((_, pi) => pi).filter((pi) => (rounds[currentRound - 1]?.[pi]?.actual ?? null) === null)
+        : undefined;
+
     // Until localStorage hydration completes — or, for connected players, until
     // the first server snapshot arrives — the mode is unknown; show a
     // placeholder instead of flashing the wrong UI.
@@ -880,11 +888,7 @@ function SkullKingGame() {
                                         <CardContent>
                                             <GameTable
                                                 state={gameState}
-                                                hideTotalPlayerIndices={
-                                                    players.map((_, pi) => pi).filter(pi =>
-                                                        (rounds[currentRound - 1]?.[pi]?.actual ?? null) === null
-                                                    )
-                                                }
+                                                hideTotalPlayerIndices={hiddenTotalPlayerIndices}
                                             />
                                         </CardContent>
                                     </Card>
@@ -959,6 +963,19 @@ function SkullKingGame() {
                                 </div>
                             )}
                 </>
+            )}
+
+            {/* Players' score chart: shown at the bottom of every in-game phase
+                once at least one round result exists. */}
+            {phase !== "setup" && rounds.some((r) => r.some((e) => !!e && e.actual !== null)) && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>График очков</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ScoreChart state={gameState} hideTotalPlayerIndices={hiddenTotalPlayerIndices} />
+                    </CardContent>
+                </Card>
             )}
 
             {/* Edit cell dialog (host only) */}
