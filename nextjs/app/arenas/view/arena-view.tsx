@@ -19,9 +19,11 @@ import { ScoreLeadersTab } from "@/components/score-leaders-tab";
 import { ClubSelect } from "@/components/club-select";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
+import { useMe } from "@/app/meContext";
 import { ArenaMedalsTab } from "./arena-medals-tab";
 import { ArenaMatchesTab } from "./arena-matches-tab";
 import { useArenaMatches, type ArenaMatchFilters } from "./use-arena-matches";
+import { Edit2 } from "lucide-react";
 
 // Ids travel in the query (?id=<ARENA_ID>) on both routes that render this
 // component: a path segment per id cannot be statically exported. Without an
@@ -121,6 +123,13 @@ export function ArenaView() {
     arena?.game_id ?? (arena && arena.filter.game_ids.length === 1 ? arena.filter.game_ids[0] : null);
   const hasLeaders = singleGameId != null;
 
+  // The edit form is for user-created arenas only: auto-managed ones are
+  // system-owned (the API rejects edits), and the global arena — the main
+  // page — is permanent.
+  const { canEdit } = useMe();
+  const canEditArena =
+    canEdit && !isGlobal && arena != null && arena.game_id == null && arena.tournament_id == null;
+
   // The active tab is a URL parameter ("push": Back/Forward walk through
   // tabs). A value the current arena does not offer — e.g. a carried-over
   // ?tab=leaders on a multi-game arena — falls back to "Игроки".
@@ -155,9 +164,18 @@ export function ArenaView() {
         <PageHeader
           title={arena?.name ?? "Главная"}
           action={
-            <Button asChild size="sm">
-              <Link href="/matches/new">Добавить партию</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              {canEditArena && (
+                <Button asChild size="sm" variant="outline" aria-label="Редактировать арену">
+                  <Link href={`/arenas/edit?id=${arena.id}`}>
+                    <Edit2 className="h-4 w-4" />
+                  </Link>
+                </Button>
+              )}
+              <Button asChild size="sm">
+                <Link href="/matches/new">Добавить партию</Link>
+              </Button>
+            </div>
           }
         />
         {arena?.stale_at && (

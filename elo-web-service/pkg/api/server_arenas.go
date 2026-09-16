@@ -172,6 +172,9 @@ func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaReque
 	if msg, ok := invalidSettings(err); ok {
 		return CreateArena400JSONResponse{Status: "fail", Message: msg}, nil
 	}
+	if errors.Is(err, elo.ErrArenaNameTaken) {
+		return CreateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -202,9 +205,12 @@ func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaReque
 	if msg, ok := invalidSettings(err); ok {
 		return UpdateArena400JSONResponse{Status: "fail", Message: msg}, nil
 	}
+	if errors.Is(err, elo.ErrArenaNameTaken) {
+		return UpdateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+	}
 	if err != nil {
-		switch err {
-		case elo.ErrArenaIsAutoManaged:
+		switch {
+		case errors.Is(err, elo.ErrArenaIsAutoManaged), errors.Is(err, elo.ErrGlobalArenaIsPermanent):
 			return UpdateArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {
@@ -219,8 +225,8 @@ func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaReque
 func (s *StrictServer) DeleteArena(ctx context.Context, request DeleteArenaRequestObject) (DeleteArenaResponseObject, error) {
 	_, err := s.api.ArenaService.DeleteArena(ctx, parseIDParam(request.Id))
 	if err != nil {
-		switch err {
-		case elo.ErrArenaIsAutoManaged, elo.ErrGlobalArenaIsPermanent:
+		switch {
+		case errors.Is(err, elo.ErrArenaIsAutoManaged), errors.Is(err, elo.ErrGlobalArenaIsPermanent):
 			return DeleteArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {

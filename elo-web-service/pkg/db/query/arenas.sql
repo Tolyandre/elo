@@ -137,6 +137,15 @@ RETURNING *;
 -- Name sync for auto-managed arenas when their game/tournament is renamed.
 UPDATE arenas SET name = $2 WHERE id = $1;
 
+-- name: ArenaNameExists :one
+-- Uniqueness guard for the user-facing arena CRUD (case-insensitive).
+-- @exclude_id skips the arena being updated; NULL on create.
+SELECT EXISTS(
+    SELECT 1 FROM arenas
+    WHERE lower(name) = lower(sqlc.arg('name')::text)
+      AND (sqlc.narg('exclude_id')::uuid IS NULL OR id <> sqlc.narg('exclude_id')::uuid)
+) AS exists;
+
 -- name: DeleteArena :one
 -- Returns the deleted row so the audit trail can capture the name.
 DELETE FROM arenas WHERE id = $1

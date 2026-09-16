@@ -59,7 +59,7 @@ ArenasCollection:
             schema:
               $ref: '#/ArenaResult'
       "400":
-        description: Bad request (invalid settings document or filter)
+        description: Bad request (invalid settings document or filter, or an arena with this name already exists)
         content:
           application/json:
             schema:
@@ -127,7 +127,7 @@ ArenaItem:
             schema:
               $ref: '#/ArenaResult'
       "400":
-        description: Bad request
+        description: Bad request (invalid settings document, or an arena with this name already exists)
         content:
           application/json:
             schema:
@@ -145,7 +145,7 @@ ArenaItem:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: The arena is auto-managed (per-game or per-tournament)
+        description: The arena is auto-managed (per-game, per-tournament or the global one)
         content:
           application/json:
             schema:

@@ -14,6 +14,28 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+const arenaNameExists = `-- name: ArenaNameExists :one
+SELECT EXISTS(
+    SELECT 1 FROM arenas
+    WHERE lower(name) = lower($1::text)
+      AND ($2::uuid IS NULL OR id <> $2::uuid)
+) AS exists
+`
+
+type ArenaNameExistsParams struct {
+	Name      string `json:"name"`
+	ExcludeID *id.ID `json:"exclude_id"`
+}
+
+// Uniqueness guard for the user-facing arena CRUD (case-insensitive).
+// @exclude_id skips the arena being updated; NULL on create.
+func (q *Queries) ArenaNameExists(ctx context.Context, arg ArenaNameExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, arenaNameExists, arg.Name, arg.ExcludeID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const clearArenaStale = `-- name: ClearArenaStale :exec
 UPDATE arenas
 SET stale_at = NULL, recalc_from = NULL

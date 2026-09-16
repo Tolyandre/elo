@@ -21,6 +21,9 @@ type Querier interface {
 	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
+	// Uniqueness guard for the user-facing arena CRUD (case-insensitive).
+	// @exclude_id skips the arena being updated; NULL on create.
+	ArenaNameExists(ctx context.Context, arg ArenaNameExistsParams) (bool, error)
 	// Returns rating_after and elo_after ordered by date for the player graph.
 	ArenaRatingHistory(ctx context.Context, arg ArenaRatingHistoryParams) ([]ArenaRatingHistoryRow, error)
 	// Conditional clear: stale_at must still be the mark the recalculation

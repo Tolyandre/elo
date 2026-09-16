@@ -508,6 +508,9 @@ func (s *ArenaService) CreateArena(ctx context.Context, opts ArenaWriteOpts) (Ar
 		return Arena{}, err
 	}
 	created, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (Arena, error) {
+		if err := ensureArenaNameFree(ctx, q, opts.Name, nil); err != nil {
+			return Arena{}, err
+		}
 		filterID, err := createMatchFilter(ctx, q, opts.Filter)
 		if err != nil {
 			return Arena{}, err
@@ -542,6 +545,9 @@ func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts Aren
 	if err := validateSettings(opts.SettingsRaw); err != nil {
 		return Arena{}, err
 	}
+	if arenaID == GlobalArenaID {
+		return Arena{}, ErrGlobalArenaIsPermanent
+	}
 	updated, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (Arena, error) {
 		existing, err := s.GetArena(ctx, arenaID)
 		if err != nil {
@@ -551,6 +557,9 @@ func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts Aren
 		// their filters and settings are system-managed (ADR-24).
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
+		}
+		if err := ensureArenaNameFree(ctx, q, opts.Name, &arenaID); err != nil {
+			return Arena{}, err
 		}
 		filterID, err := createMatchFilter(ctx, q, opts.Filter)
 		if err != nil {
@@ -604,6 +613,25 @@ func (s *ArenaService) DeleteArena(ctx context.Context, arenaID id.ID) (Arena, e
 		return Arena{}, err
 	}
 	return deleted, nil
+}
+
+// ensureArenaNameFree enforces unique arena names (case-insensitively) for the
+// user-facing CRUD. excludeID skips the arena being renamed; nil on create.
+// Deliberately service-level rather than a unique index: auto-managed arena
+// names follow game/tournament renames, and a collision there must not fail
+// the rename.
+func ensureArenaNameFree(ctx context.Context, q *db.Queries, name string, excludeID *id.ID) error {
+	taken, err := q.ArenaNameExists(ctx, db.ArenaNameExistsParams{
+		Name:      name,
+		ExcludeID: excludeID,
+	})
+	if err != nil {
+		return fmt.Errorf("check arena name: %w", err)
+	}
+	if taken {
+		return ErrArenaNameTaken
+	}
+	return nil
 }
 
 // createMatchFilter persists a new match_filters row and returns its id.

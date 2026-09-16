@@ -25,4 +25,5 @@ var (
 
 	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")
 	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
+	ErrArenaNameTaken         = errors.New("арена с таким названием уже существует")
 )

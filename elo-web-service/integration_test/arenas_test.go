@@ -248,8 +248,9 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 	gameID := gameIDRec.ID
 	otherGameID := otherGameIDRec.ID
 
-	// Create a two-game arena (the "Кланк!" shape).
-	body := `{"name":"Кланк!","filter":{"game_ids":["` + string(gameID) + `","` + string(otherGameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[{"kind":"newbie","goal_gap":16,"earned_min":2,"earned_max":64,"tau":100},{"kind":"amateur"}]}}`
+	// Create a two-game arena (the "Кланк!" shape). The name must differ from
+	// the arena seeded by migration 052 — names are unique now.
+	body := `{"name":"Кланк (тест)","filter":{"game_ids":["` + string(gameID) + `","` + string(otherGameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[{"kind":"newbie","goal_gap":16,"earned_min":2,"earned_max":64,"tau":100},{"kind":"amateur"}]}}`
 	w := doJSON(t, router, http.MethodPost, "/arenas", editor, body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create arena: %d %s", w.Code, w.Body.String())
@@ -271,6 +272,23 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"bad","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000}}`)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid settings must 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	// Arena names are unique, case-insensitively → 400.
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, `{"name":"кланк (ТЕСТ)","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("duplicate arena name must 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	// A second arena cannot be renamed onto the first one's name.
+	secondBody := `{"name":"Вторая арена","filter":{"game_ids":["` + string(gameID) + `"],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`
+	w = doJSON(t, router, http.MethodPost, "/arenas", editor, secondBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create second arena: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPatch, "/arenas/"+created.Data.Id, editor, `{"name":"Вторая арена","filter":{"game_ids":[],"tag_ids":[]},"settings":{"starting_rating":1000,"leagues":[]}}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("rename onto a taken name must 400, got %d %s", w.Code, w.Body.String())
 	}
 
 	// The new arena appears in both games' arena lists.
@@ -320,6 +338,9 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 		t.Fatalf("delete auto arena must 409, got %d", w.Code)
 	}
 	// The global arena is permanent.
+	if w := doJSON(t, router, http.MethodPatch, "/arenas/"+globalArenaUUID, editor, body); w.Code != http.StatusConflict {
+		t.Fatalf("patch global arena must 409, got %d", w.Code)
+	}
 	if w := doJSON(t, router, http.MethodDelete, "/arenas/"+globalArenaUUID, editor, ""); w.Code != http.StatusConflict {
 		t.Fatalf("delete global arena must 409, got %d", w.Code)
 	}

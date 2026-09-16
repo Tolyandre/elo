@@ -53,7 +53,15 @@ Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are
 - `go test -C elo-web-service ./...`: run regular Go tests.
 - `devenv test`: same suite via devenv's test runner (wired in `devenv.nix` as the `devenv:enterTest` task).
 - `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. These spin up Postgres via testcontainers; see "Entering the dev environment" above for the `DOCKER_HOST`/socket details and the `devenv shell` wrapping.
+- `make integration-test-one T=TestName`: run a single integration test (much faster than the full suite while iterating).
+- `pnpm --dir ./nextjs exec tsc --noEmit`: type-check the frontend. Lint and Vitest do **not** type-check, but the Nix frontend build (`next build`) does — run this before finishing any TypeScript change.
 - `nix flake check`: evaluate Nix outputs and integration checks.
+
+### Gotchas
+
+- The Go module lives in `elo-web-service/`, so from the repo root `go build ./...` fails with "directory prefix . does not contain main module" — always pass `-C elo-web-service` (or `cd` first).
+- Make recipes run under POSIX-mode `/bin/sh`, where `.` does **not** fall back to the current directory: source env files with a slash (`. ./.env.docker`), never `. .env.docker`.
+- The frontend is a Serwist PWA. A browser that has visited the app before serves its cached precache and RSC-prefetch caches even against `next dev`, so fresh frontend changes look like they never applied. When that happens, unregister the service worker and clear caches (DevTools → Application, or `navigator.serviceWorker.getRegistrations()` → `unregister()` plus `caches.keys()` → `delete`) and reload.
 
 ## Coding Style & Naming Conventions
 
