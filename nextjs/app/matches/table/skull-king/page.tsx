@@ -50,8 +50,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Lightbulb, LightbulbOff, Loader2 } from "lucide-react";
 import { useMe } from "@/app/meContext";
 import { toast } from "sonner";
-
-const PAGE_PATH = "/matches/table/skull-king";
+import { setUrlQuery } from "@/lib/url-state";
 
 function isSkullKingState(state: TableGameState): state is GameState {
     return "rounds" in state;
@@ -207,7 +206,6 @@ function SkullKingGame() {
     // on that table resumes as-is, otherwise the table is joined (or watched
     // read-only by a visitor who cannot join). ?join= is a legacy alias.
     useTableDeepLink({
-        pagePath: PAGE_PATH,
         gameId: GAME_ID_SKULL_KING,
         hydrated,
         session: tableSession,
@@ -273,8 +271,10 @@ function SkullKingGame() {
             const table = await createTablePromise(GAME_ID_SKULL_KING, newState);
             setTableSession({ tableId: table.id, isHost: true, myPlayerIndex: null });
             // The table id stays in the URL: a refresh or a shared link
-            // reopens exactly this table.
-            router.replace(`${PAGE_PATH}?table=${table.id}`, { scroll: false });
+            // reopens exactly this table. (ADR-25: the query is mirrored via
+            // the History API — a same-route router.replace is dropped on the
+            // static export.)
+            setUrlQuery((params) => params.set("table", table.id));
         } catch (err) {
             toast.error("Не удалось создать стол: " + (err instanceof Error ? err.message : String(err)));
             resetTableSession();

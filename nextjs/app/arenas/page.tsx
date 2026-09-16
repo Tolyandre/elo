@@ -1,9 +1,9 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Base58ID } from "@/lib/id";
+import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Arena, getArenasPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
@@ -25,18 +25,18 @@ export default function ArenasPage() {
   return (
     <main className="max-w-sm mx-auto space-y-6">
       <PageHeader title="Арены" />
-      <Suspense>
-        <ArenasContent />
-      </Suspense>
+      <ArenasContent />
     </main>
   );
 }
 
 function ArenasContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const tab = parseTab(searchParams.get("tab"));
+  // The active tab lives in the query string (ADR-25): derived from the URL
+  // and switched through the History API. A same-route router.replace must
+  // not be used — on the static export it drops the change (and can reload
+  // the page), which left the tabs dead after a reload.
+  const params = useUrlQuery();
+  const tab = parseTab(params.get("tab"));
 
   // The games tab carries a game filter; the selection narrows the list to the
   // arenas related to that game (by game or by tag), tournament arenas excluded.
@@ -56,9 +56,7 @@ function ArenasContent() {
   }, [tab, gameId]);
 
   function setTab(value: string) {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.set("tab", value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setUrlQuery((params) => params.set("tab", value), "push");
   }
 
   function handleGameChange(id?: typeof gameId) {

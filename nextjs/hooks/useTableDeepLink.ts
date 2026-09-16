@@ -2,16 +2,15 @@
 import type { Base58ID } from "@/lib/id";
 
 import { useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getTablePromise, TableSummary } from "@/app/api";
 import { gameAppByGameId } from "@/lib/game-apps";
 import { toBase58ID } from "@/lib/id";
+import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import type { TableSession } from "@/hooks/useTableSession";
 
 type Options = {
-    /** The game page's own path, e.g. "/matches/table/skull-king". */
-    pagePath: string;
     /** The game this page hosts; a link to another game's table redirects there. */
     gameId: Base58ID;
     hydrated: boolean;
@@ -21,6 +20,15 @@ type Options = {
     joinTable: (table: TableSummary, myPlayerId: Base58ID) => Promise<void>;
     resetTableSession: () => void;
 };
+
+/** Drops the table-binding params (a failed binding leaves a clean URL). */
+function clearTableParams() {
+    setUrlQuery((params) => {
+        params.delete("table");
+        params.delete("join");
+        params.delete("new");
+    });
+}
 
 /**
  * URL bindings of a game-table page (ADR-18).
@@ -40,9 +48,12 @@ type Options = {
  *   - `?join=<id>`: legacy alias of `?table=`, normalized to it on entry.
  */
 export function useTableDeepLink(options: Options): void {
-    const { pagePath, gameId, hydrated, session, me, setSession, joinTable, resetTableSession } = options;
+    const { gameId, hydrated, session, me, setSession, joinTable, resetTableSession } = options;
     const router = useRouter();
-    const searchParams = useSearchParams();
+    // Param reads/writes go through lib/url-state (ADR-25): the router is
+    // blind to same-route query changes on the static export. Only the
+    // cross-game redirect below still uses the router (cross-route works).
+    const searchParams = useUrlQuery();
 
     // Force-new entry (/matches/new): a new table must always be created
     // here, so a stored session (this game's or another game's) is discarded
@@ -51,7 +62,7 @@ export function useTableDeepLink(options: Options): void {
     useEffect(() => {
         if (!isNew || !hydrated) return;
         resetTableSession();
-        router.replace(pagePath, { scroll: false });
+        setUrlQuery((params) => params.delete("new"));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per ?new=1 entry
     }, [isNew, hydrated]);
 
@@ -63,8 +74,11 @@ export function useTableDeepLink(options: Options): void {
         if (rawJoin == null || rawTable != null) return;
         const id = toBase58ID(rawJoin);
         if (!id) return;
-        router.replace(`${pagePath}?table=${id}`, { scroll: false });
-    }, [rawJoin, rawTable, pagePath, router]);
+        setUrlQuery((params) => {
+            params.delete("join");
+            params.set("table", id);
+        });
+    }, [rawJoin, rawTable]);
 
     // The sticky binding: make sure this visit ends up on exactly the table
     // in the URL. Idempotent — a session already bound to the table (host
@@ -103,7 +117,7 @@ export function useTableDeepLink(options: Options): void {
                 missingReportedRef.current = tableParam;
                 toast.error("Стол не найден или уже завершён");
                 if (alreadyHere) resetTableSession();
-                router.replace(pagePath, { scroll: false });
+                clearTableParams();
                 return;
             }
             if (cancelled) return;
@@ -117,7 +131,7 @@ export function useTableDeepLink(options: Options): void {
                 missingReportedRef.current = tableParam;
                 toast.error("Стол не найден или уже завершён");
                 if (alreadyHere) resetTableSession();
-                router.replace(pagePath, { scroll: false });
+                clearTableParams();
                 return;
             }
             // Entering never claims hosting (ADR-18): join as a connected

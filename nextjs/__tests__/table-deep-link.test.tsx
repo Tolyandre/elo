@@ -12,16 +12,16 @@ import { renderHook } from "./render-hook";
 import { getTablePromise, joinTablePromise, type SkullKingGameState, type TableSummary } from "@/app/api";
 import { toast } from "sonner";
 
-// The URL the harness page "renders at": tests swap entries between renders.
+// The router mock covers the only remaining router use: the cross-game
+// redirect. Same-route param changes go through the History API (ADR-25),
+// so tests drive them via the real jsdom URL.
 const mocks = vi.hoisted(() => ({
-    params: new Map<string, string>(),
     replace: vi.fn(),
     push: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
     useRouter: () => ({ replace: mocks.replace, push: mocks.push }),
-    useSearchParams: () => ({ get: (key: string) => mocks.params.get(key) ?? null }),
 }));
 
 vi.mock("@/app/api", () => ({
@@ -46,8 +46,6 @@ vi.mock("sonner", () => ({
 import { useTableSSE } from "@/hooks/useTableSSE";
 
 const pid = (s: string) => s as Base58ID;
-
-const PAGE_PATH = "/matches/table/skull-king";
 
 type SKState = SkullKingGameState;
 
@@ -99,7 +97,6 @@ function useHarness(me: { isAuthenticated: boolean; id?: string; playerId?: Base
         mergeStates: mergeSK,
     });
     useTableDeepLink({
-        pagePath: PAGE_PATH,
         gameId: GAME_ID_SKULL_KING,
         hydrated: s.hydrated,
         session: s.session,
@@ -112,7 +109,8 @@ function useHarness(me: { isAuthenticated: boolean; id?: string; playerId?: Base
 }
 
 function setParams(entries: Record<string, string>) {
-    mocks.params = new Map(Object.entries(entries));
+    const query = new URLSearchParams(entries).toString();
+    window.history.replaceState(null, "", "/matches/table/skull-king" + (query ? `?${query}` : ""));
 }
 
 /** Configures the mocked SSE hook as inert. */
@@ -144,7 +142,7 @@ describe("useTableDeepLink", () => {
 
         expect(h.current.value.session).toBeNull();
         expect(h.current.value.gameState.phase).toBe("setup");
-        expect(mocks.replace).toHaveBeenCalledWith(PAGE_PATH, { scroll: false });
+        expect(location.search).toBe("");
         expect(getTablePromise).not.toHaveBeenCalled();
         expect(joinTablePromise).not.toHaveBeenCalled();
     });
@@ -161,7 +159,7 @@ describe("useTableDeepLink", () => {
         expect(joinTablePromise).toHaveBeenCalledWith(pid("t9"));
         expect(h.current.value.session).toEqual({ tableId: pid("t9"), isHost: false, myPlayerIndex: 0 });
         // The sticky binding: the URL is not cleared after the join.
-        expect(mocks.replace).not.toHaveBeenCalledWith(PAGE_PATH, { scroll: false });
+        expect(location.search).toBe("?table=t9");
     });
 
     it("legacy ?join=<id> works and is normalized to ?table=<id>", async () => {
@@ -174,7 +172,7 @@ describe("useTableDeepLink", () => {
 
         expect(joinTablePromise).toHaveBeenCalledWith(pid("t9"));
         expect(h.current.value.session?.tableId).toEqual(pid("t9"));
-        expect(mocks.replace).toHaveBeenCalledWith(`${PAGE_PATH}?table=${pid("t9")}`, { scroll: false });
+        expect(location.search).toBe("?table=t9");
     });
 
     it("a stored host session on the linked table resumes without joining", async () => {
@@ -234,7 +232,7 @@ describe("useTableDeepLink", () => {
         await flush();
 
         expect(toast.error).toHaveBeenCalledWith("Стол не найден или уже завершён");
-        expect(mocks.replace).toHaveBeenCalledWith(PAGE_PATH, { scroll: false });
+        expect(location.search).toBe("");
         // The untouched session (the other table) is kept.
         expect(h.current.value.session).toEqual({ tableId: pid("tOld"), isHost: false, myPlayerIndex: 0 });
     });
@@ -248,7 +246,7 @@ describe("useTableDeepLink", () => {
         await flush();
 
         expect(toast.error).toHaveBeenCalledWith("Стол не найден или уже завершён");
-        expect(mocks.replace).toHaveBeenCalledWith(PAGE_PATH, { scroll: false });
+        expect(location.search).toBe("");
         expect(h.current.value.session).toBeNull();
         expect(h.current.value.gameState.phase).toBe("setup");
     });

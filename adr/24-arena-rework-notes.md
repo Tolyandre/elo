@@ -114,6 +114,11 @@ Frontend (`nextjs/`):
    the History API. Originally worked around with local state + `replaceState`
    mirroring and a `window.location.assign` fallback on the Главная link
    (a full reload); replaced by the ADR-25 design.
+   Stage follow-up (2026-09-16, Next 16.2): pages still on the router path
+   (`/arenas` tabs) showed the change dropped AND a reload landing on the
+   pre-click URL; probes of `/help` and the table deep-link strip showed the
+   same-route `router.replace` inconsistently dropped. All of them were
+   converted to the hook.
 1b. **`usePathname()` excludes the deployment basePath.** Any hand-built URL
    (`history.replaceState`, `router.push`) must prepend
    `process.env.NEXT_PUBLIC_BASE_PATH` or stage strips `/elo-stage` from the

@@ -14,8 +14,8 @@ function InlineMath({ math }: { math: string }) {
     const html = katex.renderToString(math, { displayMode: false, output: "html", throwOnError: false })
     return <span dangerouslySetInnerHTML={{ __html: html }} />
 }
-import { useSearchParams, useRouter, usePathname } from "next/navigation"
-import { Suspense, useState } from "react"
+import { useUrlQuery, setUrlQuery } from "@/lib/url-state"
+import { Suspense } from "react"
 
 import {
     Accordion,
@@ -34,24 +34,22 @@ import { PageHeader } from "@/app/pageHeaderContext"
 
 function HelpPageContent() {
     const settings = useSettings()
-    const searchParams = useSearchParams()
-    const router = useRouter()
-    const pathname = usePathname()
 
-    const [openItems, setOpenItems] = useState<string[]>(() => {
-        const param = searchParams.get("open")
-        return param ? param.split(",") : []
-    })
+    // The open sections live in the query string (?open=a,b) — ADR-25:
+    // derived from the URL and switched through the History API, never
+    // router.replace (a same-route router change is dropped on the static
+    // export).
+    const params = useUrlQuery()
+    const openItems = params.get("open")?.split(",").filter(Boolean) ?? []
 
     function handleValueChange(values: string[]) {
-        setOpenItems(values)
-        const params = new URLSearchParams(searchParams.toString())
-        if (values.length > 0) {
-            params.set("open", values.join(","))
-        } else {
-            params.delete("open")
-        }
-        router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+        setUrlQuery((params) => {
+            if (values.length > 0) {
+                params.set("open", values.join(","))
+            } else {
+                params.delete("open")
+            }
+        })
     }
 
     return (

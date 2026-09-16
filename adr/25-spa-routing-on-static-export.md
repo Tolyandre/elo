@@ -12,13 +12,15 @@ combination shaped every routing decision:
 - **Path segments per id are impossible**: `/arenas/<id>` would need one
   exported file per arena, but arenas are user-created. Dynamic ids must
   travel in the query string (`/arenas/view?id=…`, ADR-24).
-- **Same-route query-only navigation is a silent no-op**: on the exported
-  app, `router.push`/`router.replace` to the current route with a changed
-  query do nothing (the export has one static RSC payload per route, no
-  per-query variants), while cross-route navigation works. ADR-24 worked
-  around this with local state + `history.replaceState` mirroring, and the
-  «Главная» nav item fell back to `window.location.assign` — a full page
-  reload on every return home.
+- **Same-route query-only navigation is broken**: on the exported app,
+  `router.push`/`router.replace` to the current route with a changed query
+  does not re-render (the export has one static RSC payload per route, no
+  per-query variants). Stage probes on Next 16.2 showed two flavors: the URL
+  update is silently dropped (dead tabs on `/arenas`), or the navigation ends
+  in a full page reload that lands on the pre-click URL. Cross-route
+  navigation works. ADR-24 worked around this with local state +
+  `history.replaceState` mirroring, and the «Главная» nav item fell back to
+  `window.location.assign` — a full page reload on every return home.
 - **`redirect()` pages export as empty shells**: a statically exported
   redirect is an `__next_error__` HTML body whose RSC payload carries a
   client-side redirect replay. With `/` pointing at `/arenas/view`, every
@@ -62,7 +64,11 @@ SPA navigation from every other page.
   route-to-route navigation (it prepends the basePath itself); plain `<a>`
   hrefs must not be used for app routes.
 
-Same-route query-only changes never go through the Next router.
+Same-route query-only changes never go through the Next router. This applies
+to every consumer of query state, not just the arena view: the `/arenas`
+list tabs, the help page's open sections, and the game-table deep-link
+params (`?new=1`/`?join=`/`?table=` in `useTableDeepLink` and the table
+create-flow mirrors) all read via `useUrlQuery` and write via `setUrlQuery`.
 
 Defaults live in the derivation, not in the URL: only non-default values are
 written (`?tab=players` is omitted), and an absent or invalid value falls back
