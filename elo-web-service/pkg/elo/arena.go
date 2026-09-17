@@ -254,7 +254,30 @@ func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int
 	}, nil
 }
 
+// arenaFrom<X>Row adapters convert the sqlc row types to the domain Arena.
+// Every arena read query shares one 15-column projection (see arenas.sql), so
+// the row structs are field-identical and each adapter is a plain fan-out into
+// arenaFromParts; arena_rows_test.go keeps the row shapes identical.
+
 func arenaFromGetArenaRow(r db.GetArenaRow) (Arena, error) {
+	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+}
+
+func arenaFromGetArenaByGameRow(r db.GetArenaByGameRow) (Arena, error) {
+	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+}
+
+func arenaFromGetArenaByTournamentRow(r db.GetArenaByTournamentRow) (Arena, error) {
+	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+}
+
+func arenaFromGetArenaForUpdateRow(r db.GetArenaForUpdateRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
 		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
@@ -265,6 +288,12 @@ func arenaFromListRow(r db.ListArenasRow) (ArenaWithCount, error) {
 		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 	return ArenaWithCount{Arena: a, MatchesCount: int(r.MatchesCount), CampPlayerIds: r.CampPlayerIds}, err
+}
+
+func arenaFromListArenasForGameRow(r db.ListArenasForGameRow) (Arena, error) {
+	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromStaleRow(r db.ListStaleArenasRow) (Arena, error) {
@@ -316,9 +345,7 @@ func (s *ArenaService) ListArenasForGame(ctx context.Context, gameID id.ID) ([]A
 	}
 	out := make([]Arena, 0, len(rows))
 	for _, r := range rows {
-		a, err := arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-			r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
-			r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+		a, err := arenaFromListArenasForGameRow(r)
 		if err != nil {
 			return nil, err
 		}
@@ -332,9 +359,7 @@ func (s *ArenaService) GetArenaByGame(ctx context.Context, gameID id.ID) (Arena,
 	if err != nil {
 		return Arena{}, fmt.Errorf("get arena for game %s: %w", gameID, err)
 	}
-	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+	return arenaFromGetArenaByGameRow(r)
 }
 
 func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id.ID) (Arena, error) {
@@ -342,9 +367,7 @@ func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id
 	if err != nil {
 		return Arena{}, fmt.Errorf("get arena for tournament %s: %w", tournamentID, err)
 	}
-	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+	return arenaFromGetArenaByTournamentRow(r)
 }
 
 // GetArenaPlayers returns the arena's current players ranked, with the

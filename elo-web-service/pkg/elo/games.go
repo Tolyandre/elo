@@ -131,10 +131,7 @@ func (s *GameService) UpdateGameName(ctx context.Context, gameID id.ID, name str
 		updated = &g
 		// The game's arena is auto-managed: its name follows the game's.
 		if arena, aerr := q.GetArenaByGame(ctx, &gameID); aerr == nil {
-			a, err := arenaFromParts(arena.ID, arena.Name, arena.Settings, arena.SettingsSchemaVersion,
-				arena.GameID, arena.TournamentID, arena.Camp, arena.StartsAt, arena.EndsAt,
-				arena.RecalcFrom, arena.StaleAt, arena.DateFrom, arena.DateTo,
-				arena.FilterGameIds, arena.FilterTagIds)
+			a, err := arenaFromGetArenaByGameRow(arena)
 			if err != nil {
 				return err
 			}
