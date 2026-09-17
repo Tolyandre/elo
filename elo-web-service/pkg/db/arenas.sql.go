@@ -66,7 +66,9 @@ WHERE ms.player_id = $2
   AND m.date <= $4::timestamptz
   AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 `
@@ -232,19 +234,19 @@ type GetArenaRow struct {
 	FilterTagIds          []id.ID            `json:"filter_tag_ids"`
 }
 
-// Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
-// condition — camp link, or the filter (date range, game OR tag) — has ONE
-// canonical definition: the arena_contains_match() function created by
-// migrations 054+055 (see adr/28-arena-membership-function.md). The queries
-// below call it; never inline the condition back.
+// Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
+// arena" condition — tournament link, camp link, or the filter (date range,
+// game OR tag) — has ONE canonical definition: the arena_contains_match()
+// function created by migrations 054–056 (see adr/28-arena-membership-function.md).
+// The queries below call it; never inline the condition back.
 //
 // The function is a pure expression: callers pass the columns they already
-// joined PLUS the two probes it cannot express without sub-SELECTs — the
-// camp link EXISTS and the filtered-tag EXISTS (written right in the call).
-// Never bury a sub-SELECT in the function body: bodies with sub-SELECTs are
-// never inlined, and an opaque call re-runs its subplans per (arena, match)
-// pair — measured 24s (id args) and 3.3s (column args) against 350ms for the
-// inlined form on the arenas list at 2026-09 data scale.
+// joined PLUS the probes it cannot express without sub-SELECTs — the camp-link
+// EXISTS, the tournament-link EXISTS and the filtered-tag EXISTS (written
+// right in the call). Never bury a sub-SELECT in the function body: bodies
+// with sub-SELECTs are never inlined, and an opaque call re-runs its subplans
+// per (arena, match) pair — measured 24s (id args) and 3.3s (column args)
+// against 350ms for the inlined form on the arenas list at 2026-09 data scale.
 // The read queries share one 15-column projection (arena row + its filter
 // columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 // asserts the generated row structs stay field-identical.
@@ -452,7 +454,9 @@ FROM (
         WHERE a.id = $1
           AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
     )
@@ -478,7 +482,9 @@ WITH paginated_matches AS (
     WHERE a.id = $1
       AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       AND (
@@ -701,7 +707,9 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt60 ON true
@@ -715,7 +723,9 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt180 ON true
@@ -784,7 +794,9 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
        ) AS matches_count
@@ -957,7 +969,9 @@ LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = $1
 WHERE arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 `
@@ -994,7 +1008,9 @@ WHERE a.id = $1::uuid
   AND m.date >= $2::timestamptz
   AND arena_contains_match(
     a.camp,
+    a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ORDER BY m.date ASC, m.id ASC

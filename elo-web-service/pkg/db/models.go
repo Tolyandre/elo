@@ -226,8 +226,72 @@ type Tag struct {
 }
 
 type Tournament struct {
-	ID   id.ID  `json:"id"`
-	Name string `json:"name"`
+	ID                 id.ID              `json:"id"`
+	Name               string             `json:"name"`
+	Status             string             `json:"status"`
+	Elimination        string             `json:"elimination"`
+	WinnerPlayerID     *id.ID             `json:"winner_player_id"`
+	Seed               pgtype.Int8        `json:"seed"`
+	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`
+	Plan               json.RawMessage    `json:"plan"`
+	PlanSchemaVersion  int32              `json:"plan_schema_version"`
+	CreatedAt          time.Time          `json:"created_at"`
+}
+
+type TournamentGame struct {
+	TournamentID id.ID `json:"tournament_id"`
+	GameID       id.ID `json:"game_id"`
+	MinPlayers   int32 `json:"min_players"`
+	MaxPlayers   int32 `json:"max_players"`
+}
+
+type TournamentMatch struct {
+	TournamentID id.ID     `json:"tournament_id"`
+	MatchID      id.ID     `json:"match_id"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type TournamentParticipant struct {
+	TournamentID id.ID     `json:"tournament_id"`
+	PlayerID     id.ID     `json:"player_id"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type TournamentRound struct {
+	ID           id.ID  `json:"id"`
+	TournamentID id.ID  `json:"tournament_id"`
+	Track        string `json:"track"`
+	Index        int32  `json:"index"`
+}
+
+type TournamentSeat struct {
+	ID           id.ID       `json:"id"`
+	SlotID       id.ID       `json:"slot_id"`
+	Position     int32       `json:"position"`
+	PlayerID     *id.ID      `json:"player_id"`
+	SourceSlotID *id.ID      `json:"source_slot_id"`
+	SourcePlace  pgtype.Int4 `json:"source_place"`
+}
+
+type TournamentSlot struct {
+	ID       id.ID           `json:"id"`
+	RoundID  id.ID           `json:"round_id"`
+	Position int32           `json:"position"`
+	GameID   id.ID           `json:"game_id"`
+	Promote  int32           `json:"promote"`
+	Status   string          `json:"status"`
+	Ruling   json.RawMessage `json:"ruling"`
+}
+
+type TournamentSlotMatch struct {
+	SlotID  id.ID `json:"slot_id"`
+	MatchID id.ID `json:"match_id"`
+}
+
+type TournamentSlotPromotion struct {
+	SlotID   id.ID `json:"slot_id"`
+	PlayerID id.ID `json:"player_id"`
+	Place    int32 `json:"place"`
 }
 
 type User struct {

@@ -23,6 +23,14 @@ type Querier interface {
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
 	AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error)
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
+	// ---------------------------------------------------------------------------
+	// Game pool
+	// ---------------------------------------------------------------------------
+	AddTournamentGame(ctx context.Context, arg AddTournamentGameParams) error
+	// ---------------------------------------------------------------------------
+	// Participants
+	// ---------------------------------------------------------------------------
+	AddTournamentParticipant(ctx context.Context, arg AddTournamentParticipantParams) error
 	// Uniqueness guard for the user-facing arena CRUD (case-insensitive).
 	// @exclude_id skips the arena being updated; NULL on create.
 	ArenaNameExists(ctx context.Context, arg ArenaNameExistsParams) (bool, error)
@@ -38,6 +46,7 @@ type Querier interface {
 	// [date_from, date_to] — the elite promotion counters. Camp arenas have no
 	// leagues, so the counters are never consulted for them.
 	CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error)
+	CountTournamentParticipants(ctx context.Context, tournamentID id.ID) (int32, error)
 	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
@@ -54,6 +63,12 @@ type Querier interface {
 	// Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
 	CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutcomesParams) error
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
+	// Tournament queries (ADR-26). The bracket materialization has its own file
+	// (tournament_brackets.sql); this one covers the entity itself: lifecycle
+	// state, registration-time config, participants, and the game pool.
+	// Client-supplied id (ADR-06): the insert is an idempotent create — a replay
+	// with the same id inserts nothing and the service fetches the stored row.
+	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	// The two fixed Да/Нет outcomes of a win_streak market.
@@ -91,20 +106,25 @@ type Querier interface {
 	// Returns the deleted row so the audit trail can capture the player's name.
 	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
+	// The pool is small; the PUT handler rewrites it wholesale inside its tx.
+	DeleteTournamentGames(ctx context.Context, tournamentID id.ID) error
+	// The editor's desired-set semantics (PUT /tournaments): drop everyone absent
+	// from the submitted set. An empty array removes everyone.
+	DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error
 	DeleteUser(ctx context.Context, argID id.ID) error
-	// Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
-	// condition — camp link, or the filter (date range, game OR tag) — has ONE
-	// canonical definition: the arena_contains_match() function created by
-	// migrations 054+055 (see adr/28-arena-membership-function.md). The queries
-	// below call it; never inline the condition back.
+	// Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
+	// arena" condition — tournament link, camp link, or the filter (date range,
+	// game OR tag) — has ONE canonical definition: the arena_contains_match()
+	// function created by migrations 054–056 (see adr/28-arena-membership-function.md).
+	// The queries below call it; never inline the condition back.
 	//
 	// The function is a pure expression: callers pass the columns they already
-	// joined PLUS the two probes it cannot express without sub-SELECTs — the
-	// camp link EXISTS and the filtered-tag EXISTS (written right in the call).
-	// Never bury a sub-SELECT in the function body: bodies with sub-SELECTs are
-	// never inlined, and an opaque call re-runs its subplans per (arena, match)
-	// pair — measured 24s (id args) and 3.3s (column args) against 350ms for the
-	// inlined form on the arenas list at 2026-09 data scale.
+	// joined PLUS the probes it cannot express without sub-SELECTs — the camp-link
+	// EXISTS, the tournament-link EXISTS and the filtered-tag EXISTS (written
+	// right in the call). Never bury a sub-SELECT in the function body: bodies
+	// with sub-SELECTs are never inlined, and an opaque call re-runs its subplans
+	// per (arena, match) pair — measured 24s (id args) and 3.3s (column args)
+	// against 350ms for the inlined form on the arenas list at 2026-09 data scale.
 	// The read queries share one 15-column projection (arena row + its filter
 	// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 	// asserts the generated row structs stay field-identical.
@@ -204,6 +224,10 @@ type Querier interface {
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
+	GetTournament(ctx context.Context, argID id.ID) (Tournament, error)
+	// Row-locked variant for the lifecycle mutations (start/cancel/config): a
+	// concurrent start and cancel queue behind the lock instead of racing.
+	GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tournament, error)
 	GetUser(ctx context.Context, argID id.ID) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
@@ -306,6 +330,10 @@ type Querier interface {
 	// when any game's tags change (a tag toggle can flip any of them).
 	ListTagFilteredArenaIds(ctx context.Context) ([]id.ID, error)
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
+	ListTournamentGames(ctx context.Context, tournamentID id.ID) ([]TournamentGame, error)
+	ListTournamentParticipants(ctx context.Context, tournamentID id.ID) ([]ListTournamentParticipantsRow, error)
+	// The /tournaments list: live tournaments first, then finished ones.
+	ListTournaments(ctx context.Context) ([]Tournament, error)
 	// Resolves the (unique) controlling user for each linked player; used to route
 	// per-user SSE events (table invites, match notifications).
 	ListUserIDsByPlayerIDs(ctx context.Context, dollar_1 []id.ID) ([]ListUserIDsByPlayerIDsRow, error)
@@ -329,10 +357,18 @@ type Querier interface {
 	RecomputeOutcomeQFromBets(ctx context.Context) error
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
+	RemoveTournamentParticipant(ctx context.Context, arg RemoveTournamentParticipantParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
 	SetGameTableHost(ctx context.Context, arg SetGameTableHostParams) (GameTable, error)
+	// The grand final promoted exactly one player (ADR-26): read-only from here.
+	SetTournamentCompleted(ctx context.Context, arg SetTournamentCompletedParams) error
+	// The single start action (ADR-26): snapshot the chosen plan + seed, close
+	// registration. The bracket materialization happens in the same transaction.
+	SetTournamentRunning(ctx context.Context, arg SetTournamentRunningParams) error
+	// Plain transitions: cancel (organizer or grand-final deadline).
+	SetTournamentStatus(ctx context.Context, arg SetTournamentStatusParams) error
 	// Restores the pre-settlement status: betting_closed if the betting lock user event
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 	// a user event and must never be cleared by recalculation.
@@ -352,6 +388,9 @@ type Querier interface {
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
 	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
+	// Registration-time config (ADR-26): name and the optional grand-final
+	// deadline. The pool and participants are managed by their own queries.
+	UpdateTournamentConfig(ctx context.Context, arg UpdateTournamentConfigParams) error
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error
