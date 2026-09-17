@@ -9,7 +9,7 @@ import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
 import { Match, updateMatchPromise } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
-import { useCampSelection } from "@/hooks/useCampSelection";
+import { useCampSelection, type CampOverrides } from "@/hooks/useCampSelection";
 import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
@@ -79,7 +79,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
     // Explicit camp-checkbox toggles keyed by camp id (ADR-27): they win over
     // the base set (the match's camps on edit, the participation rule on create).
-    const [campOverrides, setCampOverrides] = useSessionStorage<Partial<Record<string, boolean>>>(`match-form:${draftKey}:camp-overrides`, {});
+    const [campOverrides, setCampOverrides] = useSessionStorage<CampOverrides>(`match-form:${draftKey}:camp-overrides`, {});
     // The match's current camps on edit — the pre-checked base set, seeded
     // once from the edited match. Links are editable (ADR-27, revised).
     const [campBaseIds, setCampBaseIds] = useSessionStorage<Base58ID[]>(`match-form:${draftKey}:camp-base`, []);

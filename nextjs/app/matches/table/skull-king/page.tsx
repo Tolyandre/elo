@@ -27,7 +27,7 @@ import { useTableSession, waitForSyncedMatch } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { useCampSelection } from "@/hooks/useCampSelection";
-import { CampCheckboxes } from "@/components/camp-checkboxes";
+import { MatchSaveSection } from "@/components/tables/match-save-section";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,15 +180,9 @@ function SkullKingGame() {
 
     // Camp selection for the saved match (ADR-27): default-checked by
     // participation, freely toggleable by the host.
-    const [campOverrides, setCampOverrides] = useState<Partial<Record<string, boolean>>>({});
     const campDate = useMemo(() => new Date(), []);
     const campPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
-    const {
-        active: activeCampsForSave,
-        checked: checkedCampIds,
-        toggle: toggleCamp,
-        idsToSubmit: campIdsToSubmit,
-    } = useCampSelection(campPlayerIds, campDate, { overrides: campOverrides, setOverrides: setCampOverrides });
+    const campSelection = useCampSelection(campPlayerIds, campDate);
 
     // Reset bid reveal when round changes
     useEffect(() => {
@@ -412,7 +406,7 @@ function SkullKingGame() {
             const result = await submitMatch({
                 game_id: GAME_ID_SKULL_KING,
                 score,
-                camp_arena_ids: campIdsToSubmit(),
+                camp_arena_ids: campSelection.idsToSubmit(),
                 calculator_kind: "skull-king",
                 calculator_data: skToStorage(gameState) as unknown as Record<string, never>,
             });
@@ -937,15 +931,7 @@ function SkullKingGame() {
                                     )}
 
                                     {currentRound === TOTAL_ROUNDS && isHost && (
-                                        <div className="space-y-2">
-                                            <CampCheckboxes
-                                                active={activeCampsForSave}
-                                                checked={checkedCampIds}
-                                                onToggle={toggleCamp}
-                                            />
-                                            {saveError && (
-                                                <p className="text-red-600 text-sm">{saveError}</p>
-                                            )}
+                                        <MatchSaveSection selection={campSelection} error={saveError}>
                                             <Button
                                                 className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg"
                                                 disabled={saving || !me.id}
@@ -953,7 +939,7 @@ function SkullKingGame() {
                                             >
                                                 {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2 inline" />Сохранение...</> : "Сохранить партию"}
                                             </Button>
-                                        </div>
+                                        </MatchSaveSection>
                                     )}
 
                                 </div>

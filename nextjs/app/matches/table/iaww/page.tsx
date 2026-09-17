@@ -23,11 +23,11 @@ import { toStorage } from "@/components/calculators/iaww/storage";
 import { VictoryPoints } from "@/components/calculators/iaww/victory-points";
 import { EditDialog } from "@/components/calculators/iaww/edit-dialog";
 import { ScoringTable } from "@/components/calculators/iaww/scoring-table";
-import { useTableSession } from "@/hooks/useTableSession";
+import { useTableSession, waitForSyncedMatch } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
-import { useOffline, loadOfflineStore } from "@/app/offline/OfflineContext";
+import { useOffline } from "@/app/offline/OfflineContext";
 import { useCampSelection } from "@/hooks/useCampSelection";
-import { CampCheckboxes } from "@/components/camp-checkboxes";
+import { MatchSaveSection } from "@/components/tables/match-save-section";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { AuthWarning } from "@/components/auth-warning";
 import { TableStatusBanner } from "@/components/tables/table-status-banner";
@@ -57,17 +57,6 @@ function formatCellValue(v: CellEditValue): string {
     if (typeof v === "number") return String(v);
     if (!v) return "—";
     return `${v.count}×${v.coeff}`;
-}
-
-// See the Skull King table page for the rationale.
-async function waitForSyncedMatch(matchId: string, timeoutMs = 10_000): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    await new Promise((r) => setTimeout(r, 400));
-    while (Date.now() < deadline) {
-        if (!loadOfflineStore().matches.some((m) => m.clientId === matchId)) return true;
-        await new Promise((r) => setTimeout(r, 400));
-    }
-    return false;
 }
 
 export default function IawwTablePage() {
@@ -312,15 +301,11 @@ function IawwTable() {
     const [isResetting, setIsResetting] = useState(false);
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-    const [campOverrides, setCampOverrides] = useState<Partial<Record<string, boolean>>>({});
+    // Camp selection for the saved match (ADR-27): default-checked by
+    // participation, freely toggleable by the host.
     const campDate = useMemo(() => new Date(), []);
     const campPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
-    const {
-        active: activeCampsForSave,
-        checked: checkedCampIds,
-        toggle: toggleCamp,
-        idsToSubmit: campIdsToSubmit,
-    } = useCampSelection(campPlayerIds, campDate, { overrides: campOverrides, setOverrides: setCampOverrides });
+    const campSelection = useCampSelection(campPlayerIds, campDate);
 
     // Connected players are redirected to the saved match by the "saved" event.
     useEffect(() => {
@@ -363,7 +348,7 @@ function IawwTable() {
             const result = await submitMatch({
                 game_id: GAME_ID_IAWW,
                 score,
-                camp_arena_ids: campIdsToSubmit(),
+                camp_arena_ids: campSelection.idsToSubmit(),
                 calculator_kind: "iaww",
                 calculator_data: toStorage(liveToCalc(gameState)) as unknown as Record<string, never>,
             });
@@ -534,13 +519,7 @@ function IawwTable() {
 
             {/* Save section (host) */}
             {isHost && (
-                <div className="space-y-2 pt-2">
-                    <CampCheckboxes
-                        active={activeCampsForSave}
-                        checked={checkedCampIds}
-                        onToggle={toggleCamp}
-                    />
-                    {saveError && <p className="text-sm text-red-600">{saveError}</p>}
+                <MatchSaveSection selection={campSelection} error={saveError} className="pt-2">
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button className="w-full" disabled={saving || !me.canEdit}>
@@ -567,7 +546,7 @@ function IawwTable() {
                             </AlertDialogFooter>
                         </AlertDialogContent>
                     </AlertDialog>
-                </div>
+                </MatchSaveSection>
             )}
 
             {/* The cell changed between dialog open and save (someone else's

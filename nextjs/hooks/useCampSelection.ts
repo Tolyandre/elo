@@ -1,6 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useCamps, type CampArena } from "@/app/arenas/campsContext";
 import type { Base58ID } from "@/lib/id";
+
+/** Explicit user toggles keyed by camp id; win over the base set. */
+export type CampOverrides = Partial<Record<string, boolean>>;
 
 /**
  * Shared camp-selection logic for every match-save screen (the match form and
@@ -18,8 +21,9 @@ import type { Base58ID } from "@/lib/id";
  *   unticked in the same edit.
  *
  * `playerIds` are the match participants. Explicit user toggles are carried
- * in `overrides` (owned by the caller so they survive via the form's draft)
- * and win over the base set.
+ * in `overrides`, which the hook owns in component state unless the caller
+ * injects its own pair — the match form injects the session-storage-backed
+ * pair so toggles survive a refresh via its draft.
  */
 export type CampSelection = {
     /** Checkboxes to render: camps active on the date, plus the match's camps on edit. */
@@ -38,19 +42,18 @@ export function useCampSelection(
         /** The match's current camps on edit — the pre-checked base set. */
         selectedIds?: Base58ID[];
         /** Explicit user toggles keyed by camp id; wins over the base set. */
-        overrides?: Partial<Record<string, boolean>>;
-        setOverrides?: (
-            updater: (prev: Partial<Record<string, boolean>>) => Partial<Record<string, boolean>>,
-        ) => void;
+        overrides?: CampOverrides;
+        setOverrides?: (updater: (prev: CampOverrides) => CampOverrides) => void;
     },
 ): CampSelection {
     const { camps, activeCamps } = useCamps();
     // Destructured so the memo dependencies stay value-stable even though
     // callers pass a fresh options object.
     const selectedIds = opts?.selectedIds;
-    const overrides = opts?.overrides;
-    const setOverrides = opts?.setOverrides;
     const isEdit = !!selectedIds;
+    const [ownOverrides, setOwnOverrides] = useState<CampOverrides>({});
+    const overrides = opts?.overrides ?? ownOverrides;
+    const setOverrides = opts?.setOverrides ?? setOwnOverrides;
     // Checkboxes shown: camps whose window contains the date, plus the
     // match's current camps on edit — unticking one of those is exactly the
     // fix the edit form exists for. A camp missing from the preload renders
@@ -90,10 +93,10 @@ export function useCampSelection(
     }, [active, baseChecked, overrides]);
 
     // The updater form keeps consecutive toggles correct even when the
-    // owner's state update has not re-rendered the hook yet.
+    // state update has not re-rendered the hook yet.
     const toggle = useCallback(
         (id: Base58ID, on: boolean) => {
-            setOverrides?.((prev) => ({ ...prev, [String(id)]: on }));
+            setOverrides((prev) => ({ ...prev, [String(id)]: on }));
         },
         [setOverrides],
     );

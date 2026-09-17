@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+import { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Base58ID } from "../lib/id";
 import type { CampArena } from "../app/arenas/campsContext";
@@ -136,5 +138,17 @@ describe("useCampSelection", () => {
         );
         // camp-past is checked but not active on the date — not submitted.
         expect(current.value.idsToSubmit()).toEqual(["camp-open"]);
+    });
+
+    it("owns the overrides internally when none are injected", () => {
+        const { current, rerender } = renderHook(() => useCampSelection([p("p1")], june15));
+        expect(current.value.checked).toEqual(["camp-open"]);
+        // The toggle lands in the hook's own state — no caller-owned store.
+        act(() => current.value.toggle("camp-open" as Base58ID, false));
+        expect(current.value.checked).toEqual([]);
+        act(() => current.value.toggle("camp-open" as Base58ID, true));
+        expect(current.value.checked).toEqual(["camp-open"]);
+        rerender(() => useCampSelection([p("p1")], june15));
+        expect(current.value.checked).toEqual(["camp-open"]);
     });
 });
