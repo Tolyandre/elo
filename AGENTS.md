@@ -24,10 +24,13 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
 The project's reproducible toolchain comes from [devenv](https://devenv.sh), defined in `devenv.nix` + `devenv.yaml` with versions pinned in `devenv.lock` (`flake.nix` is for packaging/deployment only, not the dev shell). There is no auto-activation hook for agents — enter the environment explicitly by wrapping every project command:
 
 ```bash
-# Run any project command wrapped like this:
-devenv shell -- bash -lc '<command>'
+# Run any project command wrapped like this (the repo-root `dev` script is a
+# quieter devenv: same behavior, devenv's own progress chatter silenced):
+./dev shell -- bash -lc '<command>'
 # Example:
-devenv shell -- bash -lc 'make integration-test-podman'
+./dev shell -- bash -lc 'make integration-test-podman'
+# DEVENV_VERBOSE=1 ./dev ... restores devenv's full progress output;
+# plain `devenv shell -- ...` also works.
 ```
 
 **Use the devenv shell in every mode, including plan mode.** Plan mode restricts mutations of the repo and system — it does not forbid entering the devenv shell. `devenv shell` only materializes the pinned toolchain into the Nix store (a per-user cache); it modifies nothing in the repository or system configuration, so running it in plan mode is fine even when it needs to download or build packages first. Never dodge it in favor of an ambient `python3`/`go`/etc. to avoid a Nix download — read-only work (running tests, linters, python analysis) must still go through the wrapper so results come from the pinned toolchain. Run it from the repo root — devenv does not search parent directories for `devenv.nix`.

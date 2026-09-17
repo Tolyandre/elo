@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Quieter devenv. devenv's task runner prints ~15 lines of progress on every
+# invocation (configuring cachix, evaluating the shell, running tasks) — pure
+# noise when the wrapped command's output is all you want. This wrapper adds
+# devenv's own -q flag: progress lines disappear, the wrapped command's output
+# passes through untouched, and task failures still print.
+#
+#   ./dev shell -- bash -lc 'go test -C elo-web-service ./...'
+#   ./dev test
+#
+# devenv 2.1.2 also prints an upgrade banner even under -q; that one line is
+# dropped from stderr here (everything else passes through). Remove the grep
+# once devenv is past it.
+#
+# DEVENV_VERBOSE=1 ./dev ...  → devenv's usual output, unfiltered.
+set -e
+if [ "${DEVENV_VERBOSE:-0}" = "1" ] || [ "$#" -eq 0 ]; then
+    exec devenv "$@"
+fi
+exec devenv -q "$@" 2> >(grep --line-buffered -v -e 'is out of date\. Please update to')
