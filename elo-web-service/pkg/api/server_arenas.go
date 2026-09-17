@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -16,25 +17,23 @@ import (
 
 // arenaFilterFromAPI converts the wire filter into the domain one, parsing
 // tolerant wire-form ids.
-func arenaFilterFromAPI(f MatchFilter) elo.MatchFilter {
-	out := elo.MatchFilter{
-		DateFrom: f.DateFrom,
-		DateTo:   f.DateTo,
+func arenaFilterFromAPI(f *MatchFilter) elo.MatchFilter {
+	var out elo.MatchFilter
+	if f == nil {
+		return out
 	}
+	out.DateFrom = f.DateFrom
+	out.DateTo = f.DateTo
 	for _, g := range f.GameIds {
 		out.GameIDs = append(out.GameIDs, id.ID(g))
 	}
 	for _, t := range f.TagIds {
 		out.TagIDs = append(out.TagIDs, id.ID(t))
 	}
-	if f.TournamentId != nil {
-		t := id.ID(*f.TournamentId)
-		out.TournamentID = &t
-	}
 	return out
 }
 
-func matchFilterToAPI(f elo.MatchFilter) MatchFilter {
+func matchFilterToAPI(f elo.MatchFilter) *MatchFilter {
 	out := MatchFilter{
 		DateFrom: f.DateFrom,
 		DateTo:   f.DateTo,
@@ -47,23 +46,25 @@ func matchFilterToAPI(f elo.MatchFilter) MatchFilter {
 	for _, t := range f.TagIDs {
 		out.TagIds = append(out.TagIds, Base58ID(t))
 	}
-	if f.TournamentID != nil {
-		t := Base58ID(*f.TournamentID)
-		out.TournamentId = &t
-	}
-	return out
+	return &out
 }
 
 func arenaToAPI(a elo.Arena) Arena {
 	out := Arena{
 		Id:                    Base58ID(a.ID),
 		Name:                  a.Name,
+		Camp:                  a.Camp,
 		Filter:                matchFilterToAPI(a.Filter),
 		Settings:              ArenaSettings{},
 		SettingsSchemaVersion: a.SettingsVersion,
 	}
 	if len(a.SettingsRaw) > 0 {
 		_ = json.Unmarshal(a.SettingsRaw, &out.Settings)
+	}
+	if a.Camp {
+		out.Filter = nil
+		out.StartsAt = a.StartsAt
+		out.EndsAt = a.EndsAt
 	}
 	if a.GameID != nil {
 		g := Base58ID(*a.GameID)
@@ -96,6 +97,16 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 			out := arenaToAPI(a.Arena)
 			count := a.MatchesCount
 			out.MatchesCount = &count
+			if a.Camp {
+				// Camp participants are derived from the settlements — the
+				// match-form default-check rule and player dropdown need them
+				// offline (ADR-27).
+				ids := make([]Base58ID, 0, len(a.CampPlayerIds))
+				for _, pid := range a.CampPlayerIds {
+					ids = append(ids, Base58ID(pid))
+				}
+				out.PlayerIds = &ids
+			}
 			data = append(data, out)
 		}
 		return nil
@@ -164,19 +175,24 @@ func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaReque
 	if err != nil {
 		return CreateArena400JSONResponse{Status: "fail", Message: "invalid settings document"}, nil
 	}
-	arena, err := s.api.ArenaService.CreateArena(ctx, elo.ArenaWriteOpts{
+	arena, err := s.api.ArenaService.CreateArena(ctx, currentActorID(ctx), elo.ArenaWriteOpts{
 		Name:        request.Body.Name,
+		Camp:        request.Body.Camp != nil && *request.Body.Camp,
+		StartsAt:    request.Body.StartsAt,
+		EndsAt:      request.Body.EndsAt,
 		Filter:      arenaFilterFromAPI(request.Body.Filter),
 		SettingsRaw: settings,
 	})
 	if msg, ok := invalidSettings(err); ok {
 		return CreateArena400JSONResponse{Status: "fail", Message: msg}, nil
 	}
-	if errors.Is(err, elo.ErrArenaNameTaken) {
-		return CreateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
-	}
 	if err != nil {
-		return nil, err
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return CreateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
 	}
 	return CreateArena200JSONResponse{Status: "success", Data: arenaToAPI(arena)}, nil
 }
@@ -197,20 +213,22 @@ func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaReque
 	if err != nil {
 		return UpdateArena400JSONResponse{Status: "fail", Message: "invalid settings document"}, nil
 	}
-	arena, err := s.api.ArenaService.UpdateArena(ctx, parseIDParam(request.Id), elo.ArenaWriteOpts{
+	arena, err := s.api.ArenaService.UpdateArena(ctx, currentActorID(ctx), parseIDParam(request.Id), elo.ArenaWriteOpts{
 		Name:        request.Body.Name,
+		Camp:        request.Body.Camp != nil && *request.Body.Camp,
+		StartsAt:    request.Body.StartsAt,
+		EndsAt:      request.Body.EndsAt,
 		Filter:      arenaFilterFromAPI(request.Body.Filter),
 		SettingsRaw: settings,
 	})
 	if msg, ok := invalidSettings(err); ok {
 		return UpdateArena400JSONResponse{Status: "fail", Message: msg}, nil
 	}
-	if errors.Is(err, elo.ErrArenaNameTaken) {
-		return UpdateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
-	}
 	if err != nil {
-		switch {
-		case errors.Is(err, elo.ErrArenaIsAutoManaged), errors.Is(err, elo.ErrGlobalArenaIsPermanent):
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return UpdateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case http.StatusConflict:
 			return UpdateArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {
@@ -223,10 +241,10 @@ func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaReque
 }
 
 func (s *StrictServer) DeleteArena(ctx context.Context, request DeleteArenaRequestObject) (DeleteArenaResponseObject, error) {
-	_, err := s.api.ArenaService.DeleteArena(ctx, parseIDParam(request.Id))
+	_, err := s.api.ArenaService.DeleteArena(ctx, currentActorID(ctx), parseIDParam(request.Id))
 	if err != nil {
-		switch {
-		case errors.Is(err, elo.ErrArenaIsAutoManaged), errors.Is(err, elo.ErrGlobalArenaIsPermanent):
+		switch domainStatusCode(err) {
+		case http.StatusConflict:
 			return DeleteArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {
@@ -414,7 +432,7 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 		}
 	}
 
-	tournamentsByMatch, err := s.tournamentsByMatch(ctx, order)
+	campsByMatch, err := s.campsByMatch(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -439,8 +457,8 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 			Score:      score,
 			HasMarkets: m.HasMarkets,
 		}
-		if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
-			match.Tournaments = &ts
+		if cs := campsByMatch[m.Id]; len(cs) > 0 {
+			match.Camps = &cs
 		}
 		if m.CalculatorKind.Valid {
 			kind := m.CalculatorKind.String

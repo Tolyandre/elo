@@ -17,7 +17,6 @@ type API struct {
 	EloSettingsService elo.IEloSettingsService
 	ClubService        elo.IClubService
 	TagService         elo.ITagService
-	TournamentService  elo.ITournamentService
 	TableService       elo.ITableService
 	AuditService       elo.IAuditService
 	ArenaService       *elo.ArenaService
@@ -41,7 +40,6 @@ func New(pool *pgxpool.Pool) *API {
 		EloSettingsService: elo.NewEloSettingsService(pool),
 		ClubService:        elo.NewClubService(pool),
 		TagService:         elo.NewTagService(pool, arenaService),
-		TournamentService:  elo.NewTournamentService(pool, arenaService),
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
 		ArenaService:       arenaService,

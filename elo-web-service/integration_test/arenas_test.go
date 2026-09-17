@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -123,104 +122,6 @@ func TestArena_GameArenaUpdatedOnMatchWrite(t *testing.T) {
 	}
 	if stale != nil {
 		t.Fatalf("arena must be up to date after the synchronous drain, stale_at=%v", stale)
-	}
-}
-
-// TestArena_TournamentArenaCreatedAndUpdated verifies the tournament lifecycle
-// (arena created on tournament create, filled by the update-arenas admin
-// method) and that its filter only counts attached matches.
-func TestArena_TournamentArenaCreatedAndUpdated(t *testing.T) {
-	pool, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	ctx := context.Background()
-	editor := createNamedTestUser(t, pool, "arenas-editor-2", "Арена Редактор 2")
-	router := setupRouter(pool)
-
-	tSvc := newTournamentService(pool)
-	start := time.Now().Add(-24 * time.Hour)
-	end := time.Now().Add(24 * time.Hour)
-	tournament, err := tSvc.CreateTournament(ctx, newID(t), "Арена Турнир", start, end, nil)
-	if err != nil {
-		t.Fatalf("CreateTournament: %v", err)
-	}
-
-	// Tournament arenas have no leagues (ADR-24 decision).
-	var settingsRaw []byte
-	var leagueCheck struct {
-		Leagues []any `json:"leagues"`
-	}
-	if err := pool.QueryRow(ctx, `SELECT settings FROM arenas WHERE tournament_id = $1`, tournament.ID).Scan(&settingsRaw); err != nil {
-		t.Fatalf("tournament arena missing: %v", err)
-	}
-	if err := json.Unmarshal(settingsRaw, &leagueCheck); err != nil {
-		t.Fatalf("decode settings: %v", err)
-	}
-	if len(leagueCheck.Leagues) != 0 {
-		t.Fatalf("tournament arena must have no leagues, got %v", leagueCheck.Leagues)
-	}
-
-	// Add a match inside the tournament window with its players enrolled —
-	// the match auto-attaches to the tournament, whose arena drains in-tx.
-	p1 := createTestPlayer(t, pool, "Тур1")
-	p2 := createTestPlayer(t, pool, "Тур2")
-	q := db.New(pool)
-	if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tournament.ID, PlayerID: p1}); err != nil {
-		t.Fatalf("add member: %v", err)
-	}
-	if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tournament.ID, PlayerID: p2}); err != nil {
-		t.Fatalf("add member: %v", err)
-	}
-	svc := newMatchService(pool)
-	if _, err := svc.AddMatch(ctx, createTestGame(t, pool, "Турнирная игра"), map[idpkg.ID]float64{p1: 80, p2: 20}, time.Now(), newMatchOpts(t)); err != nil {
-		t.Fatalf("AddMatch: %v", err)
-	}
-
-	// The tournament arena is fresh (stale) — request the admin update, which
-	// recalculates every arena; afterwards the players tab shows the players.
-	if w := doJSON(t, router, http.MethodPost, "/admin/update-arenas", editor, ""); w.Code != http.StatusOK {
-		t.Fatalf("POST /admin/update-arenas: %d %s", w.Code, w.Body.String())
-	}
-
-	var arenaID idpkg.ID
-	if err := pool.QueryRow(ctx, `SELECT id FROM arenas WHERE tournament_id = $1`, tournament.ID).Scan(&arenaID); err != nil {
-		t.Fatalf("arena lookup: %v", err)
-	}
-	w := doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/players", "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET arena players: %d %s", w.Code, w.Body.String())
-	}
-	var players arenaPlayersJSON
-	if err := json.Unmarshal(w.Body.Bytes(), &players); err != nil {
-		t.Fatalf("decode players: %v", err)
-	}
-	if len(players.Data) != 2 {
-		t.Fatalf("expected 2 players in tournament arena, got %d", len(players.Data))
-	}
-	for _, p := range players.Data {
-		if p.League != nil {
-			t.Fatalf("league-less arena must have null league, got %q", *p.League)
-		}
-		if p.MatchesCount != 1 {
-			t.Fatalf("player %s matches_count = %d, want 1", p.PlayerID, p.MatchesCount)
-		}
-	}
-
-	// The /tournaments view lookup: GET /arenas?tournament_id= returns the arena.
-	w = doJSON(t, router, http.MethodGet, "/arenas?tournament_id="+string(tournament.ID), "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET /arenas?tournament_id: %d %s", w.Code, w.Body.String())
-	}
-	var list arenasListJSON
-	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
-		t.Fatalf("decode arenas: %v", err)
-	}
-	if len(list.Data) != 1 || list.Data[0].TournamentId == nil {
-		t.Fatalf("tournament arena lookup: %+v", list.Data)
-	}
-	returnedID, err := idpkg.ParseTolerant(*list.Data[0].TournamentId)
-	if err != nil || returnedID != tournament.ID {
-		t.Fatalf("tournament arena id: returned=%v err=%v want=%s", list.Data[0].TournamentId, err, tournament.ID)
 	}
 }
 

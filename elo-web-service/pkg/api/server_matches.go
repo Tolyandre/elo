@@ -93,7 +93,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		}
 	}
 
-	tournamentsByMatch, err := s.tournamentsByMatch(ctx, order)
+	campsByMatch, err := s.campsByMatch(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -118,8 +118,8 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 			Score:      score,
 			HasMarkets: m.HasMarkets,
 		}
-		if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
-			match.Tournaments = &ts
+		if cs := campsByMatch[m.Id]; len(cs) > 0 {
+			match.Camps = &cs
 		}
 		if m.CalculatorKind.Valid {
 			kind := m.CalculatorKind.String
@@ -150,9 +150,9 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 
 	date := time.Now()
 	opts := elo.AddMatchOpts{
-		ID:            request.Body.Id,
-		TournamentIDs: derefIDs(request.Body.TournamentIds),
-		ActorUserID:   currentActorID(ctx),
+		ID:           request.Body.Id,
+		CampArenaIDs: derefIDs(request.Body.CampArenaIds),
+		ActorUserID:  currentActorID(ctx),
 	}
 	if request.Body.Date != nil {
 		date = *request.Body.Date
@@ -215,20 +215,20 @@ func derefStringSlice(s *[]string) []string {
 	return *s
 }
 
-// tournamentsByMatch returns, per match id, the tournaments it belongs to.
-func (s *StrictServer) tournamentsByMatch(ctx context.Context, matchIDs []id.ID) (map[id.ID][]MatchTournament, error) {
+// campsByMatch returns, per match id, the camp arenas it belongs to (ADR-27).
+func (s *StrictServer) campsByMatch(ctx context.Context, matchIDs []id.ID) (map[id.ID][]MatchCamp, error) {
 	if len(matchIDs) == 0 {
-		return map[id.ID][]MatchTournament{}, nil
+		return map[id.ID][]MatchCamp{}, nil
 	}
-	rows, err := s.api.MatchService.ListTournamentsByMatchIDs(ctx, matchIDs)
+	rows, err := s.api.MatchService.ListCampArenasByMatchIDs(ctx, matchIDs)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[id.ID][]MatchTournament)
+	out := make(map[id.ID][]MatchCamp)
 	for _, r := range rows {
-		out[r.MatchID] = append(out[r.MatchID], MatchTournament{
-			Id:   r.TournamentID,
-			Name: r.TournamentName,
+		out[r.MatchID] = append(out[r.MatchID], MatchCamp{
+			Id:   r.ArenaID,
+			Name: r.ArenaName,
 		})
 	}
 	return out, nil
@@ -270,7 +270,7 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		}
 	}
 
-	tournamentsByMatch, err := s.tournamentsByMatch(ctx, order)
+	campsByMatch, err := s.campsByMatch(ctx, order)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +295,8 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		Score:      score,
 		HasMarkets: m.HasMarkets,
 	}
-	if ts := tournamentsByMatch[m.Id]; len(ts) > 0 {
-		match.Tournaments = &ts
+	if cs := campsByMatch[m.Id]; len(cs) > 0 {
+		match.Camps = &cs
 	}
 	if m.CalculatorKind.Valid {
 		kind := m.CalculatorKind.String
@@ -324,8 +324,13 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	}
 
 	opts := elo.UpdateMatchOpts{
-		TournamentIDs: derefIDs(request.Body.TournamentIds),
-		ActorUserID:   currentActorID(ctx),
+		ActorUserID: currentActorID(ctx),
+	}
+	// Camp links are frozen (ADR-27): the optional array must equal the stored
+	// set when present; a body without the key leaves the links untouched.
+	if request.Body.CampArenaIds != nil {
+		ids := derefIDs(request.Body.CampArenaIds)
+		opts.CampArenaIDs = &ids
 	}
 	// A non-nil calculator_kind in the body means "set/replace"; a body that
 	// explicitly sends calculator_kind: null means "clear". Because the field

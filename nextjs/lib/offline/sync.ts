@@ -21,7 +21,7 @@ export type SyncApi = {
         game_id: Base58ID;
         score: Record<string, number>;
         date: string;
-        tournament_ids: Base58ID[];
+        camp_arena_ids: Base58ID[];
         calculator_kind?: string | null;
         calculator_data?: Record<string, unknown> | null;
     }): Promise<SyncCallResult<{ id: Base58ID }>>;
@@ -184,7 +184,7 @@ export async function syncOffline(
                 game_id: match.gameId,
                 score: match.score,
                 date: clampToNow(match.createdAt, now()),
-                tournament_ids: match.tournamentIds ?? [],
+                camp_arena_ids: match.campArenaIds ?? [],
                 calculator_kind: match.calculatorKind ?? null,
                 calculator_data: match.calculatorData ?? null,
             });

@@ -1,5 +1,12 @@
-import { Club, Match, Player, Tournament } from "@/app/api";
+import { Club, Match, Player } from "@/app/api";
 import { Base58ID } from "@/lib/id";
+
+/** The camp-arena slice the player picker needs (ADR-27). */
+export type CampGroupSource = {
+    id: Base58ID | string;
+    name: string;
+    player_ids: Base58ID[];
+};
 
 /** Synthetic ID representing players not in any club. Never sent to the backend. */
 export const NO_CLUB_ID = "__no_club__";
@@ -26,7 +33,7 @@ const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensiti
 /**
  * Builds ordered player groups for comboboxes and multi-selects:
  * 1. "Недавние" — recent player IDs (if any)
- * 2. One group per active+checked tournament, sorted alphabetically
+ * 2. One group per active+checked camp, sorted alphabetically (ADR-27)
  * 3. One group per club, sorted alphabetically — but clubs the current user
  *    belongs to come first
  * 4. NO_CLUB_LABEL — players not in any club
@@ -37,7 +44,7 @@ export function buildPlayerGroups(
   recentPlayerIds: Base58ID[],
   playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string,
-  tournaments: Pick<Tournament, "name" | "player_ids">[] = [],
+  camps: CampGroupSource[] = [],
   myPlayerId?: Base58ID,
 ): Group[] {
   const groups: Group[] = [];
@@ -64,12 +71,12 @@ export function buildPlayerGroups(
     });
   }
 
-  // 2. Per active+checked tournament (alphabetical by name)
-  const sortedTournaments = [...tournaments].sort((a, b) => byName(a.name, b.name));
-  for (const tournament of sortedTournaments) {
-    const options = optionsFromIds(tournament.player_ids);
+  // 2. Per active+checked camp (alphabetical by name)
+  const sortedCamps = [...camps].sort((a, b) => byName(a.name, b.name));
+  for (const camp of sortedCamps) {
+    const options = optionsFromIds(camp.player_ids);
     if (options.length > 0) {
-      groups.push({ heading: tournament.name, options });
+      groups.push({ heading: camp.name, options });
     }
   }
 
@@ -137,7 +144,7 @@ export function recentCoPlayerIds(
 /**
  * Builds the tabbed player picker structure:
  * 1. "Недавние" — recent co-players (omitted when empty)
- * 2. one tab per active+checked tournament
+ * 2. one tab per active+checked camp (ADR-27)
  * 3. one tab per club the current user's player belongs to
  * 4. "Другие" — a section per remaining club, then a club-less section
  */
@@ -148,7 +155,7 @@ export function buildPlayerTabs(
   playerDisplayName: (player: Pick<Player, "name" | "geologist_name">) => string,
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string,
   myPlayerId?: Base58ID,
-  tournaments: Pick<Tournament, "id" | "name" | "player_ids">[] = [],
+  camps: CampGroupSource[] = [],
 ): PlayerTab[] {
   const tabs: PlayerTab[] = [];
   const byId = new Map(players.map((p) => [p.id, p]));
@@ -168,12 +175,12 @@ export function buildPlayerTabs(
     tabs.push({ key: "recent", label: RECENT_LABEL, sections: [{ heading: "", options: recentOptions }] });
   }
 
-  // 2. Tournament tabs (alphabetical)
-  const sortedTournaments = [...tournaments].sort((a, b) => byName(a.name, b.name));
-  for (const tournament of sortedTournaments) {
-    const options = optionsFromIds(tournament.player_ids);
+  // 2. Camp tabs (alphabetical)
+  const sortedCamps = [...camps].sort((a, b) => byName(a.name, b.name));
+  for (const camp of sortedCamps) {
+    const options = optionsFromIds(camp.player_ids);
     if (options.length > 0) {
-      tabs.push({ key: `tournament:${tournament.id}`, label: tournament.name, sections: [{ heading: "", options }] });
+      tabs.push({ key: `camp:${camp.id}`, label: camp.name, sections: [{ heading: "", options }] });
     }
   }
 

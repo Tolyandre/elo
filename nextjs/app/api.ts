@@ -114,9 +114,6 @@ export type EloRank = components["schemas"]["EloRank"];
 export type Player = components["schemas"]["Player"];
 export type User = components["schemas"]["User"];
 export type Club = components["schemas"]["Club"];
-export type Tournament = components["schemas"]["Tournament"];
-export type TournamentStats = components["schemas"]["TournamentStats"];
-export type TournamentStatsPlayer = components["schemas"]["TournamentStatsPlayer"];
 export type GameList = components["schemas"]["GameList"];
 export type GameListItem = components["schemas"]["GameListItem"];
 export type GameTag = components["schemas"]["GameTag"];
@@ -168,7 +165,7 @@ export type PlayerScore = {
     ratingAfter?: number | null;
 };
 
-export type MatchTournament = components["schemas"]["MatchTournament"];
+export type MatchCamp = components["schemas"]["MatchCamp"];
 
 export type Match = {
     id: Base58ID;
@@ -184,7 +181,8 @@ export type Match = {
     dateISO: string | null;
     score: Record<string, PlayerScore>;
     has_markets: boolean;
-    tournaments: MatchTournament[];
+    /** Camp arenas (ADR-27) the match belongs to — frozen at creation. */
+    camps: MatchCamp[];
     /** Set when the match was created via a calculator; selects the calculator UI in history mode. */
     calculator_kind?: string | null;
     /** Intermediate calculator state (opaque to the API layer). */
@@ -219,14 +217,16 @@ export type CorrectionsPage = {
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
-export type AuditEntityType = "match" | "game" | "player" | "club" | "tag";
+export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena";
 export type AuditAction = "created" | "updated" | "renamed" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */
 export type AuditEntryDetails =
     | { kind: "entity"; name: string }
     | { kind: "rename"; oldName: string; newName: string }
-    | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] };
+    | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] }
+    | { kind: "arena-camp-config"; changes: components["schemas"]["AuditArenaCampConfigDetails"] }
+    | { kind: "camp-link"; op: string; matchId: string };
 
 export type AuditEntry = {
     id: Base58ID;
@@ -251,7 +251,12 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
             details = { kind: "rename", oldName: e.details.old_name, newName: e.details.new_name };
         } else if (e.action === "updated" && "player_changes" in e.details) {
             details = { kind: "match-update", changes: e.details };
-        } else if ("name" in e.details) {
+        } else if ("op" in e.details) {
+            const d = e.details as components["schemas"]["AuditCampLinkDetails"];
+            details = { kind: "camp-link", op: d.op, matchId: d.match_id };
+        } else if ("starts_at" in e.details || "ends_at" in e.details) {
+            details = { kind: "arena-camp-config", changes: e.details as components["schemas"]["AuditArenaCampConfigDetails"] };
+        } else if ("name" in e.details && typeof e.details.name === "string") {
             details = { kind: "entity", name: e.details.name };
         }
     }
@@ -308,7 +313,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         date: m.date ? new Date(m.date) : null,
         dateISO: m.date ?? null,
         has_markets: m.has_markets,
-        tournaments: m.tournaments ?? [],
+        camps: m.camps ?? [],
         // idcodec middleware already rewrote player ids inside calculator_data to
         // short form on the way out, so no client-side transformation is needed.
         calculator_kind: m.calculator_kind ?? null,
@@ -401,7 +406,7 @@ export async function addMatchPromise(payload: {
     game_id: Base58ID;
     score: Record<string, number>;
     date?: string;
-    tournament_ids?: Base58ID[];
+    camp_arena_ids?: Base58ID[];
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -412,7 +417,7 @@ export async function updateMatchPromise(matchId: Base58ID, payload: {
     game_id: Base58ID;
     score: Record<string, number>;
     date: string;
-    tournament_ids?: Base58ID[];
+    camp_arena_ids?: Base58ID[];
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -610,33 +615,6 @@ export async function removeGameTagPromise(gameId: Base58ID, tagId: Base58ID) {
     }));
 }
 
-export async function listTournamentsPromise(): Promise<Tournament[]> {
-    return (await unwrap(client.GET("/tournaments"))).data;
-}
-
-export async function getTournamentPromise(id: Base58ID): Promise<Tournament> {
-    return (await unwrap(client.GET("/tournaments/{id}", { params: { path: { id } } }))).data;
-}
-
-export async function createTournamentPromise(payload: { name: string; start_date: string; end_date: string; player_ids?: Base58ID[] }): Promise<Tournament> {
-    return (await unwrap(client.POST("/tournaments", { body: { id: newId(), ...payload } }))).data;
-}
-
-export async function updateTournamentPromise(id: Base58ID, payload: { name: string; start_date: string; end_date: string; player_ids: Base58ID[] }): Promise<Tournament> {
-    return (await unwrap(client.PUT("/tournaments/{id}", {
-        params: { path: { id } },
-        body: { id, ...payload },
-    }))).data;
-}
-
-export async function deleteTournamentPromise(id: Base58ID) {
-    return unwrap(client.DELETE("/tournaments/{id}", { params: { path: { id } } }));
-}
-
-export async function getTournamentStatsPromise(id: Base58ID): Promise<TournamentStats> {
-    return (await unwrap(client.GET("/tournaments/{id}/stats", { params: { path: { id } } }))).data;
-}
-
 export async function listAllSettingsPromise(): Promise<EloSettingEntry[]> {
     return (await unwrap(client.GET("/settings/all"))).data;
 }
@@ -832,7 +810,7 @@ export async function deleteTablePromise(tableId: Base58ID, matchId?: string): P
 export async function getArenasPromise(params?: {
     game_id?: Base58ID;
     tournament_id?: Base58ID;
-    kind?: "games" | "tournaments";
+    kind?: "games" | "camps" | "tournaments";
 }): Promise<Arena[]> {
     const query: Record<string, string> = {};
     if (params?.game_id) query.game_id = params.game_id;
@@ -889,17 +867,34 @@ export async function getArenaMatchesPagePromise(params: {
 
 export async function createArenaPromise(payload: {
     name: string;
-    filter: MatchFilter;
+    camp?: boolean;
+    filter?: MatchFilter;
+    starts_at?: string | null;
+    ends_at?: string | null;
     settings: ArenaSettings;
 }): Promise<Arena> {
-    return (await unwrap(client.POST("/arenas", { body: payload }))).data;
+    // camp is required in the generated body type (it carries a spec default);
+    // always send it so the server's camp/non-camp discrimination is explicit.
+    return (await unwrap(client.POST("/arenas", {
+        body: { ...payload, camp: payload.camp ?? false },
+    }))).data;
 }
 
 export async function updateArenaPromise(
     id: Base58ID,
-    payload: { name: string; filter: MatchFilter; settings: ArenaSettings },
+    payload: {
+        name: string;
+        camp?: boolean;
+        filter?: MatchFilter;
+        starts_at?: string | null;
+        ends_at?: string | null;
+        settings: ArenaSettings;
+    },
 ): Promise<Arena> {
-    return (await unwrap(client.PATCH("/arenas/{id}", { params: { path: { id } }, body: payload }))).data;
+    return (await unwrap(client.PATCH("/arenas/{id}", {
+        params: { path: { id } },
+        body: { ...payload, camp: payload.camp ?? false },
+    }))).data;
 }
 
 export async function deleteArenaPromise(id: Base58ID) {

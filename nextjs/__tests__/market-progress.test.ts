@@ -33,7 +33,7 @@ function makeMatch(id: string, date: string, scores: Record<string, number>): Ma
         date: new Date(date),
         dateISO: date,
         has_markets: false,
-        tournaments: [],
+        camps: [],
     }
 }
 

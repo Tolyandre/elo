@@ -59,8 +59,8 @@ type  OfflineState = {
     isSyncing: boolean;
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
-    addPendingMatch: (m: { gameId: Base58ID; score: Record<string, number>; tournamentIds?: Base58ID[]; clientId?: Base58ID }) => PendingMatch;
-    updatePendingMatch: (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; tournamentIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => void;
+    addPendingMatch: (m: { gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; clientId?: Base58ID }) => PendingMatch;
+    updatePendingMatch: (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; campArenaIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => void;
     deletePendingMatch: (clientId: Base58ID) => void;
     addPendingPlayer: (name: string, clubIds?: Base58ID[]) => PendingPlayer;
     updatePendingPlayer: (clientId: Base58ID, name: string) => void;
@@ -78,7 +78,7 @@ type  OfflineState = {
     submitMatch: (payload: {
         game_id: Base58ID;
         score: Record<string, number>;
-        tournament_ids?: Base58ID[];
+        camp_arena_ids?: Base58ID[];
         calculator_kind?: string | null;
         calculator_data?: Record<string, never> | null;
     }) => Promise<SubmitMatchResult>;
@@ -114,7 +114,10 @@ export function loadOfflineStore(): OfflineStore {
             status: m.status ?? "pending",
             gameId: m.gameId!,
             score: m.score!,
-            tournamentIds: m.tournamentIds ?? [],
+            // Deliberately not mapped from the old `tournamentIds` field: camp
+            // arena ids are a different keyspace than the removed tournament
+            // ids (ADR-27), so queued tournaments are dropped.
+            campArenaIds: m.campArenaIds ?? [],
             calculatorKind: m.calculatorKind ?? null,
             calculatorData: m.calculatorData ?? null,
         }));
@@ -335,14 +338,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, tournamentIds, clientId, calculatorKind, calculatorData }: { gameId: Base58ID; score: Record<string, number>; tournamentIds?: Base58ID[]; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        ({ gameId, score, campArenaIds, clientId, calculatorKind, calculatorData }: { gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             const match: PendingMatch = {
                 clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 gameId,
                 score,
-                tournamentIds: tournamentIds ?? [],
+                campArenaIds: campArenaIds ?? [],
                 calculatorKind: calculatorKind ?? null,
                 calculatorData: calculatorData ?? null,
             };
@@ -353,7 +356,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; tournamentIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; campArenaIds?: Base58ID[]; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
@@ -363,7 +366,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                               gameId: patch.gameId,
                               score: patch.score,
                               createdAt: patch.createdAt ?? m.createdAt,
-                              tournamentIds: patch.tournamentIds ?? m.tournamentIds ?? [],
+                              campArenaIds: patch.campArenaIds ?? m.campArenaIds ?? [],
                               calculatorKind: patch.calculatorKind !== undefined ? patch.calculatorKind : m.calculatorKind,
                               calculatorData: patch.calculatorData !== undefined ? patch.calculatorData : m.calculatorData,
                               status: "pending",
@@ -455,7 +458,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         async (payload: {
             game_id: Base58ID;
             score: Record<string, number>;
-            tournament_ids?: Base58ID[];
+            camp_arena_ids?: Base58ID[];
             // Optional calculator state (e.g. Skull King round breakdown), stored
             // with the pending match so the calculator detail survives until the
             // sync pushes it to the server.
@@ -471,7 +474,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             const match = addPendingMatch({
                 gameId: payload.game_id,
                 score: payload.score,
-                tournamentIds: payload.tournament_ids,
+                campArenaIds: payload.camp_arena_ids,
                 calculatorKind: payload.calculator_kind,
                 calculatorData: payload.calculator_data,
             });

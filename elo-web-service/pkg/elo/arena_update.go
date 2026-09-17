@@ -46,8 +46,9 @@ func (s *ArenaService) updateArenaWithinTx(ctx context.Context, q *db.Queries, a
 		return fmt.Errorf("lock arena: %w", err)
 	}
 	lockedArena, err := arenaFromParts(locked.ID, locked.Name, locked.Settings, locked.SettingsSchemaVersion,
-		locked.GameID, locked.TournamentID, locked.RecalcFrom, locked.StaleAt,
-		locked.DateFrom, locked.DateTo, locked.FilterGameIds, locked.FilterTagIds, locked.FilterTournamentID)
+		locked.GameID, locked.TournamentID, locked.Camp, locked.StartsAt, locked.EndsAt,
+		locked.RecalcFrom, locked.StaleAt, locked.DateFrom, locked.DateTo,
+		locked.FilterGameIds, locked.FilterTagIds)
 	if err != nil {
 		return err
 	}
@@ -66,10 +67,21 @@ func (s *ArenaService) updateArenaWithinTx(ctx context.Context, q *db.Queries, a
 		return fmt.Errorf("delete settlements from %v: %w", from, err)
 	}
 
-	matches, err := q.ListMatchesForArenaReplay(ctx, db.ListMatchesForArenaReplayParams{
-		ID:   arena.ID,
-		Date: pgtype.Timestamptz{Time: from, Valid: true},
-	})
+	// The replay source depends on the arena kind: camp arenas select their
+	// matches from camp_matches (explicit links, ADR-27); every other kind
+	// evaluates the match filter.
+	var matches []db.Match
+	if lockedArena.Camp {
+		matches, err = q.ListMatchesForCampReplay(ctx, db.ListMatchesForCampReplayParams{
+			ArenaID: arena.ID,
+			Date:    pgtype.Timestamptz{Time: from, Valid: true},
+		})
+	} else {
+		matches, err = q.ListMatchesForArenaReplay(ctx, db.ListMatchesForArenaReplayParams{
+			ID:   arena.ID,
+			Date: pgtype.Timestamptz{Time: from, Valid: true},
+		})
+	}
 	if err != nil {
 		return fmt.Errorf("list matches from %v: %w", from, err)
 	}

@@ -77,11 +77,18 @@ A user adding a match may now meet two kinds of checkbox: **camp arenas**
 - On `POST /matches` the checked arenas are sent as `camp_arena_ids`; the
   server verifies each arena exists, is a camp, and the match date is in
   its window, then writes `camp_matches` rows and marks the arenas stale.
-- **Editing never changes the links** (history playback): the checkboxes
-  are rendered frozen on the edit form; `PUT /matches/:id` must not alter
-  the `camp_arena_ids` set (409 if it tries). Date edits are validated
-  against every linked camp's window — moving a match outside a camp it
-  belongs to is a 409, not an automatic unlink.
+- **Editing may change the links** (revised from the original freeze): the
+  edit form renders the same checkboxes, pre-checked with the match's camps.
+  `PUT /matches/:id` takes the **desired** `camp_arena_ids` set — the server
+  diffs it against the stored links, attaching and detaching as needed (each
+  change audited as `camp-link`), validates every requested arena (exists, is
+  a camp, its window contains the new date — 400 otherwise), stale-marks both
+  the old and the new camps, and the replay rewrites their settlements and
+  medal stats. Editing exists to fix mistakes (a missed or accidental
+  checkbox), and the recalculation machinery exists exactly for that. A body
+  without the key keeps the links untouched; moving the date outside a linked
+  camp without detaching it in the same request is still a 409, not an
+  automatic unlink.
 
 ### Camp arena administration
 
@@ -160,7 +167,9 @@ section and applies here verbatim.
     PUT    /arenas/:id                            editor — name/dates (narrowing guarded)
     DELETE /arenas/:id                            editor
     POST   /matches                               camp_arena_ids replaces tournament_ids
-    PUT    /matches/:id                           camp links immutable; date edits validated
+    PUT    /matches/:id                           camp_arena_ids is the desired set
+                                                 (attach/detach, audited); date edits
+                                                 validated against linked camps
 
 `kind` gains the value `camps` next to `games`/`tournaments` (bracket
 tournament arenas keep `kind=tournaments`). OpenAPI changes regenerate
@@ -180,7 +189,8 @@ tournament arenas keep `kind=tournaments`). OpenAPI changes regenerate
   `useTournamentSelection.ts`): a «Кэмпы» checkbox group driven by the
   preloaded camp arenas — visible when the (edited) date falls in a
   window, default-checked when any selected player has a settlement in
-  the arena, frozen on edit. The players dropdown
+  the arena, pre-checked with the match's camps on edit (freely
+  editable — see the revised editing rule above). The players dropdown
   (`lib/player-groups.ts`) gains camp sections (checked camps) replacing
   the old tournament sections. Offline: `PendingMatch` carries
   `campArenaIds` (`lib/offline/types.ts`, `OfflineContext.tsx`).
@@ -198,8 +208,8 @@ tournament arenas keep `kind=tournaments`). OpenAPI changes regenerate
    camp-tournament fixture: arena converted, links preserved, settlements
    and medal stats unchanged after recalc.
 2. **Backend.** Camp arena CRUD (dates guard), `camp_arena_ids` on match
-   create, frozen links + window validation on edit, stale-marking on
-   link changes, removal of the camp tournament code paths and endpoints,
-   OpenAPI regeneration.
+   create, desired-set attach/detach + window validation on edit,
+   stale-marking on link changes, removal of the camp tournament code paths
+   and endpoints, OpenAPI regeneration.
 3. **Frontend.** The UI plan above; `pnpm exec tsc --noEmit` + Vitest for
    the touched form/checkbox logic (default-check rule, frozen edit).

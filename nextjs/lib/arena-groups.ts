@@ -21,7 +21,7 @@ function byMatchesDesc(a: Arena, b: Arena): number {
  */
 export function arenaSingleGame(arena: Arena): Base58ID | null {
   if (arena.game_id != null) return arena.game_id;
-  if (arena.filter.game_ids.length === 1) return arena.filter.game_ids[0];
+  if (arena.filter?.game_ids.length === 1) return arena.filter.game_ids[0];
   return null;
 }
 
@@ -45,11 +45,11 @@ export function buildArenaGroups(
   playerId: string | undefined
 ): ArenaGroup[] {
   const withTags = arenas
-    .filter((a) => a.filter.tag_ids.length > 0)
+    .filter((a) => (a.filter?.tag_ids.length ?? 0) > 0)
     .sort(byMatchesDesc);
   const rest = new Map(
     arenas
-      .filter((a) => a.filter.tag_ids.length === 0)
+      .filter((a) => (a.filter?.tag_ids.length ?? 0) === 0)
       .map((a) => [a.id, a] as const)
   );
 

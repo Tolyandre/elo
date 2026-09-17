@@ -128,10 +128,10 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           ))}
         </ul>
 
-        {match.tournaments.length > 0 && (
+        {match.camps.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">
-            {match.tournaments.map((t) => (
-              <Badge key={t.id} variant="secondary">{t.name}</Badge>
+            {match.camps.map((c) => (
+              <Badge key={c.id} variant="secondary">{c.name}</Badge>
             ))}
           </div>
         )}

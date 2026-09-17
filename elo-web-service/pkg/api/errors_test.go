@@ -24,6 +24,9 @@ func TestDomainStatusCode(t *testing.T) {
 		{"too few players", elo.ErrTooFewPlayers, http.StatusBadRequest},
 		{"date change too large", elo.ErrDateChangeTooLarge, http.StatusBadRequest},
 		{"match date out of range", elo.ErrMatchDateOutOfRange, http.StatusBadRequest},
+		{"camp arena invalid", elo.ErrCampArenaInvalid, http.StatusBadRequest},
+		{"camp dates required", elo.ErrCampDatesRequired, http.StatusBadRequest},
+		{"camp leagues not allowed", elo.ErrCampLeaguesNotAllowed, http.StatusBadRequest},
 		{"foreign key violation", pgFK, http.StatusBadRequest},
 		{"wrapped date change", fmt.Errorf("ctx: %w", elo.ErrDateChangeTooLarge), http.StatusBadRequest},
 
@@ -39,9 +42,8 @@ func TestDomainStatusCode(t *testing.T) {
 		{"history conflict", elo.ErrHistoryChangeConflict, http.StatusConflict},
 		{"history conflict betting lock", elo.ErrHistoryChangeConflictBettingLock, http.StatusConflict},
 		{"market not open", elo.ErrMarketNotOpen, http.StatusConflict},
-		{"tournament member has matches", elo.ErrTournamentMemberHasMatches, http.StatusConflict},
-		{"tournament dates narrow", elo.ErrTournamentDatesNarrowEloRange, http.StatusConflict},
-		{"tournament has members", elo.ErrTournamentHasMembers, http.StatusConflict},
+		{"camp dates exclude match", elo.ErrCampDatesExcludeMatch, http.StatusConflict},
+		{"match outside camp windows", elo.ErrMatchOutsideCampWindows, http.StatusConflict},
 		{"player already linked", elo.ErrPlayerAlreadyLinked, http.StatusConflict},
 		{"unique violation", pgUnique, http.StatusConflict},
 

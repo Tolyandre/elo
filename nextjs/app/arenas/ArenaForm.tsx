@@ -55,22 +55,32 @@ type ArenaFormValues = {
     leagues: LeagueValues;
 };
 
-function initialValues(existing?: Arena): ArenaFormValues {
+function initialValues(existing?: Arena, camp = false): ArenaFormValues {
     const doc = existing ? parseArenaSettings(existing.settings) : null;
     const newbie = doc?.leagues.find((l) => l.kind === "newbie");
     const elite = doc?.leagues.find((l) => l.kind === "elite");
     return {
         name: existing?.name ?? "",
-        gameIds: existing ? existing.filter.game_ids : [],
-        tagIds: existing ? existing.filter.tag_ids : [],
-        dateFrom: existing?.filter.date_from ? toDatetimeLocal(existing.filter.date_from) : "",
-        dateTo: existing?.filter.date_to ? toDatetimeLocal(existing.filter.date_to) : "",
+        gameIds: existing?.filter?.game_ids ?? [],
+        tagIds: existing?.filter?.tag_ids ?? [],
+        // Filter bounds for arenas with a filter; the camp window for camps.
+        dateFrom: existing?.filter?.date_from
+            ? toDatetimeLocal(existing.filter.date_from)
+            : existing?.starts_at
+                ? toDatetimeLocal(existing.starts_at)
+                : "",
+        dateTo: existing?.filter?.date_to
+            ? toDatetimeLocal(existing.filter.date_to)
+            : existing?.ends_at
+                ? toDatetimeLocal(existing.ends_at)
+                : "",
         // A new arena starts like an auto-managed game arena: rating 900,
-        // newbie + amateur.
-        startingRating: doc ? String(doc.starting_rating) : "900",
+        // newbie + amateur. A new camp starts like the old tournament arenas:
+        // rating = the starting elo (1000), no leagues.
+        startingRating: doc ? String(doc.starting_rating) : camp ? "1000" : "900",
         leagues: {
-            newbie: doc ? !!newbie : true,
-            amateur: doc ? doc.leagues.some((l) => l.kind === "amateur") : true,
+            newbie: doc ? !!newbie : !camp,
+            amateur: doc ? doc.leagues.some((l) => l.kind === "amateur") : !camp,
             elite: !!elite,
             goalGap: String(newbie?.goal_gap ?? 16),
             earnedMin: String(newbie?.earned_min ?? 2),
@@ -132,17 +142,22 @@ const ARENA_FORM_DRAFT_KEY = "arena-form-draft-v1";
 
 type ArenaFormDraft = ArenaFormValues & { key: string };
 
-/** Shared create/edit form. `existing` switches it to edit mode (adds delete). */
-export function ArenaForm({ existing }: { existing?: Arena }) {
+/**
+ * Shared create/edit form. `existing` switches it to edit mode (adds delete).
+ * `camp=true` renders the camp variant (ADR-27): name + required date window,
+ * no match filter and no leagues. In edit mode the variant follows the arena.
+ */
+export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?: boolean }) {
     const router = useRouter();
     const { canEdit } = useMe();
     const { offline } = useOffline();
     const { games } = useGames();
     const { tags } = useTags();
     const isEdit = !!existing;
-    const draftKey = isEdit ? existing.id : "new";
+    const isCamp = isEdit ? !!existing.camp : camp;
+    const draftKey = isEdit ? `${existing.id}${isCamp ? ":camp" : ""}` : isCamp ? "new-camp" : "new";
 
-    const [values, setValues] = useState<ArenaFormValues>(() => initialValues(existing));
+    const [values, setValues] = useState<ArenaFormValues>(() => initialValues(existing, isCamp));
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
@@ -214,7 +229,11 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
         if (!canSubmit) return;
         const effectiveName = values.name.trim() || defaultName;
         if (!effectiveName) {
-            setError("Укажите название арены");
+            setError(isCamp ? "Укажите название кэмпа" : "Укажите название арены");
+            return;
+        }
+        if (isCamp && (!values.dateFrom || !values.dateTo)) {
+            setError("Кэмпу нужны дата начала и дата конца");
             return;
         }
         if (values.dateFrom && values.dateTo && new Date(values.dateTo) <= new Date(values.dateFrom)) {
@@ -228,30 +247,55 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
         }
         setError("");
         setSubmitting(true);
-        const filter: MatchFilter = {
-            game_ids: values.gameIds,
-            tag_ids: values.tagIds,
-            date_from: values.dateFrom ? new Date(values.dateFrom).toISOString() : null,
-            date_to: values.dateTo ? new Date(values.dateTo).toISOString() : null,
-        };
+        // Camp settings have no leagues (ADR-27: camps rank like the old
+        // tournament arenas — a single rating ≡ elo list).
+        const settings: ArenaSettings = isCamp
+            ? { starting_rating: Number(values.startingRating), leagues: [] }
+            : buildSettings(values);
         try {
             if (existing) {
                 await updateArenaPromise(existing.id, {
                     name: effectiveName,
-                    filter,
-                    settings: buildSettings(values),
+                    ...(isCamp
+                        ? {
+                              camp: true,
+                              starts_at: values.dateFrom ? new Date(values.dateFrom).toISOString() : null,
+                              ends_at: values.dateTo ? new Date(values.dateTo).toISOString() : null,
+                          }
+                        : {
+                              filter: {
+                                  game_ids: values.gameIds,
+                                  tag_ids: values.tagIds,
+                                  date_from: values.dateFrom ? new Date(values.dateFrom).toISOString() : null,
+                                  date_to: values.dateTo ? new Date(values.dateTo).toISOString() : null,
+                              } satisfies MatchFilter,
+                          }),
+                    settings,
                 });
                 clearDraft();
-                toast.success("Арена обновлена");
+                toast.success(isCamp ? "Кэмп обновлён" : "Арена обновлена");
                 router.push(`/arenas/view?id=${existing.id}`);
             } else {
                 const created = await createArenaPromise({
                     name: effectiveName,
-                    filter,
-                    settings: buildSettings(values),
+                    ...(isCamp
+                        ? {
+                              camp: true,
+                              starts_at: values.dateFrom ? new Date(values.dateFrom).toISOString() : null,
+                              ends_at: values.dateTo ? new Date(values.dateTo).toISOString() : null,
+                          }
+                        : {
+                              filter: {
+                                  game_ids: values.gameIds,
+                                  tag_ids: values.tagIds,
+                                  date_from: values.dateFrom ? new Date(values.dateFrom).toISOString() : null,
+                                  date_to: values.dateTo ? new Date(values.dateTo).toISOString() : null,
+                              } satisfies MatchFilter,
+                          }),
+                    settings,
                 });
                 clearDraft();
-                toast.success("Арена создана — рейтинг появится, когда она пересчитается");
+                toast.success(isCamp ? "Кэмп создан — рейтинг появится, когда он пересчитается" : "Арена создана — рейтинг появится, когда она пересчитается");
                 router.push(`/arenas/view?id=${created.id}`);
             }
         } catch (err) {
@@ -300,11 +344,14 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
                 </p>
             </div>
 
+            {!isCamp && (
             <div>
                 <h2 className="font-semibold mb-2">Игры:</h2>
                 <GameMultiSelect value={values.gameIds} onChange={(ids) => set("gameIds", ids)} />
             </div>
+            )}
 
+            {!isCamp && (
             <div>
                 <h2 className="font-semibold mb-2">Теги игр:</h2>
                 <MultiSelect
@@ -316,32 +363,36 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
                     defaultValue={values.tagIds}
                 />
             </div>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1">
-                    <label className="block font-semibold mb-2" htmlFor="arenaDateFrom">Начало (необязательно):</label>
+                    <label className="block font-semibold mb-2" htmlFor="arenaDateFrom">{isCamp ? "Начало:" : "Начало (необязательно):"}</label>
                     <input
                         id="arenaDateFrom"
                         type="datetime-local"
                         value={values.dateFrom}
                         onChange={(e) => set("dateFrom", e.target.value)}
                         className="border rounded px-2 py-1 w-full"
+                        required={isCamp}
                     />
                 </div>
                 <div className="flex-1">
-                    <label className="block font-semibold mb-2" htmlFor="arenaDateTo">Окончание (необязательно):</label>
+                    <label className="block font-semibold mb-2" htmlFor="arenaDateTo">{isCamp ? "Окончание:" : "Окончание (необязательно):"}</label>
                     <input
                         id="arenaDateTo"
                         type="datetime-local"
                         value={values.dateTo}
                         onChange={(e) => set("dateTo", e.target.value)}
                         className="border rounded px-2 py-1 w-full"
+                        required={isCamp}
                     />
                 </div>
             </div>
 
+            {!isCamp && (
             <div className="space-y-3">
-                <h2 className="font-semibold">Рейтинг и лиги:</h2>
+                <h2 className="font-semibold">{isCamp ? "Рейтинг:" : "Рейтинг и лиги:"}</h2>
                 <div className="flex items-center gap-2 text-sm">
                     <label htmlFor="arenaStartingRating">Стартовый рейтинг:</label>
                     <input
@@ -356,6 +407,8 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
                     </InfoHint>
                 </div>
 
+                {!isCamp && (
+                <>
                 <p className="text-xs text-muted-foreground">
                     Лиги — уровни таблицы в порядке повышения. Если лиг нет, игроки идут одним списком, а рейтинг равен эло.
                 </p>
@@ -435,17 +488,20 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
                         />
                     </div>
                 )}
+                </>
+                )}
             </div>
+            )}
 
             {error && <div className="text-red-600 text-sm">{error}</div>}
 
             <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={!canSubmit}>
-                    {submitting ? "Сохранение..." : isEdit ? "Сохранить изменения" : "Создать арену"}
+                    {submitting ? "Сохранение..." : isEdit ? "Сохранить изменения" : isCamp ? "Создать кэмп" : "Создать арену"}
                 </Button>
                 {isEdit && (
                     <Button type="button" variant="destructive" onClick={() => del.trigger(existing)} disabled={!canEdit || offline}>
-                        Удалить арену
+                        {isCamp ? "Удалить кэмп" : "Удалить арену"}
                     </Button>
                 )}
             </div>
@@ -453,8 +509,8 @@ export function ArenaForm({ existing }: { existing?: Arena }) {
             <ConfirmDialog
                 open={del.open}
                 onOpenChange={del.onOpenChange}
-                title="Удалить арену"
-                description="Арена и её настройки удалятся"
+                title={isCamp ? "Удалить кэмп" : "Удалить арену"}
+                description={isCamp ? "Кэмп и его статистика удалятся; партии останутся обычными партиями" : "Арена и её настройки удалятся"}
                 confirmText="Удалить"
                 confirmVariant="destructive"
                 loading={del.pending}

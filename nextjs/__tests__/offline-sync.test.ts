@@ -6,14 +6,14 @@ import { Base58ID } from '../lib/id';
 
 const noopPersist = () => { };
 
-type RawMatch = Omit<PendingMatch, 'tournamentIds'> & { tournamentIds?: PendingMatch['tournamentIds'] };
+type RawMatch = Omit<PendingMatch, 'campArenaIds'> & { campArenaIds?: PendingMatch['campArenaIds'] };
 
 function makeStore(partial: { games?: OfflineStore['games']; players?: OfflineStore['players']; matches?: RawMatch[] }): OfflineStore {
     return {
         games: partial.games ?? [],
         players: partial.players ?? [],
-        // tournamentIds/clubIds default to [] so test fixtures can omit them.
-        matches: (partial.matches ?? []).map((m) => ({ ...m, tournamentIds: m.tournamentIds ?? [] })),
+        // campArenaIds/clubIds default to [] so test fixtures can omit them.
+        matches: (partial.matches ?? []).map((m) => ({ ...m, campArenaIds: m.campArenaIds ?? [] })),
     };
 }
 
@@ -87,13 +87,13 @@ describe('syncOffline', () => {
             game_id: gameId,
             score: { [playerId]: 10, [SERVER_PLAYER_ID]: 5 },
             date: '2026-06-01T11:00:00Z',
-            tournament_ids: [],
+            camp_arena_ids: [],
             calculator_kind: null,
             calculator_data: null,
         });
     });
 
-    it('forwards tournament_ids on a synced match', async () => {
+    it('forwards camp_arena_ids on a synced match', async () => {
         const api = okApi();
         const matchId = uuidv7() as Base58ID;
         const store = makeStore({
@@ -103,13 +103,13 @@ describe('syncOffline', () => {
                 status: 'pending',
                 gameId: SERVER_GAME_ID,
                 score: { '1': 1, '2': 2 },
-                tournamentIds: ['7' as Base58ID, '9' as Base58ID],
+                campArenaIds: ['7' as Base58ID, '9' as Base58ID],
             }],
         });
 
         await syncOffline(store, api, noopPersist);
 
-        expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ tournament_ids: ['7', '9'] }));
+        expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ camp_arena_ids: ['7', '9'] }));
     });
 
     it('syncs in createdAt order', async () => {

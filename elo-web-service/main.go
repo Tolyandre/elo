@@ -183,14 +183,6 @@ func main() {
 	router.POST("/games/:id/tags", append(editorAuth(), strictWrapper.AddGameTag)...)
 	router.DELETE("/games/:id/tags/:tagId", append(editorAuth(), strictWrapper.RemoveGameTag)...)
 
-	// Tournaments
-	router.GET("/tournaments", strictWrapper.ListTournaments)
-	router.GET("/tournaments/:id", strictWrapper.GetTournament)
-	router.GET("/tournaments/:id/stats", strictWrapper.GetTournamentStats)
-	router.POST("/tournaments", append(editorAuth(), strictWrapper.CreateTournament)...)
-	router.PUT("/tournaments/:id", append(editorAuth(), strictWrapper.UpdateTournament)...)
-	router.DELETE("/tournaments/:id", append(editorAuth(), strictWrapper.DeleteTournament)...)
-
 	// Markets
 	router.GET("/markets", oauth2Handler.OptionalDeserializeUser(), strictWrapper.ListMarkets)
 	router.POST("/markets", append(editorAuth(), strictWrapper.CreateMarket)...)

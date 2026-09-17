@@ -40,8 +40,8 @@ export type PendingMatch = PendingBase & {
     gameId: Base58ID;
     /** Keys are server player ids or clientIds of pending players. */
     score: Record<string, number>;
-    /** Server tournament ids this match belongs to (tournaments are never created offline). */
-    tournamentIds: Base58ID[];
+    /** Server camp arena ids (ADR-27) this match belongs to (camps are never created offline). */
+    campArenaIds: Base58ID[];
     /**
      * Calculator state captured when the match was created from a calculator
      * (e.g. Skull King). Forwarded on sync so the round-by-round breakdown

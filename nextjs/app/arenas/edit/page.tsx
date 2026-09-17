@@ -27,7 +27,8 @@ function EditArenaContent() {
     if (loading) return <p>Загрузка...</p>;
     if (!arena) return <p>Арена не найдена.</p>;
     // Auto-managed arenas (per-game, per-tournament) are system-owned; their
-    // name follows the entity and the API rejects edits with 409.
+    // name follows the entity and the API rejects edits with 409. Camp arenas
+    // are user-created and editable.
     if (arena.game_id != null || arena.tournament_id != null) {
         return <p>Эта арена управляется автоматически и не может быть изменена.</p>;
     }
@@ -38,7 +39,7 @@ function EditArenaContent() {
 export default function EditArenaPage() {
     return (
         <main className="max-w-md mx-auto space-y-6">
-            <PageHeader title="Редактирование арены" />
+            <PageHeader title="Редактирование" />
             <BackButton href="/arenas" />
             <Suspense fallback={<p>Загрузка...</p>}>
                 <EditArenaContent />

@@ -1,25 +1,25 @@
 import type { Base58ID } from "../lib/id";
 import { describe, expect, it } from "vitest";
-import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "../lib/player-groups";
-import type { Club, Match, Player, Tournament } from "../app/api";
+import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds, type CampGroupSource } from "../lib/player-groups";
+import type { Club, Match, Player } from "../app/api";
 
 const player = (id: string, name: string) => ({ id, name, geologist_name: null }) as Pick<Player, "id" | "name" | "geologist_name">;
 const club = (id: string, name: string, playerIds: string[]) => ({ id: id as Base58ID, name, player_ids: playerIds as Base58ID[], geologist_name: null }) as Club;
-const tournament = (name: string, playerIds: string[]) => ({ name, player_ids: playerIds as Base58ID[] }) as Pick<Tournament, "name" | "player_ids">;
+const camp = (id: string, name: string, playerIds: string[]) => ({ id, name, player_ids: playerIds as Base58ID[] }) as CampGroupSource;
 
 const name = (p: { name: string }) => p.name;
 
 describe("buildPlayerGroups", () => {
     const players = [player("1", "Alice"), player("2", "Bob"), player("3", "Carol"), player("4", "Dave")];
 
-    it("orders sections: recent, tournaments (alpha), clubs (mine first), no club", () => {
+    it("orders sections: recent, camps (alpha), clubs (mine first), no club", () => {
         const clubs = [
             club("z", "Zeta", ["4"]), // Dave — the current user's club
             club("a", "Alpha", ["2"]), // Bob — not the user's club
         ];
-        const tournaments = [tournament("Beta camp", ["1", "3"]), tournament("Alpha camp", ["2"])];
+        const camps = [camp("c2", "Beta camp", ["1", "3"]), camp("c1", "Alpha camp", ["2"])];
 
-        const groups = buildPlayerGroups(players, clubs, ["1" as Base58ID], name, name, tournaments, "4" as Base58ID);
+        const groups = buildPlayerGroups(players, clubs, ["1" as Base58ID], name, name, camps, "4" as Base58ID);
 
         expect(groups.map((g) => g.heading)).toEqual([
             "Недавние",
@@ -31,13 +31,13 @@ describe("buildPlayerGroups", () => {
         ]);
     });
 
-    it("includes a tournament's participants in its section", () => {
-        const groups = buildPlayerGroups(players, [], [], name, name, [tournament("Camp", ["1", "3"])], undefined);
-        const camp = groups.find((g) => g.heading === "Camp");
-        expect(camp?.options.map((o) => o.value)).toEqual(["1", "3"]);
+    it("includes a camp's participants in its section", () => {
+        const groups = buildPlayerGroups(players, [], [], name, name, [camp("c1", "Camp", ["1", "3"])], undefined);
+        const campGroup = groups.find((g) => g.heading === "Camp");
+        expect(campGroup?.options.map((o) => o.value)).toEqual(["1", "3"]);
     });
 
-    it("omits tournament sections when none are passed", () => {
+    it("omits camp sections when none are passed", () => {
         const groups = buildPlayerGroups(players, [], [], name, name);
         expect(groups.map((g) => g.heading)).toEqual(["Без клуба"]);
     });
@@ -82,13 +82,13 @@ describe("recentCoPlayerIds", () => {
 describe("buildPlayerTabs", () => {
     const players = [player("1", "Alice"), player("2", "Bob"), player("3", "Carol"), player("4", "Dave")];
 
-    it("orders tabs: recent, tournaments, my clubs, then Другие", () => {
+    it("orders tabs: recent, camps, my clubs, then Другие", () => {
         const clubs = [
             club("z", "Zeta", ["4"]), // Dave — the current user's club
             club("a", "Alpha", ["2"]), // Bob — other club
         ];
-        const tournaments = [tournament("Camp", ["1", "3"])] as Pick<Tournament, "id" | "name" | "player_ids">[];
-        const tabs = buildPlayerTabs(players, clubs, ["1" as Base58ID], name, name, "4" as Base58ID, tournaments);
+        const camps = [camp("c1", "Camp", ["1", "3"])];
+        const tabs = buildPlayerTabs(players, clubs, ["1" as Base58ID], name, name, "4" as Base58ID, camps);
 
         expect(tabs.map((t) => t.label)).toEqual(["Недавние", "Camp", "Zeta", "Другие"]);
         // "Другие" holds a section for the other club and the club-less players

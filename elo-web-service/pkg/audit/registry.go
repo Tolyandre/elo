@@ -27,9 +27,11 @@ var schemasFS embed.FS
 // Details document kinds, stored in audit_log.details_kind. The DB CHECK
 // constraint on that column must be kept in sync with this set.
 const (
-	KindEntity      = "entity"       // created/deleted game, player, club, or tag
-	KindRename      = "rename"       // renamed game, player, or club
-	KindMatchUpdate = "match-update" // edited match
+	KindEntity        = "entity"            // created/deleted game, player, club, or tag
+	KindRename        = "rename"            // renamed game, player, or club
+	KindMatchUpdate   = "match-update"      // edited match
+	KindArenaCampConf = "arena-camp-config" // camp arena create/update/delete (ADR-27)
+	KindCampLink      = "camp-link"         // match attached to / detached from a camp (ADR-27)
 )
 
 // Audited entity types, stored in audit_log.entity_type. Kept in sync with the
@@ -40,6 +42,7 @@ const (
 	EntityPlayer = "player"
 	EntityClub   = "club"
 	EntityTag    = "tag"
+	EntityArena  = "arena"
 )
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK

@@ -11,6 +11,7 @@ const ENTITY_NOUN: Record<AuditEntityType, string> = {
     player: "игрока",
     club: "клуб",
     tag: "тег",
+    arena: "арену",
 };
 
 /** One row of the expanded match-edit diff. */
@@ -40,7 +41,14 @@ export function auditSummary(entry: AuditEntry): string {
 }
 
 function entityNameSuffix(entry: AuditEntry): string {
-    return entry.details?.kind === "entity" ? ` «${entry.details.name}»` : "";
+    if (entry.details?.kind === "entity") return ` «${entry.details.name}»`;
+    // Camp arenas (ADR-27): create carries the new name, delete the final one.
+    if (entry.details?.kind === "arena-camp-config") {
+        const change = entry.details.changes.name;
+        const name = entry.action === "deleted" ? change?.from : change?.to;
+        return name ? ` «${name}»` : "";
+    }
+    return "";
 }
 
 /** Whether the row expands into a details section (chevron affordance). */

@@ -1,22 +1,28 @@
--- Arena queries (ADR-24). The reusable match-filter condition is repeated in
--- the queries that evaluate it — the canonical definition lives here:
+-- Arena queries (ADR-24, ADR-27). The reusable match-filter condition is
+-- repeated in the queries that evaluate it — the canonical definition lives
+-- here:
 --
 --   A match m meets filter f iff ALL present conditions hold (NULL = absent):
 --     date range:   f.date_from <= m.date <= f.date_to
 --     game OR tag:  m.game_id listed in f.game_ids, or m's game carries one of
 --                   f.tag_ids; both empty (NULL or []) → any game
---     tournament:   m attached to f.tournament_id via match_tournament
+--
+-- Camp arenas (ADR-27) have no filter: a match belongs to a camp arena iff it
+-- has a camp_matches link row. In the queries below this is expressed as
+--
+--   (a.camp AND EXISTS camp_matches link)
+--   OR (NOT a.camp AND <filter condition>)
 --
 -- Do not change one copy without the others.
 
 -- name: GetArena :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.id = $1;
 
 -- name: GetArenaForUpdate :one
@@ -24,48 +30,61 @@ WHERE a.id = $1;
 -- queue behind the lock and apply after the recalculation commits.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.id = $1
 FOR UPDATE OF a;
 
 -- kind narrows the list for the /arenas page tabs: 'games' returns every
--- non-tournament arena except the global one (which is the main page, not a
--- list entry); 'tournaments' returns only the tournament arenas.
+-- user-managed arena except camps and the global one (the main page, not a
+-- list entry); 'camps' returns only camp arenas; 'tournaments' returns only
+-- the tournament arenas (empty until ADR-26 creates them).
 -- name: ListArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id,
+       -- Camp participants are derived, never stored (ADR-27): every player
+       -- with a settlement row in the arena. Empty for non-camps.
+       CASE WHEN a.camp THEN (
+           SELECT COALESCE(array_agg(DISTINCT s.player_id), '{}'::uuid[])
+           FROM arena_settlements s WHERE s.arena_id = a.id
+       ) ELSE '{}'::uuid[] END AS camp_player_ids,
        (
            SELECT COUNT(*) FROM matches m
-           WHERE (f.date_from IS NULL OR m.date >= f.date_from)
-             AND (f.date_to IS NULL OR m.date <= f.date_to)
-             AND (
-                 (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-                 OR f.game_ids @> ARRAY[m.game_id]
-                 OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-             )
-             AND (f.tournament_id IS NULL OR EXISTS (
-                 SELECT 1 FROM match_tournament mt
-                 WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-             ))
+           WHERE (
+               (a.camp AND EXISTS (
+                   SELECT 1 FROM camp_matches cm
+                   WHERE cm.arena_id = a.id AND cm.match_id = m.id
+               ))
+               OR
+               (NOT a.camp AND
+                   (f.date_from IS NULL OR m.date >= f.date_from)
+                   AND (f.date_to IS NULL OR m.date <= f.date_to)
+                   AND (
+                       (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
+                       OR f.game_ids @> ARRAY[m.game_id]
+                       OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+                   )
+               )
+           )
        ) AS matches_count
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE (
     sqlc.narg('kind')::text IS NULL
     OR (sqlc.narg('kind')::text = 'tournaments' AND a.tournament_id IS NOT NULL)
-    OR (sqlc.narg('kind')::text = 'games' AND a.tournament_id IS NULL
+    OR (sqlc.narg('kind')::text = 'camps' AND a.camp)
+    OR (sqlc.narg('kind')::text = 'games' AND NOT a.camp
+        AND a.tournament_id IS NULL
         AND a.id <> 'a2ea0000-0000-0000-0000-000000000001'
         AND NOT (
             coalesce(cardinality(f.game_ids), 0) = 0
             AND coalesce(cardinality(f.tag_ids), 0) = 0
-            AND f.tournament_id IS NULL
             AND f.date_from IS NULL
             AND f.date_to IS NULL
         ))
@@ -74,19 +93,20 @@ ORDER BY a.name;
 
 -- name: ListArenasForGame :many
 -- Arenas whose filter includes game @game_id or one of its tags, plus
--- unconditional (global) arenas — the /games page arena list.
+-- unconditional (global) arenas — the /games page arena list. Camp arenas
+-- have no filter and never appear here.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.game_id = sqlc.arg('game_id')
    OR (
-       coalesce(cardinality(f.game_ids), 0) = 0
+       NOT a.camp
+       AND coalesce(cardinality(f.game_ids), 0) = 0
        AND coalesce(cardinality(f.tag_ids), 0) = 0
-       AND f.tournament_id IS NULL
        AND f.date_from IS NULL
        AND f.date_to IS NULL
    )
@@ -100,41 +120,44 @@ ORDER BY a.name;
 -- name: GetArenaByGame :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.game_id = $1;
 
 -- name: GetArenaByTournament :one
+-- Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
+-- empty until ADR-26 creates them.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.tournament_id = $1;
 
 -- name: CreateMatchFilter :one
-INSERT INTO match_filters (id, date_from, date_to, game_ids, tag_ids, tournament_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO match_filters (id, date_from, date_to, game_ids, tag_ids)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id;
 
 -- name: CreateArena :one
-INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, camp, starts_at, ends_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
 
 -- name: UpdateArena :one
 UPDATE arenas
-SET name = $2, match_filter_id = $3, settings = $4, settings_schema_version = $5
+SET name = $2, match_filter_id = $3, settings = $4, settings_schema_version = $5,
+    camp = $6, starts_at = $7, ends_at = $8
 WHERE id = $1
 RETURNING *;
 
 -- name: UpdateArenaName :exec
--- Name sync for auto-managed arenas when their game/tournament is renamed.
+-- Name sync for auto-managed arenas when their game is renamed.
 UPDATE arenas SET name = $2 WHERE id = $1;
 
 -- name: ArenaNameExists :one
@@ -152,9 +175,9 @@ DELETE FROM arenas WHERE id = $1
 RETURNING id, name;
 
 -- name: ListArenasMatchingMatch :many
--- Arena ids whose filter matches the given match — the synchronous-drain
--- affected set on match writes. Joining the single match row gives the
--- condition its m.* values.
+-- Non-camp arena ids whose filter matches the given match — part of the
+-- synchronous-drain affected set on match writes (camp arenas are added by
+-- the caller from their explicit camp_matches links).
 SELECT a.id
 FROM arenas a
 JOIN match_filters f ON f.id = a.match_filter_id
@@ -165,11 +188,7 @@ WHERE (f.date_from IS NULL OR m.date >= f.date_from)
       (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
       OR f.game_ids @> ARRAY[m.game_id]
       OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-  )
-  AND (f.tournament_id IS NULL OR EXISTS (
-      SELECT 1 FROM match_tournament mt
-      WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-  ));
+  );
 
 -- name: ListTagFilteredArenaIds :many
 -- Arenas whose filter has a game-tag condition — the conservative mark set
@@ -203,11 +222,11 @@ WHERE id = ANY(sqlc.arg('arena_ids')::uuid[]);
 -- name: ListStaleArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
-       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
-       f.tournament_id AS filter_tournament_id
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.stale_at IS NOT NULL AND a.stale_at <= sqlc.arg('due_before')::timestamptz
 ORDER BY a.stale_at;
 
@@ -227,8 +246,9 @@ WHERE id = $1 AND stale_at = $2;
 DELETE FROM arena_player_stats WHERE arena_id = $1;
 
 -- name: InsertArenaStats :exec
--- Recompute places 1..4 per match (RANK over the match's scores, tournament
--- stats semantics) for every match meeting the arena's filter.
+-- Recompute places 1..4 per match (RANK over the match's scores) for every
+-- match belonging to the arena: via camp_matches links for camps, via the
+-- filter for every other kind.
 INSERT INTO arena_player_stats (arena_id, player_id, matches_count,
                                 first_count, second_count, third_count, fourth_count)
 SELECT sqlc.arg('arena_id'), r.player_id, COUNT(*)::int,
@@ -243,20 +263,25 @@ FROM (
     WHERE ms.match_id IN (
         SELECT m.id
         FROM arenas a
-        JOIN match_filters f ON f.id = a.match_filter_id
+        LEFT JOIN match_filters f ON f.id = a.match_filter_id
         CROSS JOIN matches m
         WHERE a.id = sqlc.arg('arena_id')
-          AND (f.date_from IS NULL OR m.date >= f.date_from)
-          AND (f.date_to IS NULL OR m.date <= f.date_to)
           AND (
-              (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-              OR f.game_ids @> ARRAY[m.game_id]
-              OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+              (a.camp AND EXISTS (
+                  SELECT 1 FROM camp_matches cm
+                  WHERE cm.arena_id = a.id AND cm.match_id = m.id
+              ))
+              OR
+              (NOT a.camp AND
+                  (f.date_from IS NULL OR m.date >= f.date_from)
+                  AND (f.date_to IS NULL OR m.date <= f.date_to)
+                  AND (
+                      (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
+                      OR f.game_ids @> ARRAY[m.game_id]
+                      OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+                  )
+              )
           )
-          AND (f.tournament_id IS NULL OR EXISTS (
-              SELECT 1 FROM match_tournament mt
-              WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-          ))
     )
 ) r
 GROUP BY r.player_id;
@@ -294,21 +319,26 @@ ORDER BY p.name;
 WITH paginated_matches AS (
     SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
     FROM arenas a
-    JOIN match_filters f ON f.id = a.match_filter_id
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
     CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = sqlc.arg('arena_id')
-      AND (f.date_from IS NULL OR m.date >= f.date_from)
-      AND (f.date_to IS NULL OR m.date <= f.date_to)
       AND (
-          (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-          OR f.game_ids @> ARRAY[m.game_id]
-          OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+          (a.camp AND EXISTS (
+              SELECT 1 FROM camp_matches cm
+              WHERE cm.arena_id = a.id AND cm.match_id = m.id
+          ))
+          OR
+          (NOT a.camp AND
+              (f.date_from IS NULL OR m.date >= f.date_from)
+              AND (f.date_to IS NULL OR m.date <= f.date_to)
+              AND (
+                  (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
+                  OR f.game_ids @> ARRAY[m.game_id]
+                  OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
+              )
+          )
       )
-      AND (f.tournament_id IS NULL OR EXISTS (
-          SELECT 1 FROM match_tournament mt
-          WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-      ))
       AND (
           sqlc.narg('cursor_date')::timestamptz IS NULL
           OR m.date < sqlc.narg('cursor_date')::timestamptz
@@ -361,7 +391,8 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC;
 
 -- name: CountPlayerMatchesInArenaInPeriod :one
 -- Matches of one player inside the arena (filter applied) within
--- [date_from, date_to] — the elite promotion counters.
+-- [date_from, date_to] — the elite promotion counters. Camp arenas have no
+-- leagues, so the counters are never consulted for them.
 SELECT COUNT(*)::int AS count
 FROM matches m
 JOIN match_scores ms ON ms.match_id = m.id
@@ -376,15 +407,12 @@ WHERE ms.player_id = sqlc.arg('player_id')
       (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
       OR f.game_ids @> ARRAY[m.game_id]
       OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-  )
-  AND (f.tournament_id IS NULL OR EXISTS (
-      SELECT 1 FROM match_tournament mt
-      WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-  ));
+  );
 
 -- name: ListMatchesForArenaReplay :many
--- Filtered matches of the arena from @from_date on, in event order — the
--- updater's replay input.
+-- Filter-matching matches of the arena from @from_date on, in event order —
+-- the updater's replay input for filter arenas. Camp arenas replay from
+-- ListMatchesForCampReplay instead (ADR-27).
 SELECT m.*
 FROM arenas a
 JOIN match_filters f ON f.id = a.match_filter_id
@@ -398,10 +426,6 @@ WHERE a.id = $1
       OR f.game_ids @> ARRAY[m.game_id]
       OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
   )
-  AND (f.tournament_id IS NULL OR EXISTS (
-      SELECT 1 FROM match_tournament mt
-      WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-  ))
 ORDER BY m.date ASC, m.id ASC;
 
 -- name: ListArenaPlayersAt :many
@@ -441,10 +465,6 @@ LEFT JOIN LATERAL (
           OR f.game_ids @> ARRAY[m.game_id]
           OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
       )
-      AND (f.tournament_id IS NULL OR EXISTS (
-          SELECT 1 FROM match_tournament mt
-          WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-      ))
 ) cnt60 ON true
 LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS cnt
@@ -461,9 +481,5 @@ LEFT JOIN LATERAL (
           OR f.game_ids @> ARRAY[m.game_id]
           OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
       )
-      AND (f.tournament_id IS NULL OR EXISTS (
-          SELECT 1 FROM match_tournament mt
-          WHERE mt.match_id = m.id AND mt.tournament_id = f.tournament_id
-      ))
 ) cnt180 ON true
 ORDER BY p.name;

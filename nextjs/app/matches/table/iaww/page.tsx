@@ -26,8 +26,8 @@ import { ScoringTable } from "@/components/calculators/iaww/scoring-table";
 import { useTableSession } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
 import { useOffline, loadOfflineStore } from "@/app/offline/OfflineContext";
-import { useTournamentSelection } from "@/hooks/useTournamentSelection";
-import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
+import { useCampSelection } from "@/hooks/useCampSelection";
+import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { AuthWarning } from "@/components/auth-warning";
 import { TableStatusBanner } from "@/components/tables/table-status-banner";
@@ -312,18 +312,15 @@ function IawwTable() {
     const [isResetting, setIsResetting] = useState(false);
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
-    const [checkedTournamentIds, setCheckedTournamentIds] = useState<Base58ID[]>([]);
-    const tournamentDate = useMemo(() => new Date(), []);
-    const tournamentPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
+    const [campOverrides, setCampOverrides] = useState<Partial<Record<string, boolean>>>({});
+    const campDate = useMemo(() => new Date(), []);
+    const campPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
     const {
-        active: activeTournamentsForSave,
-        isMandatory: isTournamentMandatory,
-        idsToSubmit: tournamentIdsToSubmit,
-    } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
-    const toggleTournament = (id: Base58ID, checked: boolean) =>
-        setCheckedTournamentIds((prev) =>
-            checked ? [...new Set([...prev, id])] : prev.filter((t) => t !== id),
-        );
+        active: activeCampsForSave,
+        checked: checkedCampIds,
+        toggle: toggleCamp,
+        idsToSubmit: campIdsToSubmit,
+    } = useCampSelection(campPlayerIds, campDate, { overrides: campOverrides, setOverrides: setCampOverrides });
 
     // Connected players are redirected to the saved match by the "saved" event.
     useEffect(() => {
@@ -366,7 +363,7 @@ function IawwTable() {
             const result = await submitMatch({
                 game_id: GAME_ID_IAWW,
                 score,
-                tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
+                camp_arena_ids: campIdsToSubmit(),
                 calculator_kind: "iaww",
                 calculator_data: toStorage(liveToCalc(gameState)) as unknown as Record<string, never>,
             });
@@ -538,11 +535,10 @@ function IawwTable() {
             {/* Save section (host) */}
             {isHost && (
                 <div className="space-y-2 pt-2">
-                    <TournamentCheckboxes
-                        active={activeTournamentsForSave}
-                        checked={checkedTournamentIds}
-                        isMandatory={isTournamentMandatory}
-                        onToggle={toggleTournament}
+                    <CampCheckboxes
+                        active={activeCampsForSave}
+                        checked={checkedCampIds}
+                        onToggle={toggleCamp}
                     />
                     {saveError && <p className="text-sm text-red-600">{saveError}</p>}
                     <AlertDialog>

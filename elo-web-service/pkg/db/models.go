@@ -15,13 +15,16 @@ import (
 type Arena struct {
 	ID                    id.ID              `json:"id"`
 	Name                  string             `json:"name"`
-	MatchFilterID         id.ID              `json:"match_filter_id"`
+	MatchFilterID         *id.ID             `json:"match_filter_id"`
 	Settings              json.RawMessage    `json:"settings"`
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
+	Camp                  bool               `json:"camp"`
+	StartsAt              pgtype.Timestamptz `json:"starts_at"`
+	EndsAt                pgtype.Timestamptz `json:"ends_at"`
 }
 
 type ArenaPlayerStat struct {
@@ -73,6 +76,11 @@ type Bet struct {
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 	Shares   float64            `json:"shares"`
 	Fee      float64            `json:"fee"`
+}
+
+type CampMatch struct {
+	ArenaID id.ID `json:"arena_id"`
+	MatchID id.ID `json:"match_id"`
 }
 
 type Club struct {
@@ -187,23 +195,17 @@ type Match struct {
 }
 
 type MatchFilter struct {
-	ID           id.ID              `json:"id"`
-	DateFrom     pgtype.Timestamptz `json:"date_from"`
-	DateTo       pgtype.Timestamptz `json:"date_to"`
-	GameIds      []id.ID            `json:"game_ids"`
-	TagIds       []id.ID            `json:"tag_ids"`
-	TournamentID *id.ID             `json:"tournament_id"`
+	ID       id.ID              `json:"id"`
+	DateFrom pgtype.Timestamptz `json:"date_from"`
+	DateTo   pgtype.Timestamptz `json:"date_to"`
+	GameIds  []id.ID            `json:"game_ids"`
+	TagIds   []id.ID            `json:"tag_ids"`
 }
 
 type MatchScore struct {
 	MatchID  id.ID   `json:"match_id"`
 	PlayerID id.ID   `json:"player_id"`
 	Score    float64 `json:"score"`
-}
-
-type MatchTournament struct {
-	MatchID      id.ID `json:"match_id"`
-	TournamentID id.ID `json:"tournament_id"`
 }
 
 type Player struct {
@@ -224,15 +226,8 @@ type Tag struct {
 }
 
 type Tournament struct {
-	ID        id.ID              `json:"id"`
-	Name      string             `json:"name"`
-	StartDate pgtype.Timestamptz `json:"start_date"`
-	EndDate   pgtype.Timestamptz `json:"end_date"`
-}
-
-type TournamentPlayerMembership struct {
-	TournamentID id.ID `json:"tournament_id"`
-	PlayerID     id.ID `json:"player_id"`
+	ID   id.ID  `json:"id"`
+	Name string `json:"name"`
 }
 
 type User struct {

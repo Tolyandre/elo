@@ -13,7 +13,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
 import { TagsProvider } from "./tagsContext";
-import { TournamentsProvider } from "./tournamentsContext";
+import { CampsProvider } from "./arenas/campsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { EnvBanner } from "@/components/env-banner";
@@ -63,7 +63,7 @@ export default function RootLayout({
           <GamesProvider>
             <ClubsProvider>
             <TagsProvider>
-            <TournamentsProvider>
+            <CampsProvider>
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
@@ -110,7 +110,7 @@ export default function RootLayout({
                 </OfflineProvider>
               </PlayersProvider>
             </MatchesProvider>
-            </TournamentsProvider>
+            </CampsProvider>
             </TagsProvider>
             </ClubsProvider>
           </GamesProvider>

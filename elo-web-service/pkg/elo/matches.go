@@ -40,9 +40,10 @@ type AddMatchOpts struct {
 	// max 30 days back) and Elo is recalculated from that date so later matches
 	// are settled correctly.
 	ClientDate bool
-	// TournamentIDs are the tournaments this match belongs to. The match is
-	// associated with each, and every match player is auto-enrolled into them.
-	TournamentIDs []id.ID
+	// CampArenaIDs are the camp arenas (ADR-27) this match belongs to. Each
+	// must exist, be a camp, and its window must contain the match date; the
+	// links are written once and never altered afterwards.
+	CampArenaIDs []id.ID
 	// Calculator optionally attaches the intermediate state of the calculator
 	// that produced this match. Already validated by the caller (handler);
 	// stored verbatim alongside the match.
@@ -63,7 +64,13 @@ type CalculatorInput struct {
 
 // UpdateMatchOpts carries optional behaviour for UpdateMatch.
 type UpdateMatchOpts struct {
-	TournamentIDs []id.ID
+	// CampArenaIDs is the desired camp set (ADR-27, revised): when present,
+	// the server diffs it against the stored links — attaching and detaching
+	// as needed, each change audited and both camps recalculated. Every
+	// requested arena must exist, be a camp, and its window must contain the
+	// new date. nil keeps the links untouched — then a date moved outside a
+	// linked camp without detaching it is a conflict.
+	CampArenaIDs *[]id.ID
 	// Calculator controls how the match's calculator columns are rewritten:
 	//   - nil            → leave existing calculator columns untouched
 	//   - &CalculatorUpdate{Kind: nil} → clear calculator columns (set to NULL)
@@ -100,7 +107,7 @@ type IMatchService interface {
 	// Read-side queries used by the match list/detail handlers.
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
 	GetMatchWithPlayers(ctx context.Context, matchID id.ID) ([]db.GetMatchWithPlayersRow, error)
-	ListTournamentsByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListTournamentsByMatchIDsRow, error)
+	ListCampArenasByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListCampArenasByMatchIDsRow, error)
 }
 
 // calculatorColumns builds the three sqlc params fields for calculator columns
@@ -226,21 +233,35 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		}
 	}
 
-	playerIDs := playerIDsOf(playerScores)
-	tournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, opts.TournamentIDs)
+	// ADR-27: link the match to the requested camp arenas. Each id is
+	// validated (exists, is a camp, window contains the date); the links are
+	// written once and never altered afterwards.
+	campArenas, err := resolveCampArenas(ctx, q, opts.CampArenaIDs, date)
 	if err != nil {
 		return db.Match{}, err
 	}
-	if err := applyMatchTournaments(ctx, q, createdMatch.ID, tournamentIDs, playerIDs); err != nil {
-		return db.Match{}, err
+	if isNew {
+		for _, c := range campArenas {
+			if err := q.AddCampMatch(ctx, db.AddCampMatchParams{ArenaID: c.ID, MatchID: createdMatch.ID}); err != nil {
+				return db.Match{}, fmt.Errorf("link match %s to camp %s: %w", createdMatch.ID, c.ID, err)
+			}
+			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityArena, audit.ActionCreated, c.ID,
+				audit.KindCampLink, audit.NewCampLinkDetails(audit.CampLinkAttach, string(createdMatch.ID))); err != nil {
+				return db.Match{}, err
+			}
+		}
 	}
 
-	// ADR-24: the match write touches every arena whose filter matches it —
-	// update them synchronously in this transaction (the global arena was
-	// already replayed above; the drain skips it).
+	// ADR-24: the match write touches every arena whose filter matches it,
+	// plus every camp it was linked to (camps never match filters) — update
+	// them synchronously in this transaction (the global arena was already
+	// replayed above; the drain skips it).
 	affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
+	}
+	for _, c := range campArenas {
+		affected = append(affected, c.ID)
 	}
 	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date); err != nil {
 		return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
@@ -278,6 +299,30 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	oldDate := existingMatch.Date.Time
 	if err := validateMatchDateChange(oldDate, date); err != nil {
 		return db.Match{}, err
+	}
+
+	// ADR-27 (revised): camp links are editable — editing a match exists to
+	// fix mistakes, and the recalculation machinery rewrites the camps'
+	// settlements and medal stats accordingly. The optional body set is the
+	// desired set: every requested arena is validated (exists, is a camp,
+	// window contains the date); a body without the key keeps the stored
+	// links, which the new date must still stay inside.
+	linkedCamps, err := campArenasOfMatch(ctx, q, matchID)
+	if err != nil {
+		return db.Match{}, err
+	}
+	desiredCamps := linkedCamps
+	if opts.CampArenaIDs != nil {
+		desiredCamps, err = resolveCampArenas(ctx, q, *opts.CampArenaIDs, date)
+		if err != nil {
+			return db.Match{}, err
+		}
+	} else {
+		for _, c := range linkedCamps {
+			if !campWindowContains(c, date) {
+				return db.Match{}, ErrMatchOutsideCampWindows
+			}
+		}
 	}
 
 	// Capture the arenas containing the match BEFORE the row changes — after a
@@ -347,33 +392,32 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
 	}
 
-	// Replace tournament associations with the provided set (an association can be
-	// dropped when the date moves out of a tournament's window). Memberships are
-	// only ever added — editing a match never removes tournament members.
-	if err := q.DeleteMatchTournamentsByMatch(ctx, matchID); err != nil {
-		return db.Match{}, fmt.Errorf("unable to clear match tournaments: %w", err)
-	}
-	playerIDs := playerIDsOf(playerScores)
-	mergedTournamentIDs, err := mergeWithActiveTournaments(ctx, q, date, playerIDs, opts.TournamentIDs)
-	if err != nil {
-		return db.Match{}, err
-	}
-	if err := applyMatchTournaments(ctx, q, matchID, mergedTournamentIDs, playerIDs); err != nil {
+	// Apply the desired camp-link diff (attach/detach, each audited). Must
+	// run before the drain below: the camp replay reads camp_matches.
+	if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
 		return db.Match{}, err
 	}
 
-	// ADR-24: update every arena whose membership the edit affects (union of
-	// the arenas matching the old and the new match state) synchronously.
+	// ADR-24: update every arena whose membership the edit affects — the
+	// union of the arenas matching the old and the new match state, plus the
+	// camps the match was and is linked to (a detach must replay the old camp
+	// to remove its settlements and stats) — synchronously.
 	affectedAfter, err := q.ListArenasMatchingMatch(ctx, matchID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
 	}
-	union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter))
-	seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter))
+	union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter)+len(linkedCamps)+len(desiredCamps))
+	seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter)+len(linkedCamps)+len(desiredCamps))
 	for _, aid := range append(affectedBefore, affectedAfter...) {
 		if !seen[aid] {
 			seen[aid] = true
 			union = append(union, aid)
+		}
+	}
+	for _, c := range append(linkedCamps, desiredCamps...) {
+		if !seen[c.ID] {
+			seen[c.ID] = true
+			union = append(union, c.ID)
 		}
 	}
 	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate); err != nil {
@@ -532,54 +576,6 @@ func playerIDsOf(playerScores map[id.ID]float64) []id.ID {
 	return ids
 }
 
-// mergeWithActiveTournaments unions the explicitly-requested tournament IDs with
-// every tournament active on the match date whose membership already contains all
-// match players. This enforces the invariant "if all players are members of a
-// currently-running tournament, the match belongs to it" for every save path
-// (forms, calculators, offline sync) without the client having to compute it.
-func mergeWithActiveTournaments(ctx context.Context, q *db.Queries, date time.Time, playerIDs []id.ID, explicit []id.ID) ([]id.ID, error) {
-	auto, err := q.ListActiveTournamentsForPlayers(ctx, db.ListActiveTournamentsForPlayersParams{
-		At:        date,
-		PlayerIds: playerIDs,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("auto-detect active tournaments: %w", err)
-	}
-
-	seen := make(map[id.ID]struct{}, len(explicit)+len(auto))
-	merged := make([]id.ID, 0, len(explicit)+len(auto))
-	for _, tid := range explicit {
-		if _, ok := seen[tid]; !ok {
-			seen[tid] = struct{}{}
-			merged = append(merged, tid)
-		}
-	}
-	for _, tid := range auto {
-		if _, ok := seen[tid]; !ok {
-			seen[tid] = struct{}{}
-			merged = append(merged, tid)
-		}
-	}
-	return merged, nil
-}
-
-// applyMatchTournaments associates the match with each tournament and auto-enrols
-// every match player into them. Memberships use ON CONFLICT DO NOTHING and are
-// never removed here (per ADR: editing a match never removes tournament members).
-func applyMatchTournaments(ctx context.Context, q *db.Queries, matchID id.ID, tournamentIDs []id.ID, playerIDs []id.ID) error {
-	for _, tid := range tournamentIDs {
-		if err := q.AddMatchTournament(ctx, db.AddMatchTournamentParams{MatchID: matchID, TournamentID: tid}); err != nil {
-			return fmt.Errorf("associate match %s with tournament %s: %w", matchID, tid, err)
-		}
-		for _, pid := range playerIDs {
-			if err := q.AddTournamentMember(ctx, db.AddTournamentMemberParams{TournamentID: tid, PlayerID: pid}); err != nil {
-				return fmt.Errorf("enrol player %s into tournament %s: %w", pid, tid, err)
-			}
-		}
-	}
-	return nil
-}
-
 // ListMatchesWithPlayersPaginated is the paginated match-list read for the
 // ListMatches handler.
 func (s *MatchService) ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error) {
@@ -591,8 +587,8 @@ func (s *MatchService) GetMatchWithPlayers(ctx context.Context, matchID id.ID) (
 	return s.Queries.GetMatchWithPlayers(ctx, matchID)
 }
 
-// ListTournamentsByMatchIDs returns the tournament memberships for a set of
-// matches; used by both the list and detail handlers.
-func (s *MatchService) ListTournamentsByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListTournamentsByMatchIDsRow, error) {
-	return s.Queries.ListTournamentsByMatchIDs(ctx, matchIDs)
+// ListCampArenasByMatchIDs returns the camp arenas (ADR-27) linked to a set
+// of matches; used by both the list and detail handlers.
+func (s *MatchService) ListCampArenasByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListCampArenasByMatchIDsRow, error) {
+	return s.Queries.ListCampArenasByMatchIDs(ctx, matchIDs)
 }

@@ -71,7 +71,7 @@ export function NavigationBar() {
               <ListItem href="/tournaments" title={
                 <>
                   <Tent className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Кемпы и турниры
+                  Турниры
                 </>
               } />
 

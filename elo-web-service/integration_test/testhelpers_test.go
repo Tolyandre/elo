@@ -348,9 +348,9 @@ func approxEqRel(a, b, rel float64) bool {
 // newMatchOpts returns AddMatchOpts pre-filled with a fresh client-generated
 // match id (ULID). Required since migration 036 made matches.id a UUID with no
 // default; the domain service no longer auto-assigns one. Callers can still
-// layer on extra fields (TournamentIDs, Calculator, …) via a spread:
+// layer on extra fields (CampArenaIDs, Calculator, …) via a spread:
 //
-//	opts := newMatchOpts(t); opts.TournamentIDs = []string{tour.ID}
+//	opts := newMatchOpts(t); opts.CampArenaIDs = []idpkg.ID{camp.ID}
 //
 // or pass overrides inline:
 //
@@ -574,10 +574,6 @@ func newArenaService(pool *pgxpool.Pool) *elo.ArenaService {
 
 func newMatchService(pool *pgxpool.Pool) elo.IMatchService {
 	return elo.NewMatchService(pool, elo.NewMarketService(pool), newArenaService(pool))
-}
-
-func newTournamentService(pool *pgxpool.Pool) elo.ITournamentService {
-	return elo.NewTournamentService(pool, newArenaService(pool))
 }
 
 func newTagService(pool *pgxpool.Pool) elo.ITagService {

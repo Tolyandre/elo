@@ -19,9 +19,13 @@ var (
 	ErrHistoryChangeConflictBettingLock = errors.New("изменение истории невозможно: приём ставок был закрыт до того, как рынок был разрешён в результате новой даты партии")
 	ErrMatchNotFound                    = errors.New("матч не найден")
 
-	ErrTournamentMemberHasMatches    = errors.New("нельзя удалить участника, сыгравшего партии в турнире")
-	ErrTournamentDatesNarrowEloRange = errors.New("даты турнира не охватывают уже сыгранные партии")
-	ErrTournamentHasMembers          = errors.New("нельзя удалить турнир с участниками")
+	// Camp arenas (ADR-27).
+	ErrCampDatesRequired       = errors.New("кэмпу нужны дата начала и дата конца")
+	ErrCampDatesInvalid        = errors.New("дата начала кэмпа должна быть раньше даты конца")
+	ErrCampDatesExcludeMatch   = errors.New("даты кэмпа не охватывают уже сыгранные партии")
+	ErrCampLeaguesNotAllowed   = errors.New("кэмп не может иметь лиги")
+	ErrCampArenaInvalid        = errors.New("указанный кэмп не существует или дата партии вне его дат")
+	ErrMatchOutsideCampWindows = errors.New("дата партии вне дат кэмпа, в котором она учтена — исключите её из кэмпа в этом же изменении")
 
 	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")
 	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")

@@ -175,7 +175,7 @@ export interface paths {
         delete: operations["DeleteArena"];
         options?: never;
         head?: never;
-        /** Update a user-created arena's name, filter and settings (editor only) */
+        /** Update a user-created arena's name, filter/dates and settings (editor only) */
         patch: operations["UpdateArena"];
         trace?: never;
     };
@@ -371,60 +371,6 @@ export interface paths {
         post?: never;
         /** Remove a player from a club */
         delete: operations["RemoveClubMember"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tournaments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all tournaments (newest start date first) */
-        get: operations["ListTournaments"];
-        put?: never;
-        /** Create a new tournament */
-        post: operations["CreateTournament"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tournaments/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a tournament by ID */
-        get: operations["GetTournament"];
-        /** Update a tournament's name, dates and participants */
-        put: operations["UpdateTournament"];
-        post?: never;
-        /** Delete a tournament (only when it has no participants) */
-        delete: operations["DeleteTournament"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tournaments/{id}/stats": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Per-player medal statistics for a tournament */
-        get: operations["GetTournamentStats"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -942,7 +888,7 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
-        /** @description The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. */
+        /** @description The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. Camp arenas have no filter. */
         MatchFilter: {
             /** Format: date-time */
             date_from?: string | null;
@@ -950,7 +896,6 @@ export interface components {
             date_to?: string | null;
             game_ids: components["schemas"]["Base58ID"][];
             tag_ids: components["schemas"]["Base58ID"][];
-            tournament_id?: components["schemas"]["Base58ID"];
         };
         /** @description Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}. */
         ArenaSettings: {
@@ -959,9 +904,24 @@ export interface components {
         Arena: {
             id: components["schemas"]["Base58ID"];
             name: string;
-            filter: components["schemas"]["MatchFilter"];
+            /** @description Camp arena (ADR-27): a date-bounded rating space whose membership is the explicit match link, not a filter. Camps have no filter, no leagues, and carry starts_at/ends_at. */
+            camp: boolean;
+            /** @description null for camp arenas. */
+            filter: components["schemas"]["MatchFilter"] | null;
             settings: components["schemas"]["ArenaSettings"];
             settings_schema_version: number;
+            /**
+             * Format: date-time
+             * @description Camp window start (camps only).
+             */
+            starts_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Camp window end (camps only).
+             */
+            ends_at?: string | null;
+            /** @description Camp participants, derived from the arena settlements (camps in list responses only). */
+            player_ids?: components["schemas"]["Base58ID"][];
             /** @description Set for the auto-managed per-game arena. */
             game_id?: components["schemas"]["Base58ID"];
             /** @description Set for the auto-managed per-tournament arena. */
@@ -971,13 +931,19 @@ export interface components {
              * @description Not null while the arena waits for a background recalculation.
              */
             stale_at?: string | null;
-            /** @description Number of matches meeting the arena's filter (list responses only). */
+            /** @description Number of matches meeting the arena's filter, or linked to the camp (list responses only). */
             matches_count?: number;
         };
-        /** @description Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there. */
+        /** @description Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there. Camp arenas (camp: true) take starts_at/ends_at and no filter; every other arena takes a filter. */
         ArenaInput: {
             name: string;
-            filter: components["schemas"]["MatchFilter"];
+            /** @default false */
+            camp: boolean;
+            filter?: components["schemas"]["MatchFilter"];
+            /** Format: date-time */
+            starts_at?: string | null;
+            /** Format: date-time */
+            ends_at?: string | null;
             settings: components["schemas"]["ArenaSettings"];
         };
         ArenaResult: {
@@ -1032,8 +998,8 @@ export interface components {
             /** Format: double */
             rating_after: number;
         };
-        /** @description A tournament a match belongs to */
-        MatchTournament: {
+        /** @description A camp arena (ADR-27) a match belongs to */
+        MatchCamp: {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
@@ -1048,8 +1014,8 @@ export interface components {
                 [key: string]: components["schemas"]["MatchPlayer"];
             };
             has_markets: boolean;
-            /** @description Tournaments this match belongs to */
-            tournaments?: components["schemas"]["MatchTournament"][];
+            /** @description Camp arenas (ADR-27) this match belongs to */
+            camps?: components["schemas"]["MatchCamp"][];
             /** @description Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form. */
             calculator_kind?: string | null;
             /** @description Intermediate calculator state. Present only when calculator_kind is non-null. Opaque at the OpenAPI layer; see pkg/calculator for the per-kind JSON Schemas. */
@@ -1075,37 +1041,6 @@ export interface components {
             name: string;
             /** @description Number of games carrying this tag */
             game_count: number;
-        };
-        TournamentInput: {
-            id: components["schemas"]["Base58ID"];
-            name: string;
-            /** Format: date-time */
-            start_date: string;
-            /** Format: date-time */
-            end_date: string;
-            /** @description Full desired set of participant player IDs */
-            player_ids?: components["schemas"]["Base58ID"][];
-        };
-        Tournament: {
-            id: components["schemas"]["Base58ID"];
-            name: string;
-            /** Format: date-time */
-            start_date: string;
-            /** Format: date-time */
-            end_date: string;
-            /** @description List of participant player IDs */
-            player_ids: components["schemas"]["Base58ID"][];
-        };
-        TournamentStatsPlayer: {
-            player_id: components["schemas"]["Base58ID"];
-            matches_count: number;
-            first: number;
-            second: number;
-            third: number;
-            fourth: number;
-        };
-        TournamentStats: {
-            players: components["schemas"]["TournamentStatsPlayer"][];
         };
         Settings: {
             /** Format: double */
@@ -1320,12 +1255,12 @@ export interface components {
             /** @description Display name of the acting user at read time */
             actor_name: string;
             /** @enum {string} */
-            entity_type: "match" | "game" | "player" | "club" | "tag";
+            entity_type: "match" | "game" | "player" | "club" | "tag" | "arena";
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails. */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -1449,6 +1384,33 @@ export interface components {
              * @description Total elo spent on this outcome.
              */
             pool: number;
+        };
+        /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
+        AuditArenaCampConfigDetails: {
+            schema_version: number;
+            name: {
+                from?: string | null;
+                to?: string | null;
+            } | null;
+            starts_at: {
+                /** Format: date-time */
+                from?: string | null;
+                /** Format: date-time */
+                to?: string | null;
+            } | null;
+            ends_at: {
+                /** Format: date-time */
+                from?: string | null;
+                /** Format: date-time */
+                to?: string | null;
+            } | null;
+        };
+        /** @description One match attach/detach on the camp arena the audit row points at. */
+        AuditCampLinkDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            op: "attach" | "detach";
+            match_id: components["schemas"]["Base58ID"];
         };
         IawwCell: {
             /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
@@ -2152,8 +2114,8 @@ export interface operations {
     ListArenas: {
         parameters: {
             query?: {
-                /** @description games returns every non-tournament arena except the global one; tournaments returns only the tournament arenas. */
-                kind?: "games" | "tournaments";
+                /** @description games returns every user-created arena except camps and the global one; camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26). */
+                kind?: "games" | "camps" | "tournaments";
                 /** @description Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included. */
                 game_id?: string;
                 /** @description Return the tournament's arena. */
@@ -2207,7 +2169,7 @@ export interface operations {
                     "application/json": components["schemas"]["ArenaResult"];
                 };
             };
-            /** @description Bad request (invalid settings document or filter) */
+            /** @description Bad request (invalid settings document or filter, or an arena with this name already exists) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2349,7 +2311,7 @@ export interface operations {
                     "application/json": components["schemas"]["ArenaResult"];
                 };
             };
-            /** @description Bad request */
+            /** @description Bad request (invalid settings document, or an arena with this name already exists) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2376,7 +2338,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description The arena is auto-managed (per-game or per-tournament) */
+            /** @description The arena is auto-managed (per-game, per-tournament or the global one), or new camp dates do not cover already-linked matches. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2762,8 +2724,8 @@ export interface operations {
                      * @description Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
                      */
                     date?: string;
-                    /** @description Optional tournament IDs this match belongs to. Every match player is auto-enrolled into each tournament. */
-                    tournament_ids?: components["schemas"]["Base58ID"][];
+                    /** @description Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats. */
+                    camp_arena_ids?: components["schemas"]["Base58ID"][];
                     /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form. */
                     calculator_kind?: string | null;
                     /** @description Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary. */
@@ -2886,8 +2848,8 @@ export interface operations {
                     };
                     /** Format: date-time */
                     date: string;
-                    /** @description Tournament IDs this match belongs to. Associations are replaced with this set; players are enrolled but never un-enrolled. */
-                    tournament_ids?: components["schemas"]["Base58ID"][];
+                    /** @description The desired camp arena set (ADR-27). The server diffs it against the stored links — attaching and detaching as needed, each change audited and both camps recalculated. Every requested arena must exist, be a camp, and its window must contain the new match date. Omit to keep the stored links untouched; a date moved outside a linked camp without detaching it is a 409. */
+                    camp_arena_ids?: components["schemas"]["Base58ID"][];
                     /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match. */
                     calculator_kind?: string | null;
                     /** @description Intermediate calculator state. Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Required when calculator_kind is non-null. */
@@ -2941,7 +2903,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description History change conflict */
+            /** @description History change conflict, or the new date falls outside a linked camp's window (detach the match from that camp in the same request) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3340,310 +3302,6 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    ListTournaments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of tournaments */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["Tournament"][];
-                    };
-                };
-            };
-        };
-    };
-    CreateTournament: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TournamentInput"];
-            };
-        };
-        responses: {
-            /** @description Created tournament */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["Tournament"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament with this name already exists */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    GetTournament: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tournament details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["Tournament"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    UpdateTournament: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TournamentInput"];
-            };
-        };
-        responses: {
-            /** @description Updated tournament */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["Tournament"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Conflict — a removed participant has played a match in the tournament, or the new dates do not cover already-played matches. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    DeleteTournament: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tournament deleted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiSuccessMessage"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Cannot delete a tournament that still has participants */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    GetTournamentStats: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Tournament statistics */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["TournamentStats"];
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
                 headers: {
                     [name: string]: unknown;
                 };

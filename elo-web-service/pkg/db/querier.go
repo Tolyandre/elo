@@ -13,14 +13,16 @@ import (
 )
 
 type Querier interface {
+	// Camp arena link queries (ADR-27). Camp membership is the explicit
+	// camp_matches link, written when a match is created with camp_arena_ids and
+	// never altered afterwards (editing a match cannot change its camps).
+	AddCampMatch(ctx context.Context, arg AddCampMatchParams) error
 	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
 	AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error)
-	AddMatchTournament(ctx context.Context, arg AddMatchTournamentParams) error
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
-	AddTournamentMember(ctx context.Context, arg AddTournamentMemberParams) error
 	// Uniqueness guard for the user-facing arena CRUD (case-insensitive).
 	// @exclude_id skips the arena being updated; NULL on create.
 	ArenaNameExists(ctx context.Context, arg ArenaNameExistsParams) (bool, error)
@@ -33,9 +35,9 @@ type Querier interface {
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (filter applied) within
-	// [date_from, date_to] — the elite promotion counters.
+	// [date_from, date_to] — the elite promotion counters. Camp arenas have no
+	// leagues, so the counters are never consulted for them.
 	CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error)
-	CountTournamentMembers(ctx context.Context, tournamentID id.ID) (int32, error)
 	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
@@ -52,7 +54,6 @@ type Querier interface {
 	// Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
 	CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutcomesParams) error
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
-	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	// The two fixed Да/Нет outcomes of a win_streak market.
@@ -71,6 +72,10 @@ type Querier interface {
 	// Precalculated stats
 	// ---------------------------------------------------------------------------
 	DeleteArenaStats(ctx context.Context, arenaID id.ID) error
+	// Detach a match from a camp arena (the edit-form desired-set diff, ADR-27):
+	// the camp is stale-marked by the caller and the replay rewrites its
+	// settlements and medal stats.
+	DeleteCampMatch(ctx context.Context, arg DeleteCampMatchParams) error
 	DeleteClub(ctx context.Context, argID id.ID) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredGameTables(ctx context.Context) error
@@ -83,24 +88,30 @@ type Querier interface {
 	DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteMarket(ctx context.Context, argID id.ID) error
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
-	DeleteMatchTournamentsByMatch(ctx context.Context, matchID id.ID) error
 	// Returns the deleted row so the audit trail can capture the player's name.
 	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
-	DeleteTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
-	// Arena queries (ADR-24). The reusable match-filter condition is repeated in
-	// the queries that evaluate it — the canonical definition lives here:
+	// Arena queries (ADR-24, ADR-27). The reusable match-filter condition is
+	// repeated in the queries that evaluate it — the canonical definition lives
+	// here:
 	//
 	//   A match m meets filter f iff ALL present conditions hold (NULL = absent):
 	//     date range:   f.date_from <= m.date <= f.date_to
 	//     game OR tag:  m.game_id listed in f.game_ids, or m's game carries one of
 	//                   f.tag_ids; both empty (NULL or []) → any game
-	//     tournament:   m attached to f.tournament_id via match_tournament
+	//
+	// Camp arenas (ADR-27) have no filter: a match belongs to a camp arena iff it
+	// has a camp_matches link row. In the queries below this is expressed as
+	//
+	//   (a.camp AND EXISTS camp_matches link)
+	//   OR (NOT a.camp AND <filter condition>)
 	//
 	// Do not change one copy without the others.
 	GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error)
 	GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaByGameRow, error)
+	// Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
+	// empty until ADR-26 creates them.
 	GetArenaByTournament(ctx context.Context, tournamentID *id.ID) (GetArenaByTournamentRow, error)
 	// Row-locked variant used by the recalculation updater: concurrent dirty marks
 	// queue behind the lock and apply after the recalculation commits.
@@ -110,6 +121,10 @@ type Querier interface {
 	// by share settlement.
 	GetBetsForSettlement(ctx context.Context, marketID id.ID) ([]GetBetsForSettlementRow, error)
 	GetBetsOnMarketPlacedBetween(ctx context.Context, arg GetBetsOnMarketPlacedBetweenParams) ([]GetBetsOnMarketPlacedBetweenRow, error)
+	// HAVING guards the aggregate: with no linked matches it returns zero rows
+	// (ErrNoRows) instead of a (NULL, NULL) row that can't scan into the
+	// non-nullable time.Time. The camp date-narrowing guard reads this.
+	GetCampMatchDateRange(ctx context.Context, arenaID id.ID) (GetCampMatchDateRangeRow, error)
 	GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error)
 	// Old-name read for the rename audit trail (ADR-14).
 	GetClubByID(ctx context.Context, argID id.ID) (Club, error)
@@ -189,19 +204,15 @@ type Querier interface {
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
-	GetTournament(ctx context.Context, argID id.ID) ([]GetTournamentRow, error)
-	// HAVING guards the aggregate: with no matches it returns zero rows (ErrNoRows)
-	// instead of a (NULL, NULL) row that can't scan into the non-nullable time.Time.
-	GetTournamentMatchDateRange(ctx context.Context, tournamentID id.ID) (GetTournamentMatchDateRangeRow, error)
-	GetTournamentStats(ctx context.Context, tournamentID id.ID) ([]GetTournamentStatsRow, error)
 	GetUser(ctx context.Context, argID id.ID) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
 	// JWT "sub" claim is a bare int (pre-migration token) that isn't a valid UUID.
 	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error)
-	// Recompute places 1..4 per match (RANK over the match's scores, tournament
-	// stats semantics) for every match meeting the arena's filter.
+	// Recompute places 1..4 per match (RANK over the match's scores) for every
+	// match belonging to the arena: via camp_matches links for camps, via the
+	// filter for every other kind.
 	InsertArenaStats(ctx context.Context, arenaID id.ID) error
 	// Appends one audit_log row. Called inside the same transaction as the write
 	// it describes (ADR-14). details_* are all NULL together for events without
@@ -212,8 +223,6 @@ type Querier interface {
 	// maximum loss) and maker fee rate (ADR-20). The client-generated id doubles
 	// as the idempotency key.
 	InsertMarketGuarantee(ctx context.Context, arg InsertMarketGuaranteeParams) (InsertMarketGuaranteeRow, error)
-	// Tournament IDs active at @at whose membership includes EVERY player in @player_ids.
-	ListActiveTournamentsForPlayers(ctx context.Context, arg ListActiveTournamentsForPlayersParams) ([]id.ID, error)
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
@@ -232,21 +241,26 @@ type Querier interface {
 	// staleness check needs. Lists players with at least one settlement.
 	ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAtParams) ([]ListArenaPlayersAtRow, error)
 	// kind narrows the list for the /arenas page tabs: 'games' returns every
-	// non-tournament arena except the global one (which is the main page, not a
-	// list entry); 'tournaments' returns only the tournament arenas.
+	// user-managed arena except camps and the global one (the main page, not a
+	// list entry); 'camps' returns only camp arenas; 'tournaments' returns only
+	// the tournament arenas (empty until ADR-26 creates them).
 	ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArenasRow, error)
 	// Arenas whose filter includes game @game_id or one of its tags, plus
-	// unconditional (global) arenas — the /games page arena list.
+	// unconditional (global) arenas — the /games page arena list. Camp arenas
+	// have no filter and never appear here.
 	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)
-	// Arena ids whose filter matches the given match — the synchronous-drain
-	// affected set on match writes. Joining the single match row gives the
-	// condition its m.* values.
+	// Non-camp arena ids whose filter matches the given match — part of the
+	// synchronous-drain affected set on match writes (camp arenas are added by
+	// the caller from their explicit camp_matches links).
 	ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([]id.ID, error)
 	// Latest-first audit feed. Optional entity filter (one or more entity types)
 	// and entity_id filter serve both the per-entity history (match view) and the
 	// per-type feed (admin tabs — the games tab mixes game and tag events). The
 	// cursor is the (created_at, id) row of the last returned event.
 	ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error)
+	// The camps of a set of matches — the [{id, name}] payload of the match
+	// response (the old match.tournaments shape).
+	ListCampArenasByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListCampArenasByMatchIDsRow, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
@@ -273,9 +287,13 @@ type Querier interface {
 	// stored in bets — the signature of the removed price-preserving rescale
 	// (ADR-22). Resolved markets get the same q repair but need no settlement.
 	ListMarketsWithDivergedQ(ctx context.Context) ([]id.ID, error)
-	// Filtered matches of the arena from @from_date on, in event order — the
-	// updater's replay input.
+	// Filter-matching matches of the arena from @from_date on, in event order —
+	// the updater's replay input for filter arenas. Camp arenas replay from
+	// ListMatchesForCampReplay instead (ADR-27).
 	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
+	// Linked matches of the camp arena from @from_date on, in event order — the
+	// updater's replay input for camp arenas (replaces filter evaluation).
+	ListMatchesForCampReplay(ctx context.Context, arg ListMatchesForCampReplayParams) ([]Match, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinStreakMarketsRow, error)
@@ -291,8 +309,6 @@ type Querier interface {
 	// when any game's tags change (a tag toggle can flip any of them).
 	ListTagFilteredArenaIds(ctx context.Context) ([]id.ID, error)
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
-	ListTournaments(ctx context.Context) ([]ListTournamentsRow, error)
-	ListTournamentsByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListTournamentsByMatchIDsRow, error)
 	// Resolves the (unique) controlling user for each linked player; used to route
 	// per-user SSE events (table invites, match notifications).
 	ListUserIDsByPlayerIDs(ctx context.Context, dollar_1 []id.ID) ([]ListUserIDsByPlayerIDsRow, error)
@@ -312,12 +328,10 @@ type Querier interface {
 	// Dirty queue
 	// ---------------------------------------------------------------------------
 	MarkArenasStaleFull(ctx context.Context, arenaIds []id.ID) error
-	PlayerHasMatchInTournament(ctx context.Context, arg PlayerHasMatchInTournamentParams) (bool, error)
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
-	RemoveTournamentMember(ctx context.Context, arg RemoveTournamentMemberParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
@@ -327,7 +341,7 @@ type Querier interface {
 	// a user event and must never be cleared by recalculation.
 	UnsettleMarket(ctx context.Context, argID id.ID) error
 	UpdateArena(ctx context.Context, arg UpdateArenaParams) (Arena, error)
-	// Name sync for auto-managed arenas when their game/tournament is renamed.
+	// Name sync for auto-managed arenas when their game is renamed.
 	UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
@@ -341,7 +355,6 @@ type Querier interface {
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
 	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
-	UpdateTournament(ctx context.Context, arg UpdateTournamentParams) (Tournament, error)
 	UpdateUserAllowEditing(ctx context.Context, arg UpdateUserAllowEditingParams) error
 	UpdateUserName(ctx context.Context, arg UpdateUserNameParams) error
 	UpdateUserPlayerID(ctx context.Context, arg UpdateUserPlayerIDParams) error

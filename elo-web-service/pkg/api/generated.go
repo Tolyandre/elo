@@ -74,6 +74,7 @@ func (e AuditEntryAction) Valid() bool {
 
 // Defines values for AuditEntryEntityType.
 const (
+	AuditEntryEntityTypeArena  AuditEntryEntityType = "arena"
 	AuditEntryEntityTypeClub   AuditEntryEntityType = "club"
 	AuditEntryEntityTypeGame   AuditEntryEntityType = "game"
 	AuditEntryEntityTypeMatch  AuditEntryEntityType = "match"
@@ -84,6 +85,8 @@ const (
 // Valid indicates whether the value is a known member of the AuditEntryEntityType enum.
 func (e AuditEntryEntityType) Valid() bool {
 	switch e {
+	case AuditEntryEntityTypeArena:
+		return true
 	case AuditEntryEntityTypeClub:
 		return true
 	case AuditEntryEntityTypeGame:
@@ -279,6 +282,24 @@ func (e SkullKingGameStatePhase) Valid() bool {
 	}
 }
 
+// Defines values for AuditAuditCampLinkDetailsOp.
+const (
+	Attach AuditAuditCampLinkDetailsOp = "attach"
+	Detach AuditAuditCampLinkDetailsOp = "detach"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditCampLinkDetailsOp enum.
+func (e AuditAuditCampLinkDetailsOp) Valid() bool {
+	switch e {
+	case Attach:
+		return true
+	case Detach:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MarketsMarketOutcomeKind.
 const (
 	MarketsMarketOutcomeKindNo     MarketsMarketOutcomeKind = "no"
@@ -320,6 +341,7 @@ func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
 
 // Defines values for ListArenasParamsKind.
 const (
+	Camps       ListArenasParamsKind = "camps"
 	Games       ListArenasParamsKind = "games"
 	Tournaments ListArenasParamsKind = "tournaments"
 )
@@ -327,6 +349,8 @@ const (
 // Valid indicates whether the value is a known member of the ListArenasParamsKind enum.
 func (e ListArenasParamsKind) Valid() bool {
 	switch e {
+	case Camps:
+		return true
 	case Games:
 		return true
 	case Tournaments:
@@ -416,8 +440,14 @@ type ApiSuccessMessageStatus string
 
 // Arena defines model for Arena.
 type Arena struct {
-	// Filter The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game.
-	Filter MatchFilter `json:"filter"`
+	// Camp Camp arena (ADR-27): a date-bounded rating space whose membership is the explicit match link, not a filter. Camps have no filter, no leagues, and carry starts_at/ends_at.
+	Camp bool `json:"camp"`
+
+	// EndsAt Camp window end (camps only).
+	EndsAt *time.Time `json:"ends_at,omitempty"`
+
+	// Filter null for camp arenas.
+	Filter *MatchFilter `json:"filter"`
 
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId *Base58ID `json:"game_id,omitempty"`
@@ -425,9 +455,12 @@ type Arena struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// MatchesCount Number of matches meeting the arena's filter (list responses only).
+	// MatchesCount Number of matches meeting the arena's filter, or linked to the camp (list responses only).
 	MatchesCount *int   `json:"matches_count,omitempty"`
 	Name         string `json:"name"`
+
+	// PlayerIds Camp participants, derived from the arena settlements (camps in list responses only).
+	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
 
 	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
 	Settings              ArenaSettings `json:"settings"`
@@ -436,18 +469,25 @@ type Arena struct {
 	// StaleAt Not null while the arena waits for a background recalculation.
 	StaleAt *time.Time `json:"stale_at,omitempty"`
 
+	// StartsAt Camp window start (camps only).
+	StartsAt *time.Time `json:"starts_at,omitempty"`
+
 	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TournamentId *Base58ID `json:"tournament_id,omitempty"`
 }
 
-// ArenaInput Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there.
+// ArenaInput Create/update body. The settings object is validated server-side against the current arena-settings JSON Schema; league parameters live there. Camp arenas (camp: true) take starts_at/ends_at and no filter; every other arena takes a filter.
 type ArenaInput struct {
-	// Filter The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game.
-	Filter MatchFilter `json:"filter"`
-	Name   string      `json:"name"`
+	Camp   *bool      `json:"camp,omitempty"`
+	EndsAt *time.Time `json:"ends_at,omitempty"`
+
+	// Filter The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. Camp arenas have no filter.
+	Filter *MatchFilter `json:"filter,omitempty"`
+	Name   string       `json:"name"`
 
 	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
 	Settings ArenaSettings `json:"settings"`
+	StartsAt *time.Time    `json:"starts_at,omitempty"`
 }
 
 // ArenaList defines model for ArenaList.
@@ -532,7 +572,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -546,7 +586,7 @@ type AuditEntry struct {
 // AuditEntryAction defines model for AuditEntry.Action.
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails.
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -922,8 +962,11 @@ type Match struct {
 	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
 
 	// CalculatorKind Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form.
-	CalculatorKind *string   `json:"calculator_kind,omitempty"`
-	Date           time.Time `json:"date"`
+	CalculatorKind *string `json:"calculator_kind,omitempty"`
+
+	// Camps Camp arenas (ADR-27) this match belongs to
+	Camps *[]MatchCamp `json:"camps,omitempty"`
+	Date  time.Time    `json:"date"`
 
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId     Base58ID `json:"game_id"`
@@ -935,20 +978,21 @@ type Match struct {
 
 	// Score Map of player_id (string) to player score data
 	Score IDMap[MatchPlayer] `json:"score"`
-
-	// Tournaments Tournaments this match belongs to
-	Tournaments *[]MatchTournament `json:"tournaments,omitempty"`
 }
 
-// MatchFilter The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game.
+// MatchCamp A camp arena (ADR-27) a match belongs to
+type MatchCamp struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+}
+
+// MatchFilter The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. Camp arenas have no filter.
 type MatchFilter struct {
 	DateFrom *time.Time `json:"date_from,omitempty"`
 	DateTo   *time.Time `json:"date_to,omitempty"`
 	GameIds  []Base58ID `json:"game_ids"`
 	TagIds   []Base58ID `json:"tag_ids"`
-
-	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	TournamentId *Base58ID `json:"tournament_id,omitempty"`
 }
 
 // MatchPlayer Per-player data within a match (keyed by player_id in the score map)
@@ -957,13 +1001,6 @@ type MatchPlayer struct {
 	RatingEarned float64 `json:"rating_earned"`
 	RatingStaked float64 `json:"rating_staked"`
 	Score        float64 `json:"score"`
-}
-
-// MatchTournament A tournament a match belongs to
-type MatchTournament struct {
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
 }
 
 // MatchWinnerParams defines model for MatchWinnerParams.
@@ -1126,49 +1163,6 @@ type Tag struct {
 	Name string   `json:"name"`
 }
 
-// Tournament defines model for Tournament.
-type Tournament struct {
-	EndDate time.Time `json:"end_date"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
-
-	// PlayerIds List of participant player IDs
-	PlayerIds []Base58ID `json:"player_ids"`
-	StartDate time.Time  `json:"start_date"`
-}
-
-// TournamentInput defines model for TournamentInput.
-type TournamentInput struct {
-	EndDate time.Time `json:"end_date"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
-
-	// PlayerIds Full desired set of participant player IDs
-	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
-	StartDate time.Time   `json:"start_date"`
-}
-
-// TournamentStats defines model for TournamentStats.
-type TournamentStats struct {
-	Players []TournamentStatsPlayer `json:"players"`
-}
-
-// TournamentStatsPlayer defines model for TournamentStatsPlayer.
-type TournamentStatsPlayer struct {
-	First        int `json:"first"`
-	Fourth       int `json:"fourth"`
-	MatchesCount int `json:"matches_count"`
-
-	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	PlayerId Base58ID `json:"player_id"`
-	Second   int      `json:"second"`
-	Third    int      `json:"third"`
-}
-
 // UpdateArenasResult defines model for UpdateArenasResult.
 type UpdateArenasResult struct {
 	Data struct {
@@ -1197,6 +1191,34 @@ type WinStreakParams struct {
 	TargetPlayerId Base58ID `json:"target_player_id"`
 	WinsRequired   int      `json:"wins_required"`
 }
+
+// AuditAuditArenaCampConfigDetails Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null.
+type AuditAuditArenaCampConfigDetails struct {
+	EndsAt *struct {
+		From *time.Time `json:"from,omitempty"`
+		To   *time.Time `json:"to,omitempty"`
+	} `json:"ends_at"`
+	Name *struct {
+		From *string `json:"from,omitempty"`
+		To   *string `json:"to,omitempty"`
+	} `json:"name"`
+	SchemaVersion int `json:"schema_version"`
+	StartsAt      *struct {
+		From *time.Time `json:"from,omitempty"`
+		To   *time.Time `json:"to,omitempty"`
+	} `json:"starts_at"`
+}
+
+// AuditAuditCampLinkDetails One match attach/detach on the camp arena the audit row points at.
+type AuditAuditCampLinkDetails struct {
+	// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	MatchId       Base58ID                    `json:"match_id"`
+	Op            AuditAuditCampLinkDetailsOp `json:"op"`
+	SchemaVersion int                         `json:"schema_version"`
+}
+
+// AuditAuditCampLinkDetailsOp defines model for AuditAuditCampLinkDetails.Op.
+type AuditAuditCampLinkDetailsOp string
 
 // MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
@@ -1290,7 +1312,7 @@ type CreatePlayerCorrectionJSONBodyDiscriminator string
 
 // ListArenasParams defines parameters for ListArenas.
 type ListArenasParams struct {
-	// Kind games returns every non-tournament arena except the global one; tournaments returns only the tournament arenas.
+	// Kind games returns every user-created arena except camps and the global one; camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26).
 	Kind *ListArenasParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// GameId Return arenas whose filter includes this game or one of its tags; the global arena (unconditional filter) is always included.
@@ -1497,6 +1519,9 @@ type AddMatchJSONBody struct {
 	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form.
 	CalculatorKind *string `json:"calculator_kind,omitempty"`
 
+	// CampArenaIds Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats.
+	CampArenaIds *[]Base58ID `json:"camp_arena_ids,omitempty"`
+
 	// Date Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
 	Date *time.Time `json:"date,omitempty"`
 
@@ -1508,9 +1533,6 @@ type AddMatchJSONBody struct {
 
 	// Score Map of player_id (string) to numeric score
 	Score IDMap[float64] `json:"score"`
-
-	// TournamentIds Optional tournament IDs this match belongs to. Every match player is auto-enrolled into each tournament.
-	TournamentIds *[]Base58ID `json:"tournament_ids,omitempty"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -1519,17 +1541,17 @@ type UpdateMatchJSONBody struct {
 	CalculatorData *map[string]interface{} `json:"calculator_data,omitempty"`
 
 	// CalculatorKind Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match.
-	CalculatorKind *string   `json:"calculator_kind,omitempty"`
-	Date           time.Time `json:"date"`
+	CalculatorKind *string `json:"calculator_kind,omitempty"`
+
+	// CampArenaIds The desired camp arena set (ADR-27). The server diffs it against the stored links — attaching and detaching as needed, each change audited and both camps recalculated. Every requested arena must exist, be a camp, and its window must contain the new match date. Omit to keep the stored links untouched; a date moved outside a linked camp without detaching it is a 409.
+	CampArenaIds *[]Base58ID `json:"camp_arena_ids,omitempty"`
+	Date         time.Time   `json:"date"`
 
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId Base58ID `json:"game_id"`
 
 	// Score Map of player_id (string) to numeric score
 	Score IDMap[float64] `json:"score"`
-
-	// TournamentIds Tournament IDs this match belongs to. Associations are replaced with this set; players are enrolled but never un-enrolled.
-	TournamentIds *[]Base58ID `json:"tournament_ids,omitempty"`
 }
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
@@ -1671,12 +1693,6 @@ type CreateTagJSONRequestBody CreateTagJSONBody
 // PatchTagJSONRequestBody defines body for PatchTag for application/json ContentType.
 type PatchTagJSONRequestBody PatchTagJSONBody
 
-// CreateTournamentJSONRequestBody defines body for CreateTournament for application/json ContentType.
-type CreateTournamentJSONRequestBody = TournamentInput
-
-// UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
-type UpdateTournamentJSONRequestBody = TournamentInput
-
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
 
@@ -1748,6 +1764,58 @@ func (t *AuditEntry_Details) FromAuditMatchUpdateDetails(v AuditMatchUpdateDetai
 
 // MergeAuditMatchUpdateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditMatchUpdateDetails
 func (t *AuditEntry_Details) MergeAuditMatchUpdateDetails(v AuditMatchUpdateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditArenaCampConfigDetails returns the union data inside the AuditEntry_Details as a AuditAuditArenaCampConfigDetails
+func (t AuditEntry_Details) AsAuditAuditArenaCampConfigDetails() (AuditAuditArenaCampConfigDetails, error) {
+	var body AuditAuditArenaCampConfigDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditArenaCampConfigDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditArenaCampConfigDetails
+func (t *AuditEntry_Details) FromAuditAuditArenaCampConfigDetails(v AuditAuditArenaCampConfigDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditArenaCampConfigDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditArenaCampConfigDetails
+func (t *AuditEntry_Details) MergeAuditAuditArenaCampConfigDetails(v AuditAuditArenaCampConfigDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditCampLinkDetails returns the union data inside the AuditEntry_Details as a AuditAuditCampLinkDetails
+func (t AuditEntry_Details) AsAuditAuditCampLinkDetails() (AuditAuditCampLinkDetails, error) {
+	var body AuditAuditCampLinkDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditCampLinkDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditCampLinkDetails
+func (t *AuditEntry_Details) FromAuditAuditCampLinkDetails(v AuditAuditCampLinkDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditCampLinkDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditCampLinkDetails
+func (t *AuditEntry_Details) MergeAuditAuditCampLinkDetails(v AuditAuditCampLinkDetails) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -2062,7 +2130,7 @@ type ServerInterface interface {
 	// GetArena Get an arena by ID
 	// (GET /arenas/{id})
 	GetArena(c *gin.Context, id string)
-	// UpdateArena Update a user-created arena's name, filter and settings (editor only)
+	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(c *gin.Context, id string)
 	// ListArenaMatches List the arena's matches with cursor-based pagination
@@ -2239,24 +2307,6 @@ type ServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(c *gin.Context, id string)
-	// ListTournaments List all tournaments (newest start date first)
-	// (GET /tournaments)
-	ListTournaments(c *gin.Context)
-	// CreateTournament Create a new tournament
-	// (POST /tournaments)
-	CreateTournament(c *gin.Context)
-	// DeleteTournament Delete a tournament (only when it has no participants)
-	// (DELETE /tournaments/{id})
-	DeleteTournament(c *gin.Context, id string)
-	// GetTournament Get a tournament by ID
-	// (GET /tournaments/{id})
-	GetTournament(c *gin.Context, id string)
-	// UpdateTournament Update a tournament's name, dates and participants
-	// (PUT /tournaments/{id})
-	UpdateTournament(c *gin.Context, id string)
-	// GetTournamentStats Per-player medal statistics for a tournament
-	// (GET /tournaments/{id}/stats)
-	GetTournamentStats(c *gin.Context, id string)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(c *gin.Context)
@@ -3797,132 +3847,6 @@ func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
 	siw.Handler.PatchTag(c, id)
 }
 
-// ListTournaments operation middleware
-func (siw *ServerInterfaceWrapper) ListTournaments(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListTournaments(c)
-}
-
-// CreateTournament operation middleware
-func (siw *ServerInterfaceWrapper) CreateTournament(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateTournament(c)
-}
-
-// DeleteTournament operation middleware
-func (siw *ServerInterfaceWrapper) DeleteTournament(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.DeleteTournament(c, id)
-}
-
-// GetTournament operation middleware
-func (siw *ServerInterfaceWrapper) GetTournament(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetTournament(c, id)
-}
-
-// UpdateTournament operation middleware
-func (siw *ServerInterfaceWrapper) UpdateTournament(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.UpdateTournament(c, id)
-}
-
-// GetTournamentStats operation middleware
-func (siw *ServerInterfaceWrapper) GetTournamentStats(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetTournamentStats(c, id)
-}
-
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(c *gin.Context) {
 
@@ -4053,12 +3977,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tags", wrapper.CreateTag)
 	router.DELETE(options.BaseURL+"/tags/:id", wrapper.DeleteTag)
 	router.PATCH(options.BaseURL+"/tags/:id", wrapper.PatchTag)
-	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
-	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
-	router.DELETE(options.BaseURL+"/tournaments/:id", wrapper.DeleteTournament)
-	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
-	router.PUT(options.BaseURL+"/tournaments/:id", wrapper.UpdateTournament)
-	router.GET(options.BaseURL+"/tournaments/:id/stats", wrapper.GetTournamentStats)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 }
@@ -7881,391 +7799,6 @@ func (response PatchTag409JSONResponse) VisitPatchTagResponse(w http.ResponseWri
 	return err
 }
 
-type ListTournamentsRequestObject struct {
-}
-
-type ListTournamentsResponseObject interface {
-	VisitListTournamentsResponse(w http.ResponseWriter) error
-}
-
-type ListTournaments200JSONResponse struct {
-	Data   []Tournament `json:"data"`
-	Status string       `json:"status"`
-}
-
-func (response ListTournaments200JSONResponse) VisitListTournamentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTournamentRequestObject struct {
-	Body *CreateTournamentJSONRequestBody
-}
-
-type CreateTournamentResponseObject interface {
-	VisitCreateTournamentResponse(w http.ResponseWriter) error
-}
-
-type CreateTournament200JSONResponse struct {
-	Data   Tournament `json:"data"`
-	Status string     `json:"status"`
-}
-
-func (response CreateTournament200JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTournament400JSONResponse ApiError
-
-func (response CreateTournament400JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTournament401JSONResponse ApiError
-
-func (response CreateTournament401JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTournament403JSONResponse ApiError
-
-func (response CreateTournament403JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateTournament409JSONResponse ApiError
-
-func (response CreateTournament409JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournamentRequestObject struct {
-	Id string `json:"id"`
-}
-
-type DeleteTournamentResponseObject interface {
-	VisitDeleteTournamentResponse(w http.ResponseWriter) error
-}
-
-type DeleteTournament200JSONResponse ApiSuccessMessage
-
-func (response DeleteTournament200JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournament400JSONResponse ApiError
-
-func (response DeleteTournament400JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournament401JSONResponse ApiError
-
-func (response DeleteTournament401JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournament403JSONResponse ApiError
-
-func (response DeleteTournament403JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournament404JSONResponse ApiError
-
-func (response DeleteTournament404JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteTournament409JSONResponse ApiError
-
-func (response DeleteTournament409JSONResponse) VisitDeleteTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTournamentRequestObject struct {
-	Id string `json:"id"`
-}
-
-type GetTournamentResponseObject interface {
-	VisitGetTournamentResponse(w http.ResponseWriter) error
-}
-
-type GetTournament200JSONResponse struct {
-	Data   Tournament `json:"data"`
-	Status string     `json:"status"`
-}
-
-func (response GetTournament200JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTournament400JSONResponse ApiError
-
-func (response GetTournament400JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTournament404JSONResponse ApiError
-
-func (response GetTournament404JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournamentRequestObject struct {
-	Id   string `json:"id"`
-	Body *UpdateTournamentJSONRequestBody
-}
-
-type UpdateTournamentResponseObject interface {
-	VisitUpdateTournamentResponse(w http.ResponseWriter) error
-}
-
-type UpdateTournament200JSONResponse struct {
-	Data   Tournament `json:"data"`
-	Status string     `json:"status"`
-}
-
-func (response UpdateTournament200JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournament400JSONResponse ApiError
-
-func (response UpdateTournament400JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournament401JSONResponse ApiError
-
-func (response UpdateTournament401JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournament403JSONResponse ApiError
-
-func (response UpdateTournament403JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournament404JSONResponse ApiError
-
-func (response UpdateTournament404JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateTournament409JSONResponse ApiError
-
-func (response UpdateTournament409JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTournamentStatsRequestObject struct {
-	Id string `json:"id"`
-}
-
-type GetTournamentStatsResponseObject interface {
-	VisitGetTournamentStatsResponse(w http.ResponseWriter) error
-}
-
-type GetTournamentStats200JSONResponse struct {
-	Data   TournamentStats `json:"data"`
-	Status string          `json:"status"`
-}
-
-func (response GetTournamentStats200JSONResponse) VisitGetTournamentStatsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTournamentStats400JSONResponse ApiError
-
-func (response GetTournamentStats400JSONResponse) VisitGetTournamentStatsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListUsersRequestObject struct {
 }
 
@@ -8392,7 +7925,7 @@ type StrictServerInterface interface {
 	// GetArena Get an arena by ID
 	// (GET /arenas/{id})
 	GetArena(ctx context.Context, request GetArenaRequestObject) (GetArenaResponseObject, error)
-	// UpdateArena Update a user-created arena's name, filter and settings (editor only)
+	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(ctx context.Context, request UpdateArenaRequestObject) (UpdateArenaResponseObject, error)
 	// ListArenaMatches List the arena's matches with cursor-based pagination
@@ -8569,24 +8102,6 @@ type StrictServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
-	// ListTournaments List all tournaments (newest start date first)
-	// (GET /tournaments)
-	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
-	// CreateTournament Create a new tournament
-	// (POST /tournaments)
-	CreateTournament(ctx context.Context, request CreateTournamentRequestObject) (CreateTournamentResponseObject, error)
-	// DeleteTournament Delete a tournament (only when it has no participants)
-	// (DELETE /tournaments/{id})
-	DeleteTournament(ctx context.Context, request DeleteTournamentRequestObject) (DeleteTournamentResponseObject, error)
-	// GetTournament Get a tournament by ID
-	// (GET /tournaments/{id})
-	GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error)
-	// UpdateTournament Update a tournament's name, dates and participants
-	// (PUT /tournaments/{id})
-	UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error)
-	// GetTournamentStats Per-player medal statistics for a tournament
-	// (GET /tournaments/{id}/stats)
-	GetTournamentStats(ctx context.Context, request GetTournamentStatsRequestObject) (GetTournamentStatsResponseObject, error)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -10476,172 +9991,6 @@ func (sh *strictHandler) PatchTag(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchTagResponseObject); ok {
 		if err := validResponse.VisitPatchTagResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListTournaments operation middleware
-func (sh *strictHandler) ListTournaments(ctx *gin.Context) {
-	var request ListTournamentsRequestObject
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListTournaments(ctx, request.(ListTournamentsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListTournaments")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListTournamentsResponseObject); ok {
-		if err := validResponse.VisitListTournamentsResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateTournament operation middleware
-func (sh *strictHandler) CreateTournament(ctx *gin.Context) {
-	var request CreateTournamentRequestObject
-
-	var body CreateTournamentJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateTournament(ctx, request.(CreateTournamentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateTournament")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateTournamentResponseObject); ok {
-		if err := validResponse.VisitCreateTournamentResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteTournament operation middleware
-func (sh *strictHandler) DeleteTournament(ctx *gin.Context, id string) {
-	var request DeleteTournamentRequestObject
-
-	request.Id = id
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteTournament(ctx, request.(DeleteTournamentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteTournament")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(DeleteTournamentResponseObject); ok {
-		if err := validResponse.VisitDeleteTournamentResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetTournament operation middleware
-func (sh *strictHandler) GetTournament(ctx *gin.Context, id string) {
-	var request GetTournamentRequestObject
-
-	request.Id = id
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTournament(ctx, request.(GetTournamentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTournament")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetTournamentResponseObject); ok {
-		if err := validResponse.VisitGetTournamentResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// UpdateTournament operation middleware
-func (sh *strictHandler) UpdateTournament(ctx *gin.Context, id string) {
-	var request UpdateTournamentRequestObject
-
-	request.Id = id
-
-	var body UpdateTournamentJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.UpdateTournament(ctx, request.(UpdateTournamentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateTournament")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(UpdateTournamentResponseObject); ok {
-		if err := validResponse.VisitUpdateTournamentResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetTournamentStats operation middleware
-func (sh *strictHandler) GetTournamentStats(ctx *gin.Context, id string) {
-	var request GetTournamentStatsRequestObject
-
-	request.Id = id
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTournamentStats(ctx, request.(GetTournamentStatsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTournamentStats")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetTournamentStatsResponseObject); ok {
-		if err := validResponse.VisitGetTournamentStatsResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

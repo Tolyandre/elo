@@ -120,12 +120,12 @@ export function ArenaView() {
 
   // The leaders tab (score winners) only makes sense for a single-game arena.
   const singleGameId =
-    arena?.game_id ?? (arena && arena.filter.game_ids.length === 1 ? arena.filter.game_ids[0] : null);
+    arena?.game_id ?? (arena && arena.filter?.game_ids.length === 1 ? arena.filter.game_ids[0] : null);
   const hasLeaders = singleGameId != null;
 
   // The edit form is for user-created arenas only: auto-managed ones are
   // system-owned (the API rejects edits), and the global arena — the main
-  // page — is permanent.
+  // page — is permanent. Camp arenas are user-created and editable (ADR-27).
   const { canEdit } = useMe();
   const canEditArena =
     canEdit && !isGlobal && arena != null && arena.game_id == null && arena.tournament_id == null;
@@ -288,11 +288,13 @@ function parseArenaLeagues(arena: Arena): string[] {
 }
 
 function isUnconditional(arena: Arena): boolean {
+  // Camp arenas have no filter but are never the global arena (ADR-27).
+  if (arena.camp) return false;
   const f = arena.filter;
   return (
+    f != null &&
     f.game_ids.length === 0 &&
     f.tag_ids.length === 0 &&
-    f.tournament_id == null &&
     f.date_from == null &&
     f.date_to == null
   );

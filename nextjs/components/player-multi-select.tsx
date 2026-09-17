@@ -6,7 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./multi-select"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
-import { useTournaments } from "@/app/tournamentsContext"
+import { useCamps } from "@/app/arenas/campsContext"
 import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
 import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "@/lib/player-groups"
@@ -28,17 +28,17 @@ import {
 export function PlayerMultiSelect({
   value: controlledValue,
   onChange,
-  activeTournamentIds = [],
+  activeCampIds = [],
 }: {
   value: Base58ID[]
   onChange?: (ids: Base58ID[]) => void
-  /** Tournament IDs (checked in the match form) whose participants get their own section. */
-  activeTournamentIds?: Base58ID[]
+  /** Camp arena ids (checked in the match form, ADR-27) whose participants get their own section. */
+  activeCampIds?: Base58ID[]
 }) {
   const { players, playerDisplayName } = usePlayers()
   const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
-  const { tournaments } = useTournaments()
+  const { camps } = useCamps()
   const { playerId: myPlayerId, canEdit } = useMe()
   const { pendingPlayers } = useOffline()
 
@@ -48,9 +48,9 @@ export function PlayerMultiSelect({
     [matches, myPlayerId],
   )
 
-  const checkedTournaments = useMemo(
-    () => tournaments.filter(t => activeTournamentIds.includes(t.id)),
-    [tournaments, activeTournamentIds],
+  const checkedCamps = useMemo(
+    () => camps.filter(c => activeCampIds.includes(c.id)),
+    [camps, activeCampIds],
   )
 
   // Renders club icons + name, highlighting the current user's own player.
@@ -75,7 +75,7 @@ export function PlayerMultiSelect({
 
   // Browsing view: one tab per "Недавние" / club / "Другие" (+ pending players).
   const tabs = useMemo<MultiSelectTab[]>(() => {
-    const built = buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedTournaments)
+    const built = buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps)
       .map<MultiSelectTab>(tab => ({
         key: tab.key,
         label: tab.label,
@@ -88,15 +88,15 @@ export function PlayerMultiSelect({
       built.push({ key: "offline", label: "Офлайн", groups: [offlineGroup] })
     }
     return built
-  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedTournaments, toOption, offlineGroup])
+  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps, toOption, offlineGroup])
 
   // Search view: a flat grouped list spanning every player (+ pending players).
   const searchGroups = useMemo<MultiSelectGroup[]>(() => {
-    const groups = buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedTournaments, myPlayerId)
+    const groups = buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId)
       .map(group => ({ heading: group.heading, options: group.options.map(toOption) }))
     if (offlineGroup) groups.unshift(offlineGroup)
     return groups
-  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedTournaments, myPlayerId, toOption, offlineGroup])
+  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId, toOption, offlineGroup])
 
   // The lib speaks plain strings; the values are the ids this component put
   // into the options, so the widening cast back is safe.

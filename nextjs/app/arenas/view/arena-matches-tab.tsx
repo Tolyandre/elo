@@ -69,7 +69,7 @@ export function ArenaMatchesTab({
     }, [hasMore, loadingMore, onLoadMore]);
 
     // Hide the game select when the arena's match filter pins one game.
-    const showGameFilter = arena.filter.game_ids.length !== 1;
+    const showGameFilter = (arena.filter?.game_ids.length ?? 0) !== 1;
 
     // Unsynced matches go on top of the global timeline. A player filter hides
     // them (pending score keys may reference offline player ids).

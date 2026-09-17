@@ -281,7 +281,7 @@ function PendingCalculatorEdit({
                 gameId: match.gameId,
                 score,
                 createdAt: match.createdAt,
-                tournamentIds: match.tournamentIds ?? [],
+                campArenaIds: match.campArenaIds ?? [],
                 calculatorKind: kind,
                 calculatorData: calcData,
             });

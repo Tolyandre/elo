@@ -70,7 +70,7 @@ AuditEntry:
       description: Display name of the acting user at read time
     entity_type:
       type: string
-      enum: [match, game, player, club, tag]
+      enum: [match, game, player, club, tag, arena]
     entity_id:
       $ref: './common.yaml#/Base58ID'
     action:
@@ -81,11 +81,14 @@ AuditEntry:
         Action-specific payload; null when the event carries no details (match
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
         of game/player/club/tag), renamed → AuditRenameDetails, updated →
-        AuditMatchUpdateDetails.
+        AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails
+        (camp config) or AuditCampLinkDetails (match attach/detach).
       oneOf:
         - $ref: '#/AuditEntityDetails'
         - $ref: '#/AuditRenameDetails'
         - $ref: '#/AuditMatchUpdateDetails'
+        - $ref: '#/AuditArenaCampConfigDetails'
+        - $ref: '#/AuditCampLinkDetails'
       nullable: true
 
 AuditEntityDetails:
@@ -156,6 +159,64 @@ AuditMatchUpdateDetails:
             nullable: true
     calculator_changed:
       type: boolean
+
+AuditArenaCampConfigDetails:
+  type: object
+  description: >-
+    Name and date window of a camp arena (ADR-27) as before → after pairs.
+    Create fills the 'to' side, update both sides (changed fields only), delete
+    the 'from' side. Untouched fields stay null.
+  required: [schema_version, name, starts_at, ends_at]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: object
+      nullable: true
+      properties:
+        from:
+          type: string
+          nullable: true
+        to:
+          type: string
+          nullable: true
+    starts_at:
+      type: object
+      nullable: true
+      properties:
+        from:
+          type: string
+          format: date-time
+          nullable: true
+        to:
+          type: string
+          format: date-time
+          nullable: true
+    ends_at:
+      type: object
+      nullable: true
+      properties:
+        from:
+          type: string
+          format: date-time
+          nullable: true
+        to:
+          type: string
+          format: date-time
+          nullable: true
+
+AuditCampLinkDetails:
+  type: object
+  description: One match attach/detach on the camp arena the audit row points at.
+  required: [schema_version, op, match_id]
+  properties:
+    schema_version:
+      type: integer
+    op:
+      type: string
+      enum: [attach, detach]
+    match_id:
+      $ref: './common.yaml#/Base58ID'
 
 AuditPage:
   type: object

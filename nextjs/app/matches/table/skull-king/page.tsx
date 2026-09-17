@@ -26,8 +26,8 @@ import { toStorage as skToStorage } from "@/components/calculators/skull-king/st
 import { useTableSession, waitForSyncedMatch } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
 import { useOffline } from "@/app/offline/OfflineContext";
-import { useTournamentSelection } from "@/hooks/useTournamentSelection";
-import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
+import { useCampSelection } from "@/hooks/useCampSelection";
+import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -178,20 +178,17 @@ function SkullKingGame() {
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState("");
 
-    // Tournament selection for the saved match. Mandatory tournaments (all players
-    // are members) are applied server-side; checked carries the host's explicit picks.
-    const [checkedTournamentIds, setCheckedTournamentIds] = useState<Base58ID[]>([]);
-    const tournamentDate = useMemo(() => new Date(), []);
-    const tournamentPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
+    // Camp selection for the saved match (ADR-27): default-checked by
+    // participation, freely toggleable by the host.
+    const [campOverrides, setCampOverrides] = useState<Partial<Record<string, boolean>>>({});
+    const campDate = useMemo(() => new Date(), []);
+    const campPlayerIds = useMemo(() => gameState.players.map((p) => p.id), [gameState.players]);
     const {
-        active: activeTournamentsForSave,
-        isMandatory: isTournamentMandatory,
-        idsToSubmit: tournamentIdsToSubmit,
-    } = useTournamentSelection(tournamentPlayerIds, tournamentDate);
-    const toggleTournament = (id: Base58ID, checked: boolean) =>
-        setCheckedTournamentIds((prev) =>
-            checked ? [...new Set([...prev, id])] : prev.filter((t) => t !== id),
-        );
+        active: activeCampsForSave,
+        checked: checkedCampIds,
+        toggle: toggleCamp,
+        idsToSubmit: campIdsToSubmit,
+    } = useCampSelection(campPlayerIds, campDate, { overrides: campOverrides, setOverrides: setCampOverrides });
 
     // Reset bid reveal when round changes
     useEffect(() => {
@@ -415,7 +412,7 @@ function SkullKingGame() {
             const result = await submitMatch({
                 game_id: GAME_ID_SKULL_KING,
                 score,
-                tournament_ids: tournamentIdsToSubmit(checkedTournamentIds),
+                camp_arena_ids: campIdsToSubmit(),
                 calculator_kind: "skull-king",
                 calculator_data: skToStorage(gameState) as unknown as Record<string, never>,
             });
@@ -941,11 +938,10 @@ function SkullKingGame() {
 
                                     {currentRound === TOTAL_ROUNDS && isHost && (
                                         <div className="space-y-2">
-                                            <TournamentCheckboxes
-                                                active={activeTournamentsForSave}
-                                                checked={checkedTournamentIds}
-                                                isMandatory={isTournamentMandatory}
-                                                onToggle={toggleTournament}
+                                            <CampCheckboxes
+                                                active={activeCampsForSave}
+                                                checked={checkedCampIds}
+                                                onToggle={toggleCamp}
                                             />
                                             {saveError && (
                                                 <p className="text-red-600 text-sm">{saveError}</p>

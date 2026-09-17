@@ -9,8 +9,8 @@ import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
 import { Match, updateMatchPromise } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
-import { useTournamentSelection } from "@/hooks/useTournamentSelection";
-import { TournamentCheckboxes } from "@/components/tournament-checkboxes";
+import { useCampSelection } from "@/hooks/useCampSelection";
+import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
 import { LoginLink } from "@/components/login-link";
@@ -77,10 +77,12 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     // Persisted so the one-time prefill from the edited match survives a refresh
     // instead of clobbering the user's draft.
     const [seeded, setSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:seeded`, false);
-    // Tournaments whose checkbox is ticked. The set submitted is this ∩ the
-    // tournaments active on the match date (checkboxes appear/disappear with date).
-    const [checkedTournamentIds, setCheckedTournamentIds] = useSessionStorage<Base58ID[]>(`match-form:${draftKey}:tournaments`, []);
-    const [tournamentsSeeded, setTournamentsSeeded] = useSessionStorage<boolean>(`match-form:${draftKey}:tournamentsSeeded`, false);
+    // Explicit camp-checkbox toggles keyed by camp id (ADR-27): they win over
+    // the base set (the match's camps on edit, the participation rule on create).
+    const [campOverrides, setCampOverrides] = useSessionStorage<Partial<Record<string, boolean>>>(`match-form:${draftKey}:camp-overrides`, {});
+    // The match's current camps on edit — the pre-checked base set, seeded
+    // once from the edited match. Links are editable (ADR-27, revised).
+    const [campBaseIds, setCampBaseIds] = useSessionStorage<Base58ID[]>(`match-form:${draftKey}:camp-base`, []);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
@@ -96,6 +98,8 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         sessionStorage.removeItem(`match-form:${draftKey}:date`);
         sessionStorage.removeItem(`match-form:${draftKey}:original-date`);
         sessionStorage.removeItem(`match-form:${draftKey}:seeded`);
+        sessionStorage.removeItem(`match-form:${draftKey}:camp-overrides`);
+        sessionStorage.removeItem(`match-form:${draftKey}:camp-base`);
     };
 
     const resolvePlayerName = (id: string): string => {
@@ -149,43 +153,39 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editPending, editSaved, loading, isEdit, seeded]);
 
-    // Tournaments active on the match date (now for a new match, the edited date
-    // otherwise). Their checkboxes appear/disappear as the date changes.
+    // Camps shown on the match date (now for a new match, the edited date
+    // otherwise) — their checkboxes appear/disappear as the date changes (ADR-27).
     const relevantDate = useMemo(
         () => (isEdit && editDate ? new Date(editDate) : new Date()),
         [isEdit, editDate],
     );
     const playerIds = useMemo(() => participants.map((p) => p.id), [participants]);
-    const { active: activeTournamentsForDate, isMandatory, idsToSubmit } = useTournamentSelection(
-        playerIds,
-        relevantDate,
+    const selectedCampSet = useMemo(
+        () => (isEdit ? campBaseIds : undefined),
+        [isEdit, campBaseIds],
     );
-    // Mandatory tournaments (all players are members) are applied server-side; the
-    // checked set only carries explicit/optional choices and any kept on edit.
-    const tournamentIdsToSubmit = useMemo(
-        () => idsToSubmit(checkedTournamentIds),
-        [idsToSubmit, checkedTournamentIds],
-    );
+    const {
+        active: activeCampsForDate,
+        checked: checkedCampIds,
+        toggle: toggleCamp,
+        idsToSubmit: campIdsToSubmit,
+    } = useCampSelection(playerIds, relevantDate, {
+        selectedIds: selectedCampSet,
+        overrides: campOverrides,
+        setOverrides: setCampOverrides,
+    });
 
-    // Seed the checked set once from the edited match. A brand-new match starts with
-    // nothing pre-checked: tournaments where all players participate are auto-applied
-    // by the server (and shown checked + locked), anything else is an explicit choice.
+    // Seed the base set once from the edited match: the checkboxes start
+    // pre-checked with the match's camps and stay editable (ADR-27, revised).
     useEffect(() => {
-        if (tournamentsSeeded || loading) return;
+        if (isEdit === false || seeded === false || campBaseIds.length > 0) return;
         if (editPending) {
-            setCheckedTournamentIds(editPending.tournamentIds ?? []);
+            setCampBaseIds(editPending.campArenaIds ?? []);
         } else if (editSaved) {
-            setCheckedTournamentIds(editSaved.tournaments.map((t) => t.id));
+            setCampBaseIds(editSaved.camps.map((c) => c.id));
         }
-        setTournamentsSeeded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tournamentsSeeded, loading, editPending, editSaved]);
-
-    const toggleTournament = (id: Base58ID, checked: boolean) => {
-        setCheckedTournamentIds(
-            checked ? [...new Set([...checkedTournamentIds, id])] : checkedTournamentIds.filter((t) => t !== id),
-        );
-    };
+    }, [isEdit, seeded, editPending, editSaved]);
 
     const handlePlayersChange = (newIds: Base58ID[]) => {
         setParticipants(
@@ -231,7 +231,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     score,
                     // Untouched date → original full-precision instant (edit-date.ts).
                     date: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
-                    tournament_ids: tournamentIdsToSubmit,
+                    // The desired camp set (ADR-27, revised): the server diffs
+                    // it against the stored links (attach/detach, audited).
+                    camp_arena_ids: campIdsToSubmit(),
                 });
                 clearDraft();
                 invalidateMatches();
@@ -245,14 +247,14 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     gameId: selectedGameId,
                     score,
                     createdAt: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
-                    tournamentIds: tournamentIdsToSubmit,
+                    campArenaIds: campIdsToSubmit(),
                 });
                 clearDraft();
                 router.push(`/matches/view?id=${encodeURIComponent(editPending.clientId)}`);
                 return;
             }
 
-            await submitMatch({ game_id: selectedGameId, score, tournament_ids: tournamentIdsToSubmit });
+            await submitMatch({ game_id: selectedGameId, score, camp_arena_ids: campIdsToSubmit() });
             setSuccess(true);
             clearDraft();
             // The match is queued under its final id; the sync (triggered right
@@ -315,15 +317,14 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 </label>
                 <GameCombobox value={selectedGameId} onChange={setSelectedGameId} />
             </div>
-            <TournamentCheckboxes
-                active={activeTournamentsForDate}
-                checked={checkedTournamentIds}
-                isMandatory={isMandatory}
-                onToggle={toggleTournament}
+            <CampCheckboxes
+                active={activeCampsForDate}
+                checked={checkedCampIds}
+                onToggle={toggleCamp}
             />
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} activeTournamentIds={tournamentIdsToSubmit} />
+                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} activeCampIds={checkedCampIds} />
 
             </div>
             {participants.length > 0 && (

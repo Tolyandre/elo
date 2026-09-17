@@ -10,10 +10,11 @@ ArenasCollection:
         in: query
         schema:
           type: string
-          enum: [games, tournaments]
+          enum: [games, camps, tournaments]
         description: >-
-          games returns every non-tournament arena except the global one;
-          tournaments returns only the tournament arenas.
+          games returns every user-created arena except camps and the global
+          one; camps returns only camp arenas (ADR-27); tournaments returns
+          only the tournament arenas (empty until ADR-26).
       - name: game_id
         in: query
         schema:
@@ -104,7 +105,7 @@ ArenaItem:
   patch:
     operationId: UpdateArena
     tags: [arenas]
-    summary: Update a user-created arena's name, filter and settings (editor only)
+    summary: Update a user-created arena's name, filter/dates and settings (editor only)
     security:
       - cookieAuth: []
     parameters:
@@ -145,7 +146,9 @@ ArenaItem:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: The arena is auto-managed (per-game, per-tournament or the global one)
+        description: >-
+          The arena is auto-managed (per-game, per-tournament or the global
+          one), or new camp dates do not cover already-linked matches.
         content:
           application/json:
             schema:
@@ -291,7 +294,7 @@ MatchFilter:
   description: >-
     The arena's match filter (ADR-24): a match meets the filter iff it
     satisfies every present condition; null conditions are absent. game_ids and
-    tag_ids are OR'd; both empty mean any game.
+    tag_ids are OR'd; both empty mean any game. Camp arenas have no filter.
   properties:
     date_from:
       type: string
@@ -309,8 +312,6 @@ MatchFilter:
       type: array
       items:
         $ref: './common.yaml#/Base58ID'
-    tournament_id:
-      $ref: './common.yaml#/Base58ID'
   required: [game_ids, tag_ids]
 
 ArenaSettings:
@@ -328,12 +329,38 @@ Arena:
       $ref: './common.yaml#/Base58ID'
     name:
       type: string
+    camp:
+      type: boolean
+      description: >-
+        Camp arena (ADR-27): a date-bounded rating space whose membership is
+        the explicit match link, not a filter. Camps have no filter, no
+        leagues, and carry starts_at/ends_at.
     filter:
-      $ref: '#/MatchFilter'
+      allOf:
+        - $ref: '#/MatchFilter'
+      nullable: true
+      description: null for camp arenas.
     settings:
       $ref: '#/ArenaSettings'
     settings_schema_version:
       type: integer
+    starts_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: Camp window start (camps only).
+    ends_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: Camp window end (camps only).
+    player_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+      description: >-
+        Camp participants, derived from the arena settlements (camps in list
+        responses only).
     game_id:
       $ref: './common.yaml#/Base58ID'
       nullable: true
@@ -349,22 +376,35 @@ Arena:
       description: Not null while the arena waits for a background recalculation.
     matches_count:
       type: integer
-      description: Number of matches meeting the arena's filter (list responses only).
-  required: [id, name, filter, settings, settings_schema_version]
+      description: Number of matches meeting the arena's filter, or linked to the camp (list responses only).
+  required: [id, name, camp, filter, settings, settings_schema_version]
 
 ArenaInput:
   type: object
   description: >-
     Create/update body. The settings object is validated server-side against
     the current arena-settings JSON Schema; league parameters live there.
+    Camp arenas (camp: true) take starts_at/ends_at and no filter; every other
+    arena takes a filter.
   properties:
     name:
       type: string
+    camp:
+      type: boolean
+      default: false
     filter:
       $ref: '#/MatchFilter'
+    starts_at:
+      type: string
+      format: date-time
+      nullable: true
+    ends_at:
+      type: string
+      format: date-time
+      nullable: true
     settings:
       $ref: '#/ArenaSettings'
-  required: [name, filter, settings]
+  required: [name, settings]
 
 ArenaResult:
   type: object

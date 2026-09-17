@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/arena-camp-config.v1.json",
+  "title": "Audit camp arena configuration details (v1)",
+  "description": "Name and date window of a camp arena as before → after pairs. Create fills the 'to' side (from: null), update both sides (changed fields only), delete the 'from' side (to: null) so the final state survives the arena. Untouched fields stay null.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "starts_at", "ends_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "minLength": 1 },
+        "to": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "starts_at": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "format": "date-time" },
+        "to": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "ends_at": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "format": "date-time" },
+        "to": { "type": ["string", "null"], "format": "date-time" }
+      }
+    }
+  }
+}

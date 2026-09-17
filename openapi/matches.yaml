@@ -78,13 +78,14 @@ MatchesCollection:
                   Optional match time for offline-created matches. Must not be in
                   the future and not older than 30 days; Elo is recalculated from
                   this date. When omitted the server uses the current time.
-              tournament_ids:
+              camp_arena_ids:
                 type: array
                 items:
                     $ref: './common.yaml#/Base58ID'
                 description: >-
-                  Optional tournament IDs this match belongs to. Every match
-                  player is auto-enrolled into each tournament.
+                  Optional camp arena IDs (ADR-27) this match belongs to. Each
+                  arena must exist, be a camp, and its window must contain the
+                  match date; the links become part of the camp's stats.
               calculator_kind:
                 type: string
                 nullable: true
@@ -214,13 +215,18 @@ MatchItem:
               date:
                 type: string
                 format: date-time
-              tournament_ids:
+              camp_arena_ids:
                 type: array
                 items:
                     $ref: './common.yaml#/Base58ID'
                 description: >-
-                  Tournament IDs this match belongs to. Associations are replaced
-                  with this set; players are enrolled but never un-enrolled.
+                  The desired camp arena set (ADR-27). The server diffs it
+                  against the stored links — attaching and detaching as needed,
+                  each change audited and both camps recalculated. Every
+                  requested arena must exist, be a camp, and its window must
+                  contain the new match date. Omit to keep the stored links
+                  untouched; a date moved outside a linked camp without
+                  detaching it is a 409.
               calculator_kind:
                 type: string
                 nullable: true
@@ -269,7 +275,9 @@ MatchItem:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: History change conflict
+        description: >-
+          History change conflict, or the new date falls outside a linked
+          camp's window (detach the match from that camp in the same request)
         content:
           application/json:
             schema:
@@ -310,9 +318,9 @@ MatchMarketsPath:
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
-MatchTournament:
+MatchCamp:
   type: object
-  description: A tournament a match belongs to
+  description: A camp arena (ADR-27) a match belongs to
   properties:
     id:
       $ref: './common.yaml#/Base58ID'
@@ -358,11 +366,11 @@ Match:
       description: Map of player_id (string) to player score data
     has_markets:
       type: boolean
-    tournaments:
+    camps:
       type: array
       items:
-        $ref: '#/MatchTournament'
-      description: Tournaments this match belongs to
+        $ref: '#/MatchCamp'
+      description: Camp arenas (ADR-27) this match belongs to
     calculator_kind:
       type: string
       nullable: true

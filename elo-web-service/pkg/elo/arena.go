@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -46,36 +47,42 @@ func mustParseID(what, s string) id.ID {
 	return parsed
 }
 
-// MatchFilter decides which matches belong to an arena. A match meets the
-// filter iff it satisfies every present condition (nil = condition absent);
-// GameIDs/TagIDs are OR'd, and both empty mean any game. The matching SQL
-// lives in pkg/db/query/arenas.sql (the canonical copy of the condition).
+// MatchFilter decides which matches belong to a (non-camp) arena. A match
+// meets the filter iff it satisfies every present condition (nil = condition
+// absent); GameIDs/TagIDs are OR'd, and both empty mean any game. The matching
+// SQL lives in pkg/db/query/arenas.sql (the canonical copy of the condition).
 type MatchFilter struct {
-	DateFrom     *time.Time
-	DateTo       *time.Time
-	GameIDs      []id.ID
-	TagIDs       []id.ID
-	TournamentID *id.ID
+	DateFrom *time.Time
+	DateTo   *time.Time
+	GameIDs  []id.ID
+	TagIDs   []id.ID
 }
 
 // IsUnconditional reports whether the filter admits every match (the global
 // arena's filter).
 func (f MatchFilter) IsUnconditional() bool {
 	return f.DateFrom == nil && f.DateTo == nil &&
-		len(f.GameIDs) == 0 && len(f.TagIDs) == 0 && f.TournamentID == nil
+		len(f.GameIDs) == 0 && len(f.TagIDs) == 0
 }
 
-// Arena is the domain view of an arenas row joined with its filter and with
-// the settings document parsed (the document was validated at write time).
+// Arena is the domain view of an arenas row joined with its filter (camp
+// arenas have none, ADR-27) and with the settings document parsed (the
+// document was validated at write time).
 type Arena struct {
 	ID              id.ID
 	Name            string
 	Settings        arenasettings.Settings
 	SettingsRaw     json.RawMessage
 	SettingsVersion int
-	// Anchor columns of auto-managed arenas; both nil for user-created ones.
+	// Anchor columns of auto-managed arenas; both nil for user-created ones
+	// (including camps).
 	GameID       *id.ID
 	TournamentID *id.ID
+	// Camp arena (ADR-27): membership is the explicit camp_matches link, the
+	// window bounds are required, and the filter is absent.
+	Camp     bool
+	StartsAt *time.Time
+	EndsAt   *time.Time
 	// Dirty queue state: StaleAt nil = up to date; RecalcFrom nil (while
 	// stale) = full recalc pending, else the minimum replay date.
 	RecalcFrom *time.Time
@@ -91,6 +98,8 @@ func (a Arena) HasLeagues() bool { return len(a.Settings.Leagues) > 0 }
 type ArenaWithCount struct {
 	Arena
 	MatchesCount int
+	// Derived camp participants (settlements); empty for non-camps.
+	CampPlayerIds []id.ID
 }
 
 // ArenaPlayer is one row of the arena players endpoint: latest settlement
@@ -125,8 +134,9 @@ type ArenaUpdateReport struct {
 type IArenaService interface {
 	// Reads.
 	ListArenas(ctx context.Context) ([]ArenaWithCount, error)
-	// ListArenasByKind narrows the list: "games" returns every non-tournament
-	// arena except the global one, "tournaments" only the tournament arenas.
+	// ListArenasByKind narrows the list: "games" returns every user-created
+	// arena except camps and the global one, "camps" only camp arenas
+	// (ADR-27), "tournaments" only the tournament arenas (empty until ADR-26).
 	ListArenasByKind(ctx context.Context, kind string) ([]ArenaWithCount, error)
 	GetArena(ctx context.Context, arenaID id.ID) (Arena, error)
 	ListArenasForGame(ctx context.Context, gameID id.ID) ([]Arena, error)
@@ -139,16 +149,17 @@ type IArenaService interface {
 	ListArenaMatchesPaginated(ctx context.Context, arg db.ListArenaMatchesPaginatedParams) ([]db.ListArenaMatchesPaginatedRow, error)
 
 	// CRUD (editor-gated at the handler). Settings must be a document valid
-	// against the current arenasettings schema.
-	CreateArena(ctx context.Context, opts ArenaWriteOpts) (Arena, error)
-	UpdateArena(ctx context.Context, arenaID id.ID, opts ArenaWriteOpts) (Arena, error)
-	DeleteArena(ctx context.Context, arenaID id.ID) (Arena, error)
+	// against the current arenasettings schema. Camp arenas take
+	// Camp + StartsAt + EndsAt instead of a filter and may not define leagues.
+	// actor is recorded in the audit log (camps only); zero skips the audit row.
+	CreateArena(ctx context.Context, actor id.ID, opts ArenaWriteOpts) (Arena, error)
+	UpdateArena(ctx context.Context, actor id.ID, arenaID id.ID, opts ArenaWriteOpts) (Arena, error)
+	DeleteArena(ctx context.Context, actor id.ID, arenaID id.ID) (Arena, error)
 
 	// Lifecycle hooks for auto-managed arenas; called inside the creating /
 	// renaming service's transaction. The created arenas start stale and are
 	// filled by the background worker.
 	EnsureGameArena(ctx context.Context, q *db.Queries, gameID id.ID, gameName string) error
-	EnsureTournamentArena(ctx context.Context, q *db.Queries, tournamentID id.ID, tournamentName string) error
 	SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error
 
 	// Update pipeline. MarkAndDrainAfterMatchWrite marks the affected arenas
@@ -171,9 +182,14 @@ type IArenaService interface {
 }
 
 // ArenaWriteOpts carries the editable fields for CreateArena/UpdateArena.
+// Camp arenas (Camp=true) require StartsAt/EndsAt and ignore Filter; every
+// other arena kind requires a Filter and no window.
 type ArenaWriteOpts struct {
-	Name   string
-	Filter MatchFilter
+	Name     string
+	Camp     bool
+	StartsAt *time.Time
+	EndsAt   *time.Time
+	Filter   MatchFilter
 	// SettingsRaw must validate against the current arenasettings schema.
 	SettingsRaw json.RawMessage
 }
@@ -216,8 +232,8 @@ func ptrText(s *string) pgtype.Text {
 }
 
 func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int32,
-	gameID, tournamentID *id.ID, recalcFrom, staleAt, dateFrom, dateTo pgtype.Timestamptz,
-	filterGameIDs, filterTagIDs []id.ID, filterTournamentID *id.ID,
+	gameID, tournamentID *id.ID, camp bool, startsAt, endsAt, recalcFrom, staleAt, dateFrom, dateTo pgtype.Timestamptz,
+	filterGameIDs, filterTagIDs []id.ID,
 ) (Arena, error) {
 	settings, err := arenasettings.Parse(raw)
 	if err != nil {
@@ -227,31 +243,34 @@ func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int
 		ID: arenaID, Name: name,
 		Settings: settings, SettingsRaw: raw, SettingsVersion: int(version),
 		GameID: gameID, TournamentID: tournamentID,
+		Camp:       camp,
+		StartsAt:   tsPtr(startsAt),
+		EndsAt:     tsPtr(endsAt),
 		RecalcFrom: tsPtr(recalcFrom), StaleAt: tsPtr(staleAt),
 		Filter: MatchFilter{
 			DateFrom: tsPtr(dateFrom), DateTo: tsPtr(dateTo),
-			GameIDs: filterGameIDs, TagIDs: filterTagIDs, TournamentID: filterTournamentID,
+			GameIDs: filterGameIDs, TagIDs: filterTagIDs,
 		},
 	}, nil
 }
 
 func arenaFromGetArenaRow(r db.GetArenaRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromListRow(r db.ListArenasRow) (ArenaWithCount, error) {
 	a, err := arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
-	return ArenaWithCount{Arena: a, MatchesCount: int(r.MatchesCount)}, err
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+	return ArenaWithCount{Arena: a, MatchesCount: int(r.MatchesCount), CampPlayerIds: r.CampPlayerIds}, err
 }
 
 func arenaFromStaleRow(r db.ListStaleArenasRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 // ---------------------------------------------------------------------------
@@ -298,8 +317,8 @@ func (s *ArenaService) ListArenasForGame(ctx context.Context, gameID id.ID) ([]A
 	out := make([]Arena, 0, len(rows))
 	for _, r := range rows {
 		a, err := arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-			r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-			r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
+			r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+			r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 		if err != nil {
 			return nil, err
 		}
@@ -314,8 +333,8 @@ func (s *ArenaService) GetArenaByGame(ctx context.Context, gameID id.ID) (Arena,
 		return Arena{}, fmt.Errorf("get arena for game %s: %w", gameID, err)
 	}
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id.ID) (Arena, error) {
@@ -324,8 +343,8 @@ func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id
 		return Arena{}, fmt.Errorf("get arena for tournament %s: %w", tournamentID, err)
 	}
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.RecalcFrom, r.StaleAt,
-		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds, r.FilterTournamentID)
+		r.GameID, r.TournamentID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 // GetArenaPlayers returns the arena's current players ranked, with the
@@ -493,27 +512,54 @@ func (s *ArenaService) ListArenaMatchesPaginated(ctx context.Context, arg db.Lis
 
 // validateSettings validates a settings document and returns it with the
 // current schema version stamped by the caller.
-func validateSettings(raw json.RawMessage) error {
+func validateSettings(raw json.RawMessage) (arenasettings.Settings, error) {
 	if err := arenasettings.Validate(raw); err != nil {
-		return err
+		return arenasettings.Settings{}, err
 	}
-	if _, err := arenasettings.Parse(raw); err != nil {
-		return err
+	settings, err := arenasettings.Parse(raw)
+	if err != nil {
+		return arenasettings.Settings{}, err
+	}
+	return settings, nil
+}
+
+// validateCampWrite enforces the camp invariants the DB CHECKs also guard:
+// a required, ordered window, and no leagues (camps rank like today's
+// tournament arenas — a single rating ≡ elo list).
+func validateCampWrite(settings arenasettings.Settings, startsAt, endsAt *time.Time) error {
+	if len(settings.Leagues) > 0 {
+		return ErrCampLeaguesNotAllowed
+	}
+	if startsAt == nil || endsAt == nil {
+		return ErrCampDatesRequired
+	}
+	if !startsAt.Before(*endsAt) {
+		return ErrCampDatesInvalid
 	}
 	return nil
 }
 
-func (s *ArenaService) CreateArena(ctx context.Context, opts ArenaWriteOpts) (Arena, error) {
-	if err := validateSettings(opts.SettingsRaw); err != nil {
+func (s *ArenaService) CreateArena(ctx context.Context, actor id.ID, opts ArenaWriteOpts) (Arena, error) {
+	settings, err := validateSettings(opts.SettingsRaw)
+	if err != nil {
 		return Arena{}, err
+	}
+	if opts.Camp {
+		if err := validateCampWrite(settings, opts.StartsAt, opts.EndsAt); err != nil {
+			return Arena{}, err
+		}
 	}
 	created, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (Arena, error) {
 		if err := ensureArenaNameFree(ctx, q, opts.Name, nil); err != nil {
 			return Arena{}, err
 		}
-		filterID, err := createMatchFilter(ctx, q, opts.Filter)
-		if err != nil {
-			return Arena{}, err
+		var filterID *id.ID
+		if !opts.Camp {
+			fid, err := createMatchFilter(ctx, q, opts.Filter)
+			if err != nil {
+				return Arena{}, err
+			}
+			filterID = &fid
 		}
 		row, err := q.CreateArena(ctx, db.CreateArenaParams{
 			ID:                    id.NewMonotonic(),
@@ -521,6 +567,9 @@ func (s *ArenaService) CreateArena(ctx context.Context, opts ArenaWriteOpts) (Ar
 			MatchFilterID:         filterID,
 			Settings:              opts.SettingsRaw,
 			SettingsSchemaVersion: arenasettings.CurrentVersion,
+			Camp:                  opts.Camp,
+			StartsAt:              timePtrTz(opts.StartsAt),
+			EndsAt:                timePtrTz(opts.EndsAt),
 		})
 		if err != nil {
 			return Arena{}, fmt.Errorf("create arena: %w", err)
@@ -528,6 +577,12 @@ func (s *ArenaService) CreateArena(ctx context.Context, opts ArenaWriteOpts) (Ar
 		// A new arena needs a full recalculation before it has data.
 		if err := q.MarkArenasStaleFull(ctx, []id.ID{row.ID}); err != nil {
 			return Arena{}, fmt.Errorf("mark new arena stale: %w", err)
+		}
+		if opts.Camp {
+			if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionCreated, row.ID,
+				audit.KindArenaCampConf, audit.NewCampConfigCreated(opts.Name, *opts.StartsAt, *opts.EndsAt)); err != nil {
+				return Arena{}, err
+			}
 		}
 		created, err := q.GetArena(ctx, row.ID)
 		if err != nil {
@@ -541,8 +596,9 @@ func (s *ArenaService) CreateArena(ctx context.Context, opts ArenaWriteOpts) (Ar
 	return created, nil
 }
 
-func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts ArenaWriteOpts) (Arena, error) {
-	if err := validateSettings(opts.SettingsRaw); err != nil {
+func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.ID, opts ArenaWriteOpts) (Arena, error) {
+	settings, err := validateSettings(opts.SettingsRaw)
+	if err != nil {
 		return Arena{}, err
 	}
 	if arenaID == GlobalArenaID {
@@ -553,17 +609,42 @@ func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts Aren
 		if err != nil {
 			return Arena{}, err
 		}
-		// Auto-managed arenas are owned by their game/tournament lifecycle;
-		// their filters and settings are system-managed (ADR-24).
+		// Auto-managed arenas are owned by their game lifecycle; their filters
+		// and settings are system-managed (ADR-24). Camp arenas are never
+		// auto-managed (their anchors are NULL since ADR-27).
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
 		}
 		if err := ensureArenaNameFree(ctx, q, opts.Name, &arenaID); err != nil {
 			return Arena{}, err
 		}
-		filterID, err := createMatchFilter(ctx, q, opts.Filter)
-		if err != nil {
-			return Arena{}, err
+
+		var details audit.ArenaCampConfigDetails
+		if existing.Camp {
+			if err := validateCampWrite(settings, opts.StartsAt, opts.EndsAt); err != nil {
+				return Arena{}, err
+			}
+			// Dates may not be narrowed past a linked match (ADR-27): the
+			// checkbox criterion and the stored links must not disagree.
+			dateRange, err := q.GetCampMatchDateRange(ctx, arenaID)
+			if err != nil && !db.IsNoRows(err) {
+				return Arena{}, fmt.Errorf("get camp match date range: %w", err)
+			}
+			if err == nil {
+				if opts.StartsAt.After(dateRange.MinDate) || opts.EndsAt.Before(dateRange.MaxDate) {
+					return Arena{}, ErrCampDatesExcludeMatch
+				}
+			}
+			details = campConfigDiff(existing, opts)
+		}
+
+		var filterID *id.ID
+		if !opts.Camp {
+			fid, err := createMatchFilter(ctx, q, opts.Filter)
+			if err != nil {
+				return Arena{}, err
+			}
+			filterID = &fid
 		}
 		if _, err := q.UpdateArena(ctx, db.UpdateArenaParams{
 			ID:                    arenaID,
@@ -571,12 +652,22 @@ func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts Aren
 			MatchFilterID:         filterID,
 			Settings:              opts.SettingsRaw,
 			SettingsSchemaVersion: arenasettings.CurrentVersion,
+			Camp:                  opts.Camp,
+			StartsAt:              timePtrTz(opts.StartsAt),
+			EndsAt:                timePtrTz(opts.EndsAt),
 		}); err != nil {
 			return Arena{}, fmt.Errorf("update arena %s: %w", arenaID, err)
 		}
-		// A filter or settings change affects the whole history: full recalc.
+		// A filter, window or settings change affects the whole history: full
+		// recalc.
 		if err := q.MarkArenasStaleFull(ctx, []id.ID{arenaID}); err != nil {
 			return Arena{}, fmt.Errorf("mark arena stale: %w", err)
+		}
+		if existing.Camp {
+			if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionUpdated, arenaID,
+				audit.KindArenaCampConf, details); err != nil {
+				return Arena{}, err
+			}
 		}
 		updated, err := q.GetArena(ctx, arenaID)
 		if err != nil {
@@ -590,7 +681,23 @@ func (s *ArenaService) UpdateArena(ctx context.Context, arenaID id.ID, opts Aren
 	return updated, nil
 }
 
-func (s *ArenaService) DeleteArena(ctx context.Context, arenaID id.ID) (Arena, error) {
+// campConfigDiff builds the before → after audit details for a camp update,
+// covering only the fields that changed.
+func campConfigDiff(existing Arena, opts ArenaWriteOpts) audit.ArenaCampConfigDetails {
+	var name, startsAt, endsAt *[2]*string
+	if existing.Name != opts.Name {
+		name = &[2]*string{strPtr(existing.Name), strPtr(opts.Name)}
+	}
+	if existing.StartsAt == nil || !existing.StartsAt.Equal(*opts.StartsAt) {
+		startsAt = &[2]*string{strPtr(existing.StartsAt.Format(time.RFC3339Nano)), strPtr(opts.StartsAt.Format(time.RFC3339Nano))}
+	}
+	if existing.EndsAt == nil || !existing.EndsAt.Equal(*opts.EndsAt) {
+		endsAt = &[2]*string{strPtr(existing.EndsAt.Format(time.RFC3339Nano)), strPtr(opts.EndsAt.Format(time.RFC3339Nano))}
+	}
+	return audit.NewCampConfigChanged(name, startsAt, endsAt)
+}
+
+func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.ID) (Arena, error) {
 	if arenaID == GlobalArenaID {
 		return Arena{}, ErrGlobalArenaIsPermanent
 	}
@@ -607,6 +714,14 @@ func (s *ArenaService) DeleteArena(ctx context.Context, arenaID id.ID) (Arena, e
 			return Arena{}, fmt.Errorf("delete arena %s: %w", arenaID, err)
 		}
 		existing.Name = row.Name
+		if existing.Camp {
+			// The camp_matches links and settlements cascade; matches survive
+			// as ordinary matches (ADR-27).
+			if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionDeleted, arenaID,
+				audit.KindArenaCampConf, audit.NewCampConfigDeleted(existing.Name, *existing.StartsAt, *existing.EndsAt)); err != nil {
+				return Arena{}, err
+			}
+		}
 		return existing, nil
 	})
 	if err != nil {
@@ -618,8 +733,7 @@ func (s *ArenaService) DeleteArena(ctx context.Context, arenaID id.ID) (Arena, e
 // ensureArenaNameFree enforces unique arena names (case-insensitively) for the
 // user-facing CRUD. excludeID skips the arena being renamed; nil on create.
 // Deliberately service-level rather than a unique index: auto-managed arena
-// names follow game/tournament renames, and a collision there must not fail
-// the rename.
+// names follow game renames, and a collision there must not fail the rename.
 func ensureArenaNameFree(ctx context.Context, q *db.Queries, name string, excludeID *id.ID) error {
 	taken, err := q.ArenaNameExists(ctx, db.ArenaNameExistsParams{
 		Name:      name,
@@ -638,12 +752,11 @@ func ensureArenaNameFree(ctx context.Context, q *db.Queries, name string, exclud
 func createMatchFilter(ctx context.Context, q *db.Queries, f MatchFilter) (id.ID, error) {
 	filterID := id.NewMonotonic()
 	if _, err := q.CreateMatchFilter(ctx, db.CreateMatchFilterParams{
-		ID:           filterID,
-		DateFrom:     timePtrTz(f.DateFrom),
-		DateTo:       timePtrTz(f.DateTo),
-		GameIds:      f.GameIDs,
-		TagIds:       f.TagIDs,
-		TournamentID: f.TournamentID,
+		ID:       filterID,
+		DateFrom: timePtrTz(f.DateFrom),
+		DateTo:   timePtrTz(f.DateTo),
+		GameIds:  f.GameIDs,
+		TagIds:   f.TagIDs,
 	}); err != nil {
 		return "", fmt.Errorf("create match filter: %w", err)
 	}
@@ -733,33 +846,10 @@ func (s *ArenaService) EnsureGameArena(ctx context.Context, q *db.Queries, gameI
 	})
 }
 
-// EnsureTournamentArena creates the tournament arena: no leagues, rating ≡ elo.
-func (s *ArenaService) EnsureTournamentArena(ctx context.Context, q *db.Queries, tournamentID id.ID, tournamentName string) error {
-	if _, err := q.GetArenaByTournament(ctx, &tournamentID); !db.IsNoRows(err) {
-		return err
-	}
-	_, _, startingElo, err := s.defaultLeagueParams(ctx)
-	if err != nil {
-		return err
-	}
-	raw, err := settingsDoc(startingElo, nil)
-	if err != nil {
-		return err
-	}
-	return createAutoArena(ctx, q, arenaCreateInput{
-		name:           arenaName(tournamentName),
-		settings:       raw,
-		tournamentID:   &tournamentID,
-		startingRating: startingElo,
-		startingElo:    startingElo,
-	})
-}
-
 type arenaCreateInput struct {
 	name           string
 	settings       json.RawMessage
 	gameID         *id.ID
-	tournamentID   *id.ID
 	startingRating float64
 	startingElo    float64
 }
@@ -770,9 +860,6 @@ func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) er
 	if in.gameID != nil {
 		filter.GameIDs = []id.ID{*in.gameID}
 	}
-	if in.tournamentID != nil {
-		filter.TournamentID = in.tournamentID
-	}
 	filterID, err := createMatchFilter(ctx, q, filter)
 	if err != nil {
 		return err
@@ -780,11 +867,10 @@ func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) er
 	row, err := q.CreateArena(ctx, db.CreateArenaParams{
 		ID:                    id.NewMonotonic(),
 		Name:                  in.name,
-		MatchFilterID:         filterID,
+		MatchFilterID:         &filterID,
 		Settings:              in.settings,
 		SettingsSchemaVersion: arenasettings.CurrentVersion,
 		GameID:                in.gameID,
-		TournamentID:          in.tournamentID,
 	})
 	if err != nil {
 		return fmt.Errorf("create arena: %w", err)
@@ -794,7 +880,7 @@ func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) er
 
 // SyncArenaName renames an auto-managed arena after its entity.
 func (s *ArenaService) SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error {
-	if arena.GameID == nil && arena.TournamentID == nil {
+	if arena.GameID == nil {
 		return nil
 	}
 	return q.UpdateArenaName(ctx, db.UpdateArenaNameParams{ID: arena.ID, Name: arenaName(entityName)})

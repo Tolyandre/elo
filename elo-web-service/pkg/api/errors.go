@@ -33,6 +33,11 @@ func domainStatusCode(err error) int {
 	case errors.Is(err, elo.ErrTooFewPlayers),
 		errors.Is(err, elo.ErrDateChangeTooLarge),
 		errors.Is(err, elo.ErrMatchDateOutOfRange),
+		errors.Is(err, elo.ErrCampArenaInvalid),
+		errors.Is(err, elo.ErrCampDatesRequired),
+		errors.Is(err, elo.ErrCampDatesInvalid),
+		errors.Is(err, elo.ErrCampLeaguesNotAllowed),
+		errors.Is(err, elo.ErrArenaNameTaken),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
@@ -49,9 +54,10 @@ func domainStatusCode(err error) int {
 	case errors.Is(err, elo.ErrHistoryChangeConflict),
 		errors.Is(err, elo.ErrHistoryChangeConflictBettingLock),
 		errors.Is(err, elo.ErrMarketNotOpen),
-		errors.Is(err, elo.ErrTournamentMemberHasMatches),
-		errors.Is(err, elo.ErrTournamentDatesNarrowEloRange),
-		errors.Is(err, elo.ErrTournamentHasMembers),
+		errors.Is(err, elo.ErrCampDatesExcludeMatch),
+		errors.Is(err, elo.ErrMatchOutsideCampWindows),
+		errors.Is(err, elo.ErrArenaIsAutoManaged),
+		errors.Is(err, elo.ErrGlobalArenaIsPermanent),
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),
 		db.IsUniqueViolation(err):
 		return http.StatusConflict

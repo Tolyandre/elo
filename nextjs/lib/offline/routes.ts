@@ -36,7 +36,4 @@ export const PAGES = [
     "/players/view",
     "/settings",
     "/tournaments",
-    "/tournaments/edit",
-    "/tournaments/new",
-    "/tournaments/view",
 ] as const;

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/camp-link.v1.json",
+  "title": "Audit camp link details (v1)",
+  "description": "Attach/detach of one match to/from the camp arena identified by the audit row's entity_id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "op", "match_id"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "op": { "type": "string", "enum": ["attach", "detach"] },
+    "match_id": { "type": "string", "minLength": 1, "x-entity-id": true }
+  }
+}
