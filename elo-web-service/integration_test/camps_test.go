@@ -11,10 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	sourceiofs "github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tolyandre/elo-web-service/migrations"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
@@ -90,34 +87,6 @@ func TestCamp_SeededTournamentConverted(t *testing.T) {
 	}
 }
 
-// migrateToVersion drives the embedded migrations directly (the harness's
-// MigrateUpWithDSN only runs to the latest version).
-func migrateToVersion(t *testing.T, dsn string, version uint) {
-	t.Helper()
-	src, err := sourceiofs.New(migrations.MigrationsFS, ".")
-	if err != nil {
-		t.Fatalf("migration source: %v", err)
-	}
-	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
-	if err != nil {
-		t.Fatalf("migrate instance: %v", err)
-	}
-	defer func() {
-		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
-			t.Logf("close migrate instance: %v %v", srcErr, dbErr)
-		}
-	}()
-	if version == 0 {
-		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-			t.Fatalf("migrate up: %v", err)
-		}
-		return
-	}
-	if err := m.Migrate(version); err != nil {
-		t.Fatalf("migrate to %d: %v", version, err)
-	}
-}
-
 // TestCamp_MigrationPreservesLinksAndStats rebuilds the pre-053 production
 // shape on a fresh database (migrated to 052, seeded with camp members +
 // linked matches, then migrated on) and verifies the conversion: links become
@@ -128,24 +97,8 @@ func TestCamp_MigrationPreservesLinksAndStats(t *testing.T) {
 	ctx := context.Background()
 
 	// Fresh (non-template) database, migrated to the pre-camp version 052.
-	name := fmt.Sprintf("elo_test_migrate_%d", dbCounter.Add(1))
-	if _, err := maintenancePool.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, name)); err != nil {
-		t.Fatalf("create migration test database: %v", err)
-	}
-	u := *templateURL
-	u.Path = "/" + name
-	dsn := u.String()
-	defer func() {
-		if _, err := maintenancePool.Exec(ctx, fmt.Sprintf(`DROP DATABASE %s WITH (FORCE)`, name)); err != nil {
-			t.Logf("drop migration test database: %v", err)
-		}
-	}()
-	migrateToVersion(t, dsn, 52)
-
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
+	pool, dsn, cleanup := setupTestDBAtVersion(t, 52)
+	defer cleanup()
 
 	// Fixture: two camp members, two matches inside the tournament window,
 	// linked via match_tournament (the old association table).
@@ -192,7 +145,7 @@ func TestCamp_MigrationPreservesLinksAndStats(t *testing.T) {
 
 	// Apply 053 and verify the conversion.
 	migrateToVersion(t, dsn, 0)
-	pool, err = pgxpool.New(ctx, dsn)
+	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatalf("reconnect: %v", err)
 	}

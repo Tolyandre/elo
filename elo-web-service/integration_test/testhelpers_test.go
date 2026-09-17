@@ -13,6 +13,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -22,11 +23,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	sourceiofs "github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/tolyandre/elo-web-service/migrations"
 	mainapi "github.com/tolyandre/elo-web-service/pkg/api"
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
@@ -145,6 +149,63 @@ func setupTestDBWithDSN(t *testing.T) (*pgxpool.Pool, string, func()) {
 		if _, err := maintenancePool.Exec(context.Background(),
 			fmt.Sprintf(`DROP DATABASE %s WITH (FORCE)`, name),
 		); err != nil {
+			t.Logf("drop test database: %v", err)
+		}
+	}
+}
+
+// migrateToVersion drives the embedded migrations to an exact schema version
+// (0 = all the way up) — the harness's MigrateUpWithDSN only runs to latest.
+func migrateToVersion(t *testing.T, dsn string, version uint) {
+	t.Helper()
+	src, err := sourceiofs.New(migrations.MigrationsFS, ".")
+	if err != nil {
+		t.Fatalf("migration source: %v", err)
+	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, dsn)
+	if err != nil {
+		t.Fatalf("migrate instance: %v", err)
+	}
+	defer func() {
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			t.Logf("close migrate instance: %v %v", srcErr, dbErr)
+		}
+	}()
+	if version == 0 {
+		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+			t.Fatalf("migrate up: %v", err)
+		}
+		return
+	}
+	if err := m.Migrate(version); err != nil {
+		t.Fatalf("migrate to %d: %v", version, err)
+	}
+}
+
+// setupTestDBAtVersion builds a fresh (non-template) database migrated to
+// exactly the given schema version (0 = latest) — for tests that exercise a
+// migration step itself, where the template's latest state would skip it.
+// The cleanup closes the pool and drops the database; tests keep
+// `defer cleanup()`.
+func setupTestDBAtVersion(t *testing.T, version uint) (*pgxpool.Pool, string, func()) {
+	t.Helper()
+	name := fmt.Sprintf("elo_test_migrate_%d", dbCounter.Add(1))
+	if _, err := maintenancePool.Exec(context.Background(),
+		fmt.Sprintf(`CREATE DATABASE %s`, name)); err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	u := *templateURL
+	u.Path = "/" + name
+	dsn := u.String()
+	migrateToVersion(t, dsn, version)
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("connect test database: %v", err)
+	}
+	return pool, dsn, func() {
+		pool.Close()
+		if _, err := maintenancePool.Exec(context.Background(),
+			fmt.Sprintf(`DROP DATABASE %s WITH (FORCE)`, name)); err != nil {
 			t.Logf("drop test database: %v", err)
 		}
 	}
