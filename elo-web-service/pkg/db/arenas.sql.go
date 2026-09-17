@@ -59,36 +59,28 @@ const countPlayerMatchesInArenaInPeriod = `-- name: CountPlayerMatchesInArenaInP
 SELECT COUNT(*)::int AS count
 FROM matches m
 JOIN match_scores ms ON ms.match_id = m.id
-JOIN arenas a ON a.id = $1
-JOIN match_filters f ON f.id = a.match_filter_id
-WHERE ms.player_id = $2
-  AND m.date >= $3::timestamptz
-  AND m.date <= $4::timestamptz
-  AND (f.date_from IS NULL OR m.date >= f.date_from)
-  AND (f.date_to IS NULL OR m.date <= f.date_to)
-  AND (
-      (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-      OR f.game_ids @> ARRAY[m.game_id]
-      OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-  )
+WHERE ms.player_id = $1
+  AND m.date >= $2::timestamptz
+  AND m.date <= $3::timestamptz
+  AND arena_contains_match($4, m.id)
 `
 
 type CountPlayerMatchesInArenaInPeriodParams struct {
-	ArenaID  id.ID     `json:"arena_id"`
 	PlayerID id.ID     `json:"player_id"`
 	DateFrom time.Time `json:"date_from"`
 	DateTo   time.Time `json:"date_to"`
+	ArenaID  id.ID     `json:"arena_id"`
 }
 
-// Matches of one player inside the arena (filter applied) within
+// Matches of one player inside the arena (per the membership function) within
 // [date_from, date_to] — the elite promotion counters. Camp arenas have no
 // leagues, so the counters are never consulted for them.
 func (q *Queries) CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error) {
 	row := q.db.QueryRow(ctx, countPlayerMatchesInArenaInPeriod,
-		arg.ArenaID,
 		arg.PlayerID,
 		arg.DateFrom,
 		arg.DateTo,
+		arg.ArenaID,
 	)
 	var count int32
 	err := row.Scan(&count)
@@ -205,6 +197,7 @@ func (q *Queries) DeleteArenaStats(ctx context.Context, arenaID id.ID) error {
 
 const getArena = `-- name: GetArena :one
 
+
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
@@ -233,22 +226,14 @@ type GetArenaRow struct {
 	FilterTagIds          []id.ID            `json:"filter_tag_ids"`
 }
 
-// Arena queries (ADR-24, ADR-27). The reusable match-filter condition is
-// repeated in the queries that evaluate it — the canonical definition lives
-// here:
-//
-//	A match m meets filter f iff ALL present conditions hold (NULL = absent):
-//	  date range:   f.date_from <= m.date <= f.date_to
-//	  game OR tag:  m.game_id listed in f.game_ids, or m's game carries one of
-//	                f.tag_ids; both empty (NULL or []) → any game
-//
-// Camp arenas (ADR-27) have no filter: a match belongs to a camp arena iff it
-// has a camp_matches link row. In the queries below this is expressed as
-//
-//	(a.camp AND EXISTS camp_matches link)
-//	OR (NOT a.camp AND <filter condition>)
-//
-// Do not change one copy without the others.
+// Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
+// condition — camp link, or the filter (date range, game OR tag) — has ONE
+// canonical definition: the arena_contains_match() function created by
+// migration 054_arena_contains_match.up.sql (see adr/28-arena-membership-function.md).
+// The queries below call it; never inline the condition back.
+// The read queries share one 15-column projection (arena row + its filter
+// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
+// asserts the generated row structs stay field-identical.
 func (q *Queries) GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error) {
 	row := q.db.QueryRow(ctx, getArena, argID)
 	var i GetArenaRow
@@ -447,26 +432,8 @@ FROM (
     FROM match_scores ms
     WHERE ms.match_id IN (
         SELECT m.id
-        FROM arenas a
-        LEFT JOIN match_filters f ON f.id = a.match_filter_id
-        CROSS JOIN matches m
-        WHERE a.id = $1
-          AND (
-              (a.camp AND EXISTS (
-                  SELECT 1 FROM camp_matches cm
-                  WHERE cm.arena_id = a.id AND cm.match_id = m.id
-              ))
-              OR
-              (NOT a.camp AND
-                  (f.date_from IS NULL OR m.date >= f.date_from)
-                  AND (f.date_to IS NULL OR m.date <= f.date_to)
-                  AND (
-                      (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-                      OR f.game_ids @> ARRAY[m.game_id]
-                      OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-                  )
-              )
-          )
+        FROM matches m
+        WHERE arena_contains_match($1, m.id)
     )
 ) r
 GROUP BY r.player_id
@@ -483,27 +450,9 @@ func (q *Queries) InsertArenaStats(ctx context.Context, arenaID id.ID) error {
 const listArenaMatchesPaginated = `-- name: ListArenaMatchesPaginated :many
 WITH paginated_matches AS (
     SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
-    FROM arenas a
-    LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    CROSS JOIN matches m
+    FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
-    WHERE a.id = $1
-      AND (
-          (a.camp AND EXISTS (
-              SELECT 1 FROM camp_matches cm
-              WHERE cm.arena_id = a.id AND cm.match_id = m.id
-          ))
-          OR
-          (NOT a.camp AND
-              (f.date_from IS NULL OR m.date >= f.date_from)
-              AND (f.date_to IS NULL OR m.date <= f.date_to)
-              AND (
-                  (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-                  OR f.game_ids @> ARRAY[m.game_id]
-                  OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-              )
-          )
-      )
+    WHERE arena_contains_match($1, m.id)
       AND (
           $2::timestamptz IS NULL
           OR m.date < $2::timestamptz
@@ -718,33 +667,17 @@ LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS cnt
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = $1
-    JOIN match_filters f ON f.id = a.match_filter_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
-      AND (f.date_from IS NULL OR m.date >= f.date_from)
-      AND (f.date_to IS NULL OR m.date <= f.date_to)
-      AND (
-          (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-          OR f.game_ids @> ARRAY[m.game_id]
-          OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-      )
+      AND arena_contains_match($1, m.id)
 ) cnt60 ON true
 LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS cnt
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
-    JOIN arenas a ON a.id = $1
-    JOIN match_filters f ON f.id = a.match_filter_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
-      AND (f.date_from IS NULL OR m.date >= f.date_from)
-      AND (f.date_to IS NULL OR m.date <= f.date_to)
-      AND (
-          (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-          OR f.game_ids @> ARRAY[m.game_id]
-          OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-      )
+      AND arena_contains_match($1, m.id)
 ) cnt180 ON true
 ORDER BY p.name
 `
@@ -809,22 +742,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        ) ELSE '{}'::uuid[] END AS camp_player_ids,
        (
            SELECT COUNT(*) FROM matches m
-           WHERE (
-               (a.camp AND EXISTS (
-                   SELECT 1 FROM camp_matches cm
-                   WHERE cm.arena_id = a.id AND cm.match_id = m.id
-               ))
-               OR
-               (NOT a.camp AND
-                   (f.date_from IS NULL OR m.date >= f.date_from)
-                   AND (f.date_to IS NULL OR m.date <= f.date_to)
-                   AND (
-                       (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-                       OR f.game_ids @> ARRAY[m.game_id]
-                       OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-                   )
-               )
-           )
+           WHERE arena_contains_match(a.id, m.id)
        ) AS matches_count
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
@@ -991,20 +909,12 @@ func (q *Queries) ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListA
 const listArenasMatchingMatch = `-- name: ListArenasMatchingMatch :many
 SELECT a.id
 FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
-JOIN matches m ON m.id = $1
-WHERE (f.date_from IS NULL OR m.date >= f.date_from)
-  AND (f.date_to IS NULL OR m.date <= f.date_to)
-  AND (
-      (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-      OR f.game_ids @> ARRAY[m.game_id]
-      OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-  )
+WHERE arena_contains_match(a.id, $1)
 `
 
-// Non-camp arena ids whose filter matches the given match — part of the
-// synchronous-drain affected set on match writes (camp arenas are added by
-// the caller from their explicit camp_matches links).
+// Arena ids containing the given match per the membership function — part of
+// the synchronous-drain affected set on match writes. Camps are included via
+// their camp_matches links (the match must already be linked when this runs).
 func (q *Queries) ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([]id.ID, error) {
 	rows, err := q.db.Query(ctx, listArenasMatchingMatch, matchID)
 	if err != nil {
@@ -1027,31 +937,22 @@ func (q *Queries) ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([
 
 const listMatchesForArenaReplay = `-- name: ListMatchesForArenaReplay :many
 SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data
-FROM arenas a
-JOIN match_filters f ON f.id = a.match_filter_id
-CROSS JOIN matches m
-WHERE a.id = $1
-  AND m.date >= $2
-  AND (f.date_from IS NULL OR m.date >= f.date_from)
-  AND (f.date_to IS NULL OR m.date <= f.date_to)
-  AND (
-      (coalesce(cardinality(f.game_ids), 0) = 0 AND coalesce(cardinality(f.tag_ids), 0) = 0)
-      OR f.game_ids @> ARRAY[m.game_id]
-      OR EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids))
-  )
+FROM matches m
+WHERE m.date >= $1::timestamptz
+  AND arena_contains_match($2::uuid, m.id)
 ORDER BY m.date ASC, m.id ASC
 `
 
 type ListMatchesForArenaReplayParams struct {
-	ID   id.ID              `json:"id"`
-	Date pgtype.Timestamptz `json:"date"`
+	FromDate time.Time `json:"from_date"`
+	ArenaID  id.ID     `json:"arena_id"`
 }
 
-// Filter-matching matches of the arena from @from_date on, in event order —
-// the updater's replay input for filter arenas. Camp arenas replay from
-// ListMatchesForCampReplay instead (ADR-27).
+// Matches of the arena from @from_date on, in event order — the updater's
+// replay input. The membership function selects camp-linked matches for camp
+// arenas and filter matches for every other kind (one replay source, ADR-28).
 func (q *Queries) ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error) {
-	rows, err := q.db.Query(ctx, listMatchesForArenaReplay, arg.ID, arg.Date)
+	rows, err := q.db.Query(ctx, listMatchesForArenaReplay, arg.FromDate, arg.ArenaID)
 	if err != nil {
 		return nil, err
 	}

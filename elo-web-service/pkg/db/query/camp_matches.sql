@@ -26,16 +26,6 @@ JOIN arenas a ON a.id = cm.arena_id
 WHERE cm.match_id = ANY(sqlc.arg('match_ids')::uuid[])
 ORDER BY a.name;
 
--- name: ListMatchesForCampReplay :many
--- Linked matches of the camp arena from @from_date on, in event order — the
--- updater's replay input for camp arenas (replaces filter evaluation).
-SELECT m.*
-FROM camp_matches cm
-JOIN matches m ON m.id = cm.match_id
-WHERE cm.arena_id = $1
-  AND m.date >= $2
-ORDER BY m.date ASC, m.id ASC;
-
 -- name: GetCampMatchDateRange :one
 -- HAVING guards the aggregate: with no linked matches it returns zero rows
 -- (ErrNoRows) instead of a (NULL, NULL) row that can't scan into the

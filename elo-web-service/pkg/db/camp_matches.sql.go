@@ -9,7 +9,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -105,49 +104,6 @@ func (q *Queries) ListCampArenasByMatchIDs(ctx context.Context, matchIds []id.ID
 	for rows.Next() {
 		var i ListCampArenasByMatchIDsRow
 		if err := rows.Scan(&i.MatchID, &i.ArenaID, &i.ArenaName); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMatchesForCampReplay = `-- name: ListMatchesForCampReplay :many
-SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data
-FROM camp_matches cm
-JOIN matches m ON m.id = cm.match_id
-WHERE cm.arena_id = $1
-  AND m.date >= $2
-ORDER BY m.date ASC, m.id ASC
-`
-
-type ListMatchesForCampReplayParams struct {
-	ArenaID id.ID              `json:"arena_id"`
-	Date    pgtype.Timestamptz `json:"date"`
-}
-
-// Linked matches of the camp arena from @from_date on, in event order — the
-// updater's replay input for camp arenas (replaces filter evaluation).
-func (q *Queries) ListMatchesForCampReplay(ctx context.Context, arg ListMatchesForCampReplayParams) ([]Match, error) {
-	rows, err := q.db.Query(ctx, listMatchesForCampReplay, arg.ArenaID, arg.Date)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Match{}
-	for rows.Next() {
-		var i Match
-		if err := rows.Scan(
-			&i.ID,
-			&i.Date,
-			&i.GameID,
-			&i.CalculatorKind,
-			&i.CalculatorSchemaVersion,
-			&i.CalculatorData,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -252,16 +252,13 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		}
 	}
 
-	// ADR-24: the match write touches every arena whose filter matches it,
-	// plus every camp it was linked to (camps never match filters) — update
-	// them synchronously in this transaction (the global arena was already
-	// replayed above; the drain skips it).
+	// ADR-24: the match write touches every arena containing it — the
+	// membership function covers camps via their camp_matches links (written
+	// above) — update them synchronously in this transaction (the global
+	// arena was already replayed above; the drain skips it).
 	affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
-	}
-	for _, c := range campArenas {
-		affected = append(affected, c.ID)
 	}
 	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date); err != nil {
 		return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
@@ -327,7 +324,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 
 	// Capture the arenas containing the match BEFORE the row changes — after a
 	// date/game change they need a recalculation even when the new state no
-	// longer matches their filter.
+	// longer contains them.
 	affectedBefore, err := q.ListArenasMatchingMatch(ctx, matchID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
@@ -399,25 +396,21 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	}
 
 	// ADR-24: update every arena whose membership the edit affects — the
-	// union of the arenas matching the old and the new match state, plus the
-	// camps the match was and is linked to (a detach must replay the old camp
-	// to remove its settlements and stats) — synchronously.
+	// union of the arenas containing the old and the new match state —
+	// synchronously. The membership function includes camps: affectedBefore
+	// runs before the link diff (old links), affectedAfter after it (new
+	// links), so a detach replays the old camp to remove its settlements and
+	// stats.
 	affectedAfter, err := q.ListArenasMatchingMatch(ctx, matchID)
 	if err != nil {
 		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
 	}
-	union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter)+len(linkedCamps)+len(desiredCamps))
-	seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter)+len(linkedCamps)+len(desiredCamps))
+	union := make([]id.ID, 0, len(affectedBefore)+len(affectedAfter))
+	seen := make(map[id.ID]bool, len(affectedBefore)+len(affectedAfter))
 	for _, aid := range append(affectedBefore, affectedAfter...) {
 		if !seen[aid] {
 			seen[aid] = true
 			union = append(union, aid)
-		}
-	}
-	for _, c := range append(linkedCamps, desiredCamps...) {
-		if !seen[c.ID] {
-			seen[c.ID] = true
-			union = append(union, c.ID)
 		}
 	}
 	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, union, recalcStartDate); err != nil {

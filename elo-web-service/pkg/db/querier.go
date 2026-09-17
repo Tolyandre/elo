@@ -34,7 +34,7 @@ type Querier interface {
 	ClearArenaStale(ctx context.Context, arg ClearArenaStaleParams) error
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
-	// Matches of one player inside the arena (filter applied) within
+	// Matches of one player inside the arena (per the membership function) within
 	// [date_from, date_to] — the elite promotion counters. Camp arenas have no
 	// leagues, so the counters are never consulted for them.
 	CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error)
@@ -92,22 +92,14 @@ type Querier interface {
 	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	DeleteUser(ctx context.Context, argID id.ID) error
-	// Arena queries (ADR-24, ADR-27). The reusable match-filter condition is
-	// repeated in the queries that evaluate it — the canonical definition lives
-	// here:
-	//
-	//   A match m meets filter f iff ALL present conditions hold (NULL = absent):
-	//     date range:   f.date_from <= m.date <= f.date_to
-	//     game OR tag:  m.game_id listed in f.game_ids, or m's game carries one of
-	//                   f.tag_ids; both empty (NULL or []) → any game
-	//
-	// Camp arenas (ADR-27) have no filter: a match belongs to a camp arena iff it
-	// has a camp_matches link row. In the queries below this is expressed as
-	//
-	//   (a.camp AND EXISTS camp_matches link)
-	//   OR (NOT a.camp AND <filter condition>)
-	//
-	// Do not change one copy without the others.
+	// Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
+	// condition — camp link, or the filter (date range, game OR tag) — has ONE
+	// canonical definition: the arena_contains_match() function created by
+	// migration 054_arena_contains_match.up.sql (see adr/28-arena-membership-function.md).
+	// The queries below call it; never inline the condition back.
+	// The read queries share one 15-column projection (arena row + its filter
+	// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
+	// asserts the generated row structs stay field-identical.
 	GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error)
 	GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaByGameRow, error)
 	// Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
@@ -249,9 +241,9 @@ type Querier interface {
 	// unconditional (global) arenas — the /games page arena list. Camp arenas
 	// have no filter and never appear here.
 	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)
-	// Non-camp arena ids whose filter matches the given match — part of the
-	// synchronous-drain affected set on match writes (camp arenas are added by
-	// the caller from their explicit camp_matches links).
+	// Arena ids containing the given match per the membership function — part of
+	// the synchronous-drain affected set on match writes. Camps are included via
+	// their camp_matches links (the match must already be linked when this runs).
 	ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([]id.ID, error)
 	// Latest-first audit feed. Optional entity filter (one or more entity types)
 	// and entity_id filter serve both the per-entity history (match view) and the
@@ -287,13 +279,10 @@ type Querier interface {
 	// stored in bets — the signature of the removed price-preserving rescale
 	// (ADR-22). Resolved markets get the same q repair but need no settlement.
 	ListMarketsWithDivergedQ(ctx context.Context) ([]id.ID, error)
-	// Filter-matching matches of the arena from @from_date on, in event order —
-	// the updater's replay input for filter arenas. Camp arenas replay from
-	// ListMatchesForCampReplay instead (ADR-27).
+	// Matches of the arena from @from_date on, in event order — the updater's
+	// replay input. The membership function selects camp-linked matches for camp
+	// arenas and filter matches for every other kind (one replay source, ADR-28).
 	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
-	// Linked matches of the camp arena from @from_date on, in event order — the
-	// updater's replay input for camp arenas (replaces filter evaluation).
-	ListMatchesForCampReplay(ctx context.Context, arg ListMatchesForCampReplayParams) ([]Match, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinStreakMarketsRow, error)
