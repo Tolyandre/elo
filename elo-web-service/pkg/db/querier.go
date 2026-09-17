@@ -95,8 +95,16 @@ type Querier interface {
 	// Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
 	// condition — camp link, or the filter (date range, game OR tag) — has ONE
 	// canonical definition: the arena_contains_match() function created by
-	// migration 054_arena_contains_match.up.sql (see adr/28-arena-membership-function.md).
-	// The queries below call it; never inline the condition back.
+	// migrations 054+055 (see adr/28-arena-membership-function.md). The queries
+	// below call it; never inline the condition back.
+	//
+	// The function is a pure expression: callers pass the columns they already
+	// joined PLUS the two probes it cannot express without sub-SELECTs — the
+	// camp link EXISTS and the filtered-tag EXISTS (written right in the call).
+	// Never bury a sub-SELECT in the function body: bodies with sub-SELECTs are
+	// never inlined, and an opaque call re-runs its subplans per (arena, match)
+	// pair — measured 24s (id args) and 3.3s (column args) against 350ms for the
+	// inlined form on the arenas list at 2026-09 data scale.
 	// The read queries share one 15-column projection (arena row + its filter
 	// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 	// asserts the generated row structs stay field-identical.

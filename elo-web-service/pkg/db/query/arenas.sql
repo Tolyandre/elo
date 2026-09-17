@@ -1,8 +1,16 @@
 -- Arena queries (ADR-24, ADR-27). The "does this match belong to this arena"
 -- condition — camp link, or the filter (date range, game OR tag) — has ONE
 -- canonical definition: the arena_contains_match() function created by
--- migration 054_arena_contains_match.up.sql (see adr/28-arena-membership-function.md).
--- The queries below call it; never inline the condition back.
+-- migrations 054+055 (see adr/28-arena-membership-function.md). The queries
+-- below call it; never inline the condition back.
+--
+-- The function is a pure expression: callers pass the columns they already
+-- joined PLUS the two probes it cannot express without sub-SELECTs — the
+-- camp link EXISTS and the filtered-tag EXISTS (written right in the call).
+-- Never bury a sub-SELECT in the function body: bodies with sub-SELECTs are
+-- never inlined, and an opaque call re-runs its subplans per (arena, match)
+-- pair — measured 24s (id args) and 3.3s (column args) against 350ms for the
+-- inlined form on the arenas list at 2026-09 data scale.
 
 -- The read queries share one 15-column projection (arena row + its filter
 -- columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
@@ -49,7 +57,11 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        ) ELSE '{}'::uuid[] END AS camp_player_ids,
        (
            SELECT COUNT(*) FROM matches m
-           WHERE arena_contains_match(a.id, m.id)
+           WHERE arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
        ) AS matches_count
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
@@ -158,7 +170,13 @@ RETURNING id, name;
 -- their camp_matches links (the match must already be linked when this runs).
 SELECT a.id
 FROM arenas a
-WHERE arena_contains_match(a.id, sqlc.arg('match_id'));
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+JOIN matches m ON m.id = sqlc.arg('match_id')
+WHERE arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
 
 -- name: ListTagFilteredArenaIds :many
 -- Arenas whose filter has a game-tag condition — the conservative mark set
@@ -232,8 +250,15 @@ FROM (
     FROM match_scores ms
     WHERE ms.match_id IN (
         SELECT m.id
-        FROM matches m
-        WHERE arena_contains_match(sqlc.arg('arena_id'), m.id)
+        FROM arenas a
+        LEFT JOIN match_filters f ON f.id = a.match_filter_id
+        CROSS JOIN matches m
+        WHERE a.id = sqlc.arg('arena_id')
+          AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
     )
 ) r
 GROUP BY r.player_id;
@@ -270,9 +295,16 @@ ORDER BY p.name;
 -- them, so continuation requests pass only the token.
 WITH paginated_matches AS (
     SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
-    FROM matches m
+    FROM arenas a
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
-    WHERE arena_contains_match(sqlc.arg('arena_id'), m.id)
+    WHERE a.id = sqlc.arg('arena_id')
+      AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       AND (
           sqlc.narg('cursor_date')::timestamptz IS NULL
           OR m.date < sqlc.narg('cursor_date')::timestamptz
@@ -330,19 +362,32 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC;
 SELECT COUNT(*)::int AS count
 FROM matches m
 JOIN match_scores ms ON ms.match_id = m.id
+JOIN arenas a ON a.id = sqlc.arg('arena_id')
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE ms.player_id = sqlc.arg('player_id')
   AND m.date >= sqlc.arg('date_from')::timestamptz
   AND m.date <= sqlc.arg('date_to')::timestamptz
-  AND arena_contains_match(sqlc.arg('arena_id'), m.id);
+  AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
 
 -- name: ListMatchesForArenaReplay :many
 -- Matches of the arena from @from_date on, in event order — the updater's
 -- replay input. The membership function selects camp-linked matches for camp
 -- arenas and filter matches for every other kind (one replay source, ADR-28).
 SELECT m.*
-FROM matches m
-WHERE m.date >= sqlc.arg('from_date')::timestamptz
-  AND arena_contains_match(sqlc.arg('arena_id')::uuid, m.id)
+FROM arenas a
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+CROSS JOIN matches m
+WHERE a.id = sqlc.arg('arena_id')::uuid
+  AND m.date >= sqlc.arg('from_date')::timestamptz
+  AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ORDER BY m.date ASC, m.id ASC;
 
 -- name: ListArenaPlayersAt :many
@@ -371,16 +416,28 @@ LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS cnt
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = $1
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
-      AND arena_contains_match($1, m.id)
+      AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt60 ON true
 LEFT JOIN LATERAL (
     SELECT COUNT(*)::int AS cnt
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = $1
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
-      AND arena_contains_match($1, m.id)
+      AND arena_contains_match(
+    a.camp,
+    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt180 ON true
 ORDER BY p.name;
