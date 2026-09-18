@@ -266,6 +266,9 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/tournaments/:id/bracket-plans", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ListTournamentBracketPlans)
 	r.POST("/tournaments/:id/registration", o.DeserializeUser(), a.RequirePlayerID(), strictWrapper.RegisterInTournament)
 	r.DELETE("/tournaments/:id/registration", o.DeserializeUser(), a.RequirePlayerID(), strictWrapper.UnregisterFromTournament)
+	r.POST("/tournaments/:id/start", o.DeserializeUser(), a.RequireEditor(), strictWrapper.StartTournament)
+	r.POST("/tournaments/:id/cancel", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CancelTournament)
+	r.GET("/tournaments/:id/bracket", strictWrapper.GetTournamentBracket)
 	// Auth /me: raw gin handlers on the oauth2 handler, mirroring main.go.
 	r.GET("/auth/me", o.DeserializeUser(), o.GetMe)
 	r.PATCH("/auth/me", o.DeserializeUser(), o.PatchMe)

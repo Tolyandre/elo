@@ -23,6 +23,8 @@ type Querier interface {
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
 	AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error)
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
+	AddSlotMatch(ctx context.Context, arg AddSlotMatchParams) error
+	AddSlotPromotion(ctx context.Context, arg AddSlotPromotionParams) error
 	// ---------------------------------------------------------------------------
 	// Game pool
 	// ---------------------------------------------------------------------------
@@ -40,6 +42,9 @@ type Querier interface {
 	// started from; a re-mark during the run leaves the arena stale (staleness
 	// cancellation, ADR-24).
 	ClearArenaStale(ctx context.Context, arg ClearArenaStaleParams) error
+	// Invalidate the seat caches fed by a source slot whose promotion set was
+	// rewritten or voided (the downstream slot re-derives on its next completion).
+	ClearSlotSeatCaches(ctx context.Context, sourceSlotID id.ID) error
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (per the membership function) within
@@ -69,6 +74,9 @@ type Querier interface {
 	// Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 	// with the same id inserts nothing and the service fetches the stored row.
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
+	CreateTournamentRound(ctx context.Context, arg CreateTournamentRoundParams) (TournamentRound, error)
+	CreateTournamentSeat(ctx context.Context, arg CreateTournamentSeatParams) error
+	CreateTournamentSlot(ctx context.Context, arg CreateTournamentSlotParams) (TournamentSlot, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	// The two fixed Да/Нет outcomes of a win_streak market.
@@ -105,6 +113,9 @@ type Querier interface {
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
 	// Returns the deleted row so the audit trail can capture the player's name.
 	DeletePlayer(ctx context.Context, argID id.ID) (Player, error)
+	DeleteSlotMatch(ctx context.Context, arg DeleteSlotMatchParams) error
+	DeleteSlotMatches(ctx context.Context, slotID id.ID) error
+	DeleteSlotPromotions(ctx context.Context, slotID id.ID) error
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	// The pool is small; the PUT handler rewrites it wholesale inside its tx.
 	DeleteTournamentGames(ctx context.Context, tournamentID id.ID) error
@@ -228,6 +239,13 @@ type Querier interface {
 	// Row-locked variant for the lifecycle mutations (start/cancel/config): a
 	// concurrent start and cancel queue behind the lock instead of racing.
 	GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tournament, error)
+	GetTournamentOfSlot(ctx context.Context, argID id.ID) (Tournament, error)
+	// Bracket materialization queries (ADR-26): rounds, slots, seats, the slot
+	// match series, and the recorded promotions. Standings are never stored —
+	// they are derived from the linked matches' scores at read/completion time.
+	// The slot plus its round coordinates (the (tournament, track, index,
+	// position) address used for deterministic ordering and display).
+	GetTournamentSlot(ctx context.Context, argID id.ID) (GetTournamentSlotRow, error)
 	GetUser(ctx context.Context, argID id.ID) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
 	// JWT fallback: resolves a user by the old SERIAL int id (ADR-08). Used when the
@@ -327,6 +345,19 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	ListSeatsBySlots(ctx context.Context, slotIds []id.ID) ([]TournamentSeat, error)
+	ListSeatsBySourceSlot(ctx context.Context, sourceSlotID *id.ID) ([]TournamentSeat, error)
+	// The slot's match series with derived inputs for the standings: scores of
+	// every linked match, in event order (date, then id — same as the arena
+	// replay order).
+	ListSlotMatchResults(ctx context.Context, slotID id.ID) ([]ListSlotMatchResultsRow, error)
+	// Which tournament/slot (if any) each match is counted for — the match DTO's
+	// tournament badge (ADR-26).
+	ListSlotMatchesForMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListSlotMatchesForMatchIDsRow, error)
+	ListSlotPromotions(ctx context.Context, slotID id.ID) ([]TournamentSlotPromotion, error)
+	// Slots whose seats are fed by the given slot (downstream neighbours for the
+	// seat refill / cascade invalidation).
+	ListSlotsBySource(ctx context.Context, sourceSlotID *id.ID) ([]ListSlotsBySourceRow, error)
 	ListStaleArenas(ctx context.Context, dueBefore time.Time) ([]ListStaleArenasRow, error)
 	// Arenas whose filter has a game-tag condition — the conservative mark set
 	// when any game's tags change (a tag toggle can flip any of them).
@@ -334,6 +365,8 @@ type Querier interface {
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
 	ListTournamentGames(ctx context.Context, tournamentID id.ID) ([]TournamentGame, error)
 	ListTournamentParticipants(ctx context.Context, tournamentID id.ID) ([]ListTournamentParticipantsRow, error)
+	ListTournamentRounds(ctx context.Context, tournamentID id.ID) ([]TournamentRound, error)
+	ListTournamentSlots(ctx context.Context, tournamentID id.ID) ([]ListTournamentSlotsRow, error)
 	// The /tournaments list: live tournaments first, then finished ones.
 	ListTournaments(ctx context.Context) ([]Tournament, error)
 	// Resolves the (unique) controlling user for each linked player; used to route
@@ -364,6 +397,14 @@ type Querier interface {
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
 	SetGameTableHost(ctx context.Context, arg SetGameTableHostParams) (GameTable, error)
+	// Organizer adjustment (ADR-26): only for slots with zero linked matches.
+	SetSlotGame(ctx context.Context, arg SetSlotGameParams) error
+	SetSlotRuling(ctx context.Context, arg SetSlotRulingParams) error
+	// Refill the seat caches fed by a completed source slot: place i of the
+	// source seats the i-th promoted player.
+	SetSlotSeatsFromPromotions(ctx context.Context, slotID id.ID) error
+	SetSlotStatus(ctx context.Context, arg SetSlotStatusParams) error
+	SetSlotStatusAndRuling(ctx context.Context, arg SetSlotStatusAndRulingParams) error
 	// The grand final promoted exactly one player (ADR-26): read-only from here.
 	SetTournamentCompleted(ctx context.Context, arg SetTournamentCompletedParams) error
 	// The single start action (ADR-26): snapshot the chosen plan + seed, close
@@ -371,6 +412,8 @@ type Querier interface {
 	SetTournamentRunning(ctx context.Context, arg SetTournamentRunningParams) error
 	// Plain transitions: cancel (organizer or grand-final deadline).
 	SetTournamentStatus(ctx context.Context, arg SetTournamentStatusParams) error
+	SlotHasMatches(ctx context.Context, slotID id.ID) (bool, error)
+	SlotHasPromotions(ctx context.Context, slotID id.ID) (bool, error)
 	// Restores the pre-settlement status: betting_closed if the betting lock user event
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 	// a user event and must never be cleared by recalculation.

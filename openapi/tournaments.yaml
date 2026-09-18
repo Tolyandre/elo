@@ -1,7 +1,6 @@
 # Tournament brackets (ADR-26). Lifecycle: registration → running →
-# completed | cancelled. This file carries the entity and the
-# registration-time surface; the bracket / start / organizer endpoints are
-# appended by the later ADR-26 phases.
+# completed | cancelled. Registration-time surface (create/update/registration
+# /bracket-plans) plus the start action, cancel, and the public bracket read.
 
 # ─── Path items ──────────────────────────────────────────────────────────────
 
@@ -308,6 +307,159 @@ TournamentBracketPlans:
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
+TournamentStart:
+  post:
+    operationId: StartTournament
+    tags: [tournaments]
+    summary: Start the tournament with the chosen bracket shape
+    description: >-
+      Editor only, while in registration. The submitted plan must be one the
+      server would have offered (validated against a fresh enumeration). The
+      plan is stored verbatim, all rounds/slots/seats are generated, first-
+      round seats (and byes) are drawn at random from the stored seed, a
+      pool-fitting game is assigned to every slot, and the tournament's arena
+      is created. Registration closes.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              plan:
+                $ref: '#/TournamentPlan'
+            required: [plan]
+    responses:
+      "200":
+        description: Tournament started
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Plan invalid or not offered; deadline in the past; too few participants; empty pool
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Already started
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentCancel:
+  post:
+    operationId: CancelTournament
+    tags: [tournaments]
+    summary: Cancel the tournament (organizer)
+    description: >-
+      Editor only, from registration or running. Completed tournaments cannot
+      be cancelled. Audited as tournament-state with reason "organizer"; the
+      grand-final deadline auto-cancel writes the same shape with reason
+      "deadline" and a null actor.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Tournament cancelled
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Cancel not available from the current state
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentBracketPath:
+  get:
+    operationId: GetTournamentBracket
+    tags: [tournaments]
+    summary: The full bracket (public)
+    description: >-
+      Rendering-ready DTO: rounds in canonical track order, slots with seats,
+      linked matches and live standings derived from the linked matches'
+      scores. Empty rounds list before the start.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: The bracket
+        content:
+          application/json:
+            schema:
+              $ref: '#/BracketResponse'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 TournamentGame:
   type: object
   description: One pool game with its table capacity.
@@ -486,4 +638,112 @@ BracketPlansResponse:
         cap:
           type: integer
       required: [plans, truncated, cap]
+  required: [status, data]
+
+# ─── Bracket DTO (rendering-ready, ADR-26) ───────────────────────────────────
+
+BracketSeat:
+  type: object
+  properties:
+    position:
+      type: integer
+    player_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+      description: Set for direct seeds (round 1 / byes) and refilled seat caches.
+    source_slot_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+    source_place:
+      type: integer
+      nullable: true
+  required: [position]
+
+BracketSlot:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    position:
+      type: integer
+      description: Table number within the round
+    promote:
+      type: integer
+    status:
+      type: string
+      enum: [waiting, playing, completed]
+    seats:
+      type: array
+      items:
+        $ref: '#/BracketSeat'
+    matches:
+      type: array
+      items:
+        type: object
+        properties:
+          match_id:
+            $ref: './common.yaml#/Base58ID'
+        required: [match_id]
+    standings:
+      type: array
+      description: >-
+        Live standings derived from the linked matches' scores: placement
+        points, current order, and the recorded promoted set.
+      items:
+        type: object
+        properties:
+          player_id:
+            $ref: './common.yaml#/Base58ID'
+          points:
+            type: integer
+          place:
+            type: integer
+          promoted:
+            type: boolean
+        required: [player_id, points, place, promoted]
+  required: [id, game_id, position, promote, status, seats, matches, standings]
+
+BracketRound:
+  type: object
+  properties:
+    track:
+      type: string
+      enum: [winners, losers, final]
+    index:
+      type: integer
+    slots:
+      type: array
+      items:
+        $ref: '#/BracketSlot'
+  required: [track, index, slots]
+
+Bracket:
+  type: object
+  properties:
+    tournament_id:
+      $ref: './common.yaml#/Base58ID'
+    status:
+      type: string
+      enum: [registration, running, completed, cancelled]
+    elimination:
+      type: string
+      enum: [single, double]
+    winner_player_id:
+      $ref: './common.yaml#/Base58ID'
+      nullable: true
+    rounds:
+      type: array
+      items:
+        $ref: '#/BracketRound'
+  required: [tournament_id, status, elimination, rounds]
+
+BracketResponse:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      $ref: '#/Bracket'
   required: [status, data]

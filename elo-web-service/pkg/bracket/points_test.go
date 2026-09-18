@@ -14,7 +14,7 @@ func match(mid string, scores map[string]float64) MatchResult {
 	for pid, sc := range scores {
 		m[mustID(pid)] = sc
 	}
-	return MatchResult{MatchID: mustID(mid), Places: DerivePlaces(m)}
+	return MatchResult{MatchID: mustID(mid), Scores: m}
 }
 
 func pointsOf(sts []Standing, pid string) int {

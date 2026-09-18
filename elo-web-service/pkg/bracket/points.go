@@ -46,10 +46,11 @@ func DerivePlaces(scores map[id.ID]float64) []PlayerPlace {
 }
 
 // MatchResult is one linked match of a slot's series, in chronological order
-// (the caller supplies the order — match date, then id).
+// (the caller supplies the order — match date, then id) with its player→score
+// map. Places are derived internally with the codebase's RANK semantics.
 type MatchResult struct {
 	MatchID id.ID
-	Places  []PlayerPlace
+	Scores  map[id.ID]float64
 }
 
 // Standing is one player's cumulative slot standing.
@@ -64,19 +65,25 @@ type Standing struct {
 	Promoted bool
 }
 
-// Standings accumulates placement points over a slot's linked matches and
-// orders them: points DESC, then the place-vector from the most recent match
-// backwards, then player id — a deterministic total order. The completion
-// rule does not rely on the tie-break (see StrictCut): a promoted set is only
-// ever recorded with strictly separated points.
+// Standings accumulates placement points over a slot's linked matches (each
+// match's places derived from its scores) and orders them: points DESC, then
+// the place-vector from the most recent match backwards, then player id — a
+// deterministic total order. The completion rule does not rely on the
+// tie-break (see StrictCut): a promoted set is only ever recorded with
+// strictly separated points.
 func Standings(matches []MatchResult, seats int) []Standing {
+	derived := make([][]PlayerPlace, len(matches))
+	for i, m := range matches {
+		derived[i] = DerivePlaces(m.Scores)
+	}
+
 	type acc struct {
 		points int
 	}
 	accs := make(map[id.ID]*acc, seats*2)
 	ids := make([]id.ID, 0, seats)
-	for _, m := range matches {
-		for _, p := range m.Places {
+	for _, places := range derived {
+		for _, p := range places {
 			a := accs[p.PlayerID]
 			if a == nil {
 				a = &acc{}
@@ -90,8 +97,8 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	out := make([]Standing, 0, len(ids))
 	for _, pid := range ids {
 		st := Standing{PlayerID: pid, Points: accs[pid].points, Order: make([]int, 0, len(matches))}
-		for mi := len(matches) - 1; mi >= 0; mi-- {
-			for _, p := range matches[mi].Places {
+		for mi := len(derived) - 1; mi >= 0; mi-- {
+			for _, p := range derived[mi] {
 				if p.PlayerID == pid {
 					st.Order = append(st.Order, p.Place)
 					break

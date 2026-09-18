@@ -382,6 +382,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tournaments/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start the tournament with the chosen bracket shape
+         * @description Editor only, while in registration. The submitted plan must be one the server would have offered (validated against a fresh enumeration). The plan is stored verbatim, all rounds/slots/seats are generated, first- round seats (and byes) are drawn at random from the stored seed, a pool-fitting game is assigned to every slot, and the tournament's arena is created. Registration closes.
+         */
+        post: operations["StartTournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel the tournament (organizer)
+         * @description Editor only, from registration or running. Completed tournaments cannot be cancelled. Audited as tournament-state with reason "organizer"; the grand-final deadline auto-cancel writes the same shape with reason "deadline" and a null actor.
+         */
+        post: operations["CancelTournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/bracket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The full bracket (public)
+         * @description Rendering-ready DTO: rounds in canonical track order, slots with seats, linked matches and live standings derived from the linked matches' scores. Empty rounds list before the start.
+         */
+        get: operations["GetTournamentBracket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clubs": {
         parameters: {
             query?: never;
@@ -1194,6 +1254,52 @@ export interface components {
                 truncated: boolean;
                 cap: number;
             };
+        };
+        BracketSeat: {
+            position: number;
+            /** @description Set for direct seeds (round 1 / byes) and refilled seat caches. */
+            player_id?: components["schemas"]["Base58ID"];
+            source_slot_id?: components["schemas"]["Base58ID"];
+            source_place?: number | null;
+        };
+        BracketSlot: {
+            id: components["schemas"]["Base58ID"];
+            game_id: components["schemas"]["Base58ID"];
+            /** @description Table number within the round */
+            position: number;
+            promote: number;
+            /** @enum {string} */
+            status: "waiting" | "playing" | "completed";
+            seats: components["schemas"]["BracketSeat"][];
+            matches: {
+                match_id: components["schemas"]["Base58ID"];
+            }[];
+            /** @description Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set. */
+            standings: {
+                player_id: components["schemas"]["Base58ID"];
+                points: number;
+                place: number;
+                promoted: boolean;
+            }[];
+        };
+        BracketRound: {
+            /** @enum {string} */
+            track: "winners" | "losers" | "final";
+            index: number;
+            slots: components["schemas"]["BracketSlot"][];
+        };
+        Bracket: {
+            tournament_id: components["schemas"]["Base58ID"];
+            /** @enum {string} */
+            status: "registration" | "running" | "completed" | "cancelled";
+            /** @enum {string} */
+            elimination: "single" | "double";
+            winner_player_id?: components["schemas"]["Base58ID"];
+            rounds: components["schemas"]["BracketRound"][];
+        };
+        BracketResponse: {
+            status: string;
+            data: components["schemas"]["Bracket"];
         };
         Club: {
             id: components["schemas"]["Base58ID"];
@@ -3556,6 +3662,177 @@ export interface operations {
             };
             /** @description No longer in registration */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    StartTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    plan: components["schemas"]["TournamentPlan"];
+                };
+            };
+        };
+        responses: {
+            /** @description Tournament started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Plan invalid or not offered; deadline in the past; too few participants; empty pool */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Already started */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CancelTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tournament cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Cancel not available from the current state */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetTournamentBracket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bracket */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

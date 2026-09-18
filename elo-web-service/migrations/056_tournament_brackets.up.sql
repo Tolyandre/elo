@@ -118,6 +118,19 @@ CREATE TABLE tournament_matches (
 
 CREATE INDEX tournament_matches_match_idx ON tournament_matches (match_id);
 
+-- 5b. Tournament arenas are the third arena kind (ADR-26): non-camp, no
+--     filter — membership is the tournament_matches link. 053's rule
+--     (camp = no filter) widens accordingly: camps are link-only with no
+--     anchor, filter arenas keep their filter, tournament arenas are
+--     link-only with the anchor.
+ALTER TABLE arenas DROP CONSTRAINT IF EXISTS arenas_camp_filter_agree;
+ALTER TABLE arenas ADD CONSTRAINT arenas_camp_filter_agree
+    CHECK (
+        (camp AND match_filter_id IS NULL AND tournament_id IS NULL)
+        OR (NOT camp AND match_filter_id IS NOT NULL AND tournament_id IS NULL)
+        OR (NOT camp AND match_filter_id IS NULL AND tournament_id IS NOT NULL)
+    );
+
 -- 6. Tournament-domain mutations join the audit log (ADR-14): entity_type
 --    gains 'tournament', details_kind gains the five bracket documents, and
 --    actor_user_id becomes nullable — the grand-final-deadline auto-cancel is

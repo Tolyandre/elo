@@ -126,6 +126,90 @@ func (e AuditMatchUpdateDetailsPlayerChangesChange) Valid() bool {
 	}
 }
 
+// Defines values for BracketElimination.
+const (
+	BracketEliminationDouble BracketElimination = "double"
+	BracketEliminationSingle BracketElimination = "single"
+)
+
+// Valid indicates whether the value is a known member of the BracketElimination enum.
+func (e BracketElimination) Valid() bool {
+	switch e {
+	case BracketEliminationDouble:
+		return true
+	case BracketEliminationSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BracketStatus.
+const (
+	BracketStatusCancelled    BracketStatus = "cancelled"
+	BracketStatusCompleted    BracketStatus = "completed"
+	BracketStatusRegistration BracketStatus = "registration"
+	BracketStatusRunning      BracketStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the BracketStatus enum.
+func (e BracketStatus) Valid() bool {
+	switch e {
+	case BracketStatusCancelled:
+		return true
+	case BracketStatusCompleted:
+		return true
+	case BracketStatusRegistration:
+		return true
+	case BracketStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BracketRoundTrack.
+const (
+	BracketRoundTrackFinal   BracketRoundTrack = "final"
+	BracketRoundTrackLosers  BracketRoundTrack = "losers"
+	BracketRoundTrackWinners BracketRoundTrack = "winners"
+)
+
+// Valid indicates whether the value is a known member of the BracketRoundTrack enum.
+func (e BracketRoundTrack) Valid() bool {
+	switch e {
+	case BracketRoundTrackFinal:
+		return true
+	case BracketRoundTrackLosers:
+		return true
+	case BracketRoundTrackWinners:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BracketSlotStatus.
+const (
+	BracketSlotStatusCompleted BracketSlotStatus = "completed"
+	BracketSlotStatusPlaying   BracketSlotStatus = "playing"
+	BracketSlotStatusWaiting   BracketSlotStatus = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the BracketSlotStatus enum.
+func (e BracketSlotStatus) Valid() bool {
+	switch e {
+	case BracketSlotStatusCompleted:
+		return true
+	case BracketSlotStatusPlaying:
+		return true
+	case BracketSlotStatusWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EloRankLeague.
 const (
 	Amateur EloRankLeague = "amateur"
@@ -257,19 +341,19 @@ func (e MarketDetailStatus) Valid() bool {
 
 // Defines values for PlanRoundTrack.
 const (
-	Final   PlanRoundTrack = "final"
-	Losers  PlanRoundTrack = "losers"
-	Winners PlanRoundTrack = "winners"
+	PlanRoundTrackFinal   PlanRoundTrack = "final"
+	PlanRoundTrackLosers  PlanRoundTrack = "losers"
+	PlanRoundTrackWinners PlanRoundTrack = "winners"
 )
 
 // Valid indicates whether the value is a known member of the PlanRoundTrack enum.
 func (e PlanRoundTrack) Valid() bool {
 	switch e {
-	case Final:
+	case PlanRoundTrackFinal:
 		return true
-	case Losers:
+	case PlanRoundTrackLosers:
 		return true
-	case Winners:
+	case PlanRoundTrackWinners:
 		return true
 	default:
 		return false
@@ -893,6 +977,25 @@ type AuditRenameDetails struct {
 // Base58ID Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 type Base58ID = id.ID
 
+// Bracket defines model for Bracket.
+type Bracket struct {
+	Elimination BracketElimination `json:"elimination"`
+	Rounds      []BracketRound     `json:"rounds"`
+	Status      BracketStatus      `json:"status"`
+
+	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TournamentId Base58ID `json:"tournament_id"`
+
+	// WinnerPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
+}
+
+// BracketElimination defines model for Bracket.Elimination.
+type BracketElimination string
+
+// BracketStatus defines model for Bracket.Status.
+type BracketStatus string
+
 // BracketPlansResponse defines model for BracketPlansResponse.
 type BracketPlansResponse struct {
 	Data struct {
@@ -902,6 +1005,65 @@ type BracketPlansResponse struct {
 	} `json:"data"`
 	Status string `json:"status"`
 }
+
+// BracketResponse defines model for BracketResponse.
+type BracketResponse struct {
+	Data   Bracket `json:"data"`
+	Status string  `json:"status"`
+}
+
+// BracketRound defines model for BracketRound.
+type BracketRound struct {
+	Index int               `json:"index"`
+	Slots []BracketSlot     `json:"slots"`
+	Track BracketRoundTrack `json:"track"`
+}
+
+// BracketRoundTrack defines model for BracketRound.Track.
+type BracketRoundTrack string
+
+// BracketSeat defines model for BracketSeat.
+type BracketSeat struct {
+	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	PlayerId    *Base58ID `json:"player_id,omitempty"`
+	Position    int       `json:"position"`
+	SourcePlace *int      `json:"source_place,omitempty"`
+
+	// SourceSlotId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	SourceSlotId *Base58ID `json:"source_slot_id,omitempty"`
+}
+
+// BracketSlot defines model for BracketSlot.
+type BracketSlot struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId Base58ID `json:"game_id"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id      Base58ID `json:"id"`
+	Matches []struct {
+		// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		MatchId Base58ID `json:"match_id"`
+	} `json:"matches"`
+
+	// Position Table number within the round
+	Position int           `json:"position"`
+	Promote  int           `json:"promote"`
+	Seats    []BracketSeat `json:"seats"`
+
+	// Standings Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set.
+	Standings []struct {
+		Place int `json:"place"`
+
+		// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		PlayerId Base58ID `json:"player_id"`
+		Points   int      `json:"points"`
+		Promoted bool     `json:"promoted"`
+	} `json:"standings"`
+	Status BracketSlotStatus `json:"status"`
+}
+
+// BracketSlotStatus defines model for BracketSlot.Status.
+type BracketSlotStatus string
 
 // Club defines model for Club.
 type Club struct {
@@ -2079,6 +2241,12 @@ type PatchTagJSONBody struct {
 	Name string `json:"name"`
 }
 
+// StartTournamentJSONBody defines parameters for StartTournament.
+type StartTournamentJSONBody struct {
+	// Plan A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start.
+	Plan TournamentPlan `json:"plan"`
+}
+
 // PatchUserJSONBody defines parameters for PatchUser.
 type PatchUserJSONBody struct {
 	CanEdit bool `json:"can_edit"`
@@ -2167,6 +2335,9 @@ type CreateTournamentJSONRequestBody = TournamentInput
 
 // UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
 type UpdateTournamentJSONRequestBody = TournamentInput
+
+// StartTournamentJSONRequestBody defines body for StartTournament for application/json ContentType.
+type StartTournamentJSONRequestBody StartTournamentJSONBody
 
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
@@ -2924,15 +3095,24 @@ type ServerInterface interface {
 	// UpdateTournament Update the registration-time configuration (name, deadline, pool, participants)
 	// (PUT /tournaments/{id})
 	UpdateTournament(c *gin.Context, id string)
+	// GetTournamentBracket The full bracket (public)
+	// (GET /tournaments/{id}/bracket)
+	GetTournamentBracket(c *gin.Context, id string)
 	// ListTournamentBracketPlans Enumerate the valid bracket shapes for the current participant count and pool
 	// (GET /tournaments/{id}/bracket-plans)
 	ListTournamentBracketPlans(c *gin.Context, id string)
+	// CancelTournament Cancel the tournament (organizer)
+	// (POST /tournaments/{id}/cancel)
+	CancelTournament(c *gin.Context, id string)
 	// UnregisterFromTournament Withdraw the current user's linked player
 	// (DELETE /tournaments/{id}/registration)
 	UnregisterFromTournament(c *gin.Context, id string)
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(c *gin.Context, id string)
+	// StartTournament Start the tournament with the chosen bracket shape
+	// (POST /tournaments/{id}/start)
+	StartTournament(c *gin.Context, id string)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(c *gin.Context)
@@ -4549,6 +4729,31 @@ func (siw *ServerInterfaceWrapper) UpdateTournament(c *gin.Context) {
 	siw.Handler.UpdateTournament(c, id)
 }
 
+// GetTournamentBracket operation middleware
+func (siw *ServerInterfaceWrapper) GetTournamentBracket(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTournamentBracket(c, id)
+}
+
 // ListTournamentBracketPlans operation middleware
 func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 
@@ -4572,6 +4777,31 @@ func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 	}
 
 	siw.Handler.ListTournamentBracketPlans(c, id)
+}
+
+// CancelTournament operation middleware
+func (siw *ServerInterfaceWrapper) CancelTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CancelTournament(c, id)
 }
 
 // UnregisterFromTournament operation middleware
@@ -4622,6 +4852,31 @@ func (siw *ServerInterfaceWrapper) RegisterInTournament(c *gin.Context) {
 	}
 
 	siw.Handler.RegisterInTournament(c, id)
+}
+
+// StartTournament operation middleware
+func (siw *ServerInterfaceWrapper) StartTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.StartTournament(c, id)
 }
 
 // ListUsers operation middleware
@@ -4758,9 +5013,12 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
 	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
 	router.PUT(options.BaseURL+"/tournaments/:id", wrapper.UpdateTournament)
+	router.GET(options.BaseURL+"/tournaments/:id/bracket", wrapper.GetTournamentBracket)
 	router.GET(options.BaseURL+"/tournaments/:id/bracket-plans", wrapper.ListTournamentBracketPlans)
+	router.POST(options.BaseURL+"/tournaments/:id/cancel", wrapper.CancelTournament)
 	router.DELETE(options.BaseURL+"/tournaments/:id/registration", wrapper.UnregisterFromTournament)
 	router.POST(options.BaseURL+"/tournaments/:id/registration", wrapper.RegisterInTournament)
+	router.POST(options.BaseURL+"/tournaments/:id/start", wrapper.StartTournament)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 }
@@ -8839,6 +9097,56 @@ func (response UpdateTournament409JSONResponse) VisitUpdateTournamentResponse(w 
 	return err
 }
 
+type GetTournamentBracketRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetTournamentBracketResponseObject interface {
+	VisitGetTournamentBracketResponse(w http.ResponseWriter) error
+}
+
+type GetTournamentBracket200JSONResponse BracketResponse
+
+func (response GetTournamentBracket200JSONResponse) VisitGetTournamentBracketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTournamentBracket400JSONResponse ApiError
+
+func (response GetTournamentBracket400JSONResponse) VisitGetTournamentBracketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTournamentBracket404JSONResponse ApiError
+
+func (response GetTournamentBracket404JSONResponse) VisitGetTournamentBracketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTournamentBracketPlansRequestObject struct {
 	Id string `json:"id"`
 }
@@ -8920,6 +9228,84 @@ func (response ListTournamentBracketPlans404JSONResponse) VisitListTournamentBra
 type ListTournamentBracketPlans409JSONResponse ApiError
 
 func (response ListTournamentBracketPlans409JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type CancelTournamentResponseObject interface {
+	VisitCancelTournamentResponse(w http.ResponseWriter) error
+}
+
+type CancelTournament200JSONResponse ApiSuccessMessage
+
+func (response CancelTournament200JSONResponse) VisitCancelTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTournament401JSONResponse ApiError
+
+func (response CancelTournament401JSONResponse) VisitCancelTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTournament403JSONResponse ApiError
+
+func (response CancelTournament403JSONResponse) VisitCancelTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTournament404JSONResponse ApiError
+
+func (response CancelTournament404JSONResponse) VisitCancelTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTournament409JSONResponse ApiError
+
+func (response CancelTournament409JSONResponse) VisitCancelTournamentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -9076,6 +9462,99 @@ func (response RegisterInTournament404JSONResponse) VisitRegisterInTournamentRes
 type RegisterInTournament409JSONResponse ApiError
 
 func (response RegisterInTournament409JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournamentRequestObject struct {
+	Id   string `json:"id"`
+	Body *StartTournamentJSONRequestBody
+}
+
+type StartTournamentResponseObject interface {
+	VisitStartTournamentResponse(w http.ResponseWriter) error
+}
+
+type StartTournament200JSONResponse ApiSuccessMessage
+
+func (response StartTournament200JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournament400JSONResponse ApiError
+
+func (response StartTournament400JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournament401JSONResponse ApiError
+
+func (response StartTournament401JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournament403JSONResponse ApiError
+
+func (response StartTournament403JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournament404JSONResponse ApiError
+
+func (response StartTournament404JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTournament409JSONResponse ApiError
+
+func (response StartTournament409JSONResponse) VisitStartTournamentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -9402,15 +9881,24 @@ type StrictServerInterface interface {
 	// UpdateTournament Update the registration-time configuration (name, deadline, pool, participants)
 	// (PUT /tournaments/{id})
 	UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error)
+	// GetTournamentBracket The full bracket (public)
+	// (GET /tournaments/{id}/bracket)
+	GetTournamentBracket(ctx context.Context, request GetTournamentBracketRequestObject) (GetTournamentBracketResponseObject, error)
 	// ListTournamentBracketPlans Enumerate the valid bracket shapes for the current participant count and pool
 	// (GET /tournaments/{id}/bracket-plans)
 	ListTournamentBracketPlans(ctx context.Context, request ListTournamentBracketPlansRequestObject) (ListTournamentBracketPlansResponseObject, error)
+	// CancelTournament Cancel the tournament (organizer)
+	// (POST /tournaments/{id}/cancel)
+	CancelTournament(ctx context.Context, request CancelTournamentRequestObject) (CancelTournamentResponseObject, error)
 	// UnregisterFromTournament Withdraw the current user's linked player
 	// (DELETE /tournaments/{id}/registration)
 	UnregisterFromTournament(ctx context.Context, request UnregisterFromTournamentRequestObject) (UnregisterFromTournamentResponseObject, error)
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error)
+	// StartTournament Start the tournament with the chosen bracket shape
+	// (POST /tournaments/{id}/start)
+	StartTournament(ctx context.Context, request StartTournamentRequestObject) (StartTournamentResponseObject, error)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -11421,6 +11909,32 @@ func (sh *strictHandler) UpdateTournament(ctx *gin.Context, id string) {
 	}
 }
 
+// GetTournamentBracket operation middleware
+func (sh *strictHandler) GetTournamentBracket(ctx *gin.Context, id string) {
+	var request GetTournamentBracketRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTournamentBracket(ctx, request.(GetTournamentBracketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTournamentBracket")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetTournamentBracketResponseObject); ok {
+		if err := validResponse.VisitGetTournamentBracketResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListTournamentBracketPlans operation middleware
 func (sh *strictHandler) ListTournamentBracketPlans(ctx *gin.Context, id string) {
 	var request ListTournamentBracketPlansRequestObject
@@ -11440,6 +11954,32 @@ func (sh *strictHandler) ListTournamentBracketPlans(ctx *gin.Context, id string)
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(ListTournamentBracketPlansResponseObject); ok {
 		if err := validResponse.VisitListTournamentBracketPlansResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelTournament operation middleware
+func (sh *strictHandler) CancelTournament(ctx *gin.Context, id string) {
+	var request CancelTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelTournament(ctx, request.(CancelTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CancelTournamentResponseObject); ok {
+		if err := validResponse.VisitCancelTournamentResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -11492,6 +12032,39 @@ func (sh *strictHandler) RegisterInTournament(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(RegisterInTournamentResponseObject); ok {
 		if err := validResponse.VisitRegisterInTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartTournament operation middleware
+func (sh *strictHandler) StartTournament(ctx *gin.Context, id string) {
+	var request StartTournamentRequestObject
+
+	request.Id = id
+
+	var body StartTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.StartTournament(ctx, request.(StartTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(StartTournamentResponseObject); ok {
+		if err := validResponse.VisitStartTournamentResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

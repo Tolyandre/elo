@@ -468,3 +468,209 @@ func TestTournament_BracketPlans(t *testing.T) {
 		t.Fatalf("closed registration must 409, got %d", w.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4: start, materialization, bracket, arena
+// ---------------------------------------------------------------------------
+
+type bracketJSON struct {
+	Data struct {
+		TournamentId   string `json:"tournament_id"`
+		Status         string `json:"status"`
+		Elimination    string `json:"elimination"`
+		WinnerPlayerId string `json:"winner_player_id"`
+		Rounds         []struct {
+			Track string `json:"track"`
+			Index int    `json:"index"`
+			Slots []struct {
+				Id       string `json:"id"`
+				GameId   string `json:"game_id"`
+				Position int    `json:"position"`
+				Promote  int    `json:"promote"`
+				Status   string `json:"status"`
+				Seats    []struct {
+					Position     int     `json:"position"`
+					PlayerId     *string `json:"player_id"`
+					SourceSlotId *string `json:"source_slot_id"`
+					SourcePlace  *int    `json:"source_place"`
+				} `json:"seats"`
+				Matches []struct {
+					MatchId string `json:"match_id"`
+				} `json:"matches"`
+				Standings []struct {
+					PlayerId string `json:"player_id"`
+					Points   int    `json:"points"`
+					Place    int    `json:"place"`
+					Promoted bool   `json:"promoted"`
+				} `json:"standings"`
+			} `json:"slots"`
+		} `json:"rounds"`
+	} `json:"data"`
+}
+
+// TestTournament_StartMaterializesBracket drives the start action on the
+// flagship 8-player shape: the seeded draw fills both round-1 tables (every
+// participant seated exactly once), the final waits on sources, the arena is
+// created, and the status flips to running. A hand-forged plan is rejected.
+func TestTournament_StartMaterializesBracket(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Стартовая игра")
+
+	tid := newID(t)
+	var ids []string
+	players := make([]idpkg.ID, 0, 8)
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Стартер%d", i))
+		players = append(players, p)
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Стартовый кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+
+	// A hand-forged plan (promote 3 against 4-seat tables is fine per bounds,
+	// but this shape leaves 3 players output where the final needs 4 — not
+	// offered by the enumerator) must be rejected.
+	handForged := `{"elimination":"single","rounds":[
+		{"track":"winners","index":1,"promote":3,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":6,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":0,"source_place":3},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2},{"kind":"source","source_slot":1,"source_place":3}]}]}]}`
+	w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":`+handForged+`}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("hand-forged plan must 400, got %d %s", w.Code, w.Body.String())
+	}
+
+	// The flagship plan goes through.
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
+		{"track":"winners","index":1,"promote":2,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+
+	// A second start is a 409.
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
+		{"track":"winners","index":1,"promote":2,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("second start must 409, got %d", w.Code)
+	}
+
+	// The bracket: round 1 fully drawn and playing, the final waiting on
+	// sources, the tournament's own game on every slot.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket", "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket: %d %s", w.Code, w.Body.String())
+	}
+	var br bracketJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &br); err != nil {
+		t.Fatalf("decode bracket: %v", err)
+	}
+	if br.Data.Status != "running" || br.Data.Elimination != "single" || len(br.Data.Rounds) != 2 {
+		t.Fatalf("bracket head: %+v", br.Data)
+	}
+	r1 := br.Data.Rounds[0]
+	if r1.Track != "winners" || len(r1.Slots) != 2 {
+		t.Fatalf("round 1: %+v", r1)
+	}
+	seen := map[string]bool{}
+	for _, slot := range r1.Slots {
+		if slot.Status != "playing" || slot.GameId != short(gameID) || slot.Promote != 2 {
+			t.Fatalf("round-1 slot: %+v", slot)
+		}
+		for _, seat := range slot.Seats {
+			if seat.PlayerId == nil || seat.SourceSlotId != nil {
+				t.Fatalf("round-1 seat must be drawn: %+v", seat)
+			}
+			seen[*seat.PlayerId] = true
+		}
+	}
+	if len(seen) != 8 {
+		t.Fatalf("the draw must seat all 8 participants exactly once, got %d distinct", len(seen))
+	}
+	final := br.Data.Rounds[1]
+	if final.Track != "final" || len(final.Slots) != 1 || len(final.Slots[0].Seats) != 4 {
+		t.Fatalf("final: %+v", final)
+	}
+	for _, seat := range final.Slots[0].Seats {
+		if seat.PlayerId != nil || seat.SourceSlotId == nil || seat.SourcePlace == nil {
+			t.Fatalf("final seats must wait on sources: %+v", seat)
+		}
+	}
+
+	// The tournament arena exists and is anchored to the tournament.
+	var arenaName string
+	if err := pool.QueryRow(context.Background(),
+		`SELECT a.name FROM arenas a WHERE a.tournament_id = $1`, tid).Scan(&arenaName); err != nil {
+		t.Fatalf("tournament arena: %v", err)
+	}
+	w = doJSON(t, router, http.MethodGet, "/arenas?tournament_id="+short(tid), "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("arenas?tournament_id: %d %s", w.Code, w.Body.String())
+	}
+
+	// Audit: a tournament-start document with the plan, seed, participants.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	if len(page.Data) == 0 {
+		t.Fatalf("no audit rows for the tournament")
+	}
+	var startDetails struct {
+		Plan           json.RawMessage `json:"plan"`
+		Seed           int64           `json:"seed"`
+		ParticipantIds []string        `json:"participant_ids"`
+	}
+	found := false
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		if err := json.Unmarshal(e.Details, &startDetails); err == nil && startDetails.Seed != 0 && len(startDetails.ParticipantIds) == 8 {
+			found = true
+			var planDoc map[string]any
+			if err := json.Unmarshal(startDetails.Plan, &planDoc); err != nil || planDoc["elimination"] != "single" {
+				t.Fatalf("start details plan: %v %v", err, planDoc["elimination"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no tournament-start details document found")
+	}
+
+	// Cancel from running works and is audited with reason "organizer".
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/cancel", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("cancel: %d %s", w.Code, w.Body.String())
+	}
+	var stateDetails struct {
+		From   string `json:"from"`
+		To     string `json:"to"`
+		Reason string `json:"reason"`
+	}
+	found = false
+	for _, e := range listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid)).Data {
+		if e.Details == nil {
+			continue
+		}
+		if err := json.Unmarshal(e.Details, &stateDetails); err == nil && stateDetails.Reason == "organizer" && stateDetails.To == "cancelled" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no tournament-state cancelled document")
+	}
+	_ = players
+}

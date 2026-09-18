@@ -207,6 +207,9 @@ func main() {
 	router.GET("/tournaments/:id/bracket-plans", append(editorAuth(), strictWrapper.ListTournamentBracketPlans)...)
 	router.POST("/tournaments/:id/registration", append(playerAuth(), strictWrapper.RegisterInTournament)...)
 	router.DELETE("/tournaments/:id/registration", append(playerAuth(), strictWrapper.UnregisterFromTournament)...)
+	router.POST("/tournaments/:id/start", append(editorAuth(), strictWrapper.StartTournament)...)
+	router.POST("/tournaments/:id/cancel", append(editorAuth(), strictWrapper.CancelTournament)...)
+	router.GET("/tournaments/:id/bracket", strictWrapper.GetTournamentBracket)
 
 	// Realtime SSE — one multiplexed stream of the app-global topics (global
 	// data-change signals, both lobby signals, per-user events) picked via

@@ -105,6 +105,16 @@ components:
       $ref: './tournaments.yaml#/TournamentPlan'
     BracketPlansResponse:
       $ref: './tournaments.yaml#/BracketPlansResponse'
+    BracketSeat:
+      $ref: './tournaments.yaml#/BracketSeat'
+    BracketSlot:
+      $ref: './tournaments.yaml#/BracketSlot'
+    BracketRound:
+      $ref: './tournaments.yaml#/BracketRound'
+    Bracket:
+      $ref: './tournaments.yaml#/Bracket'
+    BracketResponse:
+      $ref: './tournaments.yaml#/BracketResponse'
 
     # Clubs
     Club:
@@ -249,6 +259,12 @@ paths:
     $ref: './tournaments.yaml#/TournamentRegistration'
   /tournaments/{id}/bracket-plans:
     $ref: './tournaments.yaml#/TournamentBracketPlans'
+  /tournaments/{id}/start:
+    $ref: './tournaments.yaml#/TournamentStart'
+  /tournaments/{id}/cancel:
+    $ref: './tournaments.yaml#/TournamentCancel'
+  /tournaments/{id}/bracket:
+    $ref: './tournaments.yaml#/TournamentBracketPath'
 
   # Clubs
   /clubs:

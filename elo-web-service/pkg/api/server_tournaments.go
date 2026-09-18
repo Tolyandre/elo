@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
+	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -153,6 +155,91 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	return resp, nil
 }
 
+func (s *StrictServer) StartTournament(ctx context.Context, request StartTournamentRequestObject) (StartTournamentResponseObject, error) {
+	var planRaw json.RawMessage
+	if request.Body != nil {
+		raw, perr := planToCanonicalRaw(request.Body.Plan)
+		if perr != nil {
+			return StartTournament400JSONResponse{Status: "fail", Message: perr.Error()}, nil
+		}
+		planRaw = raw
+	}
+	tid := parseIDParam(request.Id)
+	err := s.api.TournamentService.StartTournament(ctx, tid, planRaw, currentActorID(ctx))
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return StartTournament400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case http.StatusNotFound:
+			return StartTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+		case http.StatusConflict:
+			return StartTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(true, true)
+	return StartTournament200JSONResponse{Status: "success", Message: "Tournament is started"}, nil
+}
+
+func (s *StrictServer) CancelTournament(ctx context.Context, request CancelTournamentRequestObject) (CancelTournamentResponseObject, error) {
+	err := s.api.TournamentService.CancelTournament(ctx, parseIDParam(request.Id), currentActorID(ctx))
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return CancelTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+		case http.StatusConflict:
+			return CancelTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(false, true)
+	return CancelTournament200JSONResponse{Status: "success", Message: "Tournament is cancelled"}, nil
+}
+
+func (s *StrictServer) GetTournamentBracket(ctx context.Context, request GetTournamentBracketRequestObject) (GetTournamentBracketResponseObject, error) {
+	t, rounds, err := s.api.TournamentService.GetBracket(ctx, parseIDParam(request.Id))
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return GetTournamentBracket404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+		default:
+			return nil, err
+		}
+	}
+	return GetTournamentBracket200JSONResponse{Status: "success", Data: bracketToAPI(t, rounds)}, nil
+}
+
+// planToCanonicalRaw round-trips the wire plan through the strict parser so
+// the start action validates exactly what the enumerator's canonical form
+// would be (unknown fields rejected, ids-free by construction).
+func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
+	plan := bracket.Plan{Elimination: string(p.Elimination)}
+	for _, r := range p.Rounds {
+		pr := bracket.PlanRound{Track: string(r.Track), Index: r.Index, Promote: r.Promote}
+		for _, sl := range r.Slots {
+			ps := bracket.PlanSlot{SeatCount: sl.SeatCount}
+			for _, seat := range sl.Seats {
+				s := bracket.PlanSeat{Kind: string(seat.Kind)}
+				if seat.SourceSlot != nil {
+					s.SourceSlot = *seat.SourceSlot
+				}
+				if seat.SourcePlace != nil {
+					s.SourcePlace = *seat.SourcePlace
+				}
+				ps.Seats = append(ps.Seats, s)
+			}
+			pr.Slots = append(pr.Slots, ps)
+		}
+		plan.Rounds = append(plan.Rounds, pr)
+	}
+	if err := plan.Validate(); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(plan.CanonicalJSON()), nil
+}
+
 // ---------------------------------------------------------------------------
 // mapping helpers
 // ---------------------------------------------------------------------------
@@ -240,6 +327,83 @@ func planToAPI(p bracket.Plan) TournamentPlan {
 			pr.Slots = append(pr.Slots, ps)
 		}
 		out.Rounds = append(out.Rounds, pr)
+	}
+	return out
+}
+
+// bracketToAPI maps the service DTO onto the generated bracket schema.
+func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
+	out := Bracket{
+		TournamentId: Base58ID(t.ID),
+		Status:       BracketStatus(t.Status),
+		Elimination:  BracketElimination(t.Elimination),
+		Rounds:       make([]BracketRound, 0, len(rounds)),
+	}
+	if t.WinnerPlayerID != nil {
+		w := Base58ID(*t.WinnerPlayerID)
+		out.WinnerPlayerId = &w
+	}
+	for _, r := range rounds {
+		br := BracketRound{
+			Track: BracketRoundTrack(r.Track),
+			Index: r.Index,
+			Slots: make([]BracketSlot, 0, len(r.Slots)),
+		}
+		for _, sl := range r.Slots {
+			bs := BracketSlot{
+				Id:       Base58ID(sl.ID),
+				GameId:   Base58ID(sl.GameID),
+				Position: sl.Position,
+				Promote:  sl.Promote,
+				Status:   BracketSlotStatus(sl.Status),
+				Seats:    make([]BracketSeat, 0, len(sl.Seats)),
+				Matches: []struct {
+					MatchId Base58ID `json:"match_id"`
+				}{},
+				Standings: []struct {
+					Place    int      `json:"place"`
+					PlayerId Base58ID `json:"player_id"`
+					Points   int      `json:"points"`
+					Promoted bool     `json:"promoted"`
+				}{},
+			}
+			for _, seat := range sl.Seats {
+				seatOut := BracketSeat{Position: seat.Position}
+				if seat.PlayerID != nil {
+					pid := Base58ID(*seat.PlayerID)
+					seatOut.PlayerId = &pid
+				}
+				if seat.SourceSlotID != nil {
+					sid := Base58ID(*seat.SourceSlotID)
+					seatOut.SourceSlotId = &sid
+				}
+				if seat.SourcePlace != nil {
+					sp := *seat.SourcePlace
+					seatOut.SourcePlace = &sp
+				}
+				bs.Seats = append(bs.Seats, seatOut)
+			}
+			for _, mid := range sl.MatchIDs {
+				bs.Matches = append(bs.Matches, struct {
+					MatchId Base58ID `json:"match_id"`
+				}{MatchId: Base58ID(mid)})
+			}
+			for _, st := range sl.Standings {
+				bs.Standings = append(bs.Standings, struct {
+					Place    int      `json:"place"`
+					PlayerId Base58ID `json:"player_id"`
+					Points   int      `json:"points"`
+					Promoted bool     `json:"promoted"`
+				}{
+					PlayerId: Base58ID(st.PlayerID),
+					Points:   st.Points,
+					Place:    st.Place,
+					Promoted: st.Promoted,
+				})
+			}
+			br.Slots = append(br.Slots, bs)
+		}
+		out.Rounds = append(out.Rounds, br)
 	}
 	return out
 }

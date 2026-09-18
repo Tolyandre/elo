@@ -2,13 +2,19 @@ package elo
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"math/rand"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tolyandre/elo-web-service/pkg/audit"
+	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -33,6 +39,13 @@ const (
 const (
 	TournamentSingle = bracket.EliminationSingle
 	TournamentDouble = bracket.EliminationDouble
+)
+
+// Canonical track ordering (winners before losers before final) — mirrors the
+// SQL CASE in tournament_brackets.sql and pkg/bracket's trackRank.
+var (
+	tournamentTrackRank  = map[string]int{bracket.TrackWinners: 0, bracket.TrackLosers: 1, bracket.TrackFinal: 2}
+	tournamentTrackNames = [3]string{bracket.TrackWinners, bracket.TrackLosers, bracket.TrackFinal}
 )
 
 type TournamentService struct {
@@ -494,4 +507,372 @@ func timePtrEqual(a, b *time.Time) bool {
 		return a == nil && b == nil
 	}
 	return a.Equal(*b)
+}
+
+
+// ---------------------------------------------------------------------------
+// Start, cancel, bracket (ADR-26 §Start / §Lifecycle)
+// ---------------------------------------------------------------------------
+
+// Slot statuses (tournament_slots.status).
+const (
+	TournamentSlotWaiting   = "waiting"
+	TournamentSlotPlaying   = "playing"
+	TournamentSlotCompleted = "completed"
+)
+
+// StartTournament validates the submitted plan against a fresh enumeration,
+// stores it verbatim, generates all rounds/slots/seats with a seeded draw,
+// creates the tournament arena, and flips the lifecycle to running — one
+// transaction.
+func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, planRaw json.RawMessage, actorUserID id.ID) error {
+	plan, err := bracket.ParsePlan(planRaw)
+	if err != nil {
+		return err
+	}
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		t, err := q.GetTournamentForUpdate(ctx, tid)
+		if err != nil {
+			return fmt.Errorf("get tournament: %w", err)
+		}
+		if t.Status != TournamentRegistration {
+			return ErrTournamentAlreadyStarted
+		}
+		if t.GrandFinalDeadline.Valid && !t.GrandFinalDeadline.Time.After(time.Now()) {
+			return ErrTournamentDeadlineInvalid
+		}
+		participants, err := tournamentParticipantIDs(ctx, q, tid)
+		if err != nil {
+			return err
+		}
+		if len(participants) < 2 {
+			return ErrTournamentTooFewParticipants
+		}
+		pool, err := q.ListTournamentGames(ctx, tid)
+		if err != nil {
+			return fmt.Errorf("list pool: %w", err)
+		}
+		if len(pool) == 0 {
+			return ErrTournamentPoolEmpty
+		}
+
+		// The submitted plan must be one the server would have offered — no
+		// hand-forged structures (ADR-26).
+		res := bracket.Enumerate(len(participants), poolCaps(pool), plan.Elimination, bracket.DefaultPlanCap)
+		canonical := plan.CanonicalJSON()
+		offered := false
+		for _, p := range res.Plans {
+			if p.CanonicalJSON() == canonical {
+				offered = true
+				break
+			}
+		}
+		if !offered {
+			return ErrTournamentPlanInvalid
+		}
+
+		// Seeded draw: participants sorted by id, Fisher–Yates from the stored
+		// seed — the same inputs always reproduce the same bracket.
+		seed := randomSeed()
+		rng := rand.New(rand.NewSource(seed))
+		draw := slices.Clone(participants)
+		slices.Sort(draw)
+		rng.Shuffle(len(draw), func(i, j int) { draw[i], draw[j] = draw[j], draw[i] })
+		cursor := 0
+		takeDrawn := func() id.ID {
+			p := draw[cursor]
+			cursor++
+			return p
+		}
+
+		// Materialize: rounds/slots/seats in canonical plan order. Draw and
+		// bye seats take the next drawn players directly (round-1 tables
+		// first, then the bye seats — the enumerator emits byes at the tail);
+		// source seats stay unresolved until their source slot completes.
+		fitting := fittingGames(pool)
+		slotIDs := make(map[int]id.ID) // flat plan slot index → slot row id
+		flat := 0
+		for roundPos, pr := range plan.Rounds {
+			roundID := id.New()
+			if _, err := q.CreateTournamentRound(ctx, db.CreateTournamentRoundParams{
+				ID: roundID, TournamentID: tid, Track: pr.Track, Index: int32(pr.Index),
+			}); err != nil {
+				return fmt.Errorf("create round: %w", err)
+			}
+			for slotPos, ps := range pr.Slots {
+				game := pickGame(rng, fitting[ps.SeatCount])
+				slotID := id.New()
+				status := TournamentSlotWaiting
+				if roundPos == 0 {
+					status = TournamentSlotPlaying
+				}
+				if _, err := q.CreateTournamentSlot(ctx, db.CreateTournamentSlotParams{
+					ID: slotID, RoundID: roundID, Position: int32(slotPos + 1),
+					GameID: game, Promote: int32(pr.Promote), Status: status,
+				}); err != nil {
+					return fmt.Errorf("create slot: %w", err)
+				}
+				slotIDs[flat] = slotID
+				flat++
+				for seatPos, seat := range ps.Seats {
+					var playerID *id.ID
+					if seat.Kind == bracket.SeatDraw || seat.Kind == bracket.SeatBye {
+						p := takeDrawn()
+						playerID = &p
+					}
+					var sourceSlotID *id.ID
+					if seat.Kind == bracket.SeatSource {
+						sid := slotIDs[seat.SourceSlot]
+						sourceSlotID = &sid
+					}
+					var sourcePlace pgtype.Int4
+					if seat.Kind == bracket.SeatSource {
+						sourcePlace = pgtype.Int4{Int32: int32(seat.SourcePlace), Valid: true}
+					}
+					if err := q.CreateTournamentSeat(ctx, db.CreateTournamentSeatParams{
+						ID: id.New(), SlotID: slotID, Position: int32(seatPos + 1),
+						PlayerID: playerID, SourceSlotID: sourceSlotID, SourcePlace: sourcePlace,
+					}); err != nil {
+						return fmt.Errorf("create seat: %w", err)
+					}
+				}
+			}
+		}
+
+		// The tournament arena (ADR-24 anchor, no filter, no leagues) —
+		// rating, medals and the standings table come for free through the
+		// arena pipeline.
+		if err := s.ensureTournamentArena(ctx, q, tid, t.Name); err != nil {
+			return err
+		}
+
+		if err := q.SetTournamentRunning(ctx, db.SetTournamentRunningParams{
+			ID: tid, Seed: pgtype.Int8{Int64: seed, Valid: true}, Plan: []byte(canonical), PlanSchemaVersion: 1,
+		}); err != nil {
+			return fmt.Errorf("set running: %w", err)
+		}
+		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindTournamentStart, audit.NewTournamentStartDetails([]byte(canonical), seed, idStrings(participants)))
+	})
+}
+
+// CancelTournament aborts the tournament from registration or running (the
+// organizer action; the grand-final deadline auto-cancel in slotplay.go
+// shares the state write with reason "deadline").
+func (s *TournamentService) CancelTournament(ctx context.Context, tid, actorUserID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		t, err := q.GetTournamentForUpdate(ctx, tid)
+		if err != nil {
+			return fmt.Errorf("get tournament: %w", err)
+		}
+		if t.Status != TournamentRegistration && t.Status != TournamentRunning {
+			return ErrTournamentLifecycleInvalid
+		}
+		if err := q.SetTournamentStatus(ctx, db.SetTournamentStatusParams{ID: tid, Status: TournamentCancelled}); err != nil {
+			return fmt.Errorf("cancel: %w", err)
+		}
+		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindTournamentState, audit.NewTournamentStateDetails(t.Status, TournamentCancelled, audit.StateReasonOrganizer))
+	})
+}
+
+// BracketSeat is one seat of the bracket DTO.
+type BracketSeat struct {
+	Position     int
+	PlayerID     *id.ID
+	SourceSlotID *id.ID
+	SourcePlace  *int
+}
+
+// BracketSlot is one rendered table of the bracket DTO.
+type BracketSlot struct {
+	ID        id.ID
+	Position  int
+	GameID    id.ID
+	Promote   int
+	Status    string
+	Seats     []BracketSeat
+	MatchIDs  []id.ID
+	Standings []bracket.Standing
+}
+
+// BracketRound is one round of the bracket DTO.
+type BracketRound struct {
+	Track string
+	Index int
+	Slots []BracketSlot
+}
+
+// GetBracket assembles the full bracket DTO: the stored structure plus live
+// standings derived from the linked matches' scores — standings are never
+// stored (ADR-26).
+func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tournament, []BracketRound, error) {
+	t, err := s.Queries.GetTournament(ctx, tid)
+	if err != nil {
+		return db.Tournament{}, nil, fmt.Errorf("get tournament: %w", err)
+	}
+	slots, err := s.Queries.ListTournamentSlots(ctx, tid)
+	if err != nil {
+		return db.Tournament{}, nil, fmt.Errorf("list slots: %w", err)
+	}
+	if len(slots) == 0 {
+		return t, nil, nil
+	}
+
+	slotIDs := make([]id.ID, 0, len(slots))
+	for _, sl := range slots {
+		slotIDs = append(slotIDs, sl.ID)
+	}
+	seats, err := s.Queries.ListSeatsBySlots(ctx, slotIDs)
+	if err != nil {
+		return db.Tournament{}, nil, fmt.Errorf("list seats: %w", err)
+	}
+	seatsBySlot := make(map[id.ID][]db.TournamentSeat, len(slots))
+	for _, se := range seats {
+		seatsBySlot[se.SlotID] = append(seatsBySlot[se.SlotID], se)
+	}
+
+	byRound := make(map[[2]int][]*BracketSlot)
+	roundOrder := make([][2]int, 0, len(slots))
+	bracketSlots := make(map[id.ID]*BracketSlot, len(slots))
+	for i := range slots {
+		sl := slots[i]
+		bs := &BracketSlot{
+			ID:       sl.ID,
+			Position: int(sl.Position),
+			GameID:   sl.GameID,
+			Promote:  int(sl.Promote),
+			Status:   sl.Status,
+		}
+		for _, se := range seatsBySlot[sl.ID] {
+			seat := BracketSeat{Position: int(se.Position), PlayerID: se.PlayerID, SourceSlotID: se.SourceSlotID}
+			if se.SourcePlace.Valid {
+				p := int(se.SourcePlace.Int32)
+				seat.SourcePlace = &p
+			}
+			bs.Seats = append(bs.Seats, seat)
+		}
+		key := [2]int{tournamentTrackRank[sl.Track], int(sl.RoundIndex)}
+		if _, seen := byRound[key]; !seen {
+			roundOrder = append(roundOrder, key)
+		}
+		byRound[key] = append(byRound[key], bs)
+		bracketSlots[sl.ID] = bs
+	}
+
+	// Matches, promotions and the live standings per slot.
+	for i := range slots {
+		sl := slots[i]
+		bs := bracketSlots[sl.ID]
+		results, err := s.Queries.ListSlotMatchResults(ctx, sl.ID)
+		if err != nil {
+			return db.Tournament{}, nil, fmt.Errorf("list slot matches: %w", err)
+		}
+		var matchResults []bracket.MatchResult
+		lastID := id.ID("")
+		for _, r := range results {
+			if r.MatchID != lastID {
+				matchResults = append(matchResults, bracket.MatchResult{
+					MatchID: r.MatchID,
+					Scores:  make(map[id.ID]float64, 4),
+				})
+				bs.MatchIDs = append(bs.MatchIDs, r.MatchID)
+				lastID = r.MatchID
+			}
+			mr := &matchResults[len(matchResults)-1]
+			mr.Scores[r.PlayerID] = r.Score
+		}
+		if len(matchResults) > 0 && len(bs.Seats) >= 2 {
+			sts := bracket.Standings(matchResults, len(bs.Seats))
+			promos, err := s.Queries.ListSlotPromotions(ctx, sl.ID)
+			if err != nil {
+				return db.Tournament{}, nil, fmt.Errorf("list promotions: %w", err)
+			}
+			promoted := make(map[id.ID]bool, len(promos))
+			for _, p := range promos {
+				promoted[p.PlayerID] = true
+			}
+			for si := range sts {
+				sts[si].Promoted = promoted[sts[si].PlayerID]
+			}
+			bs.Standings = sts
+		}
+	}
+
+	rounds := make([]BracketRound, 0, len(roundOrder))
+	for _, key := range roundOrder {
+		br := BracketRound{Track: tournamentTrackNames[key[0]], Index: key[1]}
+		for _, bs := range byRound[key] {
+			br.Slots = append(br.Slots, *bs)
+		}
+		rounds = append(rounds, br)
+	}
+	return t, rounds, nil
+}
+
+// ensureTournamentArena creates the auto-managed tournament arena (ADR-24
+// anchor, no filter row, no leagues — rating ≡ elo) with a name derived from
+// the unique tournament name.
+func (s *TournamentService) ensureTournamentArena(ctx context.Context, q *db.Queries, tid id.ID, name string) error {
+	if _, err := q.GetArenaByTournament(ctx, &tid); !db.IsNoRows(err) {
+		return err // exists (or real error)
+	}
+	settings, err := settingsDoc(startingRatingGameArenaDefault, nil)
+	if err != nil {
+		return err
+	}
+	arenaName := name
+	if err := ensureArenaNameFree(ctx, q, arenaName, nil); err != nil {
+		arenaName = name + " — турнир"
+		if err := ensureArenaNameFree(ctx, q, arenaName, nil); err != nil {
+			return err
+		}
+	}
+	row, err := q.CreateArena(ctx, db.CreateArenaParams{
+		ID:                    id.NewMonotonic(),
+		Name:                  arenaName,
+		MatchFilterID:         nil, // tournament arenas are link-only (ADR-26)
+		Settings:              settings,
+		SettingsSchemaVersion: arenasettings.CurrentVersion,
+		TournamentID:          &tid,
+	})
+	if err != nil {
+		return fmt.Errorf("create arena: %w", err)
+	}
+	return q.MarkArenasStaleFull(ctx, []id.ID{row.ID})
+}
+
+// ---------------------------------------------------------------------------
+// small helpers for the bracket lifecycle
+// ---------------------------------------------------------------------------
+
+// randomSeed mints the stored PRNG seed.
+func randomSeed() int64 {
+	var b [8]byte
+	if _, err := cryptorand.Read(b[:]); err != nil {
+		// Cannot start the tournament without a seed; crypto/rand failing
+		// means the system is broken anyway.
+		panic(fmt.Sprintf("bracket: seed: %v", err))
+	}
+	return int64(binary.BigEndian.Uint64(b[:]) & 0x7fffffffffffffff)
+}
+
+// fittingGames indexes the pool's games by the seat counts they can host.
+func fittingGames(pool []db.TournamentGame) map[int][]id.ID {
+	out := make(map[int][]id.ID, len(pool))
+	for _, g := range pool {
+		for k := int(g.MinPlayers); k <= int(g.MaxPlayers); k++ {
+			out[k] = append(out[k], g.GameID)
+		}
+	}
+	return out
+}
+
+// pickGame assigns one of the fitting games to a slot, seeded (a rebuild
+// from the same plan + seed reproduces the same assignment).
+func pickGame(rng *rand.Rand, games []id.ID) id.ID {
+	if len(games) == 0 {
+		return id.ID("")
+	}
+	return games[rng.Intn(len(games))]
 }

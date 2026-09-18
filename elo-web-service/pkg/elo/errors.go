@@ -40,6 +40,7 @@ var (
 	ErrTournamentPlanInvalid             = errors.New("этот план сетки не входит в допустимые для текущего состава участников и пула")
 	ErrTournamentAlreadyStarted          = errors.New("турнир уже начат")
 	ErrTournamentNotStarted              = errors.New("турнир ещё не начат")
+	ErrTournamentLifecycleInvalid        = errors.New("действие недоступно в текущем состоянии турнира")
 	ErrSlotAssociationLocked             = errors.New("партия учтена в турнирной сетке — состав игроков и игру менять нельзя, сначала открепите её от стола")
 	ErrTournamentSlotNotFound            = errors.New("стол не найден в этой сетке")
 	ErrTournamentSlotNotPlaying          = errors.New("стол не принимает партии")
