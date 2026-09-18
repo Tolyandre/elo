@@ -146,7 +146,7 @@ ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_details_kind_check;
 ALTER TABLE audit_log ADD CONSTRAINT audit_log_details_kind_check
     CHECK (details_kind IN ('entity', 'rename', 'match-update', 'arena-camp-config', 'camp-link',
                             'tournament-config', 'tournament-start', 'tournament-state',
-                            'slot-ruling', 'slot-link'));
+                            'slot-ruling', 'slot-link', 'slot-adjust'));
 
 -- 7. The membership function gains the tournament flavor (ADR-28). Same shape
 --    as 055: a pure expression whose sub-SELECT probes are passed in by the

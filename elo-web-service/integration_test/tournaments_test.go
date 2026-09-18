@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -1200,4 +1201,355 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
 		t.Fatalf("re-completion: %+v", br.Data)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: rulings, attach/detach, WB+LB, deadline
+// ---------------------------------------------------------------------------
+
+// TestTournament_RulingAttachDetach covers the organizer corrections: attach
+// of a mistakenly-unchecked match, a hand ruling that completes the slot,
+// ruling persistence over a detach, and the audit documents.
+func TestTournament_RulingAttachDetach(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Судейская игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Судья%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок судей", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	// One 4-seat grand final: the whole tournament is one table.
+	plan := `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, plan); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slot := br.Data.Rounds[0].Slots[0]
+	seat := func(i int) string {
+		p := slot.Seats[i].PlayerId
+		if p == nil {
+			t.Fatalf("seat %d not drawn", i)
+		}
+		return *p
+	}
+
+	// The organizer forgot the checkbox: the match was posted skipped.
+	mid := short(newID(t))
+	// Posted with the skip flag: the organizer forgot the checkbox.
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-05T10:00:00Z", "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
+		mid, short(gameID), seat(0), seat(1), seat(2), seat(3))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+
+	// Attach repairs it; the tie means no strict cut — the slot keeps playing.
+	w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":`+`"`+mid+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("attach: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if len(br.Data.Rounds[0].Slots[0].Matches) != 1 {
+		t.Fatalf("attach must link the match")
+	}
+
+	// A second attach of the same match is a 409.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":"`+mid+`"}`); w.Code != http.StatusConflict {
+		t.Fatalf("double attach must 409, got %d", w.Code)
+	}
+
+	// The ruling completes the slot by hand (abandoned table).
+	ruling := fmt.Sprintf(`{"player_ids": [%q]}`, seat(1))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, ruling); w.Code != http.StatusOK {
+		t.Fatalf("ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != seat(1) {
+		t.Fatalf("ruling must crown seat 1: %+v", br.Data)
+	}
+
+	// Detaching the (tie) match keeps the ruling in force — the slot stays
+	// completed through the recompute.
+	if w := doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches/"+mid, admin, ""); w.Code != http.StatusOK {
+		t.Fatalf("detach: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" {
+		t.Fatalf("the ruling must stand after the detach: %s", br.Data.Status)
+	}
+
+	// Audit: attach (organizer), ruling set, detach.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var attaches, rulings, detaches int
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		switch {
+		case d["op"] == "attach" && d["origin_kind"] == "organizer":
+			attaches++
+		case d["op"] == "set" && d["after_player_ids"] != nil:
+			rulings++
+		case d["op"] == "detach":
+			detaches++
+		}
+	}
+	if attaches != 1 || rulings != 1 || detaches != 1 {
+		t.Fatalf("audit: %d attaches, %d rulings, %d detaches (want 1 each)", attaches, rulings, detaches)
+	}
+}
+
+// TestTournament_DeadlineAutoCancel verifies the lazy enforcement: a stale
+// running status flips to cancelled (system actor, reason "deadline") on the
+// next bracket read or match write, and a past deadline blocks start.
+func TestTournament_DeadlineAutoCancel(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Дедлайнная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Дедлайн%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Дедлайнный кубок", "elimination": "single", "grand_final_deadline": "2099-01-01T00:00:00Z", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+
+	// Backdate the deadline, then start: a past deadline is rejected.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE tournaments SET grand_final_deadline = NOW() - INTERVAL '1 hour' WHERE id = $1`, tid); err != nil {
+		t.Fatalf("backdate deadline: %v", err)
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("start with past deadline must 400, got %d", w.Code)
+	}
+
+	// Move the deadline to the future, start, then backdate again: the next
+	// bracket read cancels the running tournament with the system actor.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE tournaments SET grand_final_deadline = NOW() + INTERVAL '1 hour' WHERE id = $1`, tid); err != nil {
+		t.Fatalf("refuture deadline: %v", err)
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE tournaments SET grand_final_deadline = NOW() - INTERVAL '1 minute' WHERE id = $1`, tid); err != nil {
+		t.Fatalf("backdate deadline: %v", err)
+	}
+	getBracket(t, router, short(tid))
+
+	var status string
+	if err := pool.QueryRow(context.Background(),
+		`SELECT status FROM tournaments WHERE id = $1`, tid).Scan(&status); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status != "cancelled" {
+		t.Fatalf("deadline must cancel the tournament, got %s", status)
+	}
+	var (
+		actorNull bool
+		reason    string
+	)
+	if err := pool.QueryRow(context.Background(),
+		`SELECT a.actor_user_id IS NULL, a.details->>'reason' FROM audit_log a
+		 WHERE a.entity_type = 'tournament' AND a.entity_id = $1 AND a.details_kind = 'tournament-state'
+		 ORDER BY a.created_at DESC LIMIT 1`, tid).Scan(&actorNull, &reason); err != nil {
+		t.Fatalf("deadline audit: %v", err)
+	}
+	if !actorNull || reason != "deadline" {
+		t.Fatalf("deadline audit: actor_null=%v reason=%s", actorNull, reason)
+	}
+
+	// A cancelled tournament takes no matches: the fit query excludes it.
+	p1 := createTestPlayer(t, pool, "Поздний1")
+	p2 := createTestPlayer(t, pool, "Поздний2")
+	mid := short(newID(t))
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%q:10, %q:2}}`, mid, short(gameID), short(p1), short(p2))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+	}
+	w := doJSON(t, router, http.MethodGet, "/matches/"+mid, "", "")
+	var mr struct {
+		Data struct {
+			Tournament *string `json:"tournament"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mr.Data.Tournament != nil {
+		t.Fatalf("a cancelled tournament must not accept matches")
+	}
+}
+
+// TestTournament_WBLBRunWithMerge plays a double-elimination tournament
+// end-to-end: the organizer picks the first offered plan from the plans
+// endpoint (a real round-trip of the enumerator's document), and a driver
+// plays every playing slot in bracket order until a champion emerges.
+func TestTournament_WBLBRunWithMerge(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Парный дедлайн")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Дабл%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Дабл-кубок", "elimination": "double", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+
+	// The plans endpoint offers double-elimination shapes; take the head
+	// (fewest rounds) and submit it verbatim.
+	w := doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("plans: %d %s", w.Code, w.Body.String())
+	}
+	var plans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &plans); err != nil {
+		t.Fatalf("decode plans: %v", err)
+	}
+	if len(plans.Data.Plans) == 0 {
+		t.Fatalf("no plans offered")
+	}
+	// Take the first plan that actually runs the losers track (the
+	// fewest-rounds head may be the valid pause-the-LB-forever variant).
+	var chosen map[string]any
+	for _, p := range plans.Data.Plans {
+		hasLosers := false
+		for _, r := range p.Rounds {
+			if r.Track == "losers" {
+				hasLosers = true
+			}
+		}
+		if hasLosers {
+			chosen = mustPlanMap(t, p)
+			break
+		}
+	}
+	if chosen == nil {
+		t.Fatalf("no plan with a losers track offered")
+	}
+	planRaw, err := json.Marshal(chosen)
+	if err != nil {
+		t.Fatalf("encode plan: %v", err)
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":`+string(planRaw)+`}`); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+
+	// Driver: play every fully-seated playing slot (distinct scores → strict
+	// cut for any promote count), then repeat until the champion emerges.
+	gameShort := short(gameID)
+	mday := 10
+	for round := 0; ; round++ {
+		if round > 30 {
+			t.Fatalf("the bracket did not finish playing")
+		}
+		br := getBracket(t, router, short(tid))
+		if br.Data.Status == "completed" {
+			if br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId == "" {
+				t.Fatalf("completed without a champion")
+			}
+			var hasLosers bool
+			for _, r := range br.Data.Rounds {
+				if r.Track == "losers" {
+					hasLosers = true
+				}
+			}
+			if !hasLosers {
+				t.Fatalf("double-elimination bracket without a losers track")
+			}
+			break
+		}
+		played := 0
+		for _, r := range br.Data.Rounds {
+			for _, slot := range r.Slots {
+				if slot.Status != "playing" || len(slot.Matches) > 0 {
+					continue
+				}
+				seated := true
+				var scores []string
+				v := float64(len(slot.Seats)) * 10
+				for _, seat := range slot.Seats {
+					if seat.PlayerId == nil {
+						seated = false
+						break
+					}
+					scores = append(scores, fmt.Sprintf(`%q:%v`, *seat.PlayerId, v))
+					v -= 3
+				}
+				if !seated {
+					continue
+				}
+				mid := short(newID(t))
+				// Dates walk backwards from now, staying inside the 30-day
+				// window the match-write validation allows.
+				mdate := time.Now().UTC().Add(-time.Duration(mday) * 24 * time.Hour).Truncate(time.Second).Format(time.RFC3339)
+				body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+					mid, gameShort, mdate, strings.Join(scores, ","))
+				if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+					t.Fatalf("driver match: %d %s", w.Code, w.Body.String())
+				}
+				mday++
+				if mday > 20 {
+					mday = 1
+				}
+				played++
+			}
+		}
+		if played == 0 {
+			t.Fatalf("no playable slot and the tournament is not completed: %+v", br.Data)
+		}
+	}
+}
+
+// mustPlanMap converts a decoded plan object to a generic map for verbatim
+// resubmission.
+func mustPlanMap(t *testing.T, p any) map[string]any {
+	t.Helper()
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("re-encode plan: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("decode plan: %v", err)
+	}
+	return m
 }

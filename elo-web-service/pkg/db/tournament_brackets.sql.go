@@ -214,6 +214,32 @@ func (q *Queries) DeleteSlotPromotions(ctx context.Context, slotID id.ID) error 
 	return err
 }
 
+const deleteSlotSeat = `-- name: DeleteSlotSeat :exec
+DELETE FROM tournament_seats WHERE slot_id = $1 AND position = $2
+`
+
+type DeleteSlotSeatParams struct {
+	SlotID   id.ID `json:"slot_id"`
+	Position int32 `json:"position"`
+}
+
+// Drops one seat (a bye absorbed into a growing first-round table).
+func (q *Queries) DeleteSlotSeat(ctx context.Context, arg DeleteSlotSeatParams) error {
+	_, err := q.db.Exec(ctx, deleteSlotSeat, arg.SlotID, arg.Position)
+	return err
+}
+
+const deleteSlotSeats = `-- name: DeleteSlotSeats :exec
+DELETE FROM tournament_seats WHERE slot_id = $1
+`
+
+// Seat-count adjustment (ADR-26): the slot's seats are re-created from the
+// same seed; only callable on slots with zero linked matches.
+func (q *Queries) DeleteSlotSeats(ctx context.Context, slotID id.ID) error {
+	_, err := q.db.Exec(ctx, deleteSlotSeats, slotID)
+	return err
+}
+
 const getTournamentOfSlot = `-- name: GetTournamentOfSlot :one
 SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at FROM tournaments t
 JOIN tournament_rounds r ON r.tournament_id = t.id
@@ -419,10 +445,10 @@ func (q *Queries) ListSeatsBySlots(ctx context.Context, slotIds []id.ID) ([]Tour
 }
 
 const listSeatsBySourceSlot = `-- name: ListSeatsBySourceSlot :many
-SELECT id, slot_id, position, player_id, source_slot_id, source_place FROM tournament_seats WHERE source_slot_id = $1 ORDER BY position
+SELECT id, slot_id, position, player_id, source_slot_id, source_place FROM tournament_seats WHERE source_slot_id = $1::uuid ORDER BY position
 `
 
-func (q *Queries) ListSeatsBySourceSlot(ctx context.Context, sourceSlotID *id.ID) ([]TournamentSeat, error) {
+func (q *Queries) ListSeatsBySourceSlot(ctx context.Context, sourceSlotID id.ID) ([]TournamentSeat, error) {
 	rows, err := q.db.Query(ctx, listSeatsBySourceSlot, sourceSlotID)
 	if err != nil {
 		return nil, err
@@ -596,6 +622,59 @@ func (q *Queries) ListSlotsBySource(ctx context.Context, sourceSlotID id.ID) ([]
 	items := []ListSlotsBySourceRow{}
 	for rows.Next() {
 		var i ListSlotsBySourceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RoundID,
+			&i.Position,
+			&i.GameID,
+			&i.Promote,
+			&i.Status,
+			&i.Ruling,
+			&i.Track,
+			&i.RoundIndex,
+			&i.TournamentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSlotsOfTournamentByAddress = `-- name: ListSlotsOfTournamentByAddress :many
+SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+WHERE r.tournament_id = $1::uuid
+ORDER BY s.id
+`
+
+type ListSlotsOfTournamentByAddressRow struct {
+	ID           id.ID           `json:"id"`
+	RoundID      id.ID           `json:"round_id"`
+	Position     int32           `json:"position"`
+	GameID       id.ID           `json:"game_id"`
+	Promote      int32           `json:"promote"`
+	Status       string          `json:"status"`
+	Ruling       json.RawMessage `json:"ruling"`
+	Track        string          `json:"track"`
+	RoundIndex   int32           `json:"round_index"`
+	TournamentID id.ID           `json:"tournament_id"`
+}
+
+func (q *Queries) ListSlotsOfTournamentByAddress(ctx context.Context, tournamentID id.ID) ([]ListSlotsOfTournamentByAddressRow, error) {
+	rows, err := q.db.Query(ctx, listSlotsOfTournamentByAddress, tournamentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSlotsOfTournamentByAddressRow{}
+	for rows.Next() {
+		var i ListSlotsOfTournamentByAddressRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RoundID,
@@ -796,4 +875,19 @@ func (q *Queries) SlotHasPromotions(ctx context.Context, slotID id.ID) (bool, er
 	var has bool
 	err := row.Scan(&has)
 	return has, err
+}
+
+const updateSeatPlayer = `-- name: UpdateSeatPlayer :exec
+UPDATE tournament_seats SET player_id = $2 WHERE id = $1
+`
+
+type UpdateSeatPlayerParams struct {
+	ID       id.ID  `json:"id"`
+	PlayerID *id.ID `json:"player_id"`
+}
+
+// Fills one seat cache from the source slot's derived placing.
+func (q *Queries) UpdateSeatPlayer(ctx context.Context, arg UpdateSeatPlayerParams) error {
+	_, err := q.db.Exec(ctx, updateSeatPlayer, arg.ID, arg.PlayerID)
+	return err
 }

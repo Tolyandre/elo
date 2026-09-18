@@ -747,3 +747,269 @@ BracketResponse:
     data:
       $ref: '#/Bracket'
   required: [status, data]
+
+# ─── Organizer slot tooling (running state, ADR-26) ──────────────────────────
+
+TournamentSlotItem:
+  patch:
+    operationId: AdjustTournamentSlot
+    tags: [tournaments]
+    summary: Adjust a slot's game or seat count (organizer, running state)
+    description: >-
+      Game reassignment — only for slots with zero linked matches. Seat-count
+      changes — only for first-round slots with zero linked matches and no
+      resolved seats (the draw re-deals from the stored seed, possibly
+      absorbing bye players). promote stays put. Every adjustment is
+      audit-logged as slot-adjust.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              game_id:
+                $ref: './common.yaml#/Base58ID'
+              seat_count:
+                type: integer
+                minimum: 2
+    responses:
+      "200":
+        description: Adjusted
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Invalid adjustment (violated constraints, size not fitting the pool)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament or slot not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentSlotMatches:
+  post:
+    operationId: AttachTournamentSlotMatch
+    tags: [tournaments]
+    summary: Attach an existing unlinked match to a playing slot (organizer)
+    description: >-
+      Repairs a mistakenly unchecked checkbox: the match must have the slot's
+      game and exactly the seated players, and must not be linked elsewhere.
+      Audited as slot-link attach (origin organizer).
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              match_id:
+                $ref: './common.yaml#/Base58ID'
+            required: [match_id]
+    responses:
+      "200":
+        description: Attached
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: The match does not fit the slot
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament or slot not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Match already linked, or the slot is not accepting matches
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+TournamentSlotMatchItem:
+  delete:
+    operationId: DetachTournamentSlotMatch
+    tags: [tournaments]
+    summary: Detach a wrongly linked match from its slot (organizer)
+    description: >-
+      The match stays in the tournament's arena (it was played at the event);
+      only the bracket forgets it. Triggers the same re-evaluation and cascade
+      as an edit.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Detached
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament, slot or link not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentSlotRuling:
+  post:
+    operationId: SetTournamentSlotRuling
+    tags: [tournaments]
+    summary: Complete a slot by hand with an ordered promotion set (organizer)
+    description: >-
+      An ordered list of exactly `promote` seated players — covers abandoned
+      matches, no-shows, disputes. The ruling replaces the current outcome and
+      can be replaced by the standings-based result; every ruling and
+      reversion is audited (slot-ruling).
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              player_ids:
+                type: array
+                items:
+                  $ref: './common.yaml#/Base58ID'
+                description: Ordered — place 1 first
+            required: [player_ids]
+    responses:
+      "200":
+        description: Ruling recorded
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "400":
+        description: Not exactly promote seated players
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament or slot not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: The slot is not accepting a ruling (waiting)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'

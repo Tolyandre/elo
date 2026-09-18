@@ -2,8 +2,12 @@ package elo
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
+	"math/rand"
+	"slices"
 
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
@@ -39,6 +43,11 @@ type ITournamentPlay interface {
 
 // AcceptMatch implements ITournamentPlay.
 func (s *TournamentService) AcceptMatch(ctx context.Context, q *db.Queries, matchID, gameID id.ID, playerIDs []id.ID, actor id.ID) error {
+	// The lazy deadline check precedes acceptance: a tournament whose
+	// grand-final deadline passed no longer takes matches.
+	if err := s.enforceDeadlineTx(ctx, q); err != nil {
+		return err
+	}
 	candidates, err := q.ListAcceptanceCandidates(ctx, gameID)
 	if err != nil {
 		return fmt.Errorf("list acceptance candidates: %w", err)
@@ -149,7 +158,9 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 	// were played by the wrong participants and must be consciously re-played
 	// or re-attached (re-acceptance is deliberately not automatic). The direct
 	// voids carry the triggering event in the audit origin chain; deeper ones
-	// carry the upstream slot whose change cascaded.
+	// carry the upstream slot whose change cascaded. The refill uses the
+	// source's FULL derived placing: losers-bracket and merge seats source
+	// drops (places beyond promote), which promotions do not record.
 	directKind, directID := originKind, originID
 	if directKind == "" {
 		directKind, directID = audit.LinkOriginCascade, string(slotID)
@@ -160,7 +171,7 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 	}
 	for _, d := range downstream {
 		if haveOutcome {
-			if err := q.SetSlotSeatsFromPromotions(ctx, d.ID); err != nil {
+			if err := s.refillSeatCaches(ctx, q, slot, desired); err != nil {
 				return fmt.Errorf("refill seats: %w", err)
 			}
 		} else {
@@ -432,9 +443,480 @@ func (s *TournamentService) CheckAssociationEditable(ctx context.Context, q *db.
 // recompute, the strict top-promote set is re-evaluated, and a changed
 // outcome cascades (audit origin: the triggering match edit).
 func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, matchID, actor id.ID) error {
+	if err := s.enforceDeadlineTx(ctx, q); err != nil {
+		return err
+	}
 	ref, err := s.SlotOfMatch(ctx, q, matchID)
 	if err != nil || ref == nil {
 		return err
 	}
 	return s.recomputeSlot(ctx, q, actor, ref.SlotID, audit.LinkOriginMatchEdit, string(matchID))
+}
+
+// ---------------------------------------------------------------------------
+// Organizer tooling + grand-final deadline (ADR-26 §Organizer ruling /
+// §Explicit corrections / §Organizer adjustments / §Grand-final deadline)
+// ---------------------------------------------------------------------------
+
+// SetRuling records the organizer's ordered promotion set for a slot
+// (abandoned tables, no-shows, disputes). The ruling replaces the current
+// outcome and can be replaced by the standings-based result: recompute
+// prefers a strict cut, clears the ruling and audits the revert when the
+// scores later decide on their own.
+func (s *TournamentService) SetRuling(ctx context.Context, tid, slotID, actorUserID id.ID, playerIDs []id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
+		slot, err := s.slotOfTournament(ctx, q, tid, slotID)
+		if err != nil {
+			return err
+		}
+		if slot.Status == TournamentSlotWaiting {
+			return ErrTournamentSlotNotPlaying
+		}
+		if len(playerIDs) != int(slot.Promote) {
+			return ErrTournamentRulingInvalid
+		}
+		seats, err := q.ListSeatsBySlots(ctx, []id.ID{slotID})
+		if err != nil {
+			return fmt.Errorf("list seats: %w", err)
+		}
+		seated := make(map[id.ID]bool, len(seats))
+		for _, se := range seats {
+			if se.PlayerID != nil {
+				seated[*se.PlayerID] = true
+			}
+		}
+		for _, p := range playerIDs {
+			if !seated[p] {
+				return ErrTournamentRulingInvalid
+			}
+		}
+
+		// Audit the decision (before = the prior recorded outcome, if any).
+		stored, err := q.ListSlotPromotions(ctx, slotID)
+		if err != nil {
+			return fmt.Errorf("list promotions: %w", err)
+		}
+		op := audit.RulingSet
+		var before []string
+		if len(stored) > 0 {
+			op = audit.RulingReplace
+			byPlace := make(map[int32]id.ID, len(stored))
+			for _, p := range stored {
+				byPlace[p.Place] = p.PlayerID
+			}
+			for i := 0; i < len(stored); i++ {
+				before = append(before, string(byPlace[int32(i+1)]))
+			}
+		}
+		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindSlotRuling, audit.NewSlotRulingDetails(op, string(slotID), before, idStrings(playerIDs))); err != nil {
+			return err
+		}
+
+		rulingRaw, err := json.Marshal(playerIDs)
+		if err != nil {
+			return fmt.Errorf("marshal ruling: %w", err)
+		}
+		if err := q.SetSlotRuling(ctx, db.SetSlotRulingParams{ID: slotID, Ruling: rulingRaw}); err != nil {
+			return fmt.Errorf("set ruling: %w", err)
+		}
+		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+	})
+}
+
+// AttachMatch links an existing, still-unlinked match to a playing slot —
+// the repair for a mistakenly unchecked checkbox (same equality rules as
+// acceptance).
+func (s *TournamentService) AttachMatch(ctx context.Context, tid, slotID, matchID, actorUserID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
+		slot, err := s.slotOfTournament(ctx, q, tid, slotID)
+		if err != nil {
+			return err
+		}
+		if slot.Status != TournamentSlotPlaying {
+			return ErrTournamentSlotNotPlaying
+		}
+		if ref, err := s.SlotOfMatch(ctx, q, matchID); err != nil {
+			return err
+		} else if ref != nil {
+			return ErrMatchAlreadyLinked
+		}
+		m, err := q.GetMatch(ctx, matchID)
+		if err != nil {
+			return fmt.Errorf("get match: %w", err)
+		}
+		if m.GameID != slot.GameID {
+			return ErrTournamentMatchFitsNoSlot
+		}
+		scores, err := q.GetMatchScores(ctx, matchID)
+		if err != nil {
+			return fmt.Errorf("get match scores: %w", err)
+		}
+		playerIDs := make([]id.ID, 0, len(scores))
+		for _, sc := range scores {
+			playerIDs = append(playerIDs, sc.PlayerID)
+		}
+		seats, err := q.ListSeatsBySlots(ctx, []id.ID{slotID})
+		if err != nil {
+			return fmt.Errorf("list seats: %w", err)
+		}
+		if !seatSetEquals(seats, playerIDs) {
+			return ErrTournamentMatchFitsNoSlot
+		}
+
+		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: slotID, MatchID: matchID}); err != nil {
+			return fmt.Errorf("link match to slot: %w", err)
+		}
+		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{TournamentID: tid, MatchID: matchID}); err != nil {
+			return fmt.Errorf("link match to tournament: %w", err)
+		}
+		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkAttach, string(slotID), string(matchID),
+				audit.LinkOriginOrganizer, "")); err != nil {
+			return err
+		}
+		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+	})
+}
+
+// DetachMatch removes a wrongly linked match from its slot (the arena keeps
+// counting it — only the bracket forgets), then re-evaluates the slot.
+func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchID, actorUserID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
+		if _, err := s.slotOfTournament(ctx, q, tid, slotID); err != nil {
+			return err
+		}
+		ref, err := s.SlotOfMatch(ctx, q, matchID)
+		if err != nil {
+			return err
+		}
+		if ref == nil || ref.SlotID != slotID {
+			return ErrTournamentMatchNotLinked
+		}
+		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: slotID, MatchID: matchID}); err != nil {
+			return fmt.Errorf("unlink match: %w", err)
+		}
+		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkDetach, string(slotID), string(matchID),
+				audit.LinkOriginOrganizer, "")); err != nil {
+			return err
+		}
+		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+	})
+}
+
+// AdjustSlotGame reassigns a slot's game — only while no match is linked.
+func (s *TournamentService) AdjustSlotGame(ctx context.Context, tid, slotID, gameID, actorUserID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
+		if _, err := s.slotOfTournament(ctx, q, tid, slotID); err != nil {
+			return err
+		}
+		if has, err := q.SlotHasMatches(ctx, slotID); err != nil {
+			return fmt.Errorf("check slot matches: %w", err)
+		} else if has {
+			return ErrTournamentSlotAdjustInvalid
+		}
+		if err := q.SetSlotGame(ctx, db.SetSlotGameParams{ID: slotID, GameID: gameID}); err != nil {
+			return fmt.Errorf("set slot game: %w", err)
+		}
+		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindSlotAdjust, audit.NewSlotGameAdjust(string(slotID), string(gameID)))
+	})
+}
+
+// AdjustSlotSeatCount changes a first-round slot's seat count (zero linked
+// matches, direct seats only — the draw seats re-deal from the stored seed,
+// absorbing bye players when the table grows). promote stays put, so the
+// downstream arithmetic is untouched.
+func (s *TournamentService) AdjustSlotSeatCount(ctx context.Context, tid, slotID, actorUserID id.ID, seatCount int) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
+		slot, err := s.slotOfTournament(ctx, q, tid, slotID)
+		if err != nil {
+			return err
+		}
+		if slot.Track != bracket.TrackWinners || slot.RoundIndex != 1 {
+			return ErrTournamentSlotAdjustInvalid
+		}
+		if has, err := q.SlotHasMatches(ctx, slotID); err != nil {
+			return fmt.Errorf("check slot matches: %w", err)
+		} else if has {
+			return ErrTournamentSlotAdjustInvalid
+		}
+		if has, err := q.SlotHasPromotions(ctx, slotID); err != nil {
+			return fmt.Errorf("check slot promotions: %w", err)
+		} else if has {
+			return ErrTournamentSlotAdjustInvalid
+		}
+		if seatCount < 2 || seatCount <= int(slot.Promote) {
+			return ErrTournamentPoolEntryInvalid
+		}
+		// The new size must fit some pool game.
+		pool, err := q.ListTournamentGames(ctx, tid)
+		if err != nil {
+			return fmt.Errorf("list pool: %w", err)
+		}
+		fits := false
+		for _, g := range pool {
+			if seatCount >= int(g.MinPlayers) && seatCount <= int(g.MaxPlayers) {
+				fits = true
+				break
+			}
+		}
+		if !fits {
+			return ErrTournamentPoolEntryInvalid
+		}
+
+		seats, err := q.ListSeatsBySlots(ctx, []id.ID{slotID})
+		if err != nil {
+			return fmt.Errorf("list seats: %w", err)
+		}
+		current := make([]id.ID, 0, len(seats))
+		for _, se := range seats {
+			if se.SourceSlotID != nil {
+				// A slot with provenance seats is downstream — not adjustable.
+				return ErrTournamentSlotAdjustInvalid
+			}
+			current = append(current, *se.PlayerID)
+		}
+
+		// Growing absorbs the tournament's bye players (plan-declared bye
+		// seats in later rounds), each only from a slot that recorded nothing.
+		if seatCount > len(current) {
+			byes, err := s.byePlayerSeats(ctx, q, tid)
+			if err != nil {
+				return err
+			}
+			need := seatCount - len(current)
+			if len(byes) < need {
+				return ErrTournamentSlotAdjustInvalid
+			}
+			for _, b := range byes[:need] {
+				if has, err := q.SlotHasMatches(ctx, b.slot.ID); err != nil {
+					return fmt.Errorf("check bye slot: %w", err)
+				} else if has {
+					return ErrTournamentSlotAdjustInvalid
+				}
+				if has, err := q.SlotHasPromotions(ctx, b.slot.ID); err != nil {
+					return fmt.Errorf("check bye slot: %w", err)
+				} else if has {
+					return ErrTournamentSlotAdjustInvalid
+				}
+				current = append(current, *b.seat.PlayerID)
+				// The bye seat leaves its later-round slot; that slot's
+				// arithmetic is unaffected (its promote is fixed).
+				if err := q.DeleteSlotSeat(ctx, db.DeleteSlotSeatParams{SlotID: b.slot.ID, Position: b.seat.Position}); err != nil {
+					return fmt.Errorf("drop bye seat: %w", err)
+				}
+			}
+		}
+
+		// Re-deal from the stored seed (a per-slot deterministic stream).
+		row, err := q.GetTournamentPlan(ctx, tid)
+		if err != nil {
+			return fmt.Errorf("get plan: %w", err)
+		}
+		if !row.Seed.Valid {
+			return ErrTournamentNotStarted
+		}
+		rng := rand.New(rand.NewSource(row.Seed.Int64 ^ int64(binary.BigEndian.Uint64([]byte(slotID)[:8]))))
+		deal := slices.Clone(current)
+		rng.Shuffle(len(deal), func(i, j int) { deal[i], deal[j] = deal[j], deal[i] })
+
+		if err := q.DeleteSlotSeats(ctx, slotID); err != nil {
+			return fmt.Errorf("clear seats: %w", err)
+		}
+		for pos := 0; pos < seatCount; pos++ {
+			p := deal[pos]
+			if err := q.CreateTournamentSeat(ctx, db.CreateTournamentSeatParams{
+				ID: id.New(), SlotID: slotID, Position: int32(pos + 1),
+				PlayerID: &p, SourceSlotID: nil, SourcePlace: pgtype.Int4{},
+			}); err != nil {
+				return fmt.Errorf("re-create seat: %w", err)
+			}
+		}
+		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
+			audit.KindSlotAdjust, audit.NewSlotSeatCountAdjust(string(slotID), seatCount))
+	})
+}
+
+// byeSeat is one plan-declared bye seat with its materialized coordinates.
+type byeSeat struct {
+	slot db.ListTournamentSlotsRow
+	seat db.TournamentSeat
+}
+
+// byePlayerSeats walks the stored plan's bye seats and resolves their
+// materialized (slot, seat) rows.
+func (s *TournamentService) byePlayerSeats(ctx context.Context, q *db.Queries, tid id.ID) ([]byeSeat, error) {
+	row, err := q.GetTournamentPlan(ctx, tid)
+	if err != nil {
+		return nil, fmt.Errorf("get plan: %w", err)
+	}
+	plan, err := bracket.ParsePlan(row.Plan)
+	if err != nil {
+		return nil, fmt.Errorf("parse plan: %w", err)
+	}
+	slots, err := q.ListTournamentSlots(ctx, tid)
+	if err != nil {
+		return nil, fmt.Errorf("list slots: %w", err)
+	}
+	byAddress := make(map[[2]int]db.ListTournamentSlotsRow, len(slots))
+	for _, sl := range slots {
+		byAddress[[2]int{tournamentTrackRank[sl.Track], int(sl.RoundIndex)}] = sl
+	}
+	allSeats, err := q.ListSeatsBySlots(ctx, func() []id.ID {
+		ids := make([]id.ID, 0, len(slots))
+		for _, sl := range slots {
+			ids = append(ids, sl.ID)
+		}
+		return ids
+	}())
+	if err != nil {
+		return nil, fmt.Errorf("list seats: %w", err)
+	}
+	seatsBySlot := make(map[id.ID][]db.TournamentSeat, len(slots))
+	for _, se := range allSeats {
+		seatsBySlot[se.SlotID] = append(seatsBySlot[se.SlotID], se)
+	}
+
+	out := make([]byeSeat, 0)
+	for ri, r := range plan.Rounds {
+		if ri == 0 {
+			continue // round-1 draw seats are not byes
+		}
+		for slotPos, ps := range r.Slots {
+			key := [2]int{tournamentTrackRank[r.Track], r.Index}
+			slotRow, ok := byAddress[key]
+			if !ok {
+				continue
+			}
+			_ = slotPos
+			for seatPos, seat := range ps.Seats {
+				if seat.Kind != bracket.SeatBye {
+					continue
+				}
+				for _, se := range seatsBySlot[slotRow.ID] {
+					if int(se.Position) == seatPos+1 {
+						out = append(out, byeSeat{slot: slotRow, seat: se})
+					}
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// EnforceGrandFinalDeadline cancels every running tournament whose deadline
+// passed without a completed grand final (lazy — reads and writes correct the
+// stale status; no background sweeper, ADR-26). System actor: NULL.
+func (s *TournamentService) EnforceGrandFinalDeadline(ctx context.Context) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		return s.enforceDeadlineTx(ctx, q)
+	})
+}
+
+func (s *TournamentService) enforceDeadlineTx(ctx context.Context, q *db.Queries) error {
+	stale, err := q.ListRunningTournamentsPastDeadline(ctx)
+	if err != nil {
+		return fmt.Errorf("list deadline tournaments: %w", err)
+	}
+	for _, t := range stale {
+		if err := q.SetTournamentStatus(ctx, db.SetTournamentStatusParams{ID: t.ID, Status: TournamentCancelled}); err != nil {
+			return fmt.Errorf("deadline cancel: %w", err)
+		}
+		if err := recordAuditEvent(ctx, q, "", audit.EntityTournament, audit.ActionUpdated, t.ID,
+			audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentRunning, TournamentCancelled, audit.StateReasonDeadline)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// slotOfTournament loads the slot row and verifies it belongs to the
+// tournament the route addressed.
+func (s *TournamentService) slotOfTournament(ctx context.Context, q *db.Queries, tid, slotID id.ID) (db.GetTournamentSlotRow, error) {
+	slot, err := q.GetTournamentSlot(ctx, slotID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return db.GetTournamentSlotRow{}, ErrTournamentSlotNotFound
+		}
+		return db.GetTournamentSlotRow{}, fmt.Errorf("get slot: %w", err)
+	}
+	if slot.TournamentID != tid {
+		return db.GetTournamentSlotRow{}, ErrTournamentSlotNotFound
+	}
+	return slot, nil
+}
+
+// refillSeatCaches fills every downstream seat fed by the source slot from
+// the source's full placing. Places 1..promote come from the recorded
+// outcome; places beyond it (the drops the losers bracket and merges seat)
+// come from the derived standings' total order — standings are never stored,
+// so the refill re-derives them from the linked matches' scores.
+func (s *TournamentService) refillSeatCaches(ctx context.Context, q *db.Queries, source db.GetTournamentSlotRow, promoted []id.ID) error {
+	// The placing: the promoted prefix is fixed; the rest follows the
+	// standings order (deterministic even on dropped-player ties).
+	placing := append([]id.ID(nil), promoted...)
+	results, err := q.ListSlotMatchResults(ctx, source.ID)
+	if err != nil {
+		return fmt.Errorf("list slot matches: %w", err)
+	}
+	if len(results) > 0 {
+		var matchResults []bracket.MatchResult
+		lastID := id.ID("")
+		for _, r := range results {
+			if r.MatchID != lastID {
+				matchResults = append(matchResults, bracket.MatchResult{
+					MatchID: r.MatchID,
+					Scores:  make(map[id.ID]float64, 4),
+				})
+				lastID = r.MatchID
+			}
+			mr := &matchResults[len(matchResults)-1]
+			mr.Scores[r.PlayerID] = r.Score
+		}
+		if len(matchResults) > 0 && source.SeatCount >= 2 {
+			sts := bracket.Standings(matchResults, int(source.SeatCount))
+			if len(sts) > len(placing) {
+				placing = make([]id.ID, 0, len(sts))
+				for _, st := range sts {
+					placing = append(placing, st.PlayerID)
+				}
+			}
+		}
+	}
+
+	fedSeats, err := q.ListSeatsBySourceSlot(ctx, source.ID)
+	if err != nil {
+		return fmt.Errorf("list fed seats: %w", err)
+	}
+	for _, se := range fedSeats {
+		place := 0
+		if se.SourcePlace.Valid {
+			place = int(se.SourcePlace.Int32)
+		}
+		if place < 1 || place > len(placing) {
+			continue // beyond what the source has decided
+		}
+		p := placing[place-1]
+		if err := q.UpdateSeatPlayer(ctx, db.UpdateSeatPlayerParams{ID: se.ID, PlayerID: &p}); err != nil {
+			return fmt.Errorf("fill seat cache: %w", err)
+		}
+	}
+	return nil
 }

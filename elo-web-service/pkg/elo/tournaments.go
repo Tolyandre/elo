@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
+	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -509,7 +509,6 @@ func timePtrEqual(a, b *time.Time) bool {
 	return a.Equal(*b)
 }
 
-
 // ---------------------------------------------------------------------------
 // Start, cancel, bracket (ADR-26 §Start / §Lifecycle)
 // ---------------------------------------------------------------------------
@@ -531,6 +530,9 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		return err
 	}
 	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.enforceDeadlineTx(ctx, q); err != nil {
+			return err
+		}
 		t, err := q.GetTournamentForUpdate(ctx, tid)
 		if err != nil {
 			return fmt.Errorf("get tournament: %w", err)
@@ -705,8 +707,10 @@ type BracketRound struct {
 
 // GetBracket assembles the full bracket DTO: the stored structure plus live
 // standings derived from the linked matches' scores — standings are never
-// stored (ADR-26).
+// stored (ADR-26). The lazy deadline check corrects a stale running status;
+// the read never fails on it.
 func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tournament, []BracketRound, error) {
+	_ = s.EnforceGrandFinalDeadline(ctx)
 	t, err := s.Queries.GetTournament(ctx, tid)
 	if err != nil {
 		return db.Tournament{}, nil, fmt.Errorf("get tournament: %w", err)

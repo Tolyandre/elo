@@ -240,6 +240,83 @@ func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 	return json.RawMessage(plan.CanonicalJSON()), nil
 }
 
+func (s *StrictServer) AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error) {
+	tid, sid := parseIDParam(request.Id), parseIDParam(request.Sid)
+	var err error
+	if request.Body.GameId != nil {
+		err = s.api.TournamentService.AdjustSlotGame(ctx, tid, sid, id.ID(*request.Body.GameId), currentActorID(ctx))
+	}
+	if err == nil && request.Body.SeatCount != nil {
+		err = s.api.TournamentService.AdjustSlotSeatCount(ctx, tid, sid, currentActorID(ctx), *request.Body.SeatCount)
+	}
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return AdjustTournamentSlot400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case http.StatusNotFound:
+			return AdjustTournamentSlot404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(false, true)
+	return AdjustTournamentSlot200JSONResponse{Status: "success", Message: "Slot is adjusted"}, nil
+}
+
+func (s *StrictServer) AttachTournamentSlotMatch(ctx context.Context, request AttachTournamentSlotMatchRequestObject) (AttachTournamentSlotMatchResponseObject, error) {
+	err := s.api.TournamentService.AttachMatch(ctx, parseIDParam(request.Id), parseIDParam(request.Sid), parseIDParam(string(request.Body.MatchId)), currentActorID(ctx))
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return AttachTournamentSlotMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case http.StatusNotFound:
+			return AttachTournamentSlotMatch404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+		case http.StatusConflict:
+			return AttachTournamentSlotMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(true, true)
+	return AttachTournamentSlotMatch200JSONResponse{Status: "success", Message: "Match is attached"}, nil
+}
+
+func (s *StrictServer) DetachTournamentSlotMatch(ctx context.Context, request DetachTournamentSlotMatchRequestObject) (DetachTournamentSlotMatchResponseObject, error) {
+	err := s.api.TournamentService.DetachMatch(ctx, parseIDParam(request.Id), parseIDParam(request.Sid), parseIDParam(request.Mid), currentActorID(ctx))
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return DetachTournamentSlotMatch404JSONResponse{Status: "fail", Message: "Турнир, стол или связь не найдены"}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(true, true)
+	return DetachTournamentSlotMatch200JSONResponse{Status: "success", Message: "Match is detached"}, nil
+}
+
+func (s *StrictServer) SetTournamentSlotRuling(ctx context.Context, request SetTournamentSlotRulingRequestObject) (SetTournamentSlotRulingResponseObject, error) {
+	playerIDs := make([]id.ID, 0, len(request.Body.PlayerIds))
+	for _, p := range request.Body.PlayerIds {
+		playerIDs = append(playerIDs, id.ID(p))
+	}
+	err := s.api.TournamentService.SetRuling(ctx, parseIDParam(request.Id), parseIDParam(request.Sid), currentActorID(ctx), playerIDs)
+	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return SetTournamentSlotRuling400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		case http.StatusNotFound:
+			return SetTournamentSlotRuling404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+		case http.StatusConflict:
+			return SetTournamentSlotRuling409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		default:
+			return nil, err
+		}
+	}
+	s.api.broadcastDataChange(false, true)
+	return SetTournamentSlotRuling200JSONResponse{Status: "success", Message: "Ruling is recorded"}, nil
+}
+
 // ---------------------------------------------------------------------------
 // mapping helpers
 // ---------------------------------------------------------------------------

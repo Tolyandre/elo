@@ -200,6 +200,29 @@ func (q *Queries) GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tour
 	return i, err
 }
 
+const getTournamentPlan = `-- name: GetTournamentPlan :one
+SELECT plan, plan_schema_version, seed, status FROM tournaments WHERE id = $1
+`
+
+type GetTournamentPlanRow struct {
+	Plan              json.RawMessage `json:"plan"`
+	PlanSchemaVersion int32           `json:"plan_schema_version"`
+	Seed              pgtype.Int8     `json:"seed"`
+	Status            string          `json:"status"`
+}
+
+func (q *Queries) GetTournamentPlan(ctx context.Context, argID id.ID) (GetTournamentPlanRow, error) {
+	row := q.db.QueryRow(ctx, getTournamentPlan, argID)
+	var i GetTournamentPlanRow
+	err := row.Scan(
+		&i.Plan,
+		&i.PlanSchemaVersion,
+		&i.Seed,
+		&i.Status,
+	)
+	return i, err
+}
+
 const listTournamentGames = `-- name: ListTournamentGames :many
 SELECT tournament_id, game_id, min_players, max_players
 FROM tournament_games

@@ -442,6 +442,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tournaments/{id}/slots/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Adjust a slot's game or seat count (organizer, running state)
+         * @description Game reassignment — only for slots with zero linked matches. Seat-count changes — only for first-round slots with zero linked matches and no resolved seats (the draw re-deals from the stored seed, possibly absorbing bye players). promote stays put. Every adjustment is audit-logged as slot-adjust.
+         */
+        patch: operations["AdjustTournamentSlot"];
+        trace?: never;
+    };
+    "/tournaments/{id}/slots/{sid}/matches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach an existing unlinked match to a playing slot (organizer)
+         * @description Repairs a mistakenly unchecked checkbox: the match must have the slot's game and exactly the seated players, and must not be linked elsewhere. Audited as slot-link attach (origin organizer).
+         */
+        post: operations["AttachTournamentSlotMatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/slots/{sid}/matches/{mid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach a wrongly linked match from its slot (organizer)
+         * @description The match stays in the tournament's arena (it was played at the event); only the bracket forgets it. Triggers the same re-evaluation and cascade as an edit.
+         */
+        delete: operations["DetachTournamentSlotMatch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/slots/{sid}/ruling": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete a slot by hand with an ordered promotion set (organizer)
+         * @description An ordered list of exactly `promote` seated players — covers abandoned matches, no-shows, disputes. The ruling replaces the current outcome and can be replaced by the standings-based result; every ruling and reversion is audited (slot-ruling).
+         */
+        post: operations["SetTournamentSlotRuling"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clubs": {
         parameters: {
             query?: never;
@@ -1724,11 +1804,11 @@ export interface components {
         AuditTournamentStateDetails: {
             schema_version: number;
             /** @enum {string} */
-            from: "registration" | "running";
+            from: "registration" | "running" | "completed" | "cancelled";
             /** @enum {string} */
-            to: "completed" | "cancelled";
+            to: "registration" | "running" | "completed" | "cancelled";
             /** @enum {string} */
-            reason: "organizer" | "deadline" | "grand-final";
+            reason: "organizer" | "deadline" | "grand-final" | "cascade";
         };
         /** @description An organizer ruling on one slot of the tournament the audit row points at (ADR-26): the ordered promotion set before (null while the slot was still playing) and after (null on revert to the standings-based result). */
         AuditSlotRulingDetails: {
@@ -3833,6 +3913,272 @@ export interface operations {
             };
             /** @description Tournament not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    AdjustTournamentSlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    game_id?: components["schemas"]["Base58ID"];
+                    seat_count?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Adjusted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Invalid adjustment (violated constraints, size not fitting the pool) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament or slot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    AttachTournamentSlotMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    match_id: components["schemas"]["Base58ID"];
+                };
+            };
+        };
+        responses: {
+            /** @description Attached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description The match does not fit the slot */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament or slot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Match already linked, or the slot is not accepting matches */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    DetachTournamentSlotMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sid: string;
+                mid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament, slot or link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    SetTournamentSlotRuling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Ordered — place 1 first */
+                    player_ids: components["schemas"]["Base58ID"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Ruling recorded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Not exactly promote seated players */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament or slot not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The slot is not accepting a ruling (waiting) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

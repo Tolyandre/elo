@@ -23,6 +23,7 @@ func init() {
 	register(&Schema{Kind: KindTournamentState, CurrentVersion: 1}, "tournament_state.v1.json")
 	register(&Schema{Kind: KindSlotRuling, CurrentVersion: 1}, "slot_ruling.v1.json")
 	register(&Schema{Kind: KindSlotLink, CurrentVersion: 1}, "slot_link.v1.json")
+	register(&Schema{Kind: KindSlotAdjust, CurrentVersion: 1}, "slot_adjust.v1.json")
 }
 
 // EntityDetails names the entity at the moment it was created or deleted (the
@@ -308,10 +309,10 @@ const (
 	SlotLinkDetach = "detach"
 	SlotLinkVoid   = "void"
 
-	LinkOriginAcceptance = "acceptance"  // linked by the match-write fit check
-	LinkOriginOrganizer  = "organizer"   // attach/detach endpoints
-	LinkOriginMatchEdit  = "match-edit"  // void triggered by an edit of this match
-	LinkOriginCascade    = "cascade"     // void triggered by an upstream slot change
+	LinkOriginAcceptance = "acceptance" // linked by the match-write fit check
+	LinkOriginOrganizer  = "organizer"  // attach/detach endpoints
+	LinkOriginMatchEdit  = "match-edit" // void triggered by an edit of this match
+	LinkOriginCascade    = "cascade"    // void triggered by an upstream slot change
 )
 
 // SlotLinkDetails records slot ↔ match linkage and its voids. For voids the
@@ -330,4 +331,27 @@ type SlotLinkDetails struct {
 // NewSlotLinkDetails builds v1 slot-link details.
 func NewSlotLinkDetails(op, slotID, matchID, originKind, originID string) SlotLinkDetails {
 	return SlotLinkDetails{SchemaVersion: 1, Op: op, SlotID: slotID, MatchID: matchID, OriginKind: originKind, OriginID: originID}
+}
+
+// SlotAdjustDetails records an organizer adjustment of one running slot
+// (game reassignment / seat-count change) — KindSlotAdjust.
+type SlotAdjustDetails struct {
+	SchemaVersion int    `json:"schema_version"`
+	Op            string `json:"op"`
+	SlotID        string `json:"slot_id"`
+	// GameID is the (new) game for op=game; SeatCount the (new) seat count
+	// for op=seat-count. The inapplicable field stays absent.
+	GameID    string `json:"game_id,omitempty"`
+	SeatCount int    `json:"seat_count,omitempty"`
+}
+
+// NewSlotGameAdjust builds the details of a game reassignment. gameID is
+// typed id.ID for the x-entity-id walk convenience; pass id.ID(gameIDString).
+func NewSlotGameAdjust(slotID string, gameID string) SlotAdjustDetails {
+	return SlotAdjustDetails{SchemaVersion: 1, Op: "game", SlotID: slotID, GameID: gameID}
+}
+
+// NewSlotSeatCountAdjust builds the details of a seat-count change.
+func NewSlotSeatCountAdjust(slotID string, seatCount int) SlotAdjustDetails {
+	return SlotAdjustDetails{SchemaVersion: 1, Op: "seat-count", SlotID: slotID, SeatCount: seatCount}
 }

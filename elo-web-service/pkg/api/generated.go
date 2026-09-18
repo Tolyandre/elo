@@ -2256,6 +2256,25 @@ type PatchTagJSONBody struct {
 	Name string `json:"name"`
 }
 
+// AdjustTournamentSlotJSONBody defines parameters for AdjustTournamentSlot.
+type AdjustTournamentSlotJSONBody struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId    *Base58ID `json:"game_id,omitempty"`
+	SeatCount *int      `json:"seat_count,omitempty"`
+}
+
+// AttachTournamentSlotMatchJSONBody defines parameters for AttachTournamentSlotMatch.
+type AttachTournamentSlotMatchJSONBody struct {
+	// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	MatchId Base58ID `json:"match_id"`
+}
+
+// SetTournamentSlotRulingJSONBody defines parameters for SetTournamentSlotRuling.
+type SetTournamentSlotRulingJSONBody struct {
+	// PlayerIds Ordered — place 1 first
+	PlayerIds []Base58ID `json:"player_ids"`
+}
+
 // StartTournamentJSONBody defines parameters for StartTournament.
 type StartTournamentJSONBody struct {
 	// Plan A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start.
@@ -2350,6 +2369,15 @@ type CreateTournamentJSONRequestBody = TournamentInput
 
 // UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
 type UpdateTournamentJSONRequestBody = TournamentInput
+
+// AdjustTournamentSlotJSONRequestBody defines body for AdjustTournamentSlot for application/json ContentType.
+type AdjustTournamentSlotJSONRequestBody AdjustTournamentSlotJSONBody
+
+// AttachTournamentSlotMatchJSONRequestBody defines body for AttachTournamentSlotMatch for application/json ContentType.
+type AttachTournamentSlotMatchJSONRequestBody AttachTournamentSlotMatchJSONBody
+
+// SetTournamentSlotRulingJSONRequestBody defines body for SetTournamentSlotRuling for application/json ContentType.
+type SetTournamentSlotRulingJSONRequestBody SetTournamentSlotRulingJSONBody
 
 // StartTournamentJSONRequestBody defines body for StartTournament for application/json ContentType.
 type StartTournamentJSONRequestBody StartTournamentJSONBody
@@ -3125,6 +3153,18 @@ type ServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(c *gin.Context, id string)
+	// AdjustTournamentSlot Adjust a slot's game or seat count (organizer, running state)
+	// (PATCH /tournaments/{id}/slots/{sid})
+	AdjustTournamentSlot(c *gin.Context, id string, sid string)
+	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)
+	// (POST /tournaments/{id}/slots/{sid}/matches)
+	AttachTournamentSlotMatch(c *gin.Context, id string, sid string)
+	// DetachTournamentSlotMatch Detach a wrongly linked match from its slot (organizer)
+	// (DELETE /tournaments/{id}/slots/{sid}/matches/{mid})
+	DetachTournamentSlotMatch(c *gin.Context, id string, sid string, mid string)
+	// SetTournamentSlotRuling Complete a slot by hand with an ordered promotion set (organizer)
+	// (POST /tournaments/{id}/slots/{sid}/ruling)
+	SetTournamentSlotRuling(c *gin.Context, id string, sid string)
 	// StartTournament Start the tournament with the chosen bracket shape
 	// (POST /tournaments/{id}/start)
 	StartTournament(c *gin.Context, id string)
@@ -4869,6 +4909,151 @@ func (siw *ServerInterfaceWrapper) RegisterInTournament(c *gin.Context) {
 	siw.Handler.RegisterInTournament(c, id)
 }
 
+// AdjustTournamentSlot operation middleware
+func (siw *ServerInterfaceWrapper) AdjustTournamentSlot(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "sid" -------------
+	var sid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sid", c.Param("sid"), &sid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sid: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AdjustTournamentSlot(c, id, sid)
+}
+
+// AttachTournamentSlotMatch operation middleware
+func (siw *ServerInterfaceWrapper) AttachTournamentSlotMatch(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "sid" -------------
+	var sid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sid", c.Param("sid"), &sid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sid: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AttachTournamentSlotMatch(c, id, sid)
+}
+
+// DetachTournamentSlotMatch operation middleware
+func (siw *ServerInterfaceWrapper) DetachTournamentSlotMatch(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "sid" -------------
+	var sid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sid", c.Param("sid"), &sid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sid: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "mid" -------------
+	var mid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "mid", c.Param("mid"), &mid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter mid: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DetachTournamentSlotMatch(c, id, sid, mid)
+}
+
+// SetTournamentSlotRuling operation middleware
+func (siw *ServerInterfaceWrapper) SetTournamentSlotRuling(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "sid" -------------
+	var sid string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sid", c.Param("sid"), &sid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sid: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetTournamentSlotRuling(c, id, sid)
+}
+
 // StartTournament operation middleware
 func (siw *ServerInterfaceWrapper) StartTournament(c *gin.Context) {
 
@@ -5033,6 +5218,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tournaments/:id/cancel", wrapper.CancelTournament)
 	router.DELETE(options.BaseURL+"/tournaments/:id/registration", wrapper.UnregisterFromTournament)
 	router.POST(options.BaseURL+"/tournaments/:id/registration", wrapper.RegisterInTournament)
+	router.PATCH(options.BaseURL+"/tournaments/:id/slots/:sid", wrapper.AdjustTournamentSlot)
+	router.POST(options.BaseURL+"/tournaments/:id/slots/:sid/matches", wrapper.AttachTournamentSlotMatch)
+	router.DELETE(options.BaseURL+"/tournaments/:id/slots/:sid/matches/:mid", wrapper.DetachTournamentSlotMatch)
+	router.POST(options.BaseURL+"/tournaments/:id/slots/:sid/ruling", wrapper.SetTournamentSlotRuling)
 	router.POST(options.BaseURL+"/tournaments/:id/start", wrapper.StartTournament)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
@@ -9488,6 +9677,340 @@ func (response RegisterInTournament409JSONResponse) VisitRegisterInTournamentRes
 	return err
 }
 
+type AdjustTournamentSlotRequestObject struct {
+	Id   string `json:"id"`
+	Sid  string `json:"sid"`
+	Body *AdjustTournamentSlotJSONRequestBody
+}
+
+type AdjustTournamentSlotResponseObject interface {
+	VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error
+}
+
+type AdjustTournamentSlot200JSONResponse ApiSuccessMessage
+
+func (response AdjustTournamentSlot200JSONResponse) VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdjustTournamentSlot400JSONResponse ApiError
+
+func (response AdjustTournamentSlot400JSONResponse) VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdjustTournamentSlot401JSONResponse ApiError
+
+func (response AdjustTournamentSlot401JSONResponse) VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdjustTournamentSlot403JSONResponse ApiError
+
+func (response AdjustTournamentSlot403JSONResponse) VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdjustTournamentSlot404JSONResponse ApiError
+
+func (response AdjustTournamentSlot404JSONResponse) VisitAdjustTournamentSlotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatchRequestObject struct {
+	Id   string `json:"id"`
+	Sid  string `json:"sid"`
+	Body *AttachTournamentSlotMatchJSONRequestBody
+}
+
+type AttachTournamentSlotMatchResponseObject interface {
+	VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error
+}
+
+type AttachTournamentSlotMatch200JSONResponse ApiSuccessMessage
+
+func (response AttachTournamentSlotMatch200JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatch400JSONResponse ApiError
+
+func (response AttachTournamentSlotMatch400JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatch401JSONResponse ApiError
+
+func (response AttachTournamentSlotMatch401JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatch403JSONResponse ApiError
+
+func (response AttachTournamentSlotMatch403JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatch404JSONResponse ApiError
+
+func (response AttachTournamentSlotMatch404JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTournamentSlotMatch409JSONResponse ApiError
+
+func (response AttachTournamentSlotMatch409JSONResponse) VisitAttachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DetachTournamentSlotMatchRequestObject struct {
+	Id  string `json:"id"`
+	Sid string `json:"sid"`
+	Mid string `json:"mid"`
+}
+
+type DetachTournamentSlotMatchResponseObject interface {
+	VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error
+}
+
+type DetachTournamentSlotMatch200JSONResponse ApiSuccessMessage
+
+func (response DetachTournamentSlotMatch200JSONResponse) VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DetachTournamentSlotMatch401JSONResponse ApiError
+
+func (response DetachTournamentSlotMatch401JSONResponse) VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DetachTournamentSlotMatch403JSONResponse ApiError
+
+func (response DetachTournamentSlotMatch403JSONResponse) VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DetachTournamentSlotMatch404JSONResponse ApiError
+
+func (response DetachTournamentSlotMatch404JSONResponse) VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRulingRequestObject struct {
+	Id   string `json:"id"`
+	Sid  string `json:"sid"`
+	Body *SetTournamentSlotRulingJSONRequestBody
+}
+
+type SetTournamentSlotRulingResponseObject interface {
+	VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error
+}
+
+type SetTournamentSlotRuling200JSONResponse ApiSuccessMessage
+
+func (response SetTournamentSlotRuling200JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRuling400JSONResponse ApiError
+
+func (response SetTournamentSlotRuling400JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRuling401JSONResponse ApiError
+
+func (response SetTournamentSlotRuling401JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRuling403JSONResponse ApiError
+
+func (response SetTournamentSlotRuling403JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRuling404JSONResponse ApiError
+
+func (response SetTournamentSlotRuling404JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTournamentSlotRuling409JSONResponse ApiError
+
+func (response SetTournamentSlotRuling409JSONResponse) VisitSetTournamentSlotRulingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type StartTournamentRequestObject struct {
 	Id   string `json:"id"`
 	Body *StartTournamentJSONRequestBody
@@ -9911,6 +10434,18 @@ type StrictServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error)
+	// AdjustTournamentSlot Adjust a slot's game or seat count (organizer, running state)
+	// (PATCH /tournaments/{id}/slots/{sid})
+	AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error)
+	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)
+	// (POST /tournaments/{id}/slots/{sid}/matches)
+	AttachTournamentSlotMatch(ctx context.Context, request AttachTournamentSlotMatchRequestObject) (AttachTournamentSlotMatchResponseObject, error)
+	// DetachTournamentSlotMatch Detach a wrongly linked match from its slot (organizer)
+	// (DELETE /tournaments/{id}/slots/{sid}/matches/{mid})
+	DetachTournamentSlotMatch(ctx context.Context, request DetachTournamentSlotMatchRequestObject) (DetachTournamentSlotMatchResponseObject, error)
+	// SetTournamentSlotRuling Complete a slot by hand with an ordered promotion set (organizer)
+	// (POST /tournaments/{id}/slots/{sid}/ruling)
+	SetTournamentSlotRuling(ctx context.Context, request SetTournamentSlotRulingRequestObject) (SetTournamentSlotRulingResponseObject, error)
 	// StartTournament Start the tournament with the chosen bracket shape
 	// (POST /tournaments/{id}/start)
 	StartTournament(ctx context.Context, request StartTournamentRequestObject) (StartTournamentResponseObject, error)
@@ -12047,6 +12582,136 @@ func (sh *strictHandler) RegisterInTournament(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(RegisterInTournamentResponseObject); ok {
 		if err := validResponse.VisitRegisterInTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AdjustTournamentSlot operation middleware
+func (sh *strictHandler) AdjustTournamentSlot(ctx *gin.Context, id string, sid string) {
+	var request AdjustTournamentSlotRequestObject
+
+	request.Id = id
+	request.Sid = sid
+
+	var body AdjustTournamentSlotJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AdjustTournamentSlot(ctx, request.(AdjustTournamentSlotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AdjustTournamentSlot")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(AdjustTournamentSlotResponseObject); ok {
+		if err := validResponse.VisitAdjustTournamentSlotResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttachTournamentSlotMatch operation middleware
+func (sh *strictHandler) AttachTournamentSlotMatch(ctx *gin.Context, id string, sid string) {
+	var request AttachTournamentSlotMatchRequestObject
+
+	request.Id = id
+	request.Sid = sid
+
+	var body AttachTournamentSlotMatchJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachTournamentSlotMatch(ctx, request.(AttachTournamentSlotMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachTournamentSlotMatch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(AttachTournamentSlotMatchResponseObject); ok {
+		if err := validResponse.VisitAttachTournamentSlotMatchResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DetachTournamentSlotMatch operation middleware
+func (sh *strictHandler) DetachTournamentSlotMatch(ctx *gin.Context, id string, sid string, mid string) {
+	var request DetachTournamentSlotMatchRequestObject
+
+	request.Id = id
+	request.Sid = sid
+	request.Mid = mid
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DetachTournamentSlotMatch(ctx, request.(DetachTournamentSlotMatchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DetachTournamentSlotMatch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(DetachTournamentSlotMatchResponseObject); ok {
+		if err := validResponse.VisitDetachTournamentSlotMatchResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTournamentSlotRuling operation middleware
+func (sh *strictHandler) SetTournamentSlotRuling(ctx *gin.Context, id string, sid string) {
+	var request SetTournamentSlotRulingRequestObject
+
+	request.Id = id
+	request.Sid = sid
+
+	var body SetTournamentSlotRulingJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTournamentSlotRuling(ctx, request.(SetTournamentSlotRulingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTournamentSlotRuling")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(SetTournamentSlotRulingResponseObject); ok {
+		if err := validResponse.VisitSetTournamentSlotRulingResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

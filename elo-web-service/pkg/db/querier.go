@@ -125,6 +125,11 @@ type Querier interface {
 	DeleteSlotMatch(ctx context.Context, arg DeleteSlotMatchParams) error
 	DeleteSlotMatches(ctx context.Context, slotID id.ID) error
 	DeleteSlotPromotions(ctx context.Context, slotID id.ID) error
+	// Drops one seat (a bye absorbed into a growing first-round table).
+	DeleteSlotSeat(ctx context.Context, arg DeleteSlotSeatParams) error
+	// Seat-count adjustment (ADR-26): the slot's seats are re-created from the
+	// same seed; only callable on slots with zero linked matches.
+	DeleteSlotSeats(ctx context.Context, slotID id.ID) error
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	// The pool is small; the PUT handler rewrites it wholesale inside its tx.
 	DeleteTournamentGames(ctx context.Context, tournamentID id.ID) error
@@ -249,6 +254,7 @@ type Querier interface {
 	// concurrent start and cancel queue behind the lock instead of racing.
 	GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tournament, error)
 	GetTournamentOfSlot(ctx context.Context, argID id.ID) (Tournament, error)
+	GetTournamentPlan(ctx context.Context, argID id.ID) (GetTournamentPlanRow, error)
 	// Bracket materialization queries (ADR-26): rounds, slots, seats, the slot
 	// match series, and the recorded promotions. Standings are never stored —
 	// they are derived from the linked matches' scores at read/completion time.
@@ -364,7 +370,7 @@ type Querier interface {
 	// the final promotion, so a completed tournament never appears here.
 	ListRunningTournamentsPastDeadline(ctx context.Context) ([]Tournament, error)
 	ListSeatsBySlots(ctx context.Context, slotIds []id.ID) ([]TournamentSeat, error)
-	ListSeatsBySourceSlot(ctx context.Context, sourceSlotID *id.ID) ([]TournamentSeat, error)
+	ListSeatsBySourceSlot(ctx context.Context, sourceSlotID id.ID) ([]TournamentSeat, error)
 	// The slot's match series with derived inputs for the standings: scores of
 	// every linked match, in event order (date, then id — same as the arena
 	// replay order).
@@ -376,6 +382,7 @@ type Querier interface {
 	// Slots whose seats are fed by the given slot (downstream neighbours for the
 	// seat refill / cascade invalidation).
 	ListSlotsBySource(ctx context.Context, sourceSlotID id.ID) ([]ListSlotsBySourceRow, error)
+	ListSlotsOfTournamentByAddress(ctx context.Context, tournamentID id.ID) ([]ListSlotsOfTournamentByAddressRow, error)
 	ListStaleArenas(ctx context.Context, dueBefore time.Time) ([]ListStaleArenasRow, error)
 	// Arenas whose filter has a game-tag condition — the conservative mark set
 	// when any game's tags change (a tag toggle can flip any of them).
@@ -450,6 +457,8 @@ type Querier interface {
 	UpdateMatch(ctx context.Context, arg UpdateMatchParams) error
 	UpdatePlayer(ctx context.Context, arg UpdatePlayerParams) (Player, error)
 	UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error
+	// Fills one seat cache from the source slot's derived placing.
+	UpdateSeatPlayer(ctx context.Context, arg UpdateSeatPlayerParams) error
 	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
 	// Registration-time config (ADR-26): name and the optional grand-final
 	// deadline. The pool and participants are managed by their own queries.

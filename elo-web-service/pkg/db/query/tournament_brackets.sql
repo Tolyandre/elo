@@ -70,7 +70,7 @@ WHERE slot_id = ANY(sqlc.arg('slot_ids')::uuid[])
 ORDER BY slot_id, position;
 
 -- name: ListSeatsBySourceSlot :many
-SELECT * FROM tournament_seats WHERE source_slot_id = $1 ORDER BY position;
+SELECT * FROM tournament_seats WHERE source_slot_id = sqlc.arg('source_slot_id')::uuid ORDER BY position;
 
 -- name: SetSlotSeatsFromPromotions :exec
 -- Refill the seat caches fed by a completed source slot: place i of the
@@ -178,3 +178,24 @@ SELECT t.* FROM tournaments t
 WHERE t.status = 'running'
   AND t.grand_final_deadline IS NOT NULL
   AND t.grand_final_deadline <= NOW();
+
+-- name: DeleteSlotSeats :exec
+-- Seat-count adjustment (ADR-26): the slot's seats are re-created from the
+-- same seed; only callable on slots with zero linked matches.
+DELETE FROM tournament_seats WHERE slot_id = $1;
+
+-- name: ListSlotsOfTournamentByAddress :many
+SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+WHERE r.tournament_id = sqlc.arg('tournament_id')::uuid
+ORDER BY s.id;
+
+-- name: DeleteSlotSeat :exec
+-- Drops one seat (a bye absorbed into a growing first-round table).
+DELETE FROM tournament_seats WHERE slot_id = $1 AND position = $2;
+
+-- name: UpdateSeatPlayer :exec
+-- Fills one seat cache from the source slot's derived placing.
+UPDATE tournament_seats SET player_id = $2 WHERE id = $1;

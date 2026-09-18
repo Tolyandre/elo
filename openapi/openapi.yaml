@@ -265,6 +265,14 @@ paths:
     $ref: './tournaments.yaml#/TournamentCancel'
   /tournaments/{id}/bracket:
     $ref: './tournaments.yaml#/TournamentBracketPath'
+  /tournaments/{id}/slots/{sid}:
+    $ref: './tournaments.yaml#/TournamentSlotItem'
+  /tournaments/{id}/slots/{sid}/matches:
+    $ref: './tournaments.yaml#/TournamentSlotMatches'
+  /tournaments/{id}/slots/{sid}/matches/{mid}:
+    $ref: './tournaments.yaml#/TournamentSlotMatchItem'
+  /tournaments/{id}/slots/{sid}/ruling:
+    $ref: './tournaments.yaml#/TournamentSlotRuling'
 
   # Clubs
   /clubs:
