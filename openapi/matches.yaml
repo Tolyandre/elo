@@ -235,6 +235,18 @@ MatchItem:
                   contain the new match date. Omit to keep the stored links
                   untouched; a date moved outside a linked camp without
                   detaching it is a 409.
+              skip_tournament_link:
+                type: boolean
+                description: >-
+                  The desired tournament-link state (ADR-26). true — the match
+                  must be out of the bracket: a stored slot link is detached
+                  (the same re-evaluation and audit as the organizer detach).
+                  false — the match must be counted: it is attached to the
+                  unique fitting playing slot (same game, exactly the seated
+                  players); when nothing fits it is a 409 — a playing slot has
+                  no recorded promotions, so attaching can never invalidate
+                  played history. Omitted — the association is left untouched.
+                  A request whose desired state already holds is a no-op.
               calculator_kind:
                 type: string
                 nullable: true
@@ -339,11 +351,12 @@ MatchCamp:
 MatchTournament:
   type: object
   description: >-
-    The tournament slot a match is counted for (ADR-26). Server-assigned at
-    the match write when the match exactly fits a playing slot, or by the
-    organizer's attach; never changes on edit (association-breaking edits are
-    rejected). The link survives detach — only the bracket forgets voided
-    results, the tournament arena keeps counting the match.
+    The tournament slot a match is counted for (ADR-26). Server-assigned at the
+    match write when the match exactly fits a playing slot, by the organizer's
+    attach, or by an explicit edit-time link change (skip_tournament_link on
+    PUT); association-breaking edits (game/roster) are still rejected. The link
+    survives detach — only the bracket forgets voided results, the tournament
+    arena keeps counting the match.
   properties:
     id:
       $ref: './common.yaml#/Base58ID'

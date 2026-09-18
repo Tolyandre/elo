@@ -269,14 +269,20 @@ form.
   the client checkbox only drives the default. (Camp links, by contrast,
   are client-listed — `camp_arena_ids` — because camp membership is an
   opt-in tag, not a structural fit.)
-- **Editing never changes association** (history playback): `PUT
-  /matches/:id` on a linked match may fix scores, date, calculator data —
-  but must keep the exact player set and game, otherwise it is rejected
-  with 409 (the organizer can detach the match first via the correction
-  endpoint below). A non-linked match can never become linked by editing.
+- **Association changes on edit are explicit and safe only** (history
+  playback): `PUT /matches/:id` on a linked match may fix scores, date,
+  calculator data — but must keep the exact player set and game, otherwise it
+  is rejected with 409. The checkbox itself stays editable on edit (like the
+  camp checkboxes): sending `skip_tournament_link: true` detaches a stored
+  link, sending `false` attaches the match to the unique fitting `playing`
+  slot — each audited. A link change is accepted only while it cannot void
+  played results: attaching targets a `playing` slot (no recorded promotions
+  yet, so nothing downstream exists to invalidate), and detaching is refused
+  with 409 while any downstream slot still holds linked matches — un-counting
+  a match whose outcome fed played rounds goes through the organizer's
+  explicit detach instead. A desired state that already holds is a no-op.
   What editing *does* do: scores change → points recompute → completion
-  re-evaluates → possibly a different promotion set (see consistency
-  below).
+  re-evaluates → possibly a different promotion set (see consistency below).
 - Acceptance, points, completion and audit rows all happen in the
   match-write transaction. Offline-sync replays (ADR-16) behave the same:
   association is decided once, at the server write — a queued match may
@@ -488,8 +494,10 @@ Links only, no tables. The nav item becomes «Турниры» (camps live under
 
 **Match form.** The tournament checkbox joins the camp checkbox group:
 visible when the (edited) date/roster fits a `playing` slot, default
-checked, frozen on edit — alongside ADR-27's camp checkboxes. Offline:
-bracket acceptance is server-side at sync, so the queue carries no
+checked, editable on edit like the camp checkboxes (a linked match starts
+checked, an unlinked one unchecked; changing it is the explicit
+`skip_tournament_link` of the edit) — alongside ADR-27's camp checkboxes.
+Offline: bracket acceptance is server-side at sync, so the queue carries no
 tournament field (camp links do); the match card shows the slot/tournament
 badge after refetch.
 

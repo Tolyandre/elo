@@ -918,6 +918,27 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		t.Fatalf("arena must count all 8 players, got %d", len(arenaPlayers.Data))
 	}
 
+	// Arena match cards carry the tournament badge too (the match card's link
+	// to the bracket slot).
+	w = doJSON(t, router, http.MethodGet, "/arenas/"+short(arenaID)+"/matches?limit=1", "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("arena matches: %d %s", w.Code, w.Body.String())
+	}
+	var arenaMatches struct {
+		Data []struct {
+			Tournament *struct {
+				Id string `json:"id"`
+			} `json:"tournament"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &arenaMatches); err != nil {
+		t.Fatalf("decode arena matches: %v", err)
+	}
+	if len(arenaMatches.Data) == 0 || arenaMatches.Data[0].Tournament == nil ||
+		arenaMatches.Data[0].Tournament.Id != short(tid) {
+		t.Fatalf("arena match must carry the tournament badge: %+v", arenaMatches.Data)
+	}
+
 	// Audit: six slot-link attaches + the state documents.
 	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
 	attaches, states := 0, 0
@@ -1170,8 +1191,9 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		t.Fatalf("score edit must pass: %d", code)
 	}
 
-	// A non-linked match can never become linked by editing: post one with
-	// the skip flag, then edit it to an exactly-fitting roster.
+	// A skipped match stays unlinked without the explicit flag; edit-time
+	// linking via skip_tournament_link: false is covered by
+	// TestTournament_EditLinkChange below.
 	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-03T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
 		short(newID(t)), short(gameID), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
@@ -1200,6 +1222,169 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
 		t.Fatalf("re-completion: %+v", br.Data)
+	}
+}
+
+// TestTournament_EditLinkChange covers the edit form's tournament checkbox
+// (ADR-26): an unlinked match may be counted by an explicit
+// skip_tournament_link: false edit, a linked one may be unchecked — but only
+// while no downstream slot holds played matches; otherwise 409.
+func TestTournament_EditLinkChange(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Правочная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Правка%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок правок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	editMatch := func(mid string, skip string, scores ...string) int {
+		body := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}%s}`,
+			short(gameID), strings.Join(scores, ","), skip)
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+	day := "2026-09-01T10:0%d:00Z"
+
+	// A skipped match (created unchecked) is counted by the explicit edit.
+	m1id := newID(t)
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
+		short(m1id), short(gameID), strings.Join([]string{sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+	m1 := short(m1id)
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("edit-link: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA := slotAt(t, br, 0, 0)
+	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
+		t.Fatalf("edited match must count for slot A: %+v", slotA.Matches)
+	}
+	// The link change is audited with the match-edit origin.
+	editLinkAudits := func() (attaches, detaches int) {
+		page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+		for _, e := range page.Data {
+			if e.Details == nil {
+				continue
+			}
+			var d map[string]any
+			if err := json.Unmarshal(e.Details, &d); err != nil {
+				continue
+			}
+			if d["origin_kind"] != "match-edit" || d["slot_id"] != slotA.Id {
+				continue
+			}
+			switch d["op"] {
+			case "attach":
+				attaches++
+			case "detach":
+				detaches++
+			}
+		}
+		return attaches, detaches
+	}
+	if attaches, detaches := editLinkAudits(); attaches != 1 || detaches != 0 {
+		t.Fatalf("audit after edit-link: %d attaches, %d detaches", attaches, detaches)
+	}
+
+	// A no-op edit (desired state already holds) emits no second audit row.
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("no-op edit: %d", code)
+	}
+	if attaches, _ := editLinkAudits(); attaches != 1 {
+		t.Fatalf("no-op edit must not re-attach: %d attaches", attaches)
+	}
+
+	// The second slot-A match links by the default acceptance; its points keep
+	// the cumulative top-2 tied with place 3, so the slot stays playing with
+	// two matches (a1=6, a0=4, a2=4, a3=−2 — no strict cut).
+	m2 := newMatch(fmt.Sprintf(day, 1), sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1))
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Status != "playing" || len(slotA.Matches) != 2 {
+		t.Fatalf("slot A must stay playing on two matches: %s with %d", slotA.Status, len(slotA.Matches))
+	}
+
+	// Unchecking a linked match is allowed while the downstream final has no
+	// played matches: the slot recomputes from the remaining match only and
+	// completes with a different promoted set {seat2, seat1}.
+	if code := editMatch(m1, `, "skip_tournament_link": true`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("edit-unlink before downstream play: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m2 {
+		t.Fatalf("m1 must be out of the bracket: %+v", slotA.Matches)
+	}
+	if slotA.Status != "completed" || slotA.Standings[0].PlayerId != aSeat(2) || slotA.Standings[1].PlayerId != aSeat(1) {
+		t.Fatalf("slot A must re-complete from the remaining match: %s %+v", slotA.Status, slotA.Standings)
+	}
+
+	// Checking m1 back is now refused: the slot re-completed from m2 alone, so
+	// no playing slot fits (the same 400 the organizer attach answers with).
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusBadRequest {
+		t.Fatalf("edit-relink into a completed slot must 400, got %d", code)
+	}
+
+	// Slot B completes, the grand final is played, the tournament completes.
+	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	final0 := seatPlayer(t, br, 1, 0, 0)
+	final1 := seatPlayer(t, br, 1, 0, 1)
+	final2 := seatPlayer(t, br, 1, 0, 2)
+	final3 := seatPlayer(t, br, 1, 0, 3)
+	newMatch("2026-09-02T10:00:00Z", sc(final0, 10), sc(final1, 6), sc(final2, 2), sc(final3, 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != final0 {
+		t.Fatalf("tournament must be completed with the final's winner: %+v", br.Data)
+	}
+
+	// Now unchecking would void the played final → 409, the organizer's
+	// explicit detach is the tool for that.
+	if code := editMatch(m2, `, "skip_tournament_link": true`, sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1)); code != http.StatusConflict {
+		t.Fatalf("edit-unlink after downstream play must 409, got %d", code)
+	}
+
+	// A match that fits no playing slot cannot be counted by an edit: with the
+	// bracket finished there are no playing slots at all (the same 400 the
+	// organizer attach endpoint answers with).
+	late := newMatch("2026-09-03T10:00:00Z", sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code := editMatch(late, `, "skip_tournament_link": false`, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusBadRequest {
+		t.Fatalf("edit-link with no playing slot must 400, got %d", code)
+	}
+
+	// Audit totals for slot A: one edit-link attach and one edit-unlink
+	// detach (the refused relink and unlink emit nothing).
+	if attaches, detaches := editLinkAudits(); attaches != 1 || detaches != 1 {
+		t.Fatalf("audit totals: %d attaches, %d detaches (want 1, 1)", attaches, detaches)
 	}
 }
 

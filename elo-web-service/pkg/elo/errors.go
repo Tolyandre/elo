@@ -49,6 +49,7 @@ var (
 	ErrMatchAlreadyLinked               = errors.New("партия уже учтена за другим столом")
 	ErrTournamentMatchNotLinked         = errors.New("партия не учтена за этим столом")
 	ErrTournamentMatchFitsNoSlot        = errors.New("партия не подходит ни под один стол: нужна та же игра и ровно тот же состав игроков")
+	ErrTournamentLinkChangeUnsafe       = errors.New("изменение учёта партии затронет уже сыгранные матчи следующих кругов — используйте инструменты организатора")
 	ErrGrandFinalDeadlinePassed         = errors.New("дедлайн гранд-финала истёк")
 
 	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")

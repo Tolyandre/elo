@@ -372,6 +372,9 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 		ids := derefIDs(request.Body.CampArenaIds)
 		opts.CampArenaIDs = &ids
 	}
+	// The desired tournament-link state (ADR-26): the edit form's checkbox.
+	// A nil pointer (key absent) leaves the association untouched.
+	opts.SkipTournamentLink = request.Body.SkipTournamentLink
 	// A non-nil calculator_kind in the body means "set/replace"; a body that
 	// explicitly sends calculator_kind: null means "clear". Because the field
 	// is `*string` (pointer), we can only tell the two apart when the client

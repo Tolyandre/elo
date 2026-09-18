@@ -1223,7 +1223,7 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
-        /** @description The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match. */
+        /** @description The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match. */
         MatchTournament: {
             /** @description The tournament id */
             id: components["schemas"]["Base58ID"];
@@ -3270,6 +3270,8 @@ export interface operations {
                     date: string;
                     /** @description The desired camp arena set (ADR-27). The server diffs it against the stored links — attaching and detaching as needed, each change audited and both camps recalculated. Every requested arena must exist, be a camp, and its window must contain the new match date. Omit to keep the stored links untouched; a date moved outside a linked camp without detaching it is a 409. */
                     camp_arena_ids?: components["schemas"]["Base58ID"][];
+                    /** @description The desired tournament-link state (ADR-26). true — the match must be out of the bracket: a stored slot link is detached (the same re-evaluation and audit as the organizer detach). false — the match must be counted: it is attached to the unique fitting playing slot (same game, exactly the seated players); when nothing fits it is a 409 — a playing slot has no recorded promotions, so attaching can never invalidate played history. Omitted — the association is left untouched. A request whose desired state already holds is a no-op. */
+                    skip_tournament_link?: boolean;
                     /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). Validated server-side against the JSON Schema registered for this kind (see pkg/calculator). Set to null to clear calculator data on the match. */
                     calculator_kind?: string | null;
                     /** @description Intermediate calculator state. Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Required when calculator_kind is non-null. */

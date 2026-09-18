@@ -436,6 +436,10 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 	if err != nil {
 		return nil, err
 	}
+	tournamentByMatch, err := s.tournamentByMatch(ctx, order)
+	if err != nil {
+		return nil, err
+	}
 
 	data := make([]Match, 0, len(order))
 	for _, mid := range order {
@@ -459,6 +463,10 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 		}
 		if cs := campsByMatch[m.Id]; len(cs) > 0 {
 			match.Camps = &cs
+		}
+		if t, ok := tournamentByMatch[m.Id]; ok {
+			tt := t
+			match.Tournament = &tt
 		}
 		if m.CalculatorKind.Valid {
 			kind := m.CalculatorKind.String

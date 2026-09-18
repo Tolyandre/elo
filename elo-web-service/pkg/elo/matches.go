@@ -83,6 +83,12 @@ type UpdateMatchOpts struct {
 	//   - &CalculatorUpdate{Kind: nil} → clear calculator columns (set to NULL)
 	//   - &CalculatorUpdate{Kind: &k, Data: d} → replace with validated document
 	Calculator *CalculatorUpdate
+	// SkipTournamentLink, when non-nil, is the desired tournament-link state
+	// (ADR-26): true — the match must be out of the bracket (a stored slot
+	// link is detached, guarded so no played downstream result is voided);
+	// false — the match must be counted (attached to the unique fitting
+	// playing slot); nil — leave the association untouched.
+	SkipTournamentLink *bool
 	// ActorUserID is the editor recorded in the audit log. Zero skips the
 	// audit row (see pkg/elo/audit.go).
 	ActorUserID id.ID
@@ -421,6 +427,17 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	// run before the drain below: the camp replay reads camp_matches.
 	if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
 		return db.Match{}, err
+	}
+
+	// ADR-26: the edit form's desired tournament-link state, applied before
+	// OnMatchChanged below (a just-unlinked match then has no slot to
+	// re-evaluate; a just-linked one is re-evaluated by the attach itself).
+	// A change is refused while it would void already-played downstream
+	// matches — that stays the organizer's explicit tool.
+	if s.Tournaments != nil && opts.SkipTournamentLink != nil {
+		if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, *opts.SkipTournamentLink, opts.ActorUserID); err != nil {
+			return db.Match{}, err
+		}
 	}
 
 	// ADR-26: scores changed → points recompute → completion re-evaluates →

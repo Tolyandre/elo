@@ -1418,7 +1418,7 @@ type Match struct {
 	// Score Map of player_id (string) to player score data
 	Score IDMap[MatchPlayer] `json:"score"`
 
-	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
+	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
 	Tournament *MatchTournament `json:"tournament,omitempty"`
 }
 
@@ -1445,7 +1445,7 @@ type MatchPlayer struct {
 	Score        float64 `json:"score"`
 }
 
-// MatchTournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
+// MatchTournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
 type MatchTournament struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   Base58ID `json:"id"`
@@ -2198,6 +2198,9 @@ type UpdateMatchJSONBody struct {
 
 	// Score Map of player_id (string) to numeric score
 	Score IDMap[float64] `json:"score"`
+
+	// SkipTournamentLink The desired tournament-link state (ADR-26). true — the match must be out of the bracket: a stored slot link is detached (the same re-evaluation and audit as the organizer detach). false — the match must be counted: it is attached to the unique fitting playing slot (same game, exactly the seated players); when nothing fits it is a 409 — a playing slot has no recorded promotions, so attaching can never invalidate played history. Omitted — the association is left untouched. A request whose desired state already holds is a no-op.
+	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
 }
 
 // CreatePlayerJSONBody defines parameters for CreatePlayer.

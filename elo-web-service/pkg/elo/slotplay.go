@@ -33,6 +33,11 @@ type ITournamentPlay interface {
 	// CheckAssociationEditable rejects association-breaking edits (409): a
 	// linked match keeps its exact player set and game.
 	CheckAssociationEditable(ctx context.Context, q *db.Queries, matchID, gameID id.ID, playerIDs []id.ID) error
+	// SetMatchLinkState applies the edit form's desired tournament-link state
+	// (ADR-26): true detaches a stored link (guarded against voiding played
+	// downstream matches), false attaches to the unique fitting playing slot,
+	// and an already-satisfied state is a no-op. Runs inside the match-write tx.
+	SetMatchLinkState(ctx context.Context, q *db.Queries, matchID id.ID, ensureUnlinked bool, actor id.ID) error
 	// OnMatchChanged re-evaluates the slot owning an edited match.
 	OnMatchChanged(ctx context.Context, q *db.Queries, matchID, actor id.ID) error
 }
@@ -451,6 +456,111 @@ func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, m
 		return err
 	}
 	return s.recomputeSlot(ctx, q, actor, ref.SlotID, audit.LinkOriginMatchEdit, string(matchID))
+}
+
+// SetMatchLinkState applies the edit form's desired tournament-link state
+// (ADR-26): ensureUnlinked detaches a stored slot link; ensureLinked attaches
+// the match to its unique fitting playing slot — the same equality rule as
+// acceptance, but "fits nothing" is an error instead of a silent skip (a
+// playing slot has no recorded promotions, so attaching can never invalidate
+// played history). A desired state that already holds is a no-op with no
+// audit rows. Detaching is refused while any downstream slot still holds
+// linked matches — voiding played rounds stays the organizer's explicit
+// tool. Runs inside the match-write tx; audit origin: match edit.
+func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries, matchID id.ID, ensureUnlinked bool, actor id.ID) error {
+	if err := s.enforceDeadlineTx(ctx, q); err != nil {
+		return err
+	}
+	ref, err := s.SlotOfMatch(ctx, q, matchID)
+	if err != nil {
+		return err
+	}
+	if ensureUnlinked {
+		if ref == nil {
+			return nil // already out of the bracket — nothing to change
+		}
+		if err := s.downstreamHasPlayedMatches(ctx, q, ref.SlotID); err != nil {
+			return err
+		}
+		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: ref.SlotID, MatchID: matchID}); err != nil {
+			return fmt.Errorf("unlink match: %w", err)
+		}
+		if err := recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, ref.TournamentID,
+			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkDetach, string(ref.SlotID), string(matchID),
+				audit.LinkOriginMatchEdit, "")); err != nil {
+			return err
+		}
+		return s.recomputeSlot(ctx, q, actor, ref.SlotID, audit.LinkOriginMatchEdit, string(matchID))
+	}
+
+	// ensureLinked: already counted is a no-op; otherwise find the unique
+	// fitting playing slot (deterministic acceptance order).
+	if ref != nil {
+		return nil
+	}
+	m, err := q.GetMatch(ctx, matchID)
+	if err != nil {
+		return fmt.Errorf("get match: %w", err)
+	}
+	scores, err := q.GetMatchScores(ctx, matchID)
+	if err != nil {
+		return fmt.Errorf("get match scores: %w", err)
+	}
+	playerIDs := make([]id.ID, 0, len(scores))
+	for _, sc := range scores {
+		playerIDs = append(playerIDs, sc.PlayerID)
+	}
+	candidates, err := q.ListAcceptanceCandidates(ctx, m.GameID)
+	if err != nil {
+		return fmt.Errorf("list acceptance candidates: %w", err)
+	}
+	for _, c := range candidates {
+		if int(c.SeatCount) != len(playerIDs) {
+			continue
+		}
+		seats, err := q.ListSeatsBySlots(ctx, []id.ID{c.ID})
+		if err != nil {
+			return fmt.Errorf("list candidate seats: %w", err)
+		}
+		if !seatSetEquals(seats, playerIDs) {
+			continue
+		}
+		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: c.ID, MatchID: matchID}); err != nil {
+			return fmt.Errorf("link match to slot: %w", err)
+		}
+		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{TournamentID: c.TournamentID, MatchID: matchID}); err != nil {
+			return fmt.Errorf("link match to tournament: %w", err)
+		}
+		if err := recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, c.TournamentID,
+			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkAttach, string(c.ID), string(matchID),
+				audit.LinkOriginMatchEdit, "")); err != nil {
+			return err
+		}
+		return s.recomputeSlot(ctx, q, actor, c.ID, audit.LinkOriginMatchEdit, string(matchID))
+	}
+	return ErrTournamentMatchFitsNoSlot
+}
+
+// downstreamHasPlayedMatches reports whether any slot reachable through the
+// promotions holds linked matches: a link-state change would then void rounds
+// that were actually played, which the edit form must not do silently
+// (ErrTournamentLinkChangeUnsafe).
+func (s *TournamentService) downstreamHasPlayedMatches(ctx context.Context, q *db.Queries, slotID id.ID) error {
+	downstream, err := q.ListSlotsBySource(ctx, slotID)
+	if err != nil {
+		return fmt.Errorf("list downstream slots: %w", err)
+	}
+	for _, d := range downstream {
+		if has, err := q.SlotHasMatches(ctx, d.ID); err != nil {
+			return fmt.Errorf("check slot matches: %w", err)
+		} else if has {
+			return ErrTournamentLinkChangeUnsafe
+		}
+		if err := s.downstreamHasPlayedMatches(ctx, q, d.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
