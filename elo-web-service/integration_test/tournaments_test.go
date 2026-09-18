@@ -478,7 +478,7 @@ type bracketJSON struct {
 		TournamentId   string `json:"tournament_id"`
 		Status         string `json:"status"`
 		Elimination    string `json:"elimination"`
-		WinnerPlayerId string `json:"winner_player_id"`
+		WinnerPlayerId *string `json:"winner_player_id"`
 		Rounds         []struct {
 			Track string `json:"track"`
 			Index int    `json:"index"`
@@ -673,4 +673,364 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 		t.Fatalf("no tournament-state cancelled document")
 	}
 	_ = players
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: acceptance, placement points, completion
+// ---------------------------------------------------------------------------
+
+// matchIDsOf returns the linked match ids of one bracket slot from the wire.
+func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
+	Id       string
+	GameId   string
+	Position int
+	Promote  int
+	Status   string
+	Seats    []struct {
+		Position     int     `json:"position"`
+		PlayerId     *string `json:"player_id"`
+		SourceSlotId *string `json:"source_slot_id"`
+		SourcePlace  *int    `json:"source_place"`
+	}
+	Matches []struct {
+		MatchId string `json:"match_id"`
+	} `json:"matches"`
+	Standings []struct {
+		PlayerId string `json:"player_id"`
+		Points   int    `json:"points"`
+		Place    int    `json:"place"`
+		Promoted bool   `json:"promoted"`
+	} `json:"standings"`
+} {
+	t.Helper()
+	slot := br.Data.Rounds[roundIdx].Slots[pos]
+	return &struct {
+		Id       string
+		GameId   string
+		Position int
+		Promote  int
+		Status   string
+		Seats    []struct {
+			Position     int     `json:"position"`
+			PlayerId     *string `json:"player_id"`
+			SourceSlotId *string `json:"source_slot_id"`
+			SourcePlace  *int    `json:"source_place"`
+		}
+		Matches []struct {
+			MatchId string `json:"match_id"`
+		} `json:"matches"`
+		Standings []struct {
+			PlayerId string `json:"player_id"`
+			Points   int    `json:"points"`
+			Place    int    `json:"place"`
+			Promoted bool   `json:"promoted"`
+		} `json:"standings"`
+	}{
+		Id: slot.Id, GameId: slot.GameId, Position: slot.Position, Promote: slot.Promote,
+		Status: slot.Status, Seats: slot.Seats, Matches: slot.Matches, Standings: slot.Standings,
+	}
+}
+
+// seatPlayer returns the drawn player of a round-1 seat position (base58).
+func seatPlayer(t *testing.T, br *bracketJSON, roundIdx, pos, seatPos int) string {
+	t.Helper()
+	p := br.Data.Rounds[roundIdx].Slots[pos].Seats[seatPos].PlayerId
+	if p == nil {
+		t.Fatalf("round %d slot %d seat %d has no drawn player", roundIdx, pos, seatPos)
+	}
+	return *p
+}
+
+func getBracket(t *testing.T, router interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}, tid string) *bracketJSON {
+	t.Helper()
+	w := doJSON(t, router, http.MethodGet, "/tournaments/"+tid+"/bracket", "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket: %d %s", w.Code, w.Body.String())
+	}
+	var br bracketJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &br); err != nil {
+		t.Fatalf("decode bracket: %v", err)
+	}
+	return &br
+}
+
+const flagshipPlanBody = `{"plan":{"elimination":"single","rounds":[
+	{"track":"winners","index":1,"promote":2,"slots":[
+		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
+		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
+	{"track":"final","index":1,"promote":1,"slots":[
+		{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`
+
+// TestTournament_SingleElimEndToEnd is the ADR-26 rollout's flagship: an
+// 8-player single-elimination on a 4-seat-only pool (4+4 promote-2 → final 4
+// promote-1) including a slot that needed a replay (shared top game score in
+// the first match → no strict cut → the same table plays again).
+func TestTournament_SingleElimEndToEnd(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Флажная игра")
+
+	tid := newID(t)
+	var ids []string
+	players := make([]idpkg.ID, 0, 8)
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Финалист%d", i))
+		players = append(players, p)
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок флажков", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+
+	br := getBracket(t, router, short(tid))
+	if len(br.Data.Rounds) != 2 {
+		t.Fatalf("rounds: %d", len(br.Data.Rounds))
+	}
+
+	// Table A (round 1, position 1) — first match ends with a shared top
+	// score: 4–4–0–−2, no strict cut, the slot replays.
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+	day := "2026-09-01T10:0%d:00Z"
+
+	// Match 1: shared top → the slot must stay playing with no promotions.
+	m1 := newMatch(fmt.Sprintf(day, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA := slotAt(t, br, 0, 0)
+	if slotA.Status != "playing" {
+		t.Fatalf("slot A must still be playing after a tied match: %s", slotA.Status)
+	}
+	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
+		t.Fatalf("slot A matches: %+v", slotA.Matches)
+	}
+	// Live standings show the 4-4-0-(-2) points while the slot replays; the
+	// promoted flags stay off and the final seat stays unfilled.
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 4 || slotA.Standings[1].Points != 4 ||
+		slotA.Standings[0].Promoted || slotA.Standings[1].Promoted ||
+		br.Data.Rounds[1].Slots[0].Seats[0].PlayerId != nil {
+		t.Fatalf("tied match: live standings but no promotion: %+v", slotA.Standings)
+	}
+
+	// The match DTO carries the tournament badge.
+	w := doJSON(t, router, http.MethodGet, "/matches/"+m1, "", "")
+	var matchResp struct {
+		Data struct {
+			Tournament *struct {
+				Id     string `json:"id"`
+				Name   string `json:"name"`
+				SlotId string `json:"slot_id"`
+			} `json:"tournament"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &matchResp); err != nil {
+		t.Fatalf("decode match: %v", err)
+	}
+	if matchResp.Data.Tournament == nil || matchResp.Data.Tournament.Id != short(tid) || matchResp.Data.Tournament.SlotId != slotA.Id {
+		t.Fatalf("match badge: %+v", matchResp.Data.Tournament)
+	}
+
+	// Match 2 (the replay): 2–4–0–−2 → cumulative 6–8–0–−4 → strict top-2.
+	newMatch(fmt.Sprintf(day, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Status != "completed" || len(slotA.Matches) != 2 {
+		t.Fatalf("slot A after the replay: %s with %d matches", slotA.Status, len(slotA.Matches))
+	}
+	// Standings: 8–6–0–−4, promoted {seat1, seat0}.
+	if len(slotA.Standings) != 4 || slotA.Standings[0].PlayerId != aSeat(1) || slotA.Standings[1].PlayerId != aSeat(0) ||
+		!slotA.Standings[0].Promoted || !slotA.Standings[1].Promoted || slotA.Standings[0].Points != 8 || slotA.Standings[1].Points != 6 {
+		t.Fatalf("slot A standings: %+v", slotA.Standings)
+	}
+
+	// Table B: a decisive first match completes the slot immediately.
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotB := slotAt(t, br, 0, 1)
+	if slotB.Status != "completed" {
+		t.Fatalf("slot B must complete on a strict cut: %s", slotB.Status)
+	}
+
+	// The final's seat caches are refilled with the promoted players.
+	finalSeats := br.Data.Rounds[1].Slots[0].Seats
+	gotFinal := map[string]bool{}
+	for _, seat := range finalSeats {
+		if seat.PlayerId == nil {
+			t.Fatalf("final seat not refilled: %+v", seat)
+		}
+		gotFinal[*seat.PlayerId] = true
+	}
+	if len(gotFinal) != 4 || !gotFinal[aSeat(1)] || !gotFinal[aSeat(0)] || !gotFinal[bSeat(0)] || !gotFinal[bSeat(1)] {
+		t.Fatalf("final participants: %v", gotFinal)
+	}
+
+	// The grand final: one match with a strict cut crowns the champion.
+	finalDate := "2026-09-02T10:00:00Z"
+	newMatch(finalDate, sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" {
+		t.Fatalf("tournament must be completed, got %s", br.Data.Status)
+	}
+	if br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("winner: %v", br.Data.WinnerPlayerId)
+	}
+
+	// The tournament arena counts the matches (rating and medals for free).
+	var arenaID idpkg.ID
+	if err := pool.QueryRow(context.Background(),
+		`SELECT id FROM arenas WHERE tournament_id = $1`, tid).Scan(&arenaID); err != nil {
+		t.Fatalf("arena lookup: %v", err)
+	}
+	w = doJSON(t, router, http.MethodGet, "/arenas/"+short(arenaID)+"/players", "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("arena players: %d %s", w.Code, w.Body.String())
+	}
+	var arenaPlayers struct {
+		Data []struct {
+			PlayerId     string `json:"player_id"`
+			MatchesCount int    `json:"matches_count"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &arenaPlayers); err != nil {
+		t.Fatalf("decode arena players: %v", err)
+	}
+	if len(arenaPlayers.Data) != 8 {
+		t.Fatalf("arena must count all 8 players, got %d", len(arenaPlayers.Data))
+	}
+
+	// Audit: six slot-link attaches + the state documents.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	attaches, states := 0, 0
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		if d["op"] == "attach" {
+			attaches++
+		}
+		if d["reason"] == "grand-final" {
+			states++
+		}
+	}
+	if attaches != 4 || states != 1 {
+		t.Fatalf("audit: %d attaches, %d grand-final states (want 4, 1)", attaches, states)
+	}
+}
+
+// TestTournament_MatchSkipAndNonFit covers the acceptance opt-outs: the
+// explicit skip flag keeps a fitting match out of the bracket, and a
+// non-fitting roster never links.
+func TestTournament_MatchSkipAndNonFit(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Пропускная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Пропуск%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пропусков", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	smallPlan := `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"promote":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, smallPlan); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	s0 := short(createTestPlayer(t, pool, "n0"))
+	p1 := br.Data.Rounds[0].Slots[0].Seats[0].PlayerId
+	p2 := br.Data.Rounds[0].Slots[0].Seats[1].PlayerId
+	p3 := br.Data.Rounds[0].Slots[0].Seats[2].PlayerId
+	p4 := br.Data.Rounds[0].Slots[0].Seats[3].PlayerId
+	_ = s0
+
+	// Fitting roster with the skip flag: accepted into the arena but not the
+	// bracket.
+	scores := fmt.Sprintf(`%q:10, %q:2, %q:1, %q:0`, *p1, *p2, *p3, *p4)
+	skippedID := short(newID(t))
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}, "skip_tournament_link": true}`, skippedID, short(gameID), scores)
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+	w := doJSON(t, router, http.MethodGet, "/matches/"+skippedID, "", "")
+	var mr struct {
+		Data struct {
+			Tournament *string `json:"tournament"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mr.Data.Tournament != nil {
+		t.Fatalf("skipped match must be unlinked: %+v", mr.Data.Tournament)
+	}
+	br = getBracket(t, router, short(tid))
+	if len(br.Data.Rounds[0].Slots[0].Matches) != 0 {
+		t.Fatalf("skipped match must not count for the slot")
+	}
+
+	// A non-fitting roster (a stranger at the table) never links.
+	stranger := createTestPlayer(t, pool, "Посторонний")
+	strangerID := short(newID(t))
+	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%q:10, %q:2, %q:1, %q:0}}`,
+		strangerID, short(gameID), *p1, *p2, *p3, short(stranger))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post stranger match: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodGet, "/matches/"+strangerID, "", "")
+	mr.Data.Tournament = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mr.Data.Tournament != nil {
+		t.Fatalf("non-fitting match must be unlinked")
+	}
+
+	// And the fitting roster without the flag links and completes the slot
+	// (strict cut 4–2–0–−2).
+	fittingID := short(newID(t))
+	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}}`, fittingID, short(gameID), scores)
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post fitting match: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	slot := br.Data.Rounds[0].Slots[0]
+	if slot.Status != "completed" || len(slot.Matches) != 1 || slot.Matches[0].MatchId != fittingID {
+		t.Fatalf("fitting match must complete the slot: %+v", slot)
+	}
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != *p1 {
+		t.Fatalf("tournament completed with the highest scorer: %+v", br.Data)
+	}
 }

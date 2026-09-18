@@ -29,6 +29,9 @@ type Querier interface {
 	// Game pool
 	// ---------------------------------------------------------------------------
 	AddTournamentGame(ctx context.Context, arg AddTournamentGameParams) error
+	// The permanent tournament-membership link (ADR-26): inserted at acceptance,
+	// never deleted — the arena keeps counting detached matches.
+	AddTournamentMatch(ctx context.Context, arg AddTournamentMatchParams) error
 	// ---------------------------------------------------------------------------
 	// Participants
 	// ---------------------------------------------------------------------------
@@ -52,6 +55,9 @@ type Querier interface {
 	// leagues, so the counters are never consulted for them.
 	CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg CountPlayerMatchesInArenaInPeriodParams) (int32, error)
 	CountTournamentParticipants(ctx context.Context, tournamentID id.ID) (int32, error)
+	// Seats still waiting for their source slot (player_id IS NULL by design for
+	// source seats).
+	CountUnresolvedSeats(ctx context.Context, slotID id.ID) (int32, error)
 	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
@@ -244,7 +250,8 @@ type Querier interface {
 	// match series, and the recorded promotions. Standings are never stored —
 	// they are derived from the linked matches' scores at read/completion time.
 	// The slot plus its round coordinates (the (tournament, track, index,
-	// position) address used for deterministic ordering and display).
+	// position) address used for deterministic ordering and display) and its
+	// seat count.
 	GetTournamentSlot(ctx context.Context, argID id.ID) (GetTournamentSlotRow, error)
 	GetUser(ctx context.Context, argID id.ID) (User, error)
 	GetUserByGoogleOAuthUserID(ctx context.Context, googleOauthUserID string) (User, error)
@@ -265,6 +272,10 @@ type Querier interface {
 	// maximum loss) and maker fee rate (ADR-20). The client-generated id doubles
 	// as the idempotency key.
 	InsertMarketGuarantee(ctx context.Context, arg InsertMarketGuaranteeParams) (InsertMarketGuaranteeRow, error)
+	// Playing slots of running tournaments hosting the given game, in the
+	// deterministic acceptance order (track, round index, table position). The
+	// seated-set equality is checked by the caller (small candidate lists).
+	ListAcceptanceCandidates(ctx context.Context, gameID id.ID) ([]ListAcceptanceCandidatesRow, error)
 	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
 	// the markets list endpoints), grouped client-side by market_id.
 	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
@@ -345,6 +356,10 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	// Running tournaments whose grand-final deadline has passed — the lazy
+	// auto-cancel input. Completion flips status='completed' in the same tx as
+	// the final promotion, so a completed tournament never appears here.
+	ListRunningTournamentsPastDeadline(ctx context.Context) ([]Tournament, error)
 	ListSeatsBySlots(ctx context.Context, slotIds []id.ID) ([]TournamentSeat, error)
 	ListSeatsBySourceSlot(ctx context.Context, sourceSlotID *id.ID) ([]TournamentSeat, error)
 	// The slot's match series with derived inputs for the standings: scores of
@@ -357,7 +372,7 @@ type Querier interface {
 	ListSlotPromotions(ctx context.Context, slotID id.ID) ([]TournamentSlotPromotion, error)
 	// Slots whose seats are fed by the given slot (downstream neighbours for the
 	// seat refill / cascade invalidation).
-	ListSlotsBySource(ctx context.Context, sourceSlotID *id.ID) ([]ListSlotsBySourceRow, error)
+	ListSlotsBySource(ctx context.Context, sourceSlotID id.ID) ([]ListSlotsBySourceRow, error)
 	ListStaleArenas(ctx context.Context, dueBefore time.Time) ([]ListStaleArenasRow, error)
 	// Arenas whose filter has a game-tag condition — the conservative mark set
 	// when any game's tags change (a tag toggle can flip any of them).

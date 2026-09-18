@@ -97,6 +97,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	if err != nil {
 		return nil, err
 	}
+	tournamentByMatch, err := s.tournamentByMatch(ctx, order)
+	if err != nil {
+		return nil, err
+	}
 
 	matchesSlice := buildMatchesResponse(matchesMap, order)
 	data := make([]Match, 0, len(matchesSlice))
@@ -120,6 +124,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		}
 		if cs := campsByMatch[m.Id]; len(cs) > 0 {
 			match.Camps = &cs
+		}
+		if t, ok := tournamentByMatch[m.Id]; ok {
+			tt := t
+			match.Tournament = &tt
 		}
 		if m.CalculatorKind.Valid {
 			kind := m.CalculatorKind.String
@@ -153,6 +161,9 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		ID:           request.Body.Id,
 		CampArenaIDs: derefIDs(request.Body.CampArenaIds),
 		ActorUserID:  currentActorID(ctx),
+	}
+	if request.Body.SkipTournamentLink != nil {
+		opts.SkipTournamentLink = *request.Body.SkipTournamentLink
 	}
 	if request.Body.Date != nil {
 		date = *request.Body.Date
@@ -234,6 +245,27 @@ func (s *StrictServer) campsByMatch(ctx context.Context, matchIDs []id.ID) (map[
 	return out, nil
 }
 
+// tournamentByMatch returns, per match id, the bracket slot the match counts
+// for (ADR-26) — the match card's tournament badge.
+func (s *StrictServer) tournamentByMatch(ctx context.Context, matchIDs []id.ID) (map[id.ID]MatchTournament, error) {
+	if len(matchIDs) == 0 {
+		return map[id.ID]MatchTournament{}, nil
+	}
+	rows, err := s.api.MatchQueries.ListSlotMatchesForMatchIDs(ctx, matchIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[id.ID]MatchTournament, len(rows))
+	for _, r := range rows {
+		out[r.MatchID] = MatchTournament{
+			Id:     r.TournamentID,
+			Name:   r.TournamentName,
+			SlotId: r.SlotID,
+		}
+	}
+	return out, nil
+}
+
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
 	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id))
 	if err != nil {
@@ -274,6 +306,10 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 	if err != nil {
 		return nil, err
 	}
+	tournamentByMatch, err := s.tournamentByMatch(ctx, order)
+	if err != nil {
+		return nil, err
+	}
 
 	result := buildMatchesResponse(matchesMap, order)
 	m := result[0]
@@ -297,6 +333,10 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 	}
 	if cs := campsByMatch[m.Id]; len(cs) > 0 {
 		match.Camps = &cs
+	}
+	if t, ok := tournamentByMatch[m.Id]; ok {
+		tt := t
+		match.Tournament = &tt
 	}
 	if m.CalculatorKind.Valid {
 		kind := m.CalculatorKind.String

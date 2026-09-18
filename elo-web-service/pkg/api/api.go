@@ -29,12 +29,13 @@ func New(pool *pgxpool.Pool) *API {
 	hub := elo.NewHub()
 	marketService := elo.NewMarketServiceWithHub(pool, hub)
 	arenaService := elo.NewArenaService(pool, hub)
+	tournamentService := elo.NewTournamentService(pool, arenaService)
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
 		GameService:        elo.NewGameService(pool, arenaService),
 		PlayerService:      elo.NewPlayerService(pool),
-		MatchService:       elo.NewMatchService(pool, marketService, arenaService),
+		MatchService:       elo.NewMatchService(pool, marketService, arenaService, tournamentService),
 		MarketService:      marketService,
 		MarketQueries:      db.New(pool),
 		CorrectionService:  elo.NewCorrectionService(pool, arenaService),
@@ -44,7 +45,7 @@ func New(pool *pgxpool.Pool) *API {
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
 		ArenaService:       arenaService,
-		TournamentService:  elo.NewTournamentService(pool, arenaService),
+		TournamentService:  tournamentService,
 		MatchQueries:       db.New(pool),
 		Hub:                hub,
 	}

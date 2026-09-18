@@ -85,7 +85,10 @@ CREATE TABLE tournament_seats (            -- who sits at a slot's table
     source_slot_id UUID NULL REFERENCES tournament_slots(id),
     source_place   INT  NULL,              -- … or "place i of that slot" (1-based)
     UNIQUE (slot_id, position),
-    CHECK ((player_id IS NULL) <> (source_slot_id IS NULL))
+    -- player_id doubles as the cache filled when the source completes, so a
+    -- resolved source seat carries provenance AND player: the real invariant
+    -- is that a seat never has neither.
+    CHECK (player_id IS NOT NULL OR source_slot_id IS NOT NULL)
 );
 
 CREATE INDEX tournament_seats_source_idx ON tournament_seats (source_slot_id);

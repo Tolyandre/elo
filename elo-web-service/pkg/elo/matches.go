@@ -19,15 +19,17 @@ type MatchService struct {
 	Pool           *pgxpool.Pool
 	MarketService  IMarketService
 	Arenas         *ArenaService
+	Tournaments    ITournamentPlay
 	EventProcessor *EventProcessor
 }
 
-func NewMatchService(pool *pgxpool.Pool, marketService IMarketService, arenas *ArenaService) IMatchService {
+func NewMatchService(pool *pgxpool.Pool, marketService IMarketService, arenas *ArenaService, tournaments ITournamentPlay) IMatchService {
 	return &MatchService{
 		Queries:        db.New(pool),
 		Pool:           pool,
 		MarketService:  marketService,
 		Arenas:         arenas,
+		Tournaments:    tournaments,
 		EventProcessor: &EventProcessor{MarketService: marketService},
 	}
 }
@@ -44,6 +46,11 @@ type AddMatchOpts struct {
 	// must exist, be a camp, and its window must contain the match date; the
 	// links are written once and never altered afterwards.
 	CampArenaIDs []id.ID
+	// SkipTournamentLink is the explicit opt-out from bracket acceptance
+	// (ADR-26): the unchecked tournament checkbox. By default the server
+	// links the match to its unique fitting playing slot (same game, exactly
+	// the seated players); fitting is always verified server-side.
+	SkipTournamentLink bool
 	// Calculator optionally attaches the intermediate state of the calculator
 	// that produced this match. Already validated by the caller (handler);
 	// stored verbatim alongside the match.
@@ -249,6 +256,17 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 				audit.KindCampLink, audit.NewCampLinkDetails(audit.CampLinkAttach, string(createdMatch.ID))); err != nil {
 				return db.Match{}, err
 			}
+		}
+	}
+
+	// ADR-26: tournament bracket acceptance. The match links to its unique
+	// fitting playing slot when the checkbox is on (the default); the link,
+	// the placement points, and any completion cascade happen in this
+	// transaction. Must run before the arena drain below: the tournament
+	// arena's membership is the tournament_matches link written here.
+	if !opts.SkipTournamentLink && s.Tournaments != nil {
+		if err := s.Tournaments.AcceptMatch(ctx, q, createdMatch.ID, gameID, playerIDsOf(playerScores), opts.ActorUserID); err != nil {
+			return db.Match{}, err
 		}
 	}
 

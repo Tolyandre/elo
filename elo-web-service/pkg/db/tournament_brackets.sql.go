@@ -46,6 +46,24 @@ func (q *Queries) AddSlotPromotion(ctx context.Context, arg AddSlotPromotionPara
 	return err
 }
 
+const addTournamentMatch = `-- name: AddTournamentMatch :exec
+INSERT INTO tournament_matches (tournament_id, match_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AddTournamentMatchParams struct {
+	TournamentID id.ID `json:"tournament_id"`
+	MatchID      id.ID `json:"match_id"`
+}
+
+// The permanent tournament-membership link (ADR-26): inserted at acceptance,
+// never deleted — the arena keeps counting detached matches.
+func (q *Queries) AddTournamentMatch(ctx context.Context, arg AddTournamentMatchParams) error {
+	_, err := q.db.Exec(ctx, addTournamentMatch, arg.TournamentID, arg.MatchID)
+	return err
+}
+
 const clearSlotSeatCaches = `-- name: ClearSlotSeatCaches :exec
 UPDATE tournament_seats SET player_id = NULL WHERE source_slot_id = $1::uuid
 `
@@ -55,6 +73,20 @@ UPDATE tournament_seats SET player_id = NULL WHERE source_slot_id = $1::uuid
 func (q *Queries) ClearSlotSeatCaches(ctx context.Context, sourceSlotID id.ID) error {
 	_, err := q.db.Exec(ctx, clearSlotSeatCaches, sourceSlotID)
 	return err
+}
+
+const countUnresolvedSeats = `-- name: CountUnresolvedSeats :one
+SELECT COUNT(*)::int AS count FROM tournament_seats
+WHERE slot_id = $1::uuid AND player_id IS NULL
+`
+
+// Seats still waiting for their source slot (player_id IS NULL by design for
+// source seats).
+func (q *Queries) CountUnresolvedSeats(ctx context.Context, slotID id.ID) (int32, error) {
+	row := q.db.QueryRow(ctx, countUnresolvedSeats, slotID)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createTournamentRound = `-- name: CreateTournamentRound :one
@@ -210,7 +242,8 @@ func (q *Queries) GetTournamentOfSlot(ctx context.Context, argID id.ID) (Tournam
 const getTournamentSlot = `-- name: GetTournamentSlot :one
 
 SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
-       r.track, r."index" AS round_index, r.tournament_id
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
 FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id
 WHERE s.id = $1
@@ -227,13 +260,15 @@ type GetTournamentSlotRow struct {
 	Track        string          `json:"track"`
 	RoundIndex   int32           `json:"round_index"`
 	TournamentID id.ID           `json:"tournament_id"`
+	SeatCount    int32           `json:"seat_count"`
 }
 
 // Bracket materialization queries (ADR-26): rounds, slots, seats, the slot
 // match series, and the recorded promotions. Standings are never stored —
 // they are derived from the linked matches' scores at read/completion time.
 // The slot plus its round coordinates (the (tournament, track, index,
-// position) address used for deterministic ordering and display).
+// position) address used for deterministic ordering and display) and its
+// seat count.
 func (q *Queries) GetTournamentSlot(ctx context.Context, argID id.ID) (GetTournamentSlotRow, error) {
 	row := q.db.QueryRow(ctx, getTournamentSlot, argID)
 	var i GetTournamentSlotRow
@@ -248,8 +283,106 @@ func (q *Queries) GetTournamentSlot(ctx context.Context, argID id.ID) (GetTourna
 		&i.Track,
 		&i.RoundIndex,
 		&i.TournamentID,
+		&i.SeatCount,
 	)
 	return i, err
+}
+
+const listAcceptanceCandidates = `-- name: ListAcceptanceCandidates :many
+SELECT s.id, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+JOIN tournaments t ON t.id = r.tournament_id
+WHERE t.status = 'running' AND s.status = 'playing' AND s.game_id = $1::uuid
+ORDER BY CASE r.track WHEN 'winners' THEN 0 WHEN 'losers' THEN 1 ELSE 2 END, r."index", s.position
+`
+
+type ListAcceptanceCandidatesRow struct {
+	ID           id.ID           `json:"id"`
+	GameID       id.ID           `json:"game_id"`
+	Promote      int32           `json:"promote"`
+	Status       string          `json:"status"`
+	Ruling       json.RawMessage `json:"ruling"`
+	Track        string          `json:"track"`
+	RoundIndex   int32           `json:"round_index"`
+	TournamentID id.ID           `json:"tournament_id"`
+	SeatCount    int32           `json:"seat_count"`
+}
+
+// Playing slots of running tournaments hosting the given game, in the
+// deterministic acceptance order (track, round index, table position). The
+// seated-set equality is checked by the caller (small candidate lists).
+func (q *Queries) ListAcceptanceCandidates(ctx context.Context, gameID id.ID) ([]ListAcceptanceCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listAcceptanceCandidates, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAcceptanceCandidatesRow{}
+	for rows.Next() {
+		var i ListAcceptanceCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.GameID,
+			&i.Promote,
+			&i.Status,
+			&i.Ruling,
+			&i.Track,
+			&i.RoundIndex,
+			&i.TournamentID,
+			&i.SeatCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunningTournamentsPastDeadline = `-- name: ListRunningTournamentsPastDeadline :many
+SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at FROM tournaments t
+WHERE t.status = 'running'
+  AND t.grand_final_deadline IS NOT NULL
+  AND t.grand_final_deadline <= NOW()
+`
+
+// Running tournaments whose grand-final deadline has passed — the lazy
+// auto-cancel input. Completion flips status='completed' in the same tx as
+// the final promotion, so a completed tournament never appears here.
+func (q *Queries) ListRunningTournamentsPastDeadline(ctx context.Context) ([]Tournament, error) {
+	rows, err := q.db.Query(ctx, listRunningTournamentsPastDeadline)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Tournament{}
+	for rows.Next() {
+		var i Tournament
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Status,
+			&i.Elimination,
+			&i.WinnerPlayerID,
+			&i.Seed,
+			&i.GrandFinalDeadline,
+			&i.Plan,
+			&i.PlanSchemaVersion,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSeatsBySlots = `-- name: ListSeatsBySlots :many
@@ -363,7 +496,8 @@ func (q *Queries) ListSlotMatchResults(ctx context.Context, slotID id.ID) ([]Lis
 const listSlotMatchesForMatchIDs = `-- name: ListSlotMatchesForMatchIDs :many
 SELECT tsm.match_id, t.id AS tournament_id, t.name AS tournament_name, tsm.slot_id
 FROM tournament_slot_matches tsm
-JOIN tournament_rounds r ON r.id = tsm.slot_id
+JOIN tournament_slots s ON s.id = tsm.slot_id
+JOIN tournament_rounds r ON r.id = s.round_id
 JOIN tournaments t ON t.id = r.tournament_id
 WHERE tsm.match_id = ANY($1::uuid[])
 `
@@ -434,7 +568,7 @@ SELECT DISTINCT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.
 FROM tournament_slots s
 JOIN tournament_seats se ON se.slot_id = s.id
 JOIN tournament_rounds r ON r.id = s.round_id
-WHERE se.source_slot_id = $1
+WHERE se.source_slot_id = $1::uuid
 ORDER BY s.position
 `
 
@@ -453,7 +587,7 @@ type ListSlotsBySourceRow struct {
 
 // Slots whose seats are fed by the given slot (downstream neighbours for the
 // seat refill / cascade invalidation).
-func (q *Queries) ListSlotsBySource(ctx context.Context, sourceSlotID *id.ID) ([]ListSlotsBySourceRow, error) {
+func (q *Queries) ListSlotsBySource(ctx context.Context, sourceSlotID id.ID) ([]ListSlotsBySourceRow, error) {
 	rows, err := q.db.Query(ctx, listSlotsBySource, sourceSlotID)
 	if err != nil {
 		return nil, err

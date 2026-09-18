@@ -646,7 +646,8 @@ func newArenaService(pool *pgxpool.Pool) *elo.ArenaService {
 }
 
 func newMatchService(pool *pgxpool.Pool) elo.IMatchService {
-	return elo.NewMatchService(pool, elo.NewMarketService(pool), newArenaService(pool))
+	arenaSvc := newArenaService(pool)
+	return elo.NewMatchService(pool, elo.NewMarketService(pool), arenaSvc, elo.NewTournamentService(pool, arenaSvc))
 }
 
 func newTagService(pool *pgxpool.Pool) elo.ITagService {

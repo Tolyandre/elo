@@ -4,9 +4,11 @@
 
 -- name: GetTournamentSlot :one
 -- The slot plus its round coordinates (the (tournament, track, index,
--- position) address used for deterministic ordering and display).
+-- position) address used for deterministic ordering and display) and its
+-- seat count.
 SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
-       r.track, r."index" AS round_index, r.tournament_id
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
 FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id
 WHERE s.id = $1;
@@ -38,8 +40,15 @@ SELECT DISTINCT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.
 FROM tournament_slots s
 JOIN tournament_seats se ON se.slot_id = s.id
 JOIN tournament_rounds r ON r.id = s.round_id
-WHERE se.source_slot_id = $1
+WHERE se.source_slot_id = sqlc.arg('source_slot_id')::uuid
 ORDER BY s.position;
+
+-- name: AddTournamentMatch :exec
+-- The permanent tournament-membership link (ADR-26): inserted at acceptance,
+-- never deleted — the arena keeps counting detached matches.
+INSERT INTO tournament_matches (tournament_id, match_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
 
 -- name: CreateTournamentRound :one
 INSERT INTO tournament_rounds (id, tournament_id, track, "index")
@@ -108,7 +117,8 @@ ORDER BY m.date, tsm.match_id, ms.player_id;
 -- tournament badge (ADR-26).
 SELECT tsm.match_id, t.id AS tournament_id, t.name AS tournament_name, tsm.slot_id
 FROM tournament_slot_matches tsm
-JOIN tournament_rounds r ON r.id = tsm.slot_id
+JOIN tournament_slots s ON s.id = tsm.slot_id
+JOIN tournament_rounds r ON r.id = s.round_id
 JOIN tournaments t ON t.id = r.tournament_id
 WHERE tsm.match_id = ANY(sqlc.arg('match_ids')::uuid[]);
 
@@ -140,3 +150,31 @@ UPDATE tournament_slots SET ruling = $2 WHERE id = $1;
 -- name: SetSlotGame :exec
 -- Organizer adjustment (ADR-26): only for slots with zero linked matches.
 UPDATE tournament_slots SET game_id = $2 WHERE id = $1;
+
+-- name: ListAcceptanceCandidates :many
+-- Playing slots of running tournaments hosting the given game, in the
+-- deterministic acceptance order (track, round index, table position). The
+-- seated-set equality is checked by the caller (small candidate lists).
+SELECT s.id, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+JOIN tournaments t ON t.id = r.tournament_id
+WHERE t.status = 'running' AND s.status = 'playing' AND s.game_id = sqlc.arg('game_id')::uuid
+ORDER BY CASE r.track WHEN 'winners' THEN 0 WHEN 'losers' THEN 1 ELSE 2 END, r."index", s.position;
+
+-- name: CountUnresolvedSeats :one
+-- Seats still waiting for their source slot (player_id IS NULL by design for
+-- source seats).
+SELECT COUNT(*)::int AS count FROM tournament_seats
+WHERE slot_id = sqlc.arg('slot_id')::uuid AND player_id IS NULL;
+
+-- name: ListRunningTournamentsPastDeadline :many
+-- Running tournaments whose grand-final deadline has passed — the lazy
+-- auto-cancel input. Completion flips status='completed' in the same tx as
+-- the final promotion, so a completed tournament never appears here.
+SELECT t.* FROM tournaments t
+WHERE t.status = 'running'
+  AND t.grand_final_deadline IS NOT NULL
+  AND t.grand_final_deadline <= NOW();
