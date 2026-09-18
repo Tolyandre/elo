@@ -5,6 +5,7 @@ import type { Tournament, TournamentPlan } from "@/app/api";
 import { getTournamentBracketPlansPromise, startTournamentPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { planPreview } from "../labels";
+import { PlanBracketPreview } from "../plan-bracket-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -93,6 +94,12 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
                         <p className="text-xs text-muted-foreground">
                             Показаны первые {data.plans.length} вариантов (лимит {data.cap}) — всего больше.
                         </p>
+                    )}
+                    {plan && (
+                        <div className="rounded-xl border p-3">
+                            <h3 className="mb-2 text-sm font-semibold">Предпросмотр выбранной формы</h3>
+                            <PlanBracketPreview plan={plan} />
+                        </div>
                     )}
                     {error2 && <div className="text-red-600 text-sm">{error2}</div>}
                     <Button

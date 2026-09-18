@@ -41,7 +41,7 @@ export function RunningEditor({
         <div className="space-y-4">
             {bracket.rounds.map((round) => (
                 <div key={`${round.track}-${round.index}`} className="space-y-2">
-                    <h2 className="font-semibold">{roundTitle(round.track, round.index)}</h2>
+                    <h2 className="font-semibold">{roundTitle(round.track, round.index, t.elimination)}</h2>
                     {round.slots.map((slot) => (
                         <SlotEditor
                             key={slot.id}

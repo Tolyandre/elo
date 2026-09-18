@@ -25,9 +25,19 @@ export function trackLabel(track: PlanRound["track"]): string {
     }
 }
 
-/** Round title inside its track column; the column header disambiguates tracks. */
-export function roundTitle(track: PlanRound["track"], index: number): string {
-    return track === "final" ? "Финал" : `Тур ${index}`;
+/**
+ * Round title, shown as the bracket column header. In the double-elim case
+ * each round names its track («Верх», «Низ»); single-elimination rounds are
+ * just numbered.
+ */
+export function roundTitle(
+    track: PlanRound["track"],
+    index: number,
+    elimination: Tournament["elimination"] = "single",
+): string {
+    if (track === "final") return "Финал";
+    if (elimination === "double") return track === "winners" ? `Верх ${index}` : `Низ ${index}`;
+    return `Тур ${index}`;
 }
 
 export function slotStatusLabel(status: "waiting" | "playing" | "completed"): string {
@@ -51,17 +61,12 @@ export function seatSourceLabel(sourceSlotPosition: number, sourcePlace?: number
  * tracks interleave, so each round names its track («Верх», «Низ»).
  */
 export function planPreview(plan: TournamentPlan): string {
-    const roundName = (round: PlanRound): string => {
-        if (round.track === "final") return "Финал";
-        if (plan.elimination === "double") return round.track === "winners" ? `Верх ${round.index}` : `Низ ${round.index}`;
-        return `Тур ${round.index}`;
-    };
     return plan.rounds
         .map((round) => {
             const byes = round.slots.reduce(
                 (n, s) => n + s.seats.filter((seat) => seat.kind === "bye").length, 0);
             const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? `+${byes} бай` : "");
-            return `${roundName(round)}: ${shape} → ${round.promote}`;
+            return `${roundTitle(round.track, round.index, plan.elimination)}: ${shape} → ${round.promote}`;
         })
         .join("; ");
 }

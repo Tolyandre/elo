@@ -53,7 +53,7 @@ export function TournamentView() {
 
     if (!id) {
         return (
-            <main className="max-w-sm mx-auto space-y-4">
+            <main className="max-w-sm sm:max-w-5xl mx-auto space-y-4">
                 <BackButton href="/tournaments" label="Назад к турнирам" />
                 <p className="text-muted-foreground">Турнир не найден — проверьте ссылку.</p>
             </main>
@@ -65,7 +65,7 @@ export function TournamentView() {
     }
 
     return (
-        <main className="max-w-sm mx-auto space-y-4">
+        <main className="max-w-sm sm:max-w-5xl mx-auto space-y-4">
             <BackButton href="/tournaments" label="Назад к турнирам" />
             {error && <ErrorAlert message={error} />}
             {loading && (

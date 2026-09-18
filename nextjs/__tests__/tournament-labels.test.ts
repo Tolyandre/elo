@@ -73,6 +73,12 @@ describe("tournament labels", () => {
         expect(roundTitle("final", 1)).toBe("Финал");
     });
 
+    it("names double-elimination rounds by their track", () => {
+        expect(roundTitle("winners", 1, "double")).toBe("Верх 1");
+        expect(roundTitle("losers", 2, "double")).toBe("Низ 2");
+        expect(roundTitle("final", 1, "double")).toBe("Финал");
+    });
+
     it("formats unresolved-seat provenance", () => {
         expect(seatSourceLabel(2, 1)).toBe("из стола 2, место 1");
         expect(seatSourceLabel(3, null)).toBe("из стола 3");

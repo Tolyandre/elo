@@ -74,10 +74,10 @@ function render(jsx: React.ReactElement) {
 }
 
 describe("BracketView", () => {
-    it("renders track columns in canonical order", () => {
+    it("renders a column per round with elimination-aware titles", () => {
         const container = render(<BracketView bracket={bracket} />);
-        const headings = [...container.querySelectorAll("h2")].map((h) => h.textContent);
-        expect(headings).toEqual(["Победители", "Финал"]);
+        const headings = [...container.querySelectorAll("h3")].map((h) => h.textContent);
+        expect(headings).toEqual(["Тур 1", "Финал"]);
     });
 
     it("renders slot cards with game name, status and seated players", () => {
@@ -90,11 +90,21 @@ describe("BracketView", () => {
         expect(container.textContent).toContain("партий: 1");
     });
 
-    it("shows unresolved seats as provenance of their source table", () => {
+    it("marks unresolved seats as placeholders carrying their provenance as a hint", () => {
         const container = render(<BracketView bracket={bracket} />);
-        expect(container.textContent).toContain("из стола 1, место 1");
-        expect(container.textContent).toContain("из стола 1, место 2");
+        expect(container.textContent).not.toContain("из стола 1, место 1");
+        const seats = [...container.querySelectorAll('[data-bracket-slot="s2"] li')];
+        expect(seats.map((li) => li.getAttribute("title"))).toEqual([
+            "из стола 1, место 1",
+            "из стола 1, место 2",
+        ]);
         expect(container.textContent).toContain("Ожидает");
+    });
+
+    it("draws one promotion line per sourced seat", () => {
+        const container = render(<BracketView bracket={bracket} />);
+        const paths = [...container.querySelectorAll("svg path")];
+        expect(paths.length).toBe(2);
     });
 
     it("renders live standings with points and the promoted set", () => {

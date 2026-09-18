@@ -460,13 +460,15 @@ Feeds from the tournaments context (already preloaded for the match form).
   button — visible with a linked player, calls the registration endpoints,
   hidden otherwise; editors also see participant management (link to
   edit).
-- `running`/`completed`: the **bracket** — columns per track
-  (Победители / Проигравшие / Финал) in plan order; each slot renders as a
-  card: game name, seated players (names resolved from players context;
-  provenance like «из стола 2» where useful), status badge
-  (ожидает / играет / завершён), live standings with points and the
-  promoted set highlighted, linked match count. This is a pure rendering
-  of the `GET /bracket` DTO — no client-side bracket logic.
+- `running`/`completed`: the **bracket** — a column per round, grouped into
+  stacked track bands (Победители over Проигравшие, the grand final to the
+  right of both); promotion lines connect each seat's source slot (anchored
+  at the standings row of its place) to the destination seat row. Each slot
+  renders as a card: game name, seated players (names resolved from players
+  context; unresolved seats are placeholders whose provenance stays in the
+  tooltip), status badge (ожидает / играет / завершён), live standings with
+  points and the promoted set highlighted, linked match count. This is a
+  pure rendering of the `GET /bracket` DTO — no client-side bracket logic.
 - Rating/medals: embed the tournament's arena view (the page already
   locates it via `GET /arenas?tournament_id=`; reuse `ArenaView`
   components) instead of the old camp stats endpoint.
@@ -476,7 +478,9 @@ Feeds from the tournaments context (already preloaded for the match form).
 - `registration`: name/deadline fields, game-pool editor (games with
   min/max spinners), participant management, and the **shape picker**:
   fetch `GET /bracket-plans`, render each plan as a compact round-by-round
-  preview (e.g. «1 тур: 4+4 → 2; финал: 4»), select + confirm → `start`
+  preview (e.g. «1 тур: 4+4 → 2; финал: 4»), and show the selected plan as
+  a visual mockup (the same column-per-round bracket skeleton with seat
+  dots and promotion lines), select + confirm → `start`
   (which closes registration). Pool edits refetch the plan list — the UI
   makes that dependency visible.
 - `running`: slot adjustments (game dropdown / seat count where the
