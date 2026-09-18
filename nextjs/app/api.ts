@@ -217,7 +217,7 @@ export type CorrectionsPage = {
 
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
-export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena";
+export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament";
 export type AuditAction = "created" | "updated" | "renamed" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */
@@ -226,13 +226,19 @@ export type AuditEntryDetails =
     | { kind: "rename"; oldName: string; newName: string }
     | { kind: "match-update"; changes: components["schemas"]["AuditMatchUpdateDetails"] }
     | { kind: "arena-camp-config"; changes: components["schemas"]["AuditArenaCampConfigDetails"] }
-    | { kind: "camp-link"; op: string; matchId: string };
+    | { kind: "camp-link"; op: string; matchId: string }
+    | { kind: "tournament-config"; changes: components["schemas"]["AuditTournamentConfigDetails"] }
+    | { kind: "tournament-start"; changes: components["schemas"]["AuditTournamentStartDetails"] }
+    | { kind: "tournament-state"; changes: components["schemas"]["AuditTournamentStateDetails"] }
+    | { kind: "slot-ruling"; changes: components["schemas"]["AuditSlotRulingDetails"] }
+    | { kind: "slot-link"; changes: components["schemas"]["AuditSlotLinkDetails"] };
 
 export type AuditEntry = {
     id: Base58ID;
     created_at: Date;
-    actor_user_id: Base58ID;
-    actor_name: string;
+    /** Null for system events (the grand-final-deadline auto-cancel, ADR-26). */
+    actor_user_id: Base58ID | null;
+    actor_name: string | null;
     entity_type: AuditEntityType;
     entity_id: Base58ID;
     action: AuditAction;
@@ -251,6 +257,16 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
             details = { kind: "rename", oldName: e.details.old_name, newName: e.details.new_name };
         } else if (e.action === "updated" && "player_changes" in e.details) {
             details = { kind: "match-update", changes: e.details };
+        } else if ("origin_kind" in e.details) {
+            details = { kind: "slot-link", changes: e.details as components["schemas"]["AuditSlotLinkDetails"] };
+        } else if ("before_player_ids" in e.details || "after_player_ids" in e.details) {
+            details = { kind: "slot-ruling", changes: e.details as components["schemas"]["AuditSlotRulingDetails"] };
+        } else if ("reason" in e.details && "from" in e.details) {
+            details = { kind: "tournament-state", changes: e.details as components["schemas"]["AuditTournamentStateDetails"] };
+        } else if ("plan" in e.details && "seed" in e.details) {
+            details = { kind: "tournament-start", changes: e.details as components["schemas"]["AuditTournamentStartDetails"] };
+        } else if ("games" in e.details || "from_player_ids" in e.details || "to_player_ids" in e.details) {
+            details = { kind: "tournament-config", changes: e.details as components["schemas"]["AuditTournamentConfigDetails"] };
         } else if ("op" in e.details) {
             const d = e.details as components["schemas"]["AuditCampLinkDetails"];
             details = { kind: "camp-link", op: d.op, matchId: d.match_id };
@@ -263,8 +279,8 @@ function mapAuditEntry(e: components["schemas"]["AuditEntry"]): AuditEntry {
     return {
         id: e.id,
         created_at: new Date(e.created_at),
-        actor_user_id: e.actor_user_id,
-        actor_name: e.actor_name,
+        actor_user_id: e.actor_user_id ?? null,
+        actor_name: e.actor_name ?? null,
         entity_type: e.entity_type,
         entity_id: e.entity_id,
         action: e.action,

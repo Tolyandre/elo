@@ -280,7 +280,9 @@ type Querier interface {
 	// Latest-first audit feed. Optional entity filter (one or more entity types)
 	// and entity_id filter serve both the per-entity history (match view) and the
 	// per-type feed (admin tabs — the games tab mixes game and tag events). The
-	// cursor is the (created_at, id) row of the last returned event.
+	// cursor is the (created_at, id) row of the last returned event. The user
+	// join is LEFT since ADR-26: system events (the grand-final-deadline
+	// auto-cancel) carry a NULL actor.
 	ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error)
 	// The camps of a set of matches — the [{id, name}] payload of the match
 	// response (the old match.tournaments shape).

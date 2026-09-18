@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/slot-ruling.v1.json",
+  "title": "Audit slot ruling details (v1)",
+  "description": "An organizer ruling on the slot identified by slot_id (the audit row's entity_id is the tournament): the ordered promotion set before (null when the slot was still playing) and after (null on revert to the standings-based result).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "op", "slot_id", "before_player_ids", "after_player_ids"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "op": { "type": "string", "enum": ["set", "replace", "revert"] },
+    "slot_id": { "type": "string", "minLength": 1, "x-entity-id": true },
+    "before_player_ids": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+    },
+    "after_player_ids": {
+      "type": ["array", "null"],
+      "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+    }
+  }
+}

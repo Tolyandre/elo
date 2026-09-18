@@ -38,6 +38,17 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrCampDatesInvalid),
 		errors.Is(err, elo.ErrCampLeaguesNotAllowed),
 		errors.Is(err, elo.ErrArenaNameTaken),
+		errors.Is(err, elo.ErrTournamentNameRequired),
+		errors.Is(err, elo.ErrTournamentEliminationInvalid),
+		errors.Is(err, elo.ErrTournamentPoolEntryInvalid),
+		errors.Is(err, elo.ErrTournamentDeadlineInvalid),
+		errors.Is(err, elo.ErrTournamentTooFewParticipants),
+		errors.Is(err, elo.ErrTournamentPoolEmpty),
+		errors.Is(err, elo.ErrTournamentPlanInvalid),
+		errors.Is(err, elo.ErrTournamentRulingInvalid),
+		errors.Is(err, elo.ErrTournamentSlotAdjustInvalid),
+		errors.Is(err, elo.ErrTournamentMatchFitsNoSlot),
+		errors.Is(err, elo.ErrGrandFinalDeadlinePassed),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
@@ -59,6 +70,15 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrArenaIsAutoManaged),
 		errors.Is(err, elo.ErrGlobalArenaIsPermanent),
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),
+		errors.Is(err, elo.ErrTournamentNotEditable),
+		errors.Is(err, elo.ErrTournamentNotOpenForRegistration),
+		errors.Is(err, elo.ErrTournamentNotRunning),
+		errors.Is(err, elo.ErrTournamentAlreadyStarted),
+		errors.Is(err, elo.ErrTournamentNotStarted),
+		errors.Is(err, elo.ErrSlotAssociationLocked),
+		errors.Is(err, elo.ErrMatchAlreadyLinked),
+		errors.Is(err, elo.ErrTournamentMatchNotLinked),
+		errors.Is(err, elo.ErrTournamentSlotNotPlaying),
 		db.IsUniqueViolation(err):
 		return http.StatusConflict
 

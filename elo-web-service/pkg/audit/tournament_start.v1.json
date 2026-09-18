@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/tournament-start.v1.json",
+  "title": "Audit tournament start details (v1)",
+  "description": "The start decision of the tournament identified by the audit row's entity_id: the chosen plan verbatim, the stored PRNG seed, and the participant list in draw-input order (ids sorted ascending).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "plan", "seed", "participant_ids"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "plan": {
+      "type": "object",
+      "description": "The bracket plan document, verbatim (see pkg/bracket); carries no ids."
+    },
+    "seed": { "type": "integer" },
+    "participant_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+    }
+  }
+}

@@ -27,22 +27,28 @@ var schemasFS embed.FS
 // Details document kinds, stored in audit_log.details_kind. The DB CHECK
 // constraint on that column must be kept in sync with this set.
 const (
-	KindEntity        = "entity"            // created/deleted game, player, club, or tag
-	KindRename        = "rename"            // renamed game, player, or club
-	KindMatchUpdate   = "match-update"      // edited match
-	KindArenaCampConf = "arena-camp-config" // camp arena create/update/delete (ADR-27)
-	KindCampLink      = "camp-link"         // match attached to / detached from a camp (ADR-27)
+	KindEntity            = "entity"             // created/deleted game, player, club, or tag
+	KindRename            = "rename"             // renamed game, player, or club
+	KindMatchUpdate       = "match-update"       // edited match
+	KindArenaCampConf     = "arena-camp-config"  // camp arena create/update/delete (ADR-27)
+	KindCampLink          = "camp-link"          // match attached to / detached from a camp (ADR-27)
+	KindTournamentConfig  = "tournament-config"  // tournament create / config update (ADR-26)
+	KindTournamentStart   = "tournament-start"   // plan + seed + participants at start (ADR-26)
+	KindTournamentState   = "tournament-state"   // completed / cancelled (ADR-26)
+	KindSlotRuling        = "slot-ruling"        // organizer ruling set / replaced / reverted (ADR-26)
+	KindSlotLink          = "slot-link"          // slot attach / detach / cascade void (ADR-26)
 )
 
 // Audited entity types, stored in audit_log.entity_type. Kept in sync with the
 // DB CHECK constraint.
 const (
-	EntityMatch  = "match"
-	EntityGame   = "game"
-	EntityPlayer = "player"
-	EntityClub   = "club"
-	EntityTag    = "tag"
-	EntityArena  = "arena"
+	EntityMatch       = "match"
+	EntityGame        = "game"
+	EntityPlayer      = "player"
+	EntityClub        = "club"
+	EntityTag         = "tag"
+	EntityArena       = "arena"
+	EntityTournament  = "tournament"
 )
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK

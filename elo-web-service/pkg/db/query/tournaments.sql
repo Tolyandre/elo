@@ -60,7 +60,7 @@ DELETE FROM tournament_participants WHERE tournament_id = $1 AND player_id = $2;
 -- The editor's desired-set semantics (PUT /tournaments): drop everyone absent
 -- from the submitted set. An empty array removes everyone.
 DELETE FROM tournament_participants
-WHERE tournament_id = $1 AND NOT (player_id = ANY($2::uuid[]));
+WHERE tournament_id = $1 AND NOT (player_id = ANY(sqlc.arg('player_ids')::uuid[]));
 
 -- name: ListTournamentParticipants :many
 SELECT player_id, created_at

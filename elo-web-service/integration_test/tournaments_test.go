@@ -4,10 +4,19 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
+
+// short encodes a canonical uuid to the Base58 wire form.
+func short(canonical idpkg.ID) string {
+	return string(canonical.Base58())
+}
 
 // TestTournament_Migration056RebuildEntity drives a fresh database to 055,
 // shapes the pre-ADR-26 state (a camp-shell tournaments row plus a still-
@@ -160,5 +169,302 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 		 VALUES ($1, NULL, 'tournament', $2, 'updated', 'tournament-state', 1, '{"schema_version":1,"from":"running","to":"cancelled","reason":"deadline"}'::jsonb)`,
 		idpkg.NewMonotonic(), shellID); err != nil {
 		t.Fatalf("insert tournament audit row: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: registration-time API (create/update, self-registration, plans)
+// ---------------------------------------------------------------------------
+
+type tournamentJSON struct {
+	Data struct {
+		Id                 string  `json:"id"`
+		Name               string  `json:"name"`
+		Status             string  `json:"status"`
+		Elimination        string  `json:"elimination"`
+		GrandFinalDeadline *string `json:"grand_final_deadline"`
+		WinnerPlayerId     *string `json:"winner_player_id"`
+		Games              []struct {
+			GameId     string `json:"game_id"`
+			MinPlayers int    `json:"min_players"`
+			MaxPlayers int    `json:"max_players"`
+		} `json:"games"`
+		ParticipantIds []string `json:"participant_ids"`
+		CreatedAt      string   `json:"created_at"`
+	} `json:"data"`
+}
+
+type tournamentListJSON struct {
+	Data []tournamentJSON `json:"data"`
+}
+
+type bracketPlansJSON struct {
+	Data struct {
+		Plans []struct {
+			Elimination string `json:"elimination"`
+			Rounds      []struct {
+				Track   string `json:"track"`
+				Index   int    `json:"index"`
+				Promote int    `json:"promote"`
+				Slots   []struct {
+					SeatCount int `json:"seat_count"`
+					Seats     []struct {
+						Kind        string `json:"kind"`
+						SourceSlot  int    `json:"source_slot"`
+						SourcePlace int    `json:"source_place"`
+					} `json:"seats"`
+				} `json:"slots"`
+			} `json:"rounds"`
+		} `json:"plans"`
+		Truncated bool `json:"truncated"`
+		Cap       int  `json:"cap"`
+	} `json:"data"`
+}
+
+// TestTournament_CRUDAndRegistration drives the registration-time surface:
+// idempotent create with pool + initial participants, config PUT (desired
+// participant set), the detail/list reads, and the audit trail (create row,
+// update row, and nothing for a no-op PUT).
+func TestTournament_CRUDAndRegistration(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Турнирная игра")
+	p1 := createTestPlayer(t, pool, "Тур1")
+	p2 := createTestPlayer(t, pool, "Тур2")
+	p3 := createTestPlayer(t, pool, "Тур3")
+
+	tid := newID(t)
+	createBody := fmt.Sprintf(`{
+		"id": %q, "name": "Осенний блиц", "elimination": "single",
+		"grand_final_deadline": "2099-01-01T00:00:00Z",
+		"games": [{"game_id": %q, "min_players": 2, "max_players": 4}],
+		"participant_ids": [%q, %q]
+	}`, short(tid), short(gameID), short(p1), short(p2))
+
+	w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
+	}
+	var created tournamentJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.Data.Status != "registration" || created.Data.Elimination != "single" {
+		t.Fatalf("created state: %+v", created.Data)
+	}
+	if created.Data.GrandFinalDeadline == nil {
+		t.Fatalf("deadline must round-trip")
+	}
+	if len(created.Data.ParticipantIds) != 2 {
+		t.Fatalf("participants: %v", created.Data.ParticipantIds)
+	}
+
+	// Id replay returns the same row.
+	w = doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("id replay: %d %s", w.Code, w.Body.String())
+	}
+
+	// PUT: rename, rewrite the pool, extend the participant set.
+	updateBody := fmt.Sprintf(`{
+		"name": "Осенний блиц 2026", "elimination": "single",
+		"games": [{"game_id": %q, "min_players": 2, "max_players": 2}],
+		"participant_ids": [%q, %q, %q]
+	}`, short(gameID), short(p1), short(p2), short(p3))
+	w = doJSON(t, router, http.MethodPut, "/tournaments/"+short(tid), admin, updateBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update tournament: %d %s", w.Code, w.Body.String())
+	}
+	var updated tournamentJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updated.Data.Name != "Осенний блиц 2026" || updated.Data.GrandFinalDeadline != nil {
+		t.Fatalf("update result: %+v", updated.Data)
+	}
+	if len(updated.Data.ParticipantIds) != 3 {
+		t.Fatalf("desired participant set: %v", updated.Data.ParticipantIds)
+	}
+	if len(updated.Data.Games) != 1 || updated.Data.Games[0].MaxPlayers != 2 {
+		t.Fatalf("pool: %+v", updated.Data.Games)
+	}
+
+	// A no-op PUT changes nothing → no second update row.
+	w = doJSON(t, router, http.MethodPut, "/tournaments/"+short(tid), admin, updateBody)
+	if w.Code != http.StatusOK {
+		t.Fatalf("no-op update: %d %s", w.Code, w.Body.String())
+	}
+
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	if len(page.Data) != 2 {
+		t.Fatalf("expected create+update audit rows, got %d", len(page.Data))
+	}
+
+	// Detail read.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid), "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("get tournament: %d %s", w.Code, w.Body.String())
+	}
+
+	// 404 for an unknown id.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(newID(t)), "", "")
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown tournament must 404, got %d", w.Code)
+	}
+}
+
+// TestTournament_SelfRegistration exercises the linked-player registration
+// endpoints, their 403 for users without a linked player, and the 409 once
+// registration is closed.
+func TestTournament_SelfRegistration(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	playerToken, playerUserID := createTestUserWithID(t, pool, false)
+	playerNoLinkToken, _ := createTestUserWithID(t, pool, false) // no linked player
+
+	p := createTestPlayer(t, pool, "СебяЗаписал")
+	gameID := createTestGame(t, pool, "Регистрационная игра")
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE users SET player_id = $2 WHERE id = $1`, idpkg.ID(playerUserID), p); err != nil {
+		t.Fatalf("link player: %v", err)
+	}
+
+	tid := newID(t)
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Открытый кубок", "elimination": "double", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}]}`,
+		short(tid), short(gameID))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
+	}
+
+	// Linked player registers; the idempotent replay stays a single row.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/registration", playerToken, ""); w.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/registration", playerToken, ""); w.Code != http.StatusOK {
+		t.Fatalf("register replay: %d %s", w.Code, w.Body.String())
+	}
+	w := doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid), "", "")
+	var detail tournamentJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if len(detail.Data.ParticipantIds) != 1 || detail.Data.ParticipantIds[0] != short(p) {
+		t.Fatalf("participants after register: %v", detail.Data.ParticipantIds)
+	}
+
+	// A user without a linked player is 403 (RequirePlayerID).
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/registration", playerNoLinkToken, "")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("unlinked user must 403, got %d", w.Code)
+	}
+
+	// Withdraw; a second withdraw is an idempotent no-op.
+	if w := doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/registration", playerToken, ""); w.Code != http.StatusOK {
+		t.Fatalf("withdraw: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/registration", playerToken, ""); w.Code != http.StatusOK {
+		t.Fatalf("withdraw replay: %d %s", w.Code, w.Body.String())
+	}
+
+	// Closed registration → 409.
+	res, err := pool.Exec(context.Background(),
+		`UPDATE tournaments SET status = 'running' WHERE id = $1`, tid)
+	if err != nil {
+		t.Fatalf("close registration: %v", err)
+	}
+	if n := res.RowsAffected(); n != 1 {
+		var status string
+		_ = pool.QueryRow(context.Background(), `SELECT status FROM tournaments WHERE id = $1`, tid).Scan(&status)
+		t.Fatalf("close registration affected %d rows (status now %q)", n, status)
+	}
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/registration", playerToken, "")
+	var statusNow string
+	_ = pool.QueryRow(context.Background(), `SELECT status FROM tournaments WHERE id = $1`, tid).Scan(&statusNow)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("closed registration must 409, got %d %s (status now %q)", w.Code, w.Body.String(), statusNow)
+	}
+}
+
+// TestTournament_BracketPlans covers the enumeration endpoint: the 8-player
+// 4-seat-only pool offers exactly the flagship shape, and the error paths
+// (too few participants, empty pool, closed registration) behave.
+func TestTournament_BracketPlans(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Четвёрки")
+	gameID2 := createTestGame(t, pool, "Парные")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Сеточник%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок четвёрок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
+	}
+
+	w := doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans: %d %s", w.Code, w.Body.String())
+	}
+	var plans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &plans); err != nil {
+		t.Fatalf("decode plans: %v", err)
+	}
+	if len(plans.Data.Plans) != 1 || plans.Data.Truncated {
+		t.Fatalf("8/{{4}} must offer exactly 1 plan, got %d truncated=%v", len(plans.Data.Plans), plans.Data.Truncated)
+	}
+	p := plans.Data.Plans[0]
+	if len(p.Rounds) != 2 || p.Rounds[0].Promote != 2 || len(p.Rounds[0].Slots) != 2 || p.Rounds[0].Slots[0].SeatCount != 4 {
+		t.Fatalf("flagship plan shape: %+v", p.Rounds)
+	}
+	if p.Rounds[1].Track != "final" || p.Rounds[1].Slots[0].Seats[0].Kind != "source" {
+		t.Fatalf("final round must be source-seated: %+v", p.Rounds[1])
+	}
+
+	// Too few participants → 400.
+	small := newID(t)
+	one := createTestPlayer(t, pool, "Один")
+	createBody = fmt.Sprintf(`{"id": %q, "name": "Малый кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}], "participant_ids": [%q]}`,
+		short(small), short(gameID2), short(one))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create small tournament: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(small)+"/bracket-plans", admin, "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("1 participant must 400, got %d", w.Code)
+	}
+
+	// Empty pool → 400.
+	empty := newID(t)
+	createBody = fmt.Sprintf(`{"id": %q, "name": "Без игр", "elimination": "single"}`, short(empty))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create empty-pool tournament: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(empty)+"/bracket-plans", admin, "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("empty pool must 400, got %d", w.Code)
+	}
+
+	// Closed registration → 409.
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE tournaments SET status = 'running' WHERE id = $1`, tid); err != nil {
+		t.Fatalf("close registration: %v", err)
+	}
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans", admin, "")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("closed registration must 409, got %d", w.Code)
 	}
 }

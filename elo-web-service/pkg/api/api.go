@@ -20,6 +20,7 @@ type API struct {
 	TableService       elo.ITableService
 	AuditService       elo.IAuditService
 	ArenaService       *elo.ArenaService
+	TournamentService  *elo.TournamentService
 	MatchQueries       *db.Queries // read-side arena matches queries for the handlers
 	Hub                *elo.Hub
 }
@@ -43,6 +44,7 @@ func New(pool *pgxpool.Pool) *API {
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
 		ArenaService:       arenaService,
+		TournamentService:  elo.NewTournamentService(pool, arenaService),
 		MatchQueries:       db.New(pool),
 		Hub:                hub,
 	}

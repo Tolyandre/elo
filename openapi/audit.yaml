@@ -18,7 +18,7 @@ AuditCollection:
           type: array
           items:
             type: string
-            enum: [match, game, player, club, tag]
+            enum: [match, game, player, club, tag, arena, tournament]
         description: Filter by entity type(s); repeated for several types
       - name: entity_id
         in: query
@@ -65,12 +65,15 @@ AuditEntry:
       format: date-time
     actor_user_id:
       $ref: './common.yaml#/Base58ID'
+      nullable: true
+      description: Null for system events (the grand-final-deadline auto-cancel, ADR-26).
     actor_name:
       type: string
-      description: Display name of the acting user at read time
+      nullable: true
+      description: Display name of the acting user at read time; null for system events.
     entity_type:
       type: string
-      enum: [match, game, player, club, tag, arena]
+      enum: [match, game, player, club, tag, arena, tournament]
     entity_id:
       $ref: './common.yaml#/Base58ID'
     action:
@@ -82,13 +85,21 @@ AuditEntry:
         created). Narrow by action: entity → AuditEntityDetails (created/deleted
         of game/player/club/tag), renamed → AuditRenameDetails, updated →
         AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails
-        (camp config) or AuditCampLinkDetails (match attach/detach).
+        (camp config) or AuditCampLinkDetails (match attach/detach);
+        tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails /
+        AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails
+        (ADR-26).
       oneOf:
         - $ref: '#/AuditEntityDetails'
         - $ref: '#/AuditRenameDetails'
         - $ref: '#/AuditMatchUpdateDetails'
         - $ref: '#/AuditArenaCampConfigDetails'
         - $ref: '#/AuditCampLinkDetails'
+        - $ref: '#/AuditTournamentConfigDetails'
+        - $ref: '#/AuditTournamentStartDetails'
+        - $ref: '#/AuditTournamentStateDetails'
+        - $ref: '#/AuditSlotRulingDetails'
+        - $ref: '#/AuditSlotLinkDetails'
       nullable: true
 
 AuditEntityDetails:
@@ -216,6 +227,142 @@ AuditCampLinkDetails:
       type: string
       enum: [attach, detach]
     match_id:
+      $ref: './common.yaml#/Base58ID'
+
+AuditTournamentConfigDetails:
+  type: object
+  description: >-
+    Registration-time configuration of the tournament the audit row points at
+    (ADR-26): name, grand-final deadline, game pool, participants — full
+    before → after on every change; create fills the 'to' sides only.
+    Untouched fields stay null.
+  required: [schema_version]
+  properties:
+    schema_version:
+      type: integer
+    name:
+      type: object
+      nullable: true
+      properties:
+        from: { type: string, nullable: true }
+        to: { type: string, nullable: true }
+    grand_final_deadline:
+      type: object
+      nullable: true
+      properties:
+        from: { type: string, format: date-time, nullable: true }
+        to: { type: string, format: date-time, nullable: true }
+    games:
+      type: object
+      nullable: true
+      properties:
+        from:
+          type: array
+          items: { $ref: '#/AuditTournamentGameDoc' }
+        to:
+          type: array
+          items: { $ref: '#/AuditTournamentGameDoc' }
+    from_player_ids:
+      type: array
+      items: { $ref: './common.yaml#/Base58ID' }
+    to_player_ids:
+      type: array
+      items: { $ref: './common.yaml#/Base58ID' }
+
+AuditTournamentGameDoc:
+  type: object
+  required: [game_id, min_players, max_players]
+  properties:
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    min_players: { type: integer }
+    max_players: { type: integer }
+
+AuditTournamentStartDetails:
+  type: object
+  description: >-
+    The start decision (ADR-26): the chosen plan verbatim (game-free and
+    id-free), the stored PRNG seed, and the participants in draw-input order.
+  required: [schema_version, plan, seed, participants]
+  properties:
+    schema_version:
+      type: integer
+    plan:
+      $ref: './tournaments.yaml#/TournamentPlan'
+    seed:
+      type: integer
+      format: int64
+    participant_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+
+AuditTournamentStateDetails:
+  type: object
+  description: >-
+    A lifecycle transition (ADR-26): completed, or cancelled by the organizer
+    / by the grand-final deadline (the latter with a null actor — the system).
+  required: [schema_version, from, to, reason]
+  properties:
+    schema_version:
+      type: integer
+    from:
+      type: string
+      enum: [registration, running]
+    to:
+      type: string
+      enum: [completed, cancelled]
+    reason:
+      type: string
+      enum: [organizer, deadline, grand-final]
+
+AuditSlotRulingDetails:
+  type: object
+  description: >-
+    An organizer ruling on one slot of the tournament the audit row points at
+    (ADR-26): the ordered promotion set before (null while the slot was still
+    playing) and after (null on revert to the standings-based result).
+  required: [schema_version, op, slot_id, before_player_ids, after_player_ids]
+  properties:
+    schema_version:
+      type: integer
+    op:
+      type: string
+      enum: [set, replace, revert]
+    slot_id:
+      $ref: './common.yaml#/Base58ID'
+    before_player_ids:
+      type: array
+      nullable: true
+      items: { $ref: './common.yaml#/Base58ID' }
+    after_player_ids:
+      type: array
+      nullable: true
+      items: { $ref: './common.yaml#/Base58ID' }
+
+AuditSlotLinkDetails:
+  type: object
+  description: >-
+    Match ↔ slot linkage on the tournament the audit row points at (ADR-26):
+    acceptance links, organizer attach/detach, cascade voids. For voids the
+    origin carries the chain — the triggering match edit (origin_kind
+    match-edit, origin_id = match id) or the upstream slot (origin_kind
+    cascade, origin_id = slot id).
+  required: [schema_version, op, slot_id, match_id, origin_kind]
+  properties:
+    schema_version:
+      type: integer
+    op:
+      type: string
+      enum: [attach, detach, void]
+    slot_id:
+      $ref: './common.yaml#/Base58ID'
+    match_id:
+      $ref: './common.yaml#/Base58ID'
+    origin_kind:
+      type: string
+      enum: [acceptance, organizer, match-edit, cascade]
+    origin_id:
       $ref: './common.yaml#/Base58ID'
 
 AuditPage:

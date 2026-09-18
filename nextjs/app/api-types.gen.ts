@@ -302,6 +302,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tournaments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List tournaments (running/registration first, then finished) */
+        get: operations["ListTournaments"];
+        put?: never;
+        /** Create a tournament (status = registration) */
+        post: operations["CreateTournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one tournament (with pool and participants) */
+        get: operations["GetTournament"];
+        /**
+         * Update the registration-time configuration (name, deadline, pool, participants)
+         * @description Editor only, and only while the tournament is in registration. The game pool is rewritten wholesale when present; participant_ids is the desired set when present (added and removed as needed). Every change is audit-logged as tournament-config.
+         */
+        put: operations["UpdateTournament"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register the current user's linked player
+         * @description Requires a signed-in user with a linked player (ADR-26); only while the tournament is in registration. Idempotent.
+         */
+        post: operations["RegisterInTournament"];
+        /** Withdraw the current user's linked player */
+        delete: operations["UnregisterFromTournament"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tournaments/{id}/bracket-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Enumerate the valid bracket shapes for the current participant count and pool
+         * @description Editor only. A pure function of (participant count, game pool, elimination type) — nothing is stored. The organizer picks one plan and submits it verbatim to the start action. Fewer rounds first, then fewer tables, then larger slots; truncated reports that the cap cut a pathological explosion (the returned head still follows the order).
+         */
+        get: operations["ListTournamentBracketPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clubs": {
         parameters: {
             query?: never;
@@ -1003,6 +1083,13 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
+        /** @description The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match. */
+        MatchTournament: {
+            /** @description The tournament id */
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            slot_id: components["schemas"]["Base58ID"];
+        };
         Match: {
             id: components["schemas"]["Base58ID"];
             game_id: components["schemas"]["Base58ID"];
@@ -1016,6 +1103,8 @@ export interface components {
             has_markets: boolean;
             /** @description Camp arenas (ADR-27) this match belongs to */
             camps?: components["schemas"]["MatchCamp"][];
+            /** @description The bracket slot the match counts for (ADR-26); null when unlinked. */
+            tournament?: components["schemas"]["MatchTournament"];
             /** @description Identifier of the calculator that produced this match, or null when the match was created via the generic form. Clients use this to decide whether to open the match in the calculator (history mode) or the generic edit form. */
             calculator_kind?: string | null;
             /** @description Intermediate calculator state. Present only when calculator_kind is non-null. Opaque at the OpenAPI layer; see pkg/calculator for the per-kind JSON Schemas. */
@@ -1026,6 +1115,85 @@ export interface components {
             data: components["schemas"]["Match"][];
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
+        };
+        /** @description One pool game with its table capacity. */
+        TournamentGame: {
+            game_id: components["schemas"]["Base58ID"];
+            min_players: number;
+            max_players: number;
+        };
+        Tournament: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            /** @enum {string} */
+            status: "registration" | "running" | "completed" | "cancelled";
+            /** @enum {string} */
+            elimination: "single" | "double";
+            /** Format: date-time */
+            grand_final_deadline?: string | null;
+            winner_player_id?: components["schemas"]["Base58ID"];
+            games: components["schemas"]["TournamentGame"][];
+            /** @description Player ids in registration order (list/detail reads) */
+            participant_ids?: components["schemas"]["Base58ID"][];
+            /** Format: date-time */
+            created_at?: string;
+        };
+        TournamentInput: {
+            /** @description Client-generated id (ADR-06): the primary key and idempotency key. A replay with the same id returns the already-created tournament. */
+            id?: components["schemas"]["Base58ID"];
+            name: string;
+            /** @enum {string} */
+            elimination: "single" | "double";
+            /**
+             * Format: date-time
+             * @description Optional; when it passes without a completed grand final the tournament auto-cancels.
+             */
+            grand_final_deadline?: string | null;
+            /** @description The game pool (desired set on update — rewritten wholesale when present). */
+            games?: components["schemas"]["TournamentGame"][];
+            /** @description The desired participant set on update (diffed when present); the initial set on create. */
+            participant_ids?: components["schemas"]["Base58ID"][];
+        };
+        TournamentResponse: {
+            status: string;
+            data: components["schemas"]["Tournament"];
+        };
+        TournamentList: {
+            status: string;
+            data: components["schemas"]["Tournament"][];
+        };
+        /** @description One seat's provenance: draw (round-1 winners seat, filled from the seeded draw), bye (the round-1 remainder, seated in winners round 2 or the grand final), or source (place source_place of the flat plan slot index source_slot). */
+        PlanSeat: {
+            /** @enum {string} */
+            kind: "draw" | "bye" | "source";
+            source_slot?: number;
+            source_place?: number;
+        };
+        PlanSlot: {
+            seat_count: number;
+            seats: components["schemas"]["PlanSeat"][];
+        };
+        /** @description One elimination round; promote is uniform across the round. */
+        PlanRound: {
+            /** @enum {string} */
+            track: "winners" | "losers" | "final";
+            index: number;
+            promote: number;
+            slots: components["schemas"]["PlanSlot"][];
+        };
+        /** @description A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start. */
+        TournamentPlan: {
+            /** @enum {string} */
+            elimination: "single" | "double";
+            rounds: components["schemas"]["PlanRound"][];
+        };
+        BracketPlansResponse: {
+            status: string;
+            data: {
+                plans: components["schemas"]["TournamentPlan"][];
+                truncated: boolean;
+                cap: number;
+            };
         };
         Club: {
             id: components["schemas"]["Base58ID"];
@@ -1251,16 +1419,17 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             /** Format: date-time */
             created_at: string;
+            /** @description Null for system events (the grand-final-deadline auto-cancel, ADR-26). */
             actor_user_id: components["schemas"]["Base58ID"];
-            /** @description Display name of the acting user at read time */
-            actor_name: string;
+            /** @description Display name of the acting user at read time; null for system events. */
+            actor_name: string | null;
             /** @enum {string} */
-            entity_type: "match" | "game" | "player" | "club" | "tag" | "arena";
+            entity_type: "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament";
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -1411,6 +1580,69 @@ export interface components {
             /** @enum {string} */
             op: "attach" | "detach";
             match_id: components["schemas"]["Base58ID"];
+        };
+        AuditTournamentGameDoc: {
+            game_id: components["schemas"]["Base58ID"];
+            min_players: number;
+            max_players: number;
+        };
+        /** @description Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null. */
+        AuditTournamentConfigDetails: {
+            schema_version: number;
+            name?: {
+                from?: string | null;
+                to?: string | null;
+            } | null;
+            grand_final_deadline?: {
+                /** Format: date-time */
+                from?: string | null;
+                /** Format: date-time */
+                to?: string | null;
+            } | null;
+            games?: {
+                from?: components["schemas"]["AuditTournamentGameDoc"][];
+                to?: components["schemas"]["AuditTournamentGameDoc"][];
+            } | null;
+            from_player_ids?: components["schemas"]["Base58ID"][];
+            to_player_ids?: components["schemas"]["Base58ID"][];
+        };
+        /** @description The start decision (ADR-26): the chosen plan verbatim (game-free and id-free), the stored PRNG seed, and the participants in draw-input order. */
+        AuditTournamentStartDetails: {
+            schema_version: number;
+            plan: components["schemas"]["TournamentPlan"];
+            /** Format: int64 */
+            seed: number;
+            participant_ids?: components["schemas"]["Base58ID"][];
+        };
+        /** @description A lifecycle transition (ADR-26): completed, or cancelled by the organizer / by the grand-final deadline (the latter with a null actor — the system). */
+        AuditTournamentStateDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            from: "registration" | "running";
+            /** @enum {string} */
+            to: "completed" | "cancelled";
+            /** @enum {string} */
+            reason: "organizer" | "deadline" | "grand-final";
+        };
+        /** @description An organizer ruling on one slot of the tournament the audit row points at (ADR-26): the ordered promotion set before (null while the slot was still playing) and after (null on revert to the standings-based result). */
+        AuditSlotRulingDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            op: "set" | "replace" | "revert";
+            slot_id: components["schemas"]["Base58ID"];
+            before_player_ids: components["schemas"]["Base58ID"][] | null;
+            after_player_ids: components["schemas"]["Base58ID"][] | null;
+        };
+        /** @description Match ↔ slot linkage on the tournament the audit row points at (ADR-26): acceptance links, organizer attach/detach, cascade voids. For voids the origin carries the chain — the triggering match edit (origin_kind match-edit, origin_id = match id) or the upstream slot (origin_kind cascade, origin_id = slot id). */
+        AuditSlotLinkDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            op: "attach" | "detach" | "void";
+            slot_id: components["schemas"]["Base58ID"];
+            match_id: components["schemas"]["Base58ID"];
+            /** @enum {string} */
+            origin_kind: "acceptance" | "organizer" | "match-edit" | "cascade";
+            origin_id?: components["schemas"]["Base58ID"];
         };
         IawwCell: {
             /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
@@ -2726,6 +2958,8 @@ export interface operations {
                     date?: string;
                     /** @description Optional camp arena IDs (ADR-27) this match belongs to. Each arena must exist, be a camp, and its window must contain the match date; the links become part of the camp's stats. */
                     camp_arena_ids?: components["schemas"]["Base58ID"][];
+                    /** @description Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side. */
+                    skip_tournament_link?: boolean;
                     /** @description Identifier of the calculator that produced this match (e.g. "skull-king", "iaww"). When set, calculator_data is required and is validated server-side against the JSON Schema registered for this kind (see pkg/calculator). When absent, the match was created via the generic form. */
                     calculator_kind?: string | null;
                     /** @description Intermediate calculator state (round-by-round / cell-by-cell breakdown). Opaque at the OpenAPI layer; validated against a per-calculator-kind JSON Schema in the Go handler. Stored in a normalized shape where every player reference lives under a key named "player_id", which the schema marks as an entity id so the Go handler canonicalizes it at the boundary. */
@@ -2939,6 +3173,389 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListTournaments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tournament list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentList"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TournamentInput"];
+            };
+        };
+        responses: {
+            /** @description Tournament created (or the already-created row for an id replay) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament name already taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tournament */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    UpdateTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TournamentInput"];
+            };
+        };
+        responses: {
+            /** @description Updated tournament */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No longer in registration (or name taken) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    RegisterInTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Registered */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No player linked to the user */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Registration is closed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    UnregisterFromTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiSuccessMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No player linked to the user */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Registration is closed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListTournamentBracketPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Valid plans */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BracketPlansResponse"];
+                };
+            };
+            /** @description Fewer than 2 participants, or empty game pool */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description No longer in registration */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4305,7 +4922,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by entity type(s); repeated for several types */
-                entity_type?: ("match" | "game" | "player" | "club" | "tag")[];
+                entity_type?: ("match" | "game" | "player" | "club" | "tag" | "arena" | "tournament")[];
                 /** @description Filter by entity ID (requires entity_type) */
                 entity_id?: string;
                 /** @description Cursor token from previous page's "next" field */

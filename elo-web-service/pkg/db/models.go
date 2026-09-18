@@ -58,7 +58,7 @@ type ArenaSettlement struct {
 type AuditLog struct {
 	ID                   id.ID           `json:"id"`
 	CreatedAt            time.Time       `json:"created_at"`
-	ActorUserID          id.ID           `json:"actor_user_id"`
+	ActorUserID          *id.ID          `json:"actor_user_id"`
 	EntityType           string          `json:"entity_type"`
 	EntityID             id.ID           `json:"entity_id"`
 	Action               string          `json:"action"`

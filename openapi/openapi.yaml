@@ -77,10 +77,34 @@ components:
       $ref: './matches.yaml#/MatchPlayer'
     MatchCamp:
       $ref: './matches.yaml#/MatchCamp'
+    MatchTournament:
+      $ref: './matches.yaml#/MatchTournament'
     Match:
       $ref: './matches.yaml#/Match'
     MatchesPage:
       $ref: './matches.yaml#/MatchesPage'
+
+    # Tournaments (ADR-26)
+    TournamentGame:
+      $ref: './tournaments.yaml#/TournamentGame'
+    Tournament:
+      $ref: './tournaments.yaml#/Tournament'
+    TournamentInput:
+      $ref: './tournaments.yaml#/TournamentInput'
+    TournamentResponse:
+      $ref: './tournaments.yaml#/TournamentResponse'
+    TournamentList:
+      $ref: './tournaments.yaml#/TournamentList'
+    PlanSeat:
+      $ref: './tournaments.yaml#/PlanSeat'
+    PlanSlot:
+      $ref: './tournaments.yaml#/PlanSlot'
+    PlanRound:
+      $ref: './tournaments.yaml#/PlanRound'
+    TournamentPlan:
+      $ref: './tournaments.yaml#/TournamentPlan'
+    BracketPlansResponse:
+      $ref: './tournaments.yaml#/BracketPlansResponse'
 
     # Clubs
     Club:
@@ -215,6 +239,16 @@ paths:
     $ref: './matches.yaml#/MatchItem'
   /matches/{id}/markets:
     $ref: './matches.yaml#/MatchMarketsPath'
+
+  # Tournaments (ADR-26)
+  /tournaments:
+    $ref: './tournaments.yaml#/TournamentsCollection'
+  /tournaments/{id}:
+    $ref: './tournaments.yaml#/TournamentItem'
+  /tournaments/{id}/registration:
+    $ref: './tournaments.yaml#/TournamentRegistration'
+  /tournaments/{id}/bracket-plans:
+    $ref: './tournaments.yaml#/TournamentBracketPlans'
 
   # Clubs
   /clubs:

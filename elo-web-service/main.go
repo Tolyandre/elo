@@ -198,6 +198,16 @@ func main() {
 	// the audited mutations' transactions.
 	router.GET("/audit", strictWrapper.ListAuditEvents)
 
+	// Tournaments (ADR-26) — public reads, editor-gated organization, the
+	// self-registration behind the linked-player gate.
+	router.GET("/tournaments", strictWrapper.ListTournaments)
+	router.POST("/tournaments", append(editorAuth(), strictWrapper.CreateTournament)...)
+	router.GET("/tournaments/:id", strictWrapper.GetTournament)
+	router.PUT("/tournaments/:id", append(editorAuth(), strictWrapper.UpdateTournament)...)
+	router.GET("/tournaments/:id/bracket-plans", append(editorAuth(), strictWrapper.ListTournamentBracketPlans)...)
+	router.POST("/tournaments/:id/registration", append(playerAuth(), strictWrapper.RegisterInTournament)...)
+	router.DELETE("/tournaments/:id/registration", append(playerAuth(), strictWrapper.UnregisterFromTournament)...)
+
 	// Realtime SSE — one multiplexed stream of the app-global topics (global
 	// data-change signals, both lobby signals, per-user events) picked via
 	// ?topics=. Auth is optional: anonymous callers silently get no "me"

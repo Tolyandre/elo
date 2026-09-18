@@ -1,6 +1,9 @@
 package audit
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Go types for the details documents. The JSON tags are the stored (and wire)
 // shape; the embedded JSON Schemas are the source of truth for validation.
@@ -15,6 +18,11 @@ func init() {
 	register(&Schema{Kind: KindMatchUpdate, CurrentVersion: 1}, "match_update.v1.json")
 	register(&Schema{Kind: KindArenaCampConf, CurrentVersion: 1}, "arena_camp_config.v1.json")
 	register(&Schema{Kind: KindCampLink, CurrentVersion: 1}, "camp_link.v1.json")
+	register(&Schema{Kind: KindTournamentConfig, CurrentVersion: 1}, "tournament_config.v1.json")
+	register(&Schema{Kind: KindTournamentStart, CurrentVersion: 1}, "tournament_start.v1.json")
+	register(&Schema{Kind: KindTournamentState, CurrentVersion: 1}, "tournament_state.v1.json")
+	register(&Schema{Kind: KindSlotRuling, CurrentVersion: 1}, "slot_ruling.v1.json")
+	register(&Schema{Kind: KindSlotLink, CurrentVersion: 1}, "slot_link.v1.json")
 }
 
 // EntityDetails names the entity at the moment it was created or deleted (the
@@ -166,4 +174,159 @@ func NewCampConfigChanged(name *[2]*string, startsAt, endsAt *[2]*string) ArenaC
 		d.EndsAt = valueChange(endsAt[0], endsAt[1])
 	}
 	return d
+}
+
+// ---------------------------------------------------------------------------
+// Tournament brackets (ADR-26). The entity_id of every row below is the
+// tournament; slots are identified inside the details documents.
+// ---------------------------------------------------------------------------
+
+// TournamentGameDoc is one game-pool entry (table capacity) in config details.
+type TournamentGameDoc struct {
+	GameID     string `json:"game_id"`
+	MinPlayers int    `json:"min_players"`
+	MaxPlayers int    `json:"max_players"`
+}
+
+// GamesChange is the full game pool before → after.
+type GamesChange struct {
+	From []TournamentGameDoc `json:"from"`
+	To   []TournamentGameDoc `json:"to"`
+}
+
+// TournamentConfigDetails captures the registration-time configuration:
+// name, the optional grand-final deadline, the game pool, the participants.
+// Create fills the 'to' sides; updates carry every changed field's full
+// before → after. The last config row reconstructs the whole registration
+// state (ADR-26 §Audit). The participant lists are flat because the id
+// conventions require *_ids properties to be plain id arrays.
+type TournamentConfigDetails struct {
+	SchemaVersion      int          `json:"schema_version"`
+	Name               *ValueChange `json:"name,omitempty"`
+	GrandFinalDeadline *ValueChange `json:"grand_final_deadline,omitempty"`
+	Games              *GamesChange `json:"games,omitempty"`
+	FromPlayerIDs      []string     `json:"from_player_ids,omitempty"`
+	ToPlayerIDs        []string     `json:"to_player_ids,omitempty"`
+}
+
+// NewTournamentConfigCreated builds the details of a tournament creation.
+func NewTournamentConfigCreated(name string, deadline *time.Time, games []TournamentGameDoc, participants []string) TournamentConfigDetails {
+	d := TournamentConfigDetails{SchemaVersion: 1, Name: valueChange(nil, strPtr(name))}
+	if deadline != nil {
+		d.GrandFinalDeadline = valueChange(nil, strPtr(deadline.Format(time.RFC3339Nano)))
+	} else {
+		d.GrandFinalDeadline = valueChange(nil, nil)
+	}
+	d.Games = &GamesChange{To: games}
+	d.ToPlayerIDs = participants
+	return d
+}
+
+// NewTournamentConfigChanged builds the details of a config update; pass nil
+// for fields that did not change.
+func NewTournamentConfigChanged(name, deadline *[2]*string, games *[2][]TournamentGameDoc, participants *[2][]string) TournamentConfigDetails {
+	d := TournamentConfigDetails{SchemaVersion: 1}
+	if name != nil {
+		d.Name = valueChange(name[0], name[1])
+	}
+	if deadline != nil {
+		d.GrandFinalDeadline = valueChange(deadline[0], deadline[1])
+	}
+	if games != nil {
+		d.Games = &GamesChange{From: games[0], To: games[1]}
+	}
+	if participants != nil {
+		d.FromPlayerIDs = participants[0]
+		d.ToPlayerIDs = participants[1]
+	}
+	return d
+}
+
+// TournamentStartDetails snapshots the start decision: the chosen plan
+// verbatim, the stored PRNG seed, and the participants in draw-input order
+// (ids sorted ascending) — everything needed to reproduce the bracket.
+type TournamentStartDetails struct {
+	SchemaVersion  int             `json:"schema_version"`
+	Plan           json.RawMessage `json:"plan"`
+	Seed           int64           `json:"seed"`
+	ParticipantIDs []string        `json:"participant_ids"`
+}
+
+// NewTournamentStartDetails builds v1 start details.
+func NewTournamentStartDetails(plan json.RawMessage, seed int64, participants []string) TournamentStartDetails {
+	return TournamentStartDetails{SchemaVersion: 1, Plan: plan, Seed: seed, ParticipantIDs: participants}
+}
+
+// Tournament state transition reasons (TournamentStateDetails.Reason).
+const (
+	StateReasonOrganizer = "organizer"
+	StateReasonDeadline  = "deadline"
+	StateReasonFinal     = "grand-final"
+)
+
+// TournamentStateDetails records a lifecycle transition (completed, or
+// cancelled by the organizer / by the grand-final deadline).
+type TournamentStateDetails struct {
+	SchemaVersion int    `json:"schema_version"`
+	From          string `json:"from"`
+	To            string `json:"to"`
+	Reason        string `json:"reason"`
+}
+
+// NewTournamentStateDetails builds v1 state details.
+func NewTournamentStateDetails(from, to, reason string) TournamentStateDetails {
+	return TournamentStateDetails{SchemaVersion: 1, From: from, To: to, Reason: reason}
+}
+
+// Slot ruling operations (SlotRulingDetails.Op).
+const (
+	RulingSet     = "set"
+	RulingReplace = "replace"
+	RulingRevert  = "revert"
+)
+
+// SlotRulingDetails records an organizer ruling on one slot: the ordered
+// promotion set before (null while the slot was playing) and after (null on
+// revert to the standings-based result).
+type SlotRulingDetails struct {
+	SchemaVersion   int      `json:"schema_version"`
+	Op              string   `json:"op"`
+	SlotID          string   `json:"slot_id"`
+	BeforePlayerIDs []string `json:"before_player_ids"`
+	AfterPlayerIDs  []string `json:"after_player_ids"`
+}
+
+// NewSlotRulingDetails builds v1 ruling details; nil slices serialize as null.
+func NewSlotRulingDetails(op, slotID string, before, after []string) SlotRulingDetails {
+	return SlotRulingDetails{SchemaVersion: 1, Op: op, SlotID: slotID, BeforePlayerIDs: before, AfterPlayerIDs: after}
+}
+
+// Slot link operations and origin kinds (SlotLinkDetails.Op / .OriginKind).
+const (
+	SlotLinkAttach = "attach"
+	SlotLinkDetach = "detach"
+	SlotLinkVoid   = "void"
+
+	LinkOriginAcceptance = "acceptance"  // linked by the match-write fit check
+	LinkOriginOrganizer  = "organizer"   // attach/detach endpoints
+	LinkOriginMatchEdit  = "match-edit"  // void triggered by an edit of this match
+	LinkOriginCascade    = "cascade"     // void triggered by an upstream slot change
+)
+
+// SlotLinkDetails records slot ↔ match linkage and its voids. For voids the
+// origin carries the chain: the match edit that triggered it (origin_id =
+// match id) or the upstream slot whose outcome change cascaded (origin_id =
+// slot id).
+type SlotLinkDetails struct {
+	SchemaVersion int    `json:"schema_version"`
+	Op            string `json:"op"`
+	SlotID        string `json:"slot_id"`
+	MatchID       string `json:"match_id"`
+	OriginKind    string `json:"origin_kind"`
+	OriginID      string `json:"origin_id,omitempty"`
+}
+
+// NewSlotLinkDetails builds v1 slot-link details.
+func NewSlotLinkDetails(op, slotID, matchID, originKind, originID string) SlotLinkDetails {
+	return SlotLinkDetails{SchemaVersion: 1, Op: op, SlotID: slotID, MatchID: matchID, OriginKind: originKind, OriginID: originID}
 }

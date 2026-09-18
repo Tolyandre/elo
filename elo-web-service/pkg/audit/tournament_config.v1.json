@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/tournament-config.v1.json",
+  "title": "Audit tournament config details (v1)",
+  "description": "Registration-time configuration of the tournament identified by the audit row's entity_id: name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "minLength": 1 },
+        "to": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "grand_final_deadline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["string", "null"], "minLength": 1 },
+        "to": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "games": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": ["array", "null"], "items": { "$ref": "#/$defs/game" } },
+        "to": { "type": ["array", "null"], "items": { "$ref": "#/$defs/game" } }
+      }
+    },
+    "from_player_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+    },
+    "to_player_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity-id": true }
+    }
+  },
+  "$defs": {
+    "game": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["game_id", "min_players", "max_players"],
+      "properties": {
+        "game_id": { "type": "string", "minLength": 1, "x-entity-id": true },
+        "min_players": { "type": "integer", "minimum": 2 },
+        "max_players": { "type": "integer", "minimum": 2 }
+      }
+    }
+  }
+}

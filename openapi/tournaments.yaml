@@ -1,0 +1,489 @@
+# Tournament brackets (ADR-26). Lifecycle: registration → running →
+# completed | cancelled. This file carries the entity and the
+# registration-time surface; the bracket / start / organizer endpoints are
+# appended by the later ADR-26 phases.
+
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+TournamentsCollection:
+  get:
+    operationId: ListTournaments
+    tags: [tournaments]
+    summary: List tournaments (running/registration first, then finished)
+    responses:
+      "200":
+        description: Tournament list
+        content:
+          application/json:
+            schema:
+              $ref: '#/TournamentList'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  post:
+    operationId: CreateTournament
+    tags: [tournaments]
+    summary: Create a tournament (status = registration)
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/TournamentInput'
+    responses:
+      "200":
+        description: Tournament created (or the already-created row for an id replay)
+        content:
+          application/json:
+            schema:
+              $ref: '#/TournamentResponse'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tournament name already taken
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentItem:
+  get:
+    operationId: GetTournament
+    tags: [tournaments]
+    summary: Get one tournament (with pool and participants)
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Tournament
+        content:
+          application/json:
+            schema:
+              $ref: '#/TournamentResponse'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  put:
+    operationId: UpdateTournament
+    tags: [tournaments]
+    summary: Update the registration-time configuration (name, deadline, pool, participants)
+    description: >-
+      Editor only, and only while the tournament is in registration. The game
+      pool is rewritten wholesale when present; participant_ids is the desired
+      set when present (added and removed as needed). Every change is
+      audit-logged as tournament-config.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/TournamentInput'
+    responses:
+      "200":
+        description: Updated tournament
+        content:
+          application/json:
+            schema:
+              $ref: '#/TournamentResponse'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: No longer in registration (or name taken)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentRegistration:
+  post:
+    operationId: RegisterInTournament
+    tags: [tournaments]
+    summary: Register the current user's linked player
+    description: >-
+      Requires a signed-in user with a linked player (ADR-26); only while the
+      tournament is in registration. Idempotent.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Registered
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: No player linked to the user
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Registration is closed
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  delete:
+    operationId: UnregisterFromTournament
+    tags: [tournaments]
+    summary: Withdraw the current user's linked player
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Withdrawn
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiSuccessMessage'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: No player linked to the user
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Registration is closed
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TournamentBracketPlans:
+  get:
+    operationId: ListTournamentBracketPlans
+    tags: [tournaments]
+    summary: Enumerate the valid bracket shapes for the current participant count and pool
+    description: >-
+      Editor only. A pure function of (participant count, game pool,
+      elimination type) — nothing is stored. The organizer picks one plan and
+      submits it verbatim to the start action. Fewer rounds first, then fewer
+      tables, then larger slots; truncated reports that the cap cut a
+      pathological explosion (the returned head still follows the order).
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Valid plans
+        content:
+          application/json:
+            schema:
+              $ref: '#/BracketPlansResponse'
+      "400":
+        description: Fewer than 2 participants, or empty game pool
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Editor permission required
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: No longer in registration
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+TournamentGame:
+  type: object
+  description: One pool game with its table capacity.
+  properties:
+    game_id:
+      $ref: './common.yaml#/Base58ID'
+    min_players:
+      type: integer
+      minimum: 2
+    max_players:
+      type: integer
+      minimum: 2
+  required: [game_id, min_players, max_players]
+
+Tournament:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    status:
+      type: string
+      enum: [registration, running, completed, cancelled]
+    elimination:
+      type: string
+      enum: [single, double]
+    grand_final_deadline:
+      type: string
+      format: date-time
+      nullable: true
+    winner_player_id:
+      $ref: './common.yaml#/Base58ID'
+    games:
+      type: array
+      items:
+        $ref: '#/TournamentGame'
+    participant_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+      description: Player ids in registration order (list/detail reads)
+    created_at:
+      type: string
+      format: date-time
+  required: [id, name, status, elimination, games]
+
+TournamentInput:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+      description: >-
+        Client-generated id (ADR-06): the primary key and idempotency key. A
+        replay with the same id returns the already-created tournament.
+    name:
+      type: string
+    elimination:
+      type: string
+      enum: [single, double]
+    grand_final_deadline:
+      type: string
+      format: date-time
+      nullable: true
+      description: Optional; when it passes without a completed grand final the tournament auto-cancels.
+    games:
+      type: array
+      items:
+        $ref: '#/TournamentGame'
+      description: The game pool (desired set on update — rewritten wholesale when present).
+    participant_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+      description: The desired participant set on update (diffed when present); the initial set on create.
+  required: [name, elimination]
+
+TournamentResponse:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      $ref: '#/Tournament'
+  required: [status, data]
+
+TournamentList:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/Tournament'
+  required: [status, data]
+
+# ─── Plans (the enumerator's documents, ADR-26) ──────────────────────────────
+
+PlanSeat:
+  type: object
+  description: >-
+    One seat's provenance: draw (round-1 winners seat, filled from the seeded
+    draw), bye (the round-1 remainder, seated in winners round 2 or the grand
+    final), or source (place source_place of the flat plan slot index
+    source_slot).
+  properties:
+    kind:
+      type: string
+      enum: [draw, bye, source]
+    source_slot:
+      type: integer
+    source_place:
+      type: integer
+  required: [kind]
+
+PlanSlot:
+  type: object
+  properties:
+    seat_count:
+      type: integer
+      minimum: 2
+    seats:
+      type: array
+      items:
+        $ref: '#/PlanSeat'
+  required: [seat_count, seats]
+
+PlanRound:
+  type: object
+  description: One elimination round; promote is uniform across the round.
+  properties:
+    track:
+      type: string
+      enum: [winners, losers, final]
+    index:
+      type: integer
+    promote:
+      type: integer
+    slots:
+      type: array
+      items:
+        $ref: '#/PlanSlot'
+  required: [track, index, promote, slots]
+
+TournamentPlan:
+  type: object
+  description: >-
+    A complete, pre-computed bracket shape: every round, every slot, every
+    seat's provenance. Game-free and id-free — the server assigns a
+    pool-fitting game to every slot at start.
+  properties:
+    elimination:
+      type: string
+      enum: [single, double]
+    rounds:
+      type: array
+      items:
+        $ref: '#/PlanRound'
+  required: [elimination, rounds]
+
+BracketPlansResponse:
+  type: object
+  properties:
+    status:
+      type: string
+    data:
+      type: object
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/TournamentPlan'
+        truncated:
+          type: boolean
+        cap:
+          type: integer
+      required: [plans, truncated, cap]
+  required: [status, data]

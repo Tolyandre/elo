@@ -257,6 +257,15 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
+	// Tournaments (ADR-26): public reads, editor-gated organization, the
+	// self-registration behind the linked-player gate.
+	r.GET("/tournaments", strictWrapper.ListTournaments)
+	r.POST("/tournaments", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTournament)
+	r.GET("/tournaments/:id", strictWrapper.GetTournament)
+	r.PUT("/tournaments/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateTournament)
+	r.GET("/tournaments/:id/bracket-plans", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ListTournamentBracketPlans)
+	r.POST("/tournaments/:id/registration", o.DeserializeUser(), a.RequirePlayerID(), strictWrapper.RegisterInTournament)
+	r.DELETE("/tournaments/:id/registration", o.DeserializeUser(), a.RequirePlayerID(), strictWrapper.UnregisterFromTournament)
 	// Auth /me: raw gin handlers on the oauth2 handler, mirroring main.go.
 	r.GET("/auth/me", o.DeserializeUser(), o.GetMe)
 	r.PATCH("/auth/me", o.DeserializeUser(), o.PatchMe)

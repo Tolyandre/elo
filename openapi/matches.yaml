@@ -86,6 +86,14 @@ MatchesCollection:
                   Optional camp arena IDs (ADR-27) this match belongs to. Each
                   arena must exist, be a camp, and its window must contain the
                   match date; the links become part of the camp's stats.
+              skip_tournament_link:
+                type: boolean
+                description: >-
+                  Explicit opt-out from tournament bracket acceptance (ADR-26).
+                  When the match exactly fits a playing slot (same game, exactly
+                  the seated players) the server links it by default — the form
+                  checkbox is default-checked. Send true to keep the match out
+                  of the bracket; fitting is always verified server-side.
               calculator_kind:
                 type: string
                 nullable: true
@@ -328,6 +336,24 @@ MatchCamp:
       type: string
   required: [id, name]
 
+MatchTournament:
+  type: object
+  description: >-
+    The tournament slot a match is counted for (ADR-26). Server-assigned at
+    the match write when the match exactly fits a playing slot, or by the
+    organizer's attach; never changes on edit (association-breaking edits are
+    rejected). The link survives detach — only the bracket forgets voided
+    results, the tournament arena keeps counting the match.
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+      description: The tournament id
+    name:
+      type: string
+    slot_id:
+      $ref: './common.yaml#/Base58ID'
+  required: [id, name, slot_id]
+
 MatchPlayer:
   type: object
   description: Per-player data within a match (keyed by player_id in the score map)
@@ -371,6 +397,10 @@ Match:
       items:
         $ref: '#/MatchCamp'
       description: Camp arenas (ADR-27) this match belongs to
+    tournament:
+      $ref: '#/MatchTournament'
+      nullable: true
+      description: The bracket slot the match counts for (ADR-26); null when unlinked.
     calculator_kind:
       type: string
       nullable: true

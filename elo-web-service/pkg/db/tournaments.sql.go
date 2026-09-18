@@ -133,13 +133,13 @@ WHERE tournament_id = $1 AND NOT (player_id = ANY($2::uuid[]))
 
 type DeleteTournamentParticipantsNotInParams struct {
 	TournamentID id.ID   `json:"tournament_id"`
-	Column2      []id.ID `json:"column_2"`
+	PlayerIds    []id.ID `json:"player_ids"`
 }
 
 // The editor's desired-set semantics (PUT /tournaments): drop everyone absent
 // from the submitted set. An empty array removes everyone.
 func (q *Queries) DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error {
-	_, err := q.db.Exec(ctx, deleteTournamentParticipantsNotIn, arg.TournamentID, arg.Column2)
+	_, err := q.db.Exec(ctx, deleteTournamentParticipantsNotIn, arg.TournamentID, arg.PlayerIds)
 	return err
 }
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elo/audit/slot-link.v1.json",
+  "title": "Audit slot link details (v1)",
+  "description": "Match ↔ slot linkage on the tournament identified by the audit row's entity_id: acceptance links, organizer attach/detach, and cascade voids. For voids the origin carries the chain — the match edit that triggered it (origin_kind match-edit, origin_id = match id) or the upstream slot whose outcome change cascaded (origin_kind cascade, origin_id = slot id).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "op", "slot_id", "match_id", "origin_kind"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "op": { "type": "string", "enum": ["attach", "detach", "void"] },
+    "slot_id": { "type": "string", "minLength": 1, "x-entity-id": true },
+    "match_id": { "type": "string", "minLength": 1, "x-entity-id": true },
+    "origin_kind": { "type": "string", "enum": ["acceptance", "organizer", "match-edit", "cascade"] },
+    "origin_id": { "type": "string", "minLength": 1, "x-entity-id": true }
+  }
+}

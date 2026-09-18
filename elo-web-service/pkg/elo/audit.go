@@ -18,9 +18,10 @@ import (
 
 // Audit log of user actions (ADR-14). Every audited write inserts its
 // audit_log row inside the same transaction as the write itself, so the log
-// can never disagree with the data. Events for which no actor could be
-// resolved (zero id — impossible behind editorAuth in practice) are skipped
-// rather than failing the user's write.
+// can never disagree with the data. A zero actor records a NULL actor — the
+// system event shape (the grand-final-deadline auto-cancel, ADR-26); the
+// column was NOT NULL before ADR-26, when unattributed events were skipped
+// instead.
 
 // IAuditService is the read side of the audit log.
 type IAuditService interface {
@@ -41,17 +42,17 @@ func (s *AuditService) ListAuditEvents(ctx context.Context, arg db.ListAuditEven
 
 // recordAuditEvent appends one row via q — the *db.Queries of the caller's
 // transaction, so the event commits (or rolls back) with the audited write.
-// A zero actor skips the insert. details may be nil (no details document).
+// A zero actor writes a NULL actor (system event). details may be nil (no
+// details document).
 func recordAuditEvent(ctx context.Context, q *db.Queries, actor id.ID, entityType, action string, entityID id.ID, detailsKind string, details any) error {
-	if actor.IsZero() {
-		return nil
-	}
 	params := db.InsertAuditEventParams{
-		ID:          id.New(),
-		ActorUserID: actor,
-		EntityType:  entityType,
-		EntityID:    entityID,
-		Action:      action,
+		ID:         id.New(),
+		EntityType: entityType,
+		EntityID:   entityID,
+		Action:     action,
+	}
+	if !actor.IsZero() {
+		params.ActorUserID = &actor
 	}
 	if details != nil {
 		raw, err := json.Marshal(details)

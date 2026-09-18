@@ -74,12 +74,13 @@ func (e AuditEntryAction) Valid() bool {
 
 // Defines values for AuditEntryEntityType.
 const (
-	AuditEntryEntityTypeArena  AuditEntryEntityType = "arena"
-	AuditEntryEntityTypeClub   AuditEntryEntityType = "club"
-	AuditEntryEntityTypeGame   AuditEntryEntityType = "game"
-	AuditEntryEntityTypeMatch  AuditEntryEntityType = "match"
-	AuditEntryEntityTypePlayer AuditEntryEntityType = "player"
-	AuditEntryEntityTypeTag    AuditEntryEntityType = "tag"
+	AuditEntryEntityTypeArena      AuditEntryEntityType = "arena"
+	AuditEntryEntityTypeClub       AuditEntryEntityType = "club"
+	AuditEntryEntityTypeGame       AuditEntryEntityType = "game"
+	AuditEntryEntityTypeMatch      AuditEntryEntityType = "match"
+	AuditEntryEntityTypePlayer     AuditEntryEntityType = "player"
+	AuditEntryEntityTypeTag        AuditEntryEntityType = "tag"
+	AuditEntryEntityTypeTournament AuditEntryEntityType = "tournament"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryEntityType enum.
@@ -96,6 +97,8 @@ func (e AuditEntryEntityType) Valid() bool {
 	case AuditEntryEntityTypePlayer:
 		return true
 	case AuditEntryEntityTypeTag:
+		return true
+	case AuditEntryEntityTypeTournament:
 		return true
 	default:
 		return false
@@ -252,6 +255,48 @@ func (e MarketDetailStatus) Valid() bool {
 	}
 }
 
+// Defines values for PlanRoundTrack.
+const (
+	Final   PlanRoundTrack = "final"
+	Losers  PlanRoundTrack = "losers"
+	Winners PlanRoundTrack = "winners"
+)
+
+// Valid indicates whether the value is a known member of the PlanRoundTrack enum.
+func (e PlanRoundTrack) Valid() bool {
+	switch e {
+	case Final:
+		return true
+	case Losers:
+		return true
+	case Winners:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PlanSeatKind.
+const (
+	Bye    PlanSeatKind = "bye"
+	Draw   PlanSeatKind = "draw"
+	Source PlanSeatKind = "source"
+)
+
+// Valid indicates whether the value is a known member of the PlanSeatKind enum.
+func (e PlanSeatKind) Valid() bool {
+	switch e {
+	case Bye:
+		return true
+	case Draw:
+		return true
+	case Source:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SkullKingGameStatePhase.
 const (
 	SkullKingGameStatePhaseBidReview      SkullKingGameStatePhase = "bid-review"
@@ -282,18 +327,219 @@ func (e SkullKingGameStatePhase) Valid() bool {
 	}
 }
 
+// Defines values for TournamentElimination.
+const (
+	TournamentEliminationDouble TournamentElimination = "double"
+	TournamentEliminationSingle TournamentElimination = "single"
+)
+
+// Valid indicates whether the value is a known member of the TournamentElimination enum.
+func (e TournamentElimination) Valid() bool {
+	switch e {
+	case TournamentEliminationDouble:
+		return true
+	case TournamentEliminationSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TournamentStatus.
+const (
+	TournamentStatusCancelled    TournamentStatus = "cancelled"
+	TournamentStatusCompleted    TournamentStatus = "completed"
+	TournamentStatusRegistration TournamentStatus = "registration"
+	TournamentStatusRunning      TournamentStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the TournamentStatus enum.
+func (e TournamentStatus) Valid() bool {
+	switch e {
+	case TournamentStatusCancelled:
+		return true
+	case TournamentStatusCompleted:
+		return true
+	case TournamentStatusRegistration:
+		return true
+	case TournamentStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TournamentInputElimination.
+const (
+	TournamentInputEliminationDouble TournamentInputElimination = "double"
+	TournamentInputEliminationSingle TournamentInputElimination = "single"
+)
+
+// Valid indicates whether the value is a known member of the TournamentInputElimination enum.
+func (e TournamentInputElimination) Valid() bool {
+	switch e {
+	case TournamentInputEliminationDouble:
+		return true
+	case TournamentInputEliminationSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TournamentPlanElimination.
+const (
+	TournamentPlanEliminationDouble TournamentPlanElimination = "double"
+	TournamentPlanEliminationSingle TournamentPlanElimination = "single"
+)
+
+// Valid indicates whether the value is a known member of the TournamentPlanElimination enum.
+func (e TournamentPlanElimination) Valid() bool {
+	switch e {
+	case TournamentPlanEliminationDouble:
+		return true
+	case TournamentPlanEliminationSingle:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuditAuditCampLinkDetailsOp.
 const (
-	Attach AuditAuditCampLinkDetailsOp = "attach"
-	Detach AuditAuditCampLinkDetailsOp = "detach"
+	AuditAuditCampLinkDetailsOpAttach AuditAuditCampLinkDetailsOp = "attach"
+	AuditAuditCampLinkDetailsOpDetach AuditAuditCampLinkDetailsOp = "detach"
 )
 
 // Valid indicates whether the value is a known member of the AuditAuditCampLinkDetailsOp enum.
 func (e AuditAuditCampLinkDetailsOp) Valid() bool {
 	switch e {
-	case Attach:
+	case AuditAuditCampLinkDetailsOpAttach:
 		return true
-	case Detach:
+	case AuditAuditCampLinkDetailsOpDetach:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditSlotLinkDetailsOp.
+const (
+	AuditAuditSlotLinkDetailsOpAttach AuditAuditSlotLinkDetailsOp = "attach"
+	AuditAuditSlotLinkDetailsOpDetach AuditAuditSlotLinkDetailsOp = "detach"
+	AuditAuditSlotLinkDetailsOpVoid   AuditAuditSlotLinkDetailsOp = "void"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditSlotLinkDetailsOp enum.
+func (e AuditAuditSlotLinkDetailsOp) Valid() bool {
+	switch e {
+	case AuditAuditSlotLinkDetailsOpAttach:
+		return true
+	case AuditAuditSlotLinkDetailsOpDetach:
+		return true
+	case AuditAuditSlotLinkDetailsOpVoid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditSlotLinkDetailsOriginKind.
+const (
+	AuditAuditSlotLinkDetailsOriginKindAcceptance AuditAuditSlotLinkDetailsOriginKind = "acceptance"
+	AuditAuditSlotLinkDetailsOriginKindCascade    AuditAuditSlotLinkDetailsOriginKind = "cascade"
+	AuditAuditSlotLinkDetailsOriginKindMatchEdit  AuditAuditSlotLinkDetailsOriginKind = "match-edit"
+	AuditAuditSlotLinkDetailsOriginKindOrganizer  AuditAuditSlotLinkDetailsOriginKind = "organizer"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditSlotLinkDetailsOriginKind enum.
+func (e AuditAuditSlotLinkDetailsOriginKind) Valid() bool {
+	switch e {
+	case AuditAuditSlotLinkDetailsOriginKindAcceptance:
+		return true
+	case AuditAuditSlotLinkDetailsOriginKindCascade:
+		return true
+	case AuditAuditSlotLinkDetailsOriginKindMatchEdit:
+		return true
+	case AuditAuditSlotLinkDetailsOriginKindOrganizer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditSlotRulingDetailsOp.
+const (
+	Replace AuditAuditSlotRulingDetailsOp = "replace"
+	Revert  AuditAuditSlotRulingDetailsOp = "revert"
+	Set     AuditAuditSlotRulingDetailsOp = "set"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditSlotRulingDetailsOp enum.
+func (e AuditAuditSlotRulingDetailsOp) Valid() bool {
+	switch e {
+	case Replace:
+		return true
+	case Revert:
+		return true
+	case Set:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditTournamentStateDetailsFrom.
+const (
+	AuditAuditTournamentStateDetailsFromRegistration AuditAuditTournamentStateDetailsFrom = "registration"
+	AuditAuditTournamentStateDetailsFromRunning      AuditAuditTournamentStateDetailsFrom = "running"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsFrom enum.
+func (e AuditAuditTournamentStateDetailsFrom) Valid() bool {
+	switch e {
+	case AuditAuditTournamentStateDetailsFromRegistration:
+		return true
+	case AuditAuditTournamentStateDetailsFromRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditTournamentStateDetailsReason.
+const (
+	AuditAuditTournamentStateDetailsReasonDeadline   AuditAuditTournamentStateDetailsReason = "deadline"
+	AuditAuditTournamentStateDetailsReasonGrandFinal AuditAuditTournamentStateDetailsReason = "grand-final"
+	AuditAuditTournamentStateDetailsReasonOrganizer  AuditAuditTournamentStateDetailsReason = "organizer"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsReason enum.
+func (e AuditAuditTournamentStateDetailsReason) Valid() bool {
+	switch e {
+	case AuditAuditTournamentStateDetailsReasonDeadline:
+		return true
+	case AuditAuditTournamentStateDetailsReasonGrandFinal:
+		return true
+	case AuditAuditTournamentStateDetailsReasonOrganizer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditAuditTournamentStateDetailsTo.
+const (
+	AuditAuditTournamentStateDetailsToCancelled AuditAuditTournamentStateDetailsTo = "cancelled"
+	AuditAuditTournamentStateDetailsToCompleted AuditAuditTournamentStateDetailsTo = "completed"
+)
+
+// Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsTo enum.
+func (e AuditAuditTournamentStateDetailsTo) Valid() bool {
+	switch e {
+	case AuditAuditTournamentStateDetailsToCancelled:
+		return true
+	case AuditAuditTournamentStateDetailsToCompleted:
 		return true
 	default:
 		return false
@@ -362,16 +608,20 @@ func (e ListArenasParamsKind) Valid() bool {
 
 // Defines values for ListAuditEventsParamsEntityType.
 const (
-	ListAuditEventsParamsEntityTypeClub   ListAuditEventsParamsEntityType = "club"
-	ListAuditEventsParamsEntityTypeGame   ListAuditEventsParamsEntityType = "game"
-	ListAuditEventsParamsEntityTypeMatch  ListAuditEventsParamsEntityType = "match"
-	ListAuditEventsParamsEntityTypePlayer ListAuditEventsParamsEntityType = "player"
-	ListAuditEventsParamsEntityTypeTag    ListAuditEventsParamsEntityType = "tag"
+	ListAuditEventsParamsEntityTypeArena      ListAuditEventsParamsEntityType = "arena"
+	ListAuditEventsParamsEntityTypeClub       ListAuditEventsParamsEntityType = "club"
+	ListAuditEventsParamsEntityTypeGame       ListAuditEventsParamsEntityType = "game"
+	ListAuditEventsParamsEntityTypeMatch      ListAuditEventsParamsEntityType = "match"
+	ListAuditEventsParamsEntityTypePlayer     ListAuditEventsParamsEntityType = "player"
+	ListAuditEventsParamsEntityTypeTag        ListAuditEventsParamsEntityType = "tag"
+	ListAuditEventsParamsEntityTypeTournament ListAuditEventsParamsEntityType = "tournament"
 )
 
 // Valid indicates whether the value is a known member of the ListAuditEventsParamsEntityType enum.
 func (e ListAuditEventsParamsEntityType) Valid() bool {
 	switch e {
+	case ListAuditEventsParamsEntityTypeArena:
+		return true
 	case ListAuditEventsParamsEntityTypeClub:
 		return true
 	case ListAuditEventsParamsEntityTypeGame:
@@ -381,6 +631,8 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 	case ListAuditEventsParamsEntityTypePlayer:
 		return true
 	case ListAuditEventsParamsEntityTypeTag:
+		return true
+	case ListAuditEventsParamsEntityTypeTournament:
 		return true
 	default:
 		return false
@@ -565,14 +817,14 @@ type AuditEntityDetails struct {
 type AuditEntry struct {
 	Action AuditEntryAction `json:"action"`
 
-	// ActorName Display name of the acting user at read time
-	ActorName string `json:"actor_name"`
+	// ActorName Display name of the acting user at read time; null for system events.
+	ActorName *string `json:"actor_name"`
 
 	// ActorUserId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach).
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails (ADR-26).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -586,7 +838,7 @@ type AuditEntry struct {
 // AuditEntryAction defines model for AuditEntry.Action.
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach).
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails (ADR-26).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -640,6 +892,16 @@ type AuditRenameDetails struct {
 
 // Base58ID Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 type Base58ID = id.ID
+
+// BracketPlansResponse defines model for BracketPlansResponse.
+type BracketPlansResponse struct {
+	Data struct {
+		Cap       int              `json:"cap"`
+		Plans     []TournamentPlan `json:"plans"`
+		Truncated bool             `json:"truncated"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
 
 // Club defines model for Club.
 type Club struct {
@@ -978,6 +1240,9 @@ type Match struct {
 
 	// Score Map of player_id (string) to player score data
 	Score IDMap[MatchPlayer] `json:"score"`
+
+	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
+	Tournament *MatchTournament `json:"tournament,omitempty"`
 }
 
 // MatchCamp A camp arena (ADR-27) a match belongs to
@@ -1003,6 +1268,16 @@ type MatchPlayer struct {
 	Score        float64 `json:"score"`
 }
 
+// MatchTournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, or by the organizer's attach; never changes on edit (association-breaking edits are rejected). The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
+type MatchTournament struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+
+	// SlotId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	SlotId Base58ID `json:"slot_id"`
+}
+
 // MatchWinnerParams defines model for MatchWinnerParams.
 type MatchWinnerParams struct {
 	// AllowOtherPlayers true — a resolving match must include all targets but may include other players; false — the match must consist of exactly the target players.
@@ -1020,6 +1295,33 @@ type MatchesPage struct {
 	// Next Cursor token for the next page; null if no more pages
 	Next   *string `json:"next,omitempty"`
 	Status string  `json:"status"`
+}
+
+// PlanRound One elimination round; promote is uniform across the round.
+type PlanRound struct {
+	Index   int            `json:"index"`
+	Promote int            `json:"promote"`
+	Slots   []PlanSlot     `json:"slots"`
+	Track   PlanRoundTrack `json:"track"`
+}
+
+// PlanRoundTrack defines model for PlanRound.Track.
+type PlanRoundTrack string
+
+// PlanSeat One seat's provenance: draw (round-1 winners seat, filled from the seeded draw), bye (the round-1 remainder, seated in winners round 2 or the grand final), or source (place source_place of the flat plan slot index source_slot).
+type PlanSeat struct {
+	Kind        PlanSeatKind `json:"kind"`
+	SourcePlace *int         `json:"source_place,omitempty"`
+	SourceSlot  *int         `json:"source_slot,omitempty"`
+}
+
+// PlanSeatKind defines model for PlanSeat.Kind.
+type PlanSeatKind string
+
+// PlanSlot defines model for PlanSlot.
+type PlanSlot struct {
+	SeatCount int        `json:"seat_count"`
+	Seats     []PlanSeat `json:"seats"`
 }
 
 // Player defines model for Player.
@@ -1163,6 +1465,81 @@ type Tag struct {
 	Name string   `json:"name"`
 }
 
+// Tournament defines model for Tournament.
+type Tournament struct {
+	CreatedAt          *time.Time            `json:"created_at,omitempty"`
+	Elimination        TournamentElimination `json:"elimination"`
+	Games              []TournamentGame      `json:"games"`
+	GrandFinalDeadline *time.Time            `json:"grand_final_deadline,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+
+	// ParticipantIds Player ids in registration order (list/detail reads)
+	ParticipantIds *[]Base58ID      `json:"participant_ids,omitempty"`
+	Status         TournamentStatus `json:"status"`
+
+	// WinnerPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
+}
+
+// TournamentElimination defines model for Tournament.Elimination.
+type TournamentElimination string
+
+// TournamentStatus defines model for Tournament.Status.
+type TournamentStatus string
+
+// TournamentGame One pool game with its table capacity.
+type TournamentGame struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId     Base58ID `json:"game_id"`
+	MaxPlayers int      `json:"max_players"`
+	MinPlayers int      `json:"min_players"`
+}
+
+// TournamentInput defines model for TournamentInput.
+type TournamentInput struct {
+	Elimination TournamentInputElimination `json:"elimination"`
+
+	// Games The game pool (desired set on update — rewritten wholesale when present).
+	Games *[]TournamentGame `json:"games,omitempty"`
+
+	// GrandFinalDeadline Optional; when it passes without a completed grand final the tournament auto-cancels.
+	GrandFinalDeadline *time.Time `json:"grand_final_deadline,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   *Base58ID `json:"id,omitempty"`
+	Name string    `json:"name"`
+
+	// ParticipantIds The desired participant set on update (diffed when present); the initial set on create.
+	ParticipantIds *[]Base58ID `json:"participant_ids,omitempty"`
+}
+
+// TournamentInputElimination defines model for TournamentInput.Elimination.
+type TournamentInputElimination string
+
+// TournamentList defines model for TournamentList.
+type TournamentList struct {
+	Data   []Tournament `json:"data"`
+	Status string       `json:"status"`
+}
+
+// TournamentPlan A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start.
+type TournamentPlan struct {
+	Elimination TournamentPlanElimination `json:"elimination"`
+	Rounds      []PlanRound               `json:"rounds"`
+}
+
+// TournamentPlanElimination defines model for TournamentPlan.Elimination.
+type TournamentPlanElimination string
+
+// TournamentResponse defines model for TournamentResponse.
+type TournamentResponse struct {
+	Data   Tournament `json:"data"`
+	Status string     `json:"status"`
+}
+
 // UpdateArenasResult defines model for UpdateArenasResult.
 type UpdateArenasResult struct {
 	Data struct {
@@ -1219,6 +1596,95 @@ type AuditAuditCampLinkDetails struct {
 
 // AuditAuditCampLinkDetailsOp defines model for AuditAuditCampLinkDetails.Op.
 type AuditAuditCampLinkDetailsOp string
+
+// AuditAuditSlotLinkDetails Match ↔ slot linkage on the tournament the audit row points at (ADR-26): acceptance links, organizer attach/detach, cascade voids. For voids the origin carries the chain — the triggering match edit (origin_kind match-edit, origin_id = match id) or the upstream slot (origin_kind cascade, origin_id = slot id).
+type AuditAuditSlotLinkDetails struct {
+	// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	MatchId Base58ID                    `json:"match_id"`
+	Op      AuditAuditSlotLinkDetailsOp `json:"op"`
+
+	// OriginId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	OriginId      *Base58ID                           `json:"origin_id,omitempty"`
+	OriginKind    AuditAuditSlotLinkDetailsOriginKind `json:"origin_kind"`
+	SchemaVersion int                                 `json:"schema_version"`
+
+	// SlotId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	SlotId Base58ID `json:"slot_id"`
+}
+
+// AuditAuditSlotLinkDetailsOp defines model for AuditAuditSlotLinkDetails.Op.
+type AuditAuditSlotLinkDetailsOp string
+
+// AuditAuditSlotLinkDetailsOriginKind defines model for AuditAuditSlotLinkDetails.OriginKind.
+type AuditAuditSlotLinkDetailsOriginKind string
+
+// AuditAuditSlotRulingDetails An organizer ruling on one slot of the tournament the audit row points at (ADR-26): the ordered promotion set before (null while the slot was still playing) and after (null on revert to the standings-based result).
+type AuditAuditSlotRulingDetails struct {
+	AfterPlayerIds  *[]Base58ID                   `json:"after_player_ids"`
+	BeforePlayerIds *[]Base58ID                   `json:"before_player_ids"`
+	Op              AuditAuditSlotRulingDetailsOp `json:"op"`
+	SchemaVersion   int                           `json:"schema_version"`
+
+	// SlotId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	SlotId Base58ID `json:"slot_id"`
+}
+
+// AuditAuditSlotRulingDetailsOp defines model for AuditAuditSlotRulingDetails.Op.
+type AuditAuditSlotRulingDetailsOp string
+
+// AuditAuditTournamentConfigDetails Registration-time configuration of the tournament the audit row points at (ADR-26): name, grand-final deadline, game pool, participants — full before → after on every change; create fills the 'to' sides only. Untouched fields stay null.
+type AuditAuditTournamentConfigDetails struct {
+	FromPlayerIds *[]Base58ID `json:"from_player_ids,omitempty"`
+	Games         *struct {
+		From *[]AuditAuditTournamentGameDoc `json:"from,omitempty"`
+		To   *[]AuditAuditTournamentGameDoc `json:"to,omitempty"`
+	} `json:"games,omitempty"`
+	GrandFinalDeadline *struct {
+		From *time.Time `json:"from,omitempty"`
+		To   *time.Time `json:"to,omitempty"`
+	} `json:"grand_final_deadline,omitempty"`
+	Name *struct {
+		From *string `json:"from,omitempty"`
+		To   *string `json:"to,omitempty"`
+	} `json:"name,omitempty"`
+	SchemaVersion int         `json:"schema_version"`
+	ToPlayerIds   *[]Base58ID `json:"to_player_ids,omitempty"`
+}
+
+// AuditAuditTournamentGameDoc defines model for audit_AuditTournamentGameDoc.
+type AuditAuditTournamentGameDoc struct {
+	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	GameId     Base58ID `json:"game_id"`
+	MaxPlayers int      `json:"max_players"`
+	MinPlayers int      `json:"min_players"`
+}
+
+// AuditAuditTournamentStartDetails The start decision (ADR-26): the chosen plan verbatim (game-free and id-free), the stored PRNG seed, and the participants in draw-input order.
+type AuditAuditTournamentStartDetails struct {
+	ParticipantIds *[]Base58ID `json:"participant_ids,omitempty"`
+
+	// Plan A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start.
+	Plan          TournamentPlan `json:"plan"`
+	SchemaVersion int            `json:"schema_version"`
+	Seed          int64          `json:"seed"`
+}
+
+// AuditAuditTournamentStateDetails A lifecycle transition (ADR-26): completed, or cancelled by the organizer / by the grand-final deadline (the latter with a null actor — the system).
+type AuditAuditTournamentStateDetails struct {
+	From          AuditAuditTournamentStateDetailsFrom   `json:"from"`
+	Reason        AuditAuditTournamentStateDetailsReason `json:"reason"`
+	SchemaVersion int                                    `json:"schema_version"`
+	To            AuditAuditTournamentStateDetailsTo     `json:"to"`
+}
+
+// AuditAuditTournamentStateDetailsFrom defines model for AuditAuditTournamentStateDetails.From.
+type AuditAuditTournamentStateDetailsFrom string
+
+// AuditAuditTournamentStateDetailsReason defines model for AuditAuditTournamentStateDetails.Reason.
+type AuditAuditTournamentStateDetailsReason string
+
+// AuditAuditTournamentStateDetailsTo defines model for AuditAuditTournamentStateDetails.To.
+type AuditAuditTournamentStateDetailsTo string
 
 // MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
@@ -1533,6 +1999,9 @@ type AddMatchJSONBody struct {
 
 	// Score Map of player_id (string) to numeric score
 	Score IDMap[float64] `json:"score"`
+
+	// SkipTournamentLink Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side.
+	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -1693,6 +2162,12 @@ type CreateTagJSONRequestBody CreateTagJSONBody
 // PatchTagJSONRequestBody defines body for PatchTag for application/json ContentType.
 type PatchTagJSONRequestBody PatchTagJSONBody
 
+// CreateTournamentJSONRequestBody defines body for CreateTournament for application/json ContentType.
+type CreateTournamentJSONRequestBody = TournamentInput
+
+// UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
+type UpdateTournamentJSONRequestBody = TournamentInput
+
 // PatchUserJSONRequestBody defines body for PatchUser for application/json ContentType.
 type PatchUserJSONRequestBody PatchUserJSONBody
 
@@ -1816,6 +2291,136 @@ func (t *AuditEntry_Details) FromAuditAuditCampLinkDetails(v AuditAuditCampLinkD
 
 // MergeAuditAuditCampLinkDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditCampLinkDetails
 func (t *AuditEntry_Details) MergeAuditAuditCampLinkDetails(v AuditAuditCampLinkDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditTournamentConfigDetails returns the union data inside the AuditEntry_Details as a AuditAuditTournamentConfigDetails
+func (t AuditEntry_Details) AsAuditAuditTournamentConfigDetails() (AuditAuditTournamentConfigDetails, error) {
+	var body AuditAuditTournamentConfigDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditTournamentConfigDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditTournamentConfigDetails
+func (t *AuditEntry_Details) FromAuditAuditTournamentConfigDetails(v AuditAuditTournamentConfigDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditTournamentConfigDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditTournamentConfigDetails
+func (t *AuditEntry_Details) MergeAuditAuditTournamentConfigDetails(v AuditAuditTournamentConfigDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditTournamentStartDetails returns the union data inside the AuditEntry_Details as a AuditAuditTournamentStartDetails
+func (t AuditEntry_Details) AsAuditAuditTournamentStartDetails() (AuditAuditTournamentStartDetails, error) {
+	var body AuditAuditTournamentStartDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditTournamentStartDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditTournamentStartDetails
+func (t *AuditEntry_Details) FromAuditAuditTournamentStartDetails(v AuditAuditTournamentStartDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditTournamentStartDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditTournamentStartDetails
+func (t *AuditEntry_Details) MergeAuditAuditTournamentStartDetails(v AuditAuditTournamentStartDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditTournamentStateDetails returns the union data inside the AuditEntry_Details as a AuditAuditTournamentStateDetails
+func (t AuditEntry_Details) AsAuditAuditTournamentStateDetails() (AuditAuditTournamentStateDetails, error) {
+	var body AuditAuditTournamentStateDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditTournamentStateDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditTournamentStateDetails
+func (t *AuditEntry_Details) FromAuditAuditTournamentStateDetails(v AuditAuditTournamentStateDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditTournamentStateDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditTournamentStateDetails
+func (t *AuditEntry_Details) MergeAuditAuditTournamentStateDetails(v AuditAuditTournamentStateDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditSlotRulingDetails returns the union data inside the AuditEntry_Details as a AuditAuditSlotRulingDetails
+func (t AuditEntry_Details) AsAuditAuditSlotRulingDetails() (AuditAuditSlotRulingDetails, error) {
+	var body AuditAuditSlotRulingDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditSlotRulingDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditSlotRulingDetails
+func (t *AuditEntry_Details) FromAuditAuditSlotRulingDetails(v AuditAuditSlotRulingDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditSlotRulingDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditSlotRulingDetails
+func (t *AuditEntry_Details) MergeAuditAuditSlotRulingDetails(v AuditAuditSlotRulingDetails) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAuditAuditSlotLinkDetails returns the union data inside the AuditEntry_Details as a AuditAuditSlotLinkDetails
+func (t AuditEntry_Details) AsAuditAuditSlotLinkDetails() (AuditAuditSlotLinkDetails, error) {
+	var body AuditAuditSlotLinkDetails
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAuditAuditSlotLinkDetails overwrites any union data inside the AuditEntry_Details as the provided AuditAuditSlotLinkDetails
+func (t *AuditEntry_Details) FromAuditAuditSlotLinkDetails(v AuditAuditSlotLinkDetails) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAuditAuditSlotLinkDetails performs a merge with any union data inside the AuditEntry_Details, using the provided AuditAuditSlotLinkDetails
+func (t *AuditEntry_Details) MergeAuditAuditSlotLinkDetails(v AuditAuditSlotLinkDetails) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -2307,6 +2912,27 @@ type ServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(c *gin.Context, id string)
+	// ListTournaments List tournaments (running/registration first, then finished)
+	// (GET /tournaments)
+	ListTournaments(c *gin.Context)
+	// CreateTournament Create a tournament (status = registration)
+	// (POST /tournaments)
+	CreateTournament(c *gin.Context)
+	// GetTournament Get one tournament (with pool and participants)
+	// (GET /tournaments/{id})
+	GetTournament(c *gin.Context, id string)
+	// UpdateTournament Update the registration-time configuration (name, deadline, pool, participants)
+	// (PUT /tournaments/{id})
+	UpdateTournament(c *gin.Context, id string)
+	// ListTournamentBracketPlans Enumerate the valid bracket shapes for the current participant count and pool
+	// (GET /tournaments/{id}/bracket-plans)
+	ListTournamentBracketPlans(c *gin.Context, id string)
+	// UnregisterFromTournament Withdraw the current user's linked player
+	// (DELETE /tournaments/{id}/registration)
+	UnregisterFromTournament(c *gin.Context, id string)
+	// RegisterInTournament Register the current user's linked player
+	// (POST /tournaments/{id}/registration)
+	RegisterInTournament(c *gin.Context, id string)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(c *gin.Context)
@@ -3847,6 +4473,157 @@ func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
 	siw.Handler.PatchTag(c, id)
 }
 
+// ListTournaments operation middleware
+func (siw *ServerInterfaceWrapper) ListTournaments(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTournaments(c)
+}
+
+// CreateTournament operation middleware
+func (siw *ServerInterfaceWrapper) CreateTournament(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTournament(c)
+}
+
+// GetTournament operation middleware
+func (siw *ServerInterfaceWrapper) GetTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTournament(c, id)
+}
+
+// UpdateTournament operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateTournament(c, id)
+}
+
+// ListTournamentBracketPlans operation middleware
+func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTournamentBracketPlans(c, id)
+}
+
+// UnregisterFromTournament operation middleware
+func (siw *ServerInterfaceWrapper) UnregisterFromTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UnregisterFromTournament(c, id)
+}
+
+// RegisterInTournament operation middleware
+func (siw *ServerInterfaceWrapper) RegisterInTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegisterInTournament(c, id)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(c *gin.Context) {
 
@@ -3977,6 +4754,13 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tags", wrapper.CreateTag)
 	router.DELETE(options.BaseURL+"/tags/:id", wrapper.DeleteTag)
 	router.PATCH(options.BaseURL+"/tags/:id", wrapper.PatchTag)
+	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
+	router.POST(options.BaseURL+"/tournaments", wrapper.CreateTournament)
+	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
+	router.PUT(options.BaseURL+"/tournaments/:id", wrapper.UpdateTournament)
+	router.GET(options.BaseURL+"/tournaments/:id/bracket-plans", wrapper.ListTournamentBracketPlans)
+	router.DELETE(options.BaseURL+"/tournaments/:id/registration", wrapper.UnregisterFromTournament)
+	router.POST(options.BaseURL+"/tournaments/:id/registration", wrapper.RegisterInTournament)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
 }
@@ -7799,6 +8583,510 @@ func (response PatchTag409JSONResponse) VisitPatchTagResponse(w http.ResponseWri
 	return err
 }
 
+type ListTournamentsRequestObject struct {
+}
+
+type ListTournamentsResponseObject interface {
+	VisitListTournamentsResponse(w http.ResponseWriter) error
+}
+
+type ListTournaments200JSONResponse TournamentList
+
+func (response ListTournaments200JSONResponse) VisitListTournamentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournaments400JSONResponse ApiError
+
+func (response ListTournaments400JSONResponse) VisitListTournamentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTournamentRequestObject struct {
+	Body *CreateTournamentJSONRequestBody
+}
+
+type CreateTournamentResponseObject interface {
+	VisitCreateTournamentResponse(w http.ResponseWriter) error
+}
+
+type CreateTournament200JSONResponse TournamentResponse
+
+func (response CreateTournament200JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTournament400JSONResponse ApiError
+
+func (response CreateTournament400JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTournament401JSONResponse ApiError
+
+func (response CreateTournament401JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTournament403JSONResponse ApiError
+
+func (response CreateTournament403JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTournament409JSONResponse ApiError
+
+func (response CreateTournament409JSONResponse) VisitCreateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetTournamentResponseObject interface {
+	VisitGetTournamentResponse(w http.ResponseWriter) error
+}
+
+type GetTournament200JSONResponse TournamentResponse
+
+func (response GetTournament200JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTournament400JSONResponse ApiError
+
+func (response GetTournament400JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTournament404JSONResponse ApiError
+
+func (response GetTournament404JSONResponse) VisitGetTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournamentRequestObject struct {
+	Id   string `json:"id"`
+	Body *UpdateTournamentJSONRequestBody
+}
+
+type UpdateTournamentResponseObject interface {
+	VisitUpdateTournamentResponse(w http.ResponseWriter) error
+}
+
+type UpdateTournament200JSONResponse TournamentResponse
+
+func (response UpdateTournament200JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournament400JSONResponse ApiError
+
+func (response UpdateTournament400JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournament401JSONResponse ApiError
+
+func (response UpdateTournament401JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournament403JSONResponse ApiError
+
+func (response UpdateTournament403JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournament404JSONResponse ApiError
+
+func (response UpdateTournament404JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTournament409JSONResponse ApiError
+
+func (response UpdateTournament409JSONResponse) VisitUpdateTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlansRequestObject struct {
+	Id string `json:"id"`
+}
+
+type ListTournamentBracketPlansResponseObject interface {
+	VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error
+}
+
+type ListTournamentBracketPlans200JSONResponse BracketPlansResponse
+
+func (response ListTournamentBracketPlans200JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlans400JSONResponse ApiError
+
+func (response ListTournamentBracketPlans400JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlans401JSONResponse ApiError
+
+func (response ListTournamentBracketPlans401JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlans403JSONResponse ApiError
+
+func (response ListTournamentBracketPlans403JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlans404JSONResponse ApiError
+
+func (response ListTournamentBracketPlans404JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTournamentBracketPlans409JSONResponse ApiError
+
+func (response ListTournamentBracketPlans409JSONResponse) VisitListTournamentBracketPlansResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnregisterFromTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type UnregisterFromTournamentResponseObject interface {
+	VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error
+}
+
+type UnregisterFromTournament200JSONResponse ApiSuccessMessage
+
+func (response UnregisterFromTournament200JSONResponse) VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnregisterFromTournament401JSONResponse ApiError
+
+func (response UnregisterFromTournament401JSONResponse) VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnregisterFromTournament403JSONResponse ApiError
+
+func (response UnregisterFromTournament403JSONResponse) VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnregisterFromTournament404JSONResponse ApiError
+
+func (response UnregisterFromTournament404JSONResponse) VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnregisterFromTournament409JSONResponse ApiError
+
+func (response UnregisterFromTournament409JSONResponse) VisitUnregisterFromTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterInTournamentRequestObject struct {
+	Id string `json:"id"`
+}
+
+type RegisterInTournamentResponseObject interface {
+	VisitRegisterInTournamentResponse(w http.ResponseWriter) error
+}
+
+type RegisterInTournament200JSONResponse ApiSuccessMessage
+
+func (response RegisterInTournament200JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterInTournament401JSONResponse ApiError
+
+func (response RegisterInTournament401JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterInTournament403JSONResponse ApiError
+
+func (response RegisterInTournament403JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterInTournament404JSONResponse ApiError
+
+func (response RegisterInTournament404JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterInTournament409JSONResponse ApiError
+
+func (response RegisterInTournament409JSONResponse) VisitRegisterInTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListUsersRequestObject struct {
 }
 
@@ -8102,6 +9390,27 @@ type StrictServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
+	// ListTournaments List tournaments (running/registration first, then finished)
+	// (GET /tournaments)
+	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
+	// CreateTournament Create a tournament (status = registration)
+	// (POST /tournaments)
+	CreateTournament(ctx context.Context, request CreateTournamentRequestObject) (CreateTournamentResponseObject, error)
+	// GetTournament Get one tournament (with pool and participants)
+	// (GET /tournaments/{id})
+	GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error)
+	// UpdateTournament Update the registration-time configuration (name, deadline, pool, participants)
+	// (PUT /tournaments/{id})
+	UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error)
+	// ListTournamentBracketPlans Enumerate the valid bracket shapes for the current participant count and pool
+	// (GET /tournaments/{id}/bracket-plans)
+	ListTournamentBracketPlans(ctx context.Context, request ListTournamentBracketPlansRequestObject) (ListTournamentBracketPlansResponseObject, error)
+	// UnregisterFromTournament Withdraw the current user's linked player
+	// (DELETE /tournaments/{id}/registration)
+	UnregisterFromTournament(ctx context.Context, request UnregisterFromTournamentRequestObject) (UnregisterFromTournamentResponseObject, error)
+	// RegisterInTournament Register the current user's linked player
+	// (POST /tournaments/{id}/registration)
+	RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error)
 	// ListUsers List all users
 	// (GET /users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
@@ -9991,6 +11300,198 @@ func (sh *strictHandler) PatchTag(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchTagResponseObject); ok {
 		if err := validResponse.VisitPatchTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTournaments operation middleware
+func (sh *strictHandler) ListTournaments(ctx *gin.Context) {
+	var request ListTournamentsRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTournaments(ctx, request.(ListTournamentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTournaments")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListTournamentsResponseObject); ok {
+		if err := validResponse.VisitListTournamentsResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTournament operation middleware
+func (sh *strictHandler) CreateTournament(ctx *gin.Context) {
+	var request CreateTournamentRequestObject
+
+	var body CreateTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTournament(ctx, request.(CreateTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTournamentResponseObject); ok {
+		if err := validResponse.VisitCreateTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTournament operation middleware
+func (sh *strictHandler) GetTournament(ctx *gin.Context, id string) {
+	var request GetTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTournament(ctx, request.(GetTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetTournamentResponseObject); ok {
+		if err := validResponse.VisitGetTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTournament operation middleware
+func (sh *strictHandler) UpdateTournament(ctx *gin.Context, id string) {
+	var request UpdateTournamentRequestObject
+
+	request.Id = id
+
+	var body UpdateTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTournament(ctx, request.(UpdateTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(UpdateTournamentResponseObject); ok {
+		if err := validResponse.VisitUpdateTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTournamentBracketPlans operation middleware
+func (sh *strictHandler) ListTournamentBracketPlans(ctx *gin.Context, id string) {
+	var request ListTournamentBracketPlansRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTournamentBracketPlans(ctx, request.(ListTournamentBracketPlansRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTournamentBracketPlans")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListTournamentBracketPlansResponseObject); ok {
+		if err := validResponse.VisitListTournamentBracketPlansResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnregisterFromTournament operation middleware
+func (sh *strictHandler) UnregisterFromTournament(ctx *gin.Context, id string) {
+	var request UnregisterFromTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UnregisterFromTournament(ctx, request.(UnregisterFromTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnregisterFromTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(UnregisterFromTournamentResponseObject); ok {
+		if err := validResponse.VisitUnregisterFromTournamentResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RegisterInTournament operation middleware
+func (sh *strictHandler) RegisterInTournament(ctx *gin.Context, id string) {
+	var request RegisterInTournamentRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.RegisterInTournament(ctx, request.(RegisterInTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RegisterInTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(RegisterInTournamentResponseObject); ok {
+		if err := validResponse.VisitRegisterInTournamentResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

@@ -21,7 +21,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 
 type InsertAuditEventParams struct {
 	ID                   id.ID           `json:"id"`
-	ActorUserID          id.ID           `json:"actor_user_id"`
+	ActorUserID          *id.ID          `json:"actor_user_id"`
 	EntityType           string          `json:"entity_type"`
 	EntityID             id.ID           `json:"entity_id"`
 	Action               string          `json:"action"`
@@ -59,7 +59,7 @@ SELECT
     a.details_kind,
     a.details
 FROM audit_log a
-JOIN users u ON u.id = a.actor_user_id
+LEFT JOIN users u ON u.id = a.actor_user_id
 WHERE ($1::text[] IS NULL OR a.entity_type = ANY($1::text[]))
   AND ($2::uuid IS NULL OR a.entity_id = $2::uuid)
   AND (
@@ -82,8 +82,8 @@ type ListAuditEventsParams struct {
 type ListAuditEventsRow struct {
 	ID          id.ID           `json:"id"`
 	CreatedAt   time.Time       `json:"created_at"`
-	ActorUserID id.ID           `json:"actor_user_id"`
-	ActorName   string          `json:"actor_name"`
+	ActorUserID *id.ID          `json:"actor_user_id"`
+	ActorName   pgtype.Text     `json:"actor_name"`
 	EntityType  string          `json:"entity_type"`
 	EntityID    id.ID           `json:"entity_id"`
 	Action      string          `json:"action"`
@@ -94,7 +94,9 @@ type ListAuditEventsRow struct {
 // Latest-first audit feed. Optional entity filter (one or more entity types)
 // and entity_id filter serve both the per-entity history (match view) and the
 // per-type feed (admin tabs — the games tab mixes game and tag events). The
-// cursor is the (created_at, id) row of the last returned event.
+// cursor is the (created_at, id) row of the last returned event. The user
+// join is LEFT since ADR-26: system events (the grand-final-deadline
+// auto-cancel) carry a NULL actor.
 func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams) ([]ListAuditEventsRow, error) {
 	rows, err := q.db.Query(ctx, listAuditEvents,
 		arg.EntityTypes,

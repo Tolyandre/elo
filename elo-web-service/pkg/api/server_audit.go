@@ -114,11 +114,20 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 
 	data := make([]AuditEntry, 0, len(rows))
 	for _, r := range rows {
+		var actorName *string
+		if r.ActorName.Valid {
+			name := r.ActorName.String
+			actorName = &name
+		}
+		var actorID Base58ID
+		if r.ActorUserID != nil {
+			actorID = *r.ActorUserID
+		}
 		entry := AuditEntry{
 			Id:          r.ID,
 			CreatedAt:   r.CreatedAt,
-			ActorUserId: r.ActorUserID,
-			ActorName:   r.ActorName,
+			ActorUserId: actorID,
+			ActorName:   actorName,
 			EntityType:  AuditEntryEntityType(r.EntityType),
 			EntityId:    r.EntityID,
 			Action:      AuditEntryAction(r.Action),
@@ -181,8 +190,189 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 		if err := details.FromAuditMatchUpdateDetails(v); err != nil {
 			return nil, err
 		}
+	case audit.KindArenaCampConf:
+		var v audit.ArenaCampConfigDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		g := AuditAuditArenaCampConfigDetails{SchemaVersion: v.SchemaVersion}
+		if v.Name != nil {
+			g.Name = &struct {
+				From *string `json:"from,omitempty"`
+				To   *string `json:"to,omitempty"`
+			}{From: v.Name.From, To: v.Name.To}
+		}
+		if v.StartsAt != nil {
+			g.StartsAt = &struct {
+				From *time.Time `json:"from,omitempty"`
+				To   *time.Time `json:"to,omitempty"`
+			}{From: auditTime(v.StartsAt.From), To: auditTime(v.StartsAt.To)}
+		}
+		if v.EndsAt != nil {
+			g.EndsAt = &struct {
+				From *time.Time `json:"from,omitempty"`
+				To   *time.Time `json:"to,omitempty"`
+			}{From: auditTime(v.EndsAt.From), To: auditTime(v.EndsAt.To)}
+		}
+		if err := details.FromAuditAuditArenaCampConfigDetails(g); err != nil {
+			return nil, err
+		}
+	case audit.KindCampLink:
+		var v audit.CampLinkDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditCampLinkDetails(AuditAuditCampLinkDetails{
+			MatchId:       Base58ID(v.MatchID),
+			Op:            AuditAuditCampLinkDetailsOp(v.Op),
+			SchemaVersion: v.SchemaVersion,
+		}); err != nil {
+			return nil, err
+		}
+	case audit.KindTournamentConfig:
+		var v audit.TournamentConfigDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		g := AuditAuditTournamentConfigDetails{SchemaVersion: v.SchemaVersion}
+		if v.Name != nil {
+			g.Name = &struct {
+				From *string `json:"from,omitempty"`
+				To   *string `json:"to,omitempty"`
+			}{From: v.Name.From, To: v.Name.To}
+		}
+		if v.GrandFinalDeadline != nil {
+			g.GrandFinalDeadline = &struct {
+				From *time.Time `json:"from,omitempty"`
+				To   *time.Time `json:"to,omitempty"`
+			}{From: auditTime(v.GrandFinalDeadline.From), To: auditTime(v.GrandFinalDeadline.To)}
+		}
+		if v.Games != nil {
+			from := tournamentGameDocs(v.Games.From)
+			to := tournamentGameDocs(v.Games.To)
+			g.Games = &struct {
+				From *[]AuditAuditTournamentGameDoc `json:"from,omitempty"`
+				To   *[]AuditAuditTournamentGameDoc `json:"to,omitempty"`
+			}{From: from, To: to}
+		}
+		if v.FromPlayerIDs != nil && v.ToPlayerIDs != nil {
+			from := base58IDs(v.FromPlayerIDs)
+			to := base58IDs(v.ToPlayerIDs)
+			g.FromPlayerIds = &from
+			g.ToPlayerIds = &to
+		}
+		if err := details.FromAuditAuditTournamentConfigDetails(g); err != nil {
+			return nil, err
+		}
+	case audit.KindTournamentStart:
+		var v audit.TournamentStartDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		var plan TournamentPlan
+		if err := json.Unmarshal(v.Plan, &plan); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditTournamentStartDetails(AuditAuditTournamentStartDetails{
+			ParticipantIds: base58IDsPtr(v.ParticipantIDs),
+			Plan:           plan,
+			SchemaVersion:  v.SchemaVersion,
+			Seed:           v.Seed,
+		}); err != nil {
+			return nil, err
+		}
+	case audit.KindTournamentState:
+		var v audit.TournamentStateDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditTournamentStateDetails(AuditAuditTournamentStateDetails{
+			From:          AuditAuditTournamentStateDetailsFrom(v.From),
+			Reason:        AuditAuditTournamentStateDetailsReason(v.Reason),
+			SchemaVersion: v.SchemaVersion,
+			To:            AuditAuditTournamentStateDetailsTo(v.To),
+		}); err != nil {
+			return nil, err
+		}
+	case audit.KindSlotRuling:
+		var v audit.SlotRulingDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		if err := details.FromAuditAuditSlotRulingDetails(AuditAuditSlotRulingDetails{
+			AfterPlayerIds:  base58IDsPtr(v.AfterPlayerIDs),
+			BeforePlayerIds: base58IDsPtr(v.BeforePlayerIDs),
+			Op:              AuditAuditSlotRulingDetailsOp(v.Op),
+			SchemaVersion:   v.SchemaVersion,
+			SlotId:          Base58ID(v.SlotID),
+		}); err != nil {
+			return nil, err
+		}
+	case audit.KindSlotLink:
+		var v audit.SlotLinkDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		g := AuditAuditSlotLinkDetails{
+			MatchId:       Base58ID(v.MatchID),
+			Op:            AuditAuditSlotLinkDetailsOp(v.Op),
+			OriginKind:    AuditAuditSlotLinkDetailsOriginKind(v.OriginKind),
+			SchemaVersion: v.SchemaVersion,
+			SlotId:        Base58ID(v.SlotID),
+		}
+		if v.OriginID != "" {
+			origin := Base58ID(v.OriginID)
+			g.OriginId = &origin
+		}
+		if err := details.FromAuditAuditSlotLinkDetails(g); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, audit.ErrUnknownKind
 	}
 	return &details, nil
+}
+
+// auditTime parses the RFC3339 timestamps stored in details value changes;
+// a malformed value becomes null instead of failing the whole feed.
+func auditTime(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, *s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
+func base58IDs(ids []string) []Base58ID {
+	out := make([]Base58ID, len(ids))
+	for i, v := range ids {
+		out[i] = Base58ID(v)
+	}
+	return out
+}
+
+func base58IDsPtr(ids []string) *[]Base58ID {
+	if ids == nil {
+		return nil
+	}
+	out := base58IDs(ids)
+	return &out
+}
+
+func tournamentGameDocs(docs []audit.TournamentGameDoc) *[]AuditAuditTournamentGameDoc {
+	if docs == nil {
+		return nil
+	}
+	out := make([]AuditAuditTournamentGameDoc, len(docs))
+	for i, d := range docs {
+		out[i] = AuditAuditTournamentGameDoc{
+			GameId:     Base58ID(d.GameID),
+			MinPlayers: d.MinPlayers,
+			MaxPlayers: d.MaxPlayers,
+		}
+	}
+	return &out
 }
