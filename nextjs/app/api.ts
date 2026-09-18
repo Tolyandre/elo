@@ -152,6 +152,15 @@ export type TableSubmitInput =
 export type PlayerStats = components["schemas"]["PlayerStats"];
 export type GameEloStat = components["schemas"]["GameEloStat"];
 export type GameMatchStat = components["schemas"]["GameMatchStat"];
+export type Tournament = components["schemas"]["Tournament"];
+export type TournamentInput = components["schemas"]["TournamentInput"];
+export type TournamentGame = components["schemas"]["TournamentGame"];
+export type TournamentPlan = components["schemas"]["TournamentPlan"];
+export type PlanRound = components["schemas"]["PlanRound"];
+export type Bracket = components["schemas"]["Bracket"];
+export type BracketRound = components["schemas"]["BracketRound"];
+export type BracketSlot = components["schemas"]["BracketSlot"];
+export type BracketSeat = components["schemas"]["BracketSeat"];
 
 // ─── Frontend-specific types (differ from raw API response) ───────────────────
 
@@ -166,6 +175,7 @@ export type PlayerScore = {
 };
 
 export type MatchCamp = components["schemas"]["MatchCamp"];
+export type MatchTournament = components["schemas"]["MatchTournament"];
 
 export type Match = {
     id: Base58ID;
@@ -183,6 +193,8 @@ export type Match = {
     has_markets: boolean;
     /** Camp arenas (ADR-27) the match belongs to — frozen at creation. */
     camps: MatchCamp[];
+    /** The bracket slot the match counts for (ADR-26); null when unlinked. */
+    tournament?: MatchTournament | null;
     /** Set when the match was created via a calculator; selects the calculator UI in history mode. */
     calculator_kind?: string | null;
     /** Intermediate calculator state (opaque to the API layer). */
@@ -330,6 +342,7 @@ function mapMatch(m: components["schemas"]["Match"]): Match {
         dateISO: m.date ?? null,
         has_markets: m.has_markets,
         camps: m.camps ?? [],
+        tournament: m.tournament ?? null,
         // idcodec middleware already rewrote player ids inside calculator_data to
         // short form on the way out, so no client-side transformation is needed.
         calculator_kind: m.calculator_kind ?? null,
@@ -423,6 +436,7 @@ export async function addMatchPromise(payload: {
     score: Record<string, number>;
     date?: string;
     camp_arena_ids?: Base58ID[];
+    skip_tournament_link?: boolean;
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -434,6 +448,8 @@ export async function updateMatchPromise(matchId: Base58ID, payload: {
     score: Record<string, number>;
     date: string;
     camp_arena_ids?: Base58ID[];
+    /** The desired tournament-link state (ADR-26): true — out of the bracket, false — counted. Omitted — unchanged. */
+    skip_tournament_link?: boolean;
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -818,6 +834,89 @@ export async function deleteTablePromise(tableId: Base58ID, matchId?: string): P
             path: { id: tableId },
             ...(matchId ? { query: { match_id: matchId } } : {}),
         },
+    }));
+}
+
+// ─── Tournaments / brackets (ADR-26) ─────────────────────────────────────────
+
+export async function getTournamentsPromise(): Promise<Tournament[]> {
+    return (await unwrap(client.GET("/tournaments"))).data;
+}
+
+export async function getTournamentPromise(id: Base58ID): Promise<Tournament> {
+    return (await unwrap(client.GET("/tournaments/{id}", { params: { path: { id } } }))).data;
+}
+
+export async function createTournamentPromise(payload: {
+    name: string;
+    elimination: "single" | "double";
+    grand_final_deadline?: string | null;
+    games?: TournamentGame[];
+    participant_ids?: Base58ID[];
+}): Promise<Tournament> {
+    return (await unwrap(client.POST("/tournaments", { body: { id: newId(), ...payload } }))).data;
+}
+
+export async function updateTournamentPromise(id: Base58ID, payload: TournamentInput): Promise<Tournament> {
+    return (await unwrap(client.PUT("/tournaments/{id}", { params: { path: { id } }, body: payload }))).data;
+}
+
+export async function registerInTournamentPromise(id: Base58ID) {
+    await unwrap(client.POST("/tournaments/{id}/registration", { params: { path: { id } } }));
+}
+
+export async function unregisterFromTournamentPromise(id: Base58ID) {
+    await unwrap(client.DELETE("/tournaments/{id}/registration", { params: { path: { id } } }));
+}
+
+export async function getTournamentBracketPlansPromise(id: Base58ID): Promise<{
+    plans: TournamentPlan[];
+    truncated: boolean;
+    cap: number;
+}> {
+    return (await unwrap(client.GET("/tournaments/{id}/bracket-plans", { params: { path: { id } } }))).data;
+}
+
+export async function startTournamentPromise(id: Base58ID, plan: TournamentPlan) {
+    await unwrap(client.POST("/tournaments/{id}/start", { params: { path: { id } }, body: { plan } }));
+}
+
+export async function cancelTournamentPromise(id: Base58ID) {
+    await unwrap(client.POST("/tournaments/{id}/cancel", { params: { path: { id } } }));
+}
+
+export async function getTournamentBracketPromise(id: Base58ID): Promise<Bracket> {
+    return (await unwrap(client.GET("/tournaments/{id}/bracket", { params: { path: { id } } }))).data;
+}
+
+export async function adjustTournamentSlotPromise(
+    id: Base58ID,
+    sid: Base58ID,
+    payload: { game_id?: Base58ID; seat_count?: number },
+) {
+    await unwrap(client.PATCH("/tournaments/{id}/slots/{sid}", {
+        params: { path: { id, sid } },
+        body: payload,
+    }));
+}
+
+export async function attachTournamentSlotMatchPromise(id: Base58ID, sid: Base58ID, match_id: Base58ID) {
+    await unwrap(client.POST("/tournaments/{id}/slots/{sid}/matches", {
+        params: { path: { id, sid } },
+        body: { match_id },
+    }));
+}
+
+export async function detachTournamentSlotMatchPromise(id: Base58ID, sid: Base58ID, mid: Base58ID) {
+    await unwrap(client.DELETE("/tournaments/{id}/slots/{sid}/matches/{mid}", {
+        params: { path: { id, sid, mid } },
+    }));
+}
+
+export async function setTournamentSlotRulingPromise(id: Base58ID, sid: Base58ID, player_ids: Base58ID[]) {
+    await unwrap(client.POST("/tournaments/{id}/slots/{sid}/ruling", {
+        params: { path: { id, sid } },
+        body: { player_ids },
     }));
 }
 

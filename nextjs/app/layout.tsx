@@ -14,6 +14,7 @@ import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
 import { TagsProvider } from "./tagsContext";
 import { CampsProvider } from "./arenas/campsContext";
+import { TournamentsProvider } from "./tournaments/tournamentsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { EnvBanner } from "@/components/env-banner";
@@ -64,6 +65,7 @@ export default function RootLayout({
             <ClubsProvider>
             <TagsProvider>
             <CampsProvider>
+            <TournamentsProvider>
             <MatchesProvider>
               <PlayersProvider>
                 <OfflineProvider>
@@ -110,6 +112,7 @@ export default function RootLayout({
                 </OfflineProvider>
               </PlayersProvider>
             </MatchesProvider>
+            </TournamentsProvider>
             </CampsProvider>
             </TagsProvider>
             </ClubsProvider>

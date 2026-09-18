@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime } from "@/lib/datetime";
+import { Trophy } from "lucide-react";
 
 type MatchCardProps = {
   match: Match;
@@ -128,11 +129,22 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
           ))}
         </ul>
 
-        {match.camps.length > 0 && (
+        {(match.camps.length > 0 || match.tournament) && (
           <div className="mt-3 flex flex-wrap gap-1">
             {match.camps.map((c) => (
               <Badge key={c.id} variant="secondary">{c.name}</Badge>
             ))}
+            {match.tournament && (
+              <Link
+                href={`/tournaments/view?id=${match.tournament.id}`}
+                onClick={(e) => clickable && e.stopPropagation()}
+              >
+                <Badge variant="outline" className="gap-1">
+                  <Trophy className="h-3 w-3" />
+                  {match.tournament.name}
+                </Badge>
+              </Link>
+            )}
           </div>
         )}
       </CardContent>

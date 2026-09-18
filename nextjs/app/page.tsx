@@ -4,14 +4,16 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
+import { useTournaments } from "@/app/tournaments/tournamentsContext";
 
 /**
  * Compact «Сейчас» block above the global arena: plain links to the camps
- * whose window contains today (from the preloaded camp list, ADR-27). Bracket
- * tournaments append their links here in ADR-26's UI phase.
+ * whose window contains today (ADR-27) and the tournaments currently in
+ * registration or running (ADR-26) — from the preloaded lists.
  */
-function NowCamps() {
+function NowBlock() {
     const { camps } = useCamps();
+    const { activeTournaments } = useTournaments();
     // Frozen at mount, same as the arenas page's open/ended split.
     const [now] = useState(() => new Date());
     const active = useMemo(
@@ -23,16 +25,20 @@ function NowCamps() {
             ),
         [camps, now],
     );
-    if (active.length === 0) return null;
+    if (active.length === 0 && activeTournaments.length === 0) return null;
+    const links = [
+        ...active.map((c) => ({ key: c.id, href: `/arenas/view?id=${c.id}`, name: c.name })),
+        ...activeTournaments.map((t) => ({ key: t.id, href: `/tournaments/view?id=${t.id}`, name: t.name })),
+    ];
     return (
         <div className="max-w-sm mx-auto pt-1">
             <p>
                 <span className="font-semibold">Сейчас:</span>{" "}
-                {active.map((c, i) => (
-                    <span key={c.id}>
+                {links.map((l, i) => (
+                    <span key={l.key}>
                         {i > 0 && ", "}
-                        <Link href={`/arenas/view?id=${c.id}`} className="underline">
-                            {c.name}
+                        <Link href={l.href} className="underline">
+                            {l.name}
                         </Link>
                     </span>
                 ))}
@@ -49,7 +55,7 @@ function NowCamps() {
 export default function MainPage() {
     return (
         <>
-            <NowCamps />
+            <NowBlock />
             <ArenaView />
         </>
     );

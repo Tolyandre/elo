@@ -43,6 +43,13 @@ export type PendingMatch = PendingBase & {
     /** Server camp arena ids (ADR-27) this match belongs to (camps are never created offline). */
     campArenaIds: Base58ID[];
     /**
+     * The queued tournament-checkbox state (ADR-26): true — the match asked to
+     * stay out of the bracket. The association itself is decided server-side
+     * at the sync write (fitting is verified there); only the explicit opt-out
+     * travels with the queue.
+     */
+    skipTournamentLink?: boolean;
+    /**
      * Calculator state captured when the match was created from a calculator
      * (e.g. Skull King). Forwarded on sync so the round-by-round breakdown
      * survives an offline save — see ADR-09.

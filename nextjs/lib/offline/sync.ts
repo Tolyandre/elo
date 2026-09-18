@@ -22,6 +22,7 @@ export type SyncApi = {
         score: Record<string, number>;
         date: string;
         camp_arena_ids: Base58ID[];
+        skip_tournament_link?: boolean;
         calculator_kind?: string | null;
         calculator_data?: Record<string, unknown> | null;
     }): Promise<SyncCallResult<{ id: Base58ID }>>;
@@ -185,6 +186,9 @@ export async function syncOffline(
                 score: match.score,
                 date: clampToNow(match.createdAt, now()),
                 camp_arena_ids: match.campArenaIds ?? [],
+                // The explicit opt-out only travels when asked for; without it
+                // the server decides bracket acceptance at this write (ADR-26).
+                ...(match.skipTournamentLink ? { skip_tournament_link: true } : {}),
                 calculator_kind: match.calculatorKind ?? null,
                 calculator_data: match.calculatorData ?? null,
             });

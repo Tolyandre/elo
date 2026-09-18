@@ -112,6 +112,38 @@ describe('syncOffline', () => {
         expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ camp_arena_ids: ['7', '9'] }));
     });
 
+    it('forwards skip_tournament_link only when the match asked to stay out', async () => {
+        const api = okApi();
+        const store = makeStore({
+            matches: [
+                {
+                    clientId: uuidv7() as Base58ID,
+                    createdAt: '2026-06-01T11:00:00Z',
+                    status: 'pending',
+                    gameId: SERVER_GAME_ID,
+                    score: { '1': 1, '2': 2 },
+                    // Unchecked checkbox queued offline: the opt-out must
+                    // survive until the sync write (ADR-26).
+                    skipTournamentLink: true,
+                },
+                {
+                    clientId: uuidv7() as Base58ID,
+                    createdAt: '2026-06-01T11:01:00Z',
+                    status: 'pending',
+                    gameId: SERVER_GAME_ID,
+                    score: { '1': 3, '2': 4 },
+                    // No flag: acceptance is decided server-side at the write.
+                },
+            ],
+        });
+
+        await syncOffline(store, api, noopPersist);
+
+        const calls = vi.mocked(api.addMatch).mock.calls;
+        expect(calls[0][0]).toEqual(expect.objectContaining({ skip_tournament_link: true }));
+        expect(calls[1][0]).not.toHaveProperty('skip_tournament_link');
+    });
+
     it('syncs in createdAt order', async () => {
         const api = okApi();
         const store = makeStore({

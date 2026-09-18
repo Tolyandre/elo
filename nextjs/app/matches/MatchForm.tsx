@@ -10,6 +10,7 @@ import { useOffline } from "../offline/OfflineContext";
 import { Match, updateMatchPromise } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
 import { useCampSelection, type CampOverrides } from "@/hooks/useCampSelection";
+import { useTournamentSlotFit } from "@/hooks/useTournamentSlotFit";
 import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
@@ -83,6 +84,11 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     // The match's current camps on edit — the pre-checked base set, seeded
     // once from the edited match. Links are editable (ADR-27, revised).
     const [campBaseIds, setCampBaseIds] = useSessionStorage<Base58ID[]>(`match-form:${draftKey}:camp-base`, []);
+    // The tournament checkbox (ADR-26): default checked on create; on edit it
+    // starts from the match's current link state and stays editable — uncheck
+    // sends skip_tournament_link: true (detach), check sends false (attach to
+    // the fitting playing slot); the server always re-verifies.
+    const [tournamentChecked, setTournamentChecked] = useSessionStorage<boolean>(`match-form:${draftKey}:tournament-checked`, true);
     const [success, setSuccess] = useState(false);
     const [errors, setErrors] = useState<Record<string, boolean>>({});
     const [bottomErrorMessage, setBottomErrorMessage] = useState("");
@@ -100,6 +106,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         sessionStorage.removeItem(`match-form:${draftKey}:seeded`);
         sessionStorage.removeItem(`match-form:${draftKey}:camp-overrides`);
         sessionStorage.removeItem(`match-form:${draftKey}:camp-base`);
+        sessionStorage.removeItem(`match-form:${draftKey}:tournament-checked`);
     };
 
     const resolvePlayerName = (id: string): string => {
@@ -135,6 +142,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             setSelectedGameId(editPending.gameId);
             setEditDate(toDatetimeLocal(new Date(editPending.createdAt)));
             setOriginalDateISO(new Date(editPending.createdAt).toISOString());
+            setTournamentChecked(!(editPending.skipTournamentLink ?? false));
         } else if (editSaved) {
             setParticipants(
                 Object.entries(editSaved.score).map(([pid, data]) => ({
@@ -148,6 +156,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             // Prefer the raw server string (µs precision); the Date fallback
             // truncates to milliseconds.
             setOriginalDateISO(editSaved.dateISO ?? (editSaved.date ? editSaved.date.toISOString() : ""));
+            setTournamentChecked(editSaved.tournament != null);
         }
         setSeeded(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,6 +183,21 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         overrides: campOverrides,
         setOverrides: setCampOverrides,
     });
+
+    // Tournament slot fit (ADR-26): whether the current roster+game exactly
+    // match a playing slot of a running tournament — the checkbox offer.
+    const slotFit = useTournamentSlotFit(playerIds, selectedGameId);
+    // On a saved-edit the checkbox is also offered for a linked match (to
+    // uncheck it); otherwise it needs a fitting slot. A pending (queued)
+    // match keeps its checkbox: the association is not decided until sync.
+    const tournamentVisible = editPending
+        ? true
+        : editSaved
+            ? editSaved.tournament != null || slotFit.fits
+            : slotFit.fits;
+    const tournamentNames = editSaved?.tournament
+        ? [editSaved.tournament.name]
+        : slotFit.tournamentNames;
 
     // Seed the base set once from the edited match: the checkboxes start
     // pre-checked with the match's camps and stay editable (ADR-27, revised).
@@ -234,6 +258,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     // The desired camp set (ADR-27, revised): the server diffs
                     // it against the stored links (attach/detach, audited).
                     camp_arena_ids: campIdsToSubmit(),
+                    // The desired tournament-link state (ADR-26): omitted when
+                    // the checkbox is not offered at all.
+                    ...(tournamentVisible ? { skip_tournament_link: !tournamentChecked } : {}),
                 });
                 clearDraft();
                 invalidateMatches();
@@ -248,13 +275,21 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     score,
                     createdAt: unchangedEditDateISO(editDate, originalDateISO) ?? new Date(editDate).toISOString(),
                     campArenaIds: campIdsToSubmit(),
+                    skipTournamentLink: !tournamentChecked,
                 });
                 clearDraft();
                 router.push(`/matches/view?id=${encodeURIComponent(editPending.clientId)}`);
                 return;
             }
 
-            await submitMatch({ game_id: selectedGameId, score, camp_arena_ids: campIdsToSubmit() });
+            await submitMatch({
+                game_id: selectedGameId,
+                score,
+                camp_arena_ids: campIdsToSubmit(),
+                // The explicit opt-out only when asked for; without it the
+                // server links the match at the write when it fits (ADR-26).
+                ...(tournamentVisible ? { skip_tournament_link: !tournamentChecked } : {}),
+            });
             setSuccess(true);
             clearDraft();
             // The match is queued under its final id; the sync (triggered right
@@ -322,6 +357,24 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 checked={checkedCampIds}
                 onToggle={toggleCamp}
             />
+            {tournamentVisible && (
+                <div>
+                    <h2 className="font-semibold mb-2">Турнир:</h2>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4"
+                            checked={tournamentChecked}
+                            onChange={(e) => setTournamentChecked(e.target.checked)}
+                        />
+                        <span>
+                            {tournamentNames.length > 0
+                                ? `Засчитать в турнир: ${tournamentNames.join(", ")}`
+                                : "Засчитать в турнир (если подходит под стол)"}
+                        </span>
+                    </label>
+                </div>
+            )}
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
                 <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} activeCampIds={checkedCampIds} />
