@@ -340,6 +340,16 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		}
 	}
 
+	// ADR-26: a tournament-linked match keeps its exact player set and game —
+	// editing never silently changes whether the match counts for the bracket
+	// (the organizer detaches first). Scores, date and calculator data stay
+	// freely editable below; a non-linked match can never become linked here.
+	if s.Tournaments != nil {
+		if err := s.Tournaments.CheckAssociationEditable(ctx, q, matchID, gameID, playerIDsOf(playerScores)); err != nil {
+			return db.Match{}, err
+		}
+	}
+
 	// Capture the arenas containing the match BEFORE the row changes — after a
 	// date/game change they need a recalculation even when the new state no
 	// longer contains them.
@@ -411,6 +421,15 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	// run before the drain below: the camp replay reads camp_matches.
 	if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
 		return db.Match{}, err
+	}
+
+	// ADR-26: scores changed → points recompute → completion re-evaluates →
+	// possibly a different promotion set (with the cascade invalidation) —
+	// still inside the match-write transaction, before the arena drain.
+	if s.Tournaments != nil {
+		if err := s.Tournaments.OnMatchChanged(ctx, q, matchID, opts.ActorUserID); err != nil {
+			return db.Match{}, err
+		}
 	}
 
 	// ADR-24: update every arena whose membership the edit affects — the

@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elo/audit/tournament-state.v1.json",
   "title": "Audit tournament state details (v1)",
-  "description": "A lifecycle transition of the tournament identified by the audit row's entity_id (completed, cancelled by the organizer, or cancelled by the grand-final deadline — the latter with a NULL actor: the system).",
+  "description": "A lifecycle transition of the tournament identified by the audit row's entity_id (completed, cancelled by the organizer or the grand-final deadline — the latter with a NULL actor: the system — or reverted to running by an edit cascade that invalidated the champion).",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "from", "to", "reason"],
   "properties": {
     "schema_version": { "const": 1 },
-    "from": { "type": "string", "enum": ["registration", "running"] },
-    "to": { "type": "string", "enum": ["completed", "cancelled"] },
-    "reason": { "type": "string", "enum": ["organizer", "deadline", "grand-final"] }
+    "from": { "type": "string", "enum": ["registration", "running", "completed", "cancelled"] },
+    "to": { "type": "string", "enum": ["registration", "running", "completed", "cancelled"] },
+    "reason": { "type": "string", "enum": ["organizer", "deadline", "grand-final", "cascade"] }
   }
 }

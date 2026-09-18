@@ -90,3 +90,8 @@ SELECT tournament_id, game_id, min_players, max_players
 FROM tournament_games
 WHERE tournament_id = $1
 ORDER BY game_id;
+
+-- name: ClearTournamentWinner :exec
+-- The champion is invalidated by a post-completion bracket change (an edit
+-- cascade); the tournament re-runs its final and completes again.
+UPDATE tournaments SET winner_player_id = NULL WHERE id = $1;

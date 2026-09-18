@@ -262,6 +262,7 @@ const (
 	StateReasonOrganizer = "organizer"
 	StateReasonDeadline  = "deadline"
 	StateReasonFinal     = "grand-final"
+	StateReasonCascade   = "cascade" // a completed tournament reverted by an edit cascade
 )
 
 // TournamentStateDetails records a lifecycle transition (completed, or

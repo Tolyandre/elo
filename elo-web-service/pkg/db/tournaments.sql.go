@@ -62,6 +62,17 @@ func (q *Queries) AddTournamentParticipant(ctx context.Context, arg AddTournamen
 	return err
 }
 
+const clearTournamentWinner = `-- name: ClearTournamentWinner :exec
+UPDATE tournaments SET winner_player_id = NULL WHERE id = $1
+`
+
+// The champion is invalidated by a post-completion bracket change (an edit
+// cascade); the tournament re-runs its final and completes again.
+func (q *Queries) ClearTournamentWinner(ctx context.Context, argID id.ID) error {
+	_, err := q.db.Exec(ctx, clearTournamentWinner, argID)
+	return err
+}
+
 const countTournamentParticipants = `-- name: CountTournamentParticipants :one
 SELECT COUNT(*)::int AS count FROM tournament_participants WHERE tournament_id = $1
 `

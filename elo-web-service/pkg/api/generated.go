@@ -575,6 +575,8 @@ func (e AuditAuditSlotRulingDetailsOp) Valid() bool {
 
 // Defines values for AuditAuditTournamentStateDetailsFrom.
 const (
+	AuditAuditTournamentStateDetailsFromCancelled    AuditAuditTournamentStateDetailsFrom = "cancelled"
+	AuditAuditTournamentStateDetailsFromCompleted    AuditAuditTournamentStateDetailsFrom = "completed"
 	AuditAuditTournamentStateDetailsFromRegistration AuditAuditTournamentStateDetailsFrom = "registration"
 	AuditAuditTournamentStateDetailsFromRunning      AuditAuditTournamentStateDetailsFrom = "running"
 )
@@ -582,6 +584,10 @@ const (
 // Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsFrom enum.
 func (e AuditAuditTournamentStateDetailsFrom) Valid() bool {
 	switch e {
+	case AuditAuditTournamentStateDetailsFromCancelled:
+		return true
+	case AuditAuditTournamentStateDetailsFromCompleted:
+		return true
 	case AuditAuditTournamentStateDetailsFromRegistration:
 		return true
 	case AuditAuditTournamentStateDetailsFromRunning:
@@ -593,6 +599,7 @@ func (e AuditAuditTournamentStateDetailsFrom) Valid() bool {
 
 // Defines values for AuditAuditTournamentStateDetailsReason.
 const (
+	AuditAuditTournamentStateDetailsReasonCascade    AuditAuditTournamentStateDetailsReason = "cascade"
 	AuditAuditTournamentStateDetailsReasonDeadline   AuditAuditTournamentStateDetailsReason = "deadline"
 	AuditAuditTournamentStateDetailsReasonGrandFinal AuditAuditTournamentStateDetailsReason = "grand-final"
 	AuditAuditTournamentStateDetailsReasonOrganizer  AuditAuditTournamentStateDetailsReason = "organizer"
@@ -601,6 +608,8 @@ const (
 // Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsReason enum.
 func (e AuditAuditTournamentStateDetailsReason) Valid() bool {
 	switch e {
+	case AuditAuditTournamentStateDetailsReasonCascade:
+		return true
 	case AuditAuditTournamentStateDetailsReasonDeadline:
 		return true
 	case AuditAuditTournamentStateDetailsReasonGrandFinal:
@@ -614,8 +623,10 @@ func (e AuditAuditTournamentStateDetailsReason) Valid() bool {
 
 // Defines values for AuditAuditTournamentStateDetailsTo.
 const (
-	AuditAuditTournamentStateDetailsToCancelled AuditAuditTournamentStateDetailsTo = "cancelled"
-	AuditAuditTournamentStateDetailsToCompleted AuditAuditTournamentStateDetailsTo = "completed"
+	AuditAuditTournamentStateDetailsToCancelled    AuditAuditTournamentStateDetailsTo = "cancelled"
+	AuditAuditTournamentStateDetailsToCompleted    AuditAuditTournamentStateDetailsTo = "completed"
+	AuditAuditTournamentStateDetailsToRegistration AuditAuditTournamentStateDetailsTo = "registration"
+	AuditAuditTournamentStateDetailsToRunning      AuditAuditTournamentStateDetailsTo = "running"
 )
 
 // Valid indicates whether the value is a known member of the AuditAuditTournamentStateDetailsTo enum.
@@ -624,6 +635,10 @@ func (e AuditAuditTournamentStateDetailsTo) Valid() bool {
 	case AuditAuditTournamentStateDetailsToCancelled:
 		return true
 	case AuditAuditTournamentStateDetailsToCompleted:
+		return true
+	case AuditAuditTournamentStateDetailsToRegistration:
+		return true
+	case AuditAuditTournamentStateDetailsToRunning:
 		return true
 	default:
 		return false

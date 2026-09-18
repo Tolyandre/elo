@@ -48,6 +48,9 @@ type Querier interface {
 	// Invalidate the seat caches fed by a source slot whose promotion set was
 	// rewritten or voided (the downstream slot re-derives on its next completion).
 	ClearSlotSeatCaches(ctx context.Context, sourceSlotID id.ID) error
+	// The champion is invalidated by a post-completion bracket change (an edit
+	// cascade); the tournament re-runs its final and completes again.
+	ClearTournamentWinner(ctx context.Context, argID id.ID) error
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (per the membership function) within

@@ -26,6 +26,11 @@ type ITournamentPlay interface {
 	// slot (same game, exactly the seated players) and re-evaluates that slot.
 	// A match that fits nothing stays unlinked. Runs inside the match-write tx.
 	AcceptMatch(ctx context.Context, q *db.Queries, matchID, gameID id.ID, playerIDs []id.ID, actor id.ID) error
+	// CheckAssociationEditable rejects association-breaking edits (409): a
+	// linked match keeps its exact player set and game.
+	CheckAssociationEditable(ctx context.Context, q *db.Queries, matchID, gameID id.ID, playerIDs []id.ID) error
+	// OnMatchChanged re-evaluates the slot owning an edited match.
+	OnMatchChanged(ctx context.Context, q *db.Queries, matchID, actor id.ID) error
 }
 
 // acceptanceCandidate rows arrive in the deterministic acceptance order
@@ -142,7 +147,13 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 	// Downstream: refill (or clear) the seat caches fed by this slot, then
 	// void every downstream slot that already recorded something — its matches
 	// were played by the wrong participants and must be consciously re-played
-	// or re-attached (re-acceptance is deliberately not automatic).
+	// or re-attached (re-acceptance is deliberately not automatic). The direct
+	// voids carry the triggering event in the audit origin chain; deeper ones
+	// carry the upstream slot whose change cascaded.
+	directKind, directID := originKind, originID
+	if directKind == "" {
+		directKind, directID = audit.LinkOriginCascade, string(slotID)
+	}
 	downstream, err := q.ListSlotsBySource(ctx, slotID)
 	if err != nil {
 		return fmt.Errorf("list downstream slots: %w", err)
@@ -157,12 +168,19 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 				return fmt.Errorf("clear seat caches: %w", err)
 			}
 		}
-		if err := s.voidSlotIfDirty(ctx, q, actor, d, audit.LinkOriginCascade, string(slotID)); err != nil {
+		if err := s.voidSlotIfDirty(ctx, q, actor, d, directKind, directID); err != nil {
 			return err
 		}
 		if err := s.refreshDownstreamStatus(ctx, q, d.ID); err != nil {
 			return err
 		}
+	}
+
+	// A completed tournament whose bracket just changed can no longer trust
+	// its champion — revert to running (the grand final is re-decided); the
+	// revert is audited.
+	if err := s.revertCompletedTournament(ctx, q, actor, slot.TournamentID); err != nil {
+		return err
 	}
 
 	// The champion: a final-track slot promoting exactly one player that
@@ -173,6 +191,27 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 		}
 	}
 	return nil
+}
+
+// revertCompletedTournament flips a completed tournament back to running when
+// its bracket changed after completion (an edit cascade invalidated the
+// champion); a no-op in every other state.
+func (s *TournamentService) revertCompletedTournament(ctx context.Context, q *db.Queries, actor id.ID, tid id.ID) error {
+	t, err := q.GetTournament(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("get tournament: %w", err)
+	}
+	if t.Status != TournamentCompleted {
+		return nil
+	}
+	if err := q.SetTournamentStatus(ctx, db.SetTournamentStatusParams{ID: tid, Status: TournamentRunning}); err != nil {
+		return fmt.Errorf("revert to running: %w", err)
+	}
+	if err := q.ClearTournamentWinner(ctx, tid); err != nil {
+		return fmt.Errorf("clear winner: %w", err)
+	}
+	return recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, tid,
+		audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentCompleted, TournamentRunning, audit.StateReasonCascade))
 }
 
 // desiredOutcome computes what the slot's promotion set should be: the strict
@@ -317,7 +356,9 @@ func (s *TournamentService) refreshDownstreamStatus(ctx context.Context, q *db.Q
 	switch {
 	case unresolved == 0 && slot.Status == TournamentSlotWaiting:
 		return q.SetSlotStatus(ctx, db.SetSlotStatusParams{ID: slotID, Status: TournamentSlotPlaying})
-	case unresolved > 0 && slot.Status == TournamentSlotPlaying:
+	case unresolved > 0 && slot.Status != TournamentSlotWaiting:
+		// Seat caches cleared by a cascade (a voided slot included) — the
+		// slot must be re-played by whoever advances.
 		return q.SetSlotStatus(ctx, db.SetSlotStatusParams{ID: slotID, Status: TournamentSlotWaiting})
 	}
 	return nil
@@ -337,4 +378,63 @@ func (s *TournamentService) completeTournament(ctx context.Context, q *db.Querie
 	}
 	return recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, tid,
 		audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentRunning, TournamentCompleted, audit.StateReasonFinal))
+}
+
+// ---------------------------------------------------------------------------
+// Edit consistency (ADR-26 §Editing without paradoxes)
+// ---------------------------------------------------------------------------
+
+// SlotRef identifies the bracket slot a match counts for.
+type SlotRef struct {
+	SlotID       id.ID
+	TournamentID id.ID
+}
+
+// SlotOfMatch returns the slot the match is counted for, or nil.
+func (s *TournamentService) SlotOfMatch(ctx context.Context, q *db.Queries, matchID id.ID) (*SlotRef, error) {
+	rows, err := q.ListSlotMatchesForMatchIDs(ctx, []id.ID{matchID})
+	if err != nil {
+		return nil, fmt.Errorf("list slot links: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &SlotRef{SlotID: rows[0].SlotID, TournamentID: rows[0].TournamentID}, nil
+}
+
+// CheckAssociationEditable rejects association-breaking edits: a linked match
+// keeps its exact player set and game — editing never silently changes
+// whether a match counts for the tournament (the organizer detaches first).
+// Scores, date and calculator data stay freely editable.
+func (s *TournamentService) CheckAssociationEditable(ctx context.Context, q *db.Queries, matchID, gameID id.ID, playerIDs []id.ID) error {
+	ref, err := s.SlotOfMatch(ctx, q, matchID)
+	if err != nil || ref == nil {
+		return err
+	}
+	slot, err := q.GetTournamentSlot(ctx, ref.SlotID)
+	if err != nil {
+		return fmt.Errorf("get slot: %w", err)
+	}
+	if slot.GameID != gameID {
+		return ErrSlotAssociationLocked
+	}
+	seats, err := q.ListSeatsBySlots(ctx, []id.ID{ref.SlotID})
+	if err != nil {
+		return fmt.Errorf("list seats: %w", err)
+	}
+	if !seatSetEquals(seats, playerIDs) {
+		return ErrSlotAssociationLocked
+	}
+	return nil
+}
+
+// OnMatchChanged re-evaluates the slot owning an edited match: points
+// recompute, the strict top-promote set is re-evaluated, and a changed
+// outcome cascades (audit origin: the triggering match edit).
+func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, matchID, actor id.ID) error {
+	ref, err := s.SlotOfMatch(ctx, q, matchID)
+	if err != nil || ref == nil {
+		return err
+	}
+	return s.recomputeSlot(ctx, q, actor, ref.SlotID, audit.LinkOriginMatchEdit, string(matchID))
 }

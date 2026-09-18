@@ -308,13 +308,13 @@ AuditTournamentStateDetails:
       type: integer
     from:
       type: string
-      enum: [registration, running]
+      enum: [registration, running, completed, cancelled]
     to:
       type: string
-      enum: [completed, cancelled]
+      enum: [registration, running, completed, cancelled]
     reason:
       type: string
-      enum: [organizer, deadline, grand-final]
+      enum: [organizer, deadline, grand-final, cascade]
 
 AuditSlotRulingDetails:
   type: object

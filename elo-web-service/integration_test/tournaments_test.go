@@ -475,9 +475,9 @@ func TestTournament_BracketPlans(t *testing.T) {
 
 type bracketJSON struct {
 	Data struct {
-		TournamentId   string `json:"tournament_id"`
-		Status         string `json:"status"`
-		Elimination    string `json:"elimination"`
+		TournamentId   string  `json:"tournament_id"`
+		Status         string  `json:"status"`
+		Elimination    string  `json:"elimination"`
 		WinnerPlayerId *string `json:"winner_player_id"`
 		Rounds         []struct {
 			Track string `json:"track"`
@@ -1032,5 +1032,172 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	}
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != *p1 {
 		t.Fatalf("tournament completed with the highest scorer: %+v", br.Data)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: edit consistency — 409 guards, recompute, cascade void
+// ---------------------------------------------------------------------------
+
+// TestTournament_EditCascadeAndGuards drives the ADR-26 edit story: an edit
+// that overturns a promoted set reopens the slot, clears the downstream seats
+// and voids the already-played final (audited with the origin chain); a
+// completed tournament reverts to running; association-breaking edits are
+// 409 while score edits stay free.
+func TestTournament_EditCascadeAndGuards(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Каскадная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Каскад%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Каскадный кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	editMatch := func(mid string, scores ...string) int {
+		body := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}}`,
+			short(gameID), strings.Join(scores, ","))
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+	day := "2026-09-01T10:0%d:00Z"
+
+	// A: tie, then decisive → completed {seat1, seat0}.
+	m1 := newMatch(fmt.Sprintf(day, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	m2 := newMatch(fmt.Sprintf(day, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	// B: decisive.
+	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	// Final: one strict-cut match → the tournament completes.
+	newMatch("2026-09-02T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("pre-cascade completion: %+v", br.Data)
+	}
+
+	// The overturning edit: m2's scores become a shared top → the cumulative
+	// standings tie inside the promoted set → slot A reopens, the final's
+	// already-played match is voided, the champion is unrecorded.
+	code := editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusOK {
+		t.Fatalf("overturning edit: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("completed tournament must revert to running: %+v", br.Data)
+	}
+	slotA := slotAt(t, br, 0, 0)
+	if slotA.Status != "playing" {
+		t.Fatalf("slot A must reopen: %s", slotA.Status)
+	}
+	finalSlot := slotAt(t, br, 1, 0)
+	if len(finalSlot.Matches) != 0 || finalSlot.Status != "waiting" {
+		t.Fatalf("final must be voided back to waiting: %+v", finalSlot)
+	}
+	for _, seat := range finalSlot.Seats {
+		// Only the seats fed by the reopened slot A must clear; slot B's
+		// outcome stands, so its fed seats keep their caches.
+		if seat.SourceSlotId != nil && *seat.SourceSlotId == slotA.Id && seat.PlayerId != nil {
+			t.Fatalf("final seat cache from reopened slot A must be cleared: %+v", seat)
+		}
+	}
+
+	// The audit origin chain: the void on the final slot names the triggering
+	// match edit; the revert is a cascade state transition.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	voidsWithOrigin, cascadeStates := 0, 0
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		if d["op"] == "void" && d["origin_kind"] == "match-edit" && d["origin_id"] == m2 {
+			voidsWithOrigin++
+		}
+		if d["reason"] == "cascade" && d["from"] == "completed" && d["to"] == "running" {
+			cascadeStates++
+		}
+	}
+	if voidsWithOrigin != 1 || cascadeStates != 1 {
+		t.Fatalf("audit chain: %d voids with match-edit origin, %d cascade reverts", voidsWithOrigin, cascadeStates)
+	}
+
+	// Association guards on a linked match (m1, slot A):
+	//   player set change → 409;
+	guard := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%q:9, %q:5, %q:1, %q:0}}`,
+		short(gameID), aSeat(0), aSeat(1), aSeat(2), short(createTestPlayer(t, pool, "Подменный")))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+		t.Fatalf("player-set change must 409, got %d %s", w.Code, w.Body.String())
+	}
+	//   game change → 409;
+	otherGame := createTestGame(t, pool, "Другая игра")
+	guard = fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}}`,
+		short(otherGame), strings.Join([]string{sc(aSeat(0), 9), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+		t.Fatalf("game change must 409, got %d", w.Code)
+	}
+	//   score-only edit → allowed (200).
+	code = editMatch(m1, sc(aSeat(0), 9), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusOK {
+		t.Fatalf("score edit must pass: %d", code)
+	}
+
+	// A non-linked match can never become linked by editing: post one with
+	// the skip flag, then edit it to an exactly-fitting roster.
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-03T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
+		short(newID(t)), short(gameID), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+		t.Fatalf("post skipped: %d %s", w.Code, w.Body.String())
+	}
+
+	// Re-complete: the decisive m2 restores slot A (already re-decided by the
+	// score edit above via m1's 9/10 reversal), the final is re-played with a
+	// fresh match, and the tournament completes again.
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Status != "completed" {
+		t.Fatalf("slot A must re-complete after the decisive edits: %s", slotA.Status)
+	}
+	finalSeats := br.Data.Rounds[1].Slots[0].Seats
+	refilled := 0
+	for _, seat := range finalSeats {
+		if seat.PlayerId != nil {
+			refilled++
+		}
+	}
+	if refilled != 4 {
+		t.Fatalf("final seats must refill (%d/4)", refilled)
+	}
+	newMatch("2026-09-04T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("re-completion: %+v", br.Data)
 	}
 }
