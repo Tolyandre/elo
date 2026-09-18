@@ -294,4 +294,3 @@ func (a *API) TableEvents(c *gin.Context) {
 		return a.Hub.Subscribe(elo.TableTopic(tableID))
 	}, initialPayload)
 }
-

@@ -34,9 +34,9 @@ const (
 type TimelineEvent struct {
 	Kind       TimelineEventKind
 	At         time.Time
-	Outcome    id.ID    // bet: the outcome bought
-	Shares     float64  // bet: shares bought
-	RiskAmount float64  // guarantee: risk amount joined
+	Outcome    id.ID   // bet: the outcome bought
+	Shares     float64 // bet: shares bought
+	RiskAmount float64 // guarantee: risk amount joined
 }
 
 // OutcomeProbability is the probability (LMSR marginal price) of one outcome

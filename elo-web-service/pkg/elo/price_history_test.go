@@ -24,10 +24,10 @@ func priceBets(outcomeIDs [3]id.ID, bets ...[2]any) []TimelineEvent {
 	}}
 	for i, b := range bets {
 		events = append(events, TimelineEvent{
-			Kind:     TimelineBet,
-			At:       base.Add(time.Duration(i) * time.Hour),
-			Outcome:  outcomeIDs[b[0].(int)],
-			Shares:   b[1].(float64),
+			Kind:    TimelineBet,
+			At:      base.Add(time.Duration(i) * time.Hour),
+			Outcome: outcomeIDs[b[0].(int)],
+			Shares:  b[1].(float64),
 		})
 	}
 	return events
@@ -184,4 +184,3 @@ func TestProbabilityHistoryGuaranteeJoinReprices(t *testing.T) {
 		}
 	}
 }
-

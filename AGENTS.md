@@ -25,19 +25,22 @@ The project's reproducible toolchain comes from [devenv](https://devenv.sh), def
 
 ```bash
 # Run any project command wrapped like this (the repo-root `dev` script is a
-# quieter devenv: same behavior, devenv's own progress chatter silenced):
+# quieter devenv: devenv's own progress chatter silenced, and the shell-entry
+# test run skipped — the suite + gofmt gate run via `devenv test` / `./dev test`):
 ./dev shell -- bash -lc '<command>'
 # Example:
 ./dev shell -- bash -lc 'make integration-test-podman'
-# DEVENV_VERBOSE=1 ./dev ... restores devenv's full progress output;
-# plain `devenv shell -- ...` also works.
+# Run the unit suite + gofmt gate explicitly:
+./dev test
+# DEVENV_VERBOSE=1 ./dev ... restores devenv's full progress output
+# (and the test run on shell entry); plain `devenv shell -- ...` also works.
 ```
 
 **Use the devenv shell in every mode, including plan mode.** Plan mode restricts mutations of the repo and system — it does not forbid entering the devenv shell. `devenv shell` only materializes the pinned toolchain into the Nix store (a per-user cache); it modifies nothing in the repository or system configuration, so running it in plan mode is fine even when it needs to download or build packages first. Never dodge it in favor of an ambient `python3`/`go`/etc. to avoid a Nix download — read-only work (running tests, linters, python analysis) must still go through the wrapper so results come from the pinned toolchain. Run it from the repo root — devenv does not search parent directories for `devenv.nix`.
 
 What's where:
 
-- **Provided by devenv** (absent or version-different on ambient PATH): the pinned `go`, `sqlc`, `gomod2nix`, and `gopls`. `make` is also reachable inside the shell (pulled in transitively, not declared in `packages`). The shell exports `CGO_ENABLED=0` (the service is pure Go) and recreates the `.nix-tools/delve` + `.nix-tools/gopls` repo-root symlinks used by `.vscode/settings.json`.
+- **Provided by devenv** (absent or version-different on ambient PATH): the pinned `go`, `sqlc`, `python3`, `gomod2nix`, and `gopls`. `make` is also reachable inside the shell (pulled in transitively, not declared in `packages`). The shell exports `CGO_ENABLED=0` (the service is pure Go) and recreates the `.nix-tools/delve` + `.nix-tools/gopls` repo-root symlinks used by `.vscode/settings.json`.
 - **From the ambient system PATH, not devenv**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; `devenv.yaml` does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm`.
 - **Not a standalone binary**: `oapi-codegen` runs via `go generate` (`make generate-go-api` → `go generate ./pkg/api/...`), so it's built on demand from `go.mod` — no binary needs to be on PATH.
 
@@ -54,7 +57,7 @@ Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
-- `devenv test`: same suite via devenv's test runner (wired in `devenv.nix` as the `devenv:enterTest` task).
+- `devenv test`: the unit suite plus a gofmt gate via devenv's test runner (wired in `devenv.nix` as the `devenv:enterTest` task) — the one place formatting is enforced, so run it (or `./dev test`) before finishing a change instead of interleaving `gofmt` mid-edit.
 - `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. These spin up Postgres via testcontainers; see "Entering the dev environment" above for the `DOCKER_HOST`/socket details and the `devenv shell` wrapping.
 - `make integration-test-one T=TestName`: run a single integration test (much faster than the full suite while iterating).
 - `pnpm --dir ./nextjs exec tsc --noEmit`: type-check the frontend. Lint and Vitest do **not** type-check, but the Nix frontend build (`next build`) does — run this before finishing any TypeScript change.

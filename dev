@@ -13,8 +13,18 @@
 # once devenv is past it.
 #
 # DEVENV_VERBOSE=1 ./dev ...  → devenv's usual output, unfiltered.
+#
+# Quiet mode also skips the shell-entry test run: devenv re-runs the
+# devenv:enterTest task on every shell command, which is noise when the
+# wrapped command's own output is the point. `./dev test` keeps the suite
+# running (as does a bare `devenv test` — the skip is opt-in via this
+# wrapper's ELO_SKIP_SHELL_TESTS export).
 set -e
 if [ "${DEVENV_VERBOSE:-0}" = "1" ] || [ "$#" -eq 0 ]; then
     exec devenv "$@"
 fi
+case "$1" in
+    test) ;;
+    *) export ELO_SKIP_SHELL_TESTS=1 ;;
+esac
 exec devenv -q "$@" 2> >(grep --line-buffered -v -e 'is out of date\. Please update to')
