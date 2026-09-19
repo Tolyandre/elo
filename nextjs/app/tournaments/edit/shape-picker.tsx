@@ -207,7 +207,9 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
                         </Select>
                     ) : (
                         <p className="text-sm text-muted-foreground">
-                            Под выбранные фильтры не подходит ни одна форма — снимите часть фильтров.
+                            {filters.elimination || filters.rounds || filters.byes || filters.first_shapes
+                                ? "Под выбранные фильтры не подходит ни одна форма — снимите часть фильтров."
+                                : "Для этого пула игр и числа участников форм сетки нет — измените пул (добавьте игры с другой вместимостью) или список участников."}
                         </p>
                     )}
                     {data.truncated && (

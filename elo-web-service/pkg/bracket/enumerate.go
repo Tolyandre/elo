@@ -140,8 +140,14 @@ func (a *facetAccum) record(p Plan) {
 	a.total++
 }
 
+// emptyFacets is the zero-plan facet set; the slices are non-nil so the JSON
+// arrays come out as [] per the API contract (nil Go slices marshal as null).
+func emptyFacets() Facets {
+	return Facets{Eliminations: []string{}, RoundCounts: []int{}, FirstShapes: []string{}}
+}
+
 func (a *facetAccum) result() Facets {
-	out := Facets{}
+	out := emptyFacets()
 	for fam := range a.fams {
 		out.Eliminations = append(out.Eliminations, fam)
 	}
@@ -189,7 +195,10 @@ func EnumerateFiltered(participants int, pool []GameCapacity, filter PlanFilter,
 	if cap <= 0 {
 		cap = DefaultPlanCap
 	}
-	res := Result{Cap: cap}
+	// Plans and Facets carry empty, non-nil slices: the API contract has
+	// required arrays, and the early returns below must not marshal them as
+	// null.
+	res := Result{Plans: []Plan{}, Cap: cap, Facets: emptyFacets()}
 	if participants < 2 || participants > maxParticipants {
 		return res
 	}

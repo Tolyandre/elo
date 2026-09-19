@@ -1,8 +1,10 @@
 package bracket
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -497,6 +499,38 @@ func TestDouble8Pool2ClassicGrandFinal(t *testing.T) {
 		}
 		t.Fatalf("no 8/{{2}} plan ends WB place-1 vs LB place-1: %v", shapes)
 	}
+}
+
+// TestZeroPlanResponseHasNoNulls pins the API contract on empty results: a
+// zero-plan exploration (or a sanity-bound early return) must marshal plans
+// and every facet as [] — nil Go slices would come out as null and break
+// clients reading .length.
+func TestZeroPlanResponseHasNoNulls(t *testing.T) {
+	// 18 players with a {4}-only pool: no traditional single or double plan
+	// exists (the first round leaves a bye remainder the later rounds cannot
+	// seat, and the grand final cannot seat at one 4-table).
+	res := Enumerate(18, pool4(), EliminationDouble, 0)
+	if len(res.Plans) != 0 {
+		t.Fatalf("18/{{4}} double must have no plans, got %d", len(res.Plans))
+	}
+	for name, raw := range map[string][]byte{
+		"zero plans": marshalResult(t, res),
+		"n=1 bound":  marshalResult(t, Enumerate(1, pool4(), EliminationSingle, 0)),
+		"empty pool": marshalResult(t, Enumerate(8, nil, EliminationSingle, 0)),
+	} {
+		if strings.Contains(string(raw), "null") {
+			t.Fatalf("%s: response must not contain nulls: %s", name, raw)
+		}
+	}
+}
+
+func marshalResult(t *testing.T, r Result) []byte {
+	t.Helper()
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 func TestEnumerateFilteredChips(t *testing.T) {
