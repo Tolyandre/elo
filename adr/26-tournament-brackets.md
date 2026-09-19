@@ -483,7 +483,14 @@ Feeds from the tournaments context (already preloaded for the match form).
 - `running`/`completed`: the **bracket** — a column per round, grouped into
   stacked track bands (Победители over Проигравшие, the grand final to the
   right of both); promotion lines connect each seat's source slot (anchored
-  at the standings row of its place) to the destination seat row. Each slot
+  at the standings row of its place) to the destination seat row. Lines
+  into one destination column descend in per-connector lanes (parallel
+  descents run side by side instead of merging); the WB→LB drops
+  additionally render dashed in their own color with wide corners, allowed
+  to pass beneath the cards. Clicking a player row (or an unfilled seat)
+  spotlights that player's path — every row they occupy plus the lines
+  between them; an unresolved seat spotlights its incoming line and source
+  row — and dims the rest; a click past the rows clears it. Each slot
   renders as a card: game name, seated players (names resolved from players
   context; unresolved seats are placeholders whose provenance stays in the
   tooltip), status badge (ожидает / играет / завершён), live standings with

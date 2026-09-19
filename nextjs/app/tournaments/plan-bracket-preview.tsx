@@ -24,6 +24,10 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
     const connections = useMemo<ConnectorSpec[]>(() => {
         const nodeIds: string[][] = plan.rounds.map((round) => round.slots.map((_, si) => `plan-${round.track}-${round.index}-${si}`));
         const flat: string[] = nodeIds.flat();
+        const flatRound: PlanRound[] = [];
+        for (const round of plan.rounds) {
+            for (let i = 0; i < round.slots.length; i++) flatRound.push(round);
+        }
         const specs: ConnectorSpec[] = [];
         plan.rounds.forEach((round, ri) => {
             round.slots.forEach((slot, si) => {
@@ -31,10 +35,12 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
                     if (seat.kind !== "source" || seat.source_slot == null) return;
                     const sourceId = flat[seat.source_slot];
                     if (!sourceId) return;
+                    const srcTrack = flatRound[seat.source_slot]?.track;
                     specs.push({
                         key: `${ri}-${si}-${seatIdx}`,
                         from: { slotId: sourceId },
                         to: { slotId: nodeIds[ri][si], seatPosition: seatIdx + 1 },
+                        kind: srcTrack === "winners" && round.track === "losers" ? "drop" : "promotion",
                     });
                 });
             });
@@ -96,7 +102,7 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
         <div className="overflow-x-auto">
             <div ref={contentRef} className="relative flex min-w-max items-stretch gap-5">
                 <ConnectorLayer paths={paths} />
-                <div className="flex flex-col gap-8">
+                <div className="relative z-10 flex flex-col gap-8">
                     {trackBands.map(({ track, rounds }) => (
                         <section key={track} className="flex flex-col gap-2">
                             {trackBands.length > 1 && (
@@ -109,7 +115,7 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
                     ))}
                 </div>
                 {finalBand && (
-                    <section className="flex flex-col gap-2">
+                    <section className="relative z-10 flex flex-col gap-2">
                         <div className="flex flex-1 items-stretch gap-5">
                             {finalColumns(finalBand.rounds)}
                         </div>

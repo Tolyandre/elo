@@ -33,12 +33,18 @@ export interface ConnectorSpec {
     to: ConnectorAnchorSpec;
     /** Resolved connectors (the seat's player is already known) render highlighted. */
     resolved?: boolean;
+    /**
+     * `drop` marks the WB→LB crossings: dashed curves allowed to pass under
+     * the cards, so they never share the promotion elbows' lanes.
+     */
+    kind?: "promotion" | "drop";
 }
 
 export interface ConnectorPath {
     key: string;
     d: string;
     resolved: boolean;
+    kind: "promotion" | "drop";
 }
 
 export interface Rect {
@@ -67,24 +73,42 @@ export interface MeasuredAnchor {
  * source's left edge instead and descend through that same lane, so the
  * line never runs over the cards stacked between the source and the target
  * row.
+ *
+ * `lane` shifts the vertical segment a few pixels per connector sharing the
+ * same destination column, so parallel lines descent side by side instead of
+ * overlapping into one thick stroke — drops included: a dozen WB→LB falls
+ * squeeze through one inter-column gap, and without lanes they merge into a
+ * single band. `radius` softens the corners (drops take a wider one).
  */
-export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor): string {
+export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0, radius = 6): string {
     if (b.x >= a.rect.right - 1) {
-        const midX = Math.round(b.x - Math.min(16, (b.x - a.rect.right) / 2));
+        const base = Math.min(16, (b.x - a.rect.right) / 2);
+        const midX = Math.round(b.x - base - lane * 6);
         return roundedPath([
             [a.x, a.y],
             [midX, a.y],
             [midX, b.y],
             [b.x, b.y],
-        ]);
+        ], radius);
     }
-    const laneX = Math.round(b.x - 12);
+    const laneX = Math.round(b.x - 12 - lane * 6);
     return roundedPath([
         [a.rect.left, a.y],
         [laneX, a.y],
         [laneX, b.y],
         [b.x, b.y],
-    ]);
+    ], radius);
+}
+
+/**
+ * WB→LB drop: the same lane-routed elbow as promotions but with wide
+ * corners, dashes and its own color — a dozen of these descend through one
+ * inter-column gap, and only the per-lane offset keeps them apart. Crossing
+ * the cards on the way down is fine — the cards render above the connector
+ * layer.
+ */
+export function dropPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0): string {
+    return connectorPath(a, b, lane, 12);
 }
 
 const fmt = (v: number): string => String(Math.round(v * 100) / 100);
@@ -163,13 +187,23 @@ export function useConnectorPaths(
             return;
         }
         const base = content.getBoundingClientRect();
-        const next: ConnectorPath[] = [];
+        const measured: { key: string; kind: "promotion" | "drop"; resolved: boolean; from: MeasuredAnchor; to: MeasuredAnchor }[] = [];
         for (const c of connections) {
             const from = measureAnchor(content, base, c.from, "source");
             const to = measureAnchor(content, base, c.to, "target");
-            if (!from || !to) continue;
-            next.push({ key: c.key, d: connectorPath(from, to), resolved: c.resolved ?? false });
+            if (from && to) measured.push({ key: c.key, kind: c.kind ?? "promotion", resolved: c.resolved ?? false, from, to });
         }
+        // Connectors descending through the same destination column share its
+        // lane; hand each an index so their vertical segments run side by
+        // side instead of overlapping into one stroke. Drops take part in the
+        // same arithmetic — a dozen WB→LB falls squeeze through one gap.
+        const lanes = laneAssignments(measured);
+        const next: ConnectorPath[] = measured.map((m) => ({
+            key: m.key,
+            d: m.kind === "drop" ? dropPath(m.from, m.to) : connectorPath(m.from, m.to, lanes.get(m.key) ?? 0),
+            resolved: m.resolved,
+            kind: m.kind,
+        }));
         // Skip the state update entirely when nothing moved — the deferred
         // re-measures (after paint, after webfonts settle) must not wake
         // React for identical geometry.
@@ -212,19 +246,71 @@ export function useConnectorPaths(
     return paths;
 }
 
-/** The SVG overlay itself: absolutely positioned over the scroll content. */
-export function ConnectorLayer({ paths }: { paths: ConnectorPath[] }) {
+/**
+ * Lane index per connector key: elbows bucketed by the x of their
+ * destination column, ordered by their upper edge, so neighboring lines get
+ * neighboring lanes — drops (WB→LB falls) included.
+ */
+export function laneAssignments(
+    measured: { key: string; kind: "promotion" | "drop"; from: MeasuredAnchor; to: MeasuredAnchor }[],
+): Map<string, number> {
+    const buckets = new Map<number, { key: string; y: number }[]>();
+    for (const m of measured) {
+        const bucket = Math.round(m.to.rect.left);
+        const item = { key: m.key, y: Math.min(m.from.y, m.to.y) };
+        const list = buckets.get(bucket);
+        if (list) list.push(item);
+        else buckets.set(bucket, [item]);
+    }
+    const lanes = new Map<string, number>();
+    for (const list of buckets.values()) {
+        list.sort((p, q) => p.y - q.y);
+        list.forEach((item, i) => lanes.set(item.key, i));
+    }
+    return lanes;
+}
+
+/**
+ * The SVG overlay itself: absolutely positioned over the scroll content, at
+ * z-0 so the (relative, z-10) slot cards stay in the foreground — the WB→LB
+ * drop curves are allowed to pass beneath them.
+ */
+export function ConnectorLayer({
+    paths,
+    highlight,
+}: {
+    paths: ConnectorPath[];
+    /** Connector keys to spotlight; every other line dims while set. */
+    highlight?: Set<string>;
+}) {
+    const active = highlight != null && highlight.size > 0;
     return (
-        <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
-            {paths.map((p) => (
-                <path
-                    key={p.key}
-                    d={p.d}
-                    fill="none"
-                    strokeWidth={1.5}
-                    className={p.resolved ? "stroke-primary/50" : "stroke-muted-foreground/40"}
-                />
-            ))}
+        <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full" aria-hidden="true">
+            {paths.map((p) => {
+                const hot = active && highlight.has(p.key);
+                const dim = active && !hot;
+                const kind = p.kind;
+                return (
+                    <path
+                        key={p.key}
+                        data-connector-key={p.key}
+                        d={p.d}
+                        fill="none"
+                        strokeWidth={hot ? 2.25 : 1.5}
+                        strokeDasharray={kind === "drop" ? "7 5" : undefined}
+                        opacity={dim ? 0.15 : 1}
+                        className={
+                            hot
+                                ? kind === "drop" ? "stroke-chart-1" : "stroke-primary"
+                                : kind === "drop"
+                                    ? "stroke-chart-1/60"
+                                    : p.resolved
+                                        ? "stroke-primary/50"
+                                        : "stroke-muted-foreground/40"
+                        }
+                    />
+                );
+            })}
         </svg>
     );
 }
