@@ -42,6 +42,10 @@ func TestValidateDetailsDocuments(t *testing.T) {
 		{"match-update bad change kind", KindMatchUpdate, map[string]any{
 			"schema_version": 1, "player_changes": []any{map[string]any{"player_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "change": "nope"}}, "calculator_changed": false,
 		}, false},
+		{"slot-adjust game ok", KindSlotAdjust, NewSlotGameAdjust("018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e60"), true},
+		{"slot-adjust seat-count ok", KindSlotAdjust, NewSlotSeatCountAdjust("018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", 3), true},
+		{"slot-adjust missing slot", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "seat_count": 3}, false},
+		{"slot-adjust one seat", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "slot_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "seat_count": 1}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,5 +133,30 @@ func TestShortenIDsUnknownKindPassesThrough(t *testing.T) {
 	}
 	if string(out) != string(raw) {
 		t.Errorf("out = %s, want passthrough %s", out, raw)
+	}
+}
+
+func TestShortenIDsRewritesSlotAdjust(t *testing.T) {
+	t.Parallel()
+	canonical := "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f"
+	short := string(id.ID(canonical).Base58())
+
+	raw, err := json.Marshal(NewSlotGameAdjust(canonical, canonical))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shortened, err := ShortenIDs(KindSlotAdjust, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(shortened, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["slot_id"] != short || got["game_id"] != short {
+		t.Errorf("ids = %v/%v, want short %s", got["slot_id"], got["game_id"], short)
+	}
+	if got["op"] != "game" {
+		t.Errorf("op = %v, untouched by the walk", got["op"])
 	}
 }

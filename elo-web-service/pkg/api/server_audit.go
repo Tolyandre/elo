@@ -327,6 +327,27 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 		if err := details.FromAuditAuditSlotLinkDetails(g); err != nil {
 			return nil, err
 		}
+	case audit.KindSlotAdjust:
+		var v audit.SlotAdjustDetails
+		if err := json.Unmarshal(shortened, &v); err != nil {
+			return nil, err
+		}
+		g := AuditAuditSlotAdjustDetails{
+			Op:            AuditAuditSlotAdjustDetailsOp(v.Op),
+			SchemaVersion: v.SchemaVersion,
+			SlotId:        Base58ID(v.SlotID),
+		}
+		if v.GameID != "" {
+			game := Base58ID(v.GameID)
+			g.GameId = &game
+		}
+		if v.SeatCount != 0 {
+			sc := v.SeatCount
+			g.SeatCount = &sc
+		}
+		if err := details.FromAuditAuditSlotAdjustDetails(g); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, audit.ErrUnknownKind
 	}

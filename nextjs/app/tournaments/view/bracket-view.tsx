@@ -148,20 +148,40 @@ function SlotCard({ slot, slotPositions }: { slot: BracketSlot; slotPositions: M
             </div>
             {gameName && <p className="text-xs text-muted-foreground truncate">{gameName}</p>}
 
-            <ul className="space-y-1">
-                {[...slot.seats].sort((a, b) => a.position - b.position).map((seat) => (
-                    <li
-                        key={seat.position}
-                        data-bracket-seat={seat.position}
-                        title={seatHint(seat)}
-                        className="text-sm truncate"
-                    >
-                        {seat.player_id
-                            ? playerName(seat.player_id)
-                            : <span className="text-muted-foreground/60">—</span>}
-                    </li>
-                ))}
-            </ul>
+            {/* Before results exist the seat list carries the names; once
+                standings show them, the rows shrink to the seat provenance
+                («из стола N») — no duplicated names — while keeping the
+                data-bracket-seat anchors the promotion lines measure. */}
+            {standings.length === 0 ? (
+                <ul className="space-y-1">
+                    {[...slot.seats].sort((a, b) => a.position - b.position).map((seat) => (
+                        <li
+                            key={seat.position}
+                            data-bracket-seat={seat.position}
+                            title={seatHint(seat)}
+                            className="text-sm truncate"
+                        >
+                            {seat.player_id
+                                ? playerName(seat.player_id)
+                                : <span className="text-muted-foreground/60">—</span>}
+                        </li>
+                    ))}
+                </ul>
+            ) : (
+                slot.seats.some((s) => s.source_slot_id != null) && (
+                    <ul className="space-y-0.5">
+                        {[...slot.seats].sort((a, b) => a.position - b.position).map((seat) => (
+                            <li
+                                key={seat.position}
+                                data-bracket-seat={seat.position}
+                                className="text-xs text-muted-foreground/80 truncate"
+                            >
+                                {seatHint(seat)}
+                            </li>
+                        ))}
+                    </ul>
+                )
+            )}
 
             {standings.length > 0 && (
                 <div>

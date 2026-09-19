@@ -208,6 +208,10 @@ type MatchScore struct {
 	Score    float64 `json:"score"`
 }
 
+type OrphanTournamentMembership struct {
+	TournamentID id.ID `json:"tournament_id"`
+}
+
 type Player struct {
 	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`

@@ -29,8 +29,9 @@ type Querier interface {
 	// Game pool
 	// ---------------------------------------------------------------------------
 	AddTournamentGame(ctx context.Context, arg AddTournamentGameParams) error
-	// The permanent tournament-membership link (ADR-26): inserted at acceptance,
-	// never deleted — the arena keeps counting detached matches.
+	// The tournament-membership link (ADR-26): inserted whenever the match is
+	// linked to a slot, deleted whenever the match leaves the slot (detach or
+	// void) — the tournament arena counts exactly the slot-linked matches.
 	AddTournamentMatch(ctx context.Context, arg AddTournamentMatchParams) error
 	// ---------------------------------------------------------------------------
 	// Participants
@@ -133,6 +134,9 @@ type Querier interface {
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	// The pool is small; the PUT handler rewrites it wholesale inside its tx.
 	DeleteTournamentGames(ctx context.Context, tournamentID id.ID) error
+	// The match's tournament-membership row (a match belongs to at most one
+	// tournament); also used by the startup-free orphan cleanup (migration 058).
+	DeleteTournamentMatch(ctx context.Context, matchID id.ID) error
 	// The editor's desired-set semantics (PUT /tournaments): drop everyone absent
 	// from the submitted set. An empty array removes everyone.
 	DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error

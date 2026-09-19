@@ -7,11 +7,11 @@ import (
 )
 
 // PlacementPoints returns the placement points a place-i player earns in a
-// slot table of s seats (ADR-26): place 1 → s, place 2 → s−2, place 3 → s−4,
-// … Points are relative only and may go negative. Shared places (tied game
-// scores) share points.
+// slot table of s seats (ADR-26): place 1 → s, place 2 → s−1, …, the last
+// place → 1. Points are relative only; every place scores. Shared places
+// (tied game scores) share points.
 func PlacementPoints(place, seats int) int {
-	return seats - 2*(place-1)
+	return seats - place + 1
 }
 
 // PlayerPlace is one player's derived place in one match.
@@ -60,7 +60,10 @@ type Standing struct {
 	// Order is the player's place in each linked match, most recent first —
 	// the display tie-break (a later match can overturn an earlier leader).
 	Order []int
-	// Place is the 1-based position in the ordered standings (1 = leader).
+	// Place is the 1-based rank in the ordered standings (1 = leader). Equal
+	// points share the rank (competition ranking: 1, 1, 3 — the same RANK()
+	// semantics as the per-match places); the sort's tie-breaks keep the
+	// row order deterministic.
 	Place    int
 	Promoted bool
 }
@@ -119,17 +122,21 @@ func Standings(matches []MatchResult, seats int) []Standing {
 		return out[i].PlayerID < out[j].PlayerID
 	})
 	for i := range out {
-		out[i].Place = i + 1
+		if i > 0 && out[i].Points == out[i-1].Points {
+			out[i].Place = out[i-1].Place // equal points share the rank
+		} else {
+			out[i].Place = i + 1
+		}
 	}
 	return out
 }
 
 // StrictCut reports whether the slot's top-promote set is strictly separated
 // — every boundary from 1st through the (promote+1)-th has strictly
-// decreasing points (ADR-26's 4–4–0–−2 example replays: the cut against the
-// rest is clean, but the two co-leaders tie, and the downstream order must
-// never be ambiguous). Ties keep the slot open: the players simply play the
-// same slot again.
+// decreasing points (ADR-26's shared-top example: 4–4–2–1 replays — the cut
+// against the rest is clean, but the two co-leaders tie, and the downstream
+// order must never be ambiguous). Ties keep the slot open: the players
+// simply play the same slot again.
 func StrictCut(sts []Standing, promote int) bool {
 	if promote <= 0 || promote >= len(sts) {
 		return false

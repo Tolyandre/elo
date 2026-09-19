@@ -57,8 +57,9 @@ type AddTournamentMatchParams struct {
 	MatchID      id.ID `json:"match_id"`
 }
 
-// The permanent tournament-membership link (ADR-26): inserted at acceptance,
-// never deleted — the arena keeps counting detached matches.
+// The tournament-membership link (ADR-26): inserted whenever the match is
+// linked to a slot, deleted whenever the match leaves the slot (detach or
+// void) — the tournament arena counts exactly the slot-linked matches.
 func (q *Queries) AddTournamentMatch(ctx context.Context, arg AddTournamentMatchParams) error {
 	_, err := q.db.Exec(ctx, addTournamentMatch, arg.TournamentID, arg.MatchID)
 	return err
@@ -237,6 +238,17 @@ DELETE FROM tournament_seats WHERE slot_id = $1
 // same seed; only callable on slots with zero linked matches.
 func (q *Queries) DeleteSlotSeats(ctx context.Context, slotID id.ID) error {
 	_, err := q.db.Exec(ctx, deleteSlotSeats, slotID)
+	return err
+}
+
+const deleteTournamentMatch = `-- name: DeleteTournamentMatch :exec
+DELETE FROM tournament_matches WHERE match_id = $1
+`
+
+// The match's tournament-membership row (a match belongs to at most one
+// tournament); also used by the startup-free orphan cleanup (migration 058).
+func (q *Queries) DeleteTournamentMatch(ctx context.Context, matchID id.ID) error {
+	_, err := q.db.Exec(ctx, deleteTournamentMatch, matchID)
 	return err
 }
 

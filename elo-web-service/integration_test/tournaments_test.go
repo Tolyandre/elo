@@ -799,7 +799,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// Table A (round 1, position 1) — first match ends with a shared top
-	// score: 4–4–0–−2, no strict cut, the slot replays.
+	// score: 4–4–2–1, no strict cut, the slot replays.
 	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
 	newMatch := func(mdate string, scores ...string) string {
 		mid := newID(t)
@@ -823,9 +823,12 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
 		t.Fatalf("slot A matches: %+v", slotA.Matches)
 	}
-	// Live standings show the 4-4-0-(-2) points while the slot replays; the
-	// promoted flags stay off and the final seat stays unfilled.
+	// Live standings show the 4-4-2-1 points (equal points share the rank)
+	// while the slot replays; the promoted flags stay off and the final seat
+	// stays unfilled.
 	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 4 || slotA.Standings[1].Points != 4 ||
+		slotA.Standings[2].Points != 2 || slotA.Standings[3].Points != 1 ||
+		slotA.Standings[0].Place != 1 || slotA.Standings[1].Place != 1 || slotA.Standings[2].Place != 3 ||
 		slotA.Standings[0].Promoted || slotA.Standings[1].Promoted ||
 		br.Data.Rounds[1].Slots[0].Seats[0].PlayerId != nil {
 		t.Fatalf("tied match: live standings but no promotion: %+v", slotA.Standings)
@@ -849,16 +852,16 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		t.Fatalf("match badge: %+v", matchResp.Data.Tournament)
 	}
 
-	// Match 2 (the replay): 2–4–0–−2 → cumulative 6–8–0–−4 → strict top-2.
+	// Match 2 (the replay): 3–4–2–1 → cumulative 7–8–4–2 → strict top-2.
 	newMatch(fmt.Sprintf(day, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" || len(slotA.Matches) != 2 {
 		t.Fatalf("slot A after the replay: %s with %d matches", slotA.Status, len(slotA.Matches))
 	}
-	// Standings: 8–6–0–−4, promoted {seat1, seat0}.
+	// Standings: 8–7–4–2, promoted {seat1, seat0}.
 	if len(slotA.Standings) != 4 || slotA.Standings[0].PlayerId != aSeat(1) || slotA.Standings[1].PlayerId != aSeat(0) ||
-		!slotA.Standings[0].Promoted || !slotA.Standings[1].Promoted || slotA.Standings[0].Points != 8 || slotA.Standings[1].Points != 6 {
+		!slotA.Standings[0].Promoted || !slotA.Standings[1].Promoted || slotA.Standings[0].Points != 8 || slotA.Standings[1].Points != 7 {
 		t.Fatalf("slot A standings: %+v", slotA.Standings)
 	}
 
@@ -1041,7 +1044,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	}
 
 	// And the fitting roster without the flag links and completes the slot
-	// (strict cut 4–2–0–−2).
+	// (strict cut 4–3–2–1).
 	fittingID := short(newID(t))
 	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}}`, fittingID, short(gameID), scores)
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
@@ -1325,7 +1328,8 @@ func TestTournament_EditLinkChange(t *testing.T) {
 
 	// The second slot-A match links by the default acceptance; its points keep
 	// the cumulative top-2 tied with place 3, so the slot stays playing with
-	// two matches (a1=6, a0=4, a2=4, a3=−2 — no strict cut).
+	// two matches (a1=7, a0=6, a2=6, a3=3 — no strict cut: a0 and a2 tie at
+	// the cut boundary).
 	m2 := newMatch(fmt.Sprintf(day, 1), sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
@@ -1346,6 +1350,20 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 	if slotA.Status != "completed" || slotA.Standings[0].PlayerId != aSeat(2) || slotA.Standings[1].PlayerId != aSeat(1) {
 		t.Fatalf("slot A must re-complete from the remaining match: %s %+v", slotA.Status, slotA.Standings)
+	}
+	// The unlinked match left the tournament arena together with the bracket
+	// (ADR-26, revised): no membership row, no arena settlements.
+	var m1Memberships, m1Settlements int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT
+            (SELECT COUNT(*) FROM tournament_matches WHERE match_id = $1),
+            (SELECT COUNT(*) FROM arena_settlements s
+             WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
+		m1id, tid).Scan(&m1Memberships, &m1Settlements); err != nil {
+		t.Fatalf("arena membership after unlink: %v", err)
+	}
+	if m1Memberships != 0 || m1Settlements != 0 {
+		t.Fatalf("unlinked match must leave the arena: %d memberships, %d settlements", m1Memberships, m1Settlements)
 	}
 
 	// Checking m1 back is now refused: the slot re-completed from m2 alone, so
@@ -1432,7 +1450,8 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 
 	// The organizer forgot the checkbox: the match was posted skipped.
-	mid := short(newID(t))
+	midID := newID(t)
+	mid := short(midID)
 	// Posted with the skip flag: the organizer forgot the checkbox.
 	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-05T10:00:00Z", "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
 		mid, short(gameID), seat(0), seat(1), seat(2), seat(3))
@@ -1474,6 +1493,19 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	if br.Data.Status != "completed" {
 		t.Fatalf("the ruling must stand after the detach: %s", br.Data.Status)
 	}
+	// The detached match left the tournament arena too (ADR-26, revised).
+	var matchMemberships, matchSettlements int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT
+            (SELECT COUNT(*) FROM tournament_matches WHERE match_id = $1),
+            (SELECT COUNT(*) FROM arena_settlements s
+             WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
+		midID, tid).Scan(&matchMemberships, &matchSettlements); err != nil {
+		t.Fatalf("arena membership after detach: %v", err)
+	}
+	if matchMemberships != 0 || matchSettlements != 0 {
+		t.Fatalf("detached match must leave the arena: %d memberships, %d settlements", matchMemberships, matchSettlements)
+	}
 
 	// Audit: attach (organizer), ruling set, detach.
 	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
@@ -1497,6 +1529,72 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 	if attaches != 1 || rulings != 1 || detaches != 1 {
 		t.Fatalf("audit: %d attaches, %d rulings, %d detaches (want 1 each)", attaches, rulings, detaches)
+	}
+}
+
+// TestTournament_SlotAdjustAuditFeed covers the organizer seat-count
+// adjustment and its audit document: the tournament audit feed must serve the
+// slot-adjust details kind (it used to fail the whole feed with "unknown
+// audit details kind" — the kind was missing from the wire union).
+func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Пересадочная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Пересадка%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	// The pool hosts 3- and 4-seat tables, so the seat-count change fits.
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пересадок", "elimination": "single", "games": [{"game_id": %q, "min_players": 3, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slotA := br.Data.Rounds[0].Slots[0]
+
+	// Shrink the first table 4 → 3: audited as slot-adjust / seat-count.
+	body := `{"seat_count": 3}`
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusOK {
+		t.Fatalf("adjust: %d %s", w.Code, w.Body.String())
+	}
+
+	// The bug this test pins: the audit feed must serve the slot-adjust
+	// details instead of failing the whole request.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var found map[string]any
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			t.Fatalf("decode details: %v", err)
+		}
+		if d["op"] == "seat-count" {
+			found = d
+		}
+	}
+	if found == nil {
+		t.Fatalf("no slot-adjust details in the feed: %+v", page.Data)
+	}
+	if found["seat_count"] != float64(3) || found["slot_id"] != slotA.Id {
+		t.Fatalf("slot-adjust details: %+v (want seat_count 3, slot %s)", found, slotA.Id)
+	}
+
+	// The re-deal from the stored seed left a 3-seat table.
+	br = getBracket(t, router, short(tid))
+	if got := len(br.Data.Rounds[0].Slots[0].Seats); got != 3 {
+		t.Fatalf("seat count after adjust: %d", got)
 	}
 }
 

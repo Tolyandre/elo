@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"math/rand"
 	"slices"
+	"time"
 
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
@@ -72,9 +73,9 @@ func (s *TournamentService) AcceptMatch(ctx context.Context, q *db.Queries, matc
 			continue
 		}
 		// Unique fit (deterministic (track, index, position) order as the
-		// safeguard): link the match, record the permanent tournament link
-		// (the arena counts the match even if the slot link is later voided),
-		// audit, and re-evaluate the slot.
+		// safeguard): link the match, record the tournament-membership link
+		// (the arena counts slot-linked matches), audit, and re-evaluate the
+		// slot.
 		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: c.ID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to slot: %w", err)
 		}
@@ -317,11 +318,13 @@ func (s *TournamentService) voidSlotIfDirty(ctx context.Context, q *db.Queries, 
 		return fmt.Errorf("list slot matches: %w", err)
 	}
 	seen := make(map[id.ID]bool, len(matches))
+	var voided []id.ID
 	for _, r := range matches {
 		if seen[r.MatchID] {
 			continue
 		}
 		seen[r.MatchID] = true
+		voided = append(voided, r.MatchID)
 		if err := recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, slot.TournamentID,
 			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkVoid, string(slot.ID), string(r.MatchID),
 				originKind, originID)); err != nil {
@@ -330,6 +333,12 @@ func (s *TournamentService) voidSlotIfDirty(ctx context.Context, q *db.Queries, 
 	}
 	if err := q.DeleteSlotMatches(ctx, slot.ID); err != nil {
 		return fmt.Errorf("delete slot matches: %w", err)
+	}
+	// The voided matches leave the tournament arena together with the bracket
+	// (ADR-26: arena membership follows the slot link); the stale mark below
+	// schedules the arena's full recalculation.
+	if err := s.forgetTournamentMatches(ctx, q, slot.TournamentID, voided); err != nil {
+		return err
 	}
 	if err := q.DeleteSlotPromotions(ctx, slot.ID); err != nil {
 		return fmt.Errorf("delete slot promotions: %w", err)
@@ -485,6 +494,11 @@ func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries
 		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: ref.SlotID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("unlink match: %w", err)
 		}
+		// The match leaves the tournament arena together with the bracket
+		// (ADR-26); the match-write flow drains the arena later in its tx.
+		if err := s.forgetTournamentMatches(ctx, q, ref.TournamentID, []id.ID{matchID}); err != nil {
+			return err
+		}
 		if err := recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, ref.TournamentID,
 			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkDetach, string(ref.SlotID), string(matchID),
 				audit.LinkOriginMatchEdit, "")); err != nil {
@@ -633,7 +647,12 @@ func (s *TournamentService) SetRuling(ctx context.Context, tid, slotID, actorUse
 		if err := q.SetSlotRuling(ctx, db.SetSlotRulingParams{ID: slotID, Ruling: rulingRaw}); err != nil {
 			return fmt.Errorf("set ruling: %w", err)
 		}
-		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+		if err := s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, ""); err != nil {
+			return err
+		}
+		// The recompute cascade may have voided downstream slot links — their
+		// matches left the arena; refresh it (a no-op while nothing is stale).
+		return s.refreshTournamentArena(ctx, q, tid)
 	})
 }
 
@@ -686,17 +705,22 @@ func (s *TournamentService) AttachMatch(ctx context.Context, tid, slotID, matchI
 		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{TournamentID: tid, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to tournament: %w", err)
 		}
+		// The arena's match set grew; refresh it at the end of this tx.
 		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkAttach, string(slotID), string(matchID),
 				audit.LinkOriginOrganizer, "")); err != nil {
 			return err
 		}
-		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+		if err := s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, ""); err != nil {
+			return err
+		}
+		return s.refreshTournamentArena(ctx, q, tid)
 	})
 }
 
-// DetachMatch removes a wrongly linked match from its slot (the arena keeps
-// counting it — only the bracket forgets), then re-evaluates the slot.
+// DetachMatch removes a wrongly linked match from its slot — the match leaves
+// the tournament arena together with the bracket (ADR-26) — then
+// re-evaluates the slot and refreshes the arena synchronously.
 func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchID, actorUserID id.ID) error {
 	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		if err := s.enforceDeadlineTx(ctx, q); err != nil {
@@ -715,12 +739,20 @@ func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchI
 		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: slotID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("unlink match: %w", err)
 		}
+		if err := s.forgetTournamentMatches(ctx, q, tid, []id.ID{matchID}); err != nil {
+			return err
+		}
 		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 			audit.KindSlotLink, audit.NewSlotLinkDetails(audit.SlotLinkDetach, string(slotID), string(matchID),
 				audit.LinkOriginOrganizer, "")); err != nil {
 			return err
 		}
-		return s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, "")
+		if err := s.recomputeSlot(ctx, q, actorUserID, slotID, audit.LinkOriginOrganizer, ""); err != nil {
+			return err
+		}
+		// An organizer call, not a match write: refresh the affected arena
+		// here (a no-op while nothing is stale).
+		return s.refreshTournamentArena(ctx, q, tid)
 	})
 }
 
@@ -955,6 +987,58 @@ func (s *TournamentService) enforceDeadlineTx(ctx context.Context, q *db.Queries
 		}
 	}
 	return nil
+}
+
+// forgetTournamentMatches removes the tournament-membership rows of the given
+// matches and schedules the tournament arena's full recalculation — the arena
+// counts exactly the slot-linked matches, so a match that leaves its slot
+// (detach or void) leaves the arena too (ADR-26). The recalculation itself
+// runs at the end of the enclosing flow (the match-write drain, or
+// refreshTournamentArena for the organizer endpoints). A no-op for an empty
+// list or a tournament without its auto-created arena yet.
+func (s *TournamentService) forgetTournamentMatches(ctx context.Context, q *db.Queries, tid id.ID, matchIDs []id.ID) error {
+	for _, mid := range matchIDs {
+		if err := q.DeleteTournamentMatch(ctx, mid); err != nil {
+			return fmt.Errorf("unlink match from tournament: %w", err)
+		}
+	}
+	if len(matchIDs) == 0 {
+		return nil
+	}
+	return s.markTournamentArenaStale(ctx, q, tid)
+}
+
+// markTournamentArenaStale schedules a full recalculation of the tournament's
+// auto-created arena (membership rows changed, so from-date marks would not
+// cover removed matches' older settlements). A no-op while the arena does not
+// exist (the tournament has not started).
+func (s *TournamentService) markTournamentArenaStale(ctx context.Context, q *db.Queries, tid id.ID) error {
+	arena, err := q.GetArenaByTournament(ctx, &tid)
+	if db.IsNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get tournament arena: %w", err)
+	}
+	return q.MarkArenasStaleFull(ctx, []id.ID{arena.ID})
+}
+
+// refreshTournamentArena recalculates the tournament's auto-created arena
+// synchronously — the refresh for the organizer endpoints that change arena
+// membership without writing a match (attach, detach, ruling cascades). A
+// no-op while the arena does not exist.
+func (s *TournamentService) refreshTournamentArena(ctx context.Context, q *db.Queries, tid id.ID) error {
+	arena, err := q.GetArenaByTournament(ctx, &tid)
+	if db.IsNoRows(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get tournament arena: %w", err)
+	}
+	if err := q.MarkArenasStaleFull(ctx, []id.ID{arena.ID}); err != nil {
+		return fmt.Errorf("mark tournament arena stale: %w", err)
+	}
+	return s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, []id.ID{arena.ID}, time.Now())
 }
 
 // slotOfTournament loads the slot row and verifies it belongs to the

@@ -1614,8 +1614,8 @@ export interface components {
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails (ADR-26). */
-            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"]) | null;
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
             schema_version: number;
@@ -1829,6 +1829,15 @@ export interface components {
             /** @enum {string} */
             origin_kind: "acceptance" | "organizer" | "match-edit" | "cascade";
             origin_id?: components["schemas"]["Base58ID"];
+        };
+        /** @description An organizer adjustment of one running slot of the tournament the audit row points at (ADR-26): a game reassignment (op game, game_id set) or a seat-count change (op seat-count, seat_count set). The inapplicable field stays absent. */
+        AuditSlotAdjustDetails: {
+            schema_version: number;
+            /** @enum {string} */
+            op: "game" | "seat-count";
+            slot_id: components["schemas"]["Base58ID"];
+            game_id?: components["schemas"]["Base58ID"];
+            seat_count?: number;
         };
         IawwCell: {
             /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */

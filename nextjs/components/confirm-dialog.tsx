@@ -49,7 +49,8 @@ function ConfirmDialogBase({
     onConfirm,
     children,
 }: CommonProps & {
-    onConfirm: () => void;
+    /** Omit for an informational dialog with a single close button. */
+    onConfirm?: () => void;
     children?: React.ReactNode;
 }) {
     return (
@@ -64,9 +65,11 @@ function ConfirmDialogBase({
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                         {cancelText}
                     </Button>
-                    <Button variant={confirmVariant} onClick={onConfirm} disabled={loading}>
-                        {loading ? `${confirmText}...` : confirmText}
-                    </Button>
+                    {onConfirm && (
+                        <Button variant={confirmVariant} onClick={onConfirm} disabled={loading}>
+                            {loading ? `${confirmText}...` : confirmText}
+                        </Button>
+                    )}
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -74,13 +77,13 @@ function ConfirmDialogBase({
 }
 
 /** A simple confirm dialog (no extra content beyond the description). */
-export function ConfirmDialog(props: CommonProps & { onConfirm: () => void }) {
+export function ConfirmDialog(props: CommonProps & { onConfirm?: () => void }) {
     return <ConfirmDialogBase {...props} />;
 }
 
 /** A confirm dialog with arbitrary extra content (e.g. a rename input). */
 export function ConfirmDialogWithContent(
-    props: CommonProps & { onConfirm: () => void; children: React.ReactNode },
+    props: CommonProps & { onConfirm?: () => void; children: React.ReactNode },
 ) {
     return <ConfirmDialogBase {...props} />;
 }

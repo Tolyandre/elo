@@ -44,11 +44,17 @@ WHERE se.source_slot_id = sqlc.arg('source_slot_id')::uuid
 ORDER BY s.position;
 
 -- name: AddTournamentMatch :exec
--- The permanent tournament-membership link (ADR-26): inserted at acceptance,
--- never deleted — the arena keeps counting detached matches.
+-- The tournament-membership link (ADR-26): inserted whenever the match is
+-- linked to a slot, deleted whenever the match leaves the slot (detach or
+-- void) — the tournament arena counts exactly the slot-linked matches.
 INSERT INTO tournament_matches (tournament_id, match_id)
 VALUES ($1, $2)
 ON CONFLICT DO NOTHING;
+
+-- name: DeleteTournamentMatch :exec
+-- The match's tournament-membership row (a match belongs to at most one
+-- tournament); also used by the startup-free orphan cleanup (migration 058).
+DELETE FROM tournament_matches WHERE match_id = $1;
 
 -- name: CreateTournamentRound :one
 INSERT INTO tournament_rounds (id, tournament_id, track, "index")

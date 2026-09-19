@@ -226,9 +226,11 @@ players until the promoted set is beyond doubt.
 
 - Every linked match scores **placement points** inside the slot: with
   `s` = seat count, the match's place-1 player(s) gain `s` points, place 2
-  gains `s − 2`, place 3 `s − 4`, … (place from the usual derived
-  `RANK()`, so tied game scores share points). Points accumulate across
-  the slot's matches and may be negative — they are relative only.
+  gains `s − 1`, place 3 `s − 2`, … the last place gains 1 (place from the
+  usual derived `RANK()`, so tied game scores share points). Points
+  accumulate across the slot's matches; every place scores, so they are
+  relative only. Cumulative standings share a rank on equal points
+  (competition ranking: 1, 1, 3).
 - After each linked match the slot re-evaluates: if the top-`promote` set
   of the **cumulative** standings is strictly separated from the rest
   (place `promote` has strictly more points than place `promote + 1`),
@@ -240,8 +242,8 @@ players until the promoted set is beyond doubt.
   or by organizer ruling).
 
 Example: slot of 4 promoting 2. Match 1 ends with a shared top game score
-→ both leaders take 4 points, 4–4–0–−2; no strict cut, so the slot replays.
-Match 2: 2–4–0–−2 → cumulative 6–8–0–−4 → strict top-2 {B, A} → completed.
+→ both leaders take 4 points, 4–4–2–1; no strict cut, so the slot replays.
+Match 2: 3–4–2–1 → cumulative 7–8–4–2 → strict top-2 {B, A} → completed.
 
 The grand final is the plan's last round; when its slot completes with
 exactly one promoted player, the tournament completes and
@@ -357,9 +359,13 @@ rows, so the arena's filter picks them up:
   (`arena_player_stats`, recalculation pipeline — zero new code);
 - the tournament view page embeds the arena standings, as the old camp
   page already did via `GET /arenas?tournament_id=`;
-- detached/invalidated slot links do not remove the match from the
-  tournament arena — the arena counts matches that were played at the
-  event; the *bracket* is what forgets voided results.
+- arena membership follows the slot link: a match that leaves its slot
+  (organizer detach, edit-form unlink, cascade void) leaves the arena too,
+  and a re-attached match re-enters it. (The original design kept detached
+  matches in the arena — "it counts what was played at the event" — but that
+  made an unlinked, possibly erroneous match keep voting in the event's
+  rating and medals; the bracket-facing detach is the correction tool, so
+  the arena now corrects with it.)
 
 ### Audit and recovery
 

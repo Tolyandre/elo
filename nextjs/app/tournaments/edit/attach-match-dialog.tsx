@@ -83,9 +83,7 @@ export function AttachMatchDialog({
             onOpenChange={onOpenChange}
             title={`Прикрепить партию — стол ${slot.position}`}
             description="Подходящие партии: та же игра и ровно тот же состав игроков, не учтённые в сетке."
-            confirmText="Закрыть"
             cancelText="Закрыть"
-            onConfirm={() => onOpenChange(false)}
         >
             <div className="space-y-2 max-h-72 overflow-y-auto">
                 {error && <div className="text-red-600 text-sm">{error}</div>}
