@@ -55,24 +55,36 @@ export function TournamentArenaStandings({ tournamentId }: { tournamentId: Base5
                 Рейтинг и медали считает арена турнира —{" "}
                 <Link href={`/arenas/view?id=${arena.id}`} className="underline">{arena.name}</Link>
             </p>
-            <div className="flex gap-2 items-center">
-                <button
-                    type="button"
-                    onClick={() => setPeriod("day_ago")}
-                    className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
-                >
-                    за день
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setPeriod("week_ago")}
-                    className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
-                >
-                    за неделю
-                </button>
+            {/* Two columns from md up (the tournament page stretches to max-w-5xl,
+                and the mobile-shaped tables sprawl at that width); the period
+                buttons live in the standings column — only its change
+                indicators read the period. */}
+            <div className="grid gap-6 md:grid-cols-2 md:items-start">
+                <section className="min-w-0 space-y-2">
+                    <h2 className="text-sm font-medium text-muted-foreground">Рейтинг</h2>
+                    <div className="flex gap-2 items-center">
+                        <button
+                            type="button"
+                            onClick={() => setPeriod("day_ago")}
+                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                        >
+                            за день
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPeriod("week_ago")}
+                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                        >
+                            за неделю
+                        </button>
+                    </div>
+                    <ArenaPlayersGroups players={players} arena={arena} ranks={undefined} period={period} />
+                </section>
+                <section className="min-w-0 space-y-2">
+                    <h2 className="text-sm font-medium text-muted-foreground">Медали</h2>
+                    <ArenaMedalsTab players={players} loading={false} />
+                </section>
             </div>
-            <ArenaPlayersGroups players={players} arena={arena} ranks={undefined} period={period} />
-            <ArenaMedalsTab players={players} loading={false} />
         </div>
     );
 }
