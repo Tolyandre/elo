@@ -551,6 +551,50 @@ func marshalResult(t *testing.T, r Result) []byte {
 	return b
 }
 
+// TestOffersPlanBeyondUnfilteredHead reproduces the start-action bug: the
+// shape picker's cap applies after the display filters, so an organizer can
+// pick a plan whose unfiltered rank is beyond any capped rescan. OffersPlan
+// must accept every genuinely enumerated plan (and still reject hand-forged
+// ones).
+func TestOffersPlanBeyondUnfilteredHead(t *testing.T) {
+	pool34 := []GameCapacity{{Min: 3, Max: 3}, {Min: 4, Max: 4}}
+	// The plan at documented rank 250: beyond the list cap of 200, and
+	// exactly the depth a filtered view (cap applied after the filters)
+	// surfaces when earlier-ranked plans are filtered away.
+	const rank = DefaultPlanCap + 50
+	deep := Enumerate(18, pool34, EliminationDouble, rank).Plans[rank-1]
+	head := Enumerate(18, pool34, EliminationDouble, DefaultPlanCap)
+	for _, p := range head.Plans {
+		if p.CanonicalJSON() == deep.CanonicalJSON() {
+			t.Fatalf("expected the picked plan beyond the unfiltered head of %d", DefaultPlanCap)
+		}
+	}
+	if !OffersPlan(18, pool34, EliminationDouble, deep) {
+		t.Fatalf("a genuinely enumerated plan must be offered:\n%s", describe(deep))
+	}
+
+	forged := deep
+	forged.Rounds[0].Slots[0].SeatCount = 5 // no 5-seat game in the pool
+	if OffersPlan(18, pool34, EliminationDouble, forged) {
+		t.Fatalf("a hand-forged shape must be rejected")
+	}
+	if OffersPlan(18, pool34, EliminationSingle, deep) {
+		t.Fatalf("a plan of the other family must be rejected")
+	}
+	if OffersPlan(1, pool34, EliminationDouble, deep) {
+		t.Fatalf("a nonsense participant count must be rejected")
+	}
+
+	// Sanity: the documented shapes stay offerable.
+	if !OffersPlan(8, pool4(), EliminationSingle, Enumerate(8, pool4(), EliminationSingle, 1).Plans[0]) {
+		t.Fatalf("the 8/{{4}} single flagship must be offered")
+	}
+	if !OffersPlan(2, []GameCapacity{{Min: 2, Max: 2}}, EliminationDouble,
+		Enumerate(2, []GameCapacity{{Min: 2, Max: 2}}, EliminationDouble, 1).Plans[0]) {
+		t.Fatalf("the n=2 rematch plan must be offered")
+	}
+}
+
 func TestEnumerateFilteredChips(t *testing.T) {
 	pool := []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}
 

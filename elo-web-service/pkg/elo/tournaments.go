@@ -585,19 +585,14 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		}
 
 		// The submitted plan must be one the server would have offered — no
-		// hand-forged structures (ADR-26).
-		res := bracket.Enumerate(len(participants), poolCaps(pool), plan.Elimination, bracket.DefaultPlanCap)
-		canonical := plan.CanonicalJSON()
-		offered := false
-		for _, p := range res.Plans {
-			if p.CanonicalJSON() == canonical {
-				offered = true
-				break
-			}
-		}
-		if !offered {
+		// hand-forged structures (ADR-26). The shape-picker list applies its
+		// cap after the display filters, so an offered plan can rank beyond
+		// the unfiltered head; OffersPlan searches the whole enumeration
+		// instead of a capped prefix.
+		if !bracket.OffersPlan(len(participants), poolCaps(pool), plan.Elimination, plan) {
 			return ErrTournamentPlanInvalid
 		}
+		canonical := plan.CanonicalJSON()
 
 		// Seeded draw: participants sorted by id, Fisher–Yates from the stored
 		// seed — the same inputs always reproduce the same bracket.

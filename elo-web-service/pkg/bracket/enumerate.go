@@ -264,6 +264,50 @@ func EnumerateFiltered(participants int, pool []GameCapacity, filter PlanFilter,
 	return res
 }
 
+// OffersPlan reports whether the enumerator would offer the plan for this
+// participant count and pool — the start action's anti-forgery check. It
+// cannot just scan an Enumerate result: the list endpoint's cap applies
+// after the display filters, so an offered plan can rank beyond the
+// unfiltered head of any fixed cap. Instead the search walks the same
+// deterministic exploration the producing enumeration walks and stops at
+// the first canonical match, under the same DFS budget — so every plan a
+// filtered list could return is verifiable here.
+func OffersPlan(participants int, pool []GameCapacity, elimination string, plan Plan) bool {
+	if participants < 2 || participants > maxParticipants {
+		return false
+	}
+	if elimination != EliminationSingle && elimination != EliminationDouble {
+		return false
+	}
+	e := &enumerator{
+		sizes:  seatSizes(pool),
+		seen:   map[string]struct{}{},
+		msMemo: map[int][][]int{},
+		target: plan.CanonicalJSON(),
+	}
+	if len(e.sizes) == 0 {
+		return false
+	}
+	start := drawRefs(participants)
+	maxBound := 2*participants + 2
+	if maxBound > maxRounds {
+		maxBound = maxRounds
+	}
+	for bound := 1; bound <= maxBound && !e.found; bound++ {
+		e.depthPruned = false
+		switch elimination {
+		case EliminationSingle:
+			e.singleDFS(start, nil, 1, bound)
+		case EliminationDouble:
+			e.doubleDFS(start, nil, nil, 1, 1, bound)
+		}
+		if e.truncated {
+			break
+		}
+	}
+	return e.found
+}
+
 // planKey carries the sort keys of a plan with the canonical form computed
 // once.
 type planKey struct {
@@ -321,7 +365,9 @@ func seatSizes(pool []GameCapacity) []int {
 // per-path round lists (seat provenance as seatRef into earlier rounds),
 // materialized and deduplicated by canonical JSON at the champion; facets
 // are recorded for every deduplicated plan, the filter decides what lands in
-// the result.
+// the result. In target mode (target != "") nothing is materialized — emit
+// just compares against the target's canonical JSON and the search stops at
+// the first match (OffersPlan).
 type enumerator struct {
 	sizes       []int
 	filter      PlanFilter
@@ -332,6 +378,8 @@ type enumerator struct {
 	truncated   bool
 	depthPruned bool            // some state wanted another round at the current bound
 	msMemo      map[int][][]int // candidate slot sets per (n, allowRemainder)
+	target      string
+	found       bool
 }
 
 // seatRef is a seat's provenance while the plan is being built: draw/bye
@@ -402,6 +450,9 @@ func appendRound(rounds []builtRound, r builtRound) []builtRound {
 }
 
 func (e *enumerator) overBudget() bool {
+	if e.found {
+		return true
+	}
 	e.nodes++
 	if e.nodes > dfsBudget {
 		e.truncated = true
@@ -681,6 +732,12 @@ func (e *enumerator) emit(rounds []builtRound, family string) {
 		panic(fmt.Sprintf("bracket: enumerator produced an invalid plan: %v", err))
 	}
 	key := plan.CanonicalJSON()
+	if e.target != "" {
+		if key == e.target {
+			e.found = true
+		}
+		return
+	}
 	if _, dup := e.seen[key]; dup {
 		return
 	}
