@@ -649,7 +649,11 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 					}
 					var sourceSlotID *id.ID
 					if seat.Kind == bracket.SeatSource {
-						sid := slotIDs[seat.SourceSlot]
+						slot := 0
+						if seat.SourceSlot != nil {
+							slot = *seat.SourceSlot
+						}
+						sid := slotIDs[slot]
 						sourceSlotID = &sid
 					}
 					var sourcePlace pgtype.Int4

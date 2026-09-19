@@ -87,7 +87,7 @@ describe("BracketView", () => {
         expect(container.textContent).toContain("Играет");
         expect(container.textContent).toContain("Алиса");
         expect(container.textContent).toContain("Борис");
-        expect(container.textContent).toContain("партий: 1");
+        expect(container.textContent).toContain("Партий: 1");
     });
 
     it("marks unresolved seats as placeholders carrying their provenance as a hint", () => {
@@ -105,6 +105,40 @@ describe("BracketView", () => {
         const container = render(<BracketView bracket={bracket} />);
         const paths = [...container.querySelectorAll("svg path")];
         expect(paths.length).toBe(2);
+    });
+
+    it("anchors a completed slot's lines at standings rows and drops provenance text", () => {
+        // A played-through successor slot: its seats are resolved and its
+        // standings list shows the names, so the provenance rows would be
+        // noise — the lines point straight at the name rows.
+        const completed: Bracket = {
+            ...bracket,
+            rounds: [
+                bracket.rounds[0],
+                {
+                    track: "final",
+                    index: 1,
+                    slots: [
+                        {
+                            id: "s4" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                            status: "completed",
+                            seats: [
+                                { position: 1, source_slot_id: "s1" as Base58ID, source_place: 1, player_id: "p1" as Base58ID },
+                                { position: 2, source_slot_id: "s1" as Base58ID, source_place: 2, player_id: "p2" as Base58ID },
+                            ],
+                            matches: [{ match_id: "m2" as Base58ID }],
+                            standings: [
+                                { player_id: "p1" as Base58ID, points: 3, place: 1, promoted: true },
+                                { player_id: "p2" as Base58ID, points: 1, place: 2, promoted: false },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+        const container = render(<BracketView bracket={completed} />);
+        expect(container.textContent).not.toContain("из стола");
+        expect(container.querySelectorAll("svg path").length).toBe(2);
     });
 
     it("renders live standings with points and the promoted set", () => {

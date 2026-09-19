@@ -464,7 +464,8 @@ func (e *enumerator) emit(rounds []builtRound) {
 			for j, ref := range r.seats[i] {
 				ps.Seats[j] = PlanSeat{Kind: ref.kind}
 				if ref.kind == SeatSource {
-					ps.Seats[j].SourceSlot = base[ref.rid] + ref.pos
+					slot := base[ref.rid] + ref.pos
+					ps.Seats[j].SourceSlot = &slot
 					ps.Seats[j].SourcePlace = ref.place
 				}
 			}

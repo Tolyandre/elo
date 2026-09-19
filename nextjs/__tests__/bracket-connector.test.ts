@@ -6,13 +6,14 @@ function anchor(x: number, y: number, left: number, top: number, right: number, 
 }
 
 describe("connectorPath", () => {
-    it("draws a right-angle elbow between side-by-side cards, turning in the column gap", () => {
-        // Source card [0..100], destination card starts at 200 — a round gap
-        // with its midpoint at x=150.
+    it("runs at the source's height and descends in the lane before the destination column", () => {
+        // Source card [0..100], destination card starts at 200 — a long span
+        // across other columns: the descent hugs the destination's gap so it
+        // stays out of the cards in between.
         const from = anchor(100, 25, 0, 0, 100, 50);
         const to = anchor(200, 40, 200, 0, 300, 80);
         expect(connectorPath(from, to)).toBe(
-            "M 100 25 L 144 25 Q 150 25 150 31 L 150 34 Q 150 40 156 40 L 200 40",
+            "M 100 25 L 178 25 Q 184 25 184 31 L 184 34 Q 184 40 190 40 L 200 40",
         );
     });
 
@@ -24,21 +25,22 @@ describe("connectorPath", () => {
         );
     });
 
-    it("drops a right-angle connector between stacked bands (WB → LB)", () => {
+    it("drops into overlapping columns through the lane before the column", () => {
         // Destination's left edge sits left of the source's right edge — the
-        // cards are not side-by-side, so leave the source's bottom edge.
+        // cards overlap, so leave the source's left edge and descend just
+        // before the destination column, clear of the cards in between.
         const from = anchor(100, 25, 0, 0, 100, 50);
         const to = anchor(50, 125, 50, 100, 150, 150);
         expect(connectorPath(from, to)).toBe(
-            "M 50 50 L 50 69 Q 50 75 56 75 L 94 75 Q 100 75 100 81 L 100 100",
+            "M 0 25 L 32 25 Q 38 25 38 31 L 38 119 Q 38 125 44 125 L 50 125",
         );
     });
 
-    it("rises vertically when the destination band sits above", () => {
+    it("rises through the lane when the destination band sits above", () => {
         const from = anchor(100, 125, 0, 100, 100, 150);
         const to = anchor(50, 25, 50, 0, 150, 50);
         expect(connectorPath(from, to)).toBe(
-            "M 50 100 L 50 81 Q 50 75 56 75 L 94 75 Q 100 75 100 69 L 100 50",
+            "M 0 125 L 32 125 Q 38 125 38 119 L 38 31 Q 38 25 44 25 L 50 25",
         );
     });
 
@@ -46,7 +48,7 @@ describe("connectorPath", () => {
         const from = anchor(100, 30, 0, 0, 100, 60);
         const to = anchor(200, 30, 200, 0, 300, 60);
         expect(connectorPath(from, to)).toBe(
-            "M 100 30 L 150 30 Q 150 30 150 30 L 150 30 Q 150 30 150 30 L 200 30",
+            "M 100 30 L 184 30 Q 184 30 184 30 L 184 30 Q 184 30 184 30 L 200 30",
         );
     });
 });

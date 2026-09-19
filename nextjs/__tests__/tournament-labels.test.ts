@@ -4,6 +4,7 @@ import {
     eliminationLabel,
     planPreview,
     roundTitle,
+    roundsLabel,
     seatSourceLabel,
     tournamentStatusLabel,
 } from "../app/tournaments/labels";
@@ -90,5 +91,12 @@ describe("tournament labels", () => {
 
     it("previews a WB+LB plan naming each round's track", () => {
         expect(planPreview(doublePlan)).toBe("Верх 1: 3+3 → 2; Низ 1: 2 → 1; Финал: 3 → 1");
+    });
+
+    it("pluralizes round counts for the filter chips", () => {
+        expect(roundsLabel(1)).toBe("1 тур");
+        expect(roundsLabel(2)).toBe("2 тура");
+        expect(roundsLabel(5)).toBe("5 туров");
+        expect(roundsLabel(12)).toBe("12 туров");
     });
 });

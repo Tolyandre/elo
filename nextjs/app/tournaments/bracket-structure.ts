@@ -23,3 +23,57 @@ export function groupByTrack<T extends TrackRoundLike>(rounds: T[]): { track: T[
     }
     return tracks;
 }
+
+/**
+ * Horizontal column offset of every round, in round-column units (0-based),
+ * implementing the classic double-elimination interleave: winners rounds pack
+ * from the left; a losers round renders under the last winners round it draws
+ * from — LB round 1 drops out of WB round 1 but is played alongside WB
+ * round 2, so it renders under WB round 2 and the drop lines stay in the
+ * column gaps instead of running vertically over the cards. Offsets grow
+ * monotonically, and the final rounds continue after the last track column.
+ *
+ * `winnersSource(round)` reports the highest winners-track round index the
+ * round draws seats from (0 when it draws from none).
+ */
+export function roundColumnOffsets<T extends TrackRoundLike>(
+    rounds: T[],
+    winnersSource: (round: T) => number,
+): number[] {
+    const offsets: number[] = [];
+    let prev = -1;
+    // Only losers rounds of the same track share the column grid, so
+    // monotonicity is tracked among them; winners and losers rounds may
+    // occupy the same column in their stacked bands.
+    let prevLosers = 0;
+    for (const round of rounds) {
+        let offset: number;
+        if (round.track === "winners") {
+            offset = round.index - 1;
+        } else if (round.track === "losers") {
+            offset = Math.max(winnersSource(round) - 1, prevLosers, 1);
+            prevLosers = offset + 1;
+        } else {
+            offset = prev + 1;
+        }
+        offsets.push(offset);
+        prev = offset;
+    }
+    return offsets;
+}
+
+/**
+ * Spacer columns to insert before each round of ONE band so it lands on its
+ * offset from `roundColumnOffsets`. Every band's flex row starts at column
+ * 0, so pass just that band's offsets (the cursor advances past every
+ * rendered column, spacers included).
+ */
+export function offsetSpacers(offsets: number[]): number[] {
+    const spacers: number[] = [];
+    let cursor = 0;
+    for (const offset of offsets) {
+        spacers.push(Math.max(0, offset - cursor));
+        cursor = offset + 1;
+    }
+    return spacers;
+}

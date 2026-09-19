@@ -82,9 +82,11 @@ type PlanSeat struct {
 	Kind string `json:"kind"`
 	// SourceSlot is the flat plan slot index (slots numbered in canonical
 	// round order, position-ordered within a round) and SourcePlace the
-	// 1-based place there. Set only for SeatSource.
-	SourceSlot  int `json:"source_slot,omitempty"`
-	SourcePlace int `json:"source_place,omitempty"`
+	// 1-based place there. Set only for SeatSource. SourceSlot is a pointer
+	// because 0 is a valid slot index the omitempty encoding must still
+	// emit; a legacy document without it reads as slot 0.
+	SourceSlot  *int `json:"source_slot,omitempty"`
+	SourcePlace int  `json:"source_place,omitempty"`
 }
 
 // ParsePlan parses a plan document strictly (unknown fields rejected, so the
@@ -189,17 +191,23 @@ func (p Plan) Validate() error {
 						return fmt.Errorf("%w: bye seat outside winners round 2 / final round 1", ErrInvalidPlan)
 					}
 				case SeatSource:
-					if seat.SourceSlot < 0 || seat.SourceSlot >= len(seatCounts) {
-						return fmt.Errorf("%w: source slot %d out of range", ErrInvalidPlan, seat.SourceSlot)
+					// A legacy document may omit source_slot; it reads as
+					// slot 0.
+					slot := 0
+					if seat.SourceSlot != nil {
+						slot = *seat.SourceSlot
 					}
-					if seat.SourcePlace < 1 || seat.SourcePlace > seatCounts[seat.SourceSlot] {
+					if slot < 0 || slot >= len(seatCounts) {
+						return fmt.Errorf("%w: source slot %d out of range", ErrInvalidPlan, slot)
+					}
+					if seat.SourcePlace < 1 || seat.SourcePlace > seatCounts[slot] {
 						return fmt.Errorf("%w: source place %d out of range for slot %d",
-							ErrInvalidPlan, seat.SourcePlace, seat.SourceSlot)
+							ErrInvalidPlan, seat.SourcePlace, slot)
 					}
-					key := [2]int{seat.SourceSlot, seat.SourcePlace}
+					key := [2]int{slot, seat.SourcePlace}
 					if fed[key] {
 						return fmt.Errorf("%w: source place %d of slot %d feeds two seats",
-							ErrInvalidPlan, seat.SourcePlace, seat.SourceSlot)
+							ErrInvalidPlan, seat.SourcePlace, slot)
 					}
 					fed[key] = true
 				default:

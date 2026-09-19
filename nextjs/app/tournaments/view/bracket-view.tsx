@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { Fragment, useMemo, useRef } from "react";
 import type { Bracket, BracketRound, BracketSeat, BracketSlot } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { roundTitle, seatSourceLabel, slotStatusLabel, trackLabel } from "../labels";
-import { groupByTrack } from "../bracket-structure";
+import { groupByTrack, offsetSpacers, roundColumnOffsets } from "../bracket-structure";
 import { ConnectorLayer, useConnectorPaths, type ConnectorSpec } from "@/components/bracket/bracket-connector";
 import { Badge } from "@/components/ui/badge";
 import { RankIcon } from "@/components/rank-icon";
@@ -13,8 +13,9 @@ import { RankIcon } from "@/components/rank-icon";
 /**
  * The bracket (ADR-26 §UI): a pure rendering of the GET /bracket DTO —
  * a column per round grouped into stacked track bands (Победители over
- * Проигравшие, the grand final to the right of both), with promotion lines
- * drawn from each seat's source slot. No client-side bracket logic.
+ * Проигравшие, the grand final to the right of both), losers rounds offset
+ * a column right of the winners round they run alongside, with promotion
+ * lines drawn from each seat's source slot. No client-side bracket logic.
  */
 export function BracketView({ bracket }: { bracket: Bracket }) {
     const contentRef = useRef<HTMLDivElement>(null);
@@ -32,18 +33,49 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
         return map;
     }, [bracket.rounds]);
 
+    // Which winners round each round draws from (via its seats' source
+    // slots) drives the double-elim column interleave: a losers round renders
+    // under the winners round it runs alongside. Offsets are global column
+    // positions; spacer counts are derived per band, because every band's
+    // row starts at column 0.
+    const roundOffsets = useMemo(() => {
+        const slotRound = new Map<string, BracketRound>();
+        for (const round of bracket.rounds) {
+            for (const slot of round.slots) slotRound.set(slot.id, round);
+        }
+        const winnersSource = (round: BracketRound): number => {
+            let max = 0;
+            for (const slot of round.slots) {
+                for (const seat of slot.seats) {
+                    const src = seat.source_slot_id ? slotRound.get(seat.source_slot_id) : undefined;
+                    if (src?.track === "winners") max = Math.max(max, src.index);
+                }
+            }
+            return max;
+        };
+        const byRound = new Map<string, number>();
+        roundColumnOffsets(bracket.rounds, winnersSource).forEach((offset, i) => {
+            const round = bracket.rounds[i];
+            byRound.set(`${round.track}-${round.index}`, offset);
+        });
+        return byRound;
+    }, [bracket.rounds]);
+
     // One connector per seat with a known source slot: the line the promoted
-    // player (or the pending place) travels along.
+    // player (or the pending place) travels along. Once results exist the
+    // line anchors at the player's standings row — the name row — instead of
+    // a seat placeholder.
     const connections = useMemo<ConnectorSpec[]>(() => {
         const specs: ConnectorSpec[] = [];
         for (const round of bracket.rounds) {
             for (const slot of round.slots) {
                 for (const seat of slot.seats) {
                     if (!seat.source_slot_id) continue;
+                    const place = slot.standings.find((st) => st.player_id === seat.player_id)?.place;
                     specs.push({
                         key: `${slot.id}:${seat.position}`,
                         from: { slotId: seat.source_slot_id, place: seat.source_place ?? undefined },
-                        to: { slotId: slot.id, seatPosition: seat.position },
+                        to: { slotId: slot.id, seatPosition: seat.position, place },
                         resolved: seat.player_id != null,
                     });
                 }
@@ -53,6 +85,35 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
     }, [bracket.rounds]);
 
     const paths = useConnectorPaths(contentRef, connections);
+
+    const roundColumns = (rounds: BracketRound[]) => {
+        const spacers = offsetSpacers(rounds.map((r) => roundOffsets.get(`${r.track}-${r.index}`) ?? 0));
+        return rounds.map((round, ri) => (
+            <Fragment key={`${round.track}-${round.index}`}>
+                {Array.from({ length: spacers[ri] }, (_, i) => (
+                    <div key={i} aria-hidden className="w-56 shrink-0" />
+                ))}
+                <RoundColumn
+                    round={round}
+                    elimination={bracket.elimination}
+                    slotPositions={slotPositions}
+                />
+            </Fragment>
+        ));
+    };
+
+    // The final band follows the tracks grid as a whole — only winners/losers
+    // rounds share the interleaved column grid, the final rounds sit
+    // consecutive.
+    const finalColumns = (rounds: BracketRound[]) =>
+        rounds.map((round) => (
+            <RoundColumn
+                key={`${round.track}-${round.index}`}
+                round={round}
+                elimination={bracket.elimination}
+                slotPositions={slotPositions}
+            />
+        ));
 
     return (
         <div className="overflow-x-auto pb-2 -mx-1 px-1">
@@ -65,14 +126,7 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
                                 <h2 className="text-sm font-semibold text-muted-foreground">{trackLabel(track)}</h2>
                             )}
                             <div className="flex flex-1 items-stretch gap-8">
-                                {rounds.map((round) => (
-                                    <RoundColumn
-                                        key={`${round.track}-${round.index}`}
-                                        round={round}
-                                        elimination={bracket.elimination}
-                                        slotPositions={slotPositions}
-                                    />
-                                ))}
+                                {roundColumns(rounds)}
                             </div>
                         </section>
                     ))}
@@ -80,14 +134,7 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
                 {finalBand && (
                     <section className="flex flex-col gap-2">
                         <div className="flex flex-1 items-stretch gap-8">
-                            {finalBand.rounds.map((round) => (
-                                <RoundColumn
-                                    key={`${round.track}-${round.index}`}
-                                    round={round}
-                                    elimination={bracket.elimination}
-                                    slotPositions={slotPositions}
-                                />
-                            ))}
+                            {finalColumns(finalBand.rounds)}
                         </div>
                     </section>
                 )}
@@ -148,11 +195,10 @@ function SlotCard({ slot, slotPositions }: { slot: BracketSlot; slotPositions: M
             </div>
             {gameName && <p className="text-xs text-muted-foreground truncate">{gameName}</p>}
 
-            {/* Before results exist the seat list carries the names; once
-                standings show them, the rows shrink to the seat provenance
-                («из стола N») — no duplicated names — while keeping the
-                data-bracket-seat anchors the promotion lines measure. */}
-            {standings.length === 0 ? (
+            {/* Before results exist the seat list carries the names (with
+                the provenance as a tooltip); once standings show them, the
+                promotion lines anchor straight at the standings rows. */}
+            {standings.length === 0 && (
                 <ul className="space-y-1">
                     {[...slot.seats].sort((a, b) => a.position - b.position).map((seat) => (
                         <li
@@ -167,27 +213,13 @@ function SlotCard({ slot, slotPositions }: { slot: BracketSlot; slotPositions: M
                         </li>
                     ))}
                 </ul>
-            ) : (
-                slot.seats.some((s) => s.source_slot_id != null) && (
-                    <ul className="space-y-0.5">
-                        {[...slot.seats].sort((a, b) => a.position - b.position).map((seat) => (
-                            <li
-                                key={seat.position}
-                                data-bracket-seat={seat.position}
-                                className="text-xs text-muted-foreground/80 truncate"
-                            >
-                                {seatHint(seat)}
-                            </li>
-                        ))}
-                    </ul>
-                )
             )}
 
             {standings.length > 0 && (
                 <div>
-                    <h4 className="text-xs text-muted-foreground mb-1">
-                        Положение{slot.matches.length > 0 && ` · партий: ${slot.matches.length}`}
-                    </h4>
+                    {slot.matches.length > 0 && (
+                        <h4 className="text-xs text-muted-foreground mb-1">Партий: {slot.matches.length}</h4>
+                    )}
                     <ul className="space-y-0.5">
                         {standings.map((st) => (
                             <li

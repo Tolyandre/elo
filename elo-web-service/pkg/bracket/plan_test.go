@@ -11,7 +11,7 @@ import (
 func drawSeat() PlanSeat { return PlanSeat{Kind: SeatDraw} }
 func byeSeat() PlanSeat  { return PlanSeat{Kind: SeatBye} }
 func srcSeat(slot, place int) PlanSeat {
-	return PlanSeat{Kind: SeatSource, SourceSlot: slot, SourcePlace: place}
+	return PlanSeat{Kind: SeatSource, SourceSlot: &slot, SourcePlace: place}
 }
 func tslot(seats ...PlanSeat) PlanSlot { return PlanSlot{SeatCount: len(seats), Seats: seats} }
 func trnd(track string, index, promote int, slots ...PlanSlot) PlanRound {
@@ -28,6 +28,26 @@ func flagshipSingle() Plan {
 }
 
 // Parse & validate ------------------------------------------------------------
+
+// Slot 0 is a valid flat index: the omitempty encoding must still emit it, or
+// the plan preview loses its line out of the first table.
+func TestSourceSlotZeroIsSerialized(t *testing.T) {
+	raw, err := json.Marshal(flagshipSingle())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"source_slot":0`) {
+		t.Fatalf("source_slot 0 must be serialized: %s", raw)
+	}
+	p, err := ParsePlan(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	seat := p.Rounds[len(p.Rounds)-1].Slots[0].Seats[0]
+	if seat.SourceSlot == nil || *seat.SourceSlot != 0 {
+		t.Fatalf("source slot 0 must round-trip: %+v", seat)
+	}
+}
 
 func TestParsePlanAcceptsFlagship(t *testing.T) {
 	raw, err := json.Marshal(flagshipSingle())

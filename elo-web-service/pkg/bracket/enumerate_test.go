@@ -53,10 +53,22 @@ func TestEnumerateSingle8Pool4Flagship(t *testing.T) {
 	want := []PlanSeat{srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1), srcSeat(1, 2)}
 	got := final.Slots[0].Seats
 	for i := range want {
-		if got[i] != want[i] {
+		if !sameSeat(got[i], want[i]) {
 			t.Fatalf("final seats: got %+v, want %+v", got, want)
 		}
 	}
+}
+
+// sameSeat compares seats semantically (SourceSlot is a pointer, and 0 is a
+// valid slot index the encoding must preserve).
+func sameSeat(a, b PlanSeat) bool {
+	if a.Kind != b.Kind || a.SourcePlace != b.SourcePlace {
+		return false
+	}
+	if (a.SourceSlot == nil) != (b.SourceSlot == nil) {
+		return false
+	}
+	return a.SourceSlot == nil || *a.SourceSlot == *b.SourceSlot
 }
 
 func describe(p Plan) string {
@@ -254,13 +266,13 @@ func TestDoubleMergeTakesLosersAndWinners(t *testing.T) {
 			lEnd = flat
 			for _, s := range r.Slots {
 				for _, seat := range s.Seats {
-					if seat.Kind != SeatSource {
+					if seat.Kind != SeatSource || seat.SourceSlot == nil {
 						continue
 					}
 					switch {
-					case seat.SourceSlot < wEnd:
+					case *seat.SourceSlot < wEnd:
 						winnerSources++
-					case seat.SourceSlot < lEnd:
+					case *seat.SourceSlot < lEnd:
 						loserSources++
 					}
 				}
@@ -338,9 +350,10 @@ func TestDouble2RematchFinal(t *testing.T) {
 		t.Fatalf("unexpected 2-player double plan: %s", describe(p))
 	}
 	// The final seats the WB winner (place 1) and the dropped loser (place 2).
+	zero := 0
 	seats := p.Rounds[1].Slots[0].Seats
-	if seats[0] != (PlanSeat{Kind: SeatSource, SourceSlot: 0, SourcePlace: 1}) ||
-		seats[1] != (PlanSeat{Kind: SeatSource, SourceSlot: 0, SourcePlace: 2}) {
+	if !sameSeat(seats[0], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 1}) ||
+		!sameSeat(seats[1], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 2}) {
 		t.Fatalf("final seats must be place 1 + place 2 of the WB round: %+v", seats)
 	}
 }

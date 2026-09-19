@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 // Client components are also server-rendered; only measure on the client.
 const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
@@ -15,9 +15,15 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 export interface ConnectorAnchorSpec {
     /** Slot card marked with `data-bracket-slot`. */
     slotId: string;
-    /** Anchor the source side at this standings row (`data-bracket-standing`). */
+    /**
+     * Anchor this side at the standings row of this place
+     * (`data-bracket-standing`) — the player's name row.
+     */
     place?: number;
-    /** Anchor the destination side at this seat row (`data-bracket-seat`). */
+    /**
+     * Anchor this side at this seat row (`data-bracket-seat`) — the seat
+     * placeholder used before results exist.
+     */
     seatPosition?: number;
 }
 
@@ -50,15 +56,21 @@ export interface MeasuredAnchor {
 
 /**
  * Path between two slot cards of the bracket, in the classic right-angle
- * bracket style: side-by-side cards (the usual round-to-round promotion) are
- * joined by a horizontal out of the source, one turn inside the column gap
- * and a horizontal into the destination row; stacked bands (WB→LB
- * drop-downs) leave the source's bottom edge, cross over and enter the
- * destination's top edge.
+ * bracket style: side-by-side cards (the usual round-to-round promotion, and
+ * the WB→LB drop-downs of the interleaved double-elim layout) are joined by
+ * a horizontal out of the source, one turn in the lane just before the
+ * destination column and a horizontal into the destination row — for
+ * adjacent columns that lane is the shared gap's midpoint; for spans across
+ * other columns it keeps the descent out of the cards, and the long
+ * horizontal stays at the source's height, which its band keeps clear.
+ * Overlapping columns (a cross-band drop into the column below) leave the
+ * source's left edge instead and descend through that same lane, so the
+ * line never runs over the cards stacked between the source and the target
+ * row.
  */
 export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor): string {
     if (b.x >= a.rect.right - 1) {
-        const midX = Math.round((a.x + b.x) / 2);
+        const midX = Math.round(b.x - Math.min(16, (b.x - a.rect.right) / 2));
         return roundedPath([
             [a.x, a.y],
             [midX, a.y],
@@ -66,17 +78,12 @@ export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor): string {
             [b.x, b.y],
         ]);
     }
-    const below = b.y >= a.y;
-    const y1 = below ? a.rect.bottom : a.rect.top;
-    const y2 = below ? b.rect.top : b.rect.bottom;
-    const x1 = (a.rect.left + a.rect.right) / 2;
-    const x2 = (b.rect.left + b.rect.right) / 2;
-    const midY = Math.round((y1 + y2) / 2);
+    const laneX = Math.round(b.x - 12);
     return roundedPath([
-        [x1, y1],
-        [x1, midY],
-        [x2, midY],
-        [x2, y2],
+        [a.rect.left, a.y],
+        [laneX, a.y],
+        [laneX, b.y],
+        [b.x, b.y],
     ]);
 }
 
@@ -118,14 +125,15 @@ function measureAnchor(
         right: rect.right - base.left,
         bottom: rect.bottom - base.top,
     };
-    // Default anchor: the card's vertical center; a standings/seat row pins
-    // the line to that row instead. Row rects are viewport-relative like the
-    // card's, so they need the same base correction.
+    // Default anchor: the card's vertical center. A standings row pins the
+    // line to that player's name row, a seat row to the seat placeholder —
+    // on either side (standings win when both are given).
     let y = (box.top + box.bottom) / 2;
-    const rowSel = side === "source"
-        ? (spec.place != null && `[data-bracket-standing="${spec.place}"]`)
-        : (spec.seatPosition != null && `[data-bracket-seat="${spec.seatPosition}"]`);
-    const row = rowSel ? slot.querySelector(rowSel) : null;
+    const row = spec.place != null
+        ? slot.querySelector(`[data-bracket-standing="${spec.place}"]`)
+        : spec.seatPosition != null
+            ? slot.querySelector(`[data-bracket-seat="${spec.seatPosition}"]`)
+            : null;
     if (row) {
         const r = row.getBoundingClientRect();
         y = (r.top + r.bottom) / 2 - base.top;
@@ -143,11 +151,15 @@ export function useConnectorPaths(
     connections: ConnectorSpec[],
 ): ConnectorPath[] {
     const [paths, setPaths] = useState<ConnectorPath[]>([]);
+    const signature = useRef("");
 
     const measure = useCallback(() => {
         const content = contentRef.current;
         if (!content || connections.length === 0) {
-            setPaths((prev) => (prev.length === 0 ? prev : []));
+            if (signature.current !== "") {
+                signature.current = "";
+                setPaths((prev) => (prev.length === 0 ? prev : []));
+            }
             return;
         }
         const base = content.getBoundingClientRect();
@@ -158,16 +170,35 @@ export function useConnectorPaths(
             if (!from || !to) continue;
             next.push({ key: c.key, d: connectorPath(from, to), resolved: c.resolved ?? false });
         }
-        setPaths((prev) => {
-            if (prev.length === next.length && prev.every((p, i) => p.key === next[i].key && p.d === next[i].d && p.resolved === next[i].resolved)) {
-                return prev;
-            }
-            return next;
-        });
+        // Skip the state update entirely when nothing moved — the deferred
+        // re-measures (after paint, after webfonts settle) must not wake
+        // React for identical geometry.
+        const sig = next.map((p) => `${p.key}:${p.resolved ? 1 : 0}:${p.d}`).join("|");
+        if (sig === signature.current) return;
+        signature.current = sig;
+        setPaths(next);
     }, [contentRef, connections]);
 
     useIsomorphicLayoutEffect(() => {
         measure();
+        // The first measure can land on not-yet-final layout (webfonts still
+        // swapping, scrollbars appearing): re-check after the browser has
+        // painted and once fonts settle, so no connector keeps a stale
+        // anchor or stays missing.
+        let raf = 0;
+        let raf2 = 0;
+        raf = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(measure);
+        });
+        let cancelled = false;
+        document.fonts?.ready.then(() => {
+            if (!cancelled) measure();
+        });
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(raf);
+            cancelAnimationFrame(raf2);
+        };
     }, [measure]);
 
     useEffect(() => {

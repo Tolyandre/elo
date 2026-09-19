@@ -213,7 +213,10 @@ func (s *StrictServer) GetTournamentBracket(ctx context.Context, request GetTour
 
 // planToCanonicalRaw round-trips the wire plan through the strict parser so
 // the start action validates exactly what the enumerator's canonical form
-// would be (unknown fields rejected, ids-free by construction).
+// would be (unknown fields rejected, ids-free by construction). Source
+// fields exist only on source seats — stray values elsewhere are dropped —
+// and a source seat without a slot reads as slot 0, the documented legacy
+// form, so the canonical shape stays a function of the semantics.
 func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 	plan := bracket.Plan{Elimination: string(p.Elimination)}
 	for _, r := range p.Rounds {
@@ -222,11 +225,15 @@ func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 			ps := bracket.PlanSlot{SeatCount: sl.SeatCount}
 			for _, seat := range sl.Seats {
 				s := bracket.PlanSeat{Kind: string(seat.Kind)}
-				if seat.SourceSlot != nil {
-					s.SourceSlot = *seat.SourceSlot
-				}
-				if seat.SourcePlace != nil {
-					s.SourcePlace = *seat.SourcePlace
+				if string(seat.Kind) == bracket.SeatSource {
+					s.SourceSlot = seat.SourceSlot
+					if s.SourceSlot == nil {
+						zero := 0
+						s.SourceSlot = &zero
+					}
+					if seat.SourcePlace != nil {
+						s.SourcePlace = *seat.SourcePlace
+					}
 				}
 				ps.Seats = append(ps.Seats, s)
 			}
@@ -391,10 +398,7 @@ func planToAPI(p bracket.Plan) TournamentPlan {
 			ps := PlanSlot{SeatCount: sl.SeatCount, Seats: make([]PlanSeat, 0, len(sl.Seats))}
 			for _, seat := range sl.Seats {
 				s := PlanSeat{Kind: PlanSeatKind(seat.Kind)}
-				if seat.SourceSlot != 0 {
-					ss := seat.SourceSlot
-					s.SourceSlot = &ss
-				}
+				s.SourceSlot = seat.SourceSlot
 				if seat.SourcePlace != 0 {
 					sp := seat.SourcePlace
 					s.SourcePlace = &sp
