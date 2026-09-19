@@ -215,9 +215,9 @@ func TestDouble8Pool2(t *testing.T) {
 			t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(p))
 		}
 		// The classic double-elim opening: winners round 1 seats everyone and
-		// a losers track actually runs. (Paths that pause the LB forever and
-		// merge everyone into the final are also valid — the branches are
-		// explored — but they are not the classic shape.)
+		// a losers track actually runs. (A path that never runs the LB cannot
+		// merge — unplayed WB drops may not skip into the final — so every
+		// offered plan plays the losers track.)
 		if fs := firstRoundSlots(p); fmt.Sprint(fs) == "[2 2 2 2]" && p.Rounds[0].Track == TrackWinners {
 			hasLosers := false
 			for _, r := range p.Rounds {
@@ -339,7 +339,7 @@ func TestEnumeratorDeterministic(t *testing.T) {
 
 func TestDouble2RematchFinal(t *testing.T) {
 	// n=2 double: WB round of 2, the loser drops, merge seats both again —
-	// the losers bracket is a second chance even at the smallest size.
+	// the lone drop is the LB winner by waiting (no LB round can exist).
 	res := Enumerate(2, []GameCapacity{{Min: 2, Max: 2}}, EliminationDouble, 0)
 	if len(res.Plans) != 1 {
 		t.Fatalf("2/{{2}} double must have exactly 1 plan, got %d", len(res.Plans))
@@ -356,6 +356,137 @@ func TestDouble2RematchFinal(t *testing.T) {
 	if !sameSeat(seats[0], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 1}) ||
 		!sameSeat(seats[1], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 2}) {
 		t.Fatalf("final seats must be place 1 + place 2 of the WB round: %+v", seats)
+	}
+}
+
+// doubleElimPools are the cases the traditional-shape properties run over.
+func doubleElimPools() []struct {
+	n    int
+	pool []GameCapacity
+} {
+	return []struct {
+		n    int
+		pool []GameCapacity
+	}{
+		{8, []GameCapacity{{Min: 2, Max: 2}}},
+		{8, []GameCapacity{{Min: 4, Max: 4}}},
+		{8, []GameCapacity{{Min: 3, Max: 4}}},
+		{12, []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}},
+		{5, []GameCapacity{{Min: 3, Max: 4}}},
+	}
+}
+
+// TestDoubleTraditionalFlow pins the traditional double-elimination flow of
+// ADR-26 on every enumerated plan: a WB drop (a place beyond the source
+// slot's promote) can reach the grand final only through the losers track —
+// the final seats WB finalists (places within the source slot's promote) and
+// LB winners. The lone exception is a plan without losers rounds at all,
+// where a single WB drop is the LB winner by waiting (no LB round can exist;
+// the n=2/n=3 rematch shapes).
+func TestDoubleTraditionalFlow(t *testing.T) {
+	for _, tc := range doubleElimPools() {
+		res := Enumerate(tc.n, tc.pool, EliminationDouble, 0)
+		if len(res.Plans) == 0 {
+			t.Fatalf("%d/%v double must be feasible", tc.n, tc.pool)
+		}
+		for _, p := range res.Plans {
+			if err := p.Validate(); err != nil {
+				t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(p))
+			}
+			// Flat slot index → (track, promote).
+			trackOf := map[int]string{}
+			promoteOf := map[int]int{}
+			flat := 0
+			hasLosers := false
+			for _, r := range p.Rounds {
+				if r.Track == TrackLosers {
+					hasLosers = true
+				}
+				for range r.Slots {
+					trackOf[flat] = r.Track
+					promoteOf[flat] = r.Promote
+					flat++
+				}
+			}
+			lbIntoFinal := false
+			for _, r := range p.Rounds {
+				if r.Track != TrackFinal {
+					continue
+				}
+				for _, s := range r.Slots {
+					for _, seat := range s.Seats {
+						if seat.Kind != SeatSource || seat.SourceSlot == nil {
+							continue
+						}
+						switch trackOf[*seat.SourceSlot] {
+						case TrackLosers:
+							lbIntoFinal = true
+						case TrackWinners:
+							// WB finalists only; a dropped place in the
+							// final means the player skipped the LB.
+							if seat.SourcePlace > promoteOf[*seat.SourceSlot] && hasLosers {
+								t.Fatalf("%d/%v: WB drop %d of slot %d skips the losers track into the final: %s",
+									tc.n, tc.pool, seat.SourcePlace, *seat.SourceSlot, describe(p))
+							}
+						}
+					}
+				}
+			}
+			// The grand final is WB finalists vs the LB winner set: when the
+			// losers track ran, at least one of its winners must be in it.
+			if hasLosers && !lbIntoFinal {
+				t.Fatalf("%d/%v: losers track ran but no LB winner reached the final: %s",
+					tc.n, tc.pool, describe(p))
+			}
+		}
+	}
+}
+
+// TestDouble8Pool2ClassicGrandFinal pins the classic 8-player shape on a
+// 2-seat pool: the grand final is one WB finalist vs one LB winner, both
+// place-1 of their tracks' last rounds.
+func TestDouble8Pool2ClassicGrandFinal(t *testing.T) {
+	res := Enumerate(8, []GameCapacity{{Min: 2, Max: 2}}, EliminationDouble, 0)
+	if len(res.Plans) == 0 {
+		t.Fatalf("8/{{2}} double must be feasible")
+	}
+	classic := false
+	for _, p := range res.Plans {
+		final := p.Rounds[len(p.Rounds)-1]
+		if len(final.Slots) != 1 || final.Slots[0].SeatCount != 2 {
+			continue
+		}
+		trackOf := map[int]string{}
+		flat := 0
+		for _, r := range p.Rounds {
+			for range r.Slots {
+				trackOf[flat] = r.Track
+				flat++
+			}
+		}
+		sawW, sawL := false, false
+		for _, seat := range final.Slots[0].Seats {
+			if seat.Kind != SeatSource || seat.SourceSlot == nil || seat.SourcePlace != 1 {
+				sawW, sawL = false, false
+				break
+			}
+			switch trackOf[*seat.SourceSlot] {
+			case TrackWinners:
+				sawW = true
+			case TrackLosers:
+				sawL = true
+			}
+		}
+		if sawW && sawL {
+			classic = true
+		}
+	}
+	if !classic {
+		var shapes []string
+		for _, p := range res.Plans {
+			shapes = append(shapes, describe(p))
+		}
+		t.Fatalf("no 8/{{2}} plan ends WB place-1 vs LB place-1: %v", shapes)
 	}
 }
 

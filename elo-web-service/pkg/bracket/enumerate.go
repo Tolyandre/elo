@@ -335,8 +335,33 @@ type seatRef struct {
 	pos  int // slot position within that round
 	// place is set for source refs: the 1-based place in the source slot.
 	// Places ≤ promote are promotions; places > promote are the drops the
-	// losers bracket (or a merge) seats.
+	// losers bracket seats.
 	place int
+	// lbSurvivor marks a player who has won at least one losers-track round.
+	// Only such players — or a lone player who could never be seated in an
+	// LB round at all — may pass from the LB into the grand final; see
+	// lbResolved.
+	lbSurvivor bool
+}
+
+// lbResolved reports whether the losers pool is its final winner set — the
+// traditional double-elimination precondition for the grand final. Every
+// member must have won at least one LB round, so an unplayed WB drop never
+// skips the losers bracket straight into the final; a pool of one is always
+// resolved (its single member is the LB winner by waiting — the n=2 rematch
+// case, where no LB round can exist). While the pool could still seat an LB
+// round the merge is not offered at all, so a resolved pool here is also a
+// finished one.
+func lbResolved(lpool []seatRef) bool {
+	if len(lpool) <= 1 {
+		return true
+	}
+	for _, ref := range lpool {
+		if !ref.lbSurvivor {
+			return false
+		}
+	}
+	return true
 }
 
 // builtRound is one round under construction. sizes/seats are slot-ordered
@@ -498,8 +523,11 @@ func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthL
 
 // doubleDFS explores the (winners, losers) state space: run a winners round
 // (round 1 may carry byes), run a losers round when the LB pool seats exactly
-// (LB non-promoted players are out), or — once the winners survivors can no
-// longer form a valid round alone — merge both pools into the final track.
+// (LB non-promoted players are out), or — once both tracks are exhausted —
+// merge into the final track. The merge is the traditional grand final: the
+// WB must be finished (its survivors can no longer seat a round alone) and
+// the LB must be down to its winner set (lbResolved) — a WB drop that the LB
+// could never seat dead-ends the branch instead of skipping into the final.
 // Both "run LB now" and "run WB next" branches are explored (ADR-26).
 func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx, lIdx, depthLeft int) {
 	if e.overBudget() {
@@ -518,7 +546,7 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 			e.depthPruned = true
 		case nl >= 2 && canSeat(nl, e.sizes) && len(e.multisetsFor(nl, false)) > 0:
 			e.depthPruned = true
-		case wIdx > 1 && !wSeatable && total >= 2 && len(e.multisetsFor(total, false)) > 0:
+		case wIdx > 1 && !wSeatable && lbResolved(lpool) && len(e.multisetsFor(total, false)) > 0:
 			e.depthPruned = true
 		}
 		return
@@ -541,20 +569,26 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	}
 
 	// Losers round: seats the LB pool exactly; the drops are out for good.
+	// Its promotions have now won an LB round — the only way through to the
+	// grand final.
 	if nl >= 2 && canSeat(nl, e.sizes) {
 		for _, ms := range e.multisetsFor(nl, false) {
 			for p := 1; p < ms[len(ms)-1]; p++ {
 				round, nextL, _ := buildRound(rid, lpool, ms, p)
+				for i := range nextL {
+					nextL[i].lbSurvivor = true
+				}
 				round.track, round.index = TrackLosers, lIdx
 				e.doubleDFS(wpool, nextL, appendRound(rounds, round), wIdx, lIdx+1, depthLeft-1)
 			}
 		}
 	}
 
-	// Merge into the final track: WB and LB players become ordinary
-	// participants — no bracket reset, no WB privilege. The merge itself adds
-	// no round, so it runs within the same depth budget.
-	if !wSeatable && wIdx > 1 {
+	// Merge into the final track — the grand final: WB finalists and the
+	// LB's winner set, once neither track can seat a round alone. No bracket
+	// reset, no WB privilege: the final eliminates for everyone. The merge
+	// itself adds no round, so it runs within the same depth budget.
+	if !wSeatable && wIdx > 1 && lbResolved(lpool) {
 		merged := make([]seatRef, 0, nw+nl)
 		merged = append(merged, wpool...)
 		merged = append(merged, lpool...)

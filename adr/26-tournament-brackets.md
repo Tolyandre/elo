@@ -17,13 +17,12 @@ the `tournaments` entity is repurposed for real tournaments:
 - to close the registration the organizer picks a **bracket shape** from
   all valid options the system enumerates for the participant count and
   pool; the bracket is a series of elimination rounds;
-- two shape families: **single elimination**, and **WB + LB** (fair to call
-  it double elimination, but the losers bracket is not "lose twice and
-  you're out": it is a *second chance / long path* whose purpose is to keep
-  spare players available when the winners path no longer has enough
-  players to meet a game's minimum table size; in the grand final WB
-  players get **no advantage** over LB players — no bracket reset, no
-  seeding privilege, they merge as ordinary participants);
+- two shape families: **single elimination**, and **WB + LB** — traditional
+  double elimination: losing a WB round (except in the grand final) drops
+  the player into the losers bracket, losing an LB round is elimination, and
+  the LB's winner(s) join the WB finalists in the grand final. In the grand
+  final WB players get **no advantage** over LB players — no bracket reset,
+  no seeding privilege, one loss there eliminates everyone;
 - exactly one champion at the end;
 - matches are still entered through the normal match flow, and editing a
   match (including full replay of its history via the calculator, ADR-09)
@@ -197,12 +196,18 @@ exactly one player. Dead-ending branches are simply not offered.
 non-promoted players fall to the LB pool (LB is their last chance — LB
 non-promoted players are out). The enumerator steps through states
 `(n_winners, n_losers)`: run a winners round, run a losers round (when the
-LB pool seats exactly), or — once the winners survivors can no longer form
-a valid round alone — merge winners survivors + LB survivors into the
-`'final'` track and play it out to a single champion. In the final track WB
-and LB players are ordinary participants; there is no bracket reset and no
-WB privilege. Because LB rounds may pause and wait for the next WB drop
-("spare players"), both "run LB now" and "run WB next" branches are
+LB pool seats exactly), or — once both tracks are exhausted — merge into
+the `'final'` track and play it out to a single champion. The merge is the
+traditional grand final and is offered only when the WB is finished (its
+survivors can no longer form a valid round alone) **and** the LB is down to
+its winner set: every LB pool member has won at least one LB round, or the
+pool is a single player (the LB winner by waiting — the n=2 rematch, where
+no LB round can exist). An unplayed WB drop never skips the losers bracket
+into the grand final: if the LB could never seat its drops, the branch
+dead-ends and no plan is offered for that shape. In the final track WB and
+LB players are ordinary participants; there is no bracket reset and no WB
+privilege — one loss eliminates everyone. Because LB rounds may pause and
+wait for the next WB drop, both "run LB now" and "run WB next" branches are
 explored.
 
 The plan list is a pure function of `(participant count, game pool, families

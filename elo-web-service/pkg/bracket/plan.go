@@ -14,16 +14,19 @@ import (
 	"math"
 )
 
-// Elimination families (ADR-26): single elimination, or WB + LB where the
-// losers bracket is a second chance keeping spare players available.
+// Elimination families (ADR-26): single elimination, or traditional double
+// elimination — a WB loss (except in the grand final) drops to the LB, an LB
+// loss is elimination, and the LB's winner(s) join the WB finalists in the
+// grand final.
 const (
 	EliminationSingle = "single"
 	EliminationDouble = "double"
 )
 
 // Bracket tracks. Single-elimination plans use winners for every round but
-// the last, which is the grand final; WB+LB plans merge the survivors into
-// the final track once the winners path can no longer seat a round alone.
+// the last, which is the grand final; WB+LB plans merge the WB finalists and
+// the LB winner set into the final track once neither path can seat a round
+// alone.
 const (
 	TrackWinners = "winners"
 	TrackLosers  = "losers"
