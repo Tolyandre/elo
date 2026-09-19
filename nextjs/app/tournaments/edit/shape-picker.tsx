@@ -127,7 +127,11 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
             )}
             {data && facets && (
                 <>
-                    {facets.eliminations.length > 1 && (
+                    {/* The family row stays visible while a family filter is
+                        active: facets only describe the explored families, so
+                        the selected family's facet alone must not hide the
+                        chip that would unselect it. */}
+                    {(families.length > 0 || facets.eliminations.length > 1) && (
                         <FilterRow label="Сетка">
                             <FilterChip
                                 active={families.includes("single")}

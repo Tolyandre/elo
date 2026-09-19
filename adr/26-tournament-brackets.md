@@ -197,14 +197,16 @@ non-promoted players fall to the LB pool (LB is their last chance — LB
 non-promoted players are out). The enumerator steps through states
 `(n_winners, n_losers)`: run a winners round, run a losers round (when the
 LB pool seats exactly), or — once both tracks are exhausted — merge into
-the `'final'` track and play it out to a single champion. The merge is the
-traditional grand final and is offered only when the WB is finished (its
+the `'final'` track and seat it at **one grand-final table**. The merge is
+the traditional grand final and is offered only when the WB is finished (its
 survivors can no longer form a valid round alone) **and** the LB is down to
 its winner set: every LB pool member has won at least one LB round, or the
 pool is a single player (the LB winner by waiting — the n=2 rematch, where
 no LB round can exist). An unplayed WB drop never skips the losers bracket
 into the grand final: if the LB could never seat its drops, the branch
-dead-ends and no plan is offered for that shape. In the final track WB and
+dead-ends and no plan is offered for that shape; the same applies when the
+merged field fits no single pool table — a multi-round final track is not
+offered. In the grand final WB and
 LB players are ordinary participants; there is no bracket reset and no WB
 privilege — one loss eliminates everyone. Because LB rounds may pause and
 wait for the next WB drop, both "run LB now" and "run WB next" branches are

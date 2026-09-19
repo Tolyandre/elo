@@ -546,7 +546,7 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 			e.depthPruned = true
 		case nl >= 2 && canSeat(nl, e.sizes) && len(e.multisetsFor(nl, false)) > 0:
 			e.depthPruned = true
-		case wIdx > 1 && !wSeatable && lbResolved(lpool) && len(e.multisetsFor(total, false)) > 0:
+		case wIdx > 1 && !wSeatable && lbResolved(lpool) && slices.Contains(e.sizes, total):
 			e.depthPruned = true
 		}
 		return
@@ -585,9 +585,11 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	}
 
 	// Merge into the final track — the grand final: WB finalists and the
-	// LB's winner set, once neither track can seat a round alone. No bracket
-	// reset, no WB privilege: the final eliminates for everyone. The merge
-	// itself adds no round, so it runs within the same depth budget.
+	// LB's winner set, once neither track can seat a round alone, seated at
+	// ONE table (a multi-round final track is not offered; a merged field no
+	// pool game seats at one table dead-ends the branch). No bracket reset,
+	// no WB privilege: the final eliminates for everyone. The merge itself
+	// adds no round, so it runs within the same depth budget.
 	if !wSeatable && wIdx > 1 && lbResolved(lpool) {
 		merged := make([]seatRef, 0, nw+nl)
 		merged = append(merged, wpool...)
@@ -596,28 +598,26 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	}
 }
 
-// finalDFS plays the merged field out to a single champion.
+// finalDFS seats the merged field at ONE grand-final table — the plan's
+// single final round, promoting exactly one player.
 func (e *enumerator) finalDFS(pool []seatRef, rounds []builtRound, fIdx, depthLeft int) {
 	if e.overBudget() {
 		return
 	}
-	if n := len(pool); n >= 2 && depthLeft < minRoundsNeeded(n) {
-		if len(e.multisetsFor(n, false)) > 0 {
+	if n := len(pool); n >= 2 && depthLeft < 1 {
+		if slices.Contains(e.sizes, n) {
 			e.depthPruned = true
 		}
 		return
 	}
 	rid := len(rounds)
 	for _, ms := range e.multisetsFor(len(pool), false) {
-		for p := 1; p < ms[len(ms)-1]; p++ {
-			round, next, _ := buildRound(rid, pool, ms, p)
-			round.track, round.index = TrackFinal, fIdx
-			if len(next) == 1 {
-				e.emit(appendRound(rounds, round), EliminationDouble)
-				continue
-			}
-			e.finalDFS(next, appendRound(rounds, round), fIdx+1, depthLeft-1)
+		if len(ms) != 1 {
+			continue // the grand final is one table
 		}
+		round, _, _ := buildRound(rid, pool, ms, 1)
+		round.track, round.index = TrackFinal, fIdx
+		e.emit(appendRound(rounds, round), EliminationDouble)
 	}
 }
 

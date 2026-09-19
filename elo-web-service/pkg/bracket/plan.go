@@ -25,8 +25,8 @@ const (
 
 // Bracket tracks. Single-elimination plans use winners for every round but
 // the last, which is the grand final; WB+LB plans merge the WB finalists and
-// the LB winner set into the final track once neither path can seat a round
-// alone.
+// the LB winner set into one grand-final round once neither path can seat a
+// round alone — the final track is always exactly that one round.
 const (
 	TrackWinners = "winners"
 	TrackLosers  = "losers"

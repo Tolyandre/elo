@@ -398,15 +398,24 @@ func TestDoubleTraditionalFlow(t *testing.T) {
 			promoteOf := map[int]int{}
 			flat := 0
 			hasLosers := false
+			finalRounds := 0
 			for _, r := range p.Rounds {
 				if r.Track == TrackLosers {
 					hasLosers = true
+				}
+				if r.Track == TrackFinal {
+					finalRounds++
 				}
 				for range r.Slots {
 					trackOf[flat] = r.Track
 					promoteOf[flat] = r.Promote
 					flat++
 				}
+			}
+			// The grand final is one round — deeper final tracks are not
+			// offered.
+			if finalRounds != 1 {
+				t.Fatalf("%d/%v: %d final rounds: %s", tc.n, tc.pool, finalRounds, describe(p))
 			}
 			lbIntoFinal := false
 			for _, r := range p.Rounds {
@@ -558,16 +567,19 @@ func TestEnumerateFilteredChips(t *testing.T) {
 		}
 	}
 
-	// Byes filter: n=5 on a 2-seat pool cannot seat exactly — every plan
+	// Byes filter: n=5 on a {3,4} pool cannot seat exactly — every plan
 	// carries byes, so "without" must empty the list while facets stay.
-	byes := EnumerateFiltered(5, []GameCapacity{{Min: 2, Max: 2}}, PlanFilter{Byes: ByesWithout}, 0)
+	byes := EnumerateFiltered(5, []GameCapacity{{Min: 3, Max: 3}, {Min: 4, Max: 4}}, PlanFilter{Byes: ByesWithout}, 0)
 	if len(byes.Plans) != 0 {
-		t.Fatalf("without-byes must have no plans for 5/{2}")
+		t.Fatalf("without-byes must have no plans for 5/{{3,4}}")
 	}
 	if !byes.Facets.HasByes || !byes.Facets.AllByes {
 		t.Fatalf("facets must ignore the display filters: %+v", byes.Facets)
 	}
-	with := EnumerateFiltered(5, []GameCapacity{{Min: 2, Max: 2}}, PlanFilter{Byes: ByesWith}, 0)
+	with := EnumerateFiltered(5, []GameCapacity{{Min: 3, Max: 3}, {Min: 4, Max: 4}}, PlanFilter{Byes: ByesWith}, 0)
+	if len(with.Plans) == 0 {
+		t.Fatalf("5/{{3,4}} must be feasible with byes")
+	}
 	for _, p := range with.Plans {
 		if !planHasByes(p) {
 			t.Fatalf("byes filter leaked a plan without byes")
