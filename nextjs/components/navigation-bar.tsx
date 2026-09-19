@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import { setUrlQuery } from "@/lib/url-state"
 import { EloWebServiceBaseUrl } from "@/app/api"
 import { useMe } from "@/app/meContext"
-import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Tent, Trophy } from "lucide-react"
+import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Trophy } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -68,12 +68,7 @@ export function NavigationBar() {
                 </>
               } />
 
-              <ListItem href="/tournaments" title={
-                <>
-                  <Tent className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Турниры
-                </>
-              } />
+              {/* Турниры живут табом на /arenas, отдельного пункта больше нет. */}
 
               <ListItem href="/admin" title={
                 <>

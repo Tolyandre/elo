@@ -1,26 +1,28 @@
 "use client";
 
 import { useMemo, useState } from "react";import Link from "next/link";
+import { Tent } from "lucide-react";
 import type { Base58ID } from "@/lib/id";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { PageHeader } from "@/app/pageHeaderContext";
-import { Arena, getArenasPromise } from "@/app/api";
+import { Arena, getArenasPromise, getTournamentsPromise } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMe } from "@/app/meContext";
 import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { arenaMatchesCount, buildArenaGroups, type ArenaGroup } from "@/lib/arena-groups";
 import { ErrorAlert } from "@/components/error-alert";
+import { GobletIcon } from "@/components/goblet-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GameCombobox } from "@/components/game-combobox";
+import { TournamentList } from "@/app/tournaments/tournament-list";
 
-// The "tournaments" tab of ADR-24 is renamed to "camps" (ADR-27): it lists
-// camp arenas — a camp is an arena flavor, not a tournament. Bracket
-// tournament arenas (ADR-26) will return to a tournaments tab later.
-const ARENAS_TABS = ["games", "camps"] as const;
+// Games arenas, camp arenas (ADR-27) and bracket tournaments (ADR-26) — the
+// tab that used to mix camps and tournaments is split in two.
+const ARENAS_TABS = ["games", "camps", "tournaments"] as const;
 type ArenasTab = (typeof ARENAS_TABS)[number];
 
 function parseTab(value: string | null): ArenasTab {
@@ -29,19 +31,22 @@ function parseTab(value: string | null): ArenasTab {
 
 export default function ArenasPage() {
   const { canEdit } = useMe();
-  // The camps tab swaps the header action to «Создать кэмп».
+  // The header action follows the tab: «Новая арена» on games, «Создать
+  // кэмп» on camps, «Создать турнир» on tournaments.
   const params = useUrlQuery();
   const tab = parseTab(params.get("tab"));
+  const actionByTab: Record<ArenasTab, { href: string; label: string }> = {
+    games: { href: "/arenas/new", label: "Новая арена" },
+    camps: { href: "/arenas/new?kind=camp", label: "Создать кэмп" },
+    tournaments: { href: "/tournaments/new", label: "Создать турнир" },
+  };
+  const action = canEdit ? actionByTab[tab] : null;
   return (
     <main className="max-w-sm mx-auto space-y-6">
       <PageHeader
         title="Арены"
-        action={canEdit ? (
-          tab === "camps" ? (
-            <Button asChild size="sm"><Link href="/arenas/new?kind=camp">Создать кэмп</Link></Button>
-          ) : (
-            <Button asChild size="sm"><Link href="/arenas/new">Новая арена</Link></Button>
-          )
+        action={action ? (
+          <Button asChild size="sm"><Link href={action.href}>{action.label}</Link></Button>
         ) : undefined}
       />
       <ArenasContent />
@@ -73,6 +78,7 @@ function ArenasContent() {
     if (tab === "camps") {
       return getArenasPromise({ kind: "camps" });
     }
+    if (tab === "tournaments") return [];
     if (gameId) {
       const all = await getArenasPromise({ game_id: gameId });
       // The by-game lookup also matches the global (unconditional) arena and
@@ -81,6 +87,14 @@ function ArenasContent() {
     }
     return getArenasPromise({ kind: "games" });
   }, [tab, gameId]);
+
+  // The tournaments tab has its own resource (the tournaments endpoint, not
+  // an arena listing) — same local fetch/loading/error shape as the camps tab.
+  const {
+    data: tournaments,
+    loading: tournamentsLoading,
+    error: tournamentsError,
+  } = useAsyncResource(async () => (tab === "tournaments" ? getTournamentsPromise() : null), [tab]);
 
   // Games tab layout: with a game selected — one flat list, most matches
   // first; otherwise the grouped layout of buildArenaGroups (tag arenas, then
@@ -122,9 +136,16 @@ function ArenasContent() {
   return (
     <>
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="games">По играм</TabsTrigger>
-          <TabsTrigger value="camps">Кэмпы</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="games" className="px-1 text-xs">По играм</TabsTrigger>
+          <TabsTrigger value="camps" className="px-1 text-xs">
+            <Tent className="mr-1 inline-block h-4 w-4 align-middle" />
+            Кэмпы
+          </TabsTrigger>
+          <TabsTrigger value="tournaments" className="px-1 text-xs">
+            <GobletIcon className="mr-1 inline-block h-4 w-4 align-middle" />
+            Турниры
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -191,6 +212,25 @@ function ArenasContent() {
                 ))}
               </CardContent>
             </Card>
+          )}
+        </>
+      )}
+
+      {tab === "tournaments" && (
+        <>
+          {tournamentsError && <ErrorAlert message={tournamentsError} />}
+          {tournamentsLoading && (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full rounded-xl" />
+              ))}
+            </div>
+          )}
+          {tournaments && tournaments.length === 0 && (
+            <p className="text-sm text-muted-foreground">Турниров пока нет</p>
+          )}
+          {tournaments && tournaments.length > 0 && (
+            <TournamentList tournaments={tournaments} />
           )}
         </>
       )}
