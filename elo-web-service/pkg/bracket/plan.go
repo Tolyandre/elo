@@ -37,7 +37,9 @@ const (
 const (
 	// SeatDraw: a round-1 winners-track seat filled from the seeded draw.
 	SeatDraw = "draw"
-	// SeatBye: a round-1 remainder player; seated directly in winners round 2.
+	// SeatBye: an unseated remainder player from an earlier winners round;
+	// seats in a later winners round (or straight in the grand final when
+	// the merge came first).
 	SeatBye = "bye"
 	// SeatSource: filled from a place of an earlier slot when it completes.
 	SeatSource = "source"
@@ -186,12 +188,12 @@ func (p Plan) Validate() error {
 						return fmt.Errorf("%w: draw seat outside round 1", ErrInvalidPlan)
 					}
 				case SeatBye:
-					// Byes are the round-1 remainder. They seat in winners
-					// round 2 — or straight in the grand final when the
-					// winners survivors could not seat a round 2 and the
-					// merge happened first (WB+LB).
-					if !(r.Track == TrackWinners && r.Index == 2) && !(r.Track == TrackFinal && r.Index == 1) {
-						return fmt.Errorf("%w: bye seat outside winners round 2 / final round 1", ErrInvalidPlan)
+					// Bye seats are winners-track remainder players fed
+					// forward: winners rounds 2+ — or straight in the grand
+					// final when the merge happened first (WB+LB). The
+					// losers track and the plan's first round seat everyone.
+					if !(r.Track == TrackWinners && r.Index >= 2) && !(r.Track == TrackFinal && r.Index == 1) {
+						return fmt.Errorf("%w: bye seat outside winners rounds 2+ / final round 1", ErrInvalidPlan)
 					}
 				case SeatSource:
 					// A legacy document may omit source_slot; it reads as

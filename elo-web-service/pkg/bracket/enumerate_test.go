@@ -23,19 +23,17 @@ func TestEnumerateSingle8Pool4Flagship(t *testing.T) {
 	if res.Truncated {
 		t.Fatalf("flagship enumeration must not truncate")
 	}
-	if len(res.Plans) != 1 {
-		var shapes []string
-		for _, p := range res.Plans {
-			shapes = append(shapes, describe(p))
-		}
-		t.Fatalf("expected exactly 1 plan for 8/{4}, got %d: %v", len(res.Plans), shapes)
+	if len(res.Plans) == 0 {
+		t.Fatalf("8/{{4}} single must be feasible")
 	}
+	// The flagship plan (fewest rounds) heads the documented order; longer
+	// bye-grinding shapes follow.
 	p := res.Plans[0]
 	if err := p.Validate(); err != nil {
 		t.Fatalf("enumerated plan invalid: %v", err)
 	}
 	if len(p.Rounds) != 2 {
-		t.Fatalf("expected 2 rounds, got %d", len(p.Rounds))
+		t.Fatalf("flagship must have 2 rounds, got %d: %s", len(p.Rounds), describe(p))
 	}
 	r1 := p.Rounds[0]
 	if r1.Track != TrackWinners || r1.Index != 1 || r1.Promote != 2 || len(r1.Slots) != 2 ||
@@ -137,7 +135,7 @@ func TestEnumerateMixedSeatSets(t *testing.T) {
 	}
 }
 
-func TestByesOnlyInRound1(t *testing.T) {
+func TestByesInWinnersRounds(t *testing.T) {
 	// 5 players, 4-seat pool: 4 seated + 1 bye; the bye plays winners round 2
 	// (here the grand final) without a table of their own in round 1.
 	res := Enumerate(5, pool4(), EliminationSingle, 0)
@@ -145,15 +143,20 @@ func TestByesOnlyInRound1(t *testing.T) {
 		t.Fatalf("5/{{4}} must be feasible (4 + bye)")
 	}
 	for _, p := range res.Plans {
+		if err := p.Validate(); err != nil {
+			t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(p))
+		}
 		for ri, r := range p.Rounds {
 			for _, s := range r.Slots {
 				for _, seat := range s.Seats {
-					isRound1 := ri == 0
-					if seat.Kind == SeatBye && isRound1 {
-						t.Fatalf("bye seat in round 1: %s", describe(p))
+					if seat.Kind != SeatBye {
+						continue
 					}
-					if seat.Kind == SeatBye && !(r.Track == TrackWinners && r.Index == 2 || r.Track == TrackFinal) {
-						t.Fatalf("bye seat outside winners round 2 / final: %s", describe(p))
+					// Bye seats feed forward into later winners rounds or
+					// the grand final; round 1 seats the draw and the
+					// losers track seats everyone exactly.
+					if ri == 0 || r.Track == TrackLosers {
+						t.Fatalf("bye seat in round 1 / losers track: %s", describe(p))
 					}
 				}
 			}
@@ -171,6 +174,22 @@ func TestByesOnlyInRound1(t *testing.T) {
 		}
 		if byes != 1 {
 			t.Fatalf("exactly one bye seat expected, got %d: %s", byes, describe(p))
+		}
+	}
+}
+
+// TestStrictPool18Feasible pins the case that motivated winners-round byes:
+// 18 players with a strictly 4-seat game must offer single- and double-
+// elimination plans (round 1 seats 4×4 + 2 byes; the byes keep waiting until
+// the survivors seat exactly again).
+func TestStrictPool18Feasible(t *testing.T) {
+	for _, elim := range []string{EliminationSingle, EliminationDouble} {
+		res := Enumerate(18, pool4(), elim, 0)
+		if len(res.Plans) == 0 {
+			t.Fatalf("18/{{4}} %s must be feasible", elim)
+		}
+		if err := res.Plans[0].Validate(); err != nil {
+			t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(res.Plans[0]))
 		}
 	}
 }
@@ -375,6 +394,7 @@ func doubleElimPools() []struct {
 		{8, []GameCapacity{{Min: 3, Max: 4}}},
 		{12, []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}},
 		{5, []GameCapacity{{Min: 3, Max: 4}}},
+		{18, []GameCapacity{{Min: 4, Max: 4}}},
 	}
 }
 
@@ -506,12 +526,10 @@ func TestDouble8Pool2ClassicGrandFinal(t *testing.T) {
 // and every facet as [] — nil Go slices would come out as null and break
 // clients reading .length.
 func TestZeroPlanResponseHasNoNulls(t *testing.T) {
-	// 18 players with a {4}-only pool: no traditional single or double plan
-	// exists (the first round leaves a bye remainder the later rounds cannot
-	// seat, and the grand final cannot seat at one 4-table).
-	res := Enumerate(18, pool4(), EliminationDouble, 0)
+	// 2 players with a 3-seat-only pool: no plan can seat the grand final.
+	res := Enumerate(2, []GameCapacity{{Min: 3, Max: 3}}, EliminationSingle, 0)
 	if len(res.Plans) != 0 {
-		t.Fatalf("18/{{4}} double must have no plans, got %d", len(res.Plans))
+		t.Fatalf("2/{{3}} single must have no plans, got %d", len(res.Plans))
 	}
 	for name, raw := range map[string][]byte{
 		"zero plans": marshalResult(t, res),

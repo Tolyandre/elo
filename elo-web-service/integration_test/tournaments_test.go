@@ -455,7 +455,8 @@ func TestTournament_BracketPlans(t *testing.T) {
 	}
 
 	// The elimination chip narrows the list; the flagship single-elim plan
-	// (4+4 promote-2 → final 4 promote-1) is the only single-family plan.
+	// (4+4 promote-2 → final 4 promote-1) heads it — longer bye-grinding
+	// shapes follow.
 	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single", admin, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("bracket-plans?elimination=single: %d %s", w.Code, w.Body.String())
@@ -464,8 +465,8 @@ func TestTournament_BracketPlans(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &singlePlans); err != nil {
 		t.Fatalf("decode single plans: %v", err)
 	}
-	if len(singlePlans.Data.Plans) != 1 || singlePlans.Data.Truncated {
-		t.Fatalf("8/{{4}} must offer exactly 1 single plan, got %d truncated=%v", len(singlePlans.Data.Plans), singlePlans.Data.Truncated)
+	if len(singlePlans.Data.Plans) == 0 || singlePlans.Data.Truncated {
+		t.Fatalf("8/{{4}} must offer single plans, got %d truncated=%v", len(singlePlans.Data.Plans), singlePlans.Data.Truncated)
 	}
 	p := singlePlans.Data.Plans[0]
 	if len(p.Rounds) != 2 || p.Rounds[0].Promote != 2 || len(p.Rounds[0].Slots) != 2 || p.Rounds[0].Slots[0].SeatCount != 4 {

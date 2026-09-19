@@ -178,9 +178,12 @@ multisets of seat sizes drawn from the pool's capacities:
 - mixed variants: `⌊n/k⌋` slots of `k` plus combinations of smaller pool
   sizes (e.g. `n = 8`, pool `{2,3}`: `3+3+2`; `n = 11`, pool `{3,4}`:
   `4+4+3`);
-- a **bye** (the unseated remainder) is allowed **only in the first round**
-  of the winners track; every later round and both other tracks must seat
-  everyone exactly (`⌊n/k⌋·k = n`);
+- a **bye** (the unseated remainder) is allowed in **every winners-track
+  round** — those players wait and feed the next winners round (or the
+  grand final, if the merge came first); this is what makes strict single-
+  size pools work at all (18 players on 4-seat tables: 4×4 + 2 byes, again
+  4 + 2 byes, until the survivors seat exactly). Losers-track rounds and
+  the grand final must seat everyone exactly (`⌊n/k⌋·k = n`);
 - a seat size is only usable if some pool game fits it; if the pool has no
   game for a candidate set, that candidate is not offered.
 

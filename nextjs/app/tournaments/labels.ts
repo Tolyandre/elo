@@ -79,9 +79,12 @@ export function seatSourceLabel(sourceSlotPosition: number, sourcePlace?: number
 export function planPreview(plan: TournamentPlan): string {
     return plan.rounds
         .map((round) => {
+            // Bye-kind seats occupy real seats of later rounds (the players
+            // sat an earlier round out) — they add no capacity, so they go
+            // in a parenthetical rather than into the + shape.
             const byes = round.slots.reduce(
                 (n, s) => n + s.seats.filter((seat) => seat.kind === "bye").length, 0);
-            const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? `+${byes} бай` : "");
+            const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? ` (${byes} бай)` : "");
             return `${roundTitle(round.track, round.index, plan.elimination)}: ${shape} → ${round.promote}`;
         })
         .join("; ");

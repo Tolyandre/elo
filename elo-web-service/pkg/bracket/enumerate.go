@@ -504,19 +504,20 @@ func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef
 }
 
 // singleDFS plays winners-track rounds (no losers bracket) down to one
-// player; the round that produces the champion is the grand final.
+// player; the round that produces the champion is the grand final. Winners
+// rounds may leave an unseated bye remainder.
 func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthLeft int) {
 	if e.overBudget() {
 		return
 	}
 	if n := len(pool); n >= 2 && depthLeft < minRoundsNeeded(n) {
-		if len(e.multisetsFor(n, wIdx == 1)) > 0 {
+		if len(e.multisetsFor(n, true)) > 0 {
 			e.depthPruned = true
 		}
 		return
 	}
 	rid := len(rounds)
-	for _, ms := range e.multisetsFor(len(pool), wIdx == 1) {
+	for _, ms := range e.multisetsFor(len(pool), true) {
 		for p := 1; p < ms[len(ms)-1]; p++ {
 			round, next, _ := buildRound(rid, pool, ms, p)
 			if len(next) == 1 {
@@ -531,19 +532,22 @@ func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthL
 }
 
 // doubleDFS explores the (winners, losers) state space: run a winners round
-// (round 1 may carry byes), run a losers round when the LB pool seats exactly
-// (LB non-promoted players are out), or — once both tracks are exhausted —
-// merge into the final track. The merge is the traditional grand final: the
-// WB must be finished (its survivors can no longer seat a round alone) and
-// the LB must be down to its winner set (lbResolved) — a WB drop that the LB
-// could never seat dead-ends the branch instead of skipping into the final.
-// Both "run LB now" and "run WB next" branches are explored (ADR-26).
+// (the unseated remainder waits as byes for the next winners round), run a
+// losers round when the LB pool seats exactly (LB non-promoted players are
+// out), or — once both tracks are exhausted — merge into the final track.
+// The merge is the traditional grand final: the WB must be finished (no
+// winners round can seat its survivors any more) and the LB must be down to
+// its winner set (lbResolved) — a WB drop that the LB could never seat
+// dead-ends the branch instead of skipping into the final. Both "run LB now"
+// and "run WB next" branches are explored (ADR-26).
 func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx, lIdx, depthLeft int) {
 	if e.overBudget() {
 		return
 	}
 	nw, nl := len(wpool), len(lpool)
-	wSeatable := canSeat(nw, e.sizes)
+	// A winners round is possible whenever at least the smallest table fits;
+	// the remainder waits as byes.
+	wPossible := len(e.multisetsFor(nw, true)) > 0
 	total := nw + nl
 
 	// Every continuation (a WB round, an LB round, or a merge followed by
@@ -551,11 +555,11 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	// horizon the branch cannot terminate within the bound.
 	if total >= 2 && depthLeft < minRoundsNeeded(total) {
 		switch {
-		case (wSeatable || wIdx == 1) && len(e.multisetsFor(nw, wIdx == 1)) > 0:
+		case wPossible:
 			e.depthPruned = true
 		case nl >= 2 && canSeat(nl, e.sizes) && len(e.multisetsFor(nl, false)) > 0:
 			e.depthPruned = true
-		case wIdx > 1 && !wSeatable && lbResolved(lpool) && slices.Contains(e.sizes, total):
+		case wIdx > 1 && !wPossible && lbResolved(lpool) && slices.Contains(e.sizes, total):
 			e.depthPruned = true
 		}
 		return
@@ -563,9 +567,9 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 
 	rid := len(rounds)
 
-	// Winners round: exact, or round 1 with a bye remainder.
-	if wSeatable || wIdx == 1 {
-		for _, ms := range e.multisetsFor(nw, wIdx == 1) {
+	// Winners round: seat pool-sized tables, carry the remainder as byes.
+	if wPossible {
+		for _, ms := range e.multisetsFor(nw, true) {
 			for p := 1; p < ms[len(ms)-1]; p++ {
 				round, nextW, drops := buildRound(rid, wpool, ms, p)
 				round.track, round.index = TrackWinners, wIdx
@@ -594,12 +598,13 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	}
 
 	// Merge into the final track — the grand final: WB finalists and the
-	// LB's winner set, once neither track can seat a round alone, seated at
-	// ONE table (a multi-round final track is not offered; a merged field no
-	// pool game seats at one table dead-ends the branch). No bracket reset,
-	// no WB privilege: the final eliminates for everyone. The merge itself
-	// adds no round, so it runs within the same depth budget.
-	if !wSeatable && wIdx > 1 && lbResolved(lpool) {
+	// LB's winner set, once the WB can no longer seat a winners round and
+	// the LB is resolved, seated at ONE table (a multi-round final track is
+	// not offered; a merged field no pool game seats at one table dead-ends
+	// the branch). No bracket reset, no WB privilege: the final eliminates
+	// for everyone. The merge itself adds no round, so it runs within the
+	// same depth budget.
+	if !wPossible && wIdx > 1 && lbResolved(lpool) {
 		merged := make([]seatRef, 0, nw+nl)
 		merged = append(merged, wpool...)
 		merged = append(merged, lpool...)
