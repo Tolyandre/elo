@@ -304,9 +304,34 @@ func (s *TournamentService) ListBracketPlans(ctx context.Context, tid id.ID) (br
 	return bracket.Enumerate(int(n), poolCaps(pool), t.Elimination, bracket.DefaultPlanCap), nil
 }
 
-// ListTournaments is the /tournaments list read (status-ordered by the query).
-func (s *TournamentService) ListTournaments(ctx context.Context) ([]db.Tournament, error) {
-	return s.Queries.ListTournaments(ctx)
+// ListTournaments is the /tournaments list read (status-ordered by the query),
+// each row carrying its participants in registration order (the list shows
+// the count).
+func (s *TournamentService) ListTournaments(ctx context.Context) ([]TournamentDetail, error) {
+	rows, err := s.Queries.ListTournaments(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tournaments: %w", err)
+	}
+	out := make([]TournamentDetail, 0, len(rows))
+	if len(rows) == 0 {
+		return out, nil
+	}
+	ids := make([]id.ID, 0, len(rows))
+	for _, t := range rows {
+		ids = append(ids, t.ID)
+	}
+	participants, err := s.Queries.ListParticipantsOfTournaments(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list participants: %w", err)
+	}
+	byTournament := make(map[id.ID][]id.ID, len(rows))
+	for _, p := range participants {
+		byTournament[p.TournamentID] = append(byTournament[p.TournamentID], p.PlayerID)
+	}
+	for _, t := range rows {
+		out = append(out, TournamentDetail{Row: t, Participants: byTournament[t.ID]})
+	}
+	return out, nil
 }
 
 // TournamentDetail is the single-tournament read: the row plus its pool and

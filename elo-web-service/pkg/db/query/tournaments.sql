@@ -68,6 +68,13 @@ FROM tournament_participants
 WHERE tournament_id = $1
 ORDER BY created_at, player_id;
 
+-- name: ListParticipantsOfTournaments :many
+-- Participants of several tournaments in registration order (the list read).
+SELECT tournament_id, player_id
+FROM tournament_participants
+WHERE tournament_id = ANY(sqlc.arg('tournament_ids')::uuid[])
+ORDER BY tournament_id, created_at, player_id;
+
 -- name: CountTournamentParticipants :one
 SELECT COUNT(*)::int AS count FROM tournament_participants WHERE tournament_id = $1;
 

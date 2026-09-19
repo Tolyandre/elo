@@ -223,6 +223,39 @@ func (q *Queries) GetTournamentPlan(ctx context.Context, argID id.ID) (GetTourna
 	return i, err
 }
 
+const listParticipantsOfTournaments = `-- name: ListParticipantsOfTournaments :many
+SELECT tournament_id, player_id
+FROM tournament_participants
+WHERE tournament_id = ANY($1::uuid[])
+ORDER BY tournament_id, created_at, player_id
+`
+
+type ListParticipantsOfTournamentsRow struct {
+	TournamentID id.ID `json:"tournament_id"`
+	PlayerID     id.ID `json:"player_id"`
+}
+
+// Participants of several tournaments in registration order (the list read).
+func (q *Queries) ListParticipantsOfTournaments(ctx context.Context, tournamentIds []id.ID) ([]ListParticipantsOfTournamentsRow, error) {
+	rows, err := q.db.Query(ctx, listParticipantsOfTournaments, tournamentIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListParticipantsOfTournamentsRow{}
+	for rows.Next() {
+		var i ListParticipantsOfTournamentsRow
+		if err := rows.Scan(&i.TournamentID, &i.PlayerID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTournamentGames = `-- name: ListTournamentGames :many
 SELECT tournament_id, game_id, min_players, max_players
 FROM tournament_games

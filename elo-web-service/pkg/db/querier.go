@@ -366,6 +366,8 @@ type Querier interface {
 	ListOverdueMatchWinnerMarketsAtDate(ctx context.Context, closesAt pgtype.Timestamptz) ([]ListOverdueMatchWinnerMarketsAtDateRow, error)
 	ListOverdueWinStreakMarkets(ctx context.Context) ([]ListOverdueWinStreakMarketsRow, error)
 	ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesAt pgtype.Timestamptz) ([]ListOverdueWinStreakMarketsAtDateRow, error)
+	// Participants of several tournaments in registration order (the list read).
+	ListParticipantsOfTournaments(ctx context.Context, tournamentIds []id.ID) ([]ListParticipantsOfTournamentsRow, error)
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)

@@ -73,7 +73,7 @@ func (s *StrictServer) ListTournaments(ctx context.Context, request ListTourname
 	}
 	data := make([]Tournament, 0, len(rows))
 	for _, t := range rows {
-		data = append(data, tournamentToAPI(elo.TournamentDetail{Row: t}))
+		data = append(data, tournamentToAPI(t))
 	}
 	return ListTournaments200JSONResponse{Status: "success", Data: data}, nil
 }

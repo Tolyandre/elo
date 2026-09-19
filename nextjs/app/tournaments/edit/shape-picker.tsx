@@ -8,6 +8,13 @@ import { planPreview } from "../labels";
 import { PlanBracketPreview } from "../plan-bracket-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -76,20 +83,21 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
             )}
             {data && (
                 <>
-                    <div className="space-y-2">
-                        {data.plans.map((p, i) => (
-                            <label key={i} className="flex items-start gap-2 cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="bracket-plan"
-                                    className="mt-1 h-4 w-4"
-                                    checked={selected === i}
-                                    onChange={() => setSelected(i)}
-                                />
-                                <span className="text-sm">{planPreview(p)}</span>
-                            </label>
-                        ))}
-                    </div>
+                    <Select
+                        value={selected != null ? String(selected) : undefined}
+                        onValueChange={(v) => setSelected(Number(v))}
+                    >
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Выберите форму сетки" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {data.plans.map((p, i) => (
+                                <SelectItem key={i} value={String(i)}>
+                                    {planPreview(p)}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     {data.truncated && (
                         <p className="text-xs text-muted-foreground">
                             Показаны первые {data.plans.length} вариантов (лимит {data.cap}) — всего больше.
