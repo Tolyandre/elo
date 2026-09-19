@@ -198,12 +198,15 @@ export function useConnectorPaths(
         // side instead of overlapping into one stroke. Drops take part in the
         // same arithmetic — a dozen WB→LB falls squeeze through one gap.
         const lanes = laneAssignments(measured);
-        const next: ConnectorPath[] = measured.map((m) => ({
-            key: m.key,
-            d: m.kind === "drop" ? dropPath(m.from, m.to) : connectorPath(m.from, m.to, lanes.get(m.key) ?? 0),
-            resolved: m.resolved,
-            kind: m.kind,
-        }));
+        const next: ConnectorPath[] = measured.map((m) => {
+            const lane = lanes.get(m.key) ?? 0;
+            return {
+                key: m.key,
+                d: m.kind === "drop" ? dropPath(m.from, m.to, lane) : connectorPath(m.from, m.to, lane),
+                resolved: m.resolved,
+                kind: m.kind,
+            };
+        });
         // Skip the state update entirely when nothing moved — the deferred
         // re-measures (after paint, after webfonts settle) must not wake
         // React for identical geometry.
@@ -303,7 +306,7 @@ export function ConnectorLayer({
                             hot
                                 ? kind === "drop" ? "stroke-chart-1" : "stroke-primary"
                                 : kind === "drop"
-                                    ? "stroke-chart-1/60"
+                                    ? "stroke-chart-1/40"
                                     : p.resolved
                                         ? "stroke-primary/50"
                                         : "stroke-muted-foreground/40"
