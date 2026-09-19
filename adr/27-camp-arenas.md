@@ -47,6 +47,11 @@ CREATE TABLE camp_matches (                 -- explicit match ↔ camp arena lin
 );
 ```
 
+> **Amended by ADR-28 (migration 059):** `camp_matches` and ADR-26's
+> `tournament_matches` merged into one `arena_matches` table anchored at the
+> arena. Camp membership semantics are unchanged — the link rows just live in
+> the unified table now.
+
 - Camp arenas have **no `match_filter`**: membership is the explicit
   `camp_matches` link, not a predicate. All other arena kinds keep filters
   unchanged (ADR-24).

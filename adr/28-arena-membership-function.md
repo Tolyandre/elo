@@ -93,6 +93,45 @@ Rules learned, and enforced by the header comment in `arenas.sql`:
   columns are NULL, and a NULL filter would match everything if the link
   probe alone gated membership (an integration test caught exactly this).
 
+## Amendment (2026-09, migration 059): one `arena_matches` table
+
+ADR-26 added the second link flavor (`tournament_matches`, anchored at the
+tournament, membership following the slot link). Both link tables answered
+the same question for a link-only arena — "is this match in this arena" —
+with only the anchor entity differing, so they merge into
+
+```sql
+arena_matches (arena_id UUID REFERENCES arenas ON DELETE CASCADE,
+               match_id UUID REFERENCES matches ON DELETE CASCADE,
+               PRIMARY KEY (arena_id, match_id))
+```
+
+and the function loses the camp/tournament link split:
+
+```sql
+arena_contains_match(
+    p_link_only boolean,        -- a.camp OR a.tournament_id IS NOT NULL
+    p_link boolean,             -- EXISTS(arena_matches link for this arena+match)
+    p_has_filtered_tag boolean,
+    p_match_date timestamptz, p_match_game_id uuid,
+    p_filter_date_from timestamptz, p_filter_date_to timestamptz,
+    p_filter_game_ids uuid[], p_filter_tag_ids uuid[]
+) returns boolean
+```
+
+- `p_link_only THEN p_link` covers both flavors (camps: organizer-managed
+  links; tournaments: bracket-written links that detach/void with the slot —
+  ADR-26 as revised); one EXISTS probe per query instead of two;
+- the copy in 059 is lossless (camp rows verbatim, tournament rows mapped
+  through `arenas.tournament_id` — every running tournament has its
+  auto-created arena, and a deleted tournament cascades both the arena and
+  its rows), and the function's result is unchanged per arena, so nothing is
+  stale-marked;
+- the camp/tournament anchor split was the only difference — the audit
+  trails stay distinct (`camp-link` rows on the arena,
+  `slot-link` rows on the tournament), and the camp window invariant
+  (ADR-27) reads the same table.
+
 ## Notes
 
 - The functions live in migrations because sqlc compiles queries against the

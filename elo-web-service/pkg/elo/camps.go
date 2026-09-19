@@ -10,7 +10,7 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// Camp arena links (ADR-27). A match belongs to a camp iff a camp_matches row
+// Camp arena links (ADR-27). A match belongs to a camp iff a arena_matches row
 // links them; the links are written once on match creation and never altered
 // afterwards — editing a match validates its date against the stored windows
 // instead of rewriting them.
@@ -79,7 +79,7 @@ func campWindowContains(a Arena, date time.Time) bool {
 // set (the edit-form desired set, ADR-27), writing a camp-link audit row per
 // change. A no-op when the sets agree (an idempotent replay emits nothing).
 // The caller stale-marks both the old and the new camps — the drain replays
-// them from camp_matches, rewriting settlements and medal stats.
+// them from arena_matches, rewriting settlements and medal stats.
 func applyCampLinkDiff(ctx context.Context, q *db.Queries, actor id.ID, matchID id.ID, current, desired []Arena) error {
 	currentIDs := make(map[id.ID]bool, len(current))
 	for _, c := range current {
@@ -93,7 +93,7 @@ func applyCampLinkDiff(ctx context.Context, q *db.Queries, actor id.ID, matchID 
 		if currentIDs[c.ID] {
 			continue
 		}
-		if err := q.AddCampMatch(ctx, db.AddCampMatchParams{ArenaID: c.ID, MatchID: matchID}); err != nil {
+		if err := q.AddArenaMatch(ctx, db.AddArenaMatchParams{ArenaID: c.ID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match %s to camp %s: %w", matchID, c.ID, err)
 		}
 		if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionCreated, c.ID,
@@ -105,7 +105,7 @@ func applyCampLinkDiff(ctx context.Context, q *db.Queries, actor id.ID, matchID 
 		if desiredIDs[c.ID] {
 			continue
 		}
-		if err := q.DeleteCampMatch(ctx, db.DeleteCampMatchParams{ArenaID: c.ID, MatchID: matchID}); err != nil {
+		if err := q.DeleteArenaMatch(ctx, db.DeleteArenaMatchParams{ArenaID: c.ID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("unlink match %s from camp %s: %w", matchID, c.ID, err)
 		}
 		if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionDeleted, c.ID,

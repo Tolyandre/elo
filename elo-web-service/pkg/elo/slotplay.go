@@ -79,7 +79,7 @@ func (s *TournamentService) AcceptMatch(ctx context.Context, q *db.Queries, matc
 		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: c.ID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to slot: %w", err)
 		}
-		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{
+		if err := q.AddTournamentArenaMatch(ctx, db.AddTournamentArenaMatchParams{
 			TournamentID: c.TournamentID, MatchID: matchID,
 		}); err != nil {
 			return fmt.Errorf("link match to tournament: %w", err)
@@ -542,7 +542,7 @@ func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries
 		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: c.ID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to slot: %w", err)
 		}
-		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{TournamentID: c.TournamentID, MatchID: matchID}); err != nil {
+		if err := q.AddTournamentArenaMatch(ctx, db.AddTournamentArenaMatchParams{TournamentID: c.TournamentID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to tournament: %w", err)
 		}
 		if err := recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, c.TournamentID,
@@ -702,7 +702,7 @@ func (s *TournamentService) AttachMatch(ctx context.Context, tid, slotID, matchI
 		if err := q.AddSlotMatch(ctx, db.AddSlotMatchParams{SlotID: slotID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to slot: %w", err)
 		}
-		if err := q.AddTournamentMatch(ctx, db.AddTournamentMatchParams{TournamentID: tid, MatchID: matchID}); err != nil {
+		if err := q.AddTournamentArenaMatch(ctx, db.AddTournamentArenaMatchParams{TournamentID: tid, MatchID: matchID}); err != nil {
 			return fmt.Errorf("link match to tournament: %w", err)
 		}
 		// The arena's match set grew; refresh it at the end of this tx.
@@ -998,7 +998,7 @@ func (s *TournamentService) enforceDeadlineTx(ctx context.Context, q *db.Queries
 // list or a tournament without its auto-created arena yet.
 func (s *TournamentService) forgetTournamentMatches(ctx context.Context, q *db.Queries, tid id.ID, matchIDs []id.ID) error {
 	for _, mid := range matchIDs {
-		if err := q.DeleteTournamentMatch(ctx, mid); err != nil {
+		if err := q.DeleteTournamentArenaMatch(ctx, db.DeleteTournamentArenaMatchParams{TournamentID: tid, MatchID: mid}); err != nil {
 			return fmt.Errorf("unlink match from tournament: %w", err)
 		}
 	}

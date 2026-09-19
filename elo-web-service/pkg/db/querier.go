@@ -13,10 +13,13 @@ import (
 )
 
 type Querier interface {
-	// Camp arena link queries (ADR-27). Camp membership is the explicit
-	// camp_matches link, written when a match is created with camp_arena_ids and
-	// never altered afterwards (editing a match cannot change its camps).
-	AddCampMatch(ctx context.Context, arg AddCampMatchParams) error
+	// Arena match link queries (ADR-27, ADR-28 amendment): one arena_matches
+	// table serves both link-only arena flavors — camp arenas (organizer-managed
+	// checkboxes) and tournament arenas (written by the bracket slot mechanics).
+	// Camp membership is written when a match is created with camp_arena_ids and
+	// never altered afterwards except by the edit-form desired-set diff; the
+	// tournament flavor attaches at slot-link time and detaches/voids with it.
+	AddArenaMatch(ctx context.Context, arg AddArenaMatchParams) error
 	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
@@ -25,14 +28,14 @@ type Querier interface {
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddSlotMatch(ctx context.Context, arg AddSlotMatchParams) error
 	AddSlotPromotion(ctx context.Context, arg AddSlotPromotionParams) error
+	// The tournament-membership row: the tournament's auto-created arena is
+	// resolved in-SQL (every running tournament has one; acceptance and attach
+	// only write membership for running tournaments).
+	AddTournamentArenaMatch(ctx context.Context, arg AddTournamentArenaMatchParams) error
 	// ---------------------------------------------------------------------------
 	// Game pool
 	// ---------------------------------------------------------------------------
 	AddTournamentGame(ctx context.Context, arg AddTournamentGameParams) error
-	// The tournament-membership link (ADR-26): inserted whenever the match is
-	// linked to a slot, deleted whenever the match leaves the slot (detach or
-	// void) — the tournament arena counts exactly the slot-linked matches.
-	AddTournamentMatch(ctx context.Context, arg AddTournamentMatchParams) error
 	// ---------------------------------------------------------------------------
 	// Participants
 	// ---------------------------------------------------------------------------
@@ -95,6 +98,10 @@ type Querier interface {
 	DeleteAllMatches(ctx context.Context) error
 	// Returns the deleted row so the audit trail can capture the name.
 	DeleteArena(ctx context.Context, argID id.ID) (DeleteArenaRow, error)
+	// Detach a match from a camp arena (the edit-form desired-set diff, ADR-27):
+	// the camp is stale-marked by the caller and the replay rewrites its
+	// settlements and medal stats.
+	DeleteArenaMatch(ctx context.Context, arg DeleteArenaMatchParams) error
 	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 	// rows for a market (used by unsettle/recalculation).
 	DeleteArenaSettlementByMarket(ctx context.Context, arg DeleteArenaSettlementByMarketParams) error
@@ -105,10 +112,6 @@ type Querier interface {
 	// Precalculated stats
 	// ---------------------------------------------------------------------------
 	DeleteArenaStats(ctx context.Context, arenaID id.ID) error
-	// Detach a match from a camp arena (the edit-form desired-set diff, ADR-27):
-	// the camp is stale-marked by the caller and the replay rewrites its
-	// settlements and medal stats.
-	DeleteCampMatch(ctx context.Context, arg DeleteCampMatchParams) error
 	DeleteClub(ctx context.Context, argID id.ID) (Club, error)
 	DeleteEloSettings(ctx context.Context, effectiveDate pgtype.Timestamptz) error
 	DeleteExpiredGameTables(ctx context.Context) error
@@ -132,11 +135,11 @@ type Querier interface {
 	// same seed; only callable on slots with zero linked matches.
 	DeleteSlotSeats(ctx context.Context, slotID id.ID) error
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
+	// The match left its slot (detach or void, ADR-26): it leaves the tournament
+	// arena too.
+	DeleteTournamentArenaMatch(ctx context.Context, arg DeleteTournamentArenaMatchParams) error
 	// The pool is small; the PUT handler rewrites it wholesale inside its tx.
 	DeleteTournamentGames(ctx context.Context, tournamentID id.ID) error
-	// The match's tournament-membership row (a match belongs to at most one
-	// tournament); also used by the startup-free orphan cleanup (migration 058).
-	DeleteTournamentMatch(ctx context.Context, matchID id.ID) error
 	// The editor's desired-set semantics (PUT /tournaments): drop everyone absent
 	// from the submitted set. An empty array removes everyone.
 	DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error
@@ -273,8 +276,8 @@ type Querier interface {
 	GetUserByLegacyIntID(ctx context.Context, legacyIntID pgtype.Int4) (User, error)
 	GetWinStreakParams(ctx context.Context, marketID id.ID) (MarketWinStreakParam, error)
 	// Recompute places 1..4 per match (RANK over the match's scores) for every
-	// match belonging to the arena: via camp_matches links for camps, via the
-	// filter for every other kind.
+	// match belonging to the arena: via arena_matches links for the link-only
+	// flavors (camps, tournaments), via the filter for every other kind.
 	InsertArenaStats(ctx context.Context, arenaID id.ID) error
 	// Appends one audit_log row. Called inside the same transaction as the write
 	// it describes (ADR-14). details_* are all NULL together for events without
@@ -317,7 +320,7 @@ type Querier interface {
 	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)
 	// Arena ids containing the given match per the membership function — part of
 	// the synchronous-drain affected set on match writes. Camps are included via
-	// their camp_matches links (the match must already be linked when this runs).
+	// their arena_matches links (the match must already be linked when this runs).
 	ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([]id.ID, error)
 	// Latest-first audit feed. Optional entity filter (one or more entity types)
 	// and entity_id filter serve both the per-entity history (match view) and the

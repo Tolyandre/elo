@@ -255,7 +255,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	}
 	if isNew {
 		for _, c := range campArenas {
-			if err := q.AddCampMatch(ctx, db.AddCampMatchParams{ArenaID: c.ID, MatchID: createdMatch.ID}); err != nil {
+			if err := q.AddArenaMatch(ctx, db.AddArenaMatchParams{ArenaID: c.ID, MatchID: createdMatch.ID}); err != nil {
 				return db.Match{}, fmt.Errorf("link match %s to camp %s: %w", createdMatch.ID, c.ID, err)
 			}
 			if err := recordAuditEvent(ctx, q, opts.ActorUserID, audit.EntityArena, audit.ActionCreated, c.ID,
@@ -269,7 +269,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	// fitting playing slot when the checkbox is on (the default); the link,
 	// the placement points, and any completion cascade happen in this
 	// transaction. Must run before the arena drain below: the tournament
-	// arena's membership is the tournament_matches link written here.
+	// arena's membership is the arena_matches link written here.
 	if !opts.SkipTournamentLink && s.Tournaments != nil {
 		if err := s.Tournaments.AcceptMatch(ctx, q, createdMatch.ID, gameID, playerIDsOf(playerScores), opts.ActorUserID); err != nil {
 			return db.Match{}, err
@@ -277,7 +277,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	}
 
 	// ADR-24: the match write touches every arena containing it — the
-	// membership function covers camps via their camp_matches links (written
+	// membership function covers camps via their arena_matches links (written
 	// above) — update them synchronously in this transaction (the global
 	// arena was already replayed above; the drain skips it).
 	affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
@@ -424,7 +424,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	}
 
 	// Apply the desired camp-link diff (attach/detach, each audited). Must
-	// run before the drain below: the camp replay reads camp_matches.
+	// run before the drain below: the camp replay reads arena_matches.
 	if err := applyCampLinkDiff(ctx, q, opts.ActorUserID, matchID, linkedCamps, desiredCamps); err != nil {
 		return db.Match{}, err
 	}

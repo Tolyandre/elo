@@ -90,21 +90,29 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 		t.Fatalf("player must survive the migration")
 	}
 
-	// The membership function: tournament branch first, then camp, then filter.
+	// The membership function: link-only branch (tournament/camp), then filter.
 	matchID := newID(t)
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO matches (id, date, game_id) VALUES ($1, NOW(), $2)`, matchID, gameID); err != nil {
 		t.Fatalf("insert probe match: %v", err)
 	}
-	// A live (post-rebuild) tournament whose link table feeds the probe.
+	// A live (post-rebuild) tournament whose arena link feeds the probe: the
+	// tournament plus the auto-created-arena shape (non-camp, no filter).
 	tournID := idpkg.New()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO tournaments (id, name, status, elimination) VALUES ($1, 'Миграционный турнир', 'running', 'single')`,
 		tournID); err != nil {
 		t.Fatalf("insert probe tournament: %v", err)
 	}
+	tournArenaID := idpkg.NewMonotonic()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournament_matches (tournament_id, match_id) VALUES ($1, $2)`, tournID, matchID); err != nil {
+		`INSERT INTO arenas (id, name, settings, settings_schema_version, tournament_id, camp)
+		 VALUES ($1, 'Миграционная арена', '{"starting_rating":900,"leagues":[]}', 1, $2, false)`,
+		tournArenaID, tournID); err != nil {
+		t.Fatalf("insert probe arena: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO arena_matches (arena_id, match_id) VALUES ($1, $2)`, tournArenaID, matchID); err != nil {
 		t.Fatalf("insert probe link: %v", err)
 	}
 	cases := []struct {
@@ -116,18 +124,16 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 		{
 			what: "tournament arena contains a linked match",
 			query: `SELECT arena_contains_match(
-				false, true,
-				false,
-				EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = $1 AND tm.match_id = $2),
+				true,
+				EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = $1 AND am.match_id = $2),
 				false, NOW(), $3, NULL, NULL, NULL, NULL)`,
-			args: []any{tournID, matchID, gameID},
+			args: []any{tournArenaID, matchID, gameID},
 			want: true,
 		},
 		{
 			what: "tournament arena ignores the filter (NULL filter matches nothing)",
 			query: `SELECT arena_contains_match(
-				false, true,
-				false,
+				true,
 				false,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
 			args: []any{gameID},
@@ -136,9 +142,8 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 		{
 			what: "camp arena still link-only",
 			query: `SELECT arena_contains_match(
-				true, false,
 				true,
-				false,
+				true,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
 			args: []any{gameID},
 			want: true,
@@ -146,8 +151,8 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 		{
 			what: "filter arena with an empty filter contains every match",
 			query: `SELECT arena_contains_match(
-				false, false,
-				false, false,
+				false,
+				false,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
 			args: []any{gameID},
 			want: true,
@@ -1356,7 +1361,9 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	var m1Memberships, m1Settlements int
 	if err := pool.QueryRow(context.Background(),
 		`SELECT
-            (SELECT COUNT(*) FROM tournament_matches WHERE match_id = $1),
+            (SELECT COUNT(*) FROM arena_matches am
+             JOIN arenas a ON a.id = am.arena_id
+             WHERE a.tournament_id = $2 AND am.match_id = $1),
             (SELECT COUNT(*) FROM arena_settlements s
              WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
 		m1id, tid).Scan(&m1Memberships, &m1Settlements); err != nil {
@@ -1497,7 +1504,9 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	var matchMemberships, matchSettlements int
 	if err := pool.QueryRow(context.Background(),
 		`SELECT
-            (SELECT COUNT(*) FROM tournament_matches WHERE match_id = $1),
+            (SELECT COUNT(*) FROM arena_matches am
+             JOIN arenas a ON a.id = am.arena_id
+             WHERE a.tournament_id = $2 AND am.match_id = $1),
             (SELECT COUNT(*) FROM arena_settlements s
              WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
 		midID, tid).Scan(&matchMemberships, &matchSettlements); err != nil {

@@ -27,6 +27,11 @@ type Arena struct {
 	EndsAt                pgtype.Timestamptz `json:"ends_at"`
 }
 
+type ArenaMatch struct {
+	ArenaID id.ID `json:"arena_id"`
+	MatchID id.ID `json:"match_id"`
+}
+
 type ArenaPlayerStat struct {
 	ArenaID      id.ID `json:"arena_id"`
 	PlayerID     id.ID `json:"player_id"`
@@ -76,11 +81,6 @@ type Bet struct {
 	PlacedAt pgtype.Timestamptz `json:"placed_at"`
 	Shares   float64            `json:"shares"`
 	Fee      float64            `json:"fee"`
-}
-
-type CampMatch struct {
-	ArenaID id.ID `json:"arena_id"`
-	MatchID id.ID `json:"match_id"`
 }
 
 type Club struct {
@@ -247,12 +247,6 @@ type TournamentGame struct {
 	GameID       id.ID `json:"game_id"`
 	MinPlayers   int32 `json:"min_players"`
 	MaxPlayers   int32 `json:"max_players"`
-}
-
-type TournamentMatch struct {
-	TournamentID id.ID     `json:"tournament_id"`
-	MatchID      id.ID     `json:"match_id"`
-	CreatedAt    time.Time `json:"created_at"`
 }
 
 type TournamentParticipant struct {

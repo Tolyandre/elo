@@ -90,7 +90,7 @@ func TestCamp_SeededTournamentConverted(t *testing.T) {
 // TestCamp_MigrationPreservesLinksAndStats rebuilds the pre-053 production
 // shape on a fresh database (migrated to 052, seeded with camp members +
 // linked matches, then migrated on) and verifies the conversion: links become
-// camp_matches, and after a recalculation the camp's settlements and medal
+// arena_matches, and after a recalculation the camp's settlements and medal
 // stats are exactly the linked matches' RANK semantics — stable across a
 // second recalc.
 func TestCamp_MigrationPreservesLinksAndStats(t *testing.T) {
@@ -164,14 +164,14 @@ func TestCamp_MigrationPreservesLinksAndStats(t *testing.T) {
 	}
 
 	var linked int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM camp_matches WHERE arena_id = $1`, arenaID).Scan(&linked); err != nil {
-		t.Fatalf("count camp_matches: %v", err)
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM arena_matches WHERE arena_id = $1`, arenaID).Scan(&linked); err != nil {
+		t.Fatalf("count arena_matches: %v", err)
 	}
 	if linked != 2 {
 		t.Fatalf("expected 2 preserved links, got %d", linked)
 	}
 
-	// Recalculate every arena; the camp must settle from camp_matches.
+	// Recalculate every arena; the camp must settle from arena_matches.
 	editor := createNamedTestUser(t, pool, "camp-mig-editor", "Кэмп Миг Редактор")
 	router := setupRouter(pool)
 	drain := func() {
@@ -359,7 +359,7 @@ func TestCamp_CRUDAndValidation(t *testing.T) {
 		t.Fatalf("parse arena id: %v", err)
 	}
 	var links int
-	if err := pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM camp_matches WHERE arena_id = $1`, arenaCanonical).Scan(&links); err != nil {
+	if err := pool.QueryRow(context.Background(), `SELECT COUNT(*) FROM arena_matches WHERE arena_id = $1`, arenaCanonical).Scan(&links); err != nil {
 		t.Fatalf("count links: %v", err)
 	}
 	if links != 0 {

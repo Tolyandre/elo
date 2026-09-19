@@ -58,10 +58,8 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        (
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
        ) AS matches_count
@@ -169,16 +167,14 @@ RETURNING id, name;
 -- name: ListArenasMatchingMatch :many
 -- Arena ids containing the given match per the membership function — part of
 -- the synchronous-drain affected set on match writes. Camps are included via
--- their camp_matches links (the match must already be linked when this runs).
+-- their arena_matches links (the match must already be linked when this runs).
 SELECT a.id
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = sqlc.arg('match_id')
 WHERE arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
 
@@ -239,8 +235,8 @@ DELETE FROM arena_player_stats WHERE arena_id = $1;
 
 -- name: InsertArenaStats :exec
 -- Recompute places 1..4 per match (RANK over the match's scores) for every
--- match belonging to the arena: via camp_matches links for camps, via the
--- filter for every other kind.
+-- match belonging to the arena: via arena_matches links for the link-only
+-- flavors (camps, tournaments), via the filter for every other kind.
 INSERT INTO arena_player_stats (arena_id, player_id, matches_count,
                                 first_count, second_count, third_count, fourth_count)
 SELECT sqlc.arg('arena_id'), r.player_id, COUNT(*)::int,
@@ -259,10 +255,8 @@ FROM (
         CROSS JOIN matches m
         WHERE a.id = sqlc.arg('arena_id')
           AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
     )
@@ -307,10 +301,8 @@ WITH paginated_matches AS (
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = sqlc.arg('arena_id')
       AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       AND (
@@ -376,10 +368,8 @@ WHERE ms.player_id = sqlc.arg('player_id')
   AND m.date >= sqlc.arg('date_from')::timestamptz
   AND m.date <= sqlc.arg('date_to')::timestamptz
   AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
 
@@ -394,10 +384,8 @@ CROSS JOIN matches m
 WHERE a.id = sqlc.arg('arena_id')::uuid
   AND m.date >= sqlc.arg('from_date')::timestamptz
   AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ORDER BY m.date ASC, m.id ASC;
@@ -433,10 +421,8 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt60 ON true
@@ -449,10 +435,8 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
-    a.camp,
-    a.tournament_id IS NOT NULL,
-    EXISTS (SELECT 1 FROM camp_matches cm WHERE cm.arena_id = a.id AND cm.match_id = m.id),
-    EXISTS (SELECT 1 FROM tournament_matches tm WHERE tm.tournament_id = a.tournament_id AND tm.match_id = m.id),
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
 ) cnt180 ON true

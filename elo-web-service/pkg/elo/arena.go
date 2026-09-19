@@ -78,7 +78,7 @@ type Arena struct {
 	// (including camps).
 	GameID       *id.ID
 	TournamentID *id.ID
-	// Camp arena (ADR-27): membership is the explicit camp_matches link, the
+	// Camp arena (ADR-27): membership is the explicit arena_matches link, the
 	// window bounds are required, and the filter is absent.
 	Camp     bool
 	StartsAt *time.Time
@@ -738,7 +738,7 @@ func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.
 		}
 		existing.Name = row.Name
 		if existing.Camp {
-			// The camp_matches links and settlements cascade; matches survive
+			// The arena_matches links and settlements cascade; matches survive
 			// as ordinary matches (ADR-27).
 			if err := recordAuditEvent(ctx, q, actor, audit.EntityArena, audit.ActionDeleted, arenaID,
 				audit.KindArenaCampConf, audit.NewCampConfigDeleted(existing.Name, *existing.StartsAt, *existing.EndsAt)); err != nil {
