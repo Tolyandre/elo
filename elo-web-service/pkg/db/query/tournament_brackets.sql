@@ -173,8 +173,8 @@ WHERE t.status = 'running'
   AND t.grand_final_deadline <= NOW();
 
 -- name: DeleteSlotSeats :exec
--- Seat-count adjustment (ADR-26): the slot's seats are re-created from the
--- same seed; only callable on slots with zero linked matches.
+-- Cascade invalidation: a slot whose outcome was voided loses its seat rows
+-- and is re-seated from its sources once the upstream replays.
 DELETE FROM tournament_seats WHERE slot_id = $1;
 
 -- name: ListSlotsOfTournamentByAddress :many
@@ -184,10 +184,6 @@ FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id
 WHERE r.tournament_id = sqlc.arg('tournament_id')::uuid
 ORDER BY s.id;
-
--- name: DeleteSlotSeat :exec
--- Drops one seat (a bye absorbed into a growing first-round table).
-DELETE FROM tournament_seats WHERE slot_id = $1 AND position = $2;
 
 -- name: UpdateSeatPlayer :exec
 -- Fills one seat cache from the source slot's derived placing.

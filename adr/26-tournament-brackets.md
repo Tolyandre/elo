@@ -85,8 +85,10 @@ in one of the lifecycle states below. `mode = 'camp'` does not exist.
 ALTER TABLE tournaments
     ADD COLUMN status               TEXT NOT NULL
                                     CHECK (status IN ('registration','running','completed','cancelled')),
-    ADD COLUMN elimination          TEXT NOT NULL
+    ADD COLUMN elimination          TEXT NULL
                                     CHECK (elimination IN ('single','double')),
+                                    -- the chosen plan's family, stamped at start;
+                                    -- NULL during registration (migration 060)
     ADD COLUMN winner_player_id     UUID NULL REFERENCES players(id),
     ADD COLUMN seed                 BIGINT NULL,         -- PRNG seed; reproducible draws
     ADD COLUMN grand_final_deadline TIMESTAMPTZ NULL,    -- optional; auto-cancel
@@ -203,21 +205,31 @@ WB privilege. Because LB rounds may pause and wait for the next WB drop
 ("spare players"), both "run LB now" and "run WB next" branches are
 explored.
 
-The plan list is a pure function of `(participant count, game pool,
-elimination type)` — nothing is stored per plan. The endpoint returns all
-valid plans ordered deterministically (fewer rounds first, then fewer
-tables, then larger slots), capped for pathological explosions (wide pools,
-large n; the cap and truncation flag are part of the response). The
-organizer can tweak the pool and refetch.
+The plan list is a pure function of `(participant count, game pool, families
++ chip filters)` — nothing is stored per plan. **Both families are offered
+side by side** in one list; the elimination type is not a creation field but
+a property of the chosen plan (the family chips just narrow the list). The
+endpoint takes the chip selection as query parameters — the families to
+explore plus the display filters (round counts, byes, first-round shapes) —
+and the cap applies **after** them, so the response is always the first `cap`
+plans of the current condition; a family chip can never hide behind the
+other family's plans. The response also carries **facets** — the option
+space of the explored families ignoring the display filters — so the chip
+options never shrink because another chip is active. Plans come ordered
+deterministically (fewer rounds first, then fewer tables, then larger
+slots), truncated for pathological explosions (wide pools, large n; the cap
+and truncation flag are part of the response). The organizer can tweak the
+pool and refetch.
 
 **Start.** `POST /tournaments/{id}/start` takes the chosen plan, validates
-it against a fresh enumeration (the submitted plan must be one the server
-would have offered — no hand-forged structures), stores it verbatim in
-`plan`, generates all rounds, slots and seats in one transaction, assigns
-a pool-fitting game to every slot, and seeds first-round players (and
-byes) randomly from the stored `seed`. From here the whole bracket exists;
-slots start as `waiting` (upstream not resolved) or `playing` (first
-round).
+it against a fresh enumeration of the plan's own family (the submitted plan
+must be one the server would have offered — no hand-forged structures),
+stores it verbatim in `plan`, stamps the plan's family onto
+`tournaments.elimination` (NULL until then), generates all rounds, slots and
+seats in one transaction, assigns a pool-fitting game to every slot, and
+seeds first-round players (and byes) randomly from the stored `seed`. From
+here the whole bracket exists; slots start as `waiting` (upstream not
+resolved) or `playing` (first round).
 
 ### Slot play: points, replays, completion
 
@@ -315,16 +327,16 @@ whoever advanced" holds by construction, not by prohibition.
 
 ### Organizer adjustments while running
 
-While the tournament is running the organizer may change a slot's game or
-its seat count, as long as no already-added match is violated:
+While the tournament is running the organizer may change a slot's game, as
+long as no already-added match is violated:
 
 - game reassignment — only for slots with zero linked matches;
-- seat-count changes — only for slots with zero linked matches and not
-  fully determined seats (in practice first-round slots, re-seeded from
-  the same seed, possibly absorbing a bye player); `promote` stays put so
-  downstream arithmetic is untouched;
-- everything else (shape changes, promotion counts, completed slots) is
-  out — cancel and re-create, or use a ruling.
+- everything else (seat-count changes, shape changes, promotion counts,
+  completed slots) is out — cancel and re-create, or use a ruling. (The
+  original design allowed first-round seat-count changes with a seeded
+  re-deal; it was dropped: shrinking a table silently dropped players out
+  of the tournament, growing one displaced plan-declared byes, and the
+  materialization silently diverged from the stored plan.)
 
 All adjustments are audit-logged.
 
@@ -419,13 +431,15 @@ bracket).
 
 All ids in payloads reference `#/Base58ID` (`openapi/common.yaml`);
 `make generate-api` + openapilint as usual. `Tournament`/`TournamentInput`
-gain `status`, `elimination`, `games: [{game_id, min_players, max_players}]`,
+gain `status`, `elimination` (read-only and nullable until start — the plan
+decides), `games: [{game_id, min_players, max_players}]`,
 `grand_final_deadline`, `winner_player_id` (read); `start_date`/`end_date`
-are gone (ADR-27).
+are gone (ADR-27). `AdjustTournamentSlot` takes only `game_id`.
 
     POST   /tournaments                                      editor — create, status=registration
     PUT    /tournaments/{id}                                  editor — pool, deadline, name while registration
-    GET    /tournaments/{id}/bracket-plans                    editor — valid shapes for current n & pool
+    GET    /tournaments/{id}/bracket-plans                    editor — valid shapes for current n & pool;
+                                                              query: elimination, rounds, byes, first_shapes (chips)
     POST   /tournaments/{id}/start                            editor — body: chosen plan; closes registration
     POST   /tournaments/{id}/cancel                           editor (also automatic on deadline)
     GET    /tournaments/{id}/bracket                          public — full bracket DTO
@@ -460,8 +474,8 @@ Feeds from the tournaments context (already preloaded for the match form).
 
 **`/tournaments/view?id=` — tournament page.**
 
-- Header: name, status, elimination type, grand-final deadline (when set),
-  champion banner (`winner_player_id`) when completed.
+- Header: name, status, elimination type (once started), grand-final
+  deadline (when set), champion banner (`winner_player_id`) when completed.
 - `registration`: participants list; a **«Записаться» / «Сняться»**
   button — visible with a linked player, calls the registration endpoints,
   hidden otherwise; editors also see participant management (link to
@@ -484,15 +498,16 @@ Feeds from the tournaments context (already preloaded for the match form).
 - `registration`: name/deadline fields, game-pool editor (games with
   min/max spinners), participant management, and the **shape picker**:
   fetch `GET /bracket-plans`, render each plan as a compact round-by-round
-  preview (e.g. «1 тур: 4+4 → 2; финал: 4»), and show the selected plan as
-  a visual mockup (the same column-per-round bracket skeleton with seat
-  dots and promotion lines), select + confirm → `start`
-  (which closes registration). Pool edits refetch the plan list — the UI
-  makes that dependency visible.
-- `running`: slot adjustments (game dropdown / seat count where the
-  server allows), the **ruling dialog** (ordered promotion pick from
-  current standings), attach/detach match dialogs, «Отменить турнир» with
-  confirmation.
+  preview (e.g. «одиночная сетка: Тур 1: 4+4 → 2; Финал: 4 → 1»), and show
+  the selected plan as a visual mockup (the same column-per-round bracket
+  skeleton with seat dots and promotion lines), select + confirm → `start`
+  (which closes registration). Both families share the list; filter chips
+  (Сетка / Раунды / Баи / Первый круг) travel as query parameters and the
+  facets response drives the chip options. Pool edits refetch the plan
+  list — the UI makes that dependency visible.
+- `running`: slot adjustments (game dropdown where the server allows), the
+  **ruling dialog** (ordered promotion pick from current standings),
+  attach/detach match dialogs, «Отменить турнир» with confirmation.
 - «Журнал» tab via the shared admin-page-tabs pattern: the audit feed
   filtered to the tournament (ADR-14 component reuse).
 

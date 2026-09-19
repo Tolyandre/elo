@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/tolyandre/elo-web-service/pkg/bracket"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
@@ -131,7 +133,22 @@ func (s *StrictServer) changeRegistration(ctx context.Context, rawID string, joi
 }
 
 func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request ListTournamentBracketPlansRequestObject) (ListTournamentBracketPlansResponseObject, error) {
-	res, err := s.api.TournamentService.ListBracketPlans(ctx, parseIDParam(request.Id))
+	var filter bracket.PlanFilter
+	if request.Params.Elimination != nil {
+		for _, e := range *request.Params.Elimination {
+			filter.Eliminations = append(filter.Eliminations, string(e))
+		}
+	}
+	if request.Params.Rounds != nil {
+		filter.RoundCounts = *request.Params.Rounds
+	}
+	if request.Params.Byes != nil {
+		filter.Byes = string(*request.Params.Byes)
+	}
+	if request.Params.FirstShapes != nil {
+		filter.FirstShapes = *request.Params.FirstShapes
+	}
+	res, err := s.api.TournamentService.ListBracketPlans(ctx, parseIDParam(request.Id), filter)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
@@ -152,6 +169,7 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	resp.Data.Plans = plans
 	resp.Data.Truncated = res.Truncated
 	resp.Data.Cap = res.Cap
+	resp.Data.Facets = facetsToAPI(res.Facets)
 	return resp, nil
 }
 
@@ -249,13 +267,7 @@ func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 
 func (s *StrictServer) AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error) {
 	tid, sid := parseIDParam(request.Id), parseIDParam(request.Sid)
-	var err error
-	if request.Body.GameId != nil {
-		err = s.api.TournamentService.AdjustSlotGame(ctx, tid, sid, id.ID(*request.Body.GameId), currentActorID(ctx))
-	}
-	if err == nil && request.Body.SeatCount != nil {
-		err = s.api.TournamentService.AdjustSlotSeatCount(ctx, tid, sid, currentActorID(ctx), *request.Body.SeatCount)
-	}
+	err := s.api.TournamentService.AdjustSlotGame(ctx, tid, sid, id.ID(request.Body.GameId), currentActorID(ctx))
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
@@ -331,7 +343,6 @@ func (s *StrictServer) SetTournamentSlotRuling(ctx context.Context, request SetT
 func tournamentWriteOpts(body *TournamentInput, actor id.ID) elo.TournamentWriteOpts {
 	opts := elo.TournamentWriteOpts{
 		Name:               body.Name,
-		Elimination:        string(body.Elimination),
 		GrandFinalDeadline: body.GrandFinalDeadline,
 		ActorUserID:        actor,
 	}
@@ -354,7 +365,7 @@ func tournamentToAPI(d elo.TournamentDetail) Tournament {
 		Id:          Base58ID(t.ID),
 		Name:        t.Name,
 		Status:      TournamentStatus(t.Status),
-		Elimination: TournamentElimination(t.Elimination),
+		Elimination: eliminationToAPI[TournamentElimination](t.Elimination),
 		Games:       []TournamentGame{},
 		CreatedAt:   &t.CreatedAt,
 	}
@@ -378,6 +389,31 @@ func tournamentToAPI(d elo.TournamentDetail) Tournament {
 			ids = append(ids, Base58ID(p))
 		}
 		out.ParticipantIds = &ids
+	}
+	return out
+}
+
+// eliminationToAPI converts the nullable DB column onto the generated
+// nullable enum (a pointer; nil during registration).
+func eliminationToAPI[E ~string](t pgtype.Text) *E {
+	if !t.Valid {
+		return nil
+	}
+	out := E(t.String)
+	return &out
+}
+
+// facetsToAPI maps the enumerator's facet accumulation onto the wire schema.
+func facetsToAPI(f bracket.Facets) TournamentsBracketPlanFacets {
+	out := TournamentsBracketPlanFacets{
+		Eliminations: make([]TournamentsBracketPlanFacetsEliminations, 0, len(f.Eliminations)),
+		RoundCounts:  f.RoundCounts,
+		HasByes:      f.HasByes,
+		AllByes:      f.AllByes,
+		FirstShapes:  f.FirstShapes,
+	}
+	for _, e := range f.Eliminations {
+		out.Eliminations = append(out.Eliminations, TournamentsBracketPlanFacetsEliminations(e))
 	}
 	return out
 }
@@ -417,7 +453,7 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 	out := Bracket{
 		TournamentId: Base58ID(t.ID),
 		Status:       BracketStatus(t.Status),
-		Elimination:  BracketElimination(t.Elimination),
+		Elimination:  eliminationToAPI[BracketElimination](t.Elimination),
 		Rounds:       make([]BracketRound, 0, len(rounds)),
 	}
 	if t.WinnerPlayerID != nil {

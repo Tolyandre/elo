@@ -369,23 +369,19 @@ AuditSlotLinkDetails:
 AuditSlotAdjustDetails:
   type: object
   description: >-
-    An organizer adjustment of one running slot of the tournament the audit
-    row points at (ADR-26): a game reassignment (op game, game_id set) or a
-    seat-count change (op seat-count, seat_count set). The inapplicable field
-    stays absent.
+    An organizer game reassignment on one running slot of the tournament the
+    audit row points at (ADR-26).
   required: [schema_version, op, slot_id]
   properties:
     schema_version:
       type: integer
     op:
       type: string
-      enum: [game, seat-count]
+      enum: [game]
     slot_id:
       $ref: './common.yaml#/Base58ID'
     game_id:
       $ref: './common.yaml#/Base58ID'
-    seat_count:
-      type: integer
 
 AuditPage:
   type: object

@@ -10,15 +10,16 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 /**
- * Tournament creation (ADR-26): name, elimination type and the optional
- * grand-final deadline — the pool, participants and the bracket shape are
- * the organizer edit page's job during registration.
+ * Tournament creation (ADR-26): name and the optional grand-final deadline —
+ * the pool, participants and the bracket shape are the organizer edit page's
+ * job during registration. The elimination family is no creation field: both
+ * families' plans are offered side by side in the shape picker and the chosen
+ * plan's family is stamped at start.
  */
 export default function NewTournamentPage() {
     const { canEdit } = useMe();
     const router = useRouter();
     const [name, setName] = useState("");
-    const [elimination, setElimination] = useState<"single" | "double">("single");
     const [deadline, setDeadline] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -44,7 +45,6 @@ export default function NewTournamentPage() {
         try {
             const created = await createTournamentPromise({
                 name: name.trim(),
-                elimination,
                 grand_final_deadline: deadline ? new Date(deadline).toISOString() : null,
             });
             toast.success("Турнир создан — добавьте пул игр и участников");
@@ -69,31 +69,6 @@ export default function NewTournamentPage() {
                         className="border rounded px-2 py-1 w-full"
                         required
                     />
-                </div>
-                <div>
-                    <h2 className="font-semibold mb-2">Тип сетки:</h2>
-                    <div className="flex flex-col gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                name="elimination"
-                                className="h-4 w-4"
-                                checked={elimination === "single"}
-                                onChange={() => setElimination("single")}
-                            />
-                            <span>Одиночное выбывание</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                name="elimination"
-                                className="h-4 w-4"
-                                checked={elimination === "double"}
-                                onChange={() => setElimination("double")}
-                            />
-                            <span>Двойное выбывание (WB + LB)</span>
-                        </label>
-                    </div>
                 </div>
                 <div>
                     <label htmlFor="tournament-deadline" className="block font-semibold mb-2">

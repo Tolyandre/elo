@@ -13,7 +13,13 @@ export function tournamentStatusLabel(status: Tournament["status"]): string {
 }
 
 export function eliminationLabel(elimination: Tournament["elimination"]): string {
+    if (elimination == null) return "—";
     return elimination === "double" ? "Двойное выбывание (WB + LB)" : "Одиночное выбывание";
+}
+
+/** Short family name, prefixed to a plan preview in the shape picker. */
+export function eliminationShortLabel(elimination: TournamentPlan["elimination"]): string {
+    return elimination === "double" ? "двойная сетка" : "одиночная сетка";
 }
 
 /** Column header for a bracket track. */
@@ -28,12 +34,13 @@ export function trackLabel(track: PlanRound["track"]): string {
 /**
  * Round title, shown as the bracket column header. In the double-elim case
  * each round names its track («Верх», «Низ»); single-elimination rounds are
- * just numbered.
+ * just numbered. The elimination may be unset before the start — rounds
+ * render only after it.
  */
 export function roundTitle(
     track: PlanRound["track"],
     index: number,
-    elimination: Tournament["elimination"] = "single",
+    elimination: Tournament["elimination"],
 ): string {
     if (track === "final") return "Финал";
     if (elimination === "double") return track === "winners" ? `Верх ${index}` : `Низ ${index}`;

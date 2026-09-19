@@ -37,7 +37,7 @@ const (
 	KindTournamentState  = "tournament-state"  // completed / cancelled (ADR-26)
 	KindSlotRuling       = "slot-ruling"       // organizer ruling set / replaced / reverted (ADR-26)
 	KindSlotLink         = "slot-link"         // slot attach / detach / cascade void (ADR-26)
-	KindSlotAdjust       = "slot-adjust"       // organizer game / seat-count adjustment (ADR-26)
+	KindSlotAdjust       = "slot-adjust"       // organizer game reassignment (ADR-26)
 )
 
 // Audited entity types, stored in audit_log.entity_type. Kept in sync with the

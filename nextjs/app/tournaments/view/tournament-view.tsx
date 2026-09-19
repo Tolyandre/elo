@@ -146,7 +146,9 @@ function TournamentViewLoaded({
 
             <div className="flex flex-wrap items-center gap-2 text-sm">
                 <Badge variant="secondary">{tournamentStatusLabel(tournament.status)}</Badge>
-                <span className="text-muted-foreground">{eliminationLabel(tournament.elimination)}</span>
+                {tournament.elimination != null && (
+                    <span className="text-muted-foreground">{eliminationLabel(tournament.elimination)}</span>
+                )}
                 {tournament.grand_final_deadline && (
                     <span className="text-muted-foreground">
                         Дедлайн финала: {formatDateTimeLong(tournament.grand_final_deadline)}

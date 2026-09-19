@@ -66,12 +66,14 @@ describe("tournament labels", () => {
     it("labels the elimination types", () => {
         expect(eliminationLabel("single")).toBe("Одиночное выбывание");
         expect(eliminationLabel("double")).toContain("Двойное выбывание");
+        expect(eliminationLabel(null)).toBe("—");
     });
 
     it("names rounds by track: Финал for the final track, Тур N otherwise", () => {
-        expect(roundTitle("winners", 1)).toBe("Тур 1");
-        expect(roundTitle("losers", 2)).toBe("Тур 2");
-        expect(roundTitle("final", 1)).toBe("Финал");
+        expect(roundTitle("winners", 1, "single")).toBe("Тур 1");
+        expect(roundTitle("losers", 2, "single")).toBe("Тур 2");
+        expect(roundTitle("final", 1, "single")).toBe("Финал");
+        expect(roundTitle("winners", 1, null)).toBe("Тур 1");
     });
 
     it("names double-elimination rounds by their track", () => {

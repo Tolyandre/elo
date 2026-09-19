@@ -86,8 +86,8 @@ func (q *Queries) CountTournamentParticipants(ctx context.Context, tournamentID 
 
 const createTournament = `-- name: CreateTournament :one
 
-INSERT INTO tournaments (id, name, status, elimination, grand_final_deadline)
-VALUES ($1, $2, 'registration', $3, $4)
+INSERT INTO tournaments (id, name, status, grand_final_deadline)
+VALUES ($1, $2, 'registration', $3)
 ON CONFLICT (id) DO NOTHING
 RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at
 `
@@ -95,7 +95,6 @@ RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_dea
 type CreateTournamentParams struct {
 	ID                 id.ID              `json:"id"`
 	Name               string             `json:"name"`
-	Elimination        string             `json:"elimination"`
 	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`
 }
 
@@ -104,13 +103,9 @@ type CreateTournamentParams struct {
 // state, registration-time config, participants, and the game pool.
 // Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 // with the same id inserts nothing and the service fetches the stored row.
+// elimination stays NULL until start stamps the chosen plan's family.
 func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error) {
-	row := q.db.QueryRow(ctx, createTournament,
-		arg.ID,
-		arg.Name,
-		arg.Elimination,
-		arg.GrandFinalDeadline,
-	)
+	row := q.db.QueryRow(ctx, createTournament, arg.ID, arg.Name, arg.GrandFinalDeadline)
 	var i Tournament
 	err := row.Scan(
 		&i.ID,
@@ -389,7 +384,7 @@ func (q *Queries) SetTournamentCompleted(ctx context.Context, arg SetTournamentC
 
 const setTournamentRunning = `-- name: SetTournamentRunning :exec
 UPDATE tournaments
-SET status = 'running', seed = $2, plan = $3, plan_schema_version = $4
+SET status = 'running', seed = $2, plan = $3, plan_schema_version = $4, elimination = $5
 WHERE id = $1
 `
 
@@ -398,16 +393,19 @@ type SetTournamentRunningParams struct {
 	Seed              pgtype.Int8     `json:"seed"`
 	Plan              json.RawMessage `json:"plan"`
 	PlanSchemaVersion int32           `json:"plan_schema_version"`
+	Elimination       pgtype.Text     `json:"elimination"`
 }
 
-// The single start action (ADR-26): snapshot the chosen plan + seed, close
-// registration. The bracket materialization happens in the same transaction.
+// The single start action (ADR-26): snapshot the chosen plan + seed, stamp
+// its elimination family, close registration. The bracket materialization
+// happens in the same transaction.
 func (q *Queries) SetTournamentRunning(ctx context.Context, arg SetTournamentRunningParams) error {
 	_, err := q.db.Exec(ctx, setTournamentRunning,
 		arg.ID,
 		arg.Seed,
 		arg.Plan,
 		arg.PlanSchemaVersion,
+		arg.Elimination,
 	)
 	return err
 }

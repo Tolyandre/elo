@@ -334,24 +334,17 @@ func NewSlotLinkDetails(op, slotID, matchID, originKind, originID string) SlotLi
 }
 
 // SlotAdjustDetails records an organizer adjustment of one running slot
-// (game reassignment / seat-count change) — KindSlotAdjust.
+// (game reassignment) — KindSlotAdjust.
 type SlotAdjustDetails struct {
 	SchemaVersion int    `json:"schema_version"`
 	Op            string `json:"op"`
 	SlotID        string `json:"slot_id"`
-	// GameID is the (new) game for op=game; SeatCount the (new) seat count
-	// for op=seat-count. The inapplicable field stays absent.
-	GameID    string `json:"game_id,omitempty"`
-	SeatCount int    `json:"seat_count,omitempty"`
+	// GameID is the (new) game for op=game.
+	GameID string `json:"game_id,omitempty"`
 }
 
 // NewSlotGameAdjust builds the details of a game reassignment. gameID is
 // typed id.ID for the x-entity-id walk convenience; pass id.ID(gameIDString).
 func NewSlotGameAdjust(slotID string, gameID string) SlotAdjustDetails {
 	return SlotAdjustDetails{SchemaVersion: 1, Op: "game", SlotID: slotID, GameID: gameID}
-}
-
-// NewSlotSeatCountAdjust builds the details of a seat-count change.
-func NewSlotSeatCountAdjust(slotID string, seatCount int) SlotAdjustDetails {
-	return SlotAdjustDetails{SchemaVersion: 1, Op: "seat-count", SlotID: slotID, SeatCount: seatCount}
 }

@@ -255,10 +255,16 @@ TournamentBracketPlans:
     summary: Enumerate the valid bracket shapes for the current participant count and pool
     description: >-
       Editor only. A pure function of (participant count, game pool,
-      elimination type) — nothing is stored. The organizer picks one plan and
-      submits it verbatim to the start action. Fewer rounds first, then fewer
-      tables, then larger slots; truncated reports that the cap cut a
-      pathological explosion (the returned head still follows the order).
+      elimination families) — nothing is stored; both families are offered
+      side by side and the elimination type is decided with the chosen plan
+      at start. The query parameters carry the shape picker's chip selection:
+      the families to explore plus the display filters, and the response cap
+      applies after them — it is always the first `cap` plans of the current
+      condition. Facets describe the option space of the explored families
+      ignoring the display filters, so chips never lose options. Plans come
+      fewer rounds first, then fewer tables, then larger slots; truncated
+      reports that the cap (or the exploration budget) cut a pathological
+      explosion (the returned head still follows the order).
     security:
       - cookieAuth: []
     parameters:
@@ -267,6 +273,40 @@ TournamentBracketPlans:
         required: true
         schema:
           type: string
+      - name: elimination
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum: [single, double]
+        description: Families to explore; repeated for several; absent = both
+      - name: rounds
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: Total round counts to keep; repeated for several; absent = all
+      - name: byes
+        in: query
+        schema:
+          type: string
+          enum: [with, without]
+        description: Keep only plans with/without bye seats; absent = any
+      - name: first_shapes
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+        description: First-round table shapes to keep (e.g. "4+4"); repeated; absent = all
     responses:
       "200":
         description: Valid plans
@@ -487,6 +527,8 @@ Tournament:
     elimination:
       type: string
       enum: [single, double]
+      nullable: true
+      description: The chosen plan's family, stamped at start; NULL during registration.
     grand_final_deadline:
       type: string
       format: date-time
@@ -517,9 +559,6 @@ TournamentInput:
         replay with the same id returns the already-created tournament.
     name:
       type: string
-    elimination:
-      type: string
-      enum: [single, double]
     grand_final_deadline:
       type: string
       format: date-time
@@ -535,7 +574,7 @@ TournamentInput:
       items:
         $ref: './common.yaml#/Base58ID'
       description: The desired participant set on update (diffed when present); the initial set on create.
-  required: [name, elimination]
+  required: [name]
 
 TournamentResponse:
   type: object
@@ -637,8 +676,38 @@ BracketPlansResponse:
           type: boolean
         cap:
           type: integer
-      required: [plans, truncated, cap]
+        facets:
+          $ref: '#/BracketPlanFacets'
+      required: [plans, truncated, cap, facets]
   required: [status, data]
+
+BracketPlanFacets:
+  type: object
+  description: >-
+    The option space of the explored elimination families, ignoring the
+    display filters and the cap — the shape picker's chip options.
+  properties:
+    eliminations:
+      type: array
+      items:
+        type: string
+        enum: [single, double]
+      description: Families that yielded plans, sorted.
+    round_counts:
+      type: array
+      items:
+        type: integer
+      description: Total round counts across those plans, sorted ascending.
+    has_byes:
+      type: boolean
+    all_byes:
+      type: boolean
+    first_shapes:
+      type: array
+      items:
+        type: string
+      description: First-round table shapes (e.g. "4+4"), sorted.
+  required: [eliminations, round_counts, has_byes, all_byes, first_shapes]
 
 # ─── Bracket DTO (rendering-ready, ADR-26) ───────────────────────────────────
 
@@ -730,6 +799,8 @@ Bracket:
     elimination:
       type: string
       enum: [single, double]
+      nullable: true
+      description: The chosen plan's family; NULL before the start (empty rounds list).
     winner_player_id:
       $ref: './common.yaml#/Base58ID'
       nullable: true
@@ -754,13 +825,10 @@ TournamentSlotItem:
   patch:
     operationId: AdjustTournamentSlot
     tags: [tournaments]
-    summary: Adjust a slot's game or seat count (organizer, running state)
+    summary: Reassign a slot's game (organizer, running state)
     description: >-
-      Game reassignment — only for slots with zero linked matches. Seat-count
-      changes — only for first-round slots with zero linked matches and no
-      resolved seats (the draw re-deals from the stored seed, possibly
-      absorbing bye players). promote stays put. Every adjustment is
-      audit-logged as slot-adjust.
+      Only for slots with zero linked matches. Audited as slot-adjust
+      (op game).
     security:
       - cookieAuth: []
     parameters:
@@ -783,9 +851,7 @@ TournamentSlotItem:
             properties:
               game_id:
                 $ref: './common.yaml#/Base58ID'
-              seat_count:
-                type: integer
-                minimum: 2
+            required: [game_id]
     responses:
       "200":
         description: Adjusted

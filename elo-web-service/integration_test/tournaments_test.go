@@ -187,7 +187,7 @@ type tournamentJSON struct {
 		Id                 string  `json:"id"`
 		Name               string  `json:"name"`
 		Status             string  `json:"status"`
-		Elimination        string  `json:"elimination"`
+		Elimination        *string `json:"elimination"`
 		GrandFinalDeadline *string `json:"grand_final_deadline"`
 		WinnerPlayerId     *string `json:"winner_player_id"`
 		Games              []struct {
@@ -224,6 +224,13 @@ type bracketPlansJSON struct {
 		} `json:"plans"`
 		Truncated bool `json:"truncated"`
 		Cap       int  `json:"cap"`
+		Facets    struct {
+			Eliminations []string `json:"eliminations"`
+			RoundCounts  []int    `json:"round_counts"`
+			HasByes      bool     `json:"has_byes"`
+			AllByes      bool     `json:"all_byes"`
+			FirstShapes  []string `json:"first_shapes"`
+		} `json:"facets"`
 	} `json:"data"`
 }
 
@@ -244,7 +251,7 @@ func TestTournament_CRUDAndRegistration(t *testing.T) {
 
 	tid := newID(t)
 	createBody := fmt.Sprintf(`{
-		"id": %q, "name": "Осенний блиц", "elimination": "single",
+		"id": %q, "name": "Осенний блиц",
 		"grand_final_deadline": "2099-01-01T00:00:00Z",
 		"games": [{"game_id": %q, "min_players": 2, "max_players": 4}],
 		"participant_ids": [%q, %q]
@@ -258,7 +265,8 @@ func TestTournament_CRUDAndRegistration(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create response: %v", err)
 	}
-	if created.Data.Status != "registration" || created.Data.Elimination != "single" {
+	// The elimination family is decided with the plan at start, not here.
+	if created.Data.Status != "registration" || created.Data.Elimination != nil {
 		t.Fatalf("created state: %+v", created.Data)
 	}
 	if created.Data.GrandFinalDeadline == nil {
@@ -276,7 +284,7 @@ func TestTournament_CRUDAndRegistration(t *testing.T) {
 
 	// PUT: rename, rewrite the pool, extend the participant set.
 	updateBody := fmt.Sprintf(`{
-		"name": "Осенний блиц 2026", "elimination": "single",
+		"name": "Осенний блиц 2026",
 		"games": [{"game_id": %q, "min_players": 2, "max_players": 2}],
 		"participant_ids": [%q, %q, %q]
 	}`, short(gameID), short(p1), short(p2), short(p3))
@@ -342,7 +350,7 @@ func TestTournament_SelfRegistration(t *testing.T) {
 	}
 
 	tid := newID(t)
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Открытый кубок", "elimination": "double", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Открытый кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}]}`,
 		short(tid), short(gameID))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
@@ -415,7 +423,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Сеточник%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок четвёрок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок четвёрок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
@@ -429,21 +437,69 @@ func TestTournament_BracketPlans(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &plans); err != nil {
 		t.Fatalf("decode plans: %v", err)
 	}
-	if len(plans.Data.Plans) != 1 || plans.Data.Truncated {
-		t.Fatalf("8/{{4}} must offer exactly 1 plan, got %d truncated=%v", len(plans.Data.Plans), plans.Data.Truncated)
+	// Both elimination families are offered side by side; the facets cover them.
+	sawSingle, sawDouble := false, false
+	for _, p := range plans.Data.Plans {
+		switch p.Elimination {
+		case "single":
+			sawSingle = true
+		case "double":
+			sawDouble = true
+		}
 	}
-	p := plans.Data.Plans[0]
+	if !sawSingle || !sawDouble {
+		t.Fatalf("8/{{4}} must offer both families, single=%v double=%v of %d plans", sawSingle, sawDouble, len(plans.Data.Plans))
+	}
+	if len(plans.Data.Facets.Eliminations) != 2 {
+		t.Fatalf("facets eliminations: %v", plans.Data.Facets.Eliminations)
+	}
+
+	// The elimination chip narrows the list; the flagship single-elim plan
+	// (4+4 promote-2 → final 4 promote-1) is the only single-family plan.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans?elimination=single: %d %s", w.Code, w.Body.String())
+	}
+	var singlePlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &singlePlans); err != nil {
+		t.Fatalf("decode single plans: %v", err)
+	}
+	if len(singlePlans.Data.Plans) != 1 || singlePlans.Data.Truncated {
+		t.Fatalf("8/{{4}} must offer exactly 1 single plan, got %d truncated=%v", len(singlePlans.Data.Plans), singlePlans.Data.Truncated)
+	}
+	p := singlePlans.Data.Plans[0]
 	if len(p.Rounds) != 2 || p.Rounds[0].Promote != 2 || len(p.Rounds[0].Slots) != 2 || p.Rounds[0].Slots[0].SeatCount != 4 {
 		t.Fatalf("flagship plan shape: %+v", p.Rounds)
 	}
 	if p.Rounds[1].Track != "final" || p.Rounds[1].Slots[0].Seats[0].Kind != "source" {
 		t.Fatalf("final round must be source-seated: %+v", p.Rounds[1])
 	}
+	if got := singlePlans.Data.Facets.Eliminations; len(got) != 1 || got[0] != "single" {
+		t.Fatalf("single-family facets: %v", got)
+	}
+
+	// The double-elim chip keeps only double plans.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=double", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans?elimination=double: %d %s", w.Code, w.Body.String())
+	}
+	var doublePlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &doublePlans); err != nil {
+		t.Fatalf("decode double plans: %v", err)
+	}
+	if len(doublePlans.Data.Plans) == 0 {
+		t.Fatalf("8/{{4}} must offer double-elim plans")
+	}
+	for _, dp := range doublePlans.Data.Plans {
+		if dp.Elimination != "double" {
+			t.Fatalf("double chip leaked a %s plan", dp.Elimination)
+		}
+	}
 
 	// Too few participants → 400.
 	small := newID(t)
 	one := createTestPlayer(t, pool, "Один")
-	createBody = fmt.Sprintf(`{"id": %q, "name": "Малый кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}], "participant_ids": [%q]}`,
+	createBody = fmt.Sprintf(`{"id": %q, "name": "Малый кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}], "participant_ids": [%q]}`,
 		short(small), short(gameID2), short(one))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create small tournament: %d %s", w.Code, w.Body.String())
@@ -455,7 +511,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 
 	// Empty pool → 400.
 	empty := newID(t)
-	createBody = fmt.Sprintf(`{"id": %q, "name": "Без игр", "elimination": "single"}`, short(empty))
+	createBody = fmt.Sprintf(`{"id": %q, "name": "Без игр"}`, short(empty))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create empty-pool tournament: %d %s", w.Code, w.Body.String())
 	}
@@ -534,7 +590,7 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 		players = append(players, p)
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Стартовый кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Стартовый кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -789,7 +845,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		players = append(players, p)
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок флажков", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок флажков", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -987,7 +1043,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Пропуск%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пропусков", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пропусков", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -1088,7 +1144,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Каскад%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Каскадный кубок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Каскадный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -1251,7 +1307,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Правка%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок правок", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок правок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -1434,7 +1490,7 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Судья%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок судей", "elimination": "single", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок судей", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -1541,17 +1597,18 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 }
 
-// TestTournament_SlotAdjustAuditFeed covers the organizer seat-count
-// adjustment and its audit document: the tournament audit feed must serve the
-// slot-adjust details kind (it used to fail the whole feed with "unknown
-// audit details kind" — the kind was missing from the wire union).
+// TestTournament_SlotAdjustAuditFeed covers the organizer game reassignment
+// and its audit document: the tournament audit feed must serve the slot-adjust
+// details kind (it used to fail the whole feed with "unknown audit details
+// kind" — the kind was missing from the wire union).
 func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	router := setupRouter(pool)
 
 	admin, _ := createTestUserWithID(t, pool, true)
-	gameID := createTestGame(t, pool, "Пересадочная игра")
+	gameID := createTestGame(t, pool, "Кубочная игра")
+	gameID2 := createTestGame(t, pool, "Пересадочная игра")
 
 	tid := newID(t)
 	var ids []string
@@ -1559,9 +1616,8 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Пересадка%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	// The pool hosts 3- and 4-seat tables, so the seat-count change fits.
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пересадок", "elimination": "single", "games": [{"game_id": %q, "min_players": 3, "max_players": 4}], "participant_ids": [%s]}`,
-		short(tid), short(gameID), strings.Join(ids, ","))
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пересадок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}, {"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), short(gameID2), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
@@ -1571,8 +1627,8 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 	br := getBracket(t, router, short(tid))
 	slotA := br.Data.Rounds[0].Slots[0]
 
-	// Shrink the first table 4 → 3: audited as slot-adjust / seat-count.
-	body := `{"seat_count": 3}`
+	// Reassign the first table's game: audited as slot-adjust / game.
+	body := fmt.Sprintf(`{"game_id": %q}`, short(gameID2))
 	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusOK {
 		t.Fatalf("adjust: %d %s", w.Code, w.Body.String())
 	}
@@ -1589,21 +1645,15 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 		if err := json.Unmarshal(e.Details, &d); err != nil {
 			t.Fatalf("decode details: %v", err)
 		}
-		if d["op"] == "seat-count" {
+		if d["op"] == "game" {
 			found = d
 		}
 	}
 	if found == nil {
 		t.Fatalf("no slot-adjust details in the feed: %+v", page.Data)
 	}
-	if found["seat_count"] != float64(3) || found["slot_id"] != slotA.Id {
-		t.Fatalf("slot-adjust details: %+v (want seat_count 3, slot %s)", found, slotA.Id)
-	}
-
-	// The re-deal from the stored seed left a 3-seat table.
-	br = getBracket(t, router, short(tid))
-	if got := len(br.Data.Rounds[0].Slots[0].Seats); got != 3 {
-		t.Fatalf("seat count after adjust: %d", got)
+	if found["game_id"] != short(gameID2) || found["slot_id"] != slotA.Id {
+		t.Fatalf("slot-adjust details: %+v (want game_id %s, slot %s)", found, short(gameID2), slotA.Id)
 	}
 }
 
@@ -1624,7 +1674,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Дедлайн%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Дедлайнный кубок", "elimination": "single", "grand_final_deadline": "2099-01-01T00:00:00Z", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Дедлайнный кубок", "grand_final_deadline": "2099-01-01T00:00:00Z", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -1720,7 +1770,7 @@ func TestTournament_WBLBRunWithMerge(t *testing.T) {
 		p := createTestPlayer(t, pool, fmt.Sprintf("Дабл%d", i))
 		ids = append(ids, fmt.Sprintf("%q", short(p)))
 	}
-	createBody := fmt.Sprintf(`{"id": %q, "name": "Дабл-кубок", "elimination": "double", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Дабл-кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
 	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())

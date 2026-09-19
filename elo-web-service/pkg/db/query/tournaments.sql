@@ -5,8 +5,9 @@
 -- name: CreateTournament :one
 -- Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 -- with the same id inserts nothing and the service fetches the stored row.
-INSERT INTO tournaments (id, name, status, elimination, grand_final_deadline)
-VALUES ($1, $2, 'registration', $3, $4)
+-- elimination stays NULL until start stamps the chosen plan's family.
+INSERT INTO tournaments (id, name, status, grand_final_deadline)
+VALUES ($1, $2, 'registration', $3)
 ON CONFLICT (id) DO NOTHING
 RETURNING *;
 
@@ -30,10 +31,11 @@ ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'registration' THEN 1 WHEN 'comp
 UPDATE tournaments SET name = $2, grand_final_deadline = $3 WHERE id = $1;
 
 -- name: SetTournamentRunning :exec
--- The single start action (ADR-26): snapshot the chosen plan + seed, close
--- registration. The bracket materialization happens in the same transaction.
+-- The single start action (ADR-26): snapshot the chosen plan + seed, stamp
+-- its elimination family, close registration. The bracket materialization
+-- happens in the same transaction.
 UPDATE tournaments
-SET status = 'running', seed = $2, plan = $3, plan_schema_version = $4
+SET status = 'running', seed = $2, plan = $3, plan_schema_version = $4, elimination = $5
 WHERE id = $1;
 
 -- name: SetTournamentCompleted :exec

@@ -43,9 +43,8 @@ func TestValidateDetailsDocuments(t *testing.T) {
 			"schema_version": 1, "player_changes": []any{map[string]any{"player_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "change": "nope"}}, "calculator_changed": false,
 		}, false},
 		{"slot-adjust game ok", KindSlotAdjust, NewSlotGameAdjust("018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e60"), true},
-		{"slot-adjust seat-count ok", KindSlotAdjust, NewSlotSeatCountAdjust("018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", 3), true},
-		{"slot-adjust missing slot", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "seat_count": 3}, false},
-		{"slot-adjust one seat", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "slot_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f", "seat_count": 1}, false},
+		{"slot-adjust unknown op", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "seat-count", "slot_id": "018f6b48-3e0b-7c3f-8d2b-0a1b2c3d4e5f"}, false},
+		{"slot-adjust missing slot", KindSlotAdjust, map[string]any{"schema_version": 1, "op": "game"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

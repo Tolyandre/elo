@@ -233,7 +233,7 @@ type Tournament struct {
 	ID                 id.ID              `json:"id"`
 	Name               string             `json:"name"`
 	Status             string             `json:"status"`
-	Elimination        string             `json:"elimination"`
+	Elimination        pgtype.Text        `json:"elimination"`
 	WinnerPlayerID     *id.ID             `json:"winner_player_id"`
 	Seed               pgtype.Int8        `json:"seed"`
 	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`

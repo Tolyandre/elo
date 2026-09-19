@@ -74,7 +74,6 @@ export function RegistrationEditor({ tournament: t, onSaved }: { tournament: Tou
             await updateTournamentPromise(t.id, {
                 id: t.id,
                 name: form.name.trim() || t.name,
-                elimination: t.elimination,
                 grand_final_deadline: form.deadline ? new Date(form.deadline).toISOString() : null,
                 games: form.pool.map((g) => ({
                     game_id: g.game_id,

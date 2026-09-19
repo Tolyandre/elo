@@ -3,7 +3,10 @@ package bracket
 import (
 	"fmt"
 	"math/bits"
+	"slices"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // GameCapacity is one pool game's table capacity: the seat sizes it can host.
@@ -12,16 +15,148 @@ type GameCapacity struct {
 	Max int
 }
 
-// Result is the plan list for one (participant count, pool, elimination)
-// triple — a pure function, nothing is stored per plan (ADR-26). Truncated
-// reports that the cap (or the exploration budget) cut the list short; the
-// returned plans are still the documented-order head: the enumeration runs
-// tier by tier over the total round count, so every plan with fewer rounds
-// than the last returned tier is guaranteed to be in the list.
+// Result is the plan list for one (participant count, pool, filter) triple —
+// a pure function, nothing is stored per plan (ADR-26). Truncated reports
+// that the cap (or the exploration budget) cut the list short; the returned
+// plans are still the documented-order head: the enumeration runs tier by
+// tier over the total round count, so every plan with fewer rounds than the
+// last returned tier is guaranteed to be in the list.
 type Result struct {
 	Plans     []Plan `json:"plans"`
 	Truncated bool   `json:"truncated"`
 	Cap       int    `json:"cap"`
+	// Facets is the option space of the explored families, ignoring every
+	// non-family filter — the shape picker's chip options.
+	Facets Facets `json:"facets"`
+}
+
+// Byes filter values (PlanFilter.Byes).
+const (
+	ByesAny     = ""
+	ByesWith    = "with"
+	ByesWithout = "without"
+)
+
+// PlanFilter narrows the enumeration to the organizer's current chip
+// selection (ADR-26 bracket-plans). Eliminations selects the families to
+// explore (empty = both); the rest are display filters applied to the plans.
+// The cap applies to the filtered list, so a family chip can never hide
+// behind the other family's plans.
+type PlanFilter struct {
+	Eliminations []string
+	RoundCounts  []int
+	Byes         string
+	FirstShapes  []string // canonical "4+4" strings, see FirstShapeOf
+}
+
+// matches reports whether a plan satisfies the display filters (the family
+// selection is handled by the exploration itself).
+func (f PlanFilter) matches(p Plan) bool {
+	if len(f.RoundCounts) > 0 && !slices.Contains(f.RoundCounts, len(p.Rounds)) {
+		return false
+	}
+	byes := planHasByes(p)
+	switch f.Byes {
+	case ByesWith:
+		if !byes {
+			return false
+		}
+	case ByesWithout:
+		if byes {
+			return false
+		}
+	}
+	if len(f.FirstShapes) > 0 && !slices.Contains(f.FirstShapes, FirstShapeOf(p)) {
+		return false
+	}
+	return true
+}
+
+// Facets describes the plans the requested families produce: which families
+// yielded plans, their round counts, whether byes occur (all/none), and the
+// first-round table shapes. Computed over every enumerated plan of the
+// explored families regardless of the display filters and the cap, so chips
+// never lose options because another chip is active.
+type Facets struct {
+	Eliminations []string `json:"eliminations"`
+	RoundCounts  []int    `json:"round_counts"`
+	HasByes      bool     `json:"has_byes"`
+	AllByes      bool     `json:"all_byes"`
+	FirstShapes  []string `json:"first_shapes"`
+}
+
+// planHasByes reports whether any seat of the plan is a bye.
+func planHasByes(p Plan) bool {
+	for _, r := range p.Rounds {
+		for _, s := range r.Slots {
+			for _, seat := range s.Seats {
+				if seat.Kind == SeatBye {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// FirstShapeOf renders a plan's first round as its canonical slot multiset,
+// e.g. "4+4" — the same string the shape picker's first-round chips display.
+func FirstShapeOf(p Plan) string {
+	if len(p.Rounds) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(p.Rounds[0].Slots))
+	for _, s := range p.Rounds[0].Slots {
+		parts = append(parts, strconv.Itoa(s.SeatCount))
+	}
+	return strings.Join(parts, "+")
+}
+
+// facetAccum accumulates facet data over every materialized (deduplicated)
+// plan of the explored families.
+type facetAccum struct {
+	fams     map[string]bool
+	rounds   map[int]bool
+	shapes   map[string]bool
+	withByes int
+	total    int
+}
+
+func newFacetAccum() *facetAccum {
+	return &facetAccum{
+		fams:   map[string]bool{},
+		rounds: map[int]bool{},
+		shapes: map[string]bool{},
+	}
+}
+
+func (a *facetAccum) record(p Plan) {
+	a.fams[p.Elimination] = true
+	a.rounds[len(p.Rounds)] = true
+	a.shapes[FirstShapeOf(p)] = true
+	if planHasByes(p) {
+		a.withByes++
+	}
+	a.total++
+}
+
+func (a *facetAccum) result() Facets {
+	out := Facets{}
+	for fam := range a.fams {
+		out.Eliminations = append(out.Eliminations, fam)
+	}
+	sort.Strings(out.Eliminations)
+	for n := range a.rounds {
+		out.RoundCounts = append(out.RoundCounts, n)
+	}
+	sort.Ints(out.RoundCounts)
+	for s := range a.shapes {
+		out.FirstShapes = append(out.FirstShapes, s)
+	}
+	sort.Strings(out.FirstShapes)
+	out.HasByes = a.withByes > 0
+	out.AllByes = a.total > 0 && a.withByes == a.total
+	return out
 }
 
 const (
@@ -38,11 +173,19 @@ const (
 
 var trackRank = map[string]int{TrackWinners: 0, TrackLosers: 1, TrackFinal: 2}
 
-// Enumerate returns the valid bracket plans for the inputs, ordered
-// deterministically: fewer rounds first, then fewer tables, then larger
-// slots, then canonical JSON. The search is iterative deepening over the
-// total round count, so the response head is exact even when truncated.
+// Enumerate returns the valid bracket plans for one elimination family,
+// ordered deterministically: fewer rounds first, then fewer tables, then
+// larger slots, then canonical JSON. The search is iterative deepening over
+// the total round count, so the response head is exact even when truncated.
 func Enumerate(participants int, pool []GameCapacity, elimination string, cap int) Result {
+	return EnumerateFiltered(participants, pool, PlanFilter{Eliminations: []string{elimination}}, cap)
+}
+
+// EnumerateFiltered is Enumerate over the families the filter selects (empty
+// = both) with the display filters applied before the cap: the response is
+// the first `cap` plans of the current condition. Facets are computed over
+// every plan of those families regardless of the display filters.
+func EnumerateFiltered(participants int, pool []GameCapacity, filter PlanFilter, cap int) Result {
 	if cap <= 0 {
 		cap = DefaultPlanCap
 	}
@@ -51,13 +194,19 @@ func Enumerate(participants int, pool []GameCapacity, elimination string, cap in
 		return res
 	}
 	e := &enumerator{
-		sizes:       seatSizes(pool),
-		elimination: elimination,
-		seen:        map[string]struct{}{},
-		msMemo:      map[int][][]int{},
+		sizes:  seatSizes(pool),
+		filter: filter,
+		facets: newFacetAccum(),
+		seen:   map[string]struct{}{},
+		msMemo: map[int][][]int{},
 	}
 	if len(e.sizes) == 0 {
 		return res
+	}
+
+	families := filter.Eliminations
+	if len(families) == 0 {
+		families = []string{EliminationSingle, EliminationDouble}
 	}
 
 	start := drawRefs(participants)
@@ -70,13 +219,13 @@ func Enumerate(participants int, pool []GameCapacity, elimination string, cap in
 	}
 	for bound := 1; bound <= maxBound; bound++ {
 		e.depthPruned = false
-		switch elimination {
-		case EliminationSingle:
-			e.singleDFS(start, nil, 1, bound)
-		case EliminationDouble:
-			e.doubleDFS(start, nil, nil, 1, 1, bound)
-		default:
-			return res
+		for _, family := range families {
+			switch family {
+			case EliminationSingle:
+				e.singleDFS(start, nil, 1, bound)
+			case EliminationDouble:
+				e.doubleDFS(start, nil, nil, 1, 1, bound)
+			}
 		}
 		if e.truncated || len(e.plans) > cap {
 			break // budget exhausted, or the tier filled the cap
@@ -98,6 +247,7 @@ func Enumerate(participants int, pool []GameCapacity, elimination string, cap in
 		keys = keys[:cap]
 	}
 	res.Truncated = truncated
+	res.Facets = e.facets.result()
 	res.Plans = make([]Plan, len(keys))
 	for i, k := range keys {
 		res.Plans[i] = k.p
@@ -158,12 +308,15 @@ func seatSizes(pool []GameCapacity) []int {
 	return out
 }
 
-// enumerator carries one Enumerate run. Plans are built from per-path round
-// lists (seat provenance as seatRef into earlier rounds), materialized and
-// deduplicated by canonical JSON at the champion.
+// enumerator carries one EnumerateFiltered run. Plans are built from
+// per-path round lists (seat provenance as seatRef into earlier rounds),
+// materialized and deduplicated by canonical JSON at the champion; facets
+// are recorded for every deduplicated plan, the filter decides what lands in
+// the result.
 type enumerator struct {
 	sizes       []int
-	elimination string
+	filter      PlanFilter
+	facets      *facetAccum
 	seen        map[string]struct{}
 	plans       []Plan
 	nodes       int
@@ -334,7 +487,7 @@ func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthL
 			round, next, _ := buildRound(rid, pool, ms, p)
 			if len(next) == 1 {
 				round.track, round.index = TrackFinal, 1
-				e.emit(appendRound(rounds, round))
+				e.emit(appendRound(rounds, round), EliminationSingle)
 				continue
 			}
 			round.track, round.index = TrackWinners, wIdx
@@ -426,7 +579,7 @@ func (e *enumerator) finalDFS(pool []seatRef, rounds []builtRound, fIdx, depthLe
 			round, next, _ := buildRound(rid, pool, ms, p)
 			round.track, round.index = TrackFinal, fIdx
 			if len(next) == 1 {
-				e.emit(appendRound(rounds, round))
+				e.emit(appendRound(rounds, round), EliminationDouble)
 				continue
 			}
 			e.finalDFS(next, appendRound(rounds, round), fIdx+1, depthLeft-1)
@@ -434,10 +587,11 @@ func (e *enumerator) finalDFS(pool []seatRef, rounds []builtRound, fIdx, depthLe
 	}
 }
 
-// emit materializes the finished round list into a Plan: rounds in canonical
-// track order, per-round slot refs rewritten to flat plan slot indices,
-// deduplicated by canonical JSON.
-func (e *enumerator) emit(rounds []builtRound) {
+// emit materializes the finished round list into a Plan of the given family:
+// rounds in canonical track order, per-round slot refs rewritten to flat plan
+// slot indices, deduplicated by canonical JSON. Facets are recorded for every
+// deduplicated plan; the filter decides what joins the result.
+func (e *enumerator) emit(rounds []builtRound, family string) {
 	if len(rounds) == 0 {
 		return
 	}
@@ -456,7 +610,7 @@ func (e *enumerator) emit(rounds []builtRound) {
 		flat += len(r.sizes)
 	}
 
-	plan := Plan{Elimination: e.elimination, Rounds: make([]PlanRound, 0, len(sorted))}
+	plan := Plan{Elimination: family, Rounds: make([]PlanRound, 0, len(sorted))}
 	for _, r := range sorted {
 		pr := PlanRound{Track: r.track, Index: r.index, Promote: r.promote, Slots: make([]PlanSlot, 0, len(r.sizes))}
 		for i, k := range r.sizes {
@@ -483,6 +637,10 @@ func (e *enumerator) emit(rounds []builtRound) {
 		return
 	}
 	e.seen[key] = struct{}{}
+	e.facets.record(plan)
+	if !e.filter.matches(plan) {
+		return
+	}
 	e.plans = append(e.plans, plan)
 }
 

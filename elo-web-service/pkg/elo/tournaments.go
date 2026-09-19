@@ -35,7 +35,8 @@ const (
 	TournamentCancelled    = "cancelled"
 )
 
-// Elimination families (tournaments.elimination).
+// Elimination families (tournaments.elimination) — chosen with the bracket
+// plan at start, not at creation (the column stays NULL during registration).
 const (
 	TournamentSingle = bracket.EliminationSingle
 	TournamentDouble = bracket.EliminationDouble
@@ -70,7 +71,6 @@ type TournamentGameInput struct {
 // marks them "when present"); a nil GrandFinalDeadline clears it.
 type TournamentWriteOpts struct {
 	Name               string
-	Elimination        string
 	GrandFinalDeadline *time.Time
 	Games              []TournamentGameInput
 	ParticipantIDs     []id.ID
@@ -102,7 +102,6 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 		row, err := q.CreateTournament(ctx, db.CreateTournamentParams{
 			ID:                 tid,
 			Name:               opts.Name,
-			Elimination:        opts.Elimination,
 			GrandFinalDeadline: timePtrTz(opts.GrandFinalDeadline),
 		})
 		if db.IsNoRows(err) {
@@ -279,7 +278,12 @@ func (s *TournamentService) ChangeRegistration(ctx context.Context, tid, playerI
 // count, pool and elimination family — a pure function, nothing stored
 // (ADR-26). Only meaningful in registration; the start action validates the
 // organizer's pick against a fresh run of the same enumeration.
-func (s *TournamentService) ListBracketPlans(ctx context.Context, tid id.ID) (bracket.Result, error) {
+// ListBracketPlans enumerates the valid plans for the current participant
+// count and pool. The filter carries the shape picker's chip selection: the
+// families to explore (empty = both) plus the display filters applied before
+// the cap — the response is always the first DefaultPlanCap plans of the
+// current condition.
+func (s *TournamentService) ListBracketPlans(ctx context.Context, tid id.ID, filter bracket.PlanFilter) (bracket.Result, error) {
 	t, err := s.Queries.GetTournament(ctx, tid)
 	if err != nil {
 		return bracket.Result{}, fmt.Errorf("get tournament: %w", err)
@@ -301,7 +305,7 @@ func (s *TournamentService) ListBracketPlans(ctx context.Context, tid id.ID) (br
 	if len(pool) == 0 {
 		return bracket.Result{}, ErrTournamentPoolEmpty
 	}
-	return bracket.Enumerate(int(n), poolCaps(pool), t.Elimination, bracket.DefaultPlanCap), nil
+	return bracket.EnumerateFiltered(int(n), poolCaps(pool), filter, bracket.DefaultPlanCap), nil
 }
 
 // ListTournaments is the /tournaments list read (status-ordered by the query),
@@ -367,9 +371,6 @@ func (s *TournamentService) GetTournamentDetail(ctx context.Context, tid id.ID) 
 func validateTournamentInput(opts TournamentWriteOpts) error {
 	if opts.Name == "" {
 		return ErrTournamentNameRequired
-	}
-	if opts.Elimination != TournamentSingle && opts.Elimination != TournamentDouble {
-		return ErrTournamentEliminationInvalid
 	}
 	if opts.GrandFinalDeadline != nil && !opts.GrandFinalDeadline.After(time.Now()) {
 		return ErrTournamentDeadlineInvalid
@@ -679,6 +680,7 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 
 		if err := q.SetTournamentRunning(ctx, db.SetTournamentRunningParams{
 			ID: tid, Seed: pgtype.Int8{Int64: seed, Valid: true}, Plan: []byte(canonical), PlanSchemaVersion: 1,
+			Elimination: pgtype.Text{String: plan.Elimination, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("set running: %w", err)
 		}

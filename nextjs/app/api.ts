@@ -156,6 +156,7 @@ export type Tournament = components["schemas"]["Tournament"];
 export type TournamentInput = components["schemas"]["TournamentInput"];
 export type TournamentGame = components["schemas"]["TournamentGame"];
 export type TournamentPlan = components["schemas"]["TournamentPlan"];
+export type BracketPlanFacets = components["schemas"]["BracketPlanFacets"];
 export type PlanRound = components["schemas"]["PlanRound"];
 export type Bracket = components["schemas"]["Bracket"];
 export type BracketRound = components["schemas"]["BracketRound"];
@@ -849,7 +850,6 @@ export async function getTournamentPromise(id: Base58ID): Promise<Tournament> {
 
 export async function createTournamentPromise(payload: {
     name: string;
-    elimination: "single" | "double";
     grand_final_deadline?: string | null;
     games?: TournamentGame[];
     participant_ids?: Base58ID[];
@@ -869,12 +869,22 @@ export async function unregisterFromTournamentPromise(id: Base58ID) {
     await unwrap(client.DELETE("/tournaments/{id}/registration", { params: { path: { id } } }));
 }
 
-export async function getTournamentBracketPlansPromise(id: Base58ID): Promise<{
+export interface BracketPlanFilters {
+    elimination?: ("single" | "double")[];
+    rounds?: number[];
+    byes?: "with" | "without";
+    first_shapes?: string[];
+}
+
+export async function getTournamentBracketPlansPromise(id: Base58ID, filters: BracketPlanFilters = {}): Promise<{
     plans: TournamentPlan[];
     truncated: boolean;
     cap: number;
+    facets: BracketPlanFacets;
 }> {
-    return (await unwrap(client.GET("/tournaments/{id}/bracket-plans", { params: { path: { id } } }))).data;
+    return (await unwrap(client.GET("/tournaments/{id}/bracket-plans", {
+        params: { path: { id }, query: filters },
+    }))).data;
 }
 
 export async function startTournamentPromise(id: Base58ID, plan: TournamentPlan) {
@@ -892,7 +902,7 @@ export async function getTournamentBracketPromise(id: Base58ID): Promise<Bracket
 export async function adjustTournamentSlotPromise(
     id: Base58ID,
     sid: Base58ID,
-    payload: { game_id?: Base58ID; seat_count?: number },
+    payload: { game_id: Base58ID },
 ) {
     await unwrap(client.PATCH("/tournaments/{id}/slots/{sid}", {
         params: { path: { id, sid } },

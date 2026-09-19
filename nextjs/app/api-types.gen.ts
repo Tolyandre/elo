@@ -371,7 +371,7 @@ export interface paths {
         };
         /**
          * Enumerate the valid bracket shapes for the current participant count and pool
-         * @description Editor only. A pure function of (participant count, game pool, elimination type) — nothing is stored. The organizer picks one plan and submits it verbatim to the start action. Fewer rounds first, then fewer tables, then larger slots; truncated reports that the cap cut a pathological explosion (the returned head still follows the order).
+         * @description Editor only. A pure function of (participant count, game pool, elimination families) — nothing is stored; both families are offered side by side and the elimination type is decided with the chosen plan at start. The query parameters carry the shape picker's chip selection: the families to explore plus the display filters, and the response cap applies after them — it is always the first `cap` plans of the current condition. Facets describe the option space of the explored families ignoring the display filters, so chips never lose options. Plans come fewer rounds first, then fewer tables, then larger slots; truncated reports that the cap (or the exploration budget) cut a pathological explosion (the returned head still follows the order).
          */
         get: operations["ListTournamentBracketPlans"];
         put?: never;
@@ -456,8 +456,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Adjust a slot's game or seat count (organizer, running state)
-         * @description Game reassignment — only for slots with zero linked matches. Seat-count changes — only for first-round slots with zero linked matches and no resolved seats (the draw re-deals from the stored seed, possibly absorbing bye players). promote stays put. Every adjustment is audit-logged as slot-adjust.
+         * Reassign a slot's game (organizer, running state)
+         * @description Only for slots with zero linked matches. Audited as slot-adjust (op game).
          */
         patch: operations["AdjustTournamentSlot"];
         trace?: never;
@@ -1267,8 +1267,11 @@ export interface components {
             name: string;
             /** @enum {string} */
             status: "registration" | "running" | "completed" | "cancelled";
-            /** @enum {string} */
-            elimination: "single" | "double";
+            /**
+             * @description The chosen plan's family, stamped at start; NULL during registration.
+             * @enum {string|null}
+             */
+            elimination: "single" | "double" | null;
             /** Format: date-time */
             grand_final_deadline?: string | null;
             winner_player_id?: components["schemas"]["Base58ID"];
@@ -1282,8 +1285,6 @@ export interface components {
             /** @description Client-generated id (ADR-06): the primary key and idempotency key. A replay with the same id returns the already-created tournament. */
             id?: components["schemas"]["Base58ID"];
             name: string;
-            /** @enum {string} */
-            elimination: "single" | "double";
             /**
              * Format: date-time
              * @description Optional; when it passes without a completed grand final the tournament auto-cancels.
@@ -1333,6 +1334,7 @@ export interface components {
                 plans: components["schemas"]["TournamentPlan"][];
                 truncated: boolean;
                 cap: number;
+                facets: components["schemas"]["BracketPlanFacets"];
             };
         };
         BracketSeat: {
@@ -1372,8 +1374,11 @@ export interface components {
             tournament_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             status: "registration" | "running" | "completed" | "cancelled";
-            /** @enum {string} */
-            elimination: "single" | "double";
+            /**
+             * @description The chosen plan's family; NULL before the start (empty rounds list).
+             * @enum {string|null}
+             */
+            elimination: "single" | "double" | null;
             winner_player_id?: components["schemas"]["Base58ID"];
             rounds: components["schemas"]["BracketRound"][];
         };
@@ -1740,6 +1745,17 @@ export interface components {
              */
             pool: number;
         };
+        /** @description The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options. */
+        BracketPlanFacets: {
+            /** @description Families that yielded plans, sorted. */
+            eliminations: ("single" | "double")[];
+            /** @description Total round counts across those plans, sorted ascending. */
+            round_counts: number[];
+            has_byes: boolean;
+            all_byes: boolean;
+            /** @description First-round table shapes (e.g. "4+4"), sorted. */
+            first_shapes: string[];
+        };
         /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
         AuditArenaCampConfigDetails: {
             schema_version: number;
@@ -1830,14 +1846,13 @@ export interface components {
             origin_kind: "acceptance" | "organizer" | "match-edit" | "cascade";
             origin_id?: components["schemas"]["Base58ID"];
         };
-        /** @description An organizer adjustment of one running slot of the tournament the audit row points at (ADR-26): a game reassignment (op game, game_id set) or a seat-count change (op seat-count, seat_count set). The inapplicable field stays absent. */
+        /** @description An organizer game reassignment on one running slot of the tournament the audit row points at (ADR-26). */
         AuditSlotAdjustDetails: {
             schema_version: number;
             /** @enum {string} */
-            op: "game" | "seat-count";
+            op: "game";
             slot_id: components["schemas"]["Base58ID"];
             game_id?: components["schemas"]["Base58ID"];
-            seat_count?: number;
         };
         IawwCell: {
             /** @description Scoring row id (e.g. "structure", "str-res"); not an entity id */
@@ -3697,7 +3712,16 @@ export interface operations {
     };
     ListTournamentBracketPlans: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Families to explore; repeated for several; absent = both */
+                elimination?: ("single" | "double")[];
+                /** @description Total round counts to keep; repeated for several; absent = all */
+                rounds?: number[];
+                /** @description Keep only plans with/without bye seats; absent = any */
+                byes?: "with" | "without";
+                /** @description First-round table shapes to keep (e.g. "4+4"); repeated; absent = all */
+                first_shapes?: string[];
+            };
             header?: never;
             path: {
                 id: string;
@@ -3946,8 +3970,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    game_id?: components["schemas"]["Base58ID"];
-                    seat_count?: number;
+                    game_id: components["schemas"]["Base58ID"];
                 };
             };
         };

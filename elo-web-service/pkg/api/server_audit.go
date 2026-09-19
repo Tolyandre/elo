@@ -341,10 +341,6 @@ func auditDetailsFromStored(kind string, raw json.RawMessage) (*AuditEntry_Detai
 			game := Base58ID(v.GameID)
 			g.GameId = &game
 		}
-		if v.SeatCount != 0 {
-			sc := v.SeatCount
-			g.SeatCount = &sc
-		}
 		if err := details.FromAuditAuditSlotAdjustDetails(g); err != nil {
 			return nil, err
 		}

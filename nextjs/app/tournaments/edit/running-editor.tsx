@@ -25,8 +25,8 @@ import { AttachMatchDialog } from "./attach-match-dialog";
 
 /**
  * Running-state organizer tools (ADR-26 §UI): per slot — game reassignment
- * (while no match is linked), seat-count changes (first winners round only),
- * detach, the ruling dialog and attach of a mistakenly-unchecked match.
+ * (while no match is linked), detach, the ruling dialog and attach of a
+ * mistakenly-unchecked match.
  */
 export function RunningEditor({
     tournament: t,
@@ -47,7 +47,6 @@ export function RunningEditor({
                             key={slot.id}
                             tournament={t}
                             slot={slot}
-                            firstWinnersRound={round.track === "winners" && round.index === 1}
                             invalidate={invalidate}
                         />
                     ))}
@@ -60,20 +59,18 @@ export function RunningEditor({
 function SlotEditor({
     tournament: t,
     slot,
-    firstWinnersRound,
     invalidate,
 }: {
     tournament: Tournament;
     slot: BracketSlot;
-    firstWinnersRound: boolean;
     invalidate: () => void;
 }) {
     const { games } = useGames();
     const { playerMap, playerDisplayName } = usePlayers();
-    const [seatCount, setSeatCount] = useState(String(slot.seats.length));
     const [busy, setBusy] = useState(false);
     const [rulingOpen, setRulingOpen] = useState(false);
     const [attachOpen, setAttachOpen] = useState(false);
+    const [error, setError] = useState("");
     const detach = useConfirmAction(async (matchId: Base58ID) => {
         await detachTournamentSlotMatchPromise(t.id, slot.id, matchId);
         invalidate();
@@ -86,13 +83,15 @@ function SlotEditor({
 
     const noMatches = slot.matches.length === 0;
     const adjustableGame = noMatches;
-    const adjustableSeats = noMatches && firstWinnersRound;
 
     const run = async (fn: () => Promise<void>) => {
         setBusy(true);
+        setError("");
         try {
             await fn();
             invalidate();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : String(err));
         } finally {
             setBusy(false);
         }
@@ -126,27 +125,7 @@ function SlotEditor({
                     Игра: {games.find((g) => g.id === slot.game_id)?.name ?? "—"}
                 </p>
             )}
-
-            {adjustableSeats && (
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Мест за столом:</span>
-                    <input
-                        type="number"
-                        min={2}
-                        value={seatCount}
-                        onChange={(e) => setSeatCount(e.target.value)}
-                        className="border rounded px-1 py-0.5 w-16"
-                    />
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy || Number(seatCount) === slot.seats.length}
-                        onClick={() => run(() => adjustTournamentSlotPromise(t.id, slot.id, { seat_count: Number(seatCount) }))}
-                    >
-                        Пересадить
-                    </Button>
-                </div>
-            )}
+            {error && <p className="text-red-600 text-sm">{error}</p>}
 
             <div className="space-y-1">
                 {slot.matches.map((m) => (

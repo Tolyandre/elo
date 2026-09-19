@@ -2,15 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elo/audit/slot-adjust.v1.json",
   "title": "Audit slot adjustment details (v1)",
-  "description": "An organizer adjustment of one slot while the tournament identified by the audit row's entity_id is running (ADR-26): a game reassignment or a seat-count change (re-seeded draw). Only slots with zero linked matches are adjustable.",
+  "description": "An organizer game reassignment on one slot while the tournament identified by the audit row's entity_id is running (ADR-26). Only slots with zero linked matches are adjustable.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "op", "slot_id"],
   "properties": {
     "schema_version": { "const": 1 },
-    "op": { "type": "string", "enum": ["game", "seat-count"] },
+    "op": { "type": "string", "enum": ["game"] },
     "slot_id": { "type": "string", "minLength": 1, "x-entity-id": true },
-    "game_id": { "type": "string", "minLength": 1, "x-entity-id": true },
-    "seat_count": { "type": "integer", "minimum": 2 }
+    "game_id": { "type": "string", "minLength": 1, "x-entity-id": true }
   }
 }

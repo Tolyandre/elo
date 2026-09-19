@@ -453,24 +453,6 @@ func (e TournamentStatus) Valid() bool {
 	}
 }
 
-// Defines values for TournamentInputElimination.
-const (
-	TournamentInputEliminationDouble TournamentInputElimination = "double"
-	TournamentInputEliminationSingle TournamentInputElimination = "single"
-)
-
-// Valid indicates whether the value is a known member of the TournamentInputElimination enum.
-func (e TournamentInputElimination) Valid() bool {
-	switch e {
-	case TournamentInputEliminationDouble:
-		return true
-	case TournamentInputEliminationSingle:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TournamentPlanElimination.
 const (
 	TournamentPlanEliminationDouble TournamentPlanElimination = "double"
@@ -509,16 +491,13 @@ func (e AuditAuditCampLinkDetailsOp) Valid() bool {
 
 // Defines values for AuditAuditSlotAdjustDetailsOp.
 const (
-	AuditAuditSlotAdjustDetailsOpGame      AuditAuditSlotAdjustDetailsOp = "game"
-	AuditAuditSlotAdjustDetailsOpSeatCount AuditAuditSlotAdjustDetailsOp = "seat-count"
+	AuditAuditSlotAdjustDetailsOpGame AuditAuditSlotAdjustDetailsOp = "game"
 )
 
 // Valid indicates whether the value is a known member of the AuditAuditSlotAdjustDetailsOp enum.
 func (e AuditAuditSlotAdjustDetailsOp) Valid() bool {
 	switch e {
 	case AuditAuditSlotAdjustDetailsOpGame:
-		return true
-	case AuditAuditSlotAdjustDetailsOpSeatCount:
 		return true
 	default:
 		return false
@@ -687,6 +666,24 @@ func (e MarketsMarketOutcomeKind) Valid() bool {
 	}
 }
 
+// Defines values for TournamentsBracketPlanFacetsEliminations.
+const (
+	TournamentsBracketPlanFacetsEliminationsDouble TournamentsBracketPlanFacetsEliminations = "double"
+	TournamentsBracketPlanFacetsEliminationsSingle TournamentsBracketPlanFacetsEliminations = "single"
+)
+
+// Valid indicates whether the value is a known member of the TournamentsBracketPlanFacetsEliminations enum.
+func (e TournamentsBracketPlanFacetsEliminations) Valid() bool {
+	switch e {
+	case TournamentsBracketPlanFacetsEliminationsDouble:
+		return true
+	case TournamentsBracketPlanFacetsEliminationsSingle:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreatePlayerCorrectionJSONBodyDiscriminator.
 const (
 	CreatePlayerCorrectionJSONBodyDiscriminatorCorrection CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
@@ -783,6 +780,42 @@ const (
 func (e PatchMarketJSONBodyStatus) Valid() bool {
 	switch e {
 	case PatchMarketJSONBodyStatusBettingClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTournamentBracketPlansParamsElimination.
+const (
+	ListTournamentBracketPlansParamsEliminationDouble ListTournamentBracketPlansParamsElimination = "double"
+	ListTournamentBracketPlansParamsEliminationSingle ListTournamentBracketPlansParamsElimination = "single"
+)
+
+// Valid indicates whether the value is a known member of the ListTournamentBracketPlansParamsElimination enum.
+func (e ListTournamentBracketPlansParamsElimination) Valid() bool {
+	switch e {
+	case ListTournamentBracketPlansParamsEliminationDouble:
+		return true
+	case ListTournamentBracketPlansParamsEliminationSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTournamentBracketPlansParamsByes.
+const (
+	With    ListTournamentBracketPlansParamsByes = "with"
+	Without ListTournamentBracketPlansParamsByes = "without"
+)
+
+// Valid indicates whether the value is a known member of the ListTournamentBracketPlansParamsByes enum.
+func (e ListTournamentBracketPlansParamsByes) Valid() bool {
+	switch e {
+	case With:
+		return true
+	case Without:
 		return true
 	default:
 		return false
@@ -1012,9 +1045,10 @@ type Base58ID = id.ID
 
 // Bracket defines model for Bracket.
 type Bracket struct {
-	Elimination BracketElimination `json:"elimination"`
-	Rounds      []BracketRound     `json:"rounds"`
-	Status      BracketStatus      `json:"status"`
+	// Elimination The chosen plan's family; NULL before the start (empty rounds list).
+	Elimination *BracketElimination `json:"elimination"`
+	Rounds      []BracketRound      `json:"rounds"`
+	Status      BracketStatus       `json:"status"`
 
 	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TournamentId Base58ID `json:"tournament_id"`
@@ -1023,7 +1057,7 @@ type Bracket struct {
 	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
 }
 
-// BracketElimination defines model for Bracket.Elimination.
+// BracketElimination The chosen plan's family; NULL before the start (empty rounds list).
 type BracketElimination string
 
 // BracketStatus defines model for Bracket.Status.
@@ -1032,9 +1066,12 @@ type BracketStatus string
 // BracketPlansResponse defines model for BracketPlansResponse.
 type BracketPlansResponse struct {
 	Data struct {
-		Cap       int              `json:"cap"`
-		Plans     []TournamentPlan `json:"plans"`
-		Truncated bool             `json:"truncated"`
+		Cap int `json:"cap"`
+
+		// Facets The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options.
+		Facets    TournamentsBracketPlanFacets `json:"facets"`
+		Plans     []TournamentPlan             `json:"plans"`
+		Truncated bool                         `json:"truncated"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -1662,10 +1699,12 @@ type Tag struct {
 
 // Tournament defines model for Tournament.
 type Tournament struct {
-	CreatedAt          *time.Time            `json:"created_at,omitempty"`
-	Elimination        TournamentElimination `json:"elimination"`
-	Games              []TournamentGame      `json:"games"`
-	GrandFinalDeadline *time.Time            `json:"grand_final_deadline,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Elimination The chosen plan's family, stamped at start; NULL during registration.
+	Elimination        *TournamentElimination `json:"elimination"`
+	Games              []TournamentGame       `json:"games"`
+	GrandFinalDeadline *time.Time             `json:"grand_final_deadline,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id   Base58ID `json:"id"`
@@ -1679,7 +1718,7 @@ type Tournament struct {
 	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
 }
 
-// TournamentElimination defines model for Tournament.Elimination.
+// TournamentElimination The chosen plan's family, stamped at start; NULL during registration.
 type TournamentElimination string
 
 // TournamentStatus defines model for Tournament.Status.
@@ -1695,8 +1734,6 @@ type TournamentGame struct {
 
 // TournamentInput defines model for TournamentInput.
 type TournamentInput struct {
-	Elimination TournamentInputElimination `json:"elimination"`
-
 	// Games The game pool (desired set on update — rewritten wholesale when present).
 	Games *[]TournamentGame `json:"games,omitempty"`
 
@@ -1710,9 +1747,6 @@ type TournamentInput struct {
 	// ParticipantIds The desired participant set on update (diffed when present); the initial set on create.
 	ParticipantIds *[]Base58ID `json:"participant_ids,omitempty"`
 }
-
-// TournamentInputElimination defines model for TournamentInput.Elimination.
-type TournamentInputElimination string
 
 // TournamentList defines model for TournamentList.
 type TournamentList struct {
@@ -1792,13 +1826,12 @@ type AuditAuditCampLinkDetails struct {
 // AuditAuditCampLinkDetailsOp defines model for AuditAuditCampLinkDetails.Op.
 type AuditAuditCampLinkDetailsOp string
 
-// AuditAuditSlotAdjustDetails An organizer adjustment of one running slot of the tournament the audit row points at (ADR-26): a game reassignment (op game, game_id set) or a seat-count change (op seat-count, seat_count set). The inapplicable field stays absent.
+// AuditAuditSlotAdjustDetails An organizer game reassignment on one running slot of the tournament the audit row points at (ADR-26).
 type AuditAuditSlotAdjustDetails struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId        *Base58ID                     `json:"game_id,omitempty"`
 	Op            AuditAuditSlotAdjustDetailsOp `json:"op"`
 	SchemaVersion int                           `json:"schema_version"`
-	SeatCount     *int                          `json:"seat_count,omitempty"`
 
 	// SlotId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	SlotId Base58ID `json:"slot_id"`
@@ -1973,6 +2006,24 @@ type TablesUpdateTableStateRequest struct {
 	// Version The version this edit is based on; a mismatch is a 409
 	Version int64 `json:"version"`
 }
+
+// TournamentsBracketPlanFacets The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options.
+type TournamentsBracketPlanFacets struct {
+	AllByes bool `json:"all_byes"`
+
+	// Eliminations Families that yielded plans, sorted.
+	Eliminations []TournamentsBracketPlanFacetsEliminations `json:"eliminations"`
+
+	// FirstShapes First-round table shapes (e.g. "4+4"), sorted.
+	FirstShapes []string `json:"first_shapes"`
+	HasByes     bool     `json:"has_byes"`
+
+	// RoundCounts Total round counts across those plans, sorted ascending.
+	RoundCounts []int `json:"round_counts"`
+}
+
+// TournamentsBracketPlanFacetsEliminations defines model for TournamentsBracketPlanFacets.Eliminations.
+type TournamentsBracketPlanFacetsEliminations string
 
 // CreatePlayerCorrectionJSONBody defines parameters for CreatePlayerCorrection.
 type CreatePlayerCorrectionJSONBody struct {
@@ -2292,11 +2343,31 @@ type PatchTagJSONBody struct {
 	Name string `json:"name"`
 }
 
+// ListTournamentBracketPlansParams defines parameters for ListTournamentBracketPlans.
+type ListTournamentBracketPlansParams struct {
+	// Elimination Families to explore; repeated for several; absent = both
+	Elimination *[]ListTournamentBracketPlansParamsElimination `form:"elimination,omitempty" json:"elimination,omitempty"`
+
+	// Rounds Total round counts to keep; repeated for several; absent = all
+	Rounds *[]int `form:"rounds,omitempty" json:"rounds,omitempty"`
+
+	// Byes Keep only plans with/without bye seats; absent = any
+	Byes *ListTournamentBracketPlansParamsByes `form:"byes,omitempty" json:"byes,omitempty"`
+
+	// FirstShapes First-round table shapes to keep (e.g. "4+4"); repeated; absent = all
+	FirstShapes *[]string `form:"first_shapes,omitempty" json:"first_shapes,omitempty"`
+}
+
+// ListTournamentBracketPlansParamsElimination defines parameters for ListTournamentBracketPlans.
+type ListTournamentBracketPlansParamsElimination string
+
+// ListTournamentBracketPlansParamsByes defines parameters for ListTournamentBracketPlans.
+type ListTournamentBracketPlansParamsByes string
+
 // AdjustTournamentSlotJSONBody defines parameters for AdjustTournamentSlot.
 type AdjustTournamentSlotJSONBody struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	GameId    *Base58ID `json:"game_id,omitempty"`
-	SeatCount *int      `json:"seat_count,omitempty"`
+	GameId Base58ID `json:"game_id"`
 }
 
 // AttachTournamentSlotMatchJSONBody defines parameters for AttachTournamentSlotMatch.
@@ -3205,7 +3276,7 @@ type ServerInterface interface {
 	GetTournamentBracket(c *gin.Context, id string)
 	// ListTournamentBracketPlans Enumerate the valid bracket shapes for the current participant count and pool
 	// (GET /tournaments/{id}/bracket-plans)
-	ListTournamentBracketPlans(c *gin.Context, id string)
+	ListTournamentBracketPlans(c *gin.Context, id string, params ListTournamentBracketPlansParams)
 	// CancelTournament Cancel the tournament (organizer)
 	// (POST /tournaments/{id}/cancel)
 	CancelTournament(c *gin.Context, id string)
@@ -3215,7 +3286,7 @@ type ServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(c *gin.Context, id string)
-	// AdjustTournamentSlot Adjust a slot's game or seat count (organizer, running state)
+	// AdjustTournamentSlot Reassign a slot's game (organizer, running state)
 	// (PATCH /tournaments/{id}/slots/{sid})
 	AdjustTournamentSlot(c *gin.Context, id string, sid string)
 	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)
@@ -4886,6 +4957,41 @@ func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTournamentBracketPlansParams
+
+	// ------------- Optional query parameter "elimination" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "elimination", c.Request.URL.Query(), &params.Elimination, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter elimination: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "rounds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "rounds", c.Request.URL.Query(), &params.Rounds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter rounds: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "byes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "byes", c.Request.URL.Query(), &params.Byes, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter byes: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "first_shapes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "first_shapes", c.Request.URL.Query(), &params.FirstShapes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter first_shapes: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4893,7 +4999,7 @@ func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListTournamentBracketPlans(c, id)
+	siw.Handler.ListTournamentBracketPlans(c, id, params)
 }
 
 // CancelTournament operation middleware
@@ -9414,7 +9520,8 @@ func (response GetTournamentBracket404JSONResponse) VisitGetTournamentBracketRes
 }
 
 type ListTournamentBracketPlansRequestObject struct {
-	Id string `json:"id"`
+	Id     string `json:"id"`
+	Params ListTournamentBracketPlansParams
 }
 
 type ListTournamentBracketPlansResponseObject interface {
@@ -10496,7 +10603,7 @@ type StrictServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error)
-	// AdjustTournamentSlot Adjust a slot's game or seat count (organizer, running state)
+	// AdjustTournamentSlot Reassign a slot's game (organizer, running state)
 	// (PATCH /tournaments/{id}/slots/{sid})
 	AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error)
 	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)
@@ -12548,10 +12655,11 @@ func (sh *strictHandler) GetTournamentBracket(ctx *gin.Context, id string) {
 }
 
 // ListTournamentBracketPlans operation middleware
-func (sh *strictHandler) ListTournamentBracketPlans(ctx *gin.Context, id string) {
+func (sh *strictHandler) ListTournamentBracketPlans(ctx *gin.Context, id string, params ListTournamentBracketPlansParams) {
 	var request ListTournamentBracketPlansRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListTournamentBracketPlans(ctx, request.(ListTournamentBracketPlansRequestObject))

@@ -2,6 +2,7 @@ package bracket
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 )
 
@@ -355,5 +356,90 @@ func TestDouble2RematchFinal(t *testing.T) {
 	if !sameSeat(seats[0], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 1}) ||
 		!sameSeat(seats[1], PlanSeat{Kind: SeatSource, SourceSlot: &zero, SourcePlace: 2}) {
 		t.Fatalf("final seats must be place 1 + place 2 of the WB round: %+v", seats)
+	}
+}
+
+func TestEnumerateFilteredChips(t *testing.T) {
+	pool := []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}
+
+	// No family filter: plans of both families interleave, facets cover both.
+	both := EnumerateFiltered(8, pool, PlanFilter{}, DefaultPlanCap)
+	sawSingle, sawDouble := false, false
+	for _, p := range both.Plans {
+		switch p.Elimination {
+		case EliminationSingle:
+			sawSingle = true
+		case EliminationDouble:
+			sawDouble = true
+		}
+	}
+	if !sawSingle || !sawDouble {
+		t.Fatalf("unfiltered enumeration must offer both families")
+	}
+	if got := both.Facets.Eliminations; len(got) != 2 || got[0] != EliminationDouble || got[1] != EliminationSingle {
+		t.Fatalf("facets eliminations: %v", got)
+	}
+	// Round 1 may seat n−1 and leave the remainder as a bye, so both
+	// bye-carrying and exact plans exist here.
+	if !both.Facets.HasByes || both.Facets.AllByes {
+		t.Fatalf("facets byes: has=%v all=%v", both.Facets.HasByes, both.Facets.AllByes)
+	}
+	if !slices.Contains(both.Facets.FirstShapes, "3+3+2") || !slices.Contains(both.Facets.FirstShapes, "2+2+2+2") {
+		t.Fatalf("facets first shapes: %v", both.Facets.FirstShapes)
+	}
+
+	// Family filter: only that family's plans, and the cap counts within it.
+	dbl := EnumerateFiltered(8, pool, PlanFilter{Eliminations: []string{EliminationDouble}}, 2)
+	if len(dbl.Plans) == 0 || len(dbl.Plans) > 2 {
+		t.Fatalf("family-filtered cap must bound the list, got %d", len(dbl.Plans))
+	}
+	for _, p := range dbl.Plans {
+		if p.Elimination != EliminationDouble {
+			t.Fatalf("family filter leaked a %s plan", p.Elimination)
+		}
+	}
+	if got := dbl.Facets.Eliminations; len(got) != 1 || got[0] != EliminationDouble {
+		t.Fatalf("facets must follow the explored families: %v", got)
+	}
+
+	// Round-count filter: plans match, facets still describe the full space.
+	r2 := EnumerateFiltered(8, pool, PlanFilter{RoundCounts: []int{2}}, 0)
+	if len(r2.Plans) == 0 {
+		t.Fatalf("2-round plans must exist for 8/{2,3}")
+	}
+	for _, p := range r2.Plans {
+		if len(p.Rounds) != 2 {
+			t.Fatalf("round-count filter leaked: %s", describe(p))
+		}
+	}
+	if !slices.Contains(r2.Facets.RoundCounts, 3) {
+		t.Fatalf("facets must ignore the display filters: %v", r2.Facets.RoundCounts)
+	}
+
+	// First-shape filter keeps only matching first rounds.
+	sh := EnumerateFiltered(8, pool, PlanFilter{FirstShapes: []string{"3+3+2"}}, 0)
+	if len(sh.Plans) == 0 {
+		t.Fatalf("3+3+2 first-round plans must exist")
+	}
+	for _, p := range sh.Plans {
+		if FirstShapeOf(p) != "3+3+2" {
+			t.Fatalf("shape filter leaked %s", FirstShapeOf(p))
+		}
+	}
+
+	// Byes filter: n=5 on a 2-seat pool cannot seat exactly — every plan
+	// carries byes, so "without" must empty the list while facets stay.
+	byes := EnumerateFiltered(5, []GameCapacity{{Min: 2, Max: 2}}, PlanFilter{Byes: ByesWithout}, 0)
+	if len(byes.Plans) != 0 {
+		t.Fatalf("without-byes must have no plans for 5/{2}")
+	}
+	if !byes.Facets.HasByes || !byes.Facets.AllByes {
+		t.Fatalf("facets must ignore the display filters: %+v", byes.Facets)
+	}
+	with := EnumerateFiltered(5, []GameCapacity{{Min: 2, Max: 2}}, PlanFilter{Byes: ByesWith}, 0)
+	for _, p := range with.Plans {
+		if !planHasByes(p) {
+			t.Fatalf("byes filter leaked a plan without byes")
+		}
 	}
 }

@@ -29,7 +29,6 @@ var (
 
 	// Tournament brackets (ADR-26).
 	ErrTournamentNameRequired           = errors.New("укажите название турнира")
-	ErrTournamentEliminationInvalid     = errors.New("тип турнира должен быть single или double")
 	ErrTournamentPoolEntryInvalid       = errors.New("вместимость стола: минимум 2 игрока, максимум не меньше минимума")
 	ErrTournamentDeadlineInvalid        = errors.New("дедлайн гранд-финала должен быть в будущем")
 	ErrTournamentNotEditable            = errors.New("турнир больше не в регистрации — конфигурацию изменить нельзя")

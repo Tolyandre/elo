@@ -86,6 +86,7 @@ type Querier interface {
 	// state, registration-time config, participants, and the game pool.
 	// Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 	// with the same id inserts nothing and the service fetches the stored row.
+	// elimination stays NULL until start stamps the chosen plan's family.
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateTournamentRound(ctx context.Context, arg CreateTournamentRoundParams) (TournamentRound, error)
 	CreateTournamentSeat(ctx context.Context, arg CreateTournamentSeatParams) error
@@ -441,8 +442,9 @@ type Querier interface {
 	SetSlotStatusAndRuling(ctx context.Context, arg SetSlotStatusAndRulingParams) error
 	// The grand final promoted exactly one player (ADR-26): read-only from here.
 	SetTournamentCompleted(ctx context.Context, arg SetTournamentCompletedParams) error
-	// The single start action (ADR-26): snapshot the chosen plan + seed, close
-	// registration. The bracket materialization happens in the same transaction.
+	// The single start action (ADR-26): snapshot the chosen plan + seed, stamp
+	// its elimination family, close registration. The bracket materialization
+	// happens in the same transaction.
 	SetTournamentRunning(ctx context.Context, arg SetTournamentRunningParams) error
 	// Plain transitions: cancel (organizer or grand-final deadline).
 	SetTournamentStatus(ctx context.Context, arg SetTournamentStatusParams) error
