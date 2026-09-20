@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Tournament, TournamentGame } from "@/app/api";
 import type { Base58ID } from "@/lib/id";
 import { updateTournamentPromise } from "@/app/api";
@@ -37,7 +37,16 @@ function formFrom(t: Tournament): FormState {
  * one PUT. The shape picker reads the SAVED pool and participants, so a save
  * is what refreshes the offered bracket shapes.
  */
-export function RegistrationEditor({ tournament: t, onSaved }: { tournament: Tournament; onSaved: () => void }) {
+export function RegistrationEditor({
+    tournament: t,
+    onSaved,
+    onUnsavedChange = () => {},
+}: {
+    tournament: Tournament;
+    onSaved: () => void;
+    /** Reported whenever the draft starts/stops differing from the saved tournament (ADR-26 §UI: start is gated on it). */
+    onUnsavedChange?: (unsaved: boolean) => void;
+}) {
     const { games } = useGames();
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -54,6 +63,15 @@ export function RegistrationEditor({ tournament: t, onSaved }: { tournament: Tou
     }
 
     const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
+
+    // The draft is unsaved while it differs from the fetched snapshot; the
+    // shape picker gates the start button on this (a stale plan would silently
+    // drop the draft — e.g. a just-added participant).
+    const unsaved = JSON.stringify(form) !== JSON.stringify(formFrom(t));
+    useEffect(() => {
+        onUnsavedChange(unsaved);
+        return () => onUnsavedChange(false);
+    }, [unsaved, onUnsavedChange]);
 
     const addGame = (gameId?: Base58ID) => {
         if (!gameId || form.pool.some((g) => g.game_id === gameId)) return;

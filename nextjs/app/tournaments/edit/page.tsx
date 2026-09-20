@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { toBase58ID, type Base58ID } from "@/lib/id";
 import { useUrlQuery } from "@/lib/url-state";
 import { getTournamentBracketPromise, getTournamentPromise } from "@/app/api";import { useAsyncResource } from "@/hooks/useAsyncResource";
@@ -57,6 +58,11 @@ function TournamentEditLoaded({ tournamentId }: { tournamentId: Base58ID }) {
         return { tournament, bracket };
     }, [tournamentId]);
 
+    // The registration editor's draft vs the saved tournament: while it holds
+    // unsaved changes, the shape picker must not start — a plan computed from
+    // the saved state would silently drop the draft (e.g. a new participant).
+    const [unsavedConfig, setUnsavedConfig] = useState(false);
+
     if (error) return <ErrorAlert message={error} />;
     if (loading || !data) {
         return (
@@ -80,8 +86,12 @@ function TournamentEditLoaded({ tournamentId }: { tournamentId: Base58ID }) {
                 </p>
                 {tournament.status === "registration" && (
                     <>
-                        <RegistrationEditor tournament={tournament} onSaved={invalidate} />
-                        <ShapePicker tournament={tournament} onStarted={invalidate} />
+                        <RegistrationEditor
+                            tournament={tournament}
+                            onSaved={invalidate}
+                            onUnsavedChange={setUnsavedConfig}
+                        />
+                        <ShapePicker tournament={tournament} unsavedChanges={unsavedConfig} onStarted={invalidate} />
                         <CancelButton tournament={tournament} onDone={invalidate} />
                     </>
                 )}

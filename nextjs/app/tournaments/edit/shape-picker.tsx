@@ -29,6 +29,8 @@ import { cn } from "@/lib/utils";
  * Both elimination families are offered side by side; the chips travel as
  * query parameters, so the server's plan cap always applies to the current
  * condition, and the facets drive the chip options.
+ * Starting is blocked while the registration editor holds unsaved changes —
+ * plans describe the saved configuration, so a start would drop the draft.
  */
 
 type Family = "single" | "double";
@@ -38,7 +40,16 @@ function toggleIn<T>(list: T[], v: T): T[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
-export function ShapePicker({ tournament: t, onStarted }: { tournament: Tournament; onStarted: () => void }) {
+export function ShapePicker({
+    tournament: t,
+    unsavedChanges,
+    onStarted,
+}: {
+    tournament: Tournament;
+    /** True while the registration editor has a draft differing from the saved tournament. */
+    unsavedChanges?: boolean;
+    onStarted: () => void;
+}) {
     const participants = t.participant_ids ?? [];
     const eligible = t.games.length > 0 && participants.length >= 2;
     // The saved pool + participant count + chip state determine the plans.
@@ -191,7 +202,12 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
                     )}
                     {data.plans.length > 0 ? (
                         <Select
-                            value={plan ? selectedCanon ?? undefined : undefined}
+                            // Controlled with "" as the no-selection value: the
+                            // config reset (fresh pool/participants after a
+                            // save) must clear the displayed choice — leaving
+                            // value undefined would let Radix keep its stale
+                            // internal selection as an uncontrolled widget.
+                            value={selectedCanon ?? ""}
                             onValueChange={(v) => setSelectedCanon(v)}
                         >
                             <SelectTrigger className="w-full">
@@ -224,9 +240,14 @@ export function ShapePicker({ tournament: t, onStarted }: { tournament: Tourname
                         </div>
                     )}
                     {error2 && <div className="text-red-600 text-sm">{error2}</div>}
+                    {unsavedChanges && (
+                        <p className="text-sm text-amber-600">
+                            Есть несохранённые изменения конфигурации — сохраните их, прежде чем начинать турнир.
+                        </p>
+                    )}
                     <Button
                         size="sm"
-                        disabled={plan == null}
+                        disabled={plan == null || unsavedChanges}
                         onClick={() => setConfirmOpen(true)}
                     >
                         Начать турнир
