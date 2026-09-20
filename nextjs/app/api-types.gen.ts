@@ -494,7 +494,7 @@ export interface paths {
         post?: never;
         /**
          * Detach a wrongly linked match from its slot (organizer)
-         * @description The match stays in the tournament's arena (it was played at the event); only the bracket forgets it. Triggers the same re-evaluation and cascade as an edit.
+         * @description The match leaves the tournament's arena together with the bracket (ADR-26, revised — it must not keep voting in the event's rating once uncounted). Triggers the same re-evaluation and cascade as an edit. Refused (409) while any downstream slot holds linked matches or a recorded ruling — those rounds are unwound explicitly first, from the last one backwards.
          */
         delete: operations["DetachTournamentSlotMatch"];
         options?: never;
@@ -513,7 +513,7 @@ export interface paths {
         put?: never;
         /**
          * Complete a slot by hand with an ordered promotion set (organizer)
-         * @description An ordered list of exactly `promote` seated players — covers abandoned matches, no-shows, disputes. The ruling replaces the current outcome and can be replaced by the standings-based result; every ruling and reversion is audited (slot-ruling).
+         * @description An ordered list of exactly `promote` seated players — covers abandoned matches, no-shows, disputes. The ruling replaces the current outcome (standings-based or a prior ruling) and stays in force until the organizer cancels it or a cascade voids it; the standings never silently override an explicit decision. An empty list cancels the ruling: the standings-based result takes over again, and the slot reopens when nothing decides it. Changing an outcome that feeds downstream rounds with played matches or recorded rulings is refused (409) — unwind those rounds first, from the last one backwards. Every ruling and reversion is audited (slot-ruling).
          */
         post: operations["SetTournamentSlotRuling"];
         delete?: never;
@@ -1363,6 +1363,8 @@ export interface components {
                 place: number;
                 promoted: boolean;
             }[];
+            /** @description The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it. */
+            ruling?: components["schemas"]["Base58ID"][];
         };
         BracketRound: {
             /** @enum {string} */
@@ -4145,6 +4147,15 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /** @description Downstream slots hold played matches or recorded rulings */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     SetTournamentSlotRuling: {
@@ -4160,7 +4171,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description Ordered — place 1 first */
+                    /** @description Ordered — place 1 first; empty cancels the ruling */
                     player_ids: components["schemas"]["Base58ID"][];
                 };
             };
@@ -4211,7 +4222,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description The slot is not accepting a ruling (waiting) */
+            /** @description The slot is not accepting a ruling (waiting), or downstream rounds were played or ruled */
             409: {
                 headers: {
                     [name: string]: unknown;

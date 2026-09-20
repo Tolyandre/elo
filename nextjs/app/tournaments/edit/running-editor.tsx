@@ -7,6 +7,7 @@ import type { Base58ID } from "@/lib/id";
 import {
     adjustTournamentSlotPromise,
     detachTournamentSlotMatchPromise,
+    setTournamentSlotRulingPromise,
 } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -75,6 +76,10 @@ function SlotEditor({
         await detachTournamentSlotMatchPromise(t.id, slot.id, matchId);
         invalidate();
     });
+    const cancelRuling = useConfirmAction(async () => {
+        await setTournamentSlotRulingPromise(t.id, slot.id, []);
+        invalidate();
+    });
 
     const playerName = (pid: string): string => {
         const player = playerMap.get(pid);
@@ -126,6 +131,23 @@ function SlotEditor({
                 </p>
             )}
             {error && <p className="text-red-600 text-sm">{error}</p>}
+
+            {slot.ruling != null && slot.ruling.length > 0 && (
+                <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1">
+                    <p className="text-xs min-w-0 truncate">
+                        Решение организатора: {slot.ruling.map(playerName).join(", ")}
+                    </p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0"
+                        disabled={busy}
+                        onClick={() => cancelRuling.trigger(null)}
+                    >
+                        Отменить решение
+                    </Button>
+                </div>
+            )}
 
             <div className="space-y-1">
                 {slot.matches.map((m) => (
@@ -182,11 +204,20 @@ function SlotEditor({
                 open={detach.open}
                 onOpenChange={detach.onOpenChange}
                 title="Открепить партию?"
-                description="Партия останется в арене турнира, но выйдет из сетки; результаты стола пересчитаются."
+                description="Партия выйдет и из сетки турнира, и из его арены; результаты стола пересчитаются. Если в следующих кругах уже сыграны партии или записаны решения, открепление будет отклонено — сначала разберите их."
                 confirmText="Открепить"
                 confirmVariant="destructive"
                 loading={detach.pending}
                 onConfirm={detach.confirm}
+            />
+            <ConfirmDialog
+                open={cancelRuling.open}
+                onOpenChange={cancelRuling.onOpenChange}
+                title="Отменить решение организатора?"
+                description="Стол снова решится по партиям (или откроется, если партий нет); следующие круги пересчитаются. Если там уже сыграны партии или записаны решения, отмена будет отклонена — сначала разберите их."
+                confirmText="Отменить решение"
+                loading={cancelRuling.pending}
+                onConfirm={cancelRuling.confirm}
             />
         </div>
     );

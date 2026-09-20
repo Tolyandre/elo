@@ -566,6 +566,7 @@ type bracketJSON struct {
 					Place    int    `json:"place"`
 					Promoted bool   `json:"promoted"`
 				} `json:"standings"`
+				Ruling *[]string `json:"ruling"`
 			} `json:"slots"`
 		} `json:"rounds"`
 	} `json:"data"`
@@ -868,6 +869,7 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 		Place    int    `json:"place"`
 		Promoted bool   `json:"promoted"`
 	} `json:"standings"`
+	Ruling *[]string `json:"ruling"`
 } {
 	t.Helper()
 	slot := br.Data.Rounds[roundIdx].Slots[pos]
@@ -892,9 +894,11 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 			Place    int    `json:"place"`
 			Promoted bool   `json:"promoted"`
 		} `json:"standings"`
+		Ruling *[]string `json:"ruling"`
 	}{
 		Id: slot.Id, GameId: slot.GameId, Position: slot.Position, Promote: slot.Promote,
 		Status: slot.Status, Seats: slot.Seats, Matches: slot.Matches, Standings: slot.Standings,
+		Ruling: slot.Ruling,
 	}
 }
 
@@ -1699,6 +1703,229 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 	if attaches != 1 || rulings != 1 || detaches != 1 {
 		t.Fatalf("audit: %d attaches, %d rulings, %d detaches (want 1 each)", attaches, rulings, detaches)
+	}
+
+	// Cancelling the ruling (an empty player list) reopens the abandoned
+	// table: the tournament reverts to running, the slot goes back to playing
+	// with no ruling in force — the organizer can link a match again.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, `{"player_ids": []}`); w.Code != http.StatusOK {
+		t.Fatalf("cancel ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("cancel must revert the completion: %+v", br.Data)
+	}
+	reopened := slotAt(t, br, 0, 0)
+	if reopened.Status != "playing" || reopened.Ruling != nil {
+		t.Fatalf("cancel must reopen the slot with no ruling: %s %+v", reopened.Status, reopened.Ruling)
+	}
+
+	// The re-attach the cancel exists for: the detached match links again
+	// (the tie keeps the slot playing), and a fresh ruling re-completes it.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":"`+mid+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("re-attach after cancel: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, ruling); w.Code != http.StatusOK {
+		t.Fatalf("re-ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != seat(1) {
+		t.Fatalf("re-ruling must re-complete: %+v", br.Data)
+	}
+
+	// Audit totals: the cancel added one revert; the repair added one attach
+	// and one set.
+	page = listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var reverts int
+	attaches, rulings, detaches = 0, 0, 0
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		switch {
+		case d["op"] == "attach" && d["origin_kind"] == "organizer":
+			attaches++
+		case d["op"] == "set" && d["after_player_ids"] != nil:
+			rulings++
+		case d["op"] == "revert":
+			reverts++
+		case d["op"] == "detach":
+			detaches++
+		}
+	}
+	if attaches != 2 || rulings != 2 || reverts != 1 || detaches != 1 {
+		t.Fatalf("audit totals: %d attaches, %d rulings, %d reverts, %d detaches (want 2, 2, 1, 1)",
+			attaches, rulings, reverts, detaches)
+	}
+}
+
+// TestTournament_RulingOverridesAndGuards pins the ruling semantics and their
+// history guards (ADR-26, revised): the ruling overrides a standings-based
+// outcome (and propagates to the downstream seats in its own order), and any
+// ruling change or unlink that would rewrite an outcome feeding played or
+// ruled downstream rounds is refused with 409 — those rounds are unwound
+// explicitly, from the last one backwards.
+func TestTournament_RulingOverridesAndGuards(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Гарантная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Гарант%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Гарантный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+	ruling := func(playerIDs ...string) string {
+		quoted := make([]string, 0, len(playerIDs))
+		for _, p := range playerIDs {
+			quoted = append(quoted, fmt.Sprintf("%q", p))
+		}
+		return `{"player_ids": [` + strings.Join(quoted, ",") + `]}`
+	}
+	setRuling := func(body string) int {
+		return doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slotAt(t, getBracket(t, router, short(tid)), 0, 0).Id+"/ruling", admin, body).Code
+	}
+	detach := func(roundIdx, pos int, matchID string) int {
+		slotID := slotAt(t, getBracket(t, router, short(tid)), roundIdx, pos).Id
+		return doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/slots/"+slotID+"/matches/"+matchID, admin, "").Code
+	}
+
+	// Slot A completes from a decisive match: {a0, a1} by points.
+	newMatch("2026-09-01T10:00:00Z", sc(aSeat(0), 10), sc(aSeat(1), 9), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA := slotAt(t, br, 0, 0)
+	if slotA.Status != "completed" {
+		t.Fatalf("slot A must complete by points: %s", slotA.Status)
+	}
+
+	// The ruling overrides the standings-based outcome (it used to be
+	// silently ignored while a strict cut stood) and the final's seats follow
+	// the ruling's order, not the points order.
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling must override the standings outcome: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Ruling == nil || len(*slotA.Ruling) != 2 || (*slotA.Ruling)[0] != aSeat(2) {
+		t.Fatalf("the ruling must be exposed in force: %+v", slotA.Ruling)
+	}
+	promoted := map[string]bool{}
+	for _, st := range slotA.Standings {
+		if st.Promoted {
+			promoted[st.PlayerId] = true
+		}
+	}
+	if !promoted[aSeat(2)] || !promoted[aSeat(1)] || promoted[aSeat(0)] {
+		t.Fatalf("the promoted set must follow the ruling: %+v", slotA.Standings)
+	}
+	if got := br.Data.Rounds[1].Slots[0].Seats[0].PlayerId; got == nil || *got != aSeat(2) {
+		t.Fatalf("final place-1 seat must follow the ruling, got %+v", br.Data.Rounds[1].Slots[0].Seats[0])
+	}
+	if got := br.Data.Rounds[1].Slots[0].Seats[1].PlayerId; got == nil || *got != aSeat(1) {
+		t.Fatalf("final place-2 seat must follow the ruling, got %+v", br.Data.Rounds[1].Slots[0].Seats[1])
+	}
+
+	// Slot B completes; the final is played with the ruling's field and the
+	// tournament completes.
+	newMatch("2026-09-01T11:00:00Z", sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	finalA1 := seatPlayer(t, br, 1, 0, 0) // aSeat(2) via the ruling
+	finalA2 := seatPlayer(t, br, 1, 0, 1) // aSeat(1)
+	finalB1 := seatPlayer(t, br, 1, 0, 2)
+	finalB2 := seatPlayer(t, br, 1, 0, 3)
+	newMatch("2026-09-02T10:00:00Z", sc(finalA1, 10), sc(finalA2, 6), sc(finalB1, 2), sc(finalB2, 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != finalA1 {
+		t.Fatalf("the final must complete on the ruling's field: %+v", br.Data)
+	}
+	aMatches := slotAt(t, br, 0, 0).Matches
+
+	// The guards: with the final played, first-round corrections are refused.
+	if code := setRuling(ruling(aSeat(0), aSeat(1))); code != http.StatusConflict {
+		t.Fatalf("ruling change after downstream play must 409, got %d", code)
+	}
+	if code := setRuling(ruling()); code != http.StatusConflict {
+		t.Fatalf("ruling cancel after downstream play must 409, got %d", code)
+	}
+	if code := detach(0, 0, aMatches[0].MatchId); code != http.StatusConflict {
+		t.Fatalf("organizer detach after downstream play must 409, got %d", code)
+	}
+	// A no-op re-issue of the same ordered ruling passes (nothing cascades).
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("no-op ruling re-issue must pass, got %d", code)
+	}
+
+	// The step-by-step unwind: detach the final's match first (nothing is
+	// recorded downstream of it) — the tournament reverts to running and the
+	// voided final reopens for play instead of staying completed-and-empty.
+	finalMatch := slotAt(t, getBracket(t, router, short(tid)), 1, 0).Matches[0].MatchId
+	if code := detach(1, 0, finalMatch); code != http.StatusOK {
+		t.Fatalf("unwind detach of the final: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("the unwind must revert the completion: %+v", br.Data)
+	}
+	final := slotAt(t, br, 1, 0)
+	if final.Status != "playing" || len(final.Matches) != 0 {
+		t.Fatalf("the voided final must reopen for play: %s with %d matches", final.Status, len(final.Matches))
+	}
+
+	// Now the first-round ruling change goes through and re-seats the final.
+	if code := setRuling(ruling(aSeat(0), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling change after the unwind must pass: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if got := br.Data.Rounds[1].Slots[0].Seats[0].PlayerId; got == nil || *got != aSeat(0) {
+		t.Fatalf("final place-1 seat must re-fill from the new ruling: %+v", br.Data.Rounds[1].Slots[0].Seats[0])
+	}
+
+	// The guard also covers ruled (not just played) downstream rounds: a
+	// ruling on the final completes the tournament again, and the first-round
+	// change is refused until that ruling is canceled.
+	br = getBracket(t, router, short(tid))
+	finalSeat1 := seatPlayer(t, br, 1, 0, 0)
+	if code := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+final.Id+"/ruling", admin, ruling(finalSeat1)).Code; code != http.StatusOK {
+		t.Fatalf("ruling on the final: %d", code)
+	}
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusConflict {
+		t.Fatalf("ruling change under a ruled downstream must 409, got %d", code)
+	}
+	if code := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+final.Id+"/ruling", admin, ruling()).Code; code != http.StatusOK {
+		t.Fatalf("cancel the final's ruling: %d", code)
+	}
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling change after canceling the downstream ruling must pass: %d", code)
 	}
 }
 

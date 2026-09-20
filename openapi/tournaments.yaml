@@ -772,6 +772,14 @@ BracketSlot:
           promoted:
             type: boolean
         required: [player_id, points, place, promoted]
+    ruling:
+      type: array
+      description: >-
+        The organizer ruling in force, ordered by place (place 1 first).
+        Absent while the outcome comes from the standings. An empty
+        player_ids body on the ruling endpoint cancels it.
+      items:
+        $ref: './common.yaml#/Base58ID'
   required: [id, game_id, position, promote, status, seats, matches, standings]
 
 BracketRound:
@@ -959,9 +967,12 @@ TournamentSlotMatchItem:
     tags: [tournaments]
     summary: Detach a wrongly linked match from its slot (organizer)
     description: >-
-      The match stays in the tournament's arena (it was played at the event);
-      only the bracket forgets it. Triggers the same re-evaluation and cascade
-      as an edit.
+      The match leaves the tournament's arena together with the bracket
+      (ADR-26, revised — it must not keep voting in the event's rating once
+      uncounted). Triggers the same re-evaluation and cascade as an edit.
+      Refused (409) while any downstream slot holds linked matches or a
+      recorded ruling — those rounds are unwound explicitly first, from the
+      last one backwards.
     security:
       - cookieAuth: []
     parameters:
@@ -1005,6 +1016,12 @@ TournamentSlotMatchItem:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
+      "409":
+        description: Downstream slots hold played matches or recorded rulings
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
 
 TournamentSlotRuling:
   post:
@@ -1013,9 +1030,15 @@ TournamentSlotRuling:
     summary: Complete a slot by hand with an ordered promotion set (organizer)
     description: >-
       An ordered list of exactly `promote` seated players — covers abandoned
-      matches, no-shows, disputes. The ruling replaces the current outcome and
-      can be replaced by the standings-based result; every ruling and
-      reversion is audited (slot-ruling).
+      matches, no-shows, disputes. The ruling replaces the current outcome
+      (standings-based or a prior ruling) and stays in force until the
+      organizer cancels it or a cascade voids it; the standings never
+      silently override an explicit decision. An empty list cancels the
+      ruling: the standings-based result takes over again, and the slot
+      reopens when nothing decides it. Changing an outcome that feeds
+      downstream rounds with played matches or recorded rulings is refused
+      (409) — unwind those rounds first, from the last one backwards. Every
+      ruling and reversion is audited (slot-ruling).
     security:
       - cookieAuth: []
     parameters:
@@ -1040,7 +1063,7 @@ TournamentSlotRuling:
                 type: array
                 items:
                   $ref: './common.yaml#/Base58ID'
-                description: Ordered — place 1 first
+                description: Ordered — place 1 first; empty cancels the ruling
             required: [player_ids]
     responses:
       "200":
@@ -1074,7 +1097,7 @@ TournamentSlotRuling:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: The slot is not accepting a ruling (waiting)
+        description: The slot is not accepting a ruling (waiting), or downstream rounds were played or ruled
         content:
           application/json:
             schema:

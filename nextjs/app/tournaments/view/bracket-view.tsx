@@ -322,9 +322,19 @@ function SlotCard({
                 <span className="text-sm font-medium min-w-0 truncate">
                     Стол {slot.position}
                 </span>
-                <Badge variant={slotBadgeVariant(slot.status)} className="shrink-0 whitespace-nowrap">
-                    {slotStatusLabel(slot.status)}
-                </Badge>
+                <span className="flex items-center gap-1 shrink-0">
+                    {slot.ruling != null && slot.ruling.length > 0 && (
+                        <Badge
+                            variant="outline"
+                            title={`Решение организатора: ${slot.ruling.map(playerName).join(", ")}`}
+                        >
+                            решение
+                        </Badge>
+                    )}
+                    <Badge variant={slotBadgeVariant(slot.status)} className="whitespace-nowrap">
+                        {slotStatusLabel(slot.status)}
+                    </Badge>
+                </span>
             </div>
             {gameName && <p className="text-xs text-muted-foreground truncate">{gameName}</p>}
 

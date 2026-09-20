@@ -306,6 +306,8 @@ func (s *StrictServer) DetachTournamentSlotMatch(ctx context.Context, request De
 		switch domainStatusCode(err) {
 		case http.StatusNotFound:
 			return DetachTournamentSlotMatch404JSONResponse{Status: "fail", Message: "Турнир, стол или связь не найдены"}, nil
+		case http.StatusConflict:
+			return DetachTournamentSlotMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
@@ -504,6 +506,13 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 				bs.Matches = append(bs.Matches, struct {
 					MatchId Base58ID `json:"match_id"`
 				}{MatchId: Base58ID(mid)})
+			}
+			if len(sl.Ruling) > 0 {
+				ruling := make([]Base58ID, 0, len(sl.Ruling))
+				for _, pid := range sl.Ruling {
+					ruling = append(ruling, Base58ID(pid))
+				}
+				bs.Ruling = &ruling
 			}
 			for _, st := range sl.Standings {
 				bs.Standings = append(bs.Standings, struct {

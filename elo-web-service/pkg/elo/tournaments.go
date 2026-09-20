@@ -734,6 +734,9 @@ type BracketSlot struct {
 	Seats     []BracketSeat
 	MatchIDs  []id.ID
 	Standings []bracket.Standing
+	// Ruling is the organizer ruling in force, ordered by place; nil when the
+	// outcome comes from the standings.
+	Ruling []id.ID
 }
 
 // BracketRound is one round of the bracket DTO.
@@ -785,6 +788,13 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 			GameID:   sl.GameID,
 			Promote:  int(sl.Promote),
 			Status:   sl.Status,
+		}
+		if len(sl.Ruling) > 0 {
+			var ruling []id.ID
+			if err := json.Unmarshal(sl.Ruling, &ruling); err != nil {
+				return db.Tournament{}, nil, fmt.Errorf("parse slot ruling: %w", err)
+			}
+			bs.Ruling = ruling
 		}
 		for _, se := range seatsBySlot[sl.ID] {
 			seat := BracketSeat{Position: int(se.Position), PlayerID: se.PlayerID, SourceSlotID: se.SourceSlotID}

@@ -273,9 +273,17 @@ exactly one promoted player, the tournament completes and
 
 **Organizer ruling.** The organizer may complete any `playing` slot by
 hand — an ordered promotion set of exactly `promote` players (covers
-abandoned matches, no-shows, disputes). A ruling replaces and can be
-replaced by the standings-based result; every ruling and reversion is
-audit-logged (see Audit and recovery).
+abandoned matches, no-shows, disputes). A ruling replaces the current
+outcome — standings-based or a prior ruling — and stays in force until the
+organizer cancels it (an empty player list) or a cascade voids it; the
+standings never silently override an explicit decision. (The original
+wording — "can be replaced by the standings-based result" — made a ruling
+on a scores-decided slot a silent no-op, so it was revised: cancellation is
+explicit.) Changing an outcome that feeds downstream rounds with played
+matches or recorded rulings is refused with 409 — those rounds are unwound
+explicitly first, from the last one backwards (the same guard as the
+link-state changes). Every ruling and reversion is audit-logged (see Audit
+and recovery).
 
 ### Match acceptance: the checkbox
 

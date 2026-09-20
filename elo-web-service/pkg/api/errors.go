@@ -78,6 +78,7 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrMatchAlreadyLinked),
 		errors.Is(err, elo.ErrTournamentMatchNotLinked),
 		errors.Is(err, elo.ErrTournamentLinkChangeUnsafe),
+		errors.Is(err, elo.ErrTournamentRulingUnsafe),
 		errors.Is(err, elo.ErrTournamentSlotNotPlaying),
 		db.IsUniqueViolation(err):
 		return http.StatusConflict

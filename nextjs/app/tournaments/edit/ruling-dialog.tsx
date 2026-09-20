@@ -9,7 +9,9 @@ import { ConfirmDialogWithContent } from "@/components/confirm-dialog";
 /**
  * The organizer ruling dialog (ADR-26): an ordered promotion set of exactly
  * `promote` seated players — picks happen in click order and replace the
- * slot's outcome (recomputing the downstream cascade server-side).
+ * slot's outcome (the standings-based result or a prior ruling), recomputing
+ * the downstream cascade server-side. While a ruling is in force it is
+ * prefilled, so the dialog edits the standing decision.
  */
 export function RulingDialog({
     tournament: t,
@@ -40,12 +42,12 @@ export function RulingDialog({
 
     const [picked, setPicked] = useState<Base58ID[]>([]);
     const [pending, setPending] = useState(false);
-    // Clear the picks each time the dialog opens (render-phase reset — the
-    // state describes one dialog session).
+    // Reset the picks each time the dialog opens (render-phase reset — the
+    // state describes one dialog session); a standing ruling prefills them.
     const [lastOpen, setLastOpen] = useState(false);
     if (open !== lastOpen) {
         setLastOpen(open);
-        if (open) setPicked([]);
+        if (open) setPicked(slot.ruling ? [...slot.ruling] : []);
     }
 
     const toggle = (pid: Base58ID) => {
@@ -70,7 +72,7 @@ export function RulingDialog({
             open={open}
             onOpenChange={onOpenChange}
             title={`Решение организатора — стол ${slot.position}`}
-            description={`Выберите по порядку ${slot.promote} игрока(ов) для повышения. Порядок выбора = места.`}
+            description={`Выберите по порядку ${slot.promote} игрока(ов) для повышения. Порядок выбора = места. Решение заменит текущий результат стола и будет действовать, пока вы его не отмените.`}
             confirmText="Записать решение"
             loading={pending}
             onConfirm={confirm}

@@ -1116,9 +1116,12 @@ type BracketSlot struct {
 	} `json:"matches"`
 
 	// Position Table number within the round
-	Position int           `json:"position"`
-	Promote  int           `json:"promote"`
-	Seats    []BracketSeat `json:"seats"`
+	Position int `json:"position"`
+	Promote  int `json:"promote"`
+
+	// Ruling The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it.
+	Ruling *[]Base58ID   `json:"ruling,omitempty"`
+	Seats  []BracketSeat `json:"seats"`
 
 	// Standings Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set.
 	Standings []struct {
@@ -2378,7 +2381,7 @@ type AttachTournamentSlotMatchJSONBody struct {
 
 // SetTournamentSlotRulingJSONBody defines parameters for SetTournamentSlotRuling.
 type SetTournamentSlotRulingJSONBody struct {
-	// PlayerIds Ordered — place 1 first
+	// PlayerIds Ordered — place 1 first; empty cancels the ruling
 	PlayerIds []Base58ID `json:"player_ids"`
 }
 
@@ -10082,6 +10085,20 @@ func (response DetachTournamentSlotMatch404JSONResponse) VisitDetachTournamentSl
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DetachTournamentSlotMatch409JSONResponse ApiError
+
+func (response DetachTournamentSlotMatch409JSONResponse) VisitDetachTournamentSlotMatchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

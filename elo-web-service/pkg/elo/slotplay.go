@@ -109,10 +109,10 @@ func seatSetEquals(seats []db.TournamentSeat, playerIDs []id.ID) bool {
 	return true
 }
 
-// recomputeSlot re-derives the slot's outcome from the linked matches' scores
-// (or the standing organizer ruling), records it when it changed, refills the
-// downstream seat caches, and recursively voids downstream slots that already
-// recorded results — the bracket never lies (ADR-26 §Editing without
+// recomputeSlot re-derives the slot's outcome — a standing organizer ruling
+// first, else the linked matches' scores — records it when it changed, refills
+// the downstream seat caches, and recursively voids downstream slots that
+// already recorded results — the bracket never lies (ADR-26 §Editing without
 // paradoxes). origin describes the triggering event for the audit trail.
 func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, actor id.ID, slotID id.ID, originKind, originID string) error {
 	slot, err := q.GetTournamentSlot(ctx, slotID)
@@ -227,10 +227,29 @@ func (s *TournamentService) revertCompletedTournament(ctx context.Context, q *db
 		audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentCompleted, TournamentRunning, audit.StateReasonCascade))
 }
 
-// desiredOutcome computes what the slot's promotion set should be: the strict
-// top-promote cut of the cumulative standings, else the standing organizer
-// ruling (which covers abandoned tables and may exist without any matches).
+// desiredOutcome computes what the slot's promotion set should be: a standing
+// organizer ruling — the organizer's explicit decision overrides the standings
+// until canceled (empty ruling) or cascade-voided — else the strict
+// top-promote cut of the cumulative standings (which covers abandoned tables:
+// a ruling may exist without any matches).
 func (s *TournamentService) desiredOutcome(ctx context.Context, q *db.Queries, slot db.GetTournamentSlotRow) (desired []id.ID, have bool, err error) {
+	if slot.Ruling != nil {
+		var ruling []id.ID
+		if err := json.Unmarshal(slot.Ruling, &ruling); err != nil {
+			return nil, false, fmt.Errorf("parse ruling: %w", err)
+		}
+		if len(ruling) == int(slot.Promote) {
+			return ruling, true, nil
+		}
+	}
+	return s.standingsOutcome(ctx, q, slot)
+}
+
+// standingsOutcome is desiredOutcome's scores-only half: the strict
+// top-promote cut of the cumulative standings, or nothing while the cut is
+// not strictly separated. Used directly by the ruling-cancel path, whose
+// outcome must ignore the ruling being canceled.
+func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries, slot db.GetTournamentSlotRow) (desired []id.ID, have bool, err error) {
 	results, err := q.ListSlotMatchResults(ctx, slot.ID)
 	if err != nil {
 		return nil, false, fmt.Errorf("list slot matches: %w", err)
@@ -256,17 +275,6 @@ func (s *TournamentService) desiredOutcome(ctx context.Context, q *db.Queries, s
 				desired = append(desired, sts[i].PlayerID)
 			}
 			return desired, true, nil
-		}
-	}
-
-	// No strict cut: a standing ruling decides, if present.
-	if slot.Ruling != nil {
-		var ruling []id.ID
-		if err := json.Unmarshal(slot.Ruling, &ruling); err != nil {
-			return nil, false, fmt.Errorf("parse ruling: %w", err)
-		}
-		if len(ruling) == int(slot.Promote) {
-			return ruling, true, nil
 		}
 	}
 	return nil, false, nil
@@ -342,8 +350,19 @@ func (s *TournamentService) voidSlotIfDirty(ctx context.Context, q *db.Queries, 
 	if err := q.SetSlotRuling(ctx, db.SetSlotRulingParams{ID: slot.ID, Ruling: nil}); err != nil {
 		return fmt.Errorf("clear ruling: %w", err)
 	}
-	if err := s.refreshDownstreamStatus(ctx, q, slot.ID); err != nil {
-		return err
+	// The void wiped everything the slot had recorded, so a `completed`
+	// status is stale too: the slot re-plays once its seats resolve (they
+	// may have been cleared just above, or refilled from the new outcome).
+	unresolved, err := q.CountUnresolvedSeats(ctx, slot.ID)
+	if err != nil {
+		return fmt.Errorf("count unresolved seats: %w", err)
+	}
+	status := TournamentSlotPlaying
+	if unresolved > 0 {
+		status = TournamentSlotWaiting
+	}
+	if err := q.SetSlotStatus(ctx, db.SetSlotStatusParams{ID: slot.ID, Status: status}); err != nil {
+		return fmt.Errorf("set slot status: %w", err)
 	}
 
 	// The cascade continues: everything fed by this slot is now invalid.
@@ -470,8 +489,9 @@ func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, m
 // playing slot has no recorded promotions, so attaching can never invalidate
 // played history). A desired state that already holds is a no-op with no
 // audit rows. Detaching is refused while any downstream slot still holds
-// linked matches — voiding played rounds stays the organizer's explicit
-// tool. Runs inside the match-write tx; audit origin: match edit.
+// linked matches or a recorded ruling — voiding played rounds stays the
+// organizer's explicit, step-by-step tool. Runs inside the match-write tx;
+// audit origin: match edit.
 func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries, matchID id.ID, ensureUnlinked bool, actor id.ID) error {
 	if err := s.enforceDeadlineTx(ctx, q); err != nil {
 		return err
@@ -484,8 +504,10 @@ func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries
 		if ref == nil {
 			return nil // already out of the bracket — nothing to change
 		}
-		if err := s.downstreamHasPlayedMatches(ctx, q, ref.SlotID); err != nil {
+		if recorded, err := s.downstreamRecorded(ctx, q, ref.SlotID); err != nil {
 			return err
+		} else if recorded {
+			return ErrTournamentLinkChangeUnsafe
 		}
 		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: ref.SlotID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("unlink match: %w", err)
@@ -551,26 +573,40 @@ func (s *TournamentService) SetMatchLinkState(ctx context.Context, q *db.Queries
 	return ErrTournamentMatchFitsNoSlot
 }
 
-// downstreamHasPlayedMatches reports whether any slot reachable through the
-// promotions holds linked matches: a link-state change would then void rounds
-// that were actually played, which the edit form must not do silently
-// (ErrTournamentLinkChangeUnsafe).
-func (s *TournamentService) downstreamHasPlayedMatches(ctx context.Context, q *db.Queries, slotID id.ID) error {
+// downstreamRecorded reports whether any slot reachable through the
+// promotions holds linked matches or recorded promotions (a standing ruling
+// decided it): a link-state change or ruling change here would void rounds
+// that were actually played or explicitly ruled, which the edit form and the
+// ruling tool must not do silently (ErrTournamentLinkChangeUnsafe /
+// ErrTournamentRulingUnsafe). The organizer unwinds those rounds explicitly,
+// from the last one backwards.
+func (s *TournamentService) downstreamRecorded(ctx context.Context, q *db.Queries, slotID id.ID) (bool, error) {
 	downstream, err := q.ListSlotsBySource(ctx, slotID)
 	if err != nil {
-		return fmt.Errorf("list downstream slots: %w", err)
+		return false, fmt.Errorf("list downstream slots: %w", err)
 	}
 	for _, d := range downstream {
-		if has, err := q.SlotHasMatches(ctx, d.ID); err != nil {
-			return fmt.Errorf("check slot matches: %w", err)
-		} else if has {
-			return ErrTournamentLinkChangeUnsafe
+		hasMatches, err := q.SlotHasMatches(ctx, d.ID)
+		if err != nil {
+			return false, fmt.Errorf("check slot matches: %w", err)
 		}
-		if err := s.downstreamHasPlayedMatches(ctx, q, d.ID); err != nil {
-			return err
+		if hasMatches {
+			return true, nil
+		}
+		hasPromotions, err := q.SlotHasPromotions(ctx, d.ID)
+		if err != nil {
+			return false, fmt.Errorf("check slot promotions: %w", err)
+		}
+		if hasPromotions {
+			return true, nil
+		}
+		if recorded, err := s.downstreamRecorded(ctx, q, d.ID); err != nil {
+			return false, err
+		} else if recorded {
+			return true, nil
 		}
 	}
-	return nil
+	return false, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -580,9 +616,12 @@ func (s *TournamentService) downstreamHasPlayedMatches(ctx context.Context, q *d
 
 // SetRuling records the organizer's ordered promotion set for a slot
 // (abandoned tables, no-shows, disputes). The ruling replaces the current
-// outcome and can be replaced by the standings-based result: recompute
-// prefers a strict cut, clears the ruling and audits the revert when the
-// scores later decide on their own.
+// outcome — standings-based or a prior ruling — and stays in force until the
+// organizer cancels it (an empty player list) or a cascade voids it; the
+// standings never silently override an explicit decision. Any change that
+// would rewrite an outcome feeding played or ruled downstream rounds is
+// refused (ErrTournamentRulingUnsafe): voiding played history stays the
+// organizer's explicit, step-by-step tool — unwind the later rounds first.
 func (s *TournamentService) SetRuling(ctx context.Context, tid, slotID, actorUserID id.ID, playerIDs []id.ID) error {
 	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		if err := s.enforceDeadlineTx(ctx, q); err != nil {
@@ -595,50 +634,79 @@ func (s *TournamentService) SetRuling(ctx context.Context, tid, slotID, actorUse
 		if slot.Status == TournamentSlotWaiting {
 			return ErrTournamentSlotNotPlaying
 		}
-		if len(playerIDs) != int(slot.Promote) {
-			return ErrTournamentRulingInvalid
-		}
-		seats, err := q.ListSeatsBySlots(ctx, []id.ID{slotID})
-		if err != nil {
-			return fmt.Errorf("list seats: %w", err)
-		}
-		seated := make(map[id.ID]bool, len(seats))
-		for _, se := range seats {
-			if se.PlayerID != nil {
-				seated[*se.PlayerID] = true
-			}
-		}
-		for _, p := range playerIDs {
-			if !seated[p] {
+
+		cancel := len(playerIDs) == 0
+		if !cancel {
+			if len(playerIDs) != int(slot.Promote) {
 				return ErrTournamentRulingInvalid
 			}
+			seats, err := q.ListSeatsBySlots(ctx, []id.ID{slotID})
+			if err != nil {
+				return fmt.Errorf("list seats: %w", err)
+			}
+			seated := make(map[id.ID]bool, len(seats))
+			for _, se := range seats {
+				if se.PlayerID != nil {
+					seated[*se.PlayerID] = true
+				}
+			}
+			for _, p := range playerIDs {
+				if !seated[p] {
+					return ErrTournamentRulingInvalid
+				}
+			}
+		} else if slot.Ruling == nil {
+			return nil // no ruling in force — a cancel is a no-op, nothing audited
 		}
 
-		// Audit the decision (before = the prior recorded outcome, if any).
+		// The guard (ADR-26, parity with the link guards): a changed outcome
+		// cascades into the downstream rounds — refuse while any of them
+		// already recorded something (played matches or a ruling).
 		stored, err := q.ListSlotPromotions(ctx, slotID)
 		if err != nil {
 			return fmt.Errorf("list promotions: %w", err)
 		}
-		op := audit.RulingSet
-		var before []string
-		if len(stored) > 0 {
-			op = audit.RulingReplace
-			byPlace := make(map[int32]id.ID, len(stored))
-			for _, p := range stored {
-				byPlace[p.Place] = p.PlayerID
-			}
-			for i := 0; i < len(stored); i++ {
-				before = append(before, string(byPlace[int32(i+1)]))
+		desired, have := playerIDs, true
+		if cancel {
+			if desired, have, err = s.standingsOutcome(ctx, q, slot); err != nil {
+				return err
 			}
 		}
+		if outcomeChanged(desired, have, stored) {
+			recorded, err := s.downstreamRecorded(ctx, q, slotID)
+			if err != nil {
+				return err
+			}
+			if recorded {
+				return ErrTournamentRulingUnsafe
+			}
+		}
+
+		// Audit the decision (before = the prior recorded outcome, if any).
+		before := make([]string, 0, len(stored))
+		byPlace := make(map[int32]id.ID, len(stored))
+		for _, p := range stored {
+			byPlace[p.Place] = p.PlayerID
+		}
+		for i := 0; i < len(stored); i++ {
+			before = append(before, string(byPlace[int32(i+1)]))
+		}
+		op, after := audit.RulingSet, idStrings(playerIDs)
+		if cancel {
+			op, after = audit.RulingRevert, nil
+		} else if len(stored) > 0 {
+			op = audit.RulingReplace
+		}
 		if err := recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
-			audit.KindSlotRuling, audit.NewSlotRulingDetails(op, string(slotID), before, idStrings(playerIDs))); err != nil {
+			audit.KindSlotRuling, audit.NewSlotRulingDetails(op, string(slotID), before, after)); err != nil {
 			return err
 		}
 
-		rulingRaw, err := json.Marshal(playerIDs)
-		if err != nil {
-			return fmt.Errorf("marshal ruling: %w", err)
+		var rulingRaw []byte // nil clears the stored ruling
+		if !cancel {
+			if rulingRaw, err = json.Marshal(playerIDs); err != nil {
+				return fmt.Errorf("marshal ruling: %w", err)
+			}
 		}
 		if err := q.SetSlotRuling(ctx, db.SetSlotRulingParams{ID: slotID, Ruling: rulingRaw}); err != nil {
 			return fmt.Errorf("set ruling: %w", err)
@@ -716,7 +784,11 @@ func (s *TournamentService) AttachMatch(ctx context.Context, tid, slotID, matchI
 
 // DetachMatch removes a wrongly linked match from its slot — the match leaves
 // the tournament arena together with the bracket (ADR-26) — then
-// re-evaluates the slot and refreshes the arena synchronously.
+// re-evaluates the slot and refreshes the arena synchronously. Guarded like
+// the edit-form unlink: while any downstream slot holds linked matches or a
+// recorded ruling the detach is refused (ErrTournamentLinkChangeUnsafe) —
+// voiding played history stays the organizer's explicit, step-by-step tool
+// (detach from the last round backwards).
 func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchID, actorUserID id.ID) error {
 	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
 		if err := s.enforceDeadlineTx(ctx, q); err != nil {
@@ -731,6 +803,11 @@ func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchI
 		}
 		if ref == nil || ref.SlotID != slotID {
 			return ErrTournamentMatchNotLinked
+		}
+		if recorded, err := s.downstreamRecorded(ctx, q, slotID); err != nil {
+			return err
+		} else if recorded {
+			return ErrTournamentLinkChangeUnsafe
 		}
 		if err := q.DeleteSlotMatch(ctx, db.DeleteSlotMatchParams{SlotID: slotID, MatchID: matchID}); err != nil {
 			return fmt.Errorf("unlink match: %w", err)
@@ -874,9 +951,14 @@ func (s *TournamentService) slotOfTournament(ctx context.Context, q *db.Queries,
 // come from the derived standings' total order — standings are never stored,
 // so the refill re-derives them from the linked matches' scores.
 func (s *TournamentService) refillSeatCaches(ctx context.Context, q *db.Queries, source db.GetTournamentSlotRow, promoted []id.ID) error {
-	// The placing: the promoted prefix is fixed; the rest follows the
-	// standings order (deterministic even on dropped-player ties).
+	// The placing: the promoted prefix is fixed (a ruling may order it
+	// against the points); the rest follows the standings order
+	// (deterministic even on dropped-player ties).
 	placing := append([]id.ID(nil), promoted...)
+	placed := make(map[id.ID]bool, len(placing))
+	for _, p := range placing {
+		placed[p] = true
+	}
 	results, err := q.ListSlotMatchResults(ctx, source.ID)
 	if err != nil {
 		return fmt.Errorf("list slot matches: %w", err)
@@ -897,10 +979,13 @@ func (s *TournamentService) refillSeatCaches(ctx context.Context, q *db.Queries,
 		}
 		if len(matchResults) > 0 && source.SeatCount >= 2 {
 			sts := bracket.Standings(matchResults, int(source.SeatCount))
-			if len(sts) > len(placing) {
-				placing = make([]id.ID, 0, len(sts))
-				for _, st := range sts {
+			for _, st := range sts {
+				if len(placing) >= int(source.SeatCount) {
+					break
+				}
+				if !placed[st.PlayerID] {
 					placing = append(placing, st.PlayerID)
+					placed[st.PlayerID] = true
 				}
 			}
 		}
