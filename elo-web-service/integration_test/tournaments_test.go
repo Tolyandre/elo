@@ -1288,22 +1288,48 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	// B: decisive.
 	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
 	// Final: one strict-cut match → the tournament completes.
-	newMatch("2026-09-02T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	fin := newMatch("2026-09-02T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
 		t.Fatalf("pre-cascade completion: %+v", br.Data)
 	}
 
-	// The overturning edit: m2's scores become a shared top → the cumulative
-	// standings tie inside the promoted set → slot A reopens, the final's
-	// already-played match is voided, the champion is unrecorded.
+	// The overturning edit (m2's scores become a shared top → the cumulative
+	// standings tie inside the promoted set) is refused while the final is
+	// played: it would rewrite slot A's outcome feeding the recorded final —
+	// and the refused edit rolls back whole, leaving the bracket untouched.
 	code := editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
-	if code != http.StatusOK {
-		t.Fatalf("overturning edit: %d", code)
+	if code != http.StatusConflict {
+		t.Fatalf("overturning edit under a played final must 409, got %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("the refused edit must leave the bracket untouched: %+v", br.Data)
+	}
+
+	// The unwind the guard enforces: the latest match is unlinked first
+	// (nothing is recorded downstream of the final) — the champion is
+	// unrecorded, the completion reverts — and only then the first-round
+	// edit goes through.
+	unlink := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-02T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
+		short(gameID), strings.Join([]string{sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+fin, admin, unlink); w.Code != http.StatusOK {
+		t.Fatalf("unwind unlink of the final: %d %s", w.Code, w.Body.String())
 	}
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
-		t.Fatalf("completed tournament must revert to running: %+v", br.Data)
+		t.Fatalf("the unwind must revert the completion: %+v", br.Data)
+	}
+
+	// Now the overturning edit passes: slot A reopens, the final waits again
+	// with the seats fed by A cleared (slot B's outcome stands).
+	code = editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusOK {
+		t.Fatalf("overturning edit after the unwind: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("tournament must stay running: %+v", br.Data)
 	}
 	slotA := slotAt(t, br, 0, 0)
 	if slotA.Status != "playing" {
@@ -1321,10 +1347,11 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		}
 	}
 
-	// The audit origin chain: the void on the final slot names the triggering
-	// match edit; the revert is a cascade state transition.
+	// The audit chain: the unwind's unlink is a match-edit-origin detach; the
+	// completion reverted as a cascade state transition; nothing was
+	// cascade-voided (the final's match left explicitly, by the unlink).
 	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
-	voidsWithOrigin, cascadeStates := 0, 0
+	unlinksWithOrigin, voidsWithOrigin, cascadeStates := 0, 0, 0
 	for _, e := range page.Data {
 		if e.Details == nil {
 			continue
@@ -1333,6 +1360,9 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		if err := json.Unmarshal(e.Details, &d); err != nil {
 			continue
 		}
+		if d["op"] == "detach" && d["origin_kind"] == "match-edit" {
+			unlinksWithOrigin++
+		}
 		if d["op"] == "void" && d["origin_kind"] == "match-edit" && d["origin_id"] == m2 {
 			voidsWithOrigin++
 		}
@@ -1340,8 +1370,9 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 			cascadeStates++
 		}
 	}
-	if voidsWithOrigin != 1 || cascadeStates != 1 {
-		t.Fatalf("audit chain: %d voids with match-edit origin, %d cascade reverts", voidsWithOrigin, cascadeStates)
+	if unlinksWithOrigin != 1 || voidsWithOrigin != 0 || cascadeStates != 1 {
+		t.Fatalf("audit chain: %d unlinks, %d voids with match-edit origin, %d cascade reverts",
+			unlinksWithOrigin, voidsWithOrigin, cascadeStates)
 	}
 
 	// Association guards on a linked match (m1, slot A):

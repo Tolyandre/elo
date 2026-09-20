@@ -3351,7 +3351,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description History change conflict, or the new date falls outside a linked camp's window (detach the match from that camp in the same request) */
+            /** @description History change conflict; the new date falls outside a linked camp's window (detach the match from that camp in the same request); a tournament-link change or a score edit whose re-derived outcome would feed downstream rounds with played matches or recorded rulings (unwind those rounds first, from the last one backwards) */
             409: {
                 headers: {
                     [name: string]: unknown;

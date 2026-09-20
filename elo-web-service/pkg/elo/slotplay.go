@@ -470,7 +470,14 @@ func (s *TournamentService) CheckAssociationEditable(ctx context.Context, q *db.
 
 // OnMatchChanged re-evaluates the slot owning an edited match: points
 // recompute, the strict top-promote set is re-evaluated, and a changed
-// outcome cascades (audit origin: the triggering match edit).
+// outcome cascades (audit origin: the triggering match edit). A score edit
+// that would change the outcome while downstream rounds already recorded
+// results (played matches or rulings) is refused with
+// ErrTournamentScoreEditUnsafe — the whole match write rolls back; those
+// rounds are unwound explicitly from the last one backwards (unlink their
+// matches, cancel their rulings), the same step-by-step rule as the link
+// and ruling guards. Date/calculator-only edits never change the derived
+// outcome and always pass.
 func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, matchID, actor id.ID) error {
 	if err := s.enforceDeadlineTx(ctx, q); err != nil {
 		return err
@@ -479,7 +486,42 @@ func (s *TournamentService) OnMatchChanged(ctx context.Context, q *db.Queries, m
 	if err != nil || ref == nil {
 		return err
 	}
+	// The guard runs before the recompute mutates anything: the new scores
+	// are already written in this tx, so the prospective outcome is exactly
+	// what the recompute would derive.
+	slot, err := q.GetTournamentSlot(ctx, ref.SlotID)
+	if err != nil {
+		return fmt.Errorf("get slot: %w", err)
+	}
+	if changed, err := s.outcomeWouldChange(ctx, q, slot); err != nil {
+		return err
+	} else if changed {
+		if recorded, err := s.downstreamRecorded(ctx, q, ref.SlotID); err != nil {
+			return err
+		} else if recorded {
+			return ErrTournamentScoreEditUnsafe
+		}
+	}
 	return s.recomputeSlot(ctx, q, actor, ref.SlotID, audit.LinkOriginMatchEdit, string(matchID))
+}
+
+// outcomeWouldChange reports whether the slot's currently derivable outcome
+// differs from the stored promotions — the trigger of every cascade. The
+// edit-path guard reads it before anything is rewritten; a no-op edit (the
+// derived outcome stands, e.g. a date-only change) never trips it.
+func (s *TournamentService) outcomeWouldChange(ctx context.Context, q *db.Queries, slot db.GetTournamentSlotRow) (bool, error) {
+	if slot.Status == TournamentSlotWaiting {
+		return false, nil
+	}
+	desired, have, err := s.desiredOutcome(ctx, q, slot)
+	if err != nil {
+		return false, err
+	}
+	stored, err := q.ListSlotPromotions(ctx, slot.ID)
+	if err != nil {
+		return false, fmt.Errorf("list promotions: %w", err)
+	}
+	return outcomeChanged(desired, have, stored), nil
 }
 
 // SetMatchLinkState applies the edit form's desired tournament-link state

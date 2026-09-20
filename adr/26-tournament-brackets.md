@@ -322,9 +322,19 @@ form.
 
 ### Editing without paradoxes
 
-Scores of linked matches are freely editable, and a promoted set may
-legitimately change because of it. The invariant is kept by re-derivation
-plus cascade invalidation:
+Scores of linked matches are freely editable while nothing downstream of the
+re-derived outcome was recorded, and a promoted set may legitimately change
+because of it. The invariant is kept by re-derivation plus cascade
+invalidation — but guarded, not silent (revised): an edit whose
+re-derivation would change an outcome feeding downstream rounds that
+already hold linked matches or recorded rulings is refused with 409 and
+rolls back whole. To change an early round the organizer unwinds the line
+from the latest match backwards — unlink it (or cancel its ruling), then
+the next — the same step-by-step rule the link-state and ruling guards
+enforce. (The original design let any score edit cascade-void played
+rounds silently; one accidental keystroke could erase a played bracket,
+so the guard was added — the re-derivation machinery below now serves the
+deliberate, unwound edits.)
 
 1. Points recompute for the affected slot; its strict top-`promote` set is
    re-evaluated.
