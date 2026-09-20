@@ -602,16 +602,25 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		slices.Sort(draw)
 		rng.Shuffle(len(draw), func(i, j int) { draw[i], draw[j] = draw[j], draw[i] })
 		cursor := 0
-		takeDrawn := func() id.ID {
+		takeDrawn := func() (id.ID, error) {
+			if cursor >= len(draw) {
+				// Unreachable for an offered plan: draw + bye seats number
+				// exactly the participant count (bye seats are the round-1
+				// remainder; a waiting survivor is a source seat). Kept as a
+				// guard so a future invariant slip fails the start instead of
+				// panicking.
+				return id.ID(""), ErrTournamentPlanInvalid
+			}
 			p := draw[cursor]
 			cursor++
-			return p
+			return p, nil
 		}
 
 		// Materialize: rounds/slots/seats in canonical plan order. Draw and
 		// bye seats take the next drawn players directly (round-1 tables
-		// first, then the bye seats — the enumerator emits byes at the tail);
-		// source seats stay unresolved until their source slot completes.
+		// first, then the bye seats — byes are the round-1 remainder, emitted
+		// at the tail); source seats stay unresolved until their source slot
+		// completes.
 		fitting := fittingGames(pool)
 		slotIDs := make(map[int]id.ID) // flat plan slot index → slot row id
 		flat := 0
@@ -640,7 +649,10 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 				for seatPos, seat := range ps.Seats {
 					var playerID *id.ID
 					if seat.Kind == bracket.SeatDraw || seat.Kind == bracket.SeatBye {
-						p := takeDrawn()
+						p, err := takeDrawn()
+						if err != nil {
+							return err
+						}
 						playerID = &p
 					}
 					var sourceSlotID *id.ID

@@ -525,9 +525,16 @@ func lessInts(a, b []int) bool {
 
 // buildRound seats pool refs into the candidate slot set ms (slot-ordered)
 // with uniform promotion count p. Slots fill positionally from the pool in
-// canonical order (round-1 remainder becomes bye refs). Returns the round
-// (track/index set by the caller), the promoted pool (refs into this round;
-// byes appended), and the drop pool (places > promote).
+// canonical order. Returns the round (track/index set by the caller), the
+// promoted pool (refs into this round, then the carried remainder), and the
+// drop pool (places > promote).
+//
+// The unseated remainder is carried into the next round verbatim: a source
+// ref keeps its identity, so the plan document connects the slot the player
+// last played to the seat he eventually occupies — and start resolves him
+// from that slot instead of drawing a fresh participant. Only round-1
+// remainder refs (kind draw) lose their identity: they never played, so
+// start draws them directly — encoded as bare bye seats.
 func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef, []seatRef) {
 	r := builtRound{
 		rid:     rid,
@@ -548,8 +555,11 @@ func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef
 			drops = append(drops, seatRef{kind: SeatSource, rid: rid, pos: i, place: place})
 		}
 	}
-	for range pool[off:] { // round-1 remainder
-		next = append(next, seatRef{kind: SeatBye})
+	for _, ref := range pool[off:] { // the unseated remainder waits
+		if ref.kind == SeatDraw {
+			ref = seatRef{kind: SeatBye}
+		}
+		next = append(next, ref)
 	}
 	return r, next, drops
 }

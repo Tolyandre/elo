@@ -37,9 +37,11 @@ const (
 const (
 	// SeatDraw: a round-1 winners-track seat filled from the seeded draw.
 	SeatDraw = "draw"
-	// SeatBye: an unseated remainder player from an earlier winners round;
-	// seats in a later winners round (or straight in the grand final when
-	// the merge came first).
+	// SeatBye: a round-1 remainder player — unseated in round 1, seated
+	// directly (from the draw tail) in the later winners round — or grand
+	// final — where he next plays. A winners-round survivor who waits is not
+	// a bye: his later seat is a SeatSource of the slot he last played, so
+	// every played slot stays connected to where its winners land.
 	SeatBye = "bye"
 	// SeatSource: filled from a place of an earlier slot when it completes.
 	SeatSource = "source"
@@ -128,7 +130,8 @@ func (p Plan) CanonicalJSON() string {
 //   - every round has ≥ 1 slot of ≥ 2 seats, with promote uniform and
 //     promote < min seat count;
 //   - draw seats only in the plan's first round; bye seats only in winners
-//     round 2 or the grand final (the round-1 remainder fed forward);
+//     round 2 or the grand final (the round-1 remainder fed forward — byes
+//     are bare, a waiting round survivor is a source seat);
 //   - source seats reference strictly earlier slots with a place within the
 //     source slot's seat count, and a source place feeds at most one seat;
 //   - the last round is the grand final: final track, single slot, promote 1.

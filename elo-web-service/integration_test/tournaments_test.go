@@ -738,6 +738,110 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 	_ = players
 }
 
+// TestTournament_StartCarriedWinner pins the reported regression: 6 players on
+// a strict 2-seat pool — round 2 seats two of the three round-1 winners, the
+// third waits that round and plays the grand final. The listed plan must feed
+// the final from round-1 slot 3 (a source seat, not an anonymous bye), and the
+// start must materialize without overdrawing the seeded draw (the anonymized
+// bye used to draw a seventh participant and panic 500).
+func TestTournament_StartCarriedWinner(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Двойки")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 6; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Парник%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок двоек", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+
+	// The shape picker's list for this setup: exactly one single-elim plan.
+	w := doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans: %d %s", w.Code, w.Body.String())
+	}
+	var listed struct {
+		Data struct {
+			Plans []json.RawMessage `json:"plans"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode plans: %v", err)
+	}
+	if len(listed.Data.Plans) != 1 {
+		t.Fatalf("6/{{2,2}} single must offer exactly 1 plan, got %d", len(listed.Data.Plans))
+	}
+
+	// Regression: this start used to panic with index out of range.
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, fmt.Sprintf(`{"plan":%s}`, listed.Data.Plans[0]))
+	if w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+
+	br := getBracket(t, router, short(tid))
+	if len(br.Data.Rounds) != 3 {
+		t.Fatalf("rounds: %d", len(br.Data.Rounds))
+	}
+	r1, r2, final := br.Data.Rounds[0], br.Data.Rounds[1], br.Data.Rounds[2]
+	if len(r1.Slots) != 3 || len(r2.Slots) != 1 || len(final.Slots) != 1 || final.Track != "final" {
+		t.Fatalf("shape: %+v %+v %+v", r1, r2, final)
+	}
+
+	// The draw seats all 6 participants exactly once.
+	seen := map[string]bool{}
+	for _, slot := range r1.Slots {
+		if slot.Status != "playing" {
+			t.Fatalf("round-1 slot must play: %+v", slot)
+		}
+		for _, seat := range slot.Seats {
+			if seat.PlayerId == nil || seat.SourceSlotId != nil {
+				t.Fatalf("round-1 seat must be drawn: %+v", seat)
+			}
+			seen[*seat.PlayerId] = true
+		}
+	}
+	if len(seen) != 6 {
+		t.Fatalf("the draw must seat all 6 participants exactly once, got %d distinct", len(seen))
+	}
+
+	// Round 2 waits on the winners of round-1 slots 1 and 2.
+	if r2.Slots[0].Status != "waiting" {
+		t.Fatalf("round 2 must wait: %+v", r2.Slots[0])
+	}
+	r2Sources := map[string]bool{}
+	for _, seat := range r2.Slots[0].Seats {
+		if seat.PlayerId != nil || seat.SourceSlotId == nil {
+			t.Fatalf("round-2 seat must wait on a source: %+v", seat)
+		}
+		r2Sources[*seat.SourceSlotId] = true
+	}
+	if len(r2Sources) != 2 || !r2Sources[r1.Slots[0].Id] || !r2Sources[r1.Slots[1].Id] {
+		t.Fatalf("round 2 must be fed by round-1 slots 1 and 2: %+v", r2.Slots[0].Seats)
+	}
+
+	// The grand final waits on the round-2 winner and the waiting winner of
+	// round-1 slot 3 — the connection the anonymous bye used to lose.
+	finalSources := map[string]bool{}
+	for _, seat := range final.Slots[0].Seats {
+		if seat.PlayerId != nil || seat.SourceSlotId == nil {
+			t.Fatalf("final seat must wait on a source: %+v", seat)
+		}
+		finalSources[*seat.SourceSlotId] = true
+	}
+	if len(finalSources) != 2 || !finalSources[r2.Slots[0].Id] || !finalSources[r1.Slots[2].Id] {
+		t.Fatalf("final must be fed by the round-2 slot and round-1 slot 3: %+v", final.Slots[0].Seats)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Phase 5: acceptance, placement points, completion
 // ---------------------------------------------------------------------------

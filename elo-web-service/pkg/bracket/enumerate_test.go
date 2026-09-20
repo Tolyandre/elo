@@ -682,3 +682,83 @@ func TestEnumerateFilteredChips(t *testing.T) {
 		}
 	}
 }
+
+func TestCarriedWinnerStaysConnected(t *testing.T) {
+	// The reported repro: 6 players on a strict 2-seat pool. Round 2 seats
+	// two of the three round-1 winners; the third waits that round and plays
+	// the grand final. His final seat must be a source seat of his round-1
+	// table — not an anonymous bye — so every round-1 slot connects to where
+	// its winner lands and start can resolve the seat from the slot's result.
+	res := Enumerate(6, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, 0)
+	if len(res.Plans) == 0 {
+		t.Fatalf("6/{{2,2}} single must be feasible")
+	}
+	for _, p := range res.Plans {
+		for _, r := range p.Rounds {
+			for _, s := range r.Slots {
+				for _, seat := range s.Seats {
+					if seat.Kind == SeatBye {
+						t.Fatalf("no one sits out round 1 — bye seats impossible: %s", describe(p))
+					}
+				}
+			}
+		}
+		final := p.Rounds[len(p.Rounds)-1]
+		for _, seat := range final.Slots[0].Seats {
+			if seat.Kind != SeatSource || seat.SourceSlot == nil {
+				t.Fatalf("final seats must be sources: %s", describe(p))
+			}
+		}
+		// One final seat is fed by the round-2 table (flat slot 3), the other
+		// by round 1's third table (flat slot 2) — the waiting winner.
+		src := map[int]int{}
+		for _, seat := range final.Slots[0].Seats {
+			src[*seat.SourceSlot]++
+		}
+		if src[3] != 1 || src[2] != 1 {
+			t.Fatalf("final must be fed by round-2 slot 3 and round-1 slot 3: %s", describe(p))
+		}
+		if !OffersPlan(6, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, p) {
+			t.Fatalf("enumerated plan must be offered: %s", describe(p))
+		}
+	}
+}
+
+func TestDrawSeatsMatchParticipants(t *testing.T) {
+	// Start draws one participant per draw seat and per bye seat (byes are
+	// the round-1 remainder; a waiting round survivor is a source seat). The
+	// counts must match exactly — a plan overdrawing the draw panicked the
+	// materializer before the provenance fix.
+	pools := [][]GameCapacity{
+		{{Min: 2, Max: 2}},
+		{{Min: 3, Max: 3}, {Min: 4, Max: 4}},
+		{{Min: 2, Max: 3}},
+		pool4(),
+	}
+	for _, pool := range pools {
+		for n := 2; n <= 13; n++ {
+			for _, elim := range []string{EliminationSingle, EliminationDouble} {
+				res := EnumerateFiltered(n, pool, PlanFilter{Eliminations: []string{elim}}, DefaultPlanCap)
+				for _, p := range res.Plans {
+					drawn, byes := 0, 0
+					for _, r := range p.Rounds {
+						for _, s := range r.Slots {
+							for _, seat := range s.Seats {
+								switch seat.Kind {
+								case SeatDraw:
+									drawn++
+								case SeatBye:
+									byes++
+								}
+							}
+						}
+					}
+					if drawn+byes != n {
+						t.Fatalf("n=%d pool=%v %s: %d draw + %d bye seats ≠ participants: %s",
+							n, pool, elim, drawn, byes, describe(p))
+					}
+				}
+			}
+		}
+	}
+}
