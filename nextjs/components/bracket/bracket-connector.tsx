@@ -62,23 +62,20 @@ export interface MeasuredAnchor {
 
 /**
  * Path between two slot cards of the bracket, in the classic right-angle
- * bracket style: side-by-side cards (the usual round-to-round promotion, and
- * the WB→LB drop-downs of the interleaved double-elim layout) are joined by
- * a horizontal out of the source, one turn in the lane just before the
- * destination column and a horizontal into the destination row — for
+ * bracket style: side-by-side cards (the usual round-to-round promotion) are
+ * joined by a horizontal out of the source, one turn in the lane just before
+ * the destination column and a horizontal into the destination row — for
  * adjacent columns that lane is the shared gap's midpoint; for spans across
  * other columns it keeps the descent out of the cards, and the long
  * horizontal stays at the source's height, which its band keeps clear.
- * Overlapping columns (a cross-band drop into the column below) leave the
- * source's left edge instead and descend through that same lane, so the
- * line never runs over the cards stacked between the source and the target
- * row.
+ * Overlapping columns leave the source's left edge instead and descend
+ * through that same lane, so the line never runs over the cards stacked
+ * between the source and the target row. (WB→LB drops route differently —
+ * see dropPath.)
  *
  * `lane` shifts the vertical segment a few pixels per connector sharing the
- * same destination column, so parallel lines descent side by side instead of
- * overlapping into one thick stroke — drops included: a dozen WB→LB falls
- * squeeze through one inter-column gap, and without lanes they merge into a
- * single band. `radius` softens the corners (drops take a wider one).
+ * same descent lane, so parallel lines run side by side instead of
+ * overlapping into one thick stroke. `radius` softens the corners.
  */
 export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0, radius = 6): string {
     if (b.x >= a.rect.right - 1) {
@@ -101,14 +98,36 @@ export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0, ra
 }
 
 /**
- * WB→LB drop: the same lane-routed elbow as promotions but with wide
- * corners, dashes and its own color — a dozen of these descend through one
- * inter-column gap, and only the per-lane offset keeps them apart. Crossing
- * the cards on the way down is fine — the cards render above the connector
- * layer.
+ * WB→LB drop. The descent hugs the source: it turns down in the gap right
+ * of the source card and runs the long horizontal at the target row's
+ * height — a drop always falls from the winners band into the losers band,
+ * so that horizontal passes only beneath columns of the band above and
+ * stays visible, while the descent's position tells which table the line
+ * came from. Drops from one card descend side by side (`lane`); wide
+ * corners, dashes and the drop color keep them distinct from promotions.
+ * Crossing the cards on the way down is fine — the cards render above the
+ * connector layer.
  */
 export function dropPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0): string {
-    return connectorPath(a, b, lane, 12);
+    if (b.x >= a.rect.right - 1) {
+        const x = Math.round(a.rect.right + 8 + lane * 6);
+        return roundedPath([
+            [a.x, a.y],
+            [x, a.y],
+            [x, b.y],
+            [b.x, b.y],
+        ], 12);
+    }
+    // Overlapping columns (the target renders under the source): the
+    // rightward exit would run backward, so leave the source's left edge
+    // and descend just before the target column instead.
+    const laneX = Math.round(b.x - 12 - lane * 6);
+    return roundedPath([
+        [a.rect.left, a.y],
+        [laneX, a.y],
+        [laneX, b.y],
+        [b.x, b.y],
+    ], 12);
 }
 
 const fmt = (v: number): string => String(Math.round(v * 100) / 100);
@@ -193,10 +212,10 @@ export function useConnectorPaths(
             const to = measureAnchor(content, base, c.to, "target");
             if (from && to) measured.push({ key: c.key, kind: c.kind ?? "promotion", resolved: c.resolved ?? false, from, to });
         }
-        // Connectors descending through the same destination column share its
-        // lane; hand each an index so their vertical segments run side by
-        // side instead of overlapping into one stroke. Drops take part in the
-        // same arithmetic — a dozen WB→LB falls squeeze through one gap.
+        // Connectors sharing a descent lane get successive lane indexes so
+        // their vertical segments run side by side instead of overlapping
+        // into one stroke — promotions bucket by destination column, drops
+        // hug their source card (see laneAssignments).
         const lanes = laneAssignments(measured);
         const next: ConnectorPath[] = measured.map((m) => {
             const lane = lanes.get(m.key) ?? 0;
@@ -250,24 +269,29 @@ export function useConnectorPaths(
 }
 
 /**
- * Lane index per connector key: elbows bucketed by the x of their
- * destination column, ordered by their upper edge, so neighboring lines get
- * neighboring lanes — drops (WB→LB falls) included.
+ * Lane index per connector key. Promotions turn just before their
+ * destination column, so elbows sharing it bucket by that column's x;
+ * drops hug their source instead, so they bucket by the source card's
+ * right edge. Within a bucket, lines get neighboring lanes ordered by
+ * their upper edge (source row for drops, ties by target row), so
+ * parallel descents run side by side instead of overlapping into one
+ * stroke.
  */
 export function laneAssignments(
     measured: { key: string; kind: "promotion" | "drop"; from: MeasuredAnchor; to: MeasuredAnchor }[],
 ): Map<string, number> {
-    const buckets = new Map<number, { key: string; y: number }[]>();
+    const buckets = new Map<number, { key: string; y: number; tie: number }[]>();
     for (const m of measured) {
-        const bucket = Math.round(m.to.rect.left);
-        const item = { key: m.key, y: Math.min(m.from.y, m.to.y) };
+        const drop = m.kind === "drop";
+        const bucket = Math.round(drop ? m.from.rect.right : m.to.rect.left);
+        const item = { key: m.key, y: drop ? m.from.y : Math.min(m.from.y, m.to.y), tie: m.to.y };
         const list = buckets.get(bucket);
         if (list) list.push(item);
         else buckets.set(bucket, [item]);
     }
     const lanes = new Map<string, number>();
     for (const list of buckets.values()) {
-        list.sort((p, q) => p.y - q.y);
+        list.sort((p, q) => p.y - q.y || p.tie - q.tie);
         list.forEach((item, i) => lanes.set(item.key, i));
     }
     return lanes;

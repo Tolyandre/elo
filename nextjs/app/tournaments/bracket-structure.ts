@@ -27,11 +27,15 @@ export function groupByTrack<T extends TrackRoundLike>(rounds: T[]): { track: T[
 /**
  * Horizontal column offset of every round, in round-column units (0-based),
  * implementing the classic double-elimination interleave: winners rounds pack
- * from the left; a losers round renders under the last winners round it draws
- * from — LB round 1 drops out of WB round 1 but is played alongside WB
- * round 2, so it renders under WB round 2 and the drop lines stay in the
- * column gaps instead of running vertically over the cards. Offsets grow
- * monotonically, and the final rounds continue after the last track column.
+ * from the left; a losers round renders one column right of the deepest
+ * winners round it draws seats from — its dependency depth, since every seat
+ * waits on that round. It therefore shares a column exactly with the rounds
+ * that become playable at the same time: LB round 1 (fed by WB round 1) sits
+ * under WB round 2, keeping drop lines in the column gaps. When the winners
+ * track ends at that depth (e.g. both WB tables feed LB round 1) no winners
+ * round remains to sit under, and the losers round opens its own column —
+ * it can only start after that round completes. Offsets grow monotonically,
+ * and the final rounds continue after the last track column.
  *
  * `winnersSource(round)` reports the highest winners-track round index the
  * round draws seats from (0 when it draws from none).
@@ -51,7 +55,7 @@ export function roundColumnOffsets<T extends TrackRoundLike>(
         if (round.track === "winners") {
             offset = round.index - 1;
         } else if (round.track === "losers") {
-            offset = Math.max(winnersSource(round) - 1, prevLosers, 1);
+            offset = Math.max(winnersSource(round), prevLosers, 1);
             prevLosers = offset + 1;
         } else {
             offset = prev + 1;

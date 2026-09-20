@@ -21,9 +21,24 @@ describe("roundColumnOffsets", () => {
         expect(roundColumnOffsets(rounds, (r) => sources[rounds.indexOf(r)])).toEqual([0, 1, 1, 2]);
     });
 
-    it("renders a losers round under its last winners source, keeping monotonic order", () => {
-        // WB 1 and WB 2 both complete before LB 1 seats all the drops: it
-        // renders under WB 2 so every drop line stays adjacent or stacked.
+    it("renders a losers round right of its last winners source when the track ends there", () => {
+        // WB 1 and WB 2 both complete before LB 1 seats all the drops and no
+        // WB round 3 exists to run alongside: LB 1 opens its own column, one
+        // right of its deepest source.
+        const rounds = [
+            round("winners", 1),
+            round("winners", 2),
+            round("losers", 1),
+            round("final", 1),
+        ];
+        const sources = [0, 0, 2, 0];
+        expect(roundColumnOffsets(rounds, (r) => sources[rounds.indexOf(r)])).toEqual([0, 1, 2, 3]);
+    });
+
+    it("renders a losers round right of its last winners source, keeping monotonic order", () => {
+        // WB 1–3 all complete before LB 1 seats all the drops: nothing plays
+        // alongside it, so it lands right of WB 3, with LB 2 and the final
+        // continuing after it.
         const rounds = [
             round("winners", 1),
             round("winners", 2),
@@ -33,7 +48,7 @@ describe("roundColumnOffsets", () => {
             round("final", 1),
         ];
         const sources = [0, 0, 0, 3, 0, 0];
-        expect(roundColumnOffsets(rounds, (r) => sources[rounds.indexOf(r)])).toEqual([0, 1, 2, 2, 3, 4]);
+        expect(roundColumnOffsets(rounds, (r) => sources[rounds.indexOf(r)])).toEqual([0, 1, 2, 3, 4, 5]);
     });
 });
 

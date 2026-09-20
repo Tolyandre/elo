@@ -49,9 +49,9 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
     }, [plan]);
 
     // The double-elim interleave (see roundColumnOffsets): a losers round
-    // renders under the winners round it runs alongside. Offsets are global
-    // column positions; spacer counts are derived per band, because every
-    // band's row starts at column 0.
+    // renders one column right of the deepest winners round it draws seats
+    // from. Offsets are global column positions; spacer counts are derived
+    // per band, because every band's row starts at column 0.
     const roundOffsets = useMemo(() => {
         const flatRound: PlanRound[] = [];
         for (const round of plan.rounds) {

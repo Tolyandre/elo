@@ -69,11 +69,11 @@ describe("connectorPath", () => {
 });
 
 describe("dropPath", () => {
-    it("routes the WB→LB drop through a soft-cornered elbow", () => {
+    it("hugs the source: turns down just right of it and runs at the target row's height", () => {
         const from = anchor(100, 25, 0, 0, 100, 50);
         const to = anchor(132, 200, 132, 150, 232, 250);
         expect(dropPath(from, to)).toBe(
-            "M 100 25 L 108 25 Q 116 25 116 33 L 116 192 Q 116 200 124 200 L 132 200",
+            "M 100 25 L 104 25 Q 108 25 108 29 L 108 188 Q 108 200 120 200 L 132 200",
         );
     });
 
@@ -85,31 +85,56 @@ describe("dropPath", () => {
         );
     });
 
-    it("shifts the descent lane like any other connector", () => {
+    it("shifts the descent lane per drop sharing the source card", () => {
         const from = anchor(100, 25, 0, 0, 100, 50);
         const to = anchor(132, 200, 132, 150, 232, 250);
         expect(dropPath(from, to, 1)).toBe(
-            "M 100 25 L 105 25 Q 110 25 110 30 L 110 189 Q 110 200 121 200 L 132 200",
+            "M 100 25 L 107 25 Q 114 25 114 32 L 114 191 Q 114 200 123 200 L 132 200",
         );
     });
 });
 
 describe("laneAssignments", () => {
-    it("numbers the connectors of one destination column by their upper edge, drops included", () => {
+    it("numbers the connectors of one destination column by their upper edge", () => {
         const top = anchor(100, 10, 0, 0, 100, 20);
-        const mid = anchor(100, 20, 0, 10, 100, 30);
         const low = anchor(100, 60, 0, 50, 100, 70);
         const dest = anchor(200, 30, 200, 0, 300, 60);
         const far = anchor(400, 30, 400, 0, 500, 60);
         const lanes = laneAssignments([
             { key: "late", kind: "promotion", from: low, to: dest },
             { key: "early", kind: "promotion", from: top, to: dest },
-            { key: "drop", kind: "drop", from: mid, to: dest },
             { key: "other-column", kind: "promotion", from: top, to: far },
         ]);
         expect(lanes.get("early")).toBe(0);
-        expect(lanes.get("drop")).toBe(1);
-        expect(lanes.get("late")).toBe(2);
+        expect(lanes.get("late")).toBe(1);
         expect(lanes.get("other-column")).toBe(0);
+    });
+
+    it("buckets drops by their source card, apart from the destination's promotions", () => {
+        // Both drops descend hugging the same source card's right edge, so
+        // they share a source bucket — independent of the promotion turning
+        // before the destination column.
+        const src = anchor(100, 20, 0, 10, 100, 30);
+        const dest = anchor(200, 30, 200, 0, 300, 60);
+        const lanes = laneAssignments([
+            { key: "promo", kind: "promotion", from: anchor(100, 10, 0, 0, 100, 20), to: dest },
+            { key: "drop-a", kind: "drop", from: src, to: anchor(200, 50, 200, 40, 300, 100) },
+            { key: "drop-b", kind: "drop", from: src, to: anchor(200, 90, 200, 80, 300, 140) },
+        ]);
+        expect(lanes.get("drop-a")).toBe(0);
+        expect(lanes.get("drop-b")).toBe(1);
+        expect(lanes.get("promo")).toBe(0);
+    });
+
+    it("orders one source's drops by source row, ties by target row", () => {
+        // Unresolved drops all anchor at the card center — the same from.y —
+        // so the target seat row breaks the tie.
+        const unresolved = anchor(100, 25, 0, 0, 100, 50);
+        const lanes = laneAssignments([
+            { key: "seat-2", kind: "drop", from: unresolved, to: anchor(200, 90, 200, 80, 300, 140) },
+            { key: "seat-1", kind: "drop", from: unresolved, to: anchor(200, 50, 200, 40, 300, 100) },
+        ]);
+        expect(lanes.get("seat-1")).toBe(0);
+        expect(lanes.get("seat-2")).toBe(1);
     });
 });

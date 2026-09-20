@@ -26,8 +26,9 @@ interface Selection {
  * The bracket (ADR-26 §UI): a pure rendering of the GET /bracket DTO —
  * a column per round grouped into stacked track bands (Победители over
  * Проигравшие, the grand final to the right of both), losers rounds offset
- * a column right of the winners round they run alongside, with promotion
- * lines drawn from each seat's source slot. No client-side bracket logic.
+ * a column right of the deepest winners round they draw seats from, with
+ * promotion lines drawn from each seat's source slot. No client-side bracket
+ * logic.
  */
 export function BracketView({ bracket }: { bracket: Bracket }) {
     const contentRef = useRef<HTMLDivElement>(null);
