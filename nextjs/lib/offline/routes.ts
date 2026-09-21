@@ -16,6 +16,8 @@ export const PAGES = [
     "/admin/players",
     "/admin/users",
     "/arenas",
+    "/arenas/edit",
+    "/arenas/new",
     "/arenas/view",
     "/calculators",
     "/calculators/chess-clock",
