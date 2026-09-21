@@ -174,7 +174,7 @@ export function RegistrationEditor({
                     <GameCombobox value={undefined} onChange={addGame} />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                    От 2 игроков за стол; варианты сетки зависят от сохранённого пула.
+                    От 2 игроков за стол.
                 </p>
             </div>
 

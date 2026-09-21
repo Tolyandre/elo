@@ -128,7 +128,7 @@ export function ShapePicker({
         <div className="pt-4 border-t space-y-3">
             <h2 className="font-semibold">Форма сетки</h2>
             <p className="text-xs text-muted-foreground">
-                Обе системы — одиночное и двойное выбывание — в одном списке. Варианты пересчитываются после сохранения изменений пула и списка участников.
+                Варианты сеток зависят от числа участников и количества мест в каждой игре.
             </p>
             {loading && <Skeleton className="h-24 w-full rounded-xl" />}
             {error && (

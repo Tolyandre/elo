@@ -123,8 +123,7 @@ export function PlanBracketPreview({ plan }: { plan: TournamentPlan }) {
                 )}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
-                Кружки — места за столом (пунктир — бай), линии — переходы между столами,
-                <span className="whitespace-nowrap"> → N — сколько проходит дальше.</span>
+                Кружки — места за столом (пунктирный кружок — бай), линии — переходы между столами.
             </p>
         </div>
     );

@@ -243,10 +243,6 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
                     </section>
                 )}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-                Сплошные линии — переходы между столами, пунктир — падение в нижнюю сетку.
-                Нажмите на имя игрока или плейсхолдер, чтобы подсветить его путь; клик мимо снимает подсветку.
-            </p>
         </div>
     );
 }

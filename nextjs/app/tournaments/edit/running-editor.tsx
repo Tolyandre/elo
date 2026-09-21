@@ -204,7 +204,7 @@ function SlotEditor({
                 open={detach.open}
                 onOpenChange={detach.onOpenChange}
                 title="Открепить партию?"
-                description="Партия выйдет и из сетки турнира, и из его арены; результаты стола пересчитаются. Если в следующих кругах уже сыграны партии или записаны решения, открепление будет отклонено — сначала разберите их."
+                description="Партия выйдет из сетки турнира; результаты стола пересчитаются. Если партии следующего тура уже сыграны, открепить не получится — сначала разберите их."
                 confirmText="Открепить"
                 confirmVariant="destructive"
                 loading={detach.pending}
@@ -214,7 +214,7 @@ function SlotEditor({
                 open={cancelRuling.open}
                 onOpenChange={cancelRuling.onOpenChange}
                 title="Отменить решение организатора?"
-                description="Стол снова решится по партиям (или откроется, если партий нет); следующие круги пересчитаются. Если там уже сыграны партии или записаны решения, отмена будет отклонена — сначала разберите их."
+                description="Если партии следующего тура уже сыграны, отменить не получится — сначала разберите их."
                 confirmText="Отменить решение"
                 loading={cancelRuling.pending}
                 onConfirm={cancelRuling.confirm}
