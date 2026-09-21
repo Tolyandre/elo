@@ -288,27 +288,110 @@ export interface LaneAssignment {
     pitch: number;
 }
 
+interface BucketItem {
+    key: string;
+    /** Upper edge of the connector (source row for drops, min row otherwise). */
+    y: number;
+    tie: number;
+    floor: number;
+    anchor: number;
+    drop: boolean;
+    fromY: number;
+    toY: number;
+    fromRight: number;
+    bx: number;
+}
+
+/**
+ * Segment crossings inside one lane order, evaluated at the full-width lane
+ * pitch — only the relative order matters. With the descent of lane i at
+ * `bx - 16 - i*6`, a right connector's exit stub can only reach a left
+ * connector's vertical, and only when its source row falls inside that
+ * vertical's span; symmetrically a left connector's entry row can only hit
+ * a right vertical. Same-source rising fans are the asymmetric case: the
+ * upper row belongs on the deeper lane.
+ */
+function crossingCount(order: BucketItem[]): number {
+    let total = 0;
+    for (let i = 0; i < order.length; i++) {
+        for (let j = i + 1; j < order.length; j++) {
+            const right = order[i];
+            const left = order[j];
+            const xLeft = left.bx - 16 - j * 6;
+            const rightLo = Math.min(right.fromY, right.toY);
+            const rightHi = Math.max(right.fromY, right.toY);
+            const leftLo = Math.min(left.fromY, left.toY);
+            const leftHi = Math.max(left.fromY, left.toY);
+            if (xLeft > right.fromRight && right.fromY >= leftLo && right.fromY <= leftHi) total++;
+            if (left.toY >= rightLo && left.toY <= rightHi) total++;
+        }
+    }
+    return total;
+}
+
+/**
+ * Reorder a bucket's promotions (drops keep their slots) so the connectors
+ * cross each other as few times as possible — two cards joined by several
+ * connectors must not weave through one another when a neighboring lane
+ * order avoids it. Exhaustive over the realistic sizes (a slot has a
+ * handful of seats), keeping the upper-edge baseline on ties.
+ */
+function minimizeCrossings(list: BucketItem[]): void {
+    const slots: number[] = [];
+    const promos: BucketItem[] = [];
+    list.forEach((item, i) => {
+        if (!item.drop) {
+            slots.push(i);
+            promos.push(item);
+        }
+    });
+    if (promos.length < 2 || promos.length > 7) return;
+    let best = promos.slice();
+    let bestCount = crossingCount(best);
+    const perm = promos.slice();
+    const walk = (k: number) => {
+        if (k === promos.length) {
+            const count = crossingCount(perm);
+            if (count < bestCount) {
+                bestCount = count;
+                best = perm.slice();
+            }
+            return;
+        }
+        for (let i = k; i < promos.length; i++) {
+            [perm[k], perm[i]] = [perm[i], perm[k]];
+            walk(k + 1);
+            [perm[k], perm[i]] = [perm[i], perm[k]];
+        }
+    };
+    walk(0);
+    slots.forEach((slot, i) => {
+        list[slot] = best[i];
+    });
+}
+
 /**
  * Lane assignment per connector key. Promotions turn just before their
  * destination column, so elbows sharing it bucket by that column's x;
  * drops hug their source instead, so they bucket by the source card's
- * right edge. Within a bucket, lines get neighboring lanes ordered by
- * their upper edge (source row for drops, ties by target row), so
- * parallel descents run side by side instead of overlapping into one
- * stroke. A promotion bucket also gets a lane pitch: the usual 6px is
- * compressed just enough that even the deepest lane stays right of its
- * source card — a tight gap then packs the descents closer together
- * rather than hiding one of them under the card.
+ * right edge. Within a bucket, lines get neighboring lanes ordered to
+ * keep the segment crossings down (baseline: by upper edge — source row
+ * for drops, min row otherwise), so parallel descents run side by side
+ * instead of overlapping into one stroke or weaving through each other.
+ * A promotion bucket also gets a lane pitch: the usual 6px is compressed
+ * just enough that even the deepest lane stays right of its source card —
+ * a tight gap then packs the descents closer together rather than hiding
+ * one of them under the card.
  */
 export function laneAssignments(
     measured: { key: string; kind: "promotion" | "drop"; from: MeasuredAnchor; to: MeasuredAnchor }[],
 ): Map<string, LaneAssignment> {
-    const buckets = new Map<number, { key: string; y: number; tie: number; floor: number; anchor: number; drop: boolean }[]>();
+    const buckets = new Map<number, BucketItem[]>();
     for (const m of measured) {
         const drop = m.kind === "drop";
         const bucket = Math.round(drop ? m.from.rect.right : m.to.rect.left);
         const base = Math.min(16, (m.to.x - m.from.rect.right) / 2);
-        const item = {
+        const item: BucketItem = {
             key: m.key,
             y: drop ? m.from.y : Math.min(m.from.y, m.to.y),
             tie: m.to.y,
@@ -318,6 +401,10 @@ export function laneAssignments(
             floor: m.from.rect.right + 4,
             anchor: m.to.x - base,
             drop,
+            fromY: m.from.y,
+            toY: m.to.y,
+            fromRight: m.from.rect.right,
+            bx: m.to.x,
         };
         const list = buckets.get(bucket);
         if (list) list.push(item);
@@ -326,6 +413,7 @@ export function laneAssignments(
     const lanes = new Map<string, LaneAssignment>();
     for (const list of buckets.values()) {
         list.sort((p, q) => p.y - q.y || p.tie - q.tie);
+        minimizeCrossings(list);
         // The descent of lane i sits at anchor_i - i*pitch (connectorPath),
         // so the shared pitch must keep every promotion's descent right of
         // its own source card: pitch ≤ (anchor_i - floor_i) / i. Wide gaps

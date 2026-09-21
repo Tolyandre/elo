@@ -132,22 +132,46 @@ describe("laneAssignments", () => {
         expect(lanes.get("other-column")).toEqual({ lane: 0, pitch: 6 });
     });
 
-    it("compresses the promotion lane pitch when the destination gap is tight", () => {
-        // Four connectors into a column whose nearest source sits 32px away:
-        // full 6px lanes would push the deepest past the source card, so the
-        // pitch compresses to fit all four descents between the card's edge
-        // and the lane-0 anchor.
-        const dest = anchor(132, 0, 132, 0, 232, 20);
+    it("orders same-source rising connectors so they do not cross each other", () => {
+        // Mirrors the real bracket: a falling pair from the upper band and a
+        // rising pair from the losers card converge on one destination
+        // column through a tight gap. The rising pair's source rows decide:
+        // the deeper source row (lower player) takes the shallower lane, so
+        // the two lines rise as parallel neighbors instead of weaving —
+        // and the compressed pitch keeps all four descents right of the
+        // source card.
         const lanes = laneAssignments([
-            { key: "a", kind: "promotion", from: anchor(100, 10, 0, 0, 100, 20), to: dest },
-            { key: "b", kind: "promotion", from: anchor(100, 20, 0, 0, 100, 30), to: dest },
-            { key: "c", kind: "promotion", from: anchor(100, 30, 0, 0, 100, 40), to: dest },
-            { key: "d", kind: "promotion", from: anchor(100, 40, 0, 0, 100, 50), to: dest },
+            { key: "ilja", kind: "promotion", from: anchor(48, 10, 0, 0, 48, 60), to: anchor(132, 30, 132, 0, 232, 80) },
+            { key: "kolya", kind: "promotion", from: anchor(48, 20, 0, 0, 48, 60), to: anchor(132, 27, 132, 0, 232, 80) },
+            { key: "pavel", kind: "promotion", from: anchor(100, 50, 40, 30, 100, 60), to: anchor(132, 26, 132, 0, 232, 80) },
+            { key: "dimon", kind: "promotion", from: anchor(100, 54, 40, 30, 100, 60), to: anchor(132, 28, 132, 0, 232, 80) },
         ]);
-        expect(lanes.get("a")).toEqual({ lane: 0, pitch: 4 });
-        expect(lanes.get("b")).toEqual({ lane: 1, pitch: 4 });
-        expect(lanes.get("c")).toEqual({ lane: 2, pitch: 4 });
-        expect(lanes.get("d")).toEqual({ lane: 3, pitch: 4 });
+        expect(lanes.get("ilja")).toEqual({ lane: 0, pitch: 4 });
+        expect(lanes.get("kolya")).toEqual({ lane: 1, pitch: 4 });
+        expect(lanes.get("dimon")).toEqual({ lane: 2, pitch: 4 });
+        expect(lanes.get("pavel")).toEqual({ lane: 3, pitch: 4 });
+    });
+
+    it("swaps a same-source rising pair onto non-crossing lanes", () => {
+        // Both connectors rise from one card; the upper source row belongs
+        // on the deeper lane, or the two lines cross at both ends.
+        const lanes = laneAssignments([
+            { key: "upper", kind: "promotion", from: anchor(100, 50, 0, 30, 100, 60), to: anchor(132, 2, 132, 0, 232, 20) },
+            { key: "lower", kind: "promotion", from: anchor(100, 54, 0, 30, 100, 60), to: anchor(132, 6, 132, 0, 232, 20) },
+        ]);
+        expect(lanes.get("upper")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("lower")).toEqual({ lane: 0, pitch: 6 });
+    });
+
+    it("keeps the baseline order when both orders cross equally", () => {
+        // A falling pair costs one crossing either way, so the upper-edge
+        // baseline survives.
+        const lanes = laneAssignments([
+            { key: "upper", kind: "promotion", from: anchor(100, 10, 0, 0, 100, 60), to: anchor(132, 30, 132, 0, 232, 80) },
+            { key: "lower", kind: "promotion", from: anchor(100, 20, 0, 0, 100, 60), to: anchor(132, 24, 132, 0, 232, 80) },
+        ]);
+        expect(lanes.get("upper")).toEqual({ lane: 0, pitch: 6 });
+        expect(lanes.get("lower")).toEqual({ lane: 1, pitch: 6 });
     });
 
     it("buckets drops by their source card, apart from the destination's promotions", () => {
