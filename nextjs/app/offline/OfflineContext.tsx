@@ -27,6 +27,7 @@ import {
     newOfflineId,
 } from "@/lib/offline/types";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { parseSwMessage } from "@/lib/sw-messages";
 
 const STORAGE_KEY = "offline-pending-v1";
 
@@ -56,6 +57,15 @@ type  OfflineState = {
      * `offline`; use this only to tell apart "no network" from "server down".
      */
     apiReachable: boolean | null;
+    /**
+     * True while the last observed API read was served from the service
+     * worker's cache (network slow or down) rather than over the wire — the
+     * read freshness signal the /ping probe cannot provide between probes.
+     * Set by the worker's `api-served-from-cache` message, cleared by the next
+     * successful network read (`api-network-ok`). Read-only signal: unlike
+     * `offline`, it does not switch writes to the local queue.
+     */
+    dataFromCache: boolean;
     isSyncing: boolean;
     /** JWT expired while syncing — the user must log in again. */
     authRequired: boolean;
@@ -189,6 +199,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [authRequired, setAuthRequired] = useState(false);
     const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+    const [dataFromCache, setDataFromCache] = useState(false);
     const isOnline = useOnlineStatus();
     // Single source of truth for offline behaviour and the cloud-off indicator.
     const offline = !isOnline || apiReachable === false;
@@ -235,6 +246,22 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
         window.addEventListener("storage", onStorage);
         return () => window.removeEventListener("storage", onStorage);
     }, [loaded]);
+
+    // The service worker reports whether API reads were served from the cache
+    // (network timed out or failed) or fetched over the wire — the page cannot
+    // distinguish the two itself. `offline` above covers writes and is
+    // ping-driven; this flag is the read-freshness signal that closes the gap
+    // between pings (a slow API silently falling back to cached lists).
+    useEffect(() => {
+        if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+        const onMessage = (event: MessageEvent) => {
+            const msg = parseSwMessage(event.data);
+            if (msg?.type === "api-served-from-cache") setDataFromCache(true);
+            else if (msg?.type === "api-network-ok") setDataFromCache(false);
+        };
+        navigator.serviceWorker.addEventListener("message", onMessage);
+        return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+    }, []);
 
     const mutateStore = useCallback((fn: (s: OfflineStore) => OfflineStore) => {
         setStore((prev) => {
@@ -507,6 +534,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 offline,
                 isOnline,
                 apiReachable,
+                dataFromCache,
                 isSyncing,
                 authRequired,
                 addPendingMatch,

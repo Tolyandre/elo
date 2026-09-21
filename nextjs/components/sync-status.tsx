@@ -9,7 +9,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { LoginLink } from "@/components/login-link";
 import { CloudOff, CloudUpload } from "lucide-react";
 
-// Header indicator: visible only when offline or when there are unsynced items.
+// Header indicator: visible when offline, when reads are served from the
+// cache, or when there are unsynced items.
 export function SyncStatus() {
     const {
         pendingMatches,
@@ -20,6 +21,7 @@ export function SyncStatus() {
         offline,
         isOnline,
         apiReachable,
+        dataFromCache,
         isSyncing,
         authRequired,
         syncNow,
@@ -28,17 +30,22 @@ export function SyncStatus() {
     // The API is unreachable while online when the self-hosted server is off
     // (used only to pick the right explanation below).
     const apiDown = isOnline && apiReachable === false;
+    // Reads falling back to the cache (slow API between pings) get the crossed
+    // cloud too — without it the page would look freshly updated while showing
+    // cached data. This does not change write behaviour; `offline` still does.
+    const staleReads = !offline && dataFromCache;
 
-    if (!offline && pendingCount === 0) return null;
+    if (!offline && !staleReads && pendingCount === 0) return null;
 
-    // Crossed cloud exactly when offline (no network or server down); upload icon
-    // only when reachable but items are still pending.
+    // Crossed cloud when offline (no network or server down) or when reads come
+    // from the cache; upload icon only when reachable but items are still pending.
+    const crossedCloud = offline || staleReads;
 
     return (
         <Popover>
             <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-9 gap-0.5 px-1.5 shrink-0" aria-label="Статус сохранения">
-                    {isSyncing ? <Spinner className="size-4" /> : offline ? <CloudOff className="size-4" /> : <CloudUpload className="size-4" />}
+                    {isSyncing ? <Spinner className="size-4" /> : crossedCloud ? <CloudOff className="size-4" /> : <CloudUpload className="size-4" />}
                     {pendingCount > 0 && (
                         <Badge
                             variant={errorCount > 0 ? "destructive" : "secondary"}
@@ -61,6 +68,12 @@ export function SyncStatus() {
                         <CloudOff className="inline size-4 mr-1 align-text-bottom" />
                         Сервер API недоступен (хостится на ПК и бывает выключен).<br/>
                         Вы видите кэшированные данные. Новые партии сохраняются на устройстве и отправятся, когда сервер станет доступен.
+                    </p>
+                )}
+                {staleReads && (
+                    <p className="text-sm">
+                        <CloudOff className="inline size-4 mr-1 align-text-bottom" />
+                        Медленное соединение — данные загружены из кэша и могут быть устаревшими.
                     </p>
                 )}
                 {pendingCount > 0 && (

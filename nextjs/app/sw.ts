@@ -1,6 +1,7 @@
-import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
+import type { PrecacheEntry, SerwistGlobalConfig, SerwistPlugin } from "serwist";
 import { CacheableResponsePlugin, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
+import type { SwToPageMessage } from "../lib/sw-messages";
 
 declare global {
     interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -13,8 +14,67 @@ declare const self: ServiceWorkerGlobalScope;
 // Inlined at build time, same as in app/api.ts.
 const apiBase = (process.env.NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL ?? "").replace(/\/+$/, "");
 
+// Post a typed message to every open tab. includeUncontrolled is essential for
+// progress reporting: during install the posting worker controls no clients yet.
+const notifyClients = (message: SwToPageMessage) => {
+    void self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        for (const client of clients) client.postMessage(message);
+    });
+};
+
+// Precache install progress (see progressPlugin): handlerDidComplete fires once
+// per manifest entry, whether it was downloaded or already cache-valid. The
+// plugin also attaches to the serving route, so entries are only counted while
+// an install is in flight — a fresh worker receives no fetch events until it
+// activates, by which point the counter has reached the total.
+// The manifest literal is read exactly once: the build replaces that single
+// occurrence and rejects multiple `self.__SW_MANIFEST` references.
+const precacheManifest = self.__SW_MANIFEST;
+const precacheTotal = precacheManifest?.length ?? 0;
+let precacheDone = 0;
+let installing = false;
+
+self.addEventListener("install", () => {
+    installing = true;
+    precacheDone = 0;
+    notifyClients({ type: "sw-precache-progress", done: 0, total: precacheTotal });
+});
+
+const progressPlugin: SerwistPlugin = {
+    handlerDidComplete: async () => {
+        if (!installing) return;
+        precacheDone += 1;
+        notifyClients({
+            type: "sw-precache-progress",
+            done: Math.min(precacheDone, precacheTotal),
+            total: precacheTotal,
+        });
+        if (precacheTotal > 0 && precacheDone >= precacheTotal) installing = false;
+    },
+};
+
+// Tells the page whether its data came over the wire or from the cache —
+// something the page itself cannot observe. The page drives the cloud-off
+// indicator from these messages, covering the window the /ping probe misses
+// (API slow or flaky between probes, reads silently falling back to the cache
+// after the 4s NetworkFirst timeout).
+const apiVisibilityPlugin: SerwistPlugin = {
+    // Fires exactly on the two fallback paths of NetworkFirst (network timeout
+    // with a cached copy, network failure with a cached copy).
+    cachedResponseWillBeUsed: async ({ request, cachedResponse }) => {
+        if (cachedResponse) notifyClients({ type: "api-served-from-cache", url: request.url });
+        return cachedResponse;
+    },
+    // Fires for every successful network read — including the late completion of
+    // a request whose cached copy was already served after the timeout.
+    fetchDidSucceed: async ({ request, response }) => {
+        notifyClients({ type: "api-network-ok", url: request.url });
+        return response;
+    },
+};
+
 const serwist = new Serwist({
-    precacheEntries: self.__SW_MANIFEST,
+    precacheEntries: precacheManifest,
     skipWaiting: true,
     clientsClaim: true,
     navigationPreload: false,
@@ -24,6 +84,7 @@ const serwist = new Serwist({
         // Pages are exported once per route; query params (/games/view?id=5) select
         // content client-side, so the precached HTML matches any query.
         ignoreURLParametersMatching: [/.*/],
+        plugins: [progressPlugin],
     },
     runtimeCaching: [
         {
@@ -68,6 +129,7 @@ const serwist = new Serwist({
                         maxEntries: 200,
                         maxAgeSeconds: 7 * 24 * 60 * 60,
                     }),
+                    apiVisibilityPlugin,
                 ],
             }),
         },

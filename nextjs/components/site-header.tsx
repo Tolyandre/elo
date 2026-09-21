@@ -3,6 +3,7 @@
 import { usePageHeaderContext } from "@/app/pageHeaderContext"
 import { NavigationBar } from "@/components/navigation-bar"
 import { SyncStatus } from "@/components/sync-status"
+import { SwUpdateChip } from "@/components/sw-update-chip"
 import { TableIndicator } from "@/components/tables/table-indicator"
 
 export function SiteHeader() {
@@ -16,6 +17,7 @@ export function SiteHeader() {
           мобильных экранов. */}
       <div className="order-first sm:order-last sm:ml-auto flex flex-nowrap items-center gap-0.5">
         <SyncStatus />
+        <SwUpdateChip />
         <TableIndicator />
         <NavigationBar />
       </div>
