@@ -93,7 +93,8 @@ export function ConfirmDialogWithContent(
  * `trigger(target)` opens the dialog remembering `target`; `confirm()` runs the
  * action, disabling the button while pending and closing the dialog on success.
  * On failure the dialog stays open so the user can retry — toasts are shown by
- * the API layer.
+ * the API layer. Targetless actions pass `trigger(null)`; the open state is
+ * tracked separately from the target, so that still opens the dialog.
  *
  * @example
  * const del = useConfirmAction(async (g: Game) => { await deleteGamePromise(g.id); invalidate(); });
@@ -114,6 +115,7 @@ export function useConfirmAction<T>(
     reset: () => void;
 } {
     const [target, setTarget] = React.useState<T | null>(null);
+    const [open, setOpen] = React.useState(false);
     const [pending, setPending] = React.useState(false);
 
     const actionRef = React.useRef(action);
@@ -123,30 +125,38 @@ export function useConfirmAction<T>(
 
     const trigger = React.useCallback((t: T) => {
         setTarget(t);
+        setOpen(true);
     }, []);
 
     const onOpenChange = React.useCallback((open: boolean) => {
+        setOpen(open);
         if (!open) setTarget(null);
     }, []);
 
     const confirm = React.useCallback(() => {
-        if (target === null || pending) return;
-        const t = target;
+        if (!open || pending) return;
+        const t = target as T;
         setPending(true);
         actionRef
             .current(t)
-            .then(() => setTarget(null))
+            .then(() => {
+                setTarget(null);
+                setOpen(false);
+            })
             .catch(() => {
                 // keep the dialog open so the user can retry;
                 // toasts are shown by the API layer
             })
             .finally(() => setPending(false));
-    }, [target, pending]);
+    }, [open, target, pending]);
 
-    const reset = React.useCallback(() => setTarget(null), []);
+    const reset = React.useCallback(() => {
+        setTarget(null);
+        setOpen(false);
+    }, []);
 
     return {
-        open: target !== null,
+        open,
         onOpenChange,
         target,
         pending,

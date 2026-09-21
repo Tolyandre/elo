@@ -74,6 +74,31 @@ describe("useConfirmAction", () => {
         unmount();
     });
 
+    it("opens for a targetless action (trigger(null)) and closes after success", async () => {
+        const action = vi.fn(async () => {});
+        const { current, unmount } = renderHook(() => useConfirmAction(action));
+
+        act(() => {
+            current.value.trigger(null);
+        });
+        // A null target is a legitimate "no payload" action — the dialog
+        // must still open (regression: open used to be derived from the
+        // target being non-null, so trigger(null) never opened it).
+        expect(current.value.open).toBe(true);
+
+        act(() => {
+            current.value.confirm();
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(action).toHaveBeenCalledTimes(1);
+        expect(action).toHaveBeenCalledWith(null);
+        expect(current.value.open).toBe(false);
+        unmount();
+    });
+
     it("ignores confirm while pending or without a target", async () => {
         let resolveFn: () => void = () => {};
         const action = vi.fn(
