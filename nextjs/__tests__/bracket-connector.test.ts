@@ -32,6 +32,28 @@ describe("connectorPath", () => {
         );
     });
 
+    it("clamps the descent just clear of the source card when the gap runs out", () => {
+        // A tight 32px gap cannot always hold a lane left of the destination
+        // column: a descent reaching past the source card's right edge would
+        // tuck under the card. The floor keeps it just clear of the edge —
+        // laneAssignments compresses the pitch so lanes stay distinct.
+        const from = anchor(100, 40, 0, 30, 100, 50);
+        const to = anchor(132, 10, 132, 0, 232, 20);
+        expect(connectorPath(from, to, 5)).toBe(
+            "M 100 40 L 102 40 Q 104 40 104 38 L 104 16 Q 104 10 110 10 L 132 10",
+        );
+    });
+
+    it("applies a compressed lane pitch to keep every descent distinct", () => {
+        const from = anchor(100, 25, 0, 0, 100, 50);
+        const to = anchor(132, 40, 132, 0, 232, 80);
+        // Lane 3 at 4px pitch descends at 104 — right of the source card and
+        // distinct from lanes 0..2 at 116/112/108.
+        expect(connectorPath(from, to, 3, 4)).toBe(
+            "M 100 25 L 102 25 Q 104 25 104 27 L 104 34 Q 104 40 110 40 L 132 40",
+        );
+    });
+
     it("shrinks the corner radius for adjacent columns", () => {
         const from = anchor(100, 25, 0, 0, 100, 50);
         const to = anchor(110, 30, 110, 0, 210, 60);
@@ -105,9 +127,27 @@ describe("laneAssignments", () => {
             { key: "early", kind: "promotion", from: top, to: dest },
             { key: "other-column", kind: "promotion", from: top, to: far },
         ]);
-        expect(lanes.get("early")).toBe(0);
-        expect(lanes.get("late")).toBe(1);
-        expect(lanes.get("other-column")).toBe(0);
+        expect(lanes.get("early")).toEqual({ lane: 0, pitch: 6 });
+        expect(lanes.get("late")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("other-column")).toEqual({ lane: 0, pitch: 6 });
+    });
+
+    it("compresses the promotion lane pitch when the destination gap is tight", () => {
+        // Four connectors into a column whose nearest source sits 32px away:
+        // full 6px lanes would push the deepest past the source card, so the
+        // pitch compresses to fit all four descents between the card's edge
+        // and the lane-0 anchor.
+        const dest = anchor(132, 0, 132, 0, 232, 20);
+        const lanes = laneAssignments([
+            { key: "a", kind: "promotion", from: anchor(100, 10, 0, 0, 100, 20), to: dest },
+            { key: "b", kind: "promotion", from: anchor(100, 20, 0, 0, 100, 30), to: dest },
+            { key: "c", kind: "promotion", from: anchor(100, 30, 0, 0, 100, 40), to: dest },
+            { key: "d", kind: "promotion", from: anchor(100, 40, 0, 0, 100, 50), to: dest },
+        ]);
+        expect(lanes.get("a")).toEqual({ lane: 0, pitch: 4 });
+        expect(lanes.get("b")).toEqual({ lane: 1, pitch: 4 });
+        expect(lanes.get("c")).toEqual({ lane: 2, pitch: 4 });
+        expect(lanes.get("d")).toEqual({ lane: 3, pitch: 4 });
     });
 
     it("buckets drops by their source card, apart from the destination's promotions", () => {
@@ -121,9 +161,9 @@ describe("laneAssignments", () => {
             { key: "drop-a", kind: "drop", from: src, to: anchor(200, 50, 200, 40, 300, 100) },
             { key: "drop-b", kind: "drop", from: src, to: anchor(200, 90, 200, 80, 300, 140) },
         ]);
-        expect(lanes.get("drop-a")).toBe(0);
-        expect(lanes.get("drop-b")).toBe(1);
-        expect(lanes.get("promo")).toBe(0);
+        expect(lanes.get("drop-a")).toEqual({ lane: 0, pitch: 6 });
+        expect(lanes.get("drop-b")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("promo")).toEqual({ lane: 0, pitch: 6 });
     });
 
     it("orders one source's drops by source row, ties by target row", () => {
@@ -134,7 +174,7 @@ describe("laneAssignments", () => {
             { key: "seat-2", kind: "drop", from: unresolved, to: anchor(200, 90, 200, 80, 300, 140) },
             { key: "seat-1", kind: "drop", from: unresolved, to: anchor(200, 50, 200, 40, 300, 100) },
         ]);
-        expect(lanes.get("seat-1")).toBe(0);
-        expect(lanes.get("seat-2")).toBe(1);
+        expect(lanes.get("seat-1")).toEqual({ lane: 0, pitch: 6 });
+        expect(lanes.get("seat-2")).toEqual({ lane: 1, pitch: 6 });
     });
 });

@@ -73,14 +73,27 @@ export interface MeasuredAnchor {
  * between the source and the target row. (WB→LB drops route differently —
  * see dropPath.)
  *
- * `lane` shifts the vertical segment a few pixels per connector sharing the
- * same descent lane, so parallel lines run side by side instead of
- * overlapping into one thick stroke. `radius` softens the corners.
+ * `lane` shifts the vertical segment per connector sharing the same descent
+ * lane, so parallel lines run side by side instead of overlapping into one
+ * thick stroke; `lanePitch` is the shift per lane (compressed below the
+ * usual 6px by laneAssignments when the gap is tight). A descent may never
+ * slip left of the source card's right edge — it would vanish under the
+ * card — so the floor clamps it just clear of the edge. `radius` softens
+ * the corners.
  */
-export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0, radius = 6): string {
+export function connectorPath(
+    a: MeasuredAnchor,
+    b: MeasuredAnchor,
+    lane = 0,
+    lanePitch = 6,
+    radius = 6,
+): string {
     if (b.x >= a.rect.right - 1) {
         const base = Math.min(16, (b.x - a.rect.right) / 2);
-        const midX = Math.round(b.x - base - lane * 6);
+        const midX = Math.max(
+            Math.round(b.x - base - lane * lanePitch),
+            Math.min(Math.round(a.rect.right) + 4, Math.round(b.x) - 4),
+        );
         return roundedPath([
             [a.x, a.y],
             [midX, a.y],
@@ -88,7 +101,7 @@ export function connectorPath(a: MeasuredAnchor, b: MeasuredAnchor, lane = 0, ra
             [b.x, b.y],
         ], radius);
     }
-    const laneX = Math.round(b.x - 12 - lane * 6);
+    const laneX = Math.round(b.x - 12 - lane * lanePitch);
     return roundedPath([
         [a.rect.left, a.y],
         [laneX, a.y],
@@ -212,16 +225,17 @@ export function useConnectorPaths(
             const to = measureAnchor(content, base, c.to, "target");
             if (from && to) measured.push({ key: c.key, kind: c.kind ?? "promotion", resolved: c.resolved ?? false, from, to });
         }
-        // Connectors sharing a descent lane get successive lane indexes so
+        // Connectors sharing a descent lane get neighboring lane indexes so
         // their vertical segments run side by side instead of overlapping
         // into one stroke — promotions bucket by destination column, drops
-        // hug their source card (see laneAssignments).
+        // hug their source card (see laneAssignments, which also compresses
+        // the promotion lane pitch when a tight destination gap needs it).
         const lanes = laneAssignments(measured);
         const next: ConnectorPath[] = measured.map((m) => {
-            const lane = lanes.get(m.key) ?? 0;
+            const { lane, pitch } = lanes.get(m.key) ?? { lane: 0, pitch: 6 };
             return {
                 key: m.key,
-                d: m.kind === "drop" ? dropPath(m.from, m.to, lane) : connectorPath(m.from, m.to, lane),
+                d: m.kind === "drop" ? dropPath(m.from, m.to, lane) : connectorPath(m.from, m.to, lane, pitch),
                 resolved: m.resolved,
                 kind: m.kind,
             };
@@ -268,31 +282,63 @@ export function useConnectorPaths(
     return paths;
 }
 
+/** Lane index and lane spacing (px) for one connector's descent. */
+export interface LaneAssignment {
+    lane: number;
+    pitch: number;
+}
+
 /**
- * Lane index per connector key. Promotions turn just before their
+ * Lane assignment per connector key. Promotions turn just before their
  * destination column, so elbows sharing it bucket by that column's x;
  * drops hug their source instead, so they bucket by the source card's
  * right edge. Within a bucket, lines get neighboring lanes ordered by
  * their upper edge (source row for drops, ties by target row), so
  * parallel descents run side by side instead of overlapping into one
- * stroke.
+ * stroke. A promotion bucket also gets a lane pitch: the usual 6px is
+ * compressed just enough that even the deepest lane stays right of its
+ * source card — a tight gap then packs the descents closer together
+ * rather than hiding one of them under the card.
  */
 export function laneAssignments(
     measured: { key: string; kind: "promotion" | "drop"; from: MeasuredAnchor; to: MeasuredAnchor }[],
-): Map<string, number> {
-    const buckets = new Map<number, { key: string; y: number; tie: number }[]>();
+): Map<string, LaneAssignment> {
+    const buckets = new Map<number, { key: string; y: number; tie: number; floor: number; anchor: number; drop: boolean }[]>();
     for (const m of measured) {
         const drop = m.kind === "drop";
         const bucket = Math.round(drop ? m.from.rect.right : m.to.rect.left);
-        const item = { key: m.key, y: drop ? m.from.y : Math.min(m.from.y, m.to.y), tie: m.to.y };
+        const base = Math.min(16, (m.to.x - m.from.rect.right) / 2);
+        const item = {
+            key: m.key,
+            y: drop ? m.from.y : Math.min(m.from.y, m.to.y),
+            tie: m.to.y,
+            // Deepest-lane bounds for promotions: the descent must stay
+            // right of the source card (floor) and left of the lane-0
+            // anchor just before the destination column.
+            floor: m.from.rect.right + 4,
+            anchor: m.to.x - base,
+            drop,
+        };
         const list = buckets.get(bucket);
         if (list) list.push(item);
         else buckets.set(bucket, [item]);
     }
-    const lanes = new Map<string, number>();
+    const lanes = new Map<string, LaneAssignment>();
     for (const list of buckets.values()) {
         list.sort((p, q) => p.y - q.y || p.tie - q.tie);
-        list.forEach((item, i) => lanes.set(item.key, i));
+        // The descent of lane i sits at anchor_i - i*pitch (connectorPath),
+        // so the shared pitch must keep every promotion's descent right of
+        // its own source card: pitch ≤ (anchor_i - floor_i) / i. Wide gaps
+        // keep the full 6px; a tight gap compresses just enough (down to
+        // 3px) to pack the descents visibly apart rather than clamping any
+        // of them onto its neighbor or under the card.
+        let pitch = 6;
+        for (const [i, item] of list.entries()) {
+            if (item.drop || i === 0) continue;
+            pitch = Math.min(pitch, (item.anchor - item.floor) / i);
+        }
+        pitch = Math.min(6, Math.max(3, pitch));
+        list.forEach((item, i) => lanes.set(item.key, { lane: i, pitch: item.drop ? 6 : pitch }));
     }
     return lanes;
 }
