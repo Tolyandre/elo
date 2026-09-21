@@ -772,7 +772,7 @@ BracketSlot:
           promoted:
             type: boolean
         required: [player_id, points, place, promoted]
-    ruling:
+    ruling_player_ids:
       type: array
       description: >-
         The organizer ruling in force, ordered by place (place 1 first).

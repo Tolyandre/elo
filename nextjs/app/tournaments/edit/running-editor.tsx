@@ -132,10 +132,10 @@ function SlotEditor({
             )}
             {error && <p className="text-red-600 text-sm">{error}</p>}
 
-            {slot.ruling != null && slot.ruling.length > 0 && (
+            {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (
                 <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1">
                     <p className="text-xs min-w-0 truncate">
-                        Решение организатора: {slot.ruling.map(playerName).join(", ")}
+                        Решение организатора: {slot.ruling_player_ids.map(playerName).join(", ")}
                     </p>
                     <Button
                         variant="outline"

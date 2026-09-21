@@ -1119,9 +1119,9 @@ type BracketSlot struct {
 	Position int `json:"position"`
 	Promote  int `json:"promote"`
 
-	// Ruling The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it.
-	Ruling *[]Base58ID   `json:"ruling,omitempty"`
-	Seats  []BracketSeat `json:"seats"`
+	// RulingPlayerIds The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it.
+	RulingPlayerIds *[]Base58ID   `json:"ruling_player_ids,omitempty"`
+	Seats           []BracketSeat `json:"seats"`
 
 	// Standings Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set.
 	Standings []struct {

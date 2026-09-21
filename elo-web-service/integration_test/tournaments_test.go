@@ -566,7 +566,7 @@ type bracketJSON struct {
 					Place    int    `json:"place"`
 					Promoted bool   `json:"promoted"`
 				} `json:"standings"`
-				Ruling *[]string `json:"ruling"`
+				Ruling *[]string `json:"ruling_player_ids"`
 			} `json:"slots"`
 		} `json:"rounds"`
 	} `json:"data"`
@@ -869,7 +869,7 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 		Place    int    `json:"place"`
 		Promoted bool   `json:"promoted"`
 	} `json:"standings"`
-	Ruling *[]string `json:"ruling"`
+	Ruling *[]string `json:"ruling_player_ids"`
 } {
 	t.Helper()
 	slot := br.Data.Rounds[roundIdx].Slots[pos]
@@ -894,7 +894,7 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 			Place    int    `json:"place"`
 			Promoted bool   `json:"promoted"`
 		} `json:"standings"`
-		Ruling *[]string `json:"ruling"`
+		Ruling *[]string `json:"ruling_player_ids"`
 	}{
 		Id: slot.Id, GameId: slot.GameId, Position: slot.Position, Promote: slot.Promote,
 		Status: slot.Status, Seats: slot.Seats, Matches: slot.Matches, Standings: slot.Standings,

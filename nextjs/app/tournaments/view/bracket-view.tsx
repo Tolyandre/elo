@@ -323,10 +323,10 @@ function SlotCard({
                     Стол {slot.position}
                 </span>
                 <span className="flex items-center gap-1 shrink-0">
-                    {slot.ruling != null && slot.ruling.length > 0 && (
+                    {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (
                         <Badge
                             variant="outline"
-                            title={`Решение организатора: ${slot.ruling.map(playerName).join(", ")}`}
+                            title={`Решение организатора: ${slot.ruling_player_ids.map(playerName).join(", ")}`}
                         >
                             решение
                         </Badge>

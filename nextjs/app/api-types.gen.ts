@@ -1364,7 +1364,7 @@ export interface components {
                 promoted: boolean;
             }[];
             /** @description The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it. */
-            ruling?: components["schemas"]["Base58ID"][];
+            ruling_player_ids?: components["schemas"]["Base58ID"][];
         };
         BracketRound: {
             /** @enum {string} */

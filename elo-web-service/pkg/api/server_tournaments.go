@@ -512,7 +512,7 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 				for _, pid := range sl.Ruling {
 					ruling = append(ruling, Base58ID(pid))
 				}
-				bs.Ruling = &ruling
+				bs.RulingPlayerIds = &ruling
 			}
 			for _, st := range sl.Standings {
 				bs.Standings = append(bs.Standings, struct {

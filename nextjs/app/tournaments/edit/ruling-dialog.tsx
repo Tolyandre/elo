@@ -47,7 +47,7 @@ export function RulingDialog({
     const [lastOpen, setLastOpen] = useState(false);
     if (open !== lastOpen) {
         setLastOpen(open);
-        if (open) setPicked(slot.ruling ? [...slot.ruling] : []);
+        if (open) setPicked(slot.ruling_player_ids ? [...slot.ruling_player_ids] : []);
     }
 
     const toggle = (pid: Base58ID) => {
