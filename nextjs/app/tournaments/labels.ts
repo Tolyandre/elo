@@ -17,7 +17,7 @@ export function eliminationLabel(elimination: Tournament["elimination"]): string
     return elimination === "double" ? "Двойное выбывание (WB + LB)" : "Одиночное выбывание";
 }
 
-/** Short family name, prefixed to a plan preview in the shape picker. */
+/** Short family name, used in the start confirmation's prose («Сетка: двойная сетка — …»). */
 export function eliminationShortLabel(elimination: TournamentPlan["elimination"]): string {
     return elimination === "double" ? "двойная сетка" : "одиночная сетка";
 }
@@ -71,21 +71,27 @@ export function seatSourceLabel(sourceSlotPosition: number, sourcePlace?: number
         : `из стола ${sourceSlotPosition}`;
 }
 
+/** Seat shape of one round: «3+3 (1 бай) → 2» — table sizes plus byes and the promote count. */
+export function roundShapeLabel(round: PlanRound): string {
+    // Bye-kind seats occupy real seats of later rounds (the players
+    // sat an earlier round out) — they add no capacity, so they go
+    // in a parenthetical rather than into the + shape.
+    const byes = round.slots.reduce(
+        (n, s) => n + s.seats.filter((seat) => seat.kind === "bye").length, 0);
+    const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? ` (${byes} бай)` : "");
+    return `${shape} → ${round.promote}`;
+}
+
+/** Full one-round label: «Тур 1: 3+3 → 2». */
+export function roundLabel(round: PlanRound, elimination: Tournament["elimination"]): string {
+    return `${roundTitle(round.track, round.index, elimination)}: ${roundShapeLabel(round)}`;
+}
+
 /**
- * Compact round-by-round plan preview for the shape picker, e.g.
+ * Compact round-by-round plan preview for the start confirmation, e.g.
  * «Тур 1: 4+4 → 2; Финал: 4 → 1» (single) — in the double-elim case the
  * tracks interleave, so each round names its track («Верх», «Низ»).
  */
 export function planPreview(plan: TournamentPlan): string {
-    return plan.rounds
-        .map((round) => {
-            // Bye-kind seats occupy real seats of later rounds (the players
-            // sat an earlier round out) — they add no capacity, so they go
-            // in a parenthetical rather than into the + shape.
-            const byes = round.slots.reduce(
-                (n, s) => n + s.seats.filter((seat) => seat.kind === "bye").length, 0);
-            const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? ` (${byes} бай)` : "");
-            return `${roundTitle(round.track, round.index, plan.elimination)}: ${shape} → ${round.promote}`;
-        })
-        .join("; ");
+    return plan.rounds.map((round) => roundLabel(round, plan.elimination)).join("; ");
 }

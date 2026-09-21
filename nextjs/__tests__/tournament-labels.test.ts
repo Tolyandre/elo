@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { TournamentPlan } from "../app/api";
+import type { PlanRound, TournamentPlan } from "../app/api";
 import {
     eliminationLabel,
     planPreview,
+    roundLabel,
+    roundShapeLabel,
     roundTitle,
     roundsLabel,
     seatSourceLabel,
@@ -93,6 +95,22 @@ describe("tournament labels", () => {
 
     it("previews a WB+LB plan naming each round's track", () => {
         expect(planPreview(doublePlan)).toBe("Верх 1: 3+3 → 2; Низ 1: 2 → 1; Финал: 3 → 1");
+    });
+
+    it("labels a single round for the plan chips", () => {
+        expect(roundLabel(doublePlan.rounds[0], "double")).toBe("Верх 1: 3+3 → 2");
+        expect(roundLabel(doublePlan.rounds[1], "double")).toBe("Низ 1: 2 → 1");
+        expect(roundShapeLabel(singlePlan.rounds[0])).toBe("4+4 → 2");
+    });
+
+    it("counts byes parenthetically in a round's shape", () => {
+        const byeRound: PlanRound = {
+            track: "winners", index: 1, promote: 2, slots: [
+                { seat_count: 4, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }, { kind: "bye" }] },
+                { seat_count: 4, seats: [{ kind: "bye" }, { kind: "bye" }, { kind: "draw" }, { kind: "draw" }] },
+            ],
+        };
+        expect(roundShapeLabel(byeRound)).toBe("4+4 (3 бай) → 2");
     });
 
     it("pluralizes round counts for the filter chips", () => {
