@@ -304,53 +304,53 @@ interface BucketItem {
 
 /**
  * Segment crossings inside one lane order, evaluated at the full-width lane
- * pitch — only the relative order matters. With the descent of lane i at
- * `bx - 16 - i*6`, a right connector's exit stub can only reach a left
- * connector's vertical, and only when its source row falls inside that
- * vertical's span; symmetrically a left connector's entry row can only hit
- * a right vertical. Same-source rising fans are the asymmetric case: the
- * upper row belongs on the deeper lane.
+ * pitch — only the relative order matters. The descent of lane i hugs the
+ * destination column for promotions (`bx - 16 - i*6`) and the source card
+ * for drops (`fromRight + 8 + i*6`), so which lane ends up right of the
+ * other differs per kind. Between two connectors only two touches are
+ * possible: the right one's exit stub can reach the left vertical, and the
+ * left one's entry run can reach the right vertical — each counts when its
+ * row falls inside the vertical's span. Same-source fans are the
+ * asymmetric case: the row order between the two ends decides whether the
+ * pair crosses at all.
  */
 function crossingCount(order: BucketItem[]): number {
+    const xs = order.map((item, i) =>
+        item.drop ? item.fromRight + 8 + i * 6 : item.bx - 16 - i * 6,
+    );
     let total = 0;
     for (let i = 0; i < order.length; i++) {
         for (let j = i + 1; j < order.length; j++) {
-            const right = order[i];
-            const left = order[j];
-            const xLeft = left.bx - 16 - j * 6;
+            const rightFirst = xs[i] > xs[j];
+            const right = rightFirst ? order[i] : order[j];
+            const left = rightFirst ? order[j] : order[i];
+            const xRight = rightFirst ? xs[i] : xs[j];
+            const xLeft = rightFirst ? xs[j] : xs[i];
             const rightLo = Math.min(right.fromY, right.toY);
             const rightHi = Math.max(right.fromY, right.toY);
             const leftLo = Math.min(left.fromY, left.toY);
             const leftHi = Math.max(left.fromY, left.toY);
-            if (xLeft > right.fromRight && right.fromY >= leftLo && right.fromY <= leftHi) total++;
-            if (left.toY >= rightLo && left.toY <= rightHi) total++;
+            if (xLeft >= right.fromRight && right.fromY >= leftLo && right.fromY <= leftHi) total++;
+            if (xRight <= left.bx && left.toY >= rightLo && left.toY <= rightHi) total++;
         }
     }
     return total;
 }
 
 /**
- * Reorder a bucket's promotions (drops keep their slots) so the connectors
- * cross each other as few times as possible — two cards joined by several
+ * Reorder a bucket's connectors (a bucket holds one kind in practice) so
+ * they cross each other as few times as possible — cards joined by several
  * connectors must not weave through one another when a neighboring lane
  * order avoids it. Exhaustive over the realistic sizes (a slot has a
  * handful of seats), keeping the upper-edge baseline on ties.
  */
 function minimizeCrossings(list: BucketItem[]): void {
-    const slots: number[] = [];
-    const promos: BucketItem[] = [];
-    list.forEach((item, i) => {
-        if (!item.drop) {
-            slots.push(i);
-            promos.push(item);
-        }
-    });
-    if (promos.length < 2 || promos.length > 7) return;
-    let best = promos.slice();
+    if (list.length < 2 || list.length > 7) return;
+    let best = list.slice();
     let bestCount = crossingCount(best);
-    const perm = promos.slice();
+    const perm = list.slice();
     const walk = (k: number) => {
-        if (k === promos.length) {
+        if (k === list.length) {
             const count = crossingCount(perm);
             if (count < bestCount) {
                 bestCount = count;
@@ -358,15 +358,15 @@ function minimizeCrossings(list: BucketItem[]): void {
             }
             return;
         }
-        for (let i = k; i < promos.length; i++) {
+        for (let i = k; i < list.length; i++) {
             [perm[k], perm[i]] = [perm[i], perm[k]];
             walk(k + 1);
             [perm[k], perm[i]] = [perm[i], perm[k]];
         }
     };
     walk(0);
-    slots.forEach((slot, i) => {
-        list[slot] = best[i];
+    best.forEach((item, i) => {
+        list[i] = item;
     });
 }
 

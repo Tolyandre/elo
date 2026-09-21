@@ -174,6 +174,19 @@ describe("laneAssignments", () => {
         expect(lanes.get("lower")).toEqual({ lane: 1, pitch: 6 });
     });
 
+    it("nests same-source falling drops so they do not cross each other", () => {
+        // Two losers seats draw from one winners card: the deeper source row
+        // turns first (hugging the card) and the shallower one turns outside
+        // it, so the dashed lines run as parallel neighbors instead of
+        // crossing at both ends.
+        const lanes = laneAssignments([
+            { key: "shallower", kind: "drop", from: anchor(100, 20, 0, 10, 100, 30), to: anchor(200, 50, 200, 40, 300, 100) },
+            { key: "deeper", kind: "drop", from: anchor(100, 24, 0, 10, 100, 30), to: anchor(200, 54, 200, 40, 300, 100) },
+        ]);
+        expect(lanes.get("shallower")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("deeper")).toEqual({ lane: 0, pitch: 6 });
+    });
+
     it("buckets drops by their source card, apart from the destination's promotions", () => {
         // Both drops descend hugging the same source card's right edge, so
         // they share a source bucket — independent of the promotion turning
@@ -185,20 +198,22 @@ describe("laneAssignments", () => {
             { key: "drop-a", kind: "drop", from: src, to: anchor(200, 50, 200, 40, 300, 100) },
             { key: "drop-b", kind: "drop", from: src, to: anchor(200, 90, 200, 80, 300, 140) },
         ]);
-        expect(lanes.get("drop-a")).toEqual({ lane: 0, pitch: 6 });
-        expect(lanes.get("drop-b")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("drop-a")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("drop-b")).toEqual({ lane: 0, pitch: 6 });
         expect(lanes.get("promo")).toEqual({ lane: 0, pitch: 6 });
     });
 
-    it("orders one source's drops by source row, ties by target row", () => {
+    it("nests unresolved drops around their shared exit anchor", () => {
         // Unresolved drops all anchor at the card center — the same from.y —
-        // so the target seat row breaks the tie.
+        // so the baseline breaks the tie by target seat row; the crossing
+        // search then turns the deeper target first so the shared origin
+        // does not make them cross.
         const unresolved = anchor(100, 25, 0, 0, 100, 50);
         const lanes = laneAssignments([
             { key: "seat-2", kind: "drop", from: unresolved, to: anchor(200, 90, 200, 80, 300, 140) },
             { key: "seat-1", kind: "drop", from: unresolved, to: anchor(200, 50, 200, 40, 300, 100) },
         ]);
-        expect(lanes.get("seat-1")).toEqual({ lane: 0, pitch: 6 });
-        expect(lanes.get("seat-2")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("seat-1")).toEqual({ lane: 1, pitch: 6 });
+        expect(lanes.get("seat-2")).toEqual({ lane: 0, pitch: 6 });
     });
 });
