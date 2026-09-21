@@ -150,6 +150,26 @@ describe("BracketView", () => {
         expect(rows.some((r) => r?.includes("Борис") && r.includes("1"))).toBe(true);
     });
 
+    it("shows an organizer ruling as a note at the bottom of the card, not a header chip", () => {
+        const ruled: Bracket = {
+            ...bracket,
+            rounds: [
+                {
+                    ...bracket.rounds[0],
+                    slots: [
+                        { ...bracket.rounds[0].slots[0], ruling_player_ids: ["p1" as Base58ID, "p2" as Base58ID] },
+                    ],
+                },
+                bracket.rounds[1],
+            ],
+        };
+        const container = render(<BracketView bracket={ruled} />);
+        const card = container.querySelector('[data-bracket-slot="s1"]')!;
+        expect(card.textContent).toContain("Решение организатора: Алиса, Борис");
+        const badges = [...card.querySelectorAll('[data-slot="badge"]')].map((b) => b.textContent);
+        expect(badges).toEqual(["Играет"]);
+    });
+
     it("styles the WB→LB crossings as dashed drop curves, other lines solid", () => {
         const doubleElim: Bracket = {
             tournament_id: "t1" as Base58ID,

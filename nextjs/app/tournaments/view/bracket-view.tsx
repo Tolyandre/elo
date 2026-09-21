@@ -323,14 +323,6 @@ function SlotCard({
                     Стол {slot.position}
                 </span>
                 <span className="flex items-center gap-1 shrink-0">
-                    {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (
-                        <Badge
-                            variant="outline"
-                            title={`Решение организатора: ${slot.ruling_player_ids.map(playerName).join(", ")}`}
-                        >
-                            решение
-                        </Badge>
-                    )}
                     <Badge variant={slotBadgeVariant(slot.status)} className="whitespace-nowrap">
                         {slotStatusLabel(slot.status)}
                     </Badge>
@@ -407,6 +399,12 @@ function SlotCard({
 
             {standings.length === 0 && slot.matches.length > 0 && (
                 <p className="text-xs text-muted-foreground">Партий: {slot.matches.length}</p>
+            )}
+
+            {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (
+                <p className="text-xs text-muted-foreground break-words">
+                    Решение организатора: {slot.ruling_player_ids.map(playerName).join(", ")}
+                </p>
             )}
         </div>
     );
