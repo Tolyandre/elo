@@ -5,8 +5,12 @@ import { Player } from "@/app/api";
 import { formatDateTime } from "@/lib/datetime";
 
 export type MarketResolutionDescription = {
-    /** One row per market outcome, in the market's canonical outcome order. */
-    outcomes: { id: string; label: string; node: React.ReactNode }[];
+    /**
+     * Rows in the market's canonical outcome order. A row usually covers one
+     * outcome, but rows whose descriptions differ only in a name (one per
+     * player) are squashed into a single row covering all their ids.
+     */
+    outcomes: { ids: string[]; label: string; node: React.ReactNode }[];
     cancel: React.ReactNode;
 };
 
@@ -79,24 +83,33 @@ const matchWinnerStrategy: MarketTypeStrategy = {
             : <> в партии с участием ровно <H>{targetNames.join(", ")}</H></>;
         const periodNode = period ? <> в период {period}</> : null;
 
+        // Every player outcome describes the same sentence with a different
+        // name, so they squash into one generic "Игрок" row; the draw row
+        // (if the market has one) keeps its own distinct description.
+        const outcomes: MarketResolutionDescription["outcomes"] = [];
+        const playerIds = market.outcomes
+            .filter((o) => o.kind === "player" && o.player_id)
+            .map((o) => o.id);
+        if (playerIds.length > 0) {
+            outcomes.push({
+                ids: playerIds,
+                label: "Игрок",
+                node: <>Игрок единолично занимает первое место{vsNode}{gameNode}{periodNode}</>,
+            });
+        }
+        for (const o of market.outcomes) {
+            if (o.kind === "player" && o.player_id) continue;
+            outcomes.push({
+                ids: [o.id],
+                label: "Ничья",
+                node: allowOther
+                    ? <>Ничья (первое место делят два и более игроков) или победа постороннего игрока{vsNode}{gameNode}{periodNode}</>
+                    : <>Ничья — первое место делят два и более игроков{vsNode}{gameNode}{periodNode}</>,
+            });
+        }
+
         return {
-            outcomes: market.outcomes.map((o) => {
-                if (o.kind === "player" && o.player_id) {
-                    const name = outcomeDisplayName(o, players, getPlayerName);
-                    return {
-                        id: o.id,
-                        label: name,
-                        node: <><H>{name}</H> единолично занимает первое место{vsNode}{gameNode}{periodNode}</>,
-                    };
-                }
-                return {
-                    id: o.id,
-                    label: "Ничья",
-                    node: allowOther
-                        ? <>Ничья (первое место делят два и более игроков) или победа постороннего игрока{vsNode}{gameNode}{periodNode}</>
-                        : <>Ничья — первое место делят два и более игроков{vsNode}{gameNode}{periodNode}</>,
-                };
-            }),
+            outcomes,
             cancel: period
                 ? <>Партия с участием <H>{targetNames.join(", ")}</H>{gameNode} не сыграна в период {period}</>
                 : <>Партия с участием <H>{targetNames.join(", ")}</H>{gameNode} не сыграна</>,
@@ -147,7 +160,7 @@ const winStreakStrategy: MarketTypeStrategy = {
         const label = (kind: "yes" | "no") => (kind === "yes" ? "Да" : "Нет");
         return {
             outcomes: market.outcomes.map((o) => ({
-                id: o.id,
+                ids: [o.id],
                 label: o.name || label(o.kind === "yes" ? "yes" : "no"),
                 node: o.kind === "yes" ? yesNode : noNode,
             })),
@@ -167,20 +180,19 @@ const tournamentWinnerStrategy: MarketTypeStrategy = {
             ? `Победитель турнира «${params.tournament_name}»`
             : "Победитель турнира";
     },
-    getResolutionDescription(market, players, _games, getPlayerName) {
+    getResolutionDescription(market) {
         const params = market.params as TournamentWinnerParams | null;
         const tournamentNode = params?.tournament_name
             ? <>турнира <H>«{params.tournament_name}»</H></>
             : <>турнира</>;
+        // One outcome per participant, each describing the same sentence with
+        // a different name — squashed into one generic "Игрок" row.
         return {
-            outcomes: market.outcomes.map((o) => {
-                const name = outcomeDisplayName(o, players, getPlayerName);
-                return {
-                    id: o.id,
-                    label: name,
-                    node: <><H>{name}</H> становится победителем {tournamentNode}</>,
-                };
-            }),
+            outcomes: [{
+                ids: market.outcomes.map((o) => o.id),
+                label: "Игрок",
+                node: <>Игрок становится победителем {tournamentNode}</>,
+            }],
             cancel: <>Турнир отменён (решением организатора или автоматически по дедлайну гранд-финала) — все ставки возвращаются</>,
         };
     },

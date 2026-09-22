@@ -16,12 +16,14 @@ export function ResolutionDescription({ market }: { market: Market }) {
     return (
         <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
             {outcomes.map((o) => {
-                const isWinner = resolvedOutcome != null && resolvedOutcome === o.id;
+                const isWinner = resolvedOutcome != null && o.ids.includes(resolvedOutcome);
                 // The label uses the outcome's chart color so the description
-                // rows and the chart/donut lines are visually paired.
-                const color = colors.get(o.id) ?? "var(--muted-foreground)";
+                // rows and the chart/donut lines are visually paired; a row
+                // squashed over several outcomes has no single color.
+                const color = (o.ids.length === 1 ? colors.get(o.ids[0]) : undefined)
+                    ?? "var(--muted-foreground)";
                 return (
-                    <div key={o.id} className="flex gap-2">
+                    <div key={o.ids.join(",")} className="flex gap-2">
                         <span
                             className={`font-medium shrink-0 w-20 truncate ${isWinner ? "" : "opacity-80"}`}
                             style={{ color }}
