@@ -48,6 +48,17 @@ WITH paginated_matches AS (
                 WHERE pcm2.player_id = ms.player_id
             )
         )
+        AND (
+            sqlc.narg('tournament_id')::uuid IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM tournament_slot_matches tsm
+                JOIN tournament_slots ts ON ts.id = tsm.slot_id
+                JOIN tournament_rounds tr ON tr.id = ts.round_id
+                WHERE tr.tournament_id = sqlc.narg('tournament_id')::uuid
+                AND tsm.match_id = m.id
+            )
+        )
     ORDER BY m.date DESC, m.id DESC
     LIMIT sqlc.arg('limit')::int4
 )

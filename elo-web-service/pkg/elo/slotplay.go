@@ -191,7 +191,7 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 
 	// A completed tournament whose bracket just changed can no longer trust
 	// its champion — revert to running (the grand final is re-decided); the
-	// revert is audited.
+	// revert is audited and its settled tournament-winner markets reopen.
 	if err := s.revertCompletedTournament(ctx, q, actor, slot.TournamentID); err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func (s *TournamentService) recomputeSlot(ctx context.Context, q *db.Queries, ac
 	// The champion: a final-track slot promoting exactly one player that
 	// feeds nobody completes the tournament.
 	if haveOutcome && slot.Track == bracket.TrackFinal && slot.Promote == 1 && len(downstream) == 0 {
-		if err := s.completeTournament(ctx, q, actor, slot.TournamentID, desired[0]); err != nil {
+		if err := s.completeTournament(ctx, q, actor, slot, desired[0]); err != nil {
 			return err
 		}
 	}
@@ -222,6 +222,13 @@ func (s *TournamentService) revertCompletedTournament(ctx context.Context, q *db
 	}
 	if err := q.ClearTournamentWinner(ctx, tid); err != nil {
 		return fmt.Errorf("clear winner: %w", err)
+	}
+	// Markets settled on the invalidated champion reopen: their tournament is
+	// running again and will re-settle (or cancel) with the re-decided final.
+	if s.Markets != nil {
+		if err := s.Markets.ReopenTournamentWinnerMarkets(ctx, q, tid); err != nil {
+			return fmt.Errorf("reopen tournament winner markets: %w", err)
+		}
 	}
 	return recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, tid,
 		audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentCompleted, TournamentRunning, audit.StateReasonCascade))
@@ -405,7 +412,8 @@ func (s *TournamentService) refreshDownstreamStatus(ctx context.Context, q *db.Q
 }
 
 // completeTournament records the champion and closes the lifecycle.
-func (s *TournamentService) completeTournament(ctx context.Context, q *db.Queries, actor id.ID, tid, winner id.ID) error {
+func (s *TournamentService) completeTournament(ctx context.Context, q *db.Queries, actor id.ID, slot db.GetTournamentSlotRow, winner id.ID) error {
+	tid := slot.TournamentID
 	t, err := q.GetTournamentForUpdate(ctx, tid)
 	if err != nil {
 		return fmt.Errorf("get tournament: %w", err)
@@ -415,6 +423,14 @@ func (s *TournamentService) completeTournament(ctx context.Context, q *db.Querie
 	}
 	if err := q.SetTournamentCompleted(ctx, db.SetTournamentCompletedParams{ID: tid, WinnerPlayerID: &winner}); err != nil {
 		return fmt.Errorf("complete tournament: %w", err)
+	}
+	// The completed tournament resolves its tournament-winner markets here —
+	// after the enclosing match-write's settlement replay, so the replay
+	// cannot unsettle them again.
+	if s.Markets != nil {
+		if err := s.Markets.SettleTournamentWinnerMarketsOnComplete(ctx, q, tid, winner, slot); err != nil {
+			return fmt.Errorf("settle tournament winner markets: %w", err)
+		}
 	}
 	return recordAuditEvent(ctx, q, actor, audit.EntityTournament, audit.ActionUpdated, tid,
 		audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentRunning, TournamentCompleted, audit.StateReasonFinal))
@@ -910,6 +926,13 @@ func (s *TournamentService) enforceDeadlineTx(ctx context.Context, q *db.Queries
 	for _, t := range stale {
 		if err := q.SetTournamentStatus(ctx, db.SetTournamentStatusParams{ID: t.ID, Status: TournamentCancelled}); err != nil {
 			return fmt.Errorf("deadline cancel: %w", err)
+		}
+		// A deadline-cancelled tournament refunds its tournament-winner
+		// markets, same as an organizer cancel.
+		if s.Markets != nil {
+			if err := s.Markets.CancelTournamentWinnerMarkets(ctx, q, t.ID); err != nil {
+				return fmt.Errorf("cancel tournament winner markets: %w", err)
+			}
 		}
 		if err := recordAuditEvent(ctx, q, "", audit.EntityTournament, audit.ActionUpdated, t.ID,
 			audit.KindTournamentState, audit.NewTournamentStateDetails(TournamentRunning, TournamentCancelled, audit.StateReasonDeadline)); err != nil {

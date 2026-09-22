@@ -1469,7 +1469,7 @@ export interface components {
         Market: {
             id: components["schemas"]["Base58ID"];
             /** @enum {string} */
-            market_type: "match_winner" | "win_streak";
+            market_type: "match_winner" | "win_streak" | "tournament_winner";
             /** @enum {string} */
             status: "open" | "betting_closed" | "resolved" | "expired" | "cancelled";
             /** @description The winning outcome id (GUID) for resolved markets; null for open/betting_closed markets and for cancelled markets (cancellation is carried by status alone). Typed as Base58ID so it carries the same short form as the market's outcome ids. */
@@ -1511,7 +1511,7 @@ export interface components {
             /** @description The market's guarantor wagers (multiple per player allowed). */
             guarantees?: components["schemas"]["MarketGuarantee"][];
             /** @description Market-type-specific parameters */
-            params?: (components["schemas"]["MatchWinnerParams"] | components["schemas"]["WinStreakParams"]) | null;
+            params?: (components["schemas"]["MatchWinnerParams"] | components["schemas"]["WinStreakParams"] | components["schemas"]["TournamentWinnerParams"]) | null;
             /** @description Buyer settlements (discriminator 'market') for a resolved market. */
             settlement?: components["schemas"]["SettlementDetail"][];
             /** @description Per-guarantor payout rollup for a resolved market: the guarantor-role settlement row of every player who guaranteed the market. A guarantor who also bought on the market has a separate buyer row (shown in `settlement`), so their entry here carries only the house result (payout/surcharge). */
@@ -1746,6 +1746,12 @@ export interface components {
              * @description Total elo spent on this outcome.
              */
             pool: number;
+        };
+        TournamentWinnerParams: {
+            /** @description The tournament the market resolves on. */
+            tournament_id: components["schemas"]["Base58ID"];
+            /** @description The tournament's name, denormalized for display. */
+            tournament_name: string;
         };
         /** @description The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options. */
         BracketPlanFacets: {
@@ -3116,6 +3122,8 @@ export interface operations {
                 player_id?: string;
                 /** @description Filter by club ID; use "__no_club__" for players without a club */
                 club_id?: string;
+                /** @description Filter to matches counted for the tournament's bracket */
+                tournament_id?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of matches per page */
@@ -4889,14 +4897,17 @@ export interface operations {
                 "application/json": {
                     id: components["schemas"]["Base58ID"];
                     /** @enum {string} */
-                    market_type: "match_winner" | "win_streak";
+                    market_type: "match_winner" | "win_streak" | "tournament_winner";
                     /**
                      * Format: date-time
                      * @description Defaults to now if omitted; must not be in the past if provided
                      */
                     starts_at?: string;
-                    /** Format: date-time */
-                    closes_at: string;
+                    /**
+                     * Format: date-time
+                     * @description Required for match_winner and win_streak. tournament_winner markets take no deadline: they resolve when the tournament completes and are refunded when it is cancelled (including the grand-final-deadline auto-cancel).
+                     */
+                    closes_at?: string;
                     /** @description Target players — one "player wins" outcome is created per player. */
                     target_player_ids?: components["schemas"]["Base58ID"][];
                     /** @description When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome. */
@@ -4908,6 +4919,8 @@ export interface operations {
                     streak_game_ids?: components["schemas"]["Base58ID"][];
                     wins_required?: number;
                     max_losses?: number | null;
+                    /** @description The tournament the market resolves on. Must be running; one "player wins" outcome is created per tournament participant. */
+                    tournament_id?: components["schemas"]["Base58ID"];
                     /**
                      * Format: double
                      * @description Maximum combined guarantor risk L the market accepts: liquidity is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the amount they risked. Wagers beyond L are accepted in full (they still earn fees) but add no liquidity. Defaults to the settings' market_default_max_guarantor_loss when omitted.
@@ -4951,6 +4964,24 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament not found (tournament_winner) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament cannot back the market (not running / too few participants) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

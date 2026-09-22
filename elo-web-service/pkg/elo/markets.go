@@ -23,8 +23,9 @@ type CreateMarketParams struct {
 	// MaxGuarantorLoss.
 	MaxGuarantorLoss float64 // <=0 ⇒ derived from elo_settings.market_default_max_guarantor_loss
 
-	MatchWinner *MatchWinnerCreateParams // set when MarketType == "match_winner"
-	WinStreak   *WinStreakCreateParams   // set when MarketType == "win_streak"
+	MatchWinner      *MatchWinnerCreateParams      // set when MarketType == "match_winner"
+	WinStreak        *WinStreakCreateParams        // set when MarketType == "win_streak"
+	TournamentWinner *TournamentWinnerCreateParams // set when MarketType == "tournament_winner"
 }
 
 // IMarketService is the write/business side of the markets domain. The API
@@ -62,6 +63,32 @@ type IMarketService interface {
 	// Used by the sequential event processor to integrate time-based expiry into
 	// the settlement order. Must be called within an active transaction.
 	ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error
+
+	// SettleTournamentWinnerMarketsOnComplete resolves every open
+	// tournament_winner market on a tournament that just completed. A
+	// standings-decided final slot attaches its determining match (latest by
+	// (date, id)) and settles dated at it; a ruling-decided one attaches no
+	// match and settles dated now. Must be called within an active
+	// transaction, from the completion flow itself.
+	SettleTournamentWinnerMarketsOnComplete(ctx context.Context, q *db.Queries, tid, winner id.ID, slot db.GetTournamentSlotRow) error
+
+	// ReopenTournamentWinnerMarkets unsets the resolved tournament_winner
+	// markets of a tournament whose completion was reverted (a bracket edit
+	// cascade invalidated the champion). Must be called within an active
+	// transaction.
+	ReopenTournamentWinnerMarkets(ctx context.Context, q *db.Queries, tid id.ID) error
+
+	// CancelTournamentWinnerMarkets refunds the open tournament_winner markets
+	// of a tournament that was cancelled (organizer or grand-final deadline).
+	// Must be called within an active transaction.
+	CancelTournamentWinnerMarkets(ctx context.Context, q *db.Queries, tid id.ID) error
+
+	// ResolveTournamentWinnerMarkets settles open tournament_winner markets
+	// from the tournaments' current lifecycle state — the recalculation sweep
+	// that re-settles markets the replay unsettled but the per-match trigger
+	// cannot re-settle (ruling-decided completions, cancellations). Must be
+	// called within an active transaction.
+	ResolveTournamentWinnerMarkets(ctx context.Context, q *db.Queries) error
 
 	// LockMarketBetting stops new bets from being placed on an open market.
 	// This is a user event: betting_closed_at is persisted and never cleared

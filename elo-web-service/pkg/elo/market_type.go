@@ -63,8 +63,9 @@ type MarketTypeHandler interface {
 
 // marketTypeHandlers is the registry of all known market type handlers.
 var marketTypeHandlers = map[string]MarketTypeHandler{
-	"match_winner": &matchWinnerHandler{},
-	"win_streak":   &winStreakHandler{},
+	"match_winner":      &matchWinnerHandler{},
+	"win_streak":        &winStreakHandler{},
+	"tournament_winner": &tournamentWinnerHandler{},
 }
 
 // MatchWinnerCreateParams holds creation parameters for a match_winner market.
@@ -83,4 +84,13 @@ type WinStreakCreateParams struct {
 	GameIDs        []id.ID
 	WinsRequired   int32
 	MaxLosses      *int32
+}
+
+// TournamentWinnerCreateParams holds creation parameters for a tournament_winner
+// market. The outcomes are the tournament's participants (read server-side at
+// creation time — the roster is frozen once the tournament is running); the
+// market resolves when the tournament completes and is refunded when it is
+// cancelled, so it has no closes_at deadline of its own.
+type TournamentWinnerCreateParams struct {
+	TournamentID id.ID
 }

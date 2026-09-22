@@ -91,6 +91,7 @@ type Querier interface {
 	CreateTournamentRound(ctx context.Context, arg CreateTournamentRoundParams) (TournamentRound, error)
 	CreateTournamentSeat(ctx context.Context, arg CreateTournamentSeatParams) error
 	CreateTournamentSlot(ctx context.Context, arg CreateTournamentSlotParams) (TournamentSlot, error)
+	CreateTournamentWinnerParams(ctx context.Context, arg CreateTournamentWinnerParamsParams) error
 	CreateUser(ctx context.Context, arg CreateUserParams) (id.ID, error)
 	CreateWinStreakParams(ctx context.Context, arg CreateWinStreakParamsParams) error
 	// The two fixed Да/Нет outcomes of a win_streak market.
@@ -130,10 +131,8 @@ type Querier interface {
 	DeleteSlotMatch(ctx context.Context, arg DeleteSlotMatchParams) error
 	DeleteSlotMatches(ctx context.Context, slotID id.ID) error
 	DeleteSlotPromotions(ctx context.Context, slotID id.ID) error
-	// Drops one seat (a bye absorbed into a growing first-round table).
-	DeleteSlotSeat(ctx context.Context, arg DeleteSlotSeatParams) error
-	// Seat-count adjustment (ADR-26): the slot's seats are re-created from the
-	// same seed; only callable on slots with zero linked matches.
+	// Cascade invalidation: a slot whose outcome was voided loses its seat rows
+	// and is re-seated from its sources once the upstream replays.
 	DeleteSlotSeats(ctx context.Context, slotID id.ID) error
 	DeleteTag(ctx context.Context, argID id.ID) (Tag, error)
 	// The match left its slot (detach or void, ADR-26): it leaves the tournament
@@ -258,6 +257,9 @@ type Querier interface {
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
 	GetTournament(ctx context.Context, argID id.ID) (Tournament, error)
+	// The champion slot: the final-track slot promoting exactly one player
+	// (a bracket has exactly one; a tournament-winner market resolves against it).
+	GetTournamentFinalSlot(ctx context.Context, tournamentID id.ID) (GetTournamentFinalSlotRow, error)
 	// Row-locked variant for the lifecycle mutations (start/cancel/config): a
 	// concurrent start and cancel queue behind the lock instead of racing.
 	GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tournament, error)
@@ -289,6 +291,9 @@ type Querier interface {
 	// maximum loss) and maker fee rate (ADR-20). The client-generated id doubles
 	// as the idempotency key.
 	InsertMarketGuarantee(ctx context.Context, arg InsertMarketGuaranteeParams) (InsertMarketGuaranteeRow, error)
+	// The slot's determining match: the latest linked match in event order
+	// (date, then id — the same order the standings are derived in).
+	LatestSlotMatchID(ctx context.Context, slotID id.ID) (id.ID, error)
 	// Playing slots of running tournaments hosting the given game, in the
 	// deterministic acceptance order (track, round index, table position). The
 	// seated-set equality is checked by the caller (small candidate lists).
@@ -365,6 +370,13 @@ type Querier interface {
 	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
+	// Open tournament_winner markets of one tournament — the completion hook's
+	// settle input.
+	ListOpenTournamentWinnerMarkets(ctx context.Context, tournamentID id.ID) ([]id.ID, error)
+	// The sweep's input: open markets joined with their tournament's current
+	// lifecycle state (the tournament tables are live state — they are not part
+	// of the settlement replay, so the sweep settles from what they say now).
+	ListOpenTournamentWinnerMarketsWithState(ctx context.Context) ([]ListOpenTournamentWinnerMarketsWithStateRow, error)
 	ListOpenWinStreakMarkets(ctx context.Context) ([]ListOpenWinStreakMarketsRow, error)
 	ListOverdueMatchWinnerMarkets(ctx context.Context) ([]ListOverdueMatchWinnerMarketsRow, error)
 	ListOverdueMatchWinnerMarketsAtDate(ctx context.Context, closesAt pgtype.Timestamptz) ([]ListOverdueMatchWinnerMarketsAtDateRow, error)
@@ -375,6 +387,9 @@ type Querier interface {
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	// Resolved tournament_winner markets of one tournament — the revert hook's
+	// input (a completed tournament whose bracket changed reopens them).
+	ListResolvedTournamentWinnerMarketsByTournament(ctx context.Context, tournamentID id.ID) ([]id.ID, error)
 	// Running tournaments whose grand-final deadline has passed — the lazy
 	// auto-cancel input. Completion flips status='completed' in the same tx as
 	// the final promotion, so a completed tournament never appears here.

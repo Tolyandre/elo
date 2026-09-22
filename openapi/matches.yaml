@@ -21,6 +21,11 @@ MatchesCollection:
         schema:
           type: string
         description: Filter by club ID; use "__no_club__" for players without a club
+      - name: tournament_id
+        in: query
+        schema:
+          type: string
+        description: Filter to matches counted for the tournament's bracket
       - name: next
         in: query
         schema:

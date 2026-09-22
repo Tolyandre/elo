@@ -45,7 +45,7 @@ MarketsCollection:
                 $ref: './common.yaml#/Base58ID'
               market_type:
                 type: string
-                enum: [match_winner, win_streak]
+                enum: [match_winner, win_streak, tournament_winner]
               starts_at:
                 type: string
                 format: date-time
@@ -53,6 +53,11 @@ MarketsCollection:
               closes_at:
                 type: string
                 format: date-time
+                description: >-
+                  Required for match_winner and win_streak. tournament_winner
+                  markets take no deadline: they resolve when the tournament
+                  completes and are refunded when it is cancelled (including
+                  the grand-final-deadline auto-cancel).
               # match_winner fields
               target_player_ids:
                 type: array
@@ -86,6 +91,12 @@ MarketsCollection:
               max_losses:
                 type: integer
                 nullable: true
+              # tournament_winner fields
+              tournament_id:
+                $ref: './common.yaml#/Base58ID'
+                description: >-
+                  The tournament the market resolves on. Must be running; one
+                  "player wins" outcome is created per tournament participant.
               # fixed-odds / LMSR fields
               max_guarantor_loss:
                 type: number
@@ -98,7 +109,7 @@ MarketsCollection:
                   the amount they risked. Wagers beyond L are accepted in full
                   (they still earn fees) but add no liquidity. Defaults to the
                   settings' market_default_max_guarantor_loss when omitted.
-            required: [market_type, closes_at, id]
+            required: [market_type, id]
     responses:
       "201":
         description: Market created
@@ -130,6 +141,18 @@ MarketsCollection:
               $ref: './common.yaml#/ApiError'
       "403":
         description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tournament not found (tournament_winner)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tournament cannot back the market (not running / too few participants)
         content:
           application/json:
             schema:
@@ -682,6 +705,17 @@ WinStreakParams:
       nullable: true
   required: [target_player_id, game_ids, wins_required]
 
+TournamentWinnerParams:
+  type: object
+  properties:
+    tournament_id:
+      $ref: './common.yaml#/Base58ID'
+      description: The tournament the market resolves on.
+    tournament_name:
+      type: string
+      description: The tournament's name, denormalized for display.
+  required: [tournament_id, tournament_name]
+
 Market:
   type: object
   properties:
@@ -689,7 +723,7 @@ Market:
       $ref: './common.yaml#/Base58ID'
     market_type:
       type: string
-      enum: [match_winner, win_streak]
+      enum: [match_winner, win_streak, tournament_winner]
     status:
       type: string
       enum: [open, betting_closed, resolved, expired, cancelled]
@@ -767,6 +801,7 @@ Market:
       oneOf:
         - $ref: '#/MatchWinnerParams'
         - $ref: '#/WinStreakParams'
+        - $ref: '#/TournamentWinnerParams'
     settlement:
       type: array
       items:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchWinnerFormIssue } from '../app/markets/new/validation'
+import { matchWinnerFormIssue, tournamentWinnerFormIssue } from '../app/markets/new/validation'
 
 describe('matchWinnerFormIssue', () => {
     it('stays silent on an untouched empty form (submit button is disabled instead)', () => {
@@ -19,5 +19,20 @@ describe('matchWinnerFormIssue', () => {
     it('accepts multiple players either way', () => {
         expect(matchWinnerFormIssue(2, true)).toBeNull()
         expect(matchWinnerFormIssue(2, false)).toBeNull()
+    })
+})
+
+describe('tournamentWinnerFormIssue', () => {
+    it('stays silent when no tournament is selected yet (submit is disabled instead)', () => {
+        expect(tournamentWinnerFormIssue(0)).toBeNull()
+    })
+
+    it('rejects a single-participant tournament — the market could never resolve meaningfully', () => {
+        expect(tournamentWinnerFormIssue(1)).toBe('У турнира должен быть минимум два участника')
+    })
+
+    it('accepts a tournament with two or more participants', () => {
+        expect(tournamentWinnerFormIssue(2)).toBeNull()
+        expect(tournamentWinnerFormIssue(8)).toBeNull()
     })
 })

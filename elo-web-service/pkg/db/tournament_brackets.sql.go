@@ -196,30 +196,61 @@ func (q *Queries) DeleteSlotPromotions(ctx context.Context, slotID id.ID) error 
 	return err
 }
 
-const deleteSlotSeat = `-- name: DeleteSlotSeat :exec
-DELETE FROM tournament_seats WHERE slot_id = $1 AND position = $2
-`
-
-type DeleteSlotSeatParams struct {
-	SlotID   id.ID `json:"slot_id"`
-	Position int32 `json:"position"`
-}
-
-// Drops one seat (a bye absorbed into a growing first-round table).
-func (q *Queries) DeleteSlotSeat(ctx context.Context, arg DeleteSlotSeatParams) error {
-	_, err := q.db.Exec(ctx, deleteSlotSeat, arg.SlotID, arg.Position)
-	return err
-}
-
 const deleteSlotSeats = `-- name: DeleteSlotSeats :exec
 DELETE FROM tournament_seats WHERE slot_id = $1
 `
 
-// Seat-count adjustment (ADR-26): the slot's seats are re-created from the
-// same seed; only callable on slots with zero linked matches.
+// Cascade invalidation: a slot whose outcome was voided loses its seat rows
+// and is re-seated from its sources once the upstream replays.
 func (q *Queries) DeleteSlotSeats(ctx context.Context, slotID id.ID) error {
 	_, err := q.db.Exec(ctx, deleteSlotSeats, slotID)
 	return err
+}
+
+const getTournamentFinalSlot = `-- name: GetTournamentFinalSlot :one
+SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+WHERE r.tournament_id = $1 AND r.track = 'final' AND s.promote = 1
+ORDER BY s.position
+LIMIT 1
+`
+
+type GetTournamentFinalSlotRow struct {
+	ID           id.ID           `json:"id"`
+	RoundID      id.ID           `json:"round_id"`
+	Position     int32           `json:"position"`
+	GameID       id.ID           `json:"game_id"`
+	Promote      int32           `json:"promote"`
+	Status       string          `json:"status"`
+	Ruling       json.RawMessage `json:"ruling"`
+	Track        string          `json:"track"`
+	RoundIndex   int32           `json:"round_index"`
+	TournamentID id.ID           `json:"tournament_id"`
+	SeatCount    int32           `json:"seat_count"`
+}
+
+// The champion slot: the final-track slot promoting exactly one player
+// (a bracket has exactly one; a tournament-winner market resolves against it).
+func (q *Queries) GetTournamentFinalSlot(ctx context.Context, tournamentID id.ID) (GetTournamentFinalSlotRow, error) {
+	row := q.db.QueryRow(ctx, getTournamentFinalSlot, tournamentID)
+	var i GetTournamentFinalSlotRow
+	err := row.Scan(
+		&i.ID,
+		&i.RoundID,
+		&i.Position,
+		&i.GameID,
+		&i.Promote,
+		&i.Status,
+		&i.Ruling,
+		&i.Track,
+		&i.RoundIndex,
+		&i.TournamentID,
+		&i.SeatCount,
+	)
+	return i, err
 }
 
 const getTournamentOfSlot = `-- name: GetTournamentOfSlot :one
@@ -294,6 +325,24 @@ func (q *Queries) GetTournamentSlot(ctx context.Context, argID id.ID) (GetTourna
 		&i.SeatCount,
 	)
 	return i, err
+}
+
+const latestSlotMatchID = `-- name: LatestSlotMatchID :one
+SELECT tsm.match_id
+FROM tournament_slot_matches tsm
+JOIN matches m ON m.id = tsm.match_id
+WHERE tsm.slot_id = $1
+ORDER BY m.date DESC, tsm.match_id DESC
+LIMIT 1
+`
+
+// The slot's determining match: the latest linked match in event order
+// (date, then id — the same order the standings are derived in).
+func (q *Queries) LatestSlotMatchID(ctx context.Context, slotID id.ID) (id.ID, error) {
+	row := q.db.QueryRow(ctx, latestSlotMatchID, slotID)
+	var match_id id.ID
+	err := row.Scan(&match_id)
+	return match_id, err
 }
 
 const listAcceptanceCandidates = `-- name: ListAcceptanceCandidates :many

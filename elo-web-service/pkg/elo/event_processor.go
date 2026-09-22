@@ -155,6 +155,13 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("recalculate bet limits: %w", err)
 	}
 
+	// Tournament-winner markets are settled by tournament state, which the
+	// replay above does not rewind: re-settle the ones it unset from the
+	// tournaments' current state (see tournaments_markets.go).
+	if err := p.MarketService.ResolveTournamentWinnerMarkets(ctx, q); err != nil {
+		return fmt.Errorf("resolve tournament winner markets: %w", err)
+	}
+
 	return validateUserEventsAgainstNewResolutions(ctx, q, oldResolutions)
 }
 

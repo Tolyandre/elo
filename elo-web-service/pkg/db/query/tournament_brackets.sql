@@ -105,6 +105,28 @@ JOIN match_scores ms ON ms.match_id = tsm.match_id
 WHERE tsm.slot_id = $1
 ORDER BY m.date, tsm.match_id, ms.player_id;
 
+-- name: LatestSlotMatchID :one
+-- The slot's determining match: the latest linked match in event order
+-- (date, then id — the same order the standings are derived in).
+SELECT tsm.match_id
+FROM tournament_slot_matches tsm
+JOIN matches m ON m.id = tsm.match_id
+WHERE tsm.slot_id = $1
+ORDER BY m.date DESC, tsm.match_id DESC
+LIMIT 1;
+
+-- name: GetTournamentFinalSlot :one
+-- The champion slot: the final-track slot promoting exactly one player
+-- (a bracket has exactly one; a tournament-winner market resolves against it).
+SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+       r.track, r."index" AS round_index, r.tournament_id,
+       (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
+FROM tournament_slots s
+JOIN tournament_rounds r ON r.id = s.round_id
+WHERE r.tournament_id = $1 AND r.track = 'final' AND s.promote = 1
+ORDER BY s.position
+LIMIT 1;
+
 -- name: ListSlotMatchesForMatchIDs :many
 -- Which tournament/slot (if any) each match is counted for — the match DTO's
 -- tournament badge (ADR-26).

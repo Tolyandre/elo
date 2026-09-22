@@ -53,6 +53,7 @@ type paramsFiller[T any] interface {
 	*T
 	FromMatchWinnerParams(v MatchWinnerParams) error
 	FromWinStreakParams(v WinStreakParams) error
+	FromMarketsTournamentWinnerParams(v MarketsTournamentWinnerParams) error
 }
 
 // marketRow is the common field set of the generated market row shapes (list /
@@ -78,18 +79,22 @@ type marketRow struct {
 	WsGameIds         []id.ID
 	WinsRequired      pgtype.Int4
 	MaxLosses         pgtype.Int4
+	TwTournamentID    *id.ID
+	TwTournamentName  pgtype.Text
 }
 
 func marketRowFromList(r db.ListMarketsRow) marketRow {
 	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
 		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
-		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses}
+		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
+		r.TwTournamentID, r.TwTournamentName}
 }
 
 func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
 		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
-		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses}
+		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
+		r.TwTournamentID, r.TwTournamentName}
 }
 
 // buildTypedParams converts raw DB columns to the typed params union. It is
@@ -97,7 +102,7 @@ func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 // MarketDetail_Params). A fresh T is allocated and its address (P) is returned;
 // FromMatchWinnerParams and FromWinStreakParams have pointer receivers and
 // dereference the receiver, so a nil pointer would panic.
-func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) P {
+func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4, twTournamentID *id.ID, twTournamentName pgtype.Text) P {
 	p := P(new(T))
 	switch marketType {
 	case "match_winner":
@@ -122,18 +127,31 @@ func buildTypedParams[T marketParams, P paramsFiller[T]](marketType string, targ
 			WinsRequired:   int(winsRequired.Int32),
 			MaxLosses:      maxL,
 		})
+	case "tournament_winner":
+		var tournamentName string
+		if twTournamentName.Valid {
+			tournamentName = twTournamentName.String
+		}
+		var tournamentID id.ID
+		if twTournamentID != nil {
+			tournamentID = *twTournamentID
+		}
+		_ = p.FromMarketsTournamentWinnerParams(MarketsTournamentWinnerParams{
+			TournamentId:   tournamentID,
+			TournamentName: tournamentName,
+		})
 	}
 	return p
 }
 
 // buildTypedMarketParams converts raw DB columns to the typed Market_Params union.
-func buildTypedMarketParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *Market_Params {
-	return buildTypedParams[Market_Params, *Market_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses)
+func buildTypedMarketParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4, twTournamentID *id.ID, twTournamentName pgtype.Text) *Market_Params {
+	return buildTypedParams[Market_Params, *Market_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses, twTournamentID, twTournamentName)
 }
 
 // buildTypedMarketDetailParams same as above but for MarketDetail_Params.
-func buildTypedMarketDetailParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4) *MarketDetail_Params {
-	return buildTypedParams[MarketDetail_Params, *MarketDetail_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses)
+func buildTypedMarketDetailParams(marketType string, targetPlayerIds []id.ID, allowOtherPlayers pgtype.Bool, mwGameIDs []id.ID, wsTargetPlayerID *id.ID, wsGameIDs []id.ID, winsRequired pgtype.Int4, maxLosses pgtype.Int4, twTournamentID *id.ID, twTournamentName pgtype.Text) *MarketDetail_Params {
+	return buildTypedParams[MarketDetail_Params, *MarketDetail_Params](marketType, targetPlayerIds, allowOtherPlayers, mwGameIDs, wsTargetPlayerID, wsGameIDs, winsRequired, maxLosses, twTournamentID, twTournamentName)
 }
 
 func convertSettlement(details []db.GetSettlementDetailsRow) *[]SettlementDetail {
@@ -237,6 +255,17 @@ func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map
 	return result
 }
 
+// apiClosesAt shapes closes_at for the response: tournament_winner markets
+// carry no deadline of their own (infinity is stored so the expiry scheduler
+// never picks them up), so the field reads as null.
+func apiClosesAt(marketType string, closesAt pgtype.Timestamptz) *time.Time {
+	if !closesAt.Valid || marketType == "tournament_winner" {
+		return nil
+	}
+	t := closesAt.Time
+	return &t
+}
+
 // buildMarket assembles the API Market from a market row and its outcomes
 // already carrying probabilities.
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
@@ -248,16 +277,14 @@ func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 		MaxGuarantorLoss: r.MaxGuarantorLoss,
 		Outcomes:         outcomes,
 		Params: buildTypedMarketParams(r.MarketType, r.TargetPlayerIds, r.AllowOtherPlayers,
-			r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses),
+			r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
+			r.TwTournamentID, r.TwTournamentName),
 	}
 	if r.StartsAt.Valid {
 		t := r.StartsAt.Time
 		m.StartsAt = &t
 	}
-	if r.ClosesAt.Valid {
-		t := r.ClosesAt.Time
-		m.ClosesAt = &t
-	}
+	m.ClosesAt = apiClosesAt(r.MarketType, r.ClosesAt)
 	if r.CreatedAt.Valid {
 		t := r.CreatedAt.Time
 		m.CreatedAt = &t
@@ -370,7 +397,8 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		MaxGuarantorLoss: row.MaxGuarantorLoss,
 		Outcomes:         buildOutcomes(outcomeRows, row.LiquidityB),
 		Params: buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerIds, row.AllowOtherPlayers,
-			row.MwGameIds, row.WsTargetPlayerID, row.WsGameIds, row.WinsRequired, row.MaxLosses),
+			row.MwGameIds, row.WsTargetPlayerID, row.WsGameIds, row.WinsRequired, row.MaxLosses,
+			row.TwTournamentID, row.TwTournamentName),
 	}
 	detail.Guarantees, detail.FeeRate = s.marketGuarantees(ctx, marketID)
 	if feeCollected, err := s.api.MarketQueries.GetMarketFeeCollected(ctx, marketID); err == nil && feeCollected > 0 {
@@ -380,10 +408,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		t := row.StartsAt.Time
 		detail.StartsAt = &t
 	}
-	if row.ClosesAt.Valid {
-		t := row.ClosesAt.Time
-		detail.ClosesAt = &t
-	}
+	detail.ClosesAt = apiClosesAt(row.MarketType, row.ClosesAt)
 	if row.CreatedAt.Valid {
 		t := row.CreatedAt.Time
 		detail.CreatedAt = &t
@@ -546,8 +571,19 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		ID:         id.ID(body.Id),
 		MarketType: string(body.MarketType),
 		StartsAt:   startsAt,
-		ClosesAt:   body.ClosesAt,
 		CreatedBy:  user.ID,
+	}
+
+	// tournament_winner markets take no deadline (their fate is the
+	// tournament's); the other two types require one now that the spec marks
+	// closes_at optional.
+	switch string(body.MarketType) {
+	case "tournament_winner":
+	case "match_winner", "win_streak":
+		if body.ClosesAt == nil {
+			return CreateMarket400JSONResponse{Status: "fail", Message: string(body.MarketType) + " requires closes_at"}, nil
+		}
+		params.ClosesAt = *body.ClosesAt
 	}
 
 	if body.MaxGuarantorLoss != nil {
@@ -612,6 +648,25 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 			WinsRequired:   int32(*body.WinsRequired),
 			MaxLosses:      maxLosses,
 		}
+
+	case "tournament_winner":
+		if body.TournamentId == nil || *body.TournamentId == "" {
+			return CreateMarket400JSONResponse{Status: "fail", Message: "tournament_winner requires tournament_id"}, nil
+		}
+		tournamentID := id.ID(*body.TournamentId)
+		if err := s.api.TournamentService.ValidateTournamentWinnerTarget(ctx, tournamentID); err != nil {
+			switch domainStatusCode(err) {
+			case http.StatusNotFound:
+				return CreateMarket404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			case http.StatusConflict:
+				return CreateMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			case http.StatusBadRequest:
+				return CreateMarket400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			default:
+				return nil, err
+			}
+		}
+		params.TournamentWinner = &elo.TournamentWinnerCreateParams{TournamentID: tournamentID}
 
 	default:
 		return CreateMarket400JSONResponse{Status: "fail", Message: "unknown market_type: " + string(body.MarketType)}, nil

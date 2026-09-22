@@ -196,37 +196,40 @@ func parseMatchScores(gameID id.ID, scores IDMap[float64]) (id.ID, map[id.ID]flo
 // matchCursor is the continuation token encoded as base64 JSON.
 // It embeds all search parameters so the client doesn't need to repeat them.
 type matchCursor struct {
-	GameID   *string `json:"game_id,omitempty"`
-	PlayerID *string `json:"player_id,omitempty"`
-	ClubID   *string `json:"club_id,omitempty"`
-	NoClub   bool    `json:"no_club,omitempty"`
-	Date     string  `json:"date"` // RFC3339Nano — date of the last returned match
+	GameID       *string `json:"game_id,omitempty"`
+	PlayerID     *string `json:"player_id,omitempty"`
+	ClubID       *string `json:"club_id,omitempty"`
+	TournamentID *string `json:"tournament_id,omitempty"`
+	NoClub       bool    `json:"no_club,omitempty"`
+	Date         string  `json:"date"` // RFC3339Nano — date of the last returned match
 }
 
-func encodeMatchCursor(gameID *string, playerID *string, clubID *string, noClub bool, date time.Time) string {
+func encodeMatchCursor(gameID *string, playerID *string, clubID *string, tournamentID *string, noClub bool, date time.Time) string {
 	c := matchCursor{Date: date.UTC().Format(time.RFC3339Nano), NoClub: noClub}
 	c.GameID = gameID
 	c.PlayerID = playerID
 	c.ClubID = clubID
+	c.TournamentID = tournamentID
 	b, _ := json.Marshal(c)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// decodeMatchCursor returns gameID, playerID, clubID, noClub, cursorDate decoded from the token.
-func decodeMatchCursor(token string) (*string, *string, *string, bool, pgtype.Timestamptz, error) {
+// decodeMatchCursor returns gameID, playerID, clubID, tournamentID, noClub,
+// cursorDate decoded from the token.
+func decodeMatchCursor(token string) (*string, *string, *string, *string, bool, pgtype.Timestamptz, error) {
 	b, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return nil, nil, nil, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
 	var c matchCursor
 	if err := json.Unmarshal(b, &c); err != nil {
-		return nil, nil, nil, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
 	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return nil, nil, nil, false, pgtype.Timestamptz{}, err
+		return nil, nil, nil, nil, false, pgtype.Timestamptz{}, err
 	}
-	return c.GameID, c.PlayerID, c.ClubID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
+	return c.GameID, c.PlayerID, c.ClubID, c.TournamentID, c.NoClub, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
 // tempMatch is an intermediate grouping for converting flat query rows into

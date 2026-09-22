@@ -332,8 +332,19 @@ WITH paginated_matches AS (
                 WHERE pcm2.player_id = ms.player_id
             )
         )
+        AND (
+            $6::uuid IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM tournament_slot_matches tsm
+                JOIN tournament_slots ts ON ts.id = tsm.slot_id
+                JOIN tournament_rounds tr ON tr.id = ts.round_id
+                WHERE tr.tournament_id = $6::uuid
+                AND tsm.match_id = m.id
+            )
+        )
     ORDER BY m.date DESC, m.id DESC
-    LIMIT $6::int4
+    LIMIT $7::int4
 )
 SELECT
     pm.id AS match_id,
@@ -369,12 +380,13 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersPaginatedParams struct {
-	GameID     *id.ID             `json:"game_id"`
-	PlayerID   *id.ID             `json:"player_id"`
-	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	ClubID     *id.ID             `json:"club_id"`
-	NoClub     pgtype.Bool        `json:"no_club"`
-	Limit      int32              `json:"limit"`
+	GameID       *id.ID             `json:"game_id"`
+	PlayerID     *id.ID             `json:"player_id"`
+	CursorDate   pgtype.Timestamptz `json:"cursor_date"`
+	ClubID       *id.ID             `json:"club_id"`
+	NoClub       pgtype.Bool        `json:"no_club"`
+	TournamentID *id.ID             `json:"tournament_id"`
+	Limit        int32              `json:"limit"`
 }
 
 type ListMatchesWithPlayersPaginatedRow struct {
@@ -400,6 +412,7 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 		arg.CursorDate,
 		arg.ClubID,
 		arg.NoClub,
+		arg.TournamentID,
 		arg.Limit,
 	)
 	if err != nil {

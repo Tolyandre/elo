@@ -251,14 +251,17 @@ func (e IawwGameStatePhase) Valid() bool {
 
 // Defines values for MarketMarketType.
 const (
-	MarketMarketTypeMatchWinner MarketMarketType = "match_winner"
-	MarketMarketTypeWinStreak   MarketMarketType = "win_streak"
+	MarketMarketTypeMatchWinner      MarketMarketType = "match_winner"
+	MarketMarketTypeTournamentWinner MarketMarketType = "tournament_winner"
+	MarketMarketTypeWinStreak        MarketMarketType = "win_streak"
 )
 
 // Valid indicates whether the value is a known member of the MarketMarketType enum.
 func (e MarketMarketType) Valid() bool {
 	switch e {
 	case MarketMarketTypeMatchWinner:
+		return true
+	case MarketMarketTypeTournamentWinner:
 		return true
 	case MarketMarketTypeWinStreak:
 		return true
@@ -296,14 +299,17 @@ func (e MarketStatus) Valid() bool {
 
 // Defines values for MarketDetailMarketType.
 const (
-	MarketDetailMarketTypeMatchWinner MarketDetailMarketType = "match_winner"
-	MarketDetailMarketTypeWinStreak   MarketDetailMarketType = "win_streak"
+	MarketDetailMarketTypeMatchWinner      MarketDetailMarketType = "match_winner"
+	MarketDetailMarketTypeTournamentWinner MarketDetailMarketType = "tournament_winner"
+	MarketDetailMarketTypeWinStreak        MarketDetailMarketType = "win_streak"
 )
 
 // Valid indicates whether the value is a known member of the MarketDetailMarketType enum.
 func (e MarketDetailMarketType) Valid() bool {
 	switch e {
 	case MarketDetailMarketTypeMatchWinner:
+		return true
+	case MarketDetailMarketTypeTournamentWinner:
 		return true
 	case MarketDetailMarketTypeWinStreak:
 		return true
@@ -755,14 +761,17 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 
 // Defines values for CreateMarketJSONBodyMarketType.
 const (
-	CreateMarketJSONBodyMarketTypeMatchWinner CreateMarketJSONBodyMarketType = "match_winner"
-	CreateMarketJSONBodyMarketTypeWinStreak   CreateMarketJSONBodyMarketType = "win_streak"
+	CreateMarketJSONBodyMarketTypeMatchWinner      CreateMarketJSONBodyMarketType = "match_winner"
+	CreateMarketJSONBodyMarketTypeTournamentWinner CreateMarketJSONBodyMarketType = "tournament_winner"
+	CreateMarketJSONBodyMarketTypeWinStreak        CreateMarketJSONBodyMarketType = "win_streak"
 )
 
 // Valid indicates whether the value is a known member of the CreateMarketJSONBodyMarketType enum.
 func (e CreateMarketJSONBodyMarketType) Valid() bool {
 	switch e {
 	case CreateMarketJSONBodyMarketTypeMatchWinner:
+		return true
+	case CreateMarketJSONBodyMarketTypeTournamentWinner:
 		return true
 	case CreateMarketJSONBodyMarketTypeWinStreak:
 		return true
@@ -1957,6 +1966,15 @@ type MarketsMarketOutcome struct {
 // MarketsMarketOutcomeKind player — a specific target player wins (see player_id); other — tie at first place or a non-target player wins; yes/no — the two fixed outcomes of a win_streak market.
 type MarketsMarketOutcomeKind string
 
+// MarketsTournamentWinnerParams defines model for markets_TournamentWinnerParams.
+type MarketsTournamentWinnerParams struct {
+	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TournamentId Base58ID `json:"tournament_id"`
+
+	// TournamentName The tournament's name, denormalized for display.
+	TournamentName string `json:"tournament_name"`
+}
+
 // TablesCreateTableRequest defines model for tables_CreateTableRequest.
 type TablesCreateTableRequest struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -2157,8 +2175,10 @@ type AddGameTagJSONBody struct {
 // CreateMarketJSONBody defines parameters for CreateMarket.
 type CreateMarketJSONBody struct {
 	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
-	AllowOtherPlayers *bool     `json:"allow_other_players,omitempty"`
-	ClosesAt          time.Time `json:"closes_at"`
+	AllowOtherPlayers *bool `json:"allow_other_players,omitempty"`
+
+	// ClosesAt Required for match_winner and win_streak. tournament_winner markets take no deadline: they resolve when the tournament completes and are refunded when it is cancelled (including the grand-final-deadline auto-cancel).
+	ClosesAt *time.Time `json:"closes_at,omitempty"`
 
 	// GameIds Games the match must belong to; empty means any game.
 	GameIds *[]Base58ID `json:"game_ids,omitempty"`
@@ -2182,7 +2202,10 @@ type CreateMarketJSONBody struct {
 
 	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
 	TargetPlayerIds *[]Base58ID `json:"target_player_ids,omitempty"`
-	WinsRequired    *int        `json:"wins_required,omitempty"`
+
+	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TournamentId *Base58ID `json:"tournament_id,omitempty"`
+	WinsRequired *int      `json:"wins_required,omitempty"`
 }
 
 // CreateMarketJSONBodyMarketType defines parameters for CreateMarket.
@@ -2233,6 +2256,9 @@ type ListMatchesParams struct {
 
 	// ClubId Filter by club ID; use "__no_club__" for players without a club
 	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
+
+	// TournamentId Filter to matches counted for the tournament's bracket
+	TournamentId *string `form:"tournament_id,omitempty" json:"tournament_id,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -2843,6 +2869,32 @@ func (t *Market_Params) MergeWinStreakParams(v WinStreakParams) error {
 	return err
 }
 
+// AsMarketsTournamentWinnerParams returns the union data inside the Market_Params as a MarketsTournamentWinnerParams
+func (t Market_Params) AsMarketsTournamentWinnerParams() (MarketsTournamentWinnerParams, error) {
+	var body MarketsTournamentWinnerParams
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMarketsTournamentWinnerParams overwrites any union data inside the Market_Params as the provided MarketsTournamentWinnerParams
+func (t *Market_Params) FromMarketsTournamentWinnerParams(v MarketsTournamentWinnerParams) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMarketsTournamentWinnerParams performs a merge with any union data inside the Market_Params, using the provided MarketsTournamentWinnerParams
+func (t *Market_Params) MergeMarketsTournamentWinnerParams(v MarketsTournamentWinnerParams) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t Market_Params) MarshalJSON() ([]byte, error) {
 	b, err := t.union.MarshalJSON()
 	return b, err
@@ -2895,6 +2947,32 @@ func (t *MarketDetail_Params) FromWinStreakParams(v WinStreakParams) error {
 
 // MergeWinStreakParams performs a merge with any union data inside the MarketDetail_Params, using the provided WinStreakParams
 func (t *MarketDetail_Params) MergeWinStreakParams(v WinStreakParams) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMarketsTournamentWinnerParams returns the union data inside the MarketDetail_Params as a MarketsTournamentWinnerParams
+func (t MarketDetail_Params) AsMarketsTournamentWinnerParams() (MarketsTournamentWinnerParams, error) {
+	var body MarketsTournamentWinnerParams
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMarketsTournamentWinnerParams overwrites any union data inside the MarketDetail_Params as the provided MarketsTournamentWinnerParams
+func (t *MarketDetail_Params) FromMarketsTournamentWinnerParams(v MarketsTournamentWinnerParams) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMarketsTournamentWinnerParams performs a merge with any union data inside the MarketDetail_Params, using the provided MarketsTournamentWinnerParams
+func (t *MarketDetail_Params) MergeMarketsTournamentWinnerParams(v MarketsTournamentWinnerParams) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -4298,6 +4376,14 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "club_id", c.Request.URL.Query(), &params.ClubId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter club_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "tournament_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tournament_id", c.Request.URL.Query(), &params.TournamentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tournament_id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -7117,6 +7203,34 @@ func (response CreateMarket403JSONResponse) VisitCreateMarketResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarket404JSONResponse ApiError
+
+func (response CreateMarket404JSONResponse) VisitCreateMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateMarket409JSONResponse ApiError
+
+func (response CreateMarket409JSONResponse) VisitCreateMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

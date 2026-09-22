@@ -1,5 +1,5 @@
 import React from "react";
-import { MatchWinnerParams, Market, MarketOutcome, WinStreakParams } from "@/app/api";
+import { MatchWinnerParams, Market, MarketOutcome, TournamentWinnerParams, WinStreakParams } from "@/app/api";
 import { GameListItem } from "@/app/api";
 import { Player } from "@/app/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -156,6 +156,36 @@ const winStreakStrategy: MarketTypeStrategy = {
     },
 };
 
+// tournamentWinnerStrategy: one "player wins" outcome per tournament
+// participant and no deadline — the market resolves when the tournament
+// completes (champion from the grand final or an organizer ruling) and is
+// refunded when the tournament is cancelled.
+const tournamentWinnerStrategy: MarketTypeStrategy = {
+    getTitle(market) {
+        const params = market.params as TournamentWinnerParams | null;
+        return params?.tournament_name
+            ? `Победитель турнира «${params.tournament_name}»`
+            : "Победитель турнира";
+    },
+    getResolutionDescription(market, players, _games, getPlayerName) {
+        const params = market.params as TournamentWinnerParams | null;
+        const tournamentNode = params?.tournament_name
+            ? <>турнира <H>«{params.tournament_name}»</H></>
+            : <>турнира</>;
+        return {
+            outcomes: market.outcomes.map((o) => {
+                const name = outcomeDisplayName(o, players, getPlayerName);
+                return {
+                    id: o.id,
+                    label: name,
+                    node: <><H>{name}</H> становится победителем {tournamentNode}</>,
+                };
+            }),
+            cancel: <>Турнир отменён (решением организатора или автоматически по дедлайну гранд-финала) — все ставки возвращаются</>,
+        };
+    },
+};
+
 function pluralizeRaz(n: number): string {
     const mod100 = n % 100;
     const mod10 = n % 10;
@@ -178,6 +208,7 @@ function pluralizeDefeat(n: number): string {
 const marketTypeRegistry: Record<string, MarketTypeStrategy> = {
     match_winner: matchWinnerStrategy,
     win_streak: winStreakStrategy,
+    tournament_winner: tournamentWinnerStrategy,
 };
 
 export function getMarketTitle(

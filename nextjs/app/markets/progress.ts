@@ -58,6 +58,25 @@ export async function fetchStreakMatches(params: WinStreakParams, start: Date, e
 export type StreakProgress = { wins: number; losses: number };
 
 /**
+ * Every match counted for a tournament's bracket (ADR-26: arena membership
+ * follows the slot link). Composed from the same paginated global feed with
+ * the tournament filter; pages are followed until the feed is exhausted.
+ */
+export async function fetchTournamentMatches(tournamentId: string): Promise<Match[]> {
+    const byId = new Map<string, Match>();
+    let next: string | undefined;
+    for (let page = 0; page < MAX_PAGES_PER_GAME; page++) {
+        const res = await getMatchesPagePromise({ tournament_id: tournamentId, next, limit: PAGE_LIMIT });
+        for (const m of res.items) byId.set(m.id, m);
+        if (!res.next) break;
+        next = res.next;
+    }
+    return [...byId.values()]
+        .filter((m) => m.date !== null)
+        .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime());
+}
+
+/**
  * Wins and losses of the target player across already-filtered matches.
  * A tie at the top counts as a win, same as the server's resolution counter.
  */

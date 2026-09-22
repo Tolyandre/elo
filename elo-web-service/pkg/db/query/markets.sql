@@ -112,6 +112,10 @@ VALUES ($1, $2, $3, $4);
 INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5);
 
+-- name: CreateTournamentWinnerParams :exec
+INSERT INTO market_tournament_winner_params (market_id, tournament_id)
+VALUES ($1, $2);
+
 -- name: GetMarket :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
@@ -123,10 +127,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.id = $1;
 
 -- name: ListMarkets :many
@@ -140,10 +148,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 ORDER BY om.created_at DESC;
 
 -- name: ListMarketsByResolutionMatch :many
@@ -157,10 +169,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.resolution_match_id = $1;
 
 -- name: GetMatchWinnerParams :one
@@ -208,6 +224,32 @@ SELECT om.id, om.closes_at, om.starts_at,
 FROM markets om
 JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 WHERE om.status IN ('open', 'betting_closed') AND om.closes_at <= $1;
+
+-- name: ListOpenTournamentWinnerMarkets :many
+-- Open tournament_winner markets of one tournament — the completion hook's
+-- settle input.
+SELECT om.id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+WHERE om.status IN ('open', 'betting_closed') AND twp.tournament_id = $1;
+
+-- name: ListOpenTournamentWinnerMarketsWithState :many
+-- The sweep's input: open markets joined with their tournament's current
+-- lifecycle state (the tournament tables are live state — they are not part
+-- of the settlement replay, so the sweep settles from what they say now).
+SELECT om.id, twp.tournament_id, t.status AS tournament_status, t.winner_player_id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+JOIN tournaments t ON t.id = twp.tournament_id
+WHERE om.status IN ('open', 'betting_closed');
+
+-- name: ListResolvedTournamentWinnerMarketsByTournament :many
+-- Resolved tournament_winner markets of one tournament — the revert hook's
+-- input (a completed tournament whose bracket changed reopens them).
+SELECT om.id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+WHERE om.status = 'resolved' AND twp.tournament_id = $1;
 
 -- name: GetNearestMarketExpiry :one
 SELECT closes_at FROM markets

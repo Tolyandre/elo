@@ -177,6 +177,11 @@ type MarketOutcome struct {
 	Q        float64 `json:"q"`
 }
 
+type MarketTournamentWinnerParam struct {
+	MarketID     id.ID `json:"market_id"`
+	TournamentID id.ID `json:"tournament_id"`
+}
+
 type MarketWinStreakParam struct {
 	MarketID       id.ID       `json:"market_id"`
 	TargetPlayerID id.ID       `json:"target_player_id"`

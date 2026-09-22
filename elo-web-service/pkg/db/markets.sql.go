@@ -108,6 +108,21 @@ func (q *Queries) CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutc
 	return err
 }
 
+const createTournamentWinnerParams = `-- name: CreateTournamentWinnerParams :exec
+INSERT INTO market_tournament_winner_params (market_id, tournament_id)
+VALUES ($1, $2)
+`
+
+type CreateTournamentWinnerParamsParams struct {
+	MarketID     id.ID `json:"market_id"`
+	TournamentID id.ID `json:"tournament_id"`
+}
+
+func (q *Queries) CreateTournamentWinnerParams(ctx context.Context, arg CreateTournamentWinnerParamsParams) error {
+	_, err := q.db.Exec(ctx, createTournamentWinnerParams, arg.MarketID, arg.TournamentID)
+	return err
+}
+
 const createWinStreakParams = `-- name: CreateWinStreakParams :exec
 INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
 VALUES ($1, $2, $3, $4, $5)
@@ -297,10 +312,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.id = $1
 `
 
@@ -325,6 +344,8 @@ type GetMarketRow struct {
 	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
+	TwTournamentID    *id.ID             `json:"tw_tournament_id"`
+	TwTournamentName  pgtype.Text        `json:"tw_tournament_name"`
 }
 
 func (q *Queries) GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, error) {
@@ -351,6 +372,8 @@ func (q *Queries) GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, err
 		&i.WsGameIds,
 		&i.WinsRequired,
 		&i.MaxLosses,
+		&i.TwTournamentID,
+		&i.TwTournamentName,
 	)
 	return i, err
 }
@@ -1097,10 +1120,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 ORDER BY om.created_at DESC
 `
 
@@ -1125,6 +1152,8 @@ type ListMarketsRow struct {
 	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
+	TwTournamentID    *id.ID             `json:"tw_tournament_id"`
+	TwTournamentName  pgtype.Text        `json:"tw_tournament_name"`
 }
 
 func (q *Queries) ListMarkets(ctx context.Context) ([]ListMarketsRow, error) {
@@ -1157,6 +1186,8 @@ func (q *Queries) ListMarkets(ctx context.Context) ([]ListMarketsRow, error) {
 			&i.WsGameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
+			&i.TwTournamentID,
+			&i.TwTournamentName,
 		); err != nil {
 			return nil, err
 		}
@@ -1179,10 +1210,14 @@ SELECT
     wsp.target_player_id AS ws_target_player_id,
     wsp.game_ids AS ws_game_ids,
     wsp.wins_required,
-    wsp.max_losses
+    wsp.max_losses,
+    twp.tournament_id AS tw_tournament_id,
+    t.name AS tw_tournament_name
 FROM markets om
 LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
+LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.resolution_match_id = $1
 `
 
@@ -1207,6 +1242,8 @@ type ListMarketsByResolutionMatchRow struct {
 	WsGameIds         []id.ID            `json:"ws_game_ids"`
 	WinsRequired      pgtype.Int4        `json:"wins_required"`
 	MaxLosses         pgtype.Int4        `json:"max_losses"`
+	TwTournamentID    *id.ID             `json:"tw_tournament_id"`
+	TwTournamentName  pgtype.Text        `json:"tw_tournament_name"`
 }
 
 func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error) {
@@ -1239,6 +1276,8 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.WsGameIds,
 			&i.WinsRequired,
 			&i.MaxLosses,
+			&i.TwTournamentID,
+			&i.TwTournamentName,
 		); err != nil {
 			return nil, err
 		}
@@ -1314,6 +1353,78 @@ func (q *Queries) ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMat
 			&i.TargetPlayerIds,
 			&i.AllowOtherPlayers,
 			&i.GameIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenTournamentWinnerMarkets = `-- name: ListOpenTournamentWinnerMarkets :many
+SELECT om.id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+WHERE om.status IN ('open', 'betting_closed') AND twp.tournament_id = $1
+`
+
+// Open tournament_winner markets of one tournament — the completion hook's
+// settle input.
+func (q *Queries) ListOpenTournamentWinnerMarkets(ctx context.Context, tournamentID id.ID) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listOpenTournamentWinnerMarkets, tournamentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenTournamentWinnerMarketsWithState = `-- name: ListOpenTournamentWinnerMarketsWithState :many
+SELECT om.id, twp.tournament_id, t.status AS tournament_status, t.winner_player_id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+JOIN tournaments t ON t.id = twp.tournament_id
+WHERE om.status IN ('open', 'betting_closed')
+`
+
+type ListOpenTournamentWinnerMarketsWithStateRow struct {
+	ID               id.ID  `json:"id"`
+	TournamentID     id.ID  `json:"tournament_id"`
+	TournamentStatus string `json:"tournament_status"`
+	WinnerPlayerID   *id.ID `json:"winner_player_id"`
+}
+
+// The sweep's input: open markets joined with their tournament's current
+// lifecycle state (the tournament tables are live state — they are not part
+// of the settlement replay, so the sweep settles from what they say now).
+func (q *Queries) ListOpenTournamentWinnerMarketsWithState(ctx context.Context) ([]ListOpenTournamentWinnerMarketsWithStateRow, error) {
+	rows, err := q.db.Query(ctx, listOpenTournamentWinnerMarketsWithState)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenTournamentWinnerMarketsWithStateRow{}
+	for rows.Next() {
+		var i ListOpenTournamentWinnerMarketsWithStateRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TournamentID,
+			&i.TournamentStatus,
+			&i.WinnerPlayerID,
 		); err != nil {
 			return nil, err
 		}
@@ -1520,6 +1631,35 @@ func (q *Queries) ListOverdueWinStreakMarketsAtDate(ctx context.Context, closesA
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResolvedTournamentWinnerMarketsByTournament = `-- name: ListResolvedTournamentWinnerMarketsByTournament :many
+SELECT om.id
+FROM markets om
+JOIN market_tournament_winner_params twp ON twp.market_id = om.id
+WHERE om.status = 'resolved' AND twp.tournament_id = $1
+`
+
+// Resolved tournament_winner markets of one tournament — the revert hook's
+// input (a completed tournament whose bracket changed reopens them).
+func (q *Queries) ListResolvedTournamentWinnerMarketsByTournament(ctx context.Context, tournamentID id.ID) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listResolvedTournamentWinnerMarketsByTournament, tournamentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

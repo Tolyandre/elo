@@ -21,12 +21,14 @@ func TestBuildTypedMarketParams_regression(t *testing.T) {
 	}{
 		{"match_winner", "match_winner"},
 		{"win_streak", "win_streak"},
+		{"tournament_winner", "tournament_winner"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			// Must not panic. win_streak needs a valid winsRequired for the int cast.
 			params := buildTypedMarketParams(c.marketType, []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: true, Valid: true},
-				[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
+				[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true},
+				nil, pgtype.Text{String: "Турнир", Valid: true})
 			if params == nil {
 				t.Fatalf("expected non-nil params for %s, got nil", c.marketType)
 			}
@@ -35,9 +37,10 @@ func TestBuildTypedMarketParams_regression(t *testing.T) {
 }
 
 func TestBuildTypedMarketDetailParams_regression(t *testing.T) {
-	for _, marketType := range []string{"match_winner", "win_streak"} {
+	for _, marketType := range []string{"match_winner", "win_streak", "tournament_winner"} {
 		params := buildTypedMarketDetailParams(marketType, []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: true, Valid: true},
-			[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
+			[]id.ID{"00000000-0000-0000-0000-0000000000b1"}, nil, nil, pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true},
+			nil, pgtype.Text{String: "Турнир", Valid: true})
 		if params == nil {
 			t.Errorf("expected non-nil detail params for %s, got nil", marketType)
 		}
@@ -47,7 +50,7 @@ func TestBuildTypedMarketDetailParams_regression(t *testing.T) {
 func TestBuildTypedParamsFillsUnions(t *testing.T) {
 	t.Run("match_winner", func(t *testing.T) {
 		params := buildTypedMarketParams("match_winner", []id.ID{"00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000a2"}, pgtype.Bool{Bool: false, Valid: true},
-			[]id.ID{"00000000-0000-0000-0000-0000000000b1", "00000000-0000-0000-0000-0000000000b2"}, nil, nil, pgtype.Int4{}, pgtype.Int4{})
+			[]id.ID{"00000000-0000-0000-0000-0000000000b1", "00000000-0000-0000-0000-0000000000b2"}, nil, nil, pgtype.Int4{}, pgtype.Int4{}, nil, pgtype.Text{})
 		mw, err := params.AsMatchWinnerParams()
 		if err != nil {
 			t.Fatalf("AsMatchWinnerParams: %v", err)
@@ -59,13 +62,25 @@ func TestBuildTypedParamsFillsUnions(t *testing.T) {
 	t.Run("win_streak", func(t *testing.T) {
 		wsTarget := id.ID("00000000-0000-0000-0000-0000000000a9")
 		params := buildTypedMarketParams("win_streak", nil, pgtype.Bool{}, nil, &wsTarget, []id.ID{"00000000-0000-0000-0000-0000000000b1"},
-			pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true})
+			pgtype.Int4{Int32: 3, Valid: true}, pgtype.Int4{Int32: 1, Valid: true}, nil, pgtype.Text{})
 		ws, err := params.AsWinStreakParams()
 		if err != nil {
 			t.Fatalf("AsWinStreakParams: %v", err)
 		}
 		if ws.TargetPlayerId != wsTarget || ws.WinsRequired != 3 || ws.MaxLosses == nil || *ws.MaxLosses != 1 {
 			t.Errorf("unexpected win_streak params: %+v", ws)
+		}
+	})
+	t.Run("tournament_winner", func(t *testing.T) {
+		twTournament := id.ID("00000000-0000-0000-0000-0000000000c1")
+		params := buildTypedMarketParams("tournament_winner", nil, pgtype.Bool{}, nil, nil, nil,
+			pgtype.Int4{}, pgtype.Int4{}, &twTournament, pgtype.Text{String: "Чемпионат", Valid: true})
+		tw, err := params.AsMarketsTournamentWinnerParams()
+		if err != nil {
+			t.Fatalf("AsMarketsTournamentWinnerParams: %v", err)
+		}
+		if tw.TournamentId != twTournament || tw.TournamentName != "Чемпионат" {
+			t.Errorf("unexpected tournament_winner params: %+v", tw)
 		}
 	})
 }

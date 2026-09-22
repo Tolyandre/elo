@@ -3,7 +3,7 @@ import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
-import { Market, createMarketPromise } from "@/app/api";
+import { Market, createMarketPromise, getTournamentsPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,10 @@ import { GameMultiSelect } from "@/components/game-multi-select";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { formatDateTime } from "@/lib/datetime";
 import { DEFAULT_MAX_GUARANTOR_LOSS } from "./liquidity";
-import { matchWinnerFormIssue } from "./validation";
+import { matchWinnerFormIssue, tournamentWinnerFormIssue } from "./validation";
 
 
 const STORAGE_KEYS = [
@@ -38,6 +40,7 @@ const STORAGE_KEYS = [
     "new-market/streakGameIDs",
     "new-market/winsRequired",
     "new-market/maxLosses",
+    "new-market/tournamentID",
     "new-market/maxGuarantorLoss",
 ] as const;
 
@@ -45,7 +48,7 @@ export default function NewMarketPage() {
     const me = useMe();
     const router = useRouter();
 
-    const [marketType, setMarketType] = useSessionStorage<"match_winner" | "win_streak">("new-market/marketType", "match_winner");
+    const [marketType, setMarketType] = useSessionStorage<"match_winner" | "win_streak" | "tournament_winner">("new-market/marketType", "match_winner");
     const [startsAtMode, setStartsAtMode] = useSessionStorage<"now" | "specific">("new-market/startsAtMode", "now");
     const [startsAt, setStartsAt] = useSessionStorage("new-market/startsAt", "");
     const [closesAt, setClosesAt] = useSessionStorage("new-market/closesAt", "");
@@ -59,6 +62,10 @@ export default function NewMarketPage() {
     const [streakGameIDs, setStreakGameIDs] = useSessionStorage<Base58ID[]>("new-market/streakGameIDs", [] as Base58ID[]);
     const [winsRequired, setWinsRequired] = useSessionStorage("new-market/winsRequired", "3");
     const [maxLosses, setMaxLosses] = useSessionStorage("new-market/maxLosses", "");
+    // tournament_winner: the market resolves on a running tournament — one
+    // "player wins" outcome per participant, no closes_at (the market's fate
+    // is the tournament's).
+    const [tournamentID, setTournamentID] = useSessionStorage<Base58ID | "">("new-market/tournamentID", "" as Base58ID | "");
     // Guarantors are voluntary since ADR-20: the market is created without
     // them, and players back it afterwards (risk + maker fee) from the market
     // page. The form only sets the ceiling on their combined risk.
@@ -67,10 +74,23 @@ export default function NewMarketPage() {
         String(DEFAULT_MAX_GUARANTOR_LOSS),
     );
 
-    const formIssue = marketType === "match_winner" ? matchWinnerFormIssue(targetPlayerIDs.length, allowOtherPlayers) : null;
+    const { data: tournaments } = useAsyncResource(() => getTournamentsPromise(), []);
+    const allTournaments = tournaments ?? [];
+    const runningTournaments = allTournaments.filter(t => t.status === "running");
+    // The preview resolves names/details from the full list — a tournament
+    // that stopped running since the fetch still previews correctly.
+    const selectedTournament = allTournaments.find(t => t.id === tournamentID);
+    const selectedParticipantCount = selectedTournament?.participant_ids?.length ?? 0;
+
+    const formIssue = marketType === "match_winner"
+        ? matchWinnerFormIssue(targetPlayerIDs.length, allowOtherPlayers)
+        : marketType === "tournament_winner"
+            ? tournamentWinnerFormIssue(selectedParticipantCount)
+            : null;
     // No message for an empty selection — an untouched form stays quiet; the
     // disabled submit does the talking.
     const needsPlayers = marketType === "match_winner" && targetPlayerIDs.length === 0;
+    const needsTournament = marketType === "tournament_winner" && !tournamentID;
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -85,17 +105,22 @@ export default function NewMarketPage() {
             const payload: Parameters<typeof createMarketPromise>[0] = {
                 market_type: marketType,
                 starts_at: startsAtMode === "now" ? null : new Date(startsAt).toISOString(),
-                closes_at: new Date(closesAt).toISOString(),
             };
             if (marketType === "match_winner") {
+                payload.closes_at = new Date(closesAt).toISOString();
                 payload.target_player_ids = targetPlayerIDs;
                 payload.allow_other_players = allowOtherPlayers;
                 payload.game_ids = gameIDs;
-            } else {
+            } else if (marketType === "win_streak") {
+                payload.closes_at = new Date(closesAt).toISOString();
                 payload.target_player_id = streakTargetPlayerID || undefined;
                 payload.streak_game_ids = streakGameIDs;
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
+            } else {
+                // tournament_winner: no closes_at — the market's fate is the
+                // tournament's.
+                payload.tournament_id = tournamentID || undefined;
             }
             payload.max_guarantor_loss = parseFloat(maxGuarantorLoss) > 0
                 ? parseFloat(maxGuarantorLoss)
@@ -135,6 +160,28 @@ export default function NewMarketPage() {
                     { id: "preview:other" as Base58ID, kind: "other" as const, player_id: null, name: "Ничья", probability, shares: 0, pool: 0 },
                 ],
                 params: { target_player_ids: targetPlayerIDs, allow_other_players: allowOtherPlayers, game_ids: gameIDs },
+            };
+        }
+        if (marketType === "tournament_winner") {
+            // One outcome per participant, uniform probabilities; no deadline —
+            // the market lives as long as the tournament.
+            const participants = selectedTournament?.participant_ids ?? [];
+            const n = Math.max(participants.length, 1);
+            const probability = 1 / n;
+            return {
+                id: "" as Base58ID, market_type: marketType, status: "open",
+                starts_at: startsAtISO, closes_at: null,
+                created_at: null, resolved_at: null,
+                liquidity_b: 0,
+                max_guarantor_loss: previewL,
+                outcomes: participants.map((id) => ({
+                    id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
+                    probability, shares: 0, pool: 0,
+                })),
+                params: {
+                    tournament_id: tournamentID || ("" as Base58ID),
+                    tournament_name: selectedTournament?.name ?? "",
+                },
             };
         }
         return {
@@ -177,6 +224,7 @@ export default function NewMarketPage() {
                         <SelectContent>
                             <SelectItem value="match_winner">Победитель партии</SelectItem>
                             <SelectItem value="win_streak">Серия побед</SelectItem>
+                            <SelectItem value="tournament_winner">Победитель турнира</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -208,17 +256,47 @@ export default function NewMarketPage() {
                     )}
                 </div>
 
-                <div className="space-y-1.5">
-                    <Label htmlFor="closes_at">Закрытие</Label>
-                    <input
-                        id="closes_at"
-                        type="datetime-local"
-                        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                        value={closesAt}
-                        onChange={e => setClosesAt(e.target.value)}
-                        required
-                    />
-                </div>
+                {marketType !== "tournament_winner" && (
+                    <div className="space-y-1.5">
+                        <Label htmlFor="closes_at">Закрытие</Label>
+                        <input
+                            id="closes_at"
+                            type="datetime-local"
+                            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                            value={closesAt}
+                            onChange={e => setClosesAt(e.target.value)}
+                            required
+                        />
+                    </div>
+                )}
+
+                {marketType === "tournament_winner" && (
+                    <div className="space-y-1.5">
+                        <Label>Турнир (идёт сейчас)</Label>
+                        <Select value={tournamentID} onValueChange={v => setTournamentID(v as Base58ID)}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Выберите турнир" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {runningTournaments.length === 0 && (
+                                    <div className="px-3 py-2 text-sm text-muted-foreground">Нет идущих турниров</div>
+                                )}
+                                {runningTournaments.map(t => (
+                                    <SelectItem key={t.id} value={t.id}>
+                                        {t.name} ({t.participant_ids?.length ?? 0} уч.)
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                            Рынок закроется, когда турнир завершится или будет отменён — ставки вернутся при отмене.
+                            {selectedTournament?.grand_final_deadline && (
+                                <> Дедлайн гранд-финала: {formatDateTime(selectedTournament.grand_final_deadline)}.</>
+                            )}
+                        </p>
+                        {formIssue && <p className="text-xs text-destructive">{formIssue}</p>}
+                    </div>
+                )}
 
                 {marketType === "match_winner" && (
                     <>
@@ -314,7 +392,7 @@ export default function NewMarketPage() {
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
-                <Button type="submit" disabled={submitting || !canEdit || formIssue !== null || needsPlayers} className="w-full">
+                <Button type="submit" disabled={submitting || !canEdit || formIssue !== null || needsPlayers || needsTournament} className="w-full">
                     {submitting ? "Создание..." : "Создать"}
                 </Button>
             </form>

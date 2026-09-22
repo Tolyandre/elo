@@ -43,11 +43,20 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 
 	q := s.Queries.WithTx(tx)
 
+	// A tournament_winner market has no deadline of its own — it resolves when
+	// the tournament completes and is refunded when it is cancelled. Infinity
+	// keeps the NOT NULL column happy while making the expiry scheduler never
+	// pick the market up; the API reports closes_at = null for the type.
+	closesAt := pgtype.Timestamptz{Time: params.ClosesAt, Valid: true}
+	if params.MarketType == "tournament_winner" {
+		closesAt = pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+	}
+
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
 		ID:               params.ID,
 		MarketType:       params.MarketType,
 		StartsAt:         pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
-		ClosesAt:         pgtype.Timestamptz{Time: params.ClosesAt, Valid: true},
+		ClosesAt:         closesAt,
 		CreatedBy:        params.CreatedBy,
 		LiquidityB:       0,
 		MaxGuarantorLoss: maxGuarantorLoss,

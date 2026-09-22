@@ -651,7 +651,10 @@ func newArenaService(pool *pgxpool.Pool) *elo.ArenaService {
 
 func newMatchService(pool *pgxpool.Pool) elo.IMatchService {
 	arenaSvc := newArenaService(pool)
-	return elo.NewMatchService(pool, elo.NewMarketService(pool), arenaSvc, elo.NewTournamentService(pool, arenaSvc))
+	marketSvc := elo.NewMarketService(pool)
+	// The market service is shared (as in api.New): the tournament service's
+	// tournament-winner hooks settle through the same settlement path.
+	return elo.NewMatchService(pool, marketSvc, arenaSvc, elo.NewTournamentService(pool, arenaSvc, marketSvc))
 }
 
 func newTagService(pool *pgxpool.Pool) elo.ITagService {

@@ -18,12 +18,13 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	var gameID *string
 	var playerID *string
 	var clubID *string
+	var tournamentID *string
 	var noClub bool
 	var cursorDate pgtype.Timestamptz
 
 	if params.Next != nil && *params.Next != "" {
 		var err error
-		gameID, playerID, clubID, noClub, cursorDate, err = decodeMatchCursor(*params.Next)
+		gameID, playerID, clubID, tournamentID, noClub, cursorDate, err = decodeMatchCursor(*params.Next)
 		if err != nil {
 			return ListMatches400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
 		}
@@ -46,6 +47,10 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 				clubID = &c
 			}
 		}
+		if params.TournamentId != nil {
+			t := string(parseIDParam(*params.TournamentId))
+			tournamentID = &t
+		}
 	}
 
 	limit := int32(30)
@@ -54,12 +59,13 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}
 
 	rows, err := s.api.MatchService.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
-		GameID:     idPtr(gameID),
-		PlayerID:   idPtr(playerID),
-		ClubID:     idPtr(clubID),
-		NoClub:     pgtype.Bool{Bool: noClub, Valid: noClub},
-		CursorDate: cursorDate,
-		Limit:      limit,
+		GameID:       idPtr(gameID),
+		PlayerID:     idPtr(playerID),
+		ClubID:       idPtr(clubID),
+		NoClub:       pgtype.Bool{Bool: noClub, Valid: noClub},
+		TournamentID: idPtr(tournamentID),
+		CursorDate:   cursorDate,
+		Limit:        limit,
 	})
 	if err != nil {
 		return nil, err
@@ -139,7 +145,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	var next *string
 	if int32(len(order)) == limit {
 		lastID := order[len(order)-1]
-		token := encodeMatchCursor(gameID, playerID, clubID, noClub, matchesMap[lastID].Date)
+		token := encodeMatchCursor(gameID, playerID, clubID, tournamentID, noClub, matchesMap[lastID].Date)
 		next = &token
 	}
 

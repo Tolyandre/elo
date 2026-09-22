@@ -125,6 +125,7 @@ export type MarketDetail = components["schemas"]["MarketDetail"];
 export type MarketOutcome = components["schemas"]["MarketOutcome"];
 export type MatchWinnerParams = components["schemas"]["MatchWinnerParams"];
 export type WinStreakParams = components["schemas"]["WinStreakParams"];
+export type TournamentWinnerParams = components["schemas"]["TournamentWinnerParams"];
 export type SettlementDetail = components["schemas"]["SettlementDetail"];
 export type MarketGuarantee = components["schemas"]["MarketGuarantee"];
 export type PlayerStateChange = components["schemas"]["PlayerStateChange"];
@@ -383,6 +384,7 @@ export async function getMatchesPagePromise(params?: {
     player_id?: string;
     game_id?: string;
     club_id?: string;
+    tournament_id?: string;
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
@@ -395,6 +397,7 @@ export async function getMatchesPagePromise(params?: {
         if (params?.player_id) query.player_id = params.player_id;
         if (params?.game_id) query.game_id = params.game_id;
         if (params?.club_id) query.club_id = params.club_id;
+        if (params?.tournament_id) query.tournament_id = params.tournament_id;
     }
     if (params?.limit) query.limit = params.limit;
 
@@ -689,9 +692,11 @@ export async function getMarketProbabilityHistoryPromise(id: Base58ID): Promise<
 }
 
 export async function createMarketPromise(payload: {
-    market_type: "match_winner" | "win_streak";
+    market_type: "match_winner" | "win_streak" | "tournament_winner";
     starts_at: string | null;
-    closes_at: string;
+    // Required for match_winner/win_streak; tournament_winner markets take no
+    // deadline — their fate is the tournament's.
+    closes_at?: string;
     target_player_ids?: Base58ID[];
     allow_other_players?: boolean;
     game_ids?: Base58ID[];
@@ -699,6 +704,7 @@ export async function createMarketPromise(payload: {
     streak_game_ids?: Base58ID[];
     wins_required?: number | null;
     max_losses?: number | null;
+    tournament_id?: Base58ID;
     max_guarantor_loss?: number;
 }): Promise<{ id: Base58ID }> {
     return (await unwrap(client.POST("/markets", {

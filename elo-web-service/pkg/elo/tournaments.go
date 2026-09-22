@@ -53,10 +53,14 @@ type TournamentService struct {
 	Pool    *pgxpool.Pool
 	Queries *db.Queries
 	Arenas  *ArenaService
+	// Markets is optional (nil in tests that don't exercise markets): the
+	// tournament-winner market hooks — completion settles them, a revert
+	// reopens them, cancellation refunds them.
+	Markets IMarketService
 }
 
-func NewTournamentService(pool *pgxpool.Pool, arenas *ArenaService) *TournamentService {
-	return &TournamentService{Pool: pool, Queries: db.New(pool), Arenas: arenas}
+func NewTournamentService(pool *pgxpool.Pool, arenas *ArenaService, markets IMarketService) *TournamentService {
+	return &TournamentService{Pool: pool, Queries: db.New(pool), Arenas: arenas, Markets: markets}
 }
 
 // TournamentGameInput is one pool entry of a create/update request.
@@ -711,9 +715,38 @@ func (s *TournamentService) CancelTournament(ctx context.Context, tid, actorUser
 		if err := q.SetTournamentStatus(ctx, db.SetTournamentStatusParams{ID: tid, Status: TournamentCancelled}); err != nil {
 			return fmt.Errorf("cancel: %w", err)
 		}
+		// A cancelled tournament refunds its tournament-winner markets: a
+		// tournament always ends in a champion or in cancelled, never in an
+		// eternally open market.
+		if s.Markets != nil {
+			if err := s.Markets.CancelTournamentWinnerMarkets(ctx, q, tid); err != nil {
+				return fmt.Errorf("cancel tournament winner markets: %w", err)
+			}
+		}
 		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 			audit.KindTournamentState, audit.NewTournamentStateDetails(t.Status, TournamentCancelled, audit.StateReasonOrganizer))
 	})
+}
+
+// ValidateTournamentWinnerTarget checks that a tournament can back a
+// tournament_winner market: it must exist, be running (its roster is frozen),
+// and have at least two participants.
+func (s *TournamentService) ValidateTournamentWinnerTarget(ctx context.Context, tid id.ID) error {
+	t, err := s.Queries.GetTournament(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("get tournament: %w", err)
+	}
+	if t.Status != TournamentRunning {
+		return ErrTournamentNotRunning
+	}
+	count, err := s.Queries.CountTournamentParticipants(ctx, tid)
+	if err != nil {
+		return fmt.Errorf("count participants: %w", err)
+	}
+	if count < 2 {
+		return ErrTournamentTooFewParticipants
+	}
+	return nil
 }
 
 // BracketSeat is one seat of the bracket DTO.

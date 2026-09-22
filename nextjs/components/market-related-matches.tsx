@@ -4,6 +4,7 @@ import {
     getMatchByIdPromise,
     Market,
     Match,
+    TournamentWinnerParams,
     WinStreakParams,
 } from "@/app/api";
 import type { Base58ID } from "@/lib/id";
@@ -13,6 +14,7 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 import {
     computeStreakProgress,
     fetchStreakMatches,
+    fetchTournamentMatches,
     streakTimeRow,
     streakWindowEnd,
 } from "@/app/markets/progress";
@@ -115,14 +117,57 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
 }
 
 /**
+ * Tournament-winner section: the match that decided the champion (absent when
+ * an organizer ruling crowned it), followed by every match counted for the
+ * tournament's bracket, as /matches cards.
+ */
+function TournamentWinnerSection({ market, roundToInteger }: { market: Market; roundToInteger: boolean }) {
+    const params = market.params as TournamentWinnerParams | null;
+
+    // The match list changes only when the market's lifecycle moves (the
+    // deciding match flips status/resolution_match_id).
+    const { data: matches, loading } = useAsyncResource(
+        () => (params ? fetchTournamentMatches(params.tournament_id) : Promise.resolve([] as Match[])),
+        [market.id, market.status, market.resolution_match_id],
+    );
+
+    if (!params) return null;
+
+    return (
+        <div className="space-y-3">
+            {market.resolution_match_id && (
+                <ResolvedMatch matchId={market.resolution_match_id} roundToInteger={roundToInteger} />
+            )}
+            <SectionTitle>Матчи турнира:</SectionTitle>
+            {loading && <CardsSkeleton />}
+            {!loading && matches && matches.length === 0 && (
+                <p className="text-sm text-muted-foreground">Пока нет связанных партий</p>
+            )}
+            {matches && matches.length > 0 && (
+                <div className="space-y-3">
+                    {matches.map((m) => (
+                        <MatchCard key={m.id} match={m} roundToInteger={roundToInteger} clickable />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
  * The bottom section of the market view page: the relevant global-arena
  * matches as plain /matches cards (without their related markets). For a
  * match_winner market that is the single resolving match; for a win_streak
- * market it is every match counting toward the streak, headed by the progress.
+ * market it is every match counting toward the streak, headed by the progress;
+ * for a tournament_winner market it is the deciding match (when any) plus all
+ * of the tournament's matches.
  */
 export function MarketRelatedMatches({ market, roundToInteger = false }: { market: Market; roundToInteger?: boolean }) {
     if (market.market_type === "win_streak") {
         return <WinStreakSection market={market} roundToInteger={roundToInteger} />;
+    }
+    if (market.market_type === "tournament_winner") {
+        return <TournamentWinnerSection market={market} roundToInteger={roundToInteger} />;
     }
     if (market.resolution_match_id) {
         return <ResolvedMatch matchId={market.resolution_match_id} roundToInteger={roundToInteger} />;
