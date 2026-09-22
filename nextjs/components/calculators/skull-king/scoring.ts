@@ -1,5 +1,5 @@
 // Scoring primitives for the Skull King calculator. Shared between the live
-// calculator (app/matches/table/skull-king/page.tsx) and the saved-match
+// table view (components/tables/skull-king/game-view.tsx) and the saved-match
 // editor (app/matches/edit).
 //
 // The "live" GameState shape (SkullKingGameState) uses positional rounds and a

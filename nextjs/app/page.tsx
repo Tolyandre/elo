@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
+import { RunningTables } from "@/components/tables/running-tables";
 
 /**
  * Compact «Сейчас» block above the global arena: plain links to the camps
@@ -56,6 +57,10 @@ export default function MainPage() {
     return (
         <>
             <NowBlock />
+            {/* Live tables sit between the «Сейчас» block and the arena tabs:
+                something that needs attention right now (a table waiting for
+                a bid) outranks the tabbed lists below. */}
+            <RunningTables />
             <ArenaView />
         </>
     );

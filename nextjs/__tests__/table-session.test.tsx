@@ -7,9 +7,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act } from "react";
 import type { Base58ID } from "@/lib/id";
 import type { UseTableSSEOptions } from "@/hooks/useTableSSE";
-import { useTableSession, TABLE_SESSION_KEY } from "@/hooks/useTableSession";
+import { useTableSession, TABLE_SESSION_KEY, writeTableSession } from "@/hooks/useTableSession";
 import { renderHook } from "./render-hook";
 import { joinTablePromise, type SkullKingGameState, type TableSummary } from "@/app/api";
+import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
 import { toast } from "sonner";
 
 vi.mock("@/app/api", () => ({
@@ -50,7 +51,7 @@ function makeState(phase: SKState["phase"] = "waiting-for-bids"): SKState {
 function makeTable(overrides: Partial<TableSummary> & { game_state: SkullKingGameState }): TableSummary {
     return {
         id: pid("t1"),
-        game_id: pid("g1"),
+        game_id: GAME_ID_SKULL_KING,
         host_user_id: pid("u1"),
         host_client_token: "",
         connected_player_ids: [],
@@ -61,25 +62,15 @@ function makeTable(overrides: Partial<TableSummary> & { game_state: SkullKingGam
     };
 }
 
-const initial = makeState("setup");
-
-function isSK(state: unknown): state is SKState {
-    return typeof state === "object" && state !== null && "rounds" in state;
-}
-
 const ME = { id: "u1", playerId: pid("p1") };
 
-// Field-level three-way merge over the test game's scalars: fields only one
-// side touched combine; a field both sides changed differently keeps the
-// editor's value (last write wins).
-function mergeSK(before: SKState, local: SKState, fresh: SKState): SKState {
-    const mergeField = <K extends "phase" | "currentRound">(field: K): SKState[K] =>
-        local[field] === before[field] ? fresh[field] : local[field];
-    return { ...fresh, phase: mergeField("phase"), currentRound: mergeField("currentRound") };
-}
+// The hook is game-agnostic: narrowing and the conflict merge are dispatched
+// by the adopted table's game_id (mergeTableStates → mergeSkullKingStates),
+// so every scenario below runs a Skull King table and relies on the real
+// per-game merge.
 
 function useSKTableSession(me: { id?: string; playerId?: Base58ID } = ME) {
-    return useTableSession<SKState>({ initial, isGameState: isSK, me, mergeStates: mergeSK });
+    return useTableSession({ me });
 }
 
 /** Configures the mocked SSE hook and captures its options (onTableGone). */
@@ -102,12 +93,44 @@ function mockSSE(overrides: { closed?: boolean } = {}) {
     };
 }
 
+/**
+ * Host resume in miniature: the persisted session hydrates, then the first
+ * server snapshot is adopted — the sequence the tables page guarantees before
+ * any host action becomes possible (the shell shows its connecting card
+ * until the table is adopted).
+ */
+async function renderHostWithTable() {
+    localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
+    const h = renderHook(() => useSKTableSession());
+    vi.mocked(getTablePromise).mockResolvedValue(makeTable({ game_state: makeState() }));
+    await act(async () => {
+        await h.current.value.refreshFromServer();
+    });
+    return h;
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
 });
 
 describe("useTableSession", () => {
+    it("writeTableSession persists a host session the hook hydrates", () => {
+        mockSSE();
+        act(() => {
+            writeTableSession({ tableId: pid("t9"), isHost: true, myPlayerIndex: null });
+        });
+
+        expect(JSON.parse(localStorage.getItem(TABLE_SESSION_KEY)!)).toEqual({
+            tableId: "t9",
+            isHost: true,
+            myPlayerIndex: null,
+        });
+
+        const h = renderHook(() => useSKTableSession());
+        expect(h.current.value.session).toEqual({ tableId: pid("t9"), isHost: true, myPlayerIndex: null });
+    });
+
     it("sanitizes the optimistic empty-tableId placeholder into a null session", () => {
         mockSSE();
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: "", isHost: true, myPlayerIndex: null }));
@@ -115,8 +138,8 @@ describe("useTableSession", () => {
         const h = renderHook(() => useSKTableSession());
         expect(h.current.value.hydrated).toBe(true);
         expect(h.current.value.session).toBeNull();
-        // Server-only: no table, so the state stays at the initial setup screen.
-        expect(h.current.value.gameState.phase).toBe("setup");
+        // Server-only: without a bound table there is no game state at all.
+        expect(h.current.value.gameState).toBeNull();
     });
 
     it("hydrates a connected session and waits for the first snapshot", () => {
@@ -125,7 +148,7 @@ describe("useTableSession", () => {
 
         const h = renderHook(() => useSKTableSession());
         expect(h.current.value.session).toEqual({ tableId: pid("t1"), isHost: false, myPlayerIndex: 1 });
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
         expect(h.current.value.awaitingSnapshot).toBe(true);
     });
 
@@ -141,7 +164,7 @@ describe("useTableSession", () => {
         });
 
         expect(h.current.value.session).toEqual({ tableId: pid("t9"), isHost: false, myPlayerIndex: 1 });
-        expect(h.current.value.gameState.phase).toBe("waiting-for-bids");
+        expect(h.current.value.gameState?.phase).toBe("waiting-for-bids");
         expect(h.current.value.connectedPlayerIds).toEqual([pid("p2")]);
         expect(h.current.value.awaitingSnapshot).toBe(false);
         expect(JSON.parse(localStorage.getItem(TABLE_SESSION_KEY)!)).toEqual({
@@ -151,7 +174,7 @@ describe("useTableSession", () => {
         });
     });
 
-    it("resetTableSession clears the session and returns to the initial state", () => {
+    it("resetTableSession clears the session and the game state", () => {
         mockSSE();
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
         const h = renderHook(() => useSKTableSession());
@@ -161,11 +184,11 @@ describe("useTableSession", () => {
         });
 
         expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
         expect(localStorage.getItem(TABLE_SESSION_KEY)).toBeNull();
     });
 
-    it("table gone while connected: toast + clean exit to setup", () => {
+    it("table gone while connected: toast + clean exit to the empty state", () => {
         const sse = mockSSE();
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: false, myPlayerIndex: 0 }));
         const h = renderHook(() => useSKTableSession());
@@ -176,7 +199,7 @@ describe("useTableSession", () => {
 
         expect(toast.info).toHaveBeenCalled();
         expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
         expect(localStorage.getItem(TABLE_SESSION_KEY)).toBeNull();
     });
 
@@ -191,10 +214,10 @@ describe("useTableSession", () => {
 
         expect(toast.info).toHaveBeenCalled();
         expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
     });
 
-    it("closed event (host closed the table) sends connected players to setup", () => {
+    it("closed event (host closed the table) sends connected players to the empty state", () => {
         const sse = mockSSE();
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: false, myPlayerIndex: 0 }));
         const h = renderHook(() => useSKTableSession());
@@ -206,13 +229,25 @@ describe("useTableSession", () => {
 
         expect(toast.info).toHaveBeenCalled();
         expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
+    });
+
+    it("syncHostState without an adopted table is a no-op error", async () => {
+        mockSSE();
+        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
+        const h = renderHook(() => useSKTableSession());
+
+        let result: string | undefined;
+        await act(async () => {
+            result = await h.current.value.syncHostState((prev) => prev);
+        });
+
+        expect(result).toBe("error");
+        expect(updateTableState).not.toHaveBeenCalled();
     });
 
     it("syncHostState merges the edit with the fresh state on conflict and retries once", async () => {
         mockSSE();
-        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
-
         // A player's submit landed between the host's read and write (fresh:
         // round 3, result-entry): the first patch conflicts with version 1,
         // the merge must keep the host's phase edit AND the fresh round, and
@@ -223,10 +258,10 @@ describe("useTableSession", () => {
             .mockResolvedValueOnce({ status: "conflict", table: fresh })
             .mockResolvedValueOnce({ status: "ok", table: done });
 
-        const h = renderHook(() => useSKTableSession());
+        const h = await renderHostWithTable();
         let result: string | undefined;
         await act(async () => {
-            result = await h.current.value.syncHostState((prev) => ({ ...prev, phase: "bid-review" }));
+            result = await h.current.value.syncHostState((prev) => ({ ...(prev as SkullKingGameState), phase: "bid-review" }));
         });
 
         expect(result).toBe("ok");
@@ -238,21 +273,19 @@ describe("useTableSession", () => {
         expect(retried.phase).toBe("bid-review");
         expect(retried.currentRound).toBe(3);
         // The final adopted state is the server's response.
-        expect(h.current.value.gameState.phase).toBe("round-complete");
+        expect(h.current.value.gameState?.phase).toBe("round-complete");
     });
 
     it("syncHostState gives up after a second conflict with a toast", async () => {
         mockSSE();
-        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
-
         const fresh = makeTable({ version: 2, game_state: makeState() });
         vi.mocked(updateTableState)
             .mockResolvedValue({ status: "conflict", table: fresh });
 
-        const h = renderHook(() => useSKTableSession());
+        const h = await renderHostWithTable();
         let result: string | undefined;
         await act(async () => {
-            result = await h.current.value.syncHostState((prev) => ({ ...prev, phase: "bid-review" }));
+            result = await h.current.value.syncHostState((prev) => ({ ...(prev as SkullKingGameState), phase: "bid-review" }));
         });
 
         expect(result).toBe("conflict");
@@ -260,23 +293,21 @@ describe("useTableSession", () => {
         expect(toast.error).toHaveBeenCalled();
     });
 
-    it("mergeStates combines non-overlapping edits and retries with the merged state", async () => {
+    it("the conflict merge combines non-overlapping edits and retries with the merged state", async () => {
         mockSSE();
-        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
-
         // The player's submission moved the round on the server while the host
         // only changed the phase: the merged retry must carry both. (The
         // session is host-side; `before` is the state the edit was based on.)
-        const fresh = makeTable({ version: 2, game_state: { ...makeState("setup"), currentRound: 3 } });
+        const fresh = makeTable({ version: 2, game_state: { ...makeState("waiting-for-bids"), currentRound: 3 } });
         const done = makeTable({ version: 3, game_state: { ...makeState(), currentRound: 3, phase: "bid-review" } });
         vi.mocked(updateTableState)
             .mockResolvedValueOnce({ status: "conflict", table: fresh })
             .mockResolvedValueOnce({ status: "ok", table: done });
 
-        const h = renderHook(() => useSKTableSession());
+        const h = await renderHostWithTable();
         let result: string | undefined;
         await act(async () => {
-            result = await h.current.value.syncHostState((prev) => ({ ...prev, phase: "bid-review" }));
+            result = await h.current.value.syncHostState((prev) => ({ ...(prev as SkullKingGameState), phase: "bid-review" }));
         });
 
         expect(result).toBe("ok");
@@ -287,10 +318,8 @@ describe("useTableSession", () => {
         expect(retried.currentRound).toBe(3); // the player's concurrent change
     });
 
-    it("mergeStates keeps the editor's value in a same-field race", async () => {
+    it("the conflict merge keeps the editor's value in a same-field race", async () => {
         mockSSE();
-        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
-
         // Both sides changed the phase, to different values — a race after the
         // edit dialog already checked the seen value: last write wins.
         const fresh = makeTable({ version: 2, game_state: makeState("result-entry") });
@@ -299,16 +328,16 @@ describe("useTableSession", () => {
             .mockResolvedValueOnce({ status: "conflict", table: fresh })
             .mockResolvedValueOnce({ status: "ok", table: done });
 
-        const h = renderHook(() => useSKTableSession());
+        const h = await renderHostWithTable();
         let result: string | undefined;
         await act(async () => {
-            result = await h.current.value.syncHostState((prev) => ({ ...prev, phase: "bid-review" }));
+            result = await h.current.value.syncHostState((prev) => ({ ...(prev as SkullKingGameState), phase: "bid-review" }));
         });
 
         expect(result).toBe("ok");
         const retried = vi.mocked(updateTableState).mock.calls[1][2] as SkullKingGameState;
         expect(retried.phase).toBe("bid-review");
-        expect(h.current.value.gameState.phase).toBe("bid-review");
+        expect(h.current.value.gameState?.phase).toBe("bid-review");
     });
 
     it("adopting a snapshot with a different host downgrades the host session", async () => {
@@ -393,6 +422,6 @@ describe("useTableSession", () => {
 
         expect(takeoverTablePromise).toHaveBeenCalledWith(pid("t1"));
         expect(h.current.value.session).toEqual({ tableId: pid("t1"), isHost: true, myPlayerIndex: null });
-        expect(h.current.value.gameState.phase).toBe("waiting-for-bids");
+        expect(h.current.value.gameState?.phase).toBe("waiting-for-bids");
     });
 });

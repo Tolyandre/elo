@@ -7,10 +7,10 @@ import { useTablesLobbySSE } from "@/hooks/useTableSSE";
 import { ActiveTables } from "./active-tables";
 
 /**
- * The running-tables lobby shown at the top of the matches page: every active
- * table (any game) with a join button that deep-links into the game page.
- * Hidden entirely when nothing is running. Refreshes on the tables-lobby SSE
- * signal so tables appear/disappear live.
+ * The running-tables lobby on the main page, between the «Сейчас» block and
+ * the arena tabs: every active table (any game) with a join button that
+ * deep-links into the tables page. Hidden entirely when nothing is running.
+ * Refreshes on the tables-lobby SSE signal so tables appear/disappear live.
  */
 export function RunningTables() {
     const me = useMe();

@@ -31,6 +31,9 @@ export const PAGES = [
     "/markets/view",
     "/matches/edit",
     "/matches/new",
+    "/matches/table",
+    // Legacy per-game table pages, now client-side redirect stubs to
+    // /matches/table; precached so old offline links still resolve.
     "/matches/table/iaww",
     "/matches/table/skull-king",
     "/matches/view",

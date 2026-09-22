@@ -7,21 +7,13 @@ import { act } from "react";
 import type { Base58ID } from "@/lib/id";
 import { useTableSession, TABLE_SESSION_KEY } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
-import { GAME_ID_SKULL_KING, GAME_ID_IAWW } from "@/lib/game-apps";
+import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
 import { renderHook } from "./render-hook";
 import { getTablePromise, joinTablePromise, type SkullKingGameState, type TableSummary } from "@/app/api";
 import { toast } from "sonner";
 
-// The router mock covers the only remaining router use: the cross-game
-// redirect. Same-route param changes go through the History API (ADR-25),
-// so tests drive them via the real jsdom URL.
-const mocks = vi.hoisted(() => ({
-    replace: vi.fn(),
-    push: vi.fn(),
-}));
-
 vi.mock("next/navigation", () => ({
-    useRouter: () => ({ replace: mocks.replace, push: mocks.push }),
+    useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
 vi.mock("@/app/api", () => ({
@@ -74,30 +66,14 @@ function makeTable(overrides: Partial<TableSummary> & { game_state?: SKState } =
     };
 }
 
-const initial = makeState("setup");
-
-function isSK(state: unknown): state is SKState {
-    return typeof state === "object" && state !== null && "rounds" in state;
-}
-
 const ME = { isAuthenticated: true, id: "uMe", playerId: pid("p1") };
 
-function mergeSK(before: SKState, local: SKState, fresh: SKState): SKState {
-    const mergeField = <K extends "phase" | "currentRound">(field: K): SKState[K] =>
-        local[field] === before[field] ? fresh[field] : local[field];
-    return { ...fresh, phase: mergeField("phase"), currentRound: mergeField("currentRound") };
-}
-
-// The game page in miniature: the session hook plus the URL-bindings hook.
+// The tables page in miniature: the session hook plus the URL-bindings hook.
+// The page serves every game — the game is resolved from the bound table, so
+// the bindings carry no game id.
 function useHarness(me: { isAuthenticated: boolean; id?: string; playerId?: Base58ID }) {
-    const s = useTableSession<SKState>({
-        initial,
-        isGameState: isSK,
-        me: { id: me.id, playerId: me.playerId },
-        mergeStates: mergeSK,
-    });
+    const s = useTableSession({ me: { id: me.id, playerId: me.playerId } });
     useTableDeepLink({
-        gameId: GAME_ID_SKULL_KING,
         hydrated: s.hydrated,
         session: s.session,
         me: { isAuthenticated: me.isAuthenticated, playerId: me.playerId },
@@ -110,7 +86,7 @@ function useHarness(me: { isAuthenticated: boolean; id?: string; playerId?: Base
 
 function setParams(entries: Record<string, string>) {
     const query = new URLSearchParams(entries).toString();
-    window.history.replaceState(null, "", "/matches/table/skull-king" + (query ? `?${query}` : ""));
+    window.history.replaceState(null, "", "/matches/table" + (query ? `?${query}` : ""));
 }
 
 /** Configures the mocked SSE hook as inert. */
@@ -134,19 +110,6 @@ beforeEach(() => {
 });
 
 describe("useTableDeepLink", () => {
-    it("?new=1 discards the stored session once and strips the param", async () => {
-        setParams({ new: "1" });
-        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
-
-        const h = renderHook(() => useHarness(ME));
-
-        expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
-        expect(location.search).toBe("");
-        expect(getTablePromise).not.toHaveBeenCalled();
-        expect(joinTablePromise).not.toHaveBeenCalled();
-    });
-
     it("?table=<id> joins as a connected player and keeps the id in the URL", async () => {
         setParams({ table: "t9" });
         vi.mocked(getTablePromise).mockResolvedValue(makeTable({ connected_player_ids: [pid("p2")] }));
@@ -187,6 +150,18 @@ describe("useTableDeepLink", () => {
         expect(h.current.value.session).toEqual({ tableId: pid("t9"), isHost: true, myPlayerIndex: null });
     });
 
+    it("a stored session resumes on the bare page (no params)", async () => {
+        localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t1"), isHost: true, myPlayerIndex: null }));
+
+        const h = renderHook(() => useHarness(ME));
+        await flush();
+
+        expect(getTablePromise).not.toHaveBeenCalled();
+        expect(joinTablePromise).not.toHaveBeenCalled();
+        expect(h.current.value.session).toEqual({ tableId: pid("t1"), isHost: true, myPlayerIndex: null });
+        expect(location.search).toBe("");
+    });
+
     it("a session on another table is replaced by the linked table", async () => {
         setParams({ table: "t9" });
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("tOld"), isHost: false, myPlayerIndex: 1 }));
@@ -211,15 +186,17 @@ describe("useTableDeepLink", () => {
         expect(h.current.value.awaitingSnapshot).toBe(true);
     });
 
-    it("a linked table of another game redirects to that game's page", async () => {
+    it("a table of an unknown game is treated as missing", async () => {
         setParams({ table: "t9" });
-        vi.mocked(getTablePromise).mockResolvedValue(makeTable({ game_id: GAME_ID_IAWW }));
+        vi.mocked(getTablePromise).mockResolvedValue(makeTable({ game_id: pid("gUnknown") }));
 
-        renderHook(() => useHarness(ME));
+        const h = renderHook(() => useHarness(ME));
         await flush();
 
         expect(joinTablePromise).not.toHaveBeenCalled();
-        expect(mocks.replace).toHaveBeenCalledWith(`/matches/table/iaww?table=${pid("t9")}`, { scroll: false });
+        expect(toast.error).toHaveBeenCalledWith("Стол не найден или уже завершён");
+        expect(location.search).toBe("");
+        expect(h.current.value.session).toBeNull();
     });
 
     it("a missing table toasts, strips the binding, and keeps the untouched session", async () => {
@@ -237,7 +214,7 @@ describe("useTableDeepLink", () => {
         expect(h.current.value.session).toEqual({ tableId: pid("tOld"), isHost: false, myPlayerIndex: 0 });
     });
 
-    it("a bound observer whose table is gone is reset to the setup screen", async () => {
+    it("a bound observer whose table is gone is reset to the empty state", async () => {
         setParams({ table: "tGone" });
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("tGone"), isHost: false, myPlayerIndex: null }));
         vi.mocked(getTablePromise).mockRejectedValue(new Error("404"));
@@ -248,6 +225,6 @@ describe("useTableDeepLink", () => {
         expect(toast.error).toHaveBeenCalledWith("Стол не найден или уже завершён");
         expect(location.search).toBe("");
         expect(h.current.value.session).toBeNull();
-        expect(h.current.value.gameState.phase).toBe("setup");
+        expect(h.current.value.gameState).toBeNull();
     });
 });

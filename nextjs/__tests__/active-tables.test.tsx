@@ -89,7 +89,7 @@ describe("ActiveTables entry buttons", () => {
         act(() => {
             button.click();
         });
-        expect(mocks.push).toHaveBeenCalledWith("/matches/table/skull-king?table=tableSk1");
+        expect(mocks.push).toHaveBeenCalledWith("/matches/table?table=tableSk1");
         view.unmount();
     });
 

@@ -9,7 +9,6 @@ import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { ClubSelect } from "@/components/club-select";
 import { PendingMatchCard } from "@/components/pending-match-card";
-import { RunningTables } from "@/components/tables/running-tables";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,8 +22,9 @@ import type { ArenaMatchFilters, TimelineItem } from "./use-arena-matches";
  * matches with lazily loaded markets, correction cards (global arena only,
  * since corrections settle only there) — over the cursor-paginated arena
  * matches endpoint. The game filter is hidden when the arena's filter pins it
- * to exactly one game. The global arena's timeline also shows the live tables
- * and the offline-sync queue, like /matches did.
+ * to exactly one game. The offline-sync queue rides on top of the global
+ * arena's timeline, like /matches did. (Live tables moved to the main page,
+ * above the tabs.)
  */
 export function ArenaMatchesTab({
     arena,
@@ -82,8 +82,6 @@ export function ArenaMatchesTab({
 
     return (
         <div className="space-y-2">
-            {isGlobal && <RunningTables />}
-
             <Card>
                 <CardContent>
                     <FieldGroup>

@@ -13,23 +13,13 @@ import {
 type Props = {
     tables: TableSummary[];
     loading?: boolean;
-    /** Restrict to one game's tables (a game's setup screen); omit for all. */
-    gameId?: Base58ID;
     me: { isAuthenticated: boolean; playerId: Base58ID | undefined; id?: string };
     title?: string;
 };
 
 /** One-line, game-aware status of a table ("Раунд 3", "Готовы 2/4", …). */
 export function tableStatus(table: TableSummary): string {
-    const state = table.game_state;
-    if ("rounds" in state) {
-        return state.phase === "setup" ? "Ожидание игроков" : `Раунд ${state.currentRound}`;
-    }
-    if ("entries" in state) {
-        const done = state.entries.filter((e) => e.done).length;
-        return `Готовы ${done}/${state.entries.length}`;
-    }
-    return "";
+    return gameAppByTable(table)?.statusText(table.game_state) ?? "";
 }
 
 export function tablePlayerNames(table: TableSummary): string {
@@ -38,21 +28,20 @@ export function tablePlayerNames(table: TableSummary): string {
 
 /**
  * The "Активные столы" lobby card: live tables with their game icon, players
- * and status. All buttons deep-link to the game's page via ?table= (the
- * sticky, shareable binding); entering never claims hosting — the host role
- * is claimed there only via the explicit "Стать ведущим" button (ADR-18).
- * A visitor who cannot join (signed out, no linked player) opens the table
- * read-only as a viewer on the game page.
+ * and status. All buttons deep-link to the unified tables page via ?table=
+ * (the sticky, shareable binding); entering never claims hosting — the host
+ * role is claimed there only via the explicit "Стать ведущим" button
+ * (ADR-18). A visitor who cannot join (signed out, no linked player) opens
+ * the table read-only as a viewer.
  */
 export function ActiveTables({
     tables,
     loading,
-    gameId,
     me,
     title = "Активные столы",
 }: Props) {
     const router = useRouter();
-    const visible = gameId ? tables.filter((t) => t.game_id === gameId) : tables;
+    const visible = tables;
     const canJoin = me.isAuthenticated && !!me.playerId;
 
     if (!loading && visible.length === 0) return null;

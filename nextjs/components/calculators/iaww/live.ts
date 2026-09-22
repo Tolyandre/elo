@@ -3,22 +3,8 @@
 // bridge it to the calculator-side shapes used by the shared scoring UI
 // (components/calculators/iaww) and build the player's one-shot submission.
 
-import type {
-    IawwGameState,
-    TableGameState,
-} from "@/app/api";
+import type { IawwGameState } from "@/app/api";
 import type { CellValue, GameState } from "./scoring";
-
-/** Client-side pre-table state (setup screen); tables are created in scoring. */
-export const initialLiveState: IawwGameState = {
-    phase: "setup",
-    players: [],
-    entries: [],
-};
-
-export function isIawwGameState(state: TableGameState): state is IawwGameState {
-    return "entries" in state;
-}
 
 /** Wire entries → the calculator's map-based GameState for rendering/saving. */
 export function liveToCalc(state: IawwGameState): GameState {

@@ -95,21 +95,17 @@ from *rolling the game back* instead of just freezing it:
    screen (`ApiError.status`). The SSE stream self-heals and resyncs when the
    connection returns; pages show a "no connection" hint while it is down.
 
-### URLs bind a visit to a table (`?new=1` / `?table=`)
+### URLs bind a visit to a table (`?table=`)
 
-- `?table=<id>` is the game page's sticky, shareable binding: the param is
+- `?table=<id>` is the tables page's sticky, shareable binding: the param is
   **never cleared**, so a refresh, a shared link, or a reopened invite all
   open exactly that table. A stored session on the table resumes as-is (a
   host stays host); otherwise the table is joined as a connected player —
   entering never claims hosting. A visitor who cannot join (signed out, no
   linked player) watches read-only as an observer (`GET /tables/{id}` and its
-  SSE stream are public). A link to another game's table redirects to that
-  game's page keeping the param.
-- `?new=1` — the "Создать стол" links on `/matches/new` — is the opposite: it
-  discards any stored session once and shows the setup screen, so **a new
-  table is always created** there, even when the same user (or the same
-  browser) already has one for that game. Several tables per game may
-  coexist — any host. On success the page swaps the URL to `?table=<id>`.
+  SSE stream are public). The game is never part of the URL: the unified
+  `/matches/table` page resolves it from the bound table's `game_id` (the
+  per-game routes survive only as client-side redirect stubs).
 - The header shows one icon per table the user participates in (host,
   connected player, or picked into the roster) — not one per game; same-game
   icons carry a small ordinal badge. `?join=<id>` survives only as a legacy
@@ -153,10 +149,11 @@ from *rolling the game back* instead of just freezing it:
 
 ## Consequences
 
-- Tables are created from `/matches/new` (game picker); the `/calculators`
-  page lists only standalone tools. Running tables appear at the top of
-  `/matches`, and users hosting or connected to a table get a game-icon
-  button in the header next to the offline-mode indicator.
+- Tables are created from `/matches/new` (the «Стол» tab: game + participants
+  in seating order); the `/calculators` page lists only standalone tools.
+  Running tables appear on the main page above the arena tabs, and users
+  hosting or connected to a table get a game-icon button in the header next
+  to the offline-mode indicator.
 - The generic submit endpoint `POST /tables/{id}/submit` carries a per-game
   payload (`oneOf`: skull-king bid / skull-king result / iaww score). The
   Skull King bid/result endpoints are gone; the same validations apply.
@@ -164,3 +161,28 @@ from *rolling the game back* instead of just freezing it:
   routes to the right game app.
 - ADR-15's mode-safety guarantees carry over unchanged to the generic session
   key; its localStorage game-state persistence is superseded by point 6.
+
+## Addendum (2026-09): participants are picked at creation; one page, one shell
+
+- **Tables no longer have a setup phase on the table itself.** The «Стол» tab
+  on `/matches/new` picks the game and the participants in seating order
+  (drag to reorder — the order the game starts with), and the created
+  `game_state` lands directly in the game's first active phase (Skull King:
+  `waiting-for-bids` round 1; IAWW: `scoring`). The per-game setup screens
+  and their player selectors are gone; the `?new=1` flow with them. Tables
+  still sitting in `setup` from before the deploy render a "create a new
+  table" card until they expire (1-day TTL). Backend: no change — the state
+  blob was always created client-side.
+- **The game is never in the URL.** `/matches/table` serves every game and
+  resolves the game from the bound table's `game_id`; the old
+  `/matches/table/<kind>` routes are client-side redirect stubs (the static
+  export has no server redirects).
+- **The shared shell and the game registry** (`components/tables/`): the
+  tables page owns the session, SSE wiring, deep-link bindings, header chrome
+  (takeover, delete), camp selection and the save flow; `useTableSession` is
+  game-agnostic (`game_state: union | null`, conflict merge dispatched by
+  `game_id` via `mergeTableStates` in `lib/game-apps.ts`). `lib/game-apps.ts`
+  holds the per-game data contract (`createInitialState`, `statusText`,
+  `minPlayers`, …); `components/tables/registry.tsx` binds each game to its
+  view component (and optional header extras). A new game ships a registry
+  entry plus a view component — nothing generic changes.

@@ -117,7 +117,7 @@ describe("TableIndicator", () => {
 
         const links = view.links();
         expect(links).toHaveLength(1);
-        expect(links[0].getAttribute("href")).toBe("/matches/table/skull-king?table=tableSk1");
+        expect(links[0].getAttribute("href")).toBe("/matches/table?table=tableSk1");
         expect(links[0].getAttribute("title")).toContain("Skull King");
         view.unmount();
     });
@@ -204,11 +204,11 @@ describe("TableIndicator", () => {
         const links = view.links();
         expect(links).toHaveLength(3);
         const hrefs = links.map((a) => a.getAttribute("href"));
-        expect(hrefs).toContain("/matches/table/skull-king?table=tableSk1");
-        expect(hrefs).toContain("/matches/table/skull-king?table=tableSk2");
-        expect(hrefs).toContain("/matches/table/iaww?table=tableIaww1");
+        expect(hrefs).toContain("/matches/table?table=tableSk1");
+        expect(hrefs).toContain("/matches/table?table=tableSk2");
+        expect(hrefs).toContain("/matches/table?table=tableIaww1");
         // Same-game icons are tellable apart by their ordinal badge.
-        const skLinks = links.filter((a) => a.getAttribute("href")!.includes("skull-king"));
+        const skLinks = links.filter((a) => a.getAttribute("href")!.includes("tableSk"));
         expect(skLinks[0].textContent).toContain("1");
         expect(skLinks[1].textContent).toContain("2");
         view.unmount();

@@ -1,6 +1,6 @@
 // Scoring primitives and shared types for the It's a Wonderful World
-// ("Этот Безумный Мир") calculator. Shared between the live calculator page
-// (app/matches/table/iaww) and the saved-match editor
+// ("Этот Безумный Мир") calculator. Shared between the live table view
+// (components/tables/iaww/game-view.tsx) and the saved-match editor
 // (app/matches/edit).
 //
 // The "live" `GameState` shape mirrors what the in-browser scoring UI holds:

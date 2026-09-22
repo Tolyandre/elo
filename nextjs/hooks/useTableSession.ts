@@ -14,6 +14,7 @@ import {
     takeoverTablePromise,
     updateTableState,
 } from "@/app/api";
+import { mergeTableStates } from "@/lib/game-apps";
 import { getTableClientToken } from "@/lib/table-client";
 import { loadOfflineStore } from "@/app/offline/OfflineContext";
 import { useTableSSE } from "@/hooks/useTableSSE";
@@ -22,7 +23,9 @@ import { useTableSSE } from "@/hooks/useTableSSE";
  * The active table session, persisted in localStorage so a reload keeps the
  * role (ADR-15, generalized in ADR-16). `isHost: true` — the creator who
  * drives the game; `isHost: false` — a connected player who submits their own
- * input and receives full-state snapshots. No session — the setup screen.
+ * input and receives full-state snapshots. No session — the tables page shows
+ * its empty state. The game a session belongs to is resolved from the table's
+ * game_id, never stored here.
  */
 export type TableSession = {
     tableId: Base58ID;
@@ -61,7 +64,7 @@ function readStoredSession(): TableSession | null {
         if (!parsed || typeof parsed.isHost !== "boolean") return null;
         // The optimistic placeholder written while a table is being created
         // (empty tableId) must never survive a reload: the server-assigned id
-        // is unrecoverable, so fall back to the setup screen.
+        // is unrecoverable, so fall back to the empty state.
         if (!parsed.tableId) return null;
         return parsed;
     } catch {
@@ -69,29 +72,25 @@ function readStoredSession(): TableSession | null {
     }
 }
 
-type Options<S extends TableGameState> = {
-    /** The game's initial (setup) state, shown before a table exists. */
-    initial: S;
-    /** Narrows the generic table state union to the game's state. */
-    isGameState: (state: TableGameState) => state is S;
+/**
+ * Stashes a host session for a table created outside the tables page (the
+ * create-table form on /matches/new); the page then resumes it on hydration.
+ */
+export function writeTableSession(session: TableSession): void {
+    localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify(session));
+}
+
+type Options = {
     /** Current user identity — drives hosting drift detection and takeover. */
     me: { id?: string; playerId?: Base58ID };
-    /**
-     * Field-level three-way merge of the host's edit (based on `before`) onto
-     * the fresh server state, returned merged. Fields only one side touched
-     * keep that side, and a same-field race resolves to the editor's
-     * just-confirmed value (last write wins, same as a connected player's
-     * upsert; the informed conflict choice happens in the edit dialog before
-     * saving). This is what makes whole-state host patches safe alongside
-     * player submissions.
-     */
-    mergeStates: (before: S, local: S, fresh: S) => S;
 };
 
 /**
  * Owns the live-table session and the in-memory game state (ADR-16). The
  * server is the single source of truth: no game state is persisted locally —
- * a reload refetches via the SSE connect snapshot.
+ * a reload refetches via the SSE connect snapshot. The game itself is
+ * resolved from the bound table's game_id: narrowing to a game's shape and
+ * the per-game patch merge happen via the game-app registry.
  *
  *   - **Host** (`session.isHost`): edits apply optimistically and sync with
  *     `syncHostState`, which patches with the version it was based on. A
@@ -108,11 +107,11 @@ type Options<S extends TableGameState> = {
  * `closed` (host closed the table) — plus recovery when the table disappears
  * server-side (closed/saved while this client was offline, or expiry).
  */
-export function useTableSession<S extends TableGameState>(options: Options<S>) {
-    const { initial, isGameState, me, mergeStates } = options;
+export function useTableSession(options: Options) {
+    const { me } = options;
     const [hydrated, setHydrated] = useState(false);
     const [session, setSessionState] = useState<TableSession | null>(null);
-    const [gameState, setGameStateValue] = useState<S>(initial);
+    const [gameState, setGameStateValue] = useState<TableGameState | null>(null);
     const [connectedPlayerIds, setConnectedPlayerIds] = useState<Base58ID[]>([]);
     const [table, setTable] = useState<TableSummary | null>(null);
 
@@ -153,17 +152,15 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
         }
     }, []);
 
-    // Adopt a server snapshot: game state (narrowed to the game), connected
-    // players, and the version that later host patches must be based on. The
-    // ref is updated synchronously so an in-flight syncHostState retry sees
-    // the fresh version without waiting for a re-render.
+    // Adopt a server snapshot: game state, connected players, and the version
+    // that later host patches must be based on. The ref is updated
+    // synchronously so an in-flight syncHostState retry sees the fresh
+    // version without waiting for a re-render.
     const adoptTable = useCallback((snapshot: TableSummary) => {
         tableRef.current = snapshot;
         setTable(snapshot);
         setConnectedPlayerIds(snapshot.connected_player_ids);
-        if (isGameState(snapshot.game_state)) {
-            setGameStateValue(snapshot.game_state);
-        }
+        setGameStateValue(snapshot.game_state);
         // Hosting drift: another user took the table over, or — the more
         // common case — the same user claimed hosting from another device
         // (host_user_id unchanged, but the claim token moved). Step down to a
@@ -190,18 +187,18 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
                 ? "Ведение передано другому игроку"
                 : "Ведущий режим открыт на другом устройстве");
         }
-    }, [isGameState, clientToken]);
+    }, [clientToken]);
 
-    // Exit to a clean setup screen in any mode. The caller is responsible for
+    // Exit to the empty state in any mode. The caller is responsible for
     // the server-side table teardown (host delete / save).
     const resetTableSession = useCallback(() => {
         sessionRef.current = null;
         setSessionState(null);
-        setGameStateValue(initial);
+        setGameStateValue(null);
         setConnectedPlayerIds([]);
         setTable(null);
         localStorage.removeItem(TABLE_SESSION_KEY);
-    }, [initial]);
+    }, []);
 
     // Join a table as a connected player: server-side join, then remember the
     // session and adopt the server's state. Rejects (throws) on API errors so
@@ -242,7 +239,7 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
     );
 
     // The table vanished server-side (deleted while offline, expired). Never
-    // a reason to strand the user on a frozen screen: back to the setup.
+    // a reason to strand the user on a frozen screen: back to the empty state.
     const handleTableGone = useCallback(() => {
         if (!sessionRef.current) return;
         toast.info("Стол закрыт или партия уже сохранена");
@@ -261,7 +258,7 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
     }, [sse.table, adoptTable]);
 
     // The host tore the table down without saving: connected players return
-    // to the setup screen instead of discovering a 404 later.
+    // to the lobby instead of discovering a 404 later.
     useEffect(() => {
         if (!sse.closed) return;
         if (sessionRef.current && !sessionRef.current.isHost) {
@@ -283,10 +280,12 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
     // server state via the game's mergeStates (fields only one side touched
     // combine; a same-field race keeps the editor's value).
     const syncHostState = useCallback(
-        async (updater: (prev: S) => S): Promise<TableStateUpdate["status"] | "error"> => {
+        async (updater: (prev: TableGameState) => TableGameState): Promise<TableStateUpdate["status"] | "error"> => {
             const s = sessionRef.current;
-            if (!(s?.isHost && s.tableId)) return "error";
+            const gameId = tableRef.current?.game_id;
+            if (!(s?.isHost && s.tableId) || !gameId) return "error";
             const before = gameStateRef.current;
+            if (before === null) return "error";
             let next = updater(before);
             setGameStateValue(next);
             let baseVersion = tableRef.current?.version ?? 1;
@@ -302,7 +301,6 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
                     adoptTable(result.table);
                     return "ok";
                 }
-                if (!isGameState(result.table.game_state)) return "error";
                 const fresh = result.table.game_state;
                 baseVersion = result.table.version;
                 // Merge instead of overwrite: the server moved under us (a
@@ -310,7 +308,7 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
                 // same-field race keeps the editor's just-confirmed value —
                 // the informed choice happened in the edit dialog; this is
                 // last-write-wins, same as a player's upsert.
-                next = mergeStates(before, next, fresh);
+                next = mergeTableStates(gameId, before, next, fresh);
                 setGameStateValue(next);
                 // No adoptTable here: the conflict snapshot would wipe the
                 // merged edit from the grid while the retry is in flight.
@@ -318,7 +316,7 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
             toast.error("Не удалось сохранить: состояние изменилось, попробуйте ещё раз");
             return "conflict";
         },
-        [adoptTable, isGameState, mergeStates],
+        [adoptTable],
     );
 
     // Manual refetch (recovery from 409s on submits, catch-up after reconnect).
@@ -357,7 +355,6 @@ export function useTableSession<S extends TableGameState>(options: Options<S>) {
         session,
         setSession,
         gameState,
-        setGameState: setGameStateValue,
         table,
         connectedPlayerIds,
         resetTableSession,

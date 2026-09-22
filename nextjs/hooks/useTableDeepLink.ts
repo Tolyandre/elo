@@ -2,7 +2,6 @@
 import type { Base58ID } from "@/lib/id";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getTablePromise, TableSummary } from "@/app/api";
 import { gameAppByGameId } from "@/lib/game-apps";
@@ -11,8 +10,6 @@ import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import type { TableSession } from "@/hooks/useTableSession";
 
 type Options = {
-    /** The game this page hosts; a link to another game's table redirects there. */
-    gameId: Base58ID;
     hydrated: boolean;
     session: TableSession | null;
     me: { isAuthenticated: boolean; playerId?: Base58ID };
@@ -31,40 +28,24 @@ function clearTableParams() {
 }
 
 /**
- * URL bindings of a game-table page (ADR-18).
+ * URL bindings of the unified table page (ADR-18) — one page serves every
+ * game; the game is resolved from the bound table's game_id.
  *
- *   - `?new=1` (the "Создать стол" links on /matches/new): this visit must
- *     produce a NEW table, so any stored session is discarded once and the
- *     param is stripped — the setup screen stays until the page's create
- *     action succeeds and swaps the URL to `?table=<id>`. Several tables of
- *     the same game may coexist (any host, any game).
  *   - `?table=<id>`: the sticky, shareable binding — the param is never
  *     cleared, so a refresh or a shared link reopens exactly that table. A
  *     stored session on the table resumes as-is (host stays host); otherwise
  *     the table is joined as a connected player, or — for a visitor who
  *     cannot join (signed out, no linked player) — watched read-only as an
- *     observer (GET /tables/:id and its SSE stream are public). A table of
- *     another game redirects to that game's page keeping the param.
+ *     observer (GET /tables/:id and its SSE stream are public).
  *   - `?join=<id>`: legacy alias of `?table=`, normalized to it on entry.
+ *   - No param: a stored session resumes (the "Вернуться" lobby path); the
+ *     empty state is shown otherwise.
  */
 export function useTableDeepLink(options: Options): void {
-    const { gameId, hydrated, session, me, setSession, joinTable, resetTableSession } = options;
-    const router = useRouter();
+    const { hydrated, session, me, setSession, joinTable, resetTableSession } = options;
     // Param reads/writes go through lib/url-state (ADR-25): the router is
-    // blind to same-route query changes on the static export. Only the
-    // cross-game redirect below still uses the router (cross-route works).
+    // blind to same-route query changes on the static export.
     const searchParams = useUrlQuery();
-
-    // Force-new entry (/matches/new): a new table must always be created
-    // here, so a stored session (this game's or another game's) is discarded
-    // once, and the param is stripped — the setup screen takes over.
-    const isNew = searchParams.get("new") != null;
-    useEffect(() => {
-        if (!isNew || !hydrated) return;
-        resetTableSession();
-        setUrlQuery((params) => params.delete("new"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per ?new=1 entry
-    }, [isNew, hydrated]);
 
     // Legacy ?join= is normalized to the sticky ?table= form right away, so
     // after the join the URL is already shareable.
@@ -121,13 +102,9 @@ export function useTableDeepLink(options: Options): void {
                 return;
             }
             if (cancelled) return;
-            // A shared link to another game's table opens that game's page.
-            if (table.game_id !== gameId) {
-                const app = gameAppByGameId(table.game_id);
-                if (app) {
-                    router.replace(`${app.href}?table=${tableParam}`, { scroll: false });
-                    return;
-                }
+            if (!gameAppByGameId(table.game_id)) {
+                // A table of an unknown game (older client, removed game)
+                // cannot be rendered — treat it like a missing table.
                 missingReportedRef.current = tableParam;
                 toast.error("Стол не найден или уже завершён");
                 if (alreadyHere) resetTableSession();
