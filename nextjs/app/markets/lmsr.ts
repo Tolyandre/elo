@@ -145,11 +145,10 @@ export function averagePricePerShare(q: number[], b: number, i: number, amount: 
 
 /**
  * The quote a buy card shows for the pending buy: the all-in per-share price
- * (LMSR cost + maker fee — the "за 1 голос" caption) and the ×multiplier
- * (voices per 1 elo) — exact reciprocals, so multiplier × price = 1. `fee` is
- * the maker-fee part of ONE share's price, in the same per-share units as
- * `pricePerShare` (the caption "в т.ч. комиссия" sits under that price, so it
- * must never exceed it; the whole buy's fee is fee × the delivered shares).
+ * (LMSR cost + maker fee) and the ×multiplier (voices per 1 elo) — exact
+ * reciprocals, so multiplier × price = 1. `fee` is the WHOLE buy's maker fee
+ * (ADR-20) — what the guarantor earns on the pending 1-elo stake, shown by
+ * the "Поручители заработают" caption.
  * The buy stakes a fixed 1 elo that covers cost AND fee (the share count
  * solves cost(s) + fee(s) = 1 by bisection — both terms are increasing in s,
  * and p_u ≤ 1 bounds the solution within [0, amount]).
@@ -163,7 +162,7 @@ export function buyQuote(
     const shares = sharesForTotal(q, b, i, 1, feeRate);
     const fee = buyFee(q, b, i, shares, feeRate);
     const pricePerShare = 1 / shares;
-    return { pricePerShare, multiplier: shares, fee: fee / shares };
+    return { pricePerShare, multiplier: shares, fee };
 }
 
 /**

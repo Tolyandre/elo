@@ -80,7 +80,6 @@ function OutcomeColumn({
     label,
     titleColor,
     probability,
-    pricePerShare,
     multiplier,
     fee,
     myStaked,
@@ -94,11 +93,9 @@ function OutcomeColumn({
     titleColor?: string;
     /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
     probability: number;
-    /** All-in elo per share of the pending 1-elo buy (LMSR cost + maker fee) — the "за 1 голос" price. */
-    pricePerShare?: number;
     /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
     multiplier?: number;
-    /** Maker fee part of one share's price (ADR-20), same per-voice units as pricePerShare. */
+    /** Total maker fee of the pending 1-elo buy (ADR-20) — the guarantor's take. */
     fee?: number;
     myStaked?: number;
     myShares?: number;
@@ -107,35 +104,22 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
-    // The card quotes the pending buy — a ×multiplier headline (voices per
-    // elo) over its per-share price; the two are reciprocals. The button
+    // The card quotes the pending buy as a ×multiplier headline (voices per
+    // elo) plus the total maker fee the guarantor earns on it. The button
     // always stakes a fixed 1 elo. In a saturated market the underdog share
     // costs a float-dust ~0: its true multiplier (~×1e16) is capped at
-    // ×1000+ and the sub-0.005 price renders as <0.01 — the buy itself still
-    // charges the exact LMSR cost.
+    // ×1000+ — the buy itself still charges the exact LMSR cost.
     const headline = multiplier != null && Number.isFinite(multiplier)
         ? multiplier > 1000
             ? "×1000+"
             : `×${multiplier.toFixed(2)}`
         : probability.toFixed(2);
-    const quotePrice = pricePerShare != null && Number.isFinite(pricePerShare)
-        ? pricePerShare > 0 && pricePerShare < 0.005
-            ? "<0.01"
-            : formatAmount(pricePerShare)
-        : null;
-    const headlineCaption = quotePrice != null ? `${quotePrice} за 1 голос` : null;
     const buyLabel = "Поставить 1";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
             <div className="text-center min-w-0">
                 <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
                 <p className="text-2xl font-bold leading-tight">{headline}</p>
-                {headlineCaption && (
-                    <p className="text-xs text-muted-foreground leading-tight">{headlineCaption}</p>
-                )}
-                {fee != null && fee >= 0.005 && (
-                    <p className="text-xs text-muted-foreground leading-tight">в т.ч. комиссия {formatAmount(fee)}</p>
-                )}
             </div>
             <div className="text-sm space-y-1">
                 {myShares !== undefined && myShares > 0 && (
@@ -154,11 +138,18 @@ function OutcomeColumn({
             {onBuy && (
                 <Button
                     size="sm"
-                    className="w-full mt-auto"
+                    className="w-full mt-auto h-auto py-1.5"
                     onClick={onBuy}
                     disabled={!canBuy || buying}
                 >
-                    {buying ? "..." : buyLabel}
+                    {buying ? "..." : (
+                        <span className="flex flex-col items-center leading-tight">
+                            <span>{buyLabel}</span>
+                            {fee != null && fee >= 0.005 && (
+                                <span className="text-[10px] font-normal opacity-80">Поручители заработают {formatAmount(fee)}</span>
+                            )}
+                        </span>
+                    )}
                 </Button>
             )}
         </div>
@@ -322,7 +313,6 @@ function MarketPageContent() {
                             label={nameOf(o)}
                             titleColor={colors.get(o.id)}
                             probability={o.probability}
-                            pricePerShare={quote.pricePerShare}
                             multiplier={quote.multiplier}
                             fee={quote.fee}
                             myStaked={stakedByOutcome.get(o.id)}
