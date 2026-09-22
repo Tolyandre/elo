@@ -1,0 +1,108 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/nextjs/node_modules
+/nextjs/.pnp
+/nextjs/.pnp.*
+/nextjs/.yarn/*
+!/nextjs/.yarn/patches
+!/nextjs/.yarn/plugins
+!/nextjs/.yarn/releases
+!/nextjs/.yarn/versions
+
+# testing
+/nextjs/coverage
+
+# next.js
+/nextjs/.next/
+/nextjs/out/
+
+# production
+/nextjs/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+/nextjs/npm-debug.log*
+/nextjs/yarn-debug.log*
+/nextjs/yarn-error.log*
+/nextjs/.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!/nextjs/.env.local
+!/elo-web-service/.env.sample
+!/elo-web-service/.env.docker
+
+# vercel
+/nextjs/.vercel
+
+# typescript
+/nextjs/*.tsbuildinfo
+/nextjs/next-env.d.ts
+
+# google service account key
+/google-service-account-key.json
+
+# nix
+/nix/result
+/result
+
+# devenv state + local overrides (devenv.lock is committed)
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# Tool symlinks recreated by the devenv shell (see enterShell in devenv.nix)
+/.nix-tools/
+
+# golang
+/elo-web-service/__debug_bin*
+/elo-web-service/elo-web-service
+
+# temporary assets
+/elo-web-service/assets
+
+# generated artifacts
+/openapi/bundled.json
+
+# generated service worker (built by @serwist/next during pnpm build)
+nextjs/public/sw.js
+nextjs/public/sw.js.map
+
+# zcode plans
+.zcode
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
