@@ -87,7 +87,7 @@ describe('sharesForAmount', () => {
     })
 })
 
-describe('buy mode price equivalence', () => {
+describe('LMSR path independence', () => {
     it('buying k shares at once costs the same as k single-share buys', () => {
         const q = [1, 0.5, 0.25]
         const b = 8
@@ -214,8 +214,8 @@ describe('payoutMultiplier', () => {
 
 describe('averagePricePerShare', () => {
     it('multiplies out to the amount with the multiplier', () => {
-        // The "за 1 голос" caption in the amount mode must agree with the
-        // ×multiplier headline: multiplier × average price = the 1-elo stake.
+        // The "за 1 голос" caption must agree with the ×multiplier headline:
+        // multiplier × average price = the 1-elo stake.
         const q = [3.5, 1.25, 0]
         const b = 8
         const shares = sharesForAmount(q, b, 2, 1)
@@ -251,43 +251,24 @@ describe('buyQuote', () => {
         { q: [3.5, 1.25, 0], b: 8 },
         { q: [10, -2], b: 23 },
     ])('quotes the pending buy: multiplier × price = 1 for q=$q b=$b', ({ q, b }) => {
-        for (const mode of ['share', 'amount'] as const) {
-            const { pricePerShare, multiplier } = buyQuote(q, b, 0, mode)
-            expect(Number.isFinite(pricePerShare)).toBe(true)
-            expect(multiplier * pricePerShare).toBeCloseTo(1, 10)
-        }
+        const { pricePerShare, multiplier } = buyQuote(q, b, 0)
+        expect(Number.isFinite(pricePerShare)).toBe(true)
+        expect(multiplier * pricePerShare).toBeCloseTo(1, 10)
     })
 
-    it('in the share mode quotes the single share: price = marginal cost, multiplier = 1/price', () => {
-        // The reported bug: at p=0.5 with b=1/ln2 the card said ×1.58 (a whole
-        // 1-elo buy) next to "0.58 за 1 голос", but the button buys one share
-        // — per elo that is 1/0.58 ≈ ×1.72.
+    it('quotes the 1-elo buy: multiplier = sharesForAmount, price = its average', () => {
         const q = [0, 0]
         const b = 1 / Math.LN2
-        const { pricePerShare, multiplier } = buyQuote(q, b, 0, 'share')
-        expect(pricePerShare).toBeCloseTo(costForShares(q, b, 0, 1), 12)
-        expect(pricePerShare).toBeCloseTo(0.585, 2)
-        expect(multiplier).toBeCloseTo(1 / pricePerShare, 12)
-    })
-
-    it('in the amount mode quotes the 1-elo buy: multiplier = sharesForAmount, price = its average', () => {
-        const q = [0, 0]
-        const b = 1 / Math.LN2
-        const { pricePerShare, multiplier } = buyQuote(q, b, 0, 'amount')
+        const { pricePerShare, multiplier } = buyQuote(q, b, 0)
         expect(multiplier).toBeCloseTo(sharesForAmount(q, b, 0, 1), 12)
         expect(multiplier).toBeCloseTo(1.585, 2)
         expect(pricePerShare).toBeCloseTo(averagePricePerShare(q, b, 0, 1), 12)
-        // the price walk makes a whole 1-elo buy pricier per share than its
-        // first share, so the amount-mode multiplier stays below the share-mode one
-        expect(multiplier).toBeLessThan(buyQuote(q, b, 0, 'share').multiplier)
     })
 
     it('returns NaNs for unusable inputs', () => {
-        for (const mode of ['share', 'amount'] as const) {
-            expect(buyQuote([0, 0], 0, 0, mode).pricePerShare).toBeNaN()
-            expect(buyQuote([0, 0], 0, 0, mode).multiplier).toBeNaN()
-            expect(buyQuote([5], 8, 0, mode).multiplier).toBeNaN()
-        }
+        expect(buyQuote([0, 0], 0, 0).pricePerShare).toBeNaN()
+        expect(buyQuote([0, 0], 0, 0).multiplier).toBeNaN()
+        expect(buyQuote([5], 8, 0).multiplier).toBeNaN()
     })
 })
 
@@ -360,43 +341,38 @@ describe('maker fee (ADR-20)', () => {
         expect(sharesForTotal(q, b, 0, 1, c)).toBeLessThan(sharesForAmount(q, b, 0, 1))
     })
 
-    it('buyQuote adds the fee to the share-mode price and keeps multiplier × price = 1', () => {
+    it('buyQuote keeps multiplier × price = 1 with a fee', () => {
         const q = [0, 0]
         const b = 1 / Math.LN2
         const c = 0.05
-        const quote = buyQuote(q, b, 0, 'share', c)
-        expect(quote.fee).toBeCloseTo(buyFee(q, b, 0, 1, c), 12)
-        expect(quote.pricePerShare).toBeCloseTo(costForShares(q, b, 0, 1) + quote.fee, 12)
+        const quote = buyQuote(q, b, 0, c)
         expect(quote.multiplier * quote.pricePerShare).toBeCloseTo(1, 12)
-        // no fee → identical to the old zero-fee quote
-        expect(buyQuote(q, b, 0, 'share', 0).pricePerShare).toBeCloseTo(buyQuote(q, b, 0, 'share').pricePerShare, 12)
+        // no fee → the same quote as the zero-fee call with the default rate
+        expect(buyQuote(q, b, 0, 0).pricePerShare).toBeCloseTo(buyQuote(q, b, 0).pricePerShare, 12)
     })
 
-    it('buyQuote reports the fee per share in both modes — never above the per-share price', () => {
-        // The reported bug: in the amount mode the caption showed the WHOLE
-        // buy's fee (0.20 for all ~7.6 shares a 1-elo stake delivers) under a
-        // per-share price (0.13), reading as "0.13 за 1 голос, в т.ч.
-        // комиссия 0.20" — an impossibility if the fee is inside the price.
-        // Live state of market CezHbbAzmrsnTafuBh8Bu.
+    it('buyQuote reports the fee per share — never above the per-share price', () => {
+        // The reported bug: the caption showed the WHOLE buy's fee (0.20 for
+        // all ~7.6 shares a 1-elo stake delivers) under a per-share price
+        // (0.13), reading as "0.13 за 1 голос, в т.ч. комиссия 0.20" — an
+        // impossibility if the fee is inside the price. Live state of market
+        // CezHbbAzmrsnTafuBh8Bu.
         const q = [2, 55.41859658018812]
         const b = 23.083120654223414
         const c = 0.07
-        for (const mode of ['share', 'amount'] as const) {
-            const { pricePerShare, fee } = buyQuote(q, b, 0, mode, c)
-            expect(fee).toBeGreaterThan(0)
-            expect(fee).toBeLessThan(pricePerShare)
-            // per-share price splits exactly into the fee-free cost and the fee
-            expect(pricePerShare - fee).toBeGreaterThan(0)
-        }
-        const amount = buyQuote(q, b, 0, 'amount', c)
-        const totalFee = buyFee(q, b, 0, amount.multiplier, c)
+        const { pricePerShare, fee, multiplier } = buyQuote(q, b, 0, c)
+        expect(fee).toBeGreaterThan(0)
+        expect(fee).toBeLessThan(pricePerShare)
+        // per-share price splits exactly into the fee-free cost and the fee
+        expect(pricePerShare - fee).toBeGreaterThan(0)
+        const totalFee = buyFee(q, b, 0, multiplier, c)
         // the caption fee × delivered shares reconstructs the whole buy's fee,
         // and the all-in price is (stake − total fee) / shares + per-share fee
-        expect(amount.fee * amount.multiplier).toBeCloseTo(totalFee, 10)
-        expect(amount.pricePerShare).toBeCloseTo((1 - totalFee) / amount.multiplier + amount.fee, 10)
+        expect(fee * multiplier).toBeCloseTo(totalFee, 10)
+        expect(pricePerShare).toBeCloseTo((1 - totalFee) / multiplier + fee, 10)
         // the whole quote accounts for the fee in the share count: more fee →
         // fewer voices per 1 elo, and cost(s) + fee(s) still spends exactly 1
-        expect(amount.multiplier).toBeLessThan(buyQuote(q, b, 0, 'amount', 0).multiplier)
-        expect(costForShares(q, b, 0, amount.multiplier) + totalFee).toBeCloseTo(1, 10)
+        expect(multiplier).toBeLessThan(buyQuote(q, b, 0).multiplier)
+        expect(costForShares(q, b, 0, multiplier) + totalFee).toBeCloseTo(1, 10)
     })
 })

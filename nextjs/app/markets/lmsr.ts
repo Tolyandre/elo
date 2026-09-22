@@ -1,9 +1,8 @@
-// Client-side LMSR math for the buy modes, mirroring the server's AMM
+// Client-side LMSR math for the buy card, mirroring the server's AMM
 // (elo-web-service/pkg/elo/amm.go): the cost of a q-vector is
 // C(q) = b·ln(Σ_j e^(q_j/b)) and buying s shares of outcome i costs
 // C(q + s·e_i) − C(q). LMSR is path-independent, so buying s shares at once
-// costs exactly as much as s sequential single-share buys — the share and
-// fixed-amount buy modes are therefore equivalent in price.
+// costs exactly as much as s sequential single-share buys.
 //
 // Guarantors charge a maker fee c (ADR-20): the buyer's marginal price becomes
 // p_u = p + 4c·p(1−p) (a variance-proportional, Kalshi-style fee — the
@@ -118,7 +117,7 @@ export function costForShares(q: number[], b: number, i: number, shares: number)
  * Everything stays in log space: the previous form computed S·e^(amount/b)
  * directly, which overflows to Infinity once amount/b > ~709 — i.e. on any
  * market with b < ~0.0014, such as one backed by a guarantor risking 0.00001
- * (b ≈ 1e-5 → amount/b ≈ 110,000) — making the amount mode unquotable. The
+ * (b ≈ 1e-5 → amount/b ≈ 110,000) — making the fixed-elo buy unquotable. The
  * exponent r−L−amount/b is always < 0 (buying power strictly exceeds the
  * rest of the market), so the ln(1−e^x) term is finite.
  */
@@ -151,28 +150,20 @@ export function averagePricePerShare(q: number[], b: number, i: number, amount: 
  * the maker-fee part of ONE share's price, in the same per-share units as
  * `pricePerShare` (the caption "в т.ч. комиссия" sits under that price, so it
  * must never exceed it; the whole buy's fee is fee × the delivered shares).
- * In the share mode the buy is one share at the marginal cost plus its fee.
- * In the amount mode the 1 elo covers cost AND fee (the share count solves
- * cost(s) + fee(s) = 1 by bisection — both terms are increasing in s, and
- * p_u ≤ 1 bounds the solution within [0, amount]).
+ * The buy stakes a fixed 1 elo that covers cost AND fee (the share count
+ * solves cost(s) + fee(s) = 1 by bisection — both terms are increasing in s,
+ * and p_u ≤ 1 bounds the solution within [0, amount]).
  */
 export function buyQuote(
     q: number[],
     b: number,
     i: number,
-    mode: "share" | "amount",
     feeRate = 0,
 ): { pricePerShare: number; multiplier: number; fee: number } {
-    if (mode === "amount") {
-        const shares = sharesForTotal(q, b, i, 1, feeRate);
-        const fee = buyFee(q, b, i, shares, feeRate);
-        const pricePerShare = 1 / shares;
-        return { pricePerShare, multiplier: shares, fee: fee / shares };
-    }
-    const lmsrCost = costForShares(q, b, i, 1);
-    const fee = buyFee(q, b, i, 1, feeRate);
-    const pricePerShare = lmsrCost + fee;
-    return { pricePerShare, multiplier: 1 / pricePerShare, fee };
+    const shares = sharesForTotal(q, b, i, 1, feeRate);
+    const fee = buyFee(q, b, i, shares, feeRate);
+    const pricePerShare = 1 / shares;
+    return { pricePerShare, multiplier: shares, fee: fee / shares };
 }
 
 /**

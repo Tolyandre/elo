@@ -16,12 +16,10 @@ import { MarketCard } from "@/components/market-card";
 import { MarketRelatedMatches } from "@/components/market-related-matches";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { BackButton } from "@/components/back-button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { TriangleAlertIcon } from "lucide-react";
 import { MarketGuarantees } from "@/components/market-guarantees";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
 import { outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
@@ -73,11 +71,6 @@ function ProjectedOutcome({ market, nameOf }: { market: MarketDetail; nameOf: (o
     );
 }
 
-// Buy modes: "share" buys exactly one voice at the current LMSR price;
-// "amount" stakes a fixed 1 elo and buys however many voices that costs
-// (the share count comes from inverting the LMSR cost client side).
-type BuyMode = "share" | "amount";
-
 function formatPercent(rate: number): string {
     const pct = (rate * 100).toFixed(1).replace(/\.0$/, "");
     return `${pct}%`;
@@ -90,7 +83,6 @@ function OutcomeColumn({
     pricePerShare,
     multiplier,
     fee,
-    buyMode,
     myStaked,
     myShares,
     canBuy,
@@ -102,13 +94,12 @@ function OutcomeColumn({
     titleColor?: string;
     /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
     probability: number;
-    /** All-in elo per share of the pending buy (LMSR cost + maker fee) — the "за 1 голос" price. */
+    /** All-in elo per share of the pending 1-elo buy (LMSR cost + maker fee) — the "за 1 голос" price. */
     pricePerShare?: number;
     /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
     multiplier?: number;
     /** Maker fee part of one share's price (ADR-20), same per-voice units as pricePerShare. */
     fee?: number;
-    buyMode: BuyMode;
     myStaked?: number;
     myShares?: number;
     canBuy: boolean;
@@ -117,12 +108,11 @@ function OutcomeColumn({
     isWinner: boolean;
 }) {
     // The card quotes the pending buy — a ×multiplier headline (voices per
-    // elo) over its per-share price; the two are reciprocals. The modes
-    // differ in what the buy button actually spends: the price of one share
-    // ("По одному голосу") or a fixed 1 elo ("По стоимости 1"). In a saturated
-    // market the underdog share costs a float-dust ~0: its true multiplier
-    // (~×1e16) is capped at ×1000+ and the sub-0.005 price renders as <0.01 —
-    // the buy itself still charges the exact LMSR cost.
+    // elo) over its per-share price; the two are reciprocals. The button
+    // always stakes a fixed 1 elo. In a saturated market the underdog share
+    // costs a float-dust ~0: its true multiplier (~×1e16) is capped at
+    // ×1000+ and the sub-0.005 price renders as <0.01 — the buy itself still
+    // charges the exact LMSR cost.
     const headline = multiplier != null && Number.isFinite(multiplier)
         ? multiplier > 1000
             ? "×1000+"
@@ -134,11 +124,7 @@ function OutcomeColumn({
             : formatAmount(pricePerShare)
         : null;
     const headlineCaption = quotePrice != null ? `${quotePrice} за 1 голос` : null;
-    const buyLabel = buyMode === "amount"
-        ? "Поставить 1"
-        : quotePrice != null
-            ? `Поставить ${quotePrice}`
-            : "Поставить";
+    const buyLabel = "Поставить 1";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
             <div className="text-center min-w-0">
@@ -221,8 +207,6 @@ function MarketPageContent() {
     );
 
     const [buyingOutcome, setBuyingOutcome] = useState<string | null>(null);
-    // The buy mode is a view preference — keep the user's choice across markets.
-    const [buyMode, setBuyMode] = useLocalStorage<BuyMode>("market-buy-mode", "share");
 
     const nameOf = useMemo(
         () => (o: MarketOutcome) => outcomeDisplayName(o, players, playerDisplayName),
@@ -279,20 +263,16 @@ function MarketPageContent() {
     // rates, ADR-20) — added to the LMSR price as p + 4c·p(1−p) per share.
     const feeRate = displayMarket.fee_rate ?? 0;
 
-    // Shares-driven buy (ADR-10): the AMM prices the elo cost. In the share
-    // mode each purchase buys exactly 1 share; in the amount mode the 1 elo
-    // covers the LMSR cost AND the maker fee (the share count solves
-    // cost(s) + fee(s) = 1 client side). The displayed probability is sent
+    // Shares-driven buy (ADR-10): the button always stakes a fixed 1 elo, and
+    // the AMM prices the elo cost — the share count solves
+    // cost(s) + fee(s) = 1 client side. The displayed probability is sent
     // along so the server can reject the buy if it has moved (409); the spend
     // limit is enforced server side (422); on failure we refresh.
     async function handleBuy(outcome: MarketOutcome) {
         setBuyingOutcome(outcome.id);
         try {
-            let shares = 1;
-            if (buyMode === "amount") {
-                const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
-                shares = sharesForTotal(qVec, liquidityB, idx, 1, feeRate);
-            }
+            const idx = displayMarket.outcomes.findIndex((o) => o.id === outcome.id);
+            const shares = sharesForTotal(qVec, liquidityB, idx, 1, feeRate);
             await placeBetPromise(id!, outcome.id, outcome.probability, shares);
             invalidate();
             invalidateHistory();
@@ -333,16 +313,9 @@ function MarketPageContent() {
                 </Alert>
             )}
 
-            <Tabs value={buyMode} onValueChange={(v) => setBuyMode(v as BuyMode)}>
-                <TabsList className="grid grid-cols-2 w-full">
-                    <TabsTrigger value="share">По одному голосу</TabsTrigger>
-                    <TabsTrigger value="amount">По стоимости 1</TabsTrigger>
-                </TabsList>
-            </Tabs>
-
             <div className="grid grid-cols-2 gap-3">
                 {displayMarket.outcomes.map((o, i) => {
-                    const quote = buyQuote(qVec, liquidityB, i, buyMode, feeRate);
+                    const quote = buyQuote(qVec, liquidityB, i, feeRate);
                     return (
                         <OutcomeColumn
                             key={o.id}
@@ -352,7 +325,6 @@ function MarketPageContent() {
                             pricePerShare={quote.pricePerShare}
                             multiplier={quote.multiplier}
                             fee={quote.fee}
-                            buyMode={buyMode}
                             myStaked={stakedByOutcome.get(o.id)}
                             myShares={sharesOwnedByOutcome.get(o.id)}
                             canBuy={canBuy}
