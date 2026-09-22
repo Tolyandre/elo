@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  * The «Стол» tab on /matches/new: pick the game and the participants in
  * seating order (order matters — it is the order the game starts with), then
  * create the table and open it. Joining existing tables happens via the
- * «Активные столы» lobby or an invite toast; creating requires auth and a
+ * «Сейчас играют» lobby or an invite toast; creating requires auth and a
  * linked player, same as hosting a table.
  */
 export function CreateTableForm() {
@@ -46,11 +46,11 @@ export function CreateTableForm() {
         try {
             const table = await createTablePromise(app.id, app.createInitialState(players));
             // The table page resumes the host session from localStorage; the
-            // ?table= binding it lands on keeps the URL shareable (ADR-25:
+            // ?id= binding it lands on keeps the URL shareable (ADR-25:
             // cross-route navigation goes through the router, same-route
             // query writes would be dropped).
             writeTableSession({ tableId: table.id, isHost: true, myPlayerIndex: null });
-            router.push(`${TABLE_PAGE_PATH}?table=${table.id}`);
+            router.push(`${TABLE_PAGE_PATH}?id=${table.id}`);
         } catch (err) {
             toast.error("Не удалось создать стол: " + (err instanceof Error ? err.message : String(err)));
         } finally {

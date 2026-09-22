@@ -58,7 +58,7 @@ function EmptyStateCard() {
                 <CardTitle>Нет активного стола</CardTitle>
                 <CardDescription>
                     Создайте новый стол, выбрав игру и участников, или откройте
-                    запущенный стол из лобби «Активные столы» на главной.
+                    запущенный стол из лобби «Сейчас играют» на главной.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -127,10 +127,10 @@ export function TablePage() {
         connected,
     } = useTableSession({ me: { id: me.id, playerId: me.playerId } });
 
-    // URL bindings (ADR-18): ?table=<id> is the sticky shareable binding — a
+    // URL bindings (ADR-18): ?id=<id> is the sticky shareable binding — a
     // stored session on that table resumes as-is, otherwise the table is
-    // joined (or watched read-only by a visitor who cannot join). ?join= is a
-    // legacy alias; no param resumes a stored session, else the empty state.
+    // joined (or watched read-only by a visitor who cannot join). No param
+    // resumes a stored session, else the empty state.
     useTableDeepLink({
         hydrated,
         session,

@@ -110,8 +110,8 @@ beforeEach(() => {
 });
 
 describe("useTableDeepLink", () => {
-    it("?table=<id> joins as a connected player and keeps the id in the URL", async () => {
-        setParams({ table: "t9" });
+    it("?id=<table id> joins as a connected player and keeps the id in the URL", async () => {
+        setParams({ id: "t9" });
         vi.mocked(getTablePromise).mockResolvedValue(makeTable({ connected_player_ids: [pid("p2")] }));
         vi.mocked(joinTablePromise).mockResolvedValue(makeTable({ connected_player_ids: [pid("p1"), pid("p2")] }));
 
@@ -122,24 +122,11 @@ describe("useTableDeepLink", () => {
         expect(joinTablePromise).toHaveBeenCalledWith(pid("t9"));
         expect(h.current.value.session).toEqual({ tableId: pid("t9"), isHost: false, myPlayerIndex: 0 });
         // The sticky binding: the URL is not cleared after the join.
-        expect(location.search).toBe("?table=t9");
-    });
-
-    it("legacy ?join=<id> works and is normalized to ?table=<id>", async () => {
-        setParams({ join: "t9" });
-        vi.mocked(getTablePromise).mockResolvedValue(makeTable());
-        vi.mocked(joinTablePromise).mockResolvedValue(makeTable({ connected_player_ids: [pid("p1")] }));
-
-        const h = renderHook(() => useHarness(ME));
-        await flush();
-
-        expect(joinTablePromise).toHaveBeenCalledWith(pid("t9"));
-        expect(h.current.value.session?.tableId).toEqual(pid("t9"));
-        expect(location.search).toBe("?table=t9");
+        expect(location.search).toBe("?id=t9");
     });
 
     it("a stored host session on the linked table resumes without joining", async () => {
-        setParams({ table: "t9" });
+        setParams({ id: "t9" });
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("t9"), isHost: true, myPlayerIndex: null }));
 
         const h = renderHook(() => useHarness(ME));
@@ -163,7 +150,7 @@ describe("useTableDeepLink", () => {
     });
 
     it("a session on another table is replaced by the linked table", async () => {
-        setParams({ table: "t9" });
+        setParams({ id: "t9" });
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("tOld"), isHost: false, myPlayerIndex: 1 }));
         vi.mocked(getTablePromise).mockResolvedValue(makeTable());
         vi.mocked(joinTablePromise).mockResolvedValue(makeTable({ connected_player_ids: [pid("p1")] }));
@@ -175,7 +162,7 @@ describe("useTableDeepLink", () => {
     });
 
     it("a visitor who cannot join watches read-only (observer session)", async () => {
-        setParams({ table: "t9" });
+        setParams({ id: "t9" });
         vi.mocked(getTablePromise).mockResolvedValue(makeTable());
 
         const h = renderHook(() => useHarness({ isAuthenticated: false }));
@@ -187,7 +174,7 @@ describe("useTableDeepLink", () => {
     });
 
     it("a table of an unknown game is treated as missing", async () => {
-        setParams({ table: "t9" });
+        setParams({ id: "t9" });
         vi.mocked(getTablePromise).mockResolvedValue(makeTable({ game_id: pid("gUnknown") }));
 
         const h = renderHook(() => useHarness(ME));
@@ -200,7 +187,7 @@ describe("useTableDeepLink", () => {
     });
 
     it("a missing table toasts, strips the binding, and keeps the untouched session", async () => {
-        setParams({ table: "tGone" });
+        setParams({ id: "tGone" });
         // This device is sitting on another table; the shared link is dead.
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("tOld"), isHost: false, myPlayerIndex: 0 }));
         vi.mocked(getTablePromise).mockRejectedValue(new Error("404"));
@@ -215,7 +202,7 @@ describe("useTableDeepLink", () => {
     });
 
     it("a bound observer whose table is gone is reset to the empty state", async () => {
-        setParams({ table: "tGone" });
+        setParams({ id: "tGone" });
         localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify({ tableId: pid("tGone"), isHost: false, myPlayerIndex: null }));
         vi.mocked(getTablePromise).mockRejectedValue(new Error("404"));
 

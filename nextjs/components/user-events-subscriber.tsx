@@ -24,8 +24,8 @@ function hasActiveTableSession(): boolean {
  *
  *   - "table-invite": another user created a game table with this user's
  *     player in it → toast with a "Войти" action that deep-links to the game
- *     page (?table=<tableId>) and auto-joins. Transient by design — users who
- *     had the app closed find the table in the "Активные столы" lobby list.
+ *     page (?id=<tableId>) and auto-joins. Transient by design — users who
+ *     had the app closed find the table in the "Сейчас играют" lobby list.
  *   - "match-recorded": another user recorded a match with this user's player
  *     → toast linking to the match view.
  */
@@ -44,7 +44,7 @@ export function UserEventsSubscriber() {
                 toast(`Вас позвали за стол «${app.title}»${data.host_name ? ` — ${data.host_name}` : ""}`, {
                     action: {
                         label: "Войти",
-                        onClick: () => router.push(`${app.href}?table=${tableId}`),
+                        onClick: () => router.push(`${app.href}?id=${tableId}`),
                     },
                     duration: 20_000,
                 });

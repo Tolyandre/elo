@@ -210,13 +210,13 @@ describe("CreateTableForm", () => {
         ]);
 
         // The host session is stashed for the tables page to resume, and the
-        // page opens with the sticky ?table= binding.
+        // page opens with the sticky ?id= binding.
         expect(JSON.parse(localStorage.getItem(TABLE_SESSION_KEY)!)).toEqual({
             tableId: "tNew",
             isHost: true,
             myPlayerIndex: null,
         });
-        expect(mocks.push).toHaveBeenCalledWith(`${TABLE_PAGE_PATH}?table=${pid("tNew")}`);
+        expect(mocks.push).toHaveBeenCalledWith(`${TABLE_PAGE_PATH}?id=${pid("tNew")}`);
         view.unmount();
     });
 

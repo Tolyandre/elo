@@ -18,12 +18,10 @@ type Options = {
     resetTableSession: () => void;
 };
 
-/** Drops the table-binding params (a failed binding leaves a clean URL). */
+/** Drops the table-binding param (a failed binding leaves a clean URL). */
 function clearTableParams() {
     setUrlQuery((params) => {
-        params.delete("table");
-        params.delete("join");
-        params.delete("new");
+        params.delete("id");
     });
 }
 
@@ -31,14 +29,14 @@ function clearTableParams() {
  * URL bindings of the unified table page (ADR-18) — one page serves every
  * game; the game is resolved from the bound table's game_id.
  *
- *   - `?table=<id>`: the sticky, shareable binding — the param is never
- *     cleared, so a refresh or a shared link reopens exactly that table. A
- *     stored session on the table resumes as-is (host stays host); otherwise
- *     the table is joined as a connected player, or — for a visitor who
- *     cannot join (signed out, no linked player) — watched read-only as an
- *     observer (GET /tables/:id and its SSE stream are public).
- *   - `?join=<id>`: legacy alias of `?table=`, normalized to it on entry.
- *   - No param: a stored session resumes (the "Вернуться" lobby path); the
+ *   - `?id=<table id>`: the sticky, shareable binding — the param is never
+ *     cleared, so a refresh, a shared link, or a reopened invite all open
+ *     exactly that table. A stored session on the table resumes as-is (a
+ *     host stays host); otherwise the table is joined as a connected player,
+ *     or — for a visitor who cannot join (signed out, no linked player) —
+ *     watched read-only as an observer (GET /tables/{id} and its SSE stream
+ *     are public).
+ *   - No param: a stored session resumes (the «Вернуться» lobby path); the
  *     empty state is shown otherwise.
  */
 export function useTableDeepLink(options: Options): void {
@@ -47,26 +45,10 @@ export function useTableDeepLink(options: Options): void {
     // blind to same-route query changes on the static export.
     const searchParams = useUrlQuery();
 
-    // Legacy ?join= is normalized to the sticky ?table= form right away, so
-    // after the join the URL is already shareable.
-    const rawTable = searchParams.get("table");
-    const rawJoin = searchParams.get("join");
-    useEffect(() => {
-        if (rawJoin == null || rawTable != null) return;
-        const id = toBase58ID(rawJoin);
-        if (!id) return;
-        setUrlQuery((params) => {
-            params.delete("join");
-            params.set("table", id);
-        });
-    }, [rawJoin, rawTable]);
-
     // The sticky binding: make sure this visit ends up on exactly the table
     // in the URL. Idempotent — a session already bound to the table (host
     // resume, joined player) short-circuits, so a refresh never re-joins.
-    // The legacy ?join= alias is parsed here too, so the join does not have
-    // to wait for the URL normalization round-trip.
-    const tableParam = toBase58ID(rawTable ?? rawJoin ?? "");
+    const tableParam = toBase58ID(searchParams.get("id") ?? "");
     const canJoin = me.isAuthenticated && !!me.playerId;
     const boundToParam = session?.tableId === tableParam && tableParam !== null;
     // A table reported missing is not refetched for the rest of this binding
@@ -122,7 +104,7 @@ export function useTableDeepLink(options: Options): void {
                     }
                     return; // keep the binding; a refresh retries
                 }
-                return; // the join response adopted the table; URL keeps ?table=
+                return; // the join response adopted the table; URL keeps ?id=
             }
             // Not joinable (signed out / no linked player): watch read-only.
             // Reached only when no session is bound yet — a bound observer

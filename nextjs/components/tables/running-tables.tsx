@@ -36,9 +36,15 @@ export function RunningTables() {
     if (!ready || tables.length === 0) return null;
 
     return (
-        <ActiveTables
-            tables={tables}
-            me={{ isAuthenticated: me.isAuthenticated, playerId: me.playerId, id: me.id }}
-        />
+        // Same column as the «Сейчас» block above and the arena tabs below —
+        // with air on both sides, so the card never stretches over the full
+        // shell width (the wrapper lives here: the component returns null
+        // when nothing runs, leaving no stray padding behind).
+        <div className="max-w-sm mx-auto py-4">
+            <ActiveTables
+                tables={tables}
+                me={{ isAuthenticated: me.isAuthenticated, playerId: me.playerId, id: me.id }}
+            />
+        </div>
     );
 }

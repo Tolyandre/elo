@@ -95,30 +95,31 @@ from *rolling the game back* instead of just freezing it:
    screen (`ApiError.status`). The SSE stream self-heals and resyncs when the
    connection returns; pages show a "no connection" hint while it is down.
 
-### URLs bind a visit to a table (`?table=`)
+### URLs bind a visit to a table (`?id=`)
 
-- `?table=<id>` is the tables page's sticky, shareable binding: the param is
-  **never cleared**, so a refresh, a shared link, or a reopened invite all
+- `?id=<table id>` is the tables page's sticky, shareable binding: the param
+  is **never cleared**, so a refresh, a shared link, or a reopened invite all
   open exactly that table. A stored session on the table resumes as-is (a
   host stays host); otherwise the table is joined as a connected player —
   entering never claims hosting. A visitor who cannot join (signed out, no
   linked player) watches read-only as an observer (`GET /tables/{id}` and its
   SSE stream are public). The game is never part of the URL: the unified
-  `/matches/table` page resolves it from the bound table's `game_id` (the
-  per-game routes survive only as client-side redirect stubs).
+  `/matches/table` page resolves it from the bound table's `game_id`. There
+  are no per-game routes — old `/matches/table/<kind>` links simply die, like
+  the tables they pointed to (1-day retention).
 - The header shows one icon per table the user participates in (host,
   connected player, or picked into the roster) — not one per game; same-game
-  icons carry a small ordinal badge. `?join=<id>` survives only as a legacy
-  alias of `?table=`.
+  icons carry a small ordinal badge.
 
 ### Hosting is claimed per device, only via the explicit takeover
 
 - `host_user_id` names the account that may manage the table, but **entering a
   table never claims hosting**. Every entry path — the invite toast, the
-  header game icon, "Вернуться" in the matches lobby — deep-links into the
-  game page (`?table=<id>`), which joins as a connected player (or viewer),
-  even when the account hosts the table: another device of the same account
-  may be driving, and an automatic claim would silently displace it mid-game.
+  header game icon, "Вернуться" in the «Сейчас играют» lobby — deep-links into
+  the tables page (`?id=<table id>`), which joins as a connected player (or
+  viewer), even when the account hosts the table: another device of the same
+  account may be driving, and an automatic claim would silently displace it
+  mid-game.
 - The only way hosting reaches a device without a stored host session is the
   explicit "Стать ведущим" button (`POST /tables/{id}/takeover`). The request
   carries the browser's `host_client_token` (minted once per browser,
@@ -175,8 +176,10 @@ from *rolling the game back* instead of just freezing it:
   blob was always created client-side.
 - **The game is never in the URL.** `/matches/table` serves every game and
   resolves the game from the bound table's `game_id`; the old
-  `/matches/table/<kind>` routes are client-side redirect stubs (the static
-  export has no server redirects).
+  `/matches/table/<kind>` routes are removed outright — tables expire after a
+  day, so old links have no surviving destination to redirect to. The
+  binding param is `?id=<table id>`; legacy `?table=`/`?join=` params are
+  dropped with the same reasoning.
 - **The shared shell and the game registry** (`components/tables/`): the
   tables page owns the session, SSE wiring, deep-link bindings, header chrome
   (takeover, delete), camp selection and the save flow; `useTableSession` is

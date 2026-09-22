@@ -8,7 +8,7 @@ import { TablePage } from "@/components/tables/table-page";
 // game-app registry (components/tables/registry.tsx). New tables are created
 // on /matches/new (the «Стол» tab).
 export default function MatchesTablePage() {
-    // The ?table= deep-link binding reads the query string; a Suspense
+    // The ?id= deep-link binding reads the query string; a Suspense
     // boundary keeps the prerendered shell decoupled from client query state,
     // same as the other query-bound pages.
     return (

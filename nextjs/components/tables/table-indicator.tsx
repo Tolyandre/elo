@@ -13,7 +13,7 @@ import { tablePlayerNames, tableStatus } from "./active-tables";
  * player, or a player the host picked into the game), shown next to the
  * offline-mode icon. One icon PER TABLE — several tables of the same game may
  * run at once, so same-game icons get a small ordinal badge — linking into
- * that exact table via the ?table= deep-link, which resumes/joins it on the
+ * that exact table via the ?id= deep-link, which resumes/joins it on the
  * game page. Viewers see nothing.
  */
 export function TableIndicator() {
@@ -73,7 +73,7 @@ export function TableIndicator() {
                 return (
                     <Link
                         key={table.id}
-                        href={`${app.href}?table=${table.id}`}
+                        href={`${app.href}?id=${table.id}`}
                         title={title}
                         className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                     >

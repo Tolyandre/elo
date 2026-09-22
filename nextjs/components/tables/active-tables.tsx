@@ -27,8 +27,8 @@ export function tablePlayerNames(table: TableSummary): string {
 }
 
 /**
- * The "Активные столы" lobby card: live tables with their game icon, players
- * and status. All buttons deep-link to the unified tables page via ?table=
+ * The "Сейчас играют" lobby card: live tables with their game icon, players
+ * and status. All buttons deep-link to the unified tables page via ?id=
  * (the sticky, shareable binding); entering never claims hosting — the host
  * role is claimed there only via the explicit "Стать ведущим" button
  * (ADR-18). A visitor who cannot join (signed out, no linked player) opens
@@ -38,7 +38,7 @@ export function ActiveTables({
     tables,
     loading,
     me,
-    title = "Активные столы",
+    title = "Сейчас играют",
 }: Props) {
     const router = useRouter();
     const visible = tables;
@@ -87,7 +87,7 @@ export function ActiveTables({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => app && router.push(`${app.href}?table=${table.id}`)}
+                                    onClick={() => app && router.push(`${app.href}?id=${table.id}`)}
                                 >
                                     Вернуться
                                 </Button>
@@ -95,7 +95,7 @@ export function ActiveTables({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => app && router.push(`${app.href}?table=${table.id}`)}
+                                    onClick={() => app && router.push(`${app.href}?id=${table.id}`)}
                                     title={
                                         canJoin
                                             ? undefined
