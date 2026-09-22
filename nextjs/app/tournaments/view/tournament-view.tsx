@@ -20,6 +20,7 @@ import { BracketView } from "./bracket-view";
 import { TournamentArenaStandings } from "./arena-standings";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
+import { PlayerLinkNotice } from "@/components/player-link-notice";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -178,14 +179,17 @@ function TournamentViewLoaded({
 
                 <TabsContent value="tournament" className="space-y-4">
                     {tournament.status === "registration" && (
-                        <RegistrationSection
-                            participants={participants}
-                            playerName={playerName}
-                            showRegistrationButton={playerId != null}
-                            registered={registered}
-                            registering={registering}
-                            onRegistration={handleRegistration}
-                        />
+                        <>
+                            <PlayerLinkNotice action="записаться на турнир" />
+                            <RegistrationSection
+                                participants={participants}
+                                playerName={playerName}
+                                showRegistrationButton={playerId != null}
+                                registered={registered}
+                                registering={registering}
+                                onRegistration={handleRegistration}
+                            />
+                        </>
                     )}
                     {bracket.rounds.length > 0 ? (
                         <BracketView bracket={bracket} />

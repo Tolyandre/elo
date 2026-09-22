@@ -9,9 +9,15 @@ import { Label } from "@/components/ui/label"
 import { PlayerCombobox } from "@/components/player-combobox"
 import { patchMePromise } from "@/app/api"
 import { LoginLink } from "@/components/login-link"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircleIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useUrlQuery, setUrlQuery } from "@/lib/url-state"
 
 export default function SettingsPage() {
     const { roundToInteger, setRoundToInteger, geologistMode, setGeologistMode, isAuthenticated, playerId, invalidate } = useMe()
+    const params = useUrlQuery();
+    const suggestLinkPlayer = isAuthenticated && params.get("link-player") === "1"
 
     async function handlePlayerChange(id?: Base58ID) {
         try {
@@ -27,6 +33,25 @@ export default function SettingsPage() {
             <PageHeader title="Мои настройки" />
 
             <div className="space-y-6">
+                {suggestLinkPlayer && (
+                    <Alert>
+                        <AlertCircleIcon />
+                        <AlertTitle>Осталось привязать игрока</AlertTitle>
+                        <AlertDescription className="flex flex-col items-start gap-2">
+                            <span>
+                                Выберите своего игрока ниже — он понадобится для записи на турниры и ставок.
+                            </span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setUrlQuery((params) => params.delete("link-player"))}
+                            >
+                                Понятно
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
                 <div className="flex items-center justify-between">
                     <Label>Тема оформления</Label>
                     <ModeToggle />
