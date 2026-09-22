@@ -15,7 +15,7 @@ export function ResolutionDescription({ market }: { market: Market }) {
 
     return (
         <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
-            <p className="text-sm text-muted-foreground font-medium tracking-wide mb-2">Как разрешится рынок:</p>
+            <p className="text-base font-semibold leading-none mb-2">Как разрешится рынок:</p>
             {outcomes.map((o) => {
                 const isWinner = resolvedOutcome != null && o.ids.includes(resolvedOutcome);
                 // The label uses the outcome's chart color so the description

@@ -53,7 +53,7 @@ function ProjectedOutcome({ market, nameOf }: { market: MarketDetail; nameOf: (o
     const sharesByOutcome = new Map(positions.map((p) => [p.outcome_id, p.shares]));
     return (
         <div className="text-sm space-y-1.5 p-3 rounded-lg bg-muted/50">
-            <p className="text-sm text-muted-foreground font-medium tracking-wide mb-2">Ваш выигрыш при исходах:</p>
+            <p className="text-base font-semibold leading-none mb-2">Ваш выигрыш при исходах:</p>
             {market.outcomes.map((o) => {
                 const myShares = sharesByOutcome.get(o.id) ?? 0;
                 const net = myShares - totalStaked;

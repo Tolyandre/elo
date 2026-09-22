@@ -109,7 +109,7 @@ export function MarketGuarantees({
     return (
         <Accordion type="single" collapsible defaultValue={awaitsGuarantors ? "guarantees" : undefined}>
             <AccordionItem value="guarantees" className="border rounded-lg px-4 bg-card">
-                <AccordionTrigger className="text-sm py-3">Поручители</AccordionTrigger>
+                <AccordionTrigger className="text-base font-semibold leading-none py-3">Поручители</AccordionTrigger>
                 <AccordionContent className="space-y-3 pb-4">
                     <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
                         <p>Поручители обеспечивают рынок рейтингом и получают комиссию со ставок.</p>
