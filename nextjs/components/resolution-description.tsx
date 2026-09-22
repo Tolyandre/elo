@@ -20,9 +20,11 @@ export function ResolutionDescription({ market }: { market: Market }) {
                 const isWinner = resolvedOutcome != null && o.ids.includes(resolvedOutcome);
                 // The label uses the outcome's chart color so the description
                 // rows and the chart/donut lines are visually paired; a row
-                // squashed over several outcomes has no single color.
+                // squashed over several outcomes has no single color — the
+                // bright neutral foreground keeps it prominent without
+                // pointing at any one player.
                 const color = (o.ids.length === 1 ? colors.get(o.ids[0]) : undefined)
-                    ?? "var(--muted-foreground)";
+                    ?? "var(--foreground)";
                 return (
                     <div key={o.ids.join(",")} className="flex gap-2">
                         <span
