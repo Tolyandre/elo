@@ -77,7 +77,7 @@ export function SwUpdateChip() {
                     variant="ghost"
                     size="sm"
                     className="h-9 gap-0.5 px-1.5 shrink-0 text-muted-foreground"
-                    aria-label="Загрузка кэша приложения"
+                    aria-label={hadController ? "Обновление приложения" : "Первичная загрузка приложения"}
                 >
                     <Spinner className="size-4" />
                     {percent !== null && (
@@ -85,15 +85,16 @@ export function SwUpdateChip() {
                             {percent}%
                         </Badge>
                     )}
+                    {hadController ? "Обновление" : "Загрузка"}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72">
                 <p className="text-sm">
                     {known
-                        ? `Загружаются файлы приложения: ${progress.done} из ${progress.total} (${percent}%).`
+                        ? `Загружаются файлы приложения: ${progress.done} из ${progress.total}.`
                         : "Загружаются файлы приложения…"}{" "}
                     {hadController
-                        ? "Когда загрузка завершится, страница перезагрузится автоматически."
+                        ? "Когда обновление завершится, страница перезагрузится автоматически."
                         : "Когда загрузка завершится, приложение сможет работать без сети."}
                 </p>
             </PopoverContent>
