@@ -145,24 +145,26 @@ export function averagePricePerShare(q: number[], b: number, i: number, amount: 
 
 /**
  * The quote a buy card shows for the pending buy: the all-in per-share price
- * (LMSR cost + maker fee) and the ×multiplier (voices per 1 elo) — exact
- * reciprocals, so multiplier × price = 1. `fee` is the WHOLE buy's maker fee
- * (ADR-20) — what the guarantor earns on the pending 1-elo stake, shown by
- * the "Поручители заработают" caption.
- * The buy stakes a fixed 1 elo that covers cost AND fee (the share count
- * solves cost(s) + fee(s) = 1 by bisection — both terms are increasing in s,
- * and p_u ≤ 1 bounds the solution within [0, amount]).
+ * (LMSR cost + maker fee) and the ×multiplier — the number of voices the
+ * buyer gets for EVERY 1 elo of the buy, `shares/amount` (exact reciprocal
+ * of pricePerShare, so multiplier × price = 1 whatever the quoted amount).
+ * `fee` is the WHOLE buy's maker fee (ADR-20) — what the guarantor earns on
+ * the pending stake, shown by the "Поручители заработают" caption.
+ * The buy stakes a fixed amount of elo that covers cost AND fee (the share
+ * count solves cost(s) + fee(s) = amount by bisection — both terms are
+ * increasing in s, and p_u ≤ 1 bounds the solution within [0, amount]).
  */
 export function buyQuote(
     q: number[],
     b: number,
     i: number,
     feeRate = 0,
+    amount = 1,
 ): { pricePerShare: number; multiplier: number; fee: number } {
-    const shares = sharesForTotal(q, b, i, 1, feeRate);
+    const shares = sharesForTotal(q, b, i, amount, feeRate);
     const fee = buyFee(q, b, i, shares, feeRate);
-    const pricePerShare = 1 / shares;
-    return { pricePerShare, multiplier: shares, fee };
+    const pricePerShare = amount / shares;
+    return { pricePerShare, multiplier: shares / amount, fee };
 }
 
 /**

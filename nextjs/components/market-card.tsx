@@ -100,8 +100,9 @@ function axisTicks(count: number): number[] {
 // ProbabilityChart renders every outcome's probability over time, one step
 // line per outcome. Probabilities move in discrete steps (one per bet), hence
 // stepAfter; animation is off so live SSE appends don't re-animate the whole
-// chart.
-function ProbabilityChart({ points, outcomes, nameOf }: { points: ProbabilityPoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
+// chart. Exported for the help page's market playground, which feeds it
+// locally simulated points.
+export function ProbabilityChart({ points, outcomes, nameOf }: { points: ProbabilityPoint[]; outcomes: MarketOutcome[]; nameOf: (o: MarketOutcome) => string }) {
     const colors = outcomeColors(outcomes);
     // X position is the point index (equal spacing regardless of bet timing);
     // the real bet timestamp travels along as `time` for ticks and the tooltip.
@@ -161,7 +162,9 @@ function ProbabilityChart({ points, outcomes, nameOf }: { points: ProbabilityPoi
     );
 }
 
-function SettlementList({ details, showFlow = true }: { details: SettlementDetail[]; showFlow?: boolean }) {
+// SettlementList renders one settlement table row list (players' or
+// guarantors'); exported for the help page's market playground.
+export function SettlementList({ details, showFlow = true }: { details: SettlementDetail[]; showFlow?: boolean }) {
     return (
         <div className="space-y-1 pt-2 border-t">
             {details.map(d => {

@@ -29,8 +29,19 @@ interface Selection {
  * a column right of the deepest winners round they draw seats from, with
  * promotion lines drawn from each seat's source slot. No client-side bracket
  * logic.
+ *
+ * The name resolvers default to the app's player/game contexts; the help
+ * page's baked example overrides them with its fixture names.
  */
-export function BracketView({ bracket }: { bracket: Bracket }) {
+export function BracketView({
+    bracket,
+    resolvePlayerName,
+    resolveGameName,
+}: {
+    bracket: Bracket;
+    resolvePlayerName?: (playerId: string) => string;
+    resolveGameName?: (gameId: string) => string | undefined;
+}) {
     const contentRef = useRef<HTMLDivElement>(null);
     const [selected, setSelected] = useState<Selection | null>(null);
 
@@ -191,6 +202,8 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
                     slotPositions={slotPositions}
                     highlightRows={highlight?.rows}
                     onSelectRow={toggleRow}
+                    resolvePlayerName={resolvePlayerName}
+                    resolveGameName={resolveGameName}
                 />
             </Fragment>
         ));
@@ -208,6 +221,8 @@ export function BracketView({ bracket }: { bracket: Bracket }) {
                 slotPositions={slotPositions}
                 highlightRows={highlight?.rows}
                 onSelectRow={toggleRow}
+                resolvePlayerName={resolvePlayerName}
+                resolveGameName={resolveGameName}
             />
         ));
 
@@ -253,12 +268,16 @@ function RoundColumn({
     slotPositions,
     highlightRows,
     onSelectRow,
+    resolvePlayerName,
+    resolveGameName,
 }: {
     round: BracketRound;
     elimination: Bracket["elimination"];
     slotPositions: Map<string, number>;
     highlightRows?: Set<string>;
     onSelectRow: (sel: Selection) => void;
+    resolvePlayerName?: (playerId: string) => string;
+    resolveGameName?: (gameId: string) => string | undefined;
 }) {
     return (
         <div className="flex w-56 flex-col">
@@ -273,6 +292,8 @@ function RoundColumn({
                         slotPositions={slotPositions}
                         highlightRows={highlightRows}
                         onSelectRow={onSelectRow}
+                        resolvePlayerName={resolvePlayerName}
+                        resolveGameName={resolveGameName}
                     />
                 ))}
             </div>
@@ -285,20 +306,26 @@ function SlotCard({
     slotPositions,
     highlightRows,
     onSelectRow,
+    resolvePlayerName,
+    resolveGameName,
 }: {
     slot: BracketSlot;
     slotPositions: Map<string, number>;
     highlightRows?: Set<string>;
     onSelectRow: (sel: Selection) => void;
+    resolvePlayerName?: (playerId: string) => string;
+    resolveGameName?: (gameId: string) => string | undefined;
 }) {
     const { playerMap, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const gameName = games.find((g) => g.id === slot.game_id)?.name;
+    const gameName = resolveGameName
+        ? resolveGameName(slot.game_id)
+        : games.find((g) => g.id === slot.game_id)?.name;
 
-    const playerName = (pid: string): string => {
+    const playerName: (pid: string) => string = resolvePlayerName ?? ((pid) => {
         const player = playerMap.get(pid);
         return player ? playerDisplayName(player) : pid;
-    };
+    });
 
     const standings = [...slot.standings].sort((a, b) => a.place - b.place);
 
