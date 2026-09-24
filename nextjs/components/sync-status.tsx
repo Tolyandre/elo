@@ -60,14 +60,14 @@ export function SyncStatus() {
                 {!isOnline && (
                     <p className="text-sm">
                         <CloudOff className="inline size-4 mr-1 align-text-bottom" />
-                        Нет сети. Новые партии, игроки и игры сохраняются на устройстве.
+                        Нет сети. Вы видите кэшированные данные.
                     </p>
                 )}
                 {apiDown && (
                     <p className="text-sm">
                         <CloudOff className="inline size-4 mr-1 align-text-bottom" />
-                        Сервер API недоступен (хостится на ПК и бывает выключен).<br/>
-                        Вы видите кэшированные данные. Новые партии сохраняются на устройстве и отправятся, когда сервер станет доступен.
+                        Сервер API недоступен.<br/>
+                        Вы видите кэшированные данные.
                     </p>
                 )}
                 {staleReads && (

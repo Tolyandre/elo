@@ -85,7 +85,6 @@ export function SwUpdateChip() {
                             {percent}%
                         </Badge>
                     )}
-                    {hadController ? "Обновление" : "Загрузка"}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72">
