@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
 import { PAGES } from "./lib/offline/routes";
+import { precacheUrlsForRoute } from "./lib/offline/precache-urls";
 
 // Explicit basePath ("/elo" on GitHub Pages, set in .github/workflows/nextjs.yml).
 // The service worker scope, precache URLs and web manifest all derive from it.
@@ -15,24 +16,16 @@ const withSerwist = withSerwistInit({
   // Our offline sync handles the "online" event itself; a forced reload would
   // interrupt it.
   reloadOnOnline: false,
-  additionalPrecacheEntries: PAGES.flatMap((p) => {
-    // Each route is precached as both the HTML (hard load / extensionless URL)
-    // and the RSC payload `.txt` (client-side <Link> navigation fetches it), so
-    // pages open offline even if never visited online.
-    // "/" needs both "/elo" and "/elo/" cache keys when basePath is set; its RSC
-    // payload exists under two names: index.txt (the exported file) and the
-    // basePath itself + ".txt" — the name the client router actually requests,
-    // because it appends ".txt" to the href /elo (see
-    // scripts/fix-root-rsc-payload.mjs, which emits that file).
-    const htmlUrls = p === "/" ? (basePath ? [basePath, `${basePath}/`] : ["/"]) : [`${basePath}${p}`];
-    const rscUrls =
-      p === "/"
-        ? basePath
-          ? [`${basePath}/index.txt`, `${basePath}.txt`]
-          : ["/index.txt"]
-        : [`${basePath}${p}.txt`];
-    return [...htmlUrls, ...rscUrls].map((url) => ({ url, revision }));
-  }),
+  // Each route is precached as both the HTML (hard load / extensionless URL)
+  // and the RSC payload `.txt` (client-side <Link> navigation fetches it), so
+  // pages open offline even if never visited online. For "/" with a basePath
+  // the router asks for <basePath>.txt — a URL no static host serves under
+  // <basePath>/ and one outside the worker scope — so the app rewrites that
+  // request to <basePath>/index.txt client-side (lib/root-rsc-payload.ts) and
+  // only the index.txt name is precached here.
+  additionalPrecacheEntries: PAGES.flatMap((p) =>
+    precacheUrlsForRoute(p, basePath).map((url) => ({ url, revision })),
+  ),
 });
 
 const nextConfig: NextConfig = {

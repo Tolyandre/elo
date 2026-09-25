@@ -1,28 +1,40 @@
-// Verifies the precache route list (lib/offline/routes.ts) stays in sync with the
-// actual static export in out/. Run after `next build` (see package.json "build").
+// Verifies the precache route list (lib/offline/routes.ts) stays in sync with
+// the actual static export in out/. Run after `next build` (see package.json "build").
 //
-// - Fails if any PAGES route is missing its exported .html or .txt (a precache
-//   entry pointing at a missing file would break service worker installation).
-// - Warns if out/ contains an exported page route not listed in PAGES (it would
-//   not be precached and so would not open offline).
+// For every PAGES route, every precache URL (lib/offline/precache-urls.ts) must:
+// - live inside the deploy root when a basePath is set: a URL outside
+//   <basePath>/ can never be served by a project-pages deploy, and a precache
+//   entry that 404s breaks the entire service worker installation (this
+//   happened with an "/elo.txt" entry — every client's update wedged forever);
+// - map to a file that exists in out/.
+//
+// Also warns when out/ contains an exported page route not listed in PAGES
+// (it would not be precached and so would not open offline).
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PAGES } from "../lib/offline/routes.ts";
+import { precacheUrlsForRoute, precacheUrlToFile, urlWithinBasePath } from "../lib/offline/precache-urls.ts";
 
 const OUT = "out";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 if (!existsSync(OUT)) {
     console.error(`check-precache: "${OUT}" not found — run the build first.`);
     process.exit(1);
 }
 
-// 1. Every PAGES route must have both .html and .txt in the export.
-const missing = [];
+// 1. Every precache URL must be servable on the deploy and backed by a file.
+const broken = [];
 for (const route of PAGES) {
-    const base = route === "/" ? "index" : route.replace(/^\//, "");
-    for (const ext of ["html", "txt"]) {
-        const file = join(OUT, `${base}.${ext}`);
-        if (!existsSync(file)) missing.push(file);
+    for (const url of precacheUrlsForRoute(route, basePath)) {
+        if (!urlWithinBasePath(url, basePath)) {
+            broken.push(`${url} — outside the deploy root ${basePath}/, can never be served`);
+            continue;
+        }
+        const file = precacheUrlToFile(url, basePath);
+        if (!existsSync(join(OUT, file))) {
+            broken.push(`${url} — export file out/${file} missing`);
+        }
     }
 }
 
@@ -51,10 +63,10 @@ if (uncovered.length > 0) {
     );
 }
 
-if (missing.length > 0) {
+if (broken.length > 0) {
     console.error(
-        "check-precache: PAGES routes missing from the export (would break SW install):\n  " +
-            missing.sort().join("\n  "),
+        "check-precache: precache URLs the deploy cannot serve (would break SW install):\n  " +
+            broken.sort().join("\n  "),
     );
     process.exit(1);
 }

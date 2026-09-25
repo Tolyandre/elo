@@ -17,6 +17,7 @@ import { CampsProvider } from "./arenas/campsContext";
 import { TournamentsProvider } from "./tournaments/tournamentsContext";
 import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
+import { RootRscPayloadRewrite } from "@/components/root-rsc-payload-rewrite";
 import { EnvBanner } from "@/components/env-banner";
 import { LiveDataSubscriber } from "@/components/live-data-subscriber";
 import { UserEventsSubscriber } from "@/components/user-events-subscriber";
@@ -90,6 +91,7 @@ export default function RootLayout({
                     />
                     <Toaster />
                     <SwUpdateReloader />
+                    <RootRscPayloadRewrite />
                     {/* App-wide realtime subscriptions: data-change invalidation
                         and per-user events (invites, match notifications). */}
                     <LiveDataSubscriber />

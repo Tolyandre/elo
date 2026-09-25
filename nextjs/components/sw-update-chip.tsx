@@ -16,7 +16,8 @@ import { parseSwMessage } from "@/lib/sw-messages";
  *
  * Progress comes from the worker's `sw-precache-progress` messages; the
  * `registration.installing` check covers the gap before the first entry
- * completes (or when another tab triggered the update).
+ * completes (or when another tab triggered the update). A failed install
+ * dismisses the chip via the installing worker's "redundant" state.
  */
 export function SwUpdateChip() {
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -42,10 +43,35 @@ export function SwUpdateChip() {
         navigator.serviceWorker.addEventListener("message", onMessage);
         navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
+        // An install whose precache fetch fails (e.g. an entry the deploy
+        // cannot serve) never finishes: no more progress messages arrive and
+        // the worker never activates. The failed worker's only observable
+        // signal is its transition to "redundant" — dismiss the chip there
+        // instead of spinning forever.
+        const watchInstallFailure = (worker: ServiceWorker) => {
+            worker.addEventListener("statechange", () => {
+                if (worker.state === "redundant") {
+                    console.warn("Service worker installation failed; update aborted.");
+                    setProgress(null);
+                }
+            });
+        };
+
         navigator.serviceWorker
             .getRegistration()
             .then((reg) => {
-                if (reg?.installing) setProgress((p) => p ?? { done: 0, total: 0 });
+                if (reg?.installing) {
+                    setProgress((p) => p ?? { done: 0, total: 0 });
+                    watchInstallFailure(reg.installing);
+                }
+                // An install can also start after this tab mounted (the
+                // reloader's update check, another tab's checkForUpdate).
+                reg?.addEventListener("updatefound", () => {
+                    if (reg.installing) {
+                        setProgress((p) => p ?? { done: 0, total: 0 });
+                        watchInstallFailure(reg.installing);
+                    }
+                });
             })
             .catch(() => { /* no registration — nothing to show */ });
 
