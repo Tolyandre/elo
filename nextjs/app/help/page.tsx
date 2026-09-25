@@ -10,10 +10,6 @@ export default function HelpIndexPage() {
     return (
         <div className="space-y-6">
             <PageHeader title="Справка" />
-            <p className="text-sm leading-relaxed">
-                Документация приложения: как устроен рейтинг Эло, арены и лиги, рынок предсказаний
-                и турниры — и какие правила использования делают игру приятнее.
-            </p>
             <div className="grid gap-3 sm:grid-cols-2">
                 {HELP_ARTICLES.map((a) => (
                     <Link key={a.href} href={a.href} className="group">
