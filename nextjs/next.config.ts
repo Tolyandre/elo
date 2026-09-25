@@ -20,10 +20,18 @@ const withSerwist = withSerwistInit({
     // and the RSC payload `.txt` (client-side <Link> navigation fetches it), so
     // pages open offline even if never visited online.
     // "/" needs both "/elo" and "/elo/" cache keys when basePath is set; its RSC
-    // payload is served as index.txt.
+    // payload exists under two names: index.txt (the exported file) and the
+    // basePath itself + ".txt" — the name the client router actually requests,
+    // because it appends ".txt" to the href /elo (see
+    // scripts/fix-root-rsc-payload.mjs, which emits that file).
     const htmlUrls = p === "/" ? (basePath ? [basePath, `${basePath}/`] : ["/"]) : [`${basePath}${p}`];
-    const rscUrl = p === "/" ? `${basePath}/index.txt` : `${basePath}${p}.txt`;
-    return [...htmlUrls, rscUrl].map((url) => ({ url, revision }));
+    const rscUrls =
+      p === "/"
+        ? basePath
+          ? [`${basePath}/index.txt`, `${basePath}.txt`]
+          : ["/index.txt"]
+        : [`${basePath}${p}.txt`];
+    return [...htmlUrls, ...rscUrls].map((url) => ({ url, revision }));
   }),
 });
 
