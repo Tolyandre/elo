@@ -21,8 +21,8 @@ devenv shell
 # Run a single command in the environment without an interactive shell
 devenv shell -- <command>
 
-# Run the backend unit test suite
-devenv test
+# Run the backend unit test suite + gofmt gate
+make test
 ```
 
 Optional: activate the environment automatically on `cd` using devenv's built-in shell hook (its direnv replacement):

@@ -1,4 +1,4 @@
-.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api
+.PHONY: dev-up dev-down dev-seed dev-migrate dev-logs backend-run frontend-run integration-test integration-test-one decode-id db-market copy-prod-db-to-test copy-prod-db-to-stage copy-prod-db-to-dev generate-api generate-go-api generate-ts-api test
 
 ## Regenerate Go server code from openapi/openapi.yaml
 generate-go-api:
@@ -10,6 +10,13 @@ generate-ts-api:
 
 ## Regenerate all API code from openapi/ (run after editing the spec)
 generate-api: generate-go-api generate-ts-api
+
+## Run the backend unit suite (includes the openapilint test) + gofmt gate —
+## the one place formatting is enforced; runs inside the devenv shell via ./dev.
+## Deliberately not `devenv test`: devenv's test tasks validate the environment
+## per upstream semantics and re-run on every shell entry (see devenv.nix).
+test:
+	./dev shell -- bash -ec 'unformatted="$$(gofmt -l elo-web-service/main.go elo-web-service/cmd elo-web-service/pkg elo-web-service/integration_test)"; [ -z "$$unformatted" ] || { echo "gofmt gate: unformatted Go files (run gofmt -w on them):"; echo "$$unformatted"; exit 1; }; go test -C elo-web-service ./...'
 
 ## Start all dev dependencies (postgres, mock-oauth2, migrations, seed)
 dev-up:

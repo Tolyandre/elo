@@ -24,14 +24,12 @@
     ];
 
   # https://devenv.sh/tests/
-  # `devenv test` runs the backend unit suite (includes the openapilint test)
-  # plus a gofmt gate, so formatting is enforced once at the end of a piece of
-  # work instead of racing editors mid-stream. Integration tests stay
-  # separate: `make integration-test-podman` / `-colima`.
-  #
-  # `./dev` sets ELO_SKIP_SHELL_TESTS=1 (except for `./dev test`): the suite
-  # would otherwise re-run on every shell command, which is noise when the
-  # wrapped command's own output is the point. Run `devenv test` for the gate.
+  # Upstream semantics: `devenv test` validates the ENVIRONMENT, not the code
+  # — and devenv 2.x re-runs these tasks on every shell activation. So this
+  # stays a cheap sanity check. The code gate (gofmt + backend unit suite,
+  # openapilint included) is `make test`, which runs inside the shell via the
+  # repo-root `./dev` wrapper. Integration tests stay separate:
+  # `make integration-test-podman` / `-colima`.
   #
   # Defined as an explicit task `exec` rather than the `enterTest` string
   # option: as of devenv CLI 2.1.2 the built-in devenv:enterTest task is
@@ -39,17 +37,13 @@
   # an `enterTest` string would silently run nothing. Wiring the exec directly
   # works on the generic task runner of every devenv version.
   tasks."devenv:enterTest".exec = ''
-    if [ "''${ELO_SKIP_SHELL_TESTS:-0}" = "1" ]; then
-      echo "devenv:enterTest: skipped (ELO_SKIP_SHELL_TESTS=1 — run 'devenv test' for the suite)"
-      exit 0
-    fi
-    unformatted="$(gofmt -l elo-web-service/main.go elo-web-service/cmd elo-web-service/pkg elo-web-service/integration_test)"
-    if [ -n "$unformatted" ]; then
-      echo "gofmt gate: unformatted Go files (run gofmt -w on them):"
-      echo "$unformatted"
+    [ "''${CGO_ENABLED:-}" = "0" ] || {
+      echo "env check: CGO_ENABLED is not 0 (the service is pure Go; see the CGO_ENABLED comment above)"
       exit 1
-    fi
-    go test -C elo-web-service ./...
+    }
+    for tool in go sqlc gomod2nix; do
+      command -v "$tool" >/dev/null || { echo "env check: $tool not on PATH"; exit 1; }
+    done
   '';
 
   # Stable, project-relative symlinks so VSCode's Go extension can locate the

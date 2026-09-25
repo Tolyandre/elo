@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
-# Quieter devenv. devenv's task runner prints ~15 lines of progress on every
-# invocation (configuring cachix, evaluating the shell, running tasks) — pure
-# noise when the wrapped command's output is all you want. This wrapper adds
-# devenv's own -q flag: progress lines disappear, the wrapped command's output
-# passes through untouched, and task failures still print.
+# Quieter devenv — a transparent wrapper with no project-specific logic.
+# devenv -q drops the ~10 setup/eval lines devenv prints per invocation (task
+# progress lines print regardless), and the grep drops the upgrade banner
+# devenv prints on stderr whenever it is outdated.
 #
 #   ./dev shell -- bash -lc 'go test -C elo-web-service ./...'
-#   ./dev test
+#   ./dev test          # plain `devenv test`: environment self-check
+#   ./dev up, ./dev info, ...
 #
-# devenv 2.1.2 also prints an upgrade banner even under -q; that one line is
-# dropped from stderr here (everything else passes through). Remove the grep
-# once devenv is past it.
+# The project's command surface (dev stack, test gate, integration tests)
+# lives in the Makefile; `make test` runs the suite + gofmt gate inside this
+# wrapper.
 #
 # DEVENV_VERBOSE=1 ./dev ...  → devenv's usual output, unfiltered.
-#
-# Quiet mode also skips the shell-entry test run: devenv re-runs the
-# devenv:enterTest task on every shell command, which is noise when the
-# wrapped command's own output is the point. `./dev test` keeps the suite
-# running (as does a bare `devenv test` — the skip is opt-in via this
-# wrapper's ELO_SKIP_SHELL_TESTS export).
 set -e
 if [ "${DEVENV_VERBOSE:-0}" = "1" ] || [ "$#" -eq 0 ]; then
     exec devenv "$@"
 fi
-case "$1" in
-    test) ;;
-    *) export ELO_SKIP_SHELL_TESTS=1 ;;
-esac
 exec devenv -q "$@" 2> >(grep --line-buffered -v -e 'is out of date\. Please update to')

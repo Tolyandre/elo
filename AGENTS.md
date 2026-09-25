@@ -24,24 +24,25 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
 The project's reproducible toolchain comes from [devenv](https://devenv.sh), defined in `devenv.nix` + `devenv.yaml` with versions pinned in `devenv.lock` (`flake.nix` is for packaging/deployment only, not the dev shell). There is no auto-activation hook for agents — enter the environment explicitly by wrapping every project command:
 
 ```bash
-# Run any project command wrapped like this (the repo-root `dev` script is a
-# quieter devenv: devenv's own progress chatter silenced, and the shell-entry
-# test run skipped — the suite + gofmt gate run via `devenv test` / `./dev test`):
+# Run any project command wrapped like this (the repo-root `dev` script quiets
+# devenv's setup output):
 ./dev shell -- bash -lc '<command>'
 # Example:
 ./dev shell -- bash -lc 'make integration-test-podman'
-# Run the unit suite + gofmt gate explicitly:
-./dev test
-# DEVENV_VERBOSE=1 ./dev ... restores devenv's full progress output
-# (and the test run on shell entry); plain `devenv shell -- ...` also works.
+# Run the unit suite + gofmt gate (the make target self-wraps into devenv,
+# but wrap it like any other command — ambient `make` is not guaranteed):
+./dev shell -- bash -lc 'make test'
+# DEVENV_VERBOSE=1 ./dev ... restores devenv's full progress output.
+# A bare `devenv shell -- ...` works too — nothing re-runs per command.
 ```
 
-**Use the devenv shell in every mode, including plan mode.** Plan mode restricts mutations of the repo and system — it does not forbid entering the devenv shell. `devenv shell` only materializes the pinned toolchain into the Nix store (a per-user cache); it modifies nothing in the repository or system configuration, so running it in plan mode is fine even when it needs to download or build packages first. Never dodge it in favor of an ambient `python3`/`go`/etc. to avoid a Nix download — read-only work (running tests, linters, python analysis) must still go through the wrapper so results come from the pinned toolchain. Run it from the repo root — devenv does not search parent directories for `devenv.nix`.
+**Use the devenv shell in every mode, including plan mode.** Plan mode restricts mutations of the repo and system — it does not forbid entering the devenv shell. `devenv shell` only materializes the pinned toolchain into the Nix store (a per-user cache); it modifies nothing in the repository or system configuration, so running it in plan mode is fine even when it needs to download or build packages first. Never dodge the wrapper in favor of an ambient tool to avoid a Nix download — read-only work (running tests, linters, python analysis) must still go through it so results come from the pinned toolchain. `python3` is part of the pinned shell: plain-stdlib python analysis is expected and runs fine under the wrapper (there is no system-wide python on this host — a bare `python3` outside the shell just fails with command-not-found; that is a cue to use the wrapper, not to abandon python). Run it from the repo root — devenv does not search parent directories for `devenv.nix`.
 
 What's where:
 
 - **Provided by devenv** (absent or version-different on ambient PATH): the pinned `go`, `sqlc`, `python3`, `gomod2nix`, and `gopls`. `make` is also reachable inside the shell (pulled in transitively, not declared in `packages`). The shell exports `CGO_ENABLED=0` (the service is pure Go) and recreates the `.nix-tools/delve` + `.nix-tools/gopls` repo-root symlinks used by `.vscode/settings.json`.
-- **From the ambient system PATH, not devenv**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; `devenv.yaml` does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm`.
+- **Anything else** — `jq`, `ffmpeg`, python libraries beyond the stdlib, a different `node`, ...: pull it ad hoc from nixpkgs — `./dev -O packages:pkgs` (lands inside the pinned shell) or plain `nix shell` (standalone). See "Ad-hoc tools" below.
+- **From the ambient system PATH, not devenv**: `nix`, `podman`, `docker`, `node`, `pnpm`. They work but versions are whatever the host NixOS profile provides; `devenv.yaml` does not pin them. `make generate-ts-api` (which calls `pnpm`) and frontend lint/test therefore depend on the host having `node`/`pnpm` — if it does not, pull them ad hoc: `nix shell nixpkgs#nodejs nixpkgs#pnpm -c pnpm --dir ./nextjs lint`.
 - **Not a standalone binary**: `oapi-codegen` runs via `go generate` (`make generate-go-api` → `go generate ./pkg/api/...`), so it's built on demand from `go.mod` — no binary needs to be on PATH.
 
 The service is pure Go (`CGO_ENABLED=0` everywhere, including the Nix build) — no C toolchain is required.
@@ -57,11 +58,40 @@ Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
 - `go test -C elo-web-service ./...`: run regular Go tests.
-- `devenv test`: the unit suite plus a gofmt gate via devenv's test runner (wired in `devenv.nix` as the `devenv:enterTest` task) — the one place formatting is enforced, so run it (or `./dev test`) before finishing a change instead of interleaving `gofmt` mid-edit.
+- `make test`: the backend unit suite (includes the openapilint test) plus a gofmt gate, run inside the devenv shell via `./dev` — the one place formatting is enforced, so run it before finishing a change instead of interleaving `gofmt` mid-edit. It deliberately bypasses devenv's test runner: `devenv test` runs the `devenv:enterTest` tasks, which per upstream semantics validate the environment (and re-run on every shell entry), so they stay a cheap self-check in `devenv.nix`.
 - `make integration-test-podman` or `make integration-test-colima`: run backend integration tests. These spin up Postgres via testcontainers; see "Entering the dev environment" above for the `DOCKER_HOST`/socket details and the `devenv shell` wrapping.
 - `make integration-test-one T=TestName`: run a single integration test (much faster than the full suite while iterating).
 - `pnpm --dir ./nextjs exec tsc --noEmit`: type-check the frontend. Lint and Vitest do **not** type-check, but the Nix frontend build (`next build`) does — run this before finishing any TypeScript change.
 - `nix flake check`: evaluate Nix outputs and integration checks.
+
+### Ad-hoc tools: anything not in the pinned shell
+
+No tool needs a global install. Anything missing from the devenv shell — a `jq`, an `ffmpeg`, a newer `node` — is fetched ad hoc from nixpkgs; the first use downloads into the per-user Nix store cache (fine in plan mode, same as the devenv shell).
+
+The devenv way — `-O packages:pkgs` **appends to this repo's pinned shell**, so the new tool lands right next to `go`, `sqlc`, and `make`. The `./dev` wrapper passes `-O` through with its usual quieting. Use this whenever the work touches the repo (the usual case):
+
+```bash
+./dev -O packages:pkgs "jq ncdu" shell -- bash -lc 'jq --version && ncdu --version'
+# Find the nixpkgs attribute name:
+devenv search <name>
+```
+
+The nix-shell way — a standalone environment containing just that tool: no repo evaluation, no tasks, works from any directory. Prefer it for one-offs outside repo context, and it is the only way to hand python its libraries (a `-O packages:pkgs "python312Packages.requests"` would put a library on PATH, which does nothing):
+
+```bash
+nix shell nixpkgs#jq -c jq --version
+```
+
+Python: the pinned shell `python3` covers stdlib scripts (run it under `./dev shell`). For third-party libraries, bake them into an ad-hoc interpreter or make a throwaway venv — both verified working:
+
+```bash
+# Interpreter with the libraries included, one-off:
+nix shell --impure --expr '(import <nixpkgs> {}).python3.withPackages (ps: with ps; [ requests ])' -c python3 script.py
+# Or a venv; pip works on the Nix python inside the devenv shell:
+./dev shell -- bash -lc 'python3 -m venv /tmp/venv && /tmp/venv/bin/pip install pyyaml && /tmp/venv/bin/python ...'
+```
+
+Keep one-off tools out of `devenv.nix` — pinning them there is a deliberate decision for the whole team, made only when a tool is routinely needed.
 
 ### Gotchas
 
