@@ -139,6 +139,7 @@ function TournamentViewLoaded({
         <>
             <PageHeader
                 title={tournament.name}
+                icon={<Trophy className="h-6 w-6 shrink-0" />}
                 action={canEdit ? (
                     <Button asChild size="sm" variant="outline" aria-label="Управление турниром">
                         <Link href={`/tournaments/edit?id=${tournament.id}`}>

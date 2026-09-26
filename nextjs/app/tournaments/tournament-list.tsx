@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Trophy } from "lucide-react";
 import { Tournament } from "@/app/api";
 import { tournamentStatusLabel } from "./labels";
 import { Badge } from "@/components/ui/badge";
@@ -6,8 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 
 /**
  * The tournaments list shared by the /tournaments page and the tournaments
- * tab of /arenas (ADR-26 §UI): rows with name, status chip and participants
- * count. The hosts own fetching, loading/error/empty states.
+ * tab of /arenas (ADR-26 §UI): rows with the trophy mark, name, status chip
+ * and participants count. The hosts own fetching, loading/error/empty states.
  */
 export function TournamentList({ tournaments }: { tournaments: Tournament[] }) {
     return (
@@ -26,6 +27,7 @@ function TournamentItem({ tournament: t }: { tournament: Tournament }) {
         <div className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
             <span className="min-w-0">
                 <Link href={`/tournaments/view?id=${t.id}`} className="font-medium underline min-w-0">
+                    <Trophy className="mr-1 inline-block h-4 w-4 align-middle" />
                     {t.name}
                 </Link>
                 <span className="block text-sm text-muted-foreground">

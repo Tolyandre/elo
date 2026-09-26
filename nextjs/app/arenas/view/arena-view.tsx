@@ -23,7 +23,7 @@ import { useMe } from "@/app/meContext";
 import { ArenaMedalsTab } from "./arena-medals-tab";
 import { ArenaMatchesTab } from "./arena-matches-tab";
 import { useArenaMatches, type ArenaMatchFilters } from "./use-arena-matches";
-import { Edit2 } from "lucide-react";
+import { Edit2, Tent } from "lucide-react";
 
 // Ids travel in the query (?id=<ARENA_ID>) on both routes that render this
 // component: a path segment per id cannot be statically exported. Without an
@@ -163,6 +163,7 @@ export function ArenaView() {
       <div className="space-y-4">
         <PageHeader
           title={arena?.name ?? "Главная"}
+          icon={arena?.camp ? <Tent className="h-6 w-6 shrink-0" /> : undefined}
           action={
             <div className="flex items-center gap-2">
               {canEditArena && (

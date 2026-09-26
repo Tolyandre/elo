@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Tent, Trophy } from "lucide-react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
@@ -10,7 +11,8 @@ import { RunningTables } from "@/components/tables/running-tables";
 /**
  * Compact «Сейчас» block above the global arena: plain links to the camps
  * whose window contains today (ADR-27) and the tournaments currently in
- * registration or running (ADR-26) — from the preloaded lists.
+ * registration or running (ADR-26) — from the preloaded lists. Each entry
+ * carries the mark of its kind (camp tent / tournament trophy).
  */
 function NowBlock() {
     const { camps } = useCamps();
@@ -28,8 +30,18 @@ function NowBlock() {
     );
     if (active.length === 0 && activeTournaments.length === 0) return null;
     const links = [
-        ...active.map((c) => ({ key: c.id, href: `/arenas/view?id=${c.id}`, name: c.name })),
-        ...activeTournaments.map((t) => ({ key: t.id, href: `/tournaments/view?id=${t.id}`, name: t.name })),
+        ...active.map((c) => ({
+            key: c.id,
+            href: `/arenas/view?id=${c.id}`,
+            name: c.name,
+            icon: <Tent className="mr-0.5 inline-block h-4 w-4 align-middle" />,
+        })),
+        ...activeTournaments.map((t) => ({
+            key: t.id,
+            href: `/tournaments/view?id=${t.id}`,
+            name: t.name,
+            icon: <Trophy className="mr-0.5 inline-block h-4 w-4 align-middle" />,
+        })),
     ];
     return (
         <div className="max-w-sm mx-auto pt-1">
@@ -38,7 +50,8 @@ function NowBlock() {
                 {links.map((l, i) => (
                     <span key={l.key}>
                         {i > 0 && ", "}
-                        <Link href={l.href} className="underline">
+                        <Link href={l.href} className="underline whitespace-nowrap">
+                            {l.icon}
                             {l.name}
                         </Link>
                     </span>

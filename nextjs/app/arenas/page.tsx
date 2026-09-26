@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";import Link from "next/link";
-import { Tent } from "lucide-react";
+import { Tent, Trophy } from "lucide-react";
 import type { Base58ID } from "@/lib/id";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { PageHeader } from "@/app/pageHeaderContext";
@@ -12,7 +12,6 @@ import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { arenaMatchesCount, buildArenaGroups, type ArenaGroup } from "@/lib/arena-groups";
 import { ErrorAlert } from "@/components/error-alert";
-import { GobletIcon } from "@/components/goblet-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -143,7 +142,7 @@ function ArenasContent() {
             Кэмпы
           </TabsTrigger>
           <TabsTrigger value="tournaments" className="px-1 text-xs">
-            <GobletIcon className="mr-1 inline-block h-4 w-4 align-middle" />
+            <Trophy className="mr-1 inline-block h-4 w-4 align-middle" />
             Турниры
           </TabsTrigger>
         </TabsList>
@@ -240,12 +239,14 @@ function ArenasContent() {
 
 /**
  * A plain single-row list item inside a section card: the arena's name
- * (wrapping only when too long) and its matches count.
+ * (wrapping only when too long) and its matches count. Camp arenas carry the
+ * tent mark of the camps tab (ADR-27).
  */
 function ArenaItem({ arena }: { arena: Arena }) {
   return (
     <div className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
       <Link href={`/arenas/view?id=${arena.id}`} className="font-medium underline min-w-0">
+        {arena.camp && <Tent className="mr-1 inline-block h-4 w-4 align-middle" />}
         {arena.name}
       </Link>
       <span className="text-sm text-muted-foreground shrink-0 whitespace-nowrap">
