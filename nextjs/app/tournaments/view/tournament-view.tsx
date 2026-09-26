@@ -13,6 +13,7 @@ import {
 } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMe } from "@/app/meContext";
+import { useGames } from "@/app/gamesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useTournaments } from "../tournamentsContext";
 import { eliminationLabel, tournamentStatusLabel } from "../labels";
@@ -105,6 +106,7 @@ function TournamentViewLoaded({
     setTab: (value: string) => void;
 }) {
     const { canEdit, playerId } = useMe();
+    const { games } = useGames();
     const { playerMap, playerDisplayName } = usePlayers();
     const { invalidate: invalidateTournaments } = useTournaments();
     const [registering, setRegistering] = useState(false);
@@ -113,6 +115,7 @@ function TournamentViewLoaded({
         const player = playerMap.get(pid);
         return player ? playerDisplayName(player) : pid;
     };
+    const gameName = (gid: string): string => games.find((g) => g.id === gid)?.name ?? gid;
     const participants = tournament.participant_ids ?? [];
     const registered = playerId != null && participants.includes(playerId);
     const winnerId = bracket.winner_player_id ?? tournament.winner_player_id ?? null;
@@ -178,6 +181,27 @@ function TournamentViewLoaded({
                 </TabsList>
 
                 <TabsContent value="tournament" className="space-y-4">
+                    {tournament.games.length > 0 && (
+                        <Card className="gap-1">
+                            <CardHeader>
+                                <CardTitle className="text-sm text-muted-foreground">
+                                    Пул игр (вместимость столов)
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <ul className="space-y-1 text-sm">
+                                    {tournament.games.map((g) => (
+                                        <li key={g.game_id} className="flex items-baseline justify-between gap-2">
+                                            <span className="min-w-0 truncate">{gameName(g.game_id)}</span>
+                                            <span className="text-muted-foreground whitespace-nowrap">
+                                                от {g.min_players} до {g.max_players}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </CardContent>
+                        </Card>
+                    )}
                     {tournament.status === "registration" && (
                         <>
                             <PlayerLinkNotice action="записаться на турнир" />
@@ -226,7 +250,7 @@ function RegistrationSection({
     onRegistration: (withdraw: boolean) => void;
 }) {
     return (
-        <Card>
+        <Card className="gap-1">
             <CardHeader>
                 <CardTitle className="text-sm text-muted-foreground">
                     Участники: {participants.length}
