@@ -37,11 +37,11 @@ const (
 const (
 	// SeatDraw: a round-1 winners-track seat filled from the seeded draw.
 	SeatDraw = "draw"
-	// SeatBye: a round-1 remainder player — unseated in round 1, seated
-	// directly (from the draw tail) in the later winners round — or grand
-	// final — where he next plays. A winners-round survivor who waits is not
-	// a bye: his later seat is a SeatSource of the slot he last played, so
-	// every played slot stays connected to where its winners land.
+	// SeatBye: a not-yet-played remainder player — unseated in an earlier
+	// winners round (originally round 1), seated directly (from the draw
+	// tail) in the later winners round — or grand final — where he first
+	// plays. A played player never waits: a winners-round survivor plays the
+	// very next round, and a WB drop re-enters through the losers bracket.
 	SeatBye = "bye"
 	// SeatSource: filled from a place of an earlier slot when it completes.
 	SeatSource = "source"
@@ -77,8 +77,8 @@ type PlanRound struct {
 }
 
 // PlanSlot is one table. Seats are position-ordered; their provenance kinds
-// are draw (round 1), bye (winners round 2), or source (a place of an
-// earlier slot, see seatRefKey).
+// are draw (round 1), bye (a not-yet-played remainder player), or source (a
+// place of an earlier slot).
 type PlanSlot struct {
 	SeatCount int        `json:"seat_count"`
 	Seats     []PlanSeat `json:"seats"`
@@ -130,10 +130,19 @@ func (p Plan) CanonicalJSON() string {
 //   - every round has ≥ 1 slot of ≥ 2 seats, with promote uniform and
 //     promote < min seat count;
 //   - draw seats only in the plan's first round; bye seats only in winners
-//     round 2 or the grand final (the round-1 remainder fed forward — byes
-//     are bare, a waiting round survivor is a source seat);
+//     round 2 or the grand final (the round-1 remainder fed forward — a
+//     player who has not yet played may wait, a played one may not);
+//   - no skipped rounds: every round seats every promotion place of the
+//     previous round of its own track, and the grand final additionally
+//     seats every promotion place of the last winners and last losers rounds
+//     (a WB drop's detour through the losers bracket is the only way to sit
+//     out a round);
 //   - source seats reference strictly earlier slots with a place within the
-//     source slot's seat count, and a source place feeds at most one seat;
+//     source slot's seat count; a source place feeds at most one seat in the
+//     whole plan, and a dropped place (beyond promote) may only be seated by
+//     the losers track — except the lone drop of a plan without losers
+//     rounds, the LB winner by waiting, who takes the second grand-final
+//     seat;
 //   - the last round is the grand final: final track, single slot, promote 1.
 func (p Plan) Validate() error {
 	if p.Elimination != EliminationSingle && p.Elimination != EliminationDouble {
@@ -147,6 +156,18 @@ func (p Plan) Validate() error {
 	trackLen := map[string]int{}
 	prevOrder := -1
 	seatCounts := make([]int, 0, 64) // flat slot index → seat count
+	promotes := make([]int, 0, 64)   // flat slot index → promote
+
+	// No-skip bookkeeping: per track, the previous round's promotion places
+	// (its first flat slot, slot count, promote, and the places its seats
+	// consumed); used marks every source place consumed anywhere in the plan.
+	type prevRound struct {
+		first, slots, promote int
+		fed                   map[[2]int]bool
+	}
+	prev := map[string]*prevRound{}
+	used := make(map[[2]int]bool, 64)
+	finalDrops := 0 // dropped places seated in the final track (see below)
 
 	for ri, r := range p.Rounds {
 		order, ok := trackOrder[r.Track]
@@ -212,25 +233,80 @@ func (p Plan) Validate() error {
 						return fmt.Errorf("%w: source place %d out of range for slot %d",
 							ErrInvalidPlan, seat.SourcePlace, slot)
 					}
+					// A place beyond promote is a drop: only the losers track
+					// may seat drops. The one exception is a double-
+					// elimination plan without losers rounds, where the lone
+					// unplayed drop is the LB winner by waiting (the n=2
+					// rematch) and takes his second grand-final seat.
+					if seat.SourcePlace > promotes[slot] {
+						switch {
+						case r.Track == TrackLosers:
+							// the drop's second chance
+						case r.Track == TrackFinal && p.Elimination == EliminationDouble &&
+							trackLen[TrackLosers] == 0 && finalDrops == 0:
+							finalDrops++
+						default:
+							return fmt.Errorf("%w: dropped place %d of slot %d seated outside the losers track",
+								ErrInvalidPlan, seat.SourcePlace, slot)
+						}
+					}
 					key := [2]int{slot, seat.SourcePlace}
-					if fed[key] {
+					if used[key] {
 						return fmt.Errorf("%w: source place %d of slot %d feeds two seats",
 							ErrInvalidPlan, seat.SourcePlace, slot)
 					}
+					used[key] = true
 					fed[key] = true
 				default:
 					return fmt.Errorf("%w: unknown seat kind %q", ErrInvalidPlan, seat.Kind)
 				}
 			}
 		}
+
+		// No skipped rounds: this round must seat every promotion place of
+		// the previous round of its own track (the first round of a track
+		// has no predecessor; WB drops reaching the LB are the only legal
+		// way a played player sits out a round).
+		if pv := prev[r.Track]; pv != nil {
+			for slot := pv.first; slot < pv.first+pv.slots; slot++ {
+				for place := 1; place <= pv.promote; place++ {
+					if !fed[[2]int{slot, place}] {
+						return fmt.Errorf("%w: %s round %d skips promotion place %d of slot %d — a played player may not sit out a round",
+							ErrInvalidPlan, r.Track, r.Index, place, slot)
+					}
+				}
+			}
+		}
+		prev[r.Track] = &prevRound{first: len(seatCounts), slots: len(r.Slots), promote: r.Promote, fed: fed}
+
 		for _, s := range r.Slots {
 			seatCounts = append(seatCounts, s.SeatCount)
+			promotes = append(promotes, r.Promote)
 		}
 	}
 
 	last := p.Rounds[len(p.Rounds)-1]
 	if last.Track != TrackFinal || len(last.Slots) != 1 || last.Promote != 1 {
 		return fmt.Errorf("%w: the last round must be the grand final (final track, one slot, promote 1)", ErrInvalidPlan)
+	}
+
+	// The grand final merges the tracks: it must seat every promotion place
+	// of the last winners round and, when the losers track ran, of the last
+	// losers round too.
+	grand := prev[TrackFinal]
+	for _, track := range []string{TrackWinners, TrackLosers} {
+		pv := prev[track]
+		if pv == nil {
+			continue
+		}
+		for slot := pv.first; slot < pv.first+pv.slots; slot++ {
+			for place := 1; place <= pv.promote; place++ {
+				if !grand.fed[[2]int{slot, place}] {
+					return fmt.Errorf("%w: the grand final skips promotion place %d of slot %d (last %s round) — a played player may not sit out a round",
+						ErrInvalidPlan, place, slot, track)
+				}
+			}
+		}
 	}
 	return nil
 }

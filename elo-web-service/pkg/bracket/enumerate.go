@@ -523,18 +523,50 @@ func lessInts(a, b []int) bool {
 	return len(a) < len(b)
 }
 
+// winnersMultisets returns the candidate slot sets for a winners round over
+// pool that leave nobody played unseated: the round's unseated tail may only
+// be the not-yet-played bye remainder, so a multiset qualifies when it seats
+// at least the pool's played (source) prefix. A winners-round survivor may
+// never wait — that would let a player skip a round; waiting is reserved for
+// byes (players who have not started) and for WB drops falling to the LB.
+func (e *enumerator) winnersMultisets(pool []seatRef) [][]int {
+	played := 0
+	for _, ref := range pool {
+		if ref.kind == SeatSource {
+			played++
+		}
+	}
+	all := e.multisetsFor(len(pool), true)
+	if played == 0 {
+		return all
+	}
+	out := make([][]int, 0, len(all))
+	for _, ms := range all {
+		if seatTotal(ms) >= played {
+			out = append(out, ms)
+		}
+	}
+	return out
+}
+
+func seatTotal(ms []int) int {
+	sum := 0
+	for _, k := range ms {
+		sum += k
+	}
+	return sum
+}
+
 // buildRound seats pool refs into the candidate slot set ms (slot-ordered)
 // with uniform promotion count p. Slots fill positionally from the pool in
 // canonical order. Returns the round (track/index set by the caller), the
 // promoted pool (refs into this round, then the carried remainder), and the
 // drop pool (places > promote).
 //
-// The unseated remainder is carried into the next round verbatim: a source
-// ref keeps its identity, so the plan document connects the slot the player
-// last played to the seat he eventually occupies — and start resolves him
-// from that slot instead of drawing a fresh participant. Only round-1
-// remainder refs (kind draw) lose their identity: they never played, so
-// start draws them directly — encoded as bare bye seats.
+// The unseated remainder is carried into the next round verbatim. It may
+// only contain not-yet-played refs (the bye remainder — see
+// winnersMultisets): they are drawn directly at start, encoded as bare bye
+// seats.
 func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef, []seatRef) {
 	r := builtRound{
 		rid:     rid,
@@ -556,9 +588,11 @@ func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef
 		}
 	}
 	for _, ref := range pool[off:] { // the unseated remainder waits
-		if ref.kind == SeatDraw {
-			ref = seatRef{kind: SeatBye}
+		if ref.kind == SeatSource {
+			// winnersMultisets' guarantee; a violation is a bug, not input.
+			panic("bracket: a played player cannot wait — a winners round must seat every survivor")
 		}
+		ref.kind = SeatBye
 		next = append(next, ref)
 	}
 	return r, next, drops
@@ -566,19 +600,20 @@ func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef
 
 // singleDFS plays winners-track rounds (no losers bracket) down to one
 // player; the round that produces the champion is the grand final. Winners
-// rounds may leave an unseated bye remainder.
+// rounds may leave an unseated bye remainder — unplayed players only; a
+// survivor always plays the very next round.
 func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthLeft int) {
 	if e.overBudget() {
 		return
 	}
 	if n := len(pool); n >= 2 && depthLeft < minRoundsNeeded(n) {
-		if len(e.multisetsFor(n, true)) > 0 {
+		if len(e.winnersMultisets(pool)) > 0 {
 			e.depthPruned = true
 		}
 		return
 	}
 	rid := len(rounds)
-	for _, ms := range e.multisetsFor(len(pool), true) {
+	for _, ms := range e.winnersMultisets(pool) {
 		for p := 1; p < ms[len(ms)-1]; p++ {
 			round, next, _ := buildRound(rid, pool, ms, p)
 			if len(next) == 1 {
@@ -593,22 +628,22 @@ func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthL
 }
 
 // doubleDFS explores the (winners, losers) state space: run a winners round
-// (the unseated remainder waits as byes for the next winners round), run a
-// losers round when the LB pool seats exactly (LB non-promoted players are
-// out), or — once both tracks are exhausted — merge into the final track.
-// The merge is the traditional grand final: the WB must be finished (no
-// winners round can seat its survivors any more) and the LB must be down to
-// its winner set (lbResolved) — a WB drop that the LB could never seat
-// dead-ends the branch instead of skipping into the final. Both "run LB now"
-// and "run WB next" branches are explored (ADR-26).
+// (only the unplayed remainder waits as byes — a survivor never skips a
+// round), run a losers round when the LB pool seats exactly (LB
+// non-promoted players are out), or — once both tracks are exhausted — merge
+// into the final track. The merge is the traditional grand final: the WB
+// must be finished (no winners round can seat its survivors any more) and
+// the LB must be down to its winner set (lbResolved) — a WB drop that the LB
+// could never seat dead-ends the branch instead of skipping into the final.
+// Both "run LB now" and "run WB next" branches are explored (ADR-26).
 func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx, lIdx, depthLeft int) {
 	if e.overBudget() {
 		return
 	}
 	nw, nl := len(wpool), len(lpool)
-	// A winners round is possible whenever at least the smallest table fits;
-	// the remainder waits as byes.
-	wPossible := len(e.multisetsFor(nw, true)) > 0
+	// A winners round is possible whenever a slot set seats all survivors;
+	// the unplayed remainder waits as byes.
+	wPossible := len(e.winnersMultisets(wpool)) > 0
 	total := nw + nl
 
 	// Every continuation (a WB round, an LB round, or a merge followed by
@@ -628,9 +663,10 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 
 	rid := len(rounds)
 
-	// Winners round: seat pool-sized tables, carry the remainder as byes.
+	// Winners round: seat pool-sized tables; only unplayed players may be
+	// left unseated (they wait as byes).
 	if wPossible {
-		for _, ms := range e.multisetsFor(nw, true) {
+		for _, ms := range e.winnersMultisets(wpool) {
 			for p := 1; p < ms[len(ms)-1]; p++ {
 				round, nextW, drops := buildRound(rid, wpool, ms, p)
 				round.track, round.index = TrackWinners, wIdx

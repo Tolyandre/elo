@@ -179,11 +179,15 @@ multisets of seat sizes drawn from the pool's capacities:
   sizes (e.g. `n = 8`, pool `{2,3}`: `3+3+2`; `n = 11`, pool `{3,4}`:
   `4+4+3`);
 - a **bye** (the unseated remainder) is allowed in **every winners-track
-  round** — those players wait and feed the next winners round (or the
-  grand final, if the merge came first); this is what makes strict single-
+  round**, but only for players **who have not played yet** (the round-1
+  remainder waiting forward): a player who has already played a round must
+  play the very next one — sitting a round out is reserved for byes and for
+  WB drops falling to the losers bracket. This is what makes strict single-
   size pools work at all (18 players on 4-seat tables: 4×4 + 2 byes, again
-  4 + 2 byes, until the survivors seat exactly). Losers-track rounds and
-  the grand final must seat everyone exactly (`⌊n/k⌋·k = n`);
+  4 + 2 byes, until the survivors seat exactly) — and what rules out
+  mid-bracket skips (a round winner resurfacing after a skipped round; if a
+  shape cannot seat every survivor, it is not offered at all). Losers-track
+  rounds and the grand final must seat everyone exactly (`⌊n/k⌋·k = n`);
 - a seat size is only usable if some pool game fits it; if the pool has no
   game for a candidate set, that candidate is not offered.
 
@@ -570,7 +574,8 @@ intentionally an empty page in the gap).
    `plan`, new tables, `audit_log` entity-type widening), pool CRUD,
    registration endpoints, OpenAPI regeneration.
 2. **Plan enumerator.** Pure function + unit tests (seat multisets, uniform
-   promotion bounds, bye-only-in-round-1, WB/LB state search, plan cap and
+   promotion bounds, bye seats for not-yet-played players only / no skipped
+   rounds, WB/LB state search, plan cap and
    ordering, the `n = 2` case needing a 2-seat game).
 3. **Start + generation.** Plan validation against fresh enumeration,
    `plan` snapshot, eager generation of rounds/slots/seats, seeded draw,

@@ -124,6 +124,26 @@ func TestValidateRejectsBrokenStructures(t *testing.T) {
 			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat(), drawSeat())),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(0, 1), srcSeat(0, 1))),
 		}},
+		"winners round skips a promotion": {Elimination: EliminationSingle, Rounds: []PlanRound{
+			trnd(TrackWinners, 1, 2, tslot(drawSeat(), drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat(), drawSeat())),
+			trnd(TrackWinners, 2, 2, tslot(srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1))),
+			trnd(TrackFinal, 1, 1, tslot(srcSeat(2, 1), srcSeat(2, 2), srcSeat(1, 2))),
+		}},
+		"grand final skips the last winners promotion": {Elimination: EliminationSingle, Rounds: []PlanRound{
+			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat())),
+			trnd(TrackWinners, 2, 3, tslot(srcSeat(0, 1), srcSeat(1, 1), srcSeat(2, 1), byeSeat(), byeSeat())),
+			trnd(TrackFinal, 1, 1, tslot(srcSeat(3, 1), srcSeat(3, 2), byeSeat())),
+		}},
+		"grand final resurrects an eliminated drop": {Elimination: EliminationSingle, Rounds: []PlanRound{
+			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat())),
+			trnd(TrackWinners, 2, 1, tslot(srcSeat(0, 1), srcSeat(1, 1))),
+			trnd(TrackFinal, 1, 1, tslot(srcSeat(2, 1), srcSeat(0, 2))),
+		}},
+		"source place feeds seats in two rounds": {Elimination: EliminationSingle, Rounds: []PlanRound{
+			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat())),
+			trnd(TrackWinners, 2, 1, tslot(srcSeat(0, 1), srcSeat(1, 1))),
+			trnd(TrackFinal, 1, 1, tslot(srcSeat(2, 1), srcSeat(0, 1))),
+		}},
 		"empty round": {Elimination: EliminationSingle, Rounds: []PlanRound{
 			trnd(TrackWinners, 1, 1),
 		}},

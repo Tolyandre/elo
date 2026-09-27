@@ -609,10 +609,10 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		takeDrawn := func() (id.ID, error) {
 			if cursor >= len(draw) {
 				// Unreachable for an offered plan: draw + bye seats number
-				// exactly the participant count (bye seats are the round-1
-				// remainder; a waiting survivor is a source seat). Kept as a
-				// guard so a future invariant slip fails the start instead of
-				// panicking.
+				// exactly the participant count (bye seats are the
+				// not-yet-played remainder; a played player never waits).
+				// Kept as a guard so a future invariant slip fails the start
+				// instead of panicking.
 				return id.ID(""), ErrTournamentPlanInvalid
 			}
 			p := draw[cursor]

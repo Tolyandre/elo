@@ -683,44 +683,149 @@ func TestEnumerateFilteredChips(t *testing.T) {
 	}
 }
 
-func TestCarriedWinnerStaysConnected(t *testing.T) {
-	// The reported repro: 6 players on a strict 2-seat pool. Round 2 seats
-	// two of the three round-1 winners; the third waits that round and plays
-	// the grand final. His final seat must be a source seat of his round-1
-	// table — not an anonymous bye — so every round-1 slot connects to where
-	// its winner lands and start can resolve the seat from the slot's result.
-	res := Enumerate(6, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, 0)
-	if len(res.Plans) == 0 {
-		t.Fatalf("6/{{2,2}} single must be feasible")
+// planSkipViolations checks a plan document for skipped rounds, independently
+// of Validate: every round's promotion places must be seated by the next
+// round of the same track — or, for a track's last round, by the grand
+// final. Byes (players who have not started) and WB drops (through the
+// losers bracket) are the only seats allowed to skip a round; promotion
+// places are neither.
+func planSkipViolations(p Plan) []string {
+	type roundShape struct {
+		track                 string
+		first, slots, promote int
+		fed                   map[[2]int]bool
 	}
-	for _, p := range res.Plans {
-		for _, r := range p.Rounds {
-			for _, s := range r.Slots {
-				for _, seat := range s.Seats {
-					if seat.Kind == SeatBye {
-						t.Fatalf("no one sits out round 1 — bye seats impossible: %s", describe(p))
-					}
+	var rounds []roundShape
+	flat := 0
+	for _, r := range p.Rounds {
+		sh := roundShape{track: r.Track, first: flat, slots: len(r.Slots), promote: r.Promote, fed: map[[2]int]bool{}}
+		for _, s := range r.Slots {
+			for _, seat := range s.Seats {
+				if seat.Kind == SeatSource {
+					sh.fed[[2]int{*seat.SourceSlot, seat.SourcePlace}] = true
 				}
 			}
 		}
-		final := p.Rounds[len(p.Rounds)-1]
-		for _, seat := range final.Slots[0].Seats {
-			if seat.Kind != SeatSource || seat.SourceSlot == nil {
-				t.Fatalf("final seats must be sources: %s", describe(p))
+		rounds = append(rounds, sh)
+		flat += len(r.Slots)
+	}
+	last := &rounds[len(rounds)-1]
+	missing := func(dst map[[2]int]bool, src *roundShape) []string {
+		var out []string
+		for slot := src.first; slot < src.first+src.slots; slot++ {
+			for place := 1; place <= src.promote; place++ {
+				if !dst[[2]int{slot, place}] {
+					out = append(out, fmt.Sprintf("%s promotion place %d of slot %d unseated", src.track, place, slot))
+				}
 			}
 		}
-		// One final seat is fed by the round-2 table (flat slot 3), the other
-		// by round 1's third table (flat slot 2) — the waiting winner.
-		src := map[int]int{}
-		for _, seat := range final.Slots[0].Seats {
-			src[*seat.SourceSlot]++
+		return out
+	}
+	var bad []string
+	for i := range rounds {
+		sh := &rounds[i]
+		if sh == last {
+			continue
 		}
-		if src[3] != 1 || src[2] != 1 {
-			t.Fatalf("final must be fed by round-2 slot 3 and round-1 slot 3: %s", describe(p))
+		next := last // a track's last round feeds the grand final
+		for j := i + 1; j < len(rounds); j++ {
+			if rounds[j].track == sh.track {
+				next = &rounds[j]
+				break
+			}
 		}
-		if !OffersPlan(6, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, p) {
-			t.Fatalf("enumerated plan must be offered: %s", describe(p))
+		bad = append(bad, missing(next.fed, sh)...)
+	}
+	return bad
+}
+
+// TestWinnersNeverSkipARound pins the no-skip rule on every enumerated plan:
+// a player who has played a round plays the very next round of his track,
+// and the grand final seats the survivors of both tracks. Only not-yet-
+// played players (byes) may wait in the winners track, and only WB drops may
+// sit a round out by falling to the losers bracket. The reported repro —
+// 6 players on a 3–4-seat pool where winners round 2 seats three of the four
+// round-1 winners and the fourth resurfaces in the grand final — must not be
+// offered.
+func TestWinnersNeverSkipARound(t *testing.T) {
+	pool34 := []GameCapacity{{Min: 3, Max: 3}, {Min: 4, Max: 4}}
+	pool23 := []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}
+	configs := []struct {
+		n    int
+		pool []GameCapacity
+		elim string
+	}{
+		{6, pool34, EliminationSingle},
+		{6, pool34, EliminationDouble},
+		{5, pool4(), EliminationSingle},
+		{7, []GameCapacity{{Min: 3, Max: 3}}, EliminationSingle},
+		{7, []GameCapacity{{Min: 3, Max: 3}}, EliminationDouble},
+		{12, pool23, EliminationSingle},
+		{12, pool23, EliminationDouble},
+		{18, pool4(), EliminationSingle},
+		{18, pool4(), EliminationDouble},
+	}
+	for _, tc := range configs {
+		res := EnumerateFiltered(tc.n, tc.pool, PlanFilter{Eliminations: []string{tc.elim}}, DefaultPlanCap)
+		if len(res.Plans) == 0 {
+			t.Fatalf("%d/%v %s must be feasible", tc.n, tc.pool, tc.elim)
 		}
+		for _, p := range res.Plans {
+			if err := p.Validate(); err != nil {
+				t.Fatalf("%d/%v %s: enumerated plan invalid: %v\n%s", tc.n, tc.pool, tc.elim, err, describe(p))
+			}
+			if bad := planSkipViolations(p); len(bad) > 0 {
+				t.Fatalf("%d/%v %s: skipped rounds %v:\n%s", tc.n, tc.pool, tc.elim, bad, describe(p))
+			}
+		}
+	}
+
+	// The repro configuration stays feasible — all four round-1 winners can
+	// meet at one 4-seat grand final.
+	res := Enumerate(6, pool34, EliminationSingle, 0)
+	allFour := false
+	for _, p := range res.Plans {
+		if len(p.Rounds) == 2 && p.Rounds[0].Promote == 2 && len(p.Rounds[0].Slots) == 2 &&
+			p.Rounds[1].Slots[0].SeatCount == 4 {
+			allFour = true
+		}
+	}
+	if !allFour {
+		var shapes []string
+		for _, p := range res.Plans {
+			shapes = append(shapes, describe(p))
+		}
+		t.Fatalf("6/{{3,4}} single must seat all four round-1 winners in the final: %v", shapes)
+	}
+
+	// A strict 2-seat pool flips from skip-feasible to infeasible at n=6:
+	// round 1 seats three tables, but round 2 cannot seat all three winners
+	// (n=7 works — the odd player out is a round-1 bye, a player who has not
+	// started).
+	if res := Enumerate(6, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, 0); len(res.Plans) != 0 {
+		t.Fatalf("6/{{2}} single must have no plans — seating every round-1 winner is impossible:\n%s",
+			describe(res.Plans[0]))
+	}
+	seven := Enumerate(7, []GameCapacity{{Min: 2, Max: 2}}, EliminationSingle, 0)
+	if len(seven.Plans) == 0 {
+		t.Fatalf("7/{{2}} single must be feasible (round-1 bye)")
+	}
+	if bad := planSkipViolations(seven.Plans[0]); len(bad) > 0 {
+		t.Fatalf("7/{{2}} single: skipped rounds %v:\n%s", bad, describe(seven.Plans[0]))
+	}
+
+	// The exact reported repro — a round-1 runner-up skips round 2 and
+	// resurfaces in the grand final — is neither valid nor offered.
+	repro := Plan{Elimination: EliminationSingle, Rounds: []PlanRound{
+		trnd(TrackWinners, 1, 2, tslot(drawSeat(), drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat(), drawSeat())),
+		trnd(TrackWinners, 2, 2, tslot(srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1))),
+		trnd(TrackFinal, 1, 1, tslot(srcSeat(2, 1), srcSeat(2, 2), srcSeat(1, 2))),
+	}}
+	if err := repro.Validate(); err == nil {
+		t.Fatalf("the repro plan (a played player sits out winners round 2) must be rejected")
+	}
+	if OffersPlan(6, pool34, EliminationSingle, repro) {
+		t.Fatalf("the repro plan must not be offered")
 	}
 }
 
