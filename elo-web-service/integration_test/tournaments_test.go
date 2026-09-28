@@ -19,85 +19,25 @@ func short(canonical idpkg.ID) string {
 	return string(canonical.Base58())
 }
 
-// TestTournament_Migration056RebuildEntity drives a fresh database to 055,
-// shapes the pre-ADR-26 state (a camp-shell tournaments row plus a still-
-// anchored arena, which 053 should have prevented but the migration defends
-// against), migrates on, and verifies the rebuild: the shell row is deleted,
-// the arena survives detached, and the widened audit constraints plus the new
-// pure-expression membership function behave per ADR-26/28.
-func TestTournament_Migration056RebuildEntity(t *testing.T) {
+// TestTournament_ArenaMembershipFunction pins the truth table of the
+// SQL-defined arena membership function (ADR-28). The function lives only in
+// the init migration — no Go code owns it — so its behavior is pinned here
+// against the template clone, along with the widened audit constraints (the
+// NULL system actor of the deadline auto-cancel, ADR-26).
+func TestTournament_ArenaMembershipFunction(t *testing.T) {
 	ctx := context.Background()
 
-	pool, dsn, cleanup := setupTestDBAtVersion(t, 55)
+	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	playerID := createTestPlayer(t, pool, "(Турнир) Миг")
 	gameID := createTestGame(t, pool, "Миггра игра")
-	shellID := idpkg.ID("00000000-0000-0000-0000-000000000099")
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournaments (id, name) VALUES ($1, 'Старый кэмп-шелл')`, shellID); err != nil {
-		t.Fatalf("insert legacy tournament: %v", err)
-	}
 
-	// A defensively detached arena: non-camp, so it needs a filter (053 CHECKs).
-	filterID := idpkg.NewMonotonic()
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO match_filters (id, date_from, date_to, game_ids, tag_ids)
-		 VALUES ($1, NULL, NULL, $2, '{}')`, filterID, []idpkg.ID{gameID}); err != nil {
-		t.Fatalf("insert filter: %v", err)
-	}
-	arenaID := idpkg.NewMonotonic()
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, tournament_id, camp)
-		 VALUES ($1, 'Арена старого кэмпа', $2, '{"starting_rating":900,"leagues":[]}', 1, $3, false)`,
-		arenaID, filterID, shellID); err != nil {
-		t.Fatalf("insert anchored arena: %v", err)
-	}
-
-	migrateToVersion(t, dsn, 0)
-
-	// The shell row is gone; its name is reusable.
-	var count int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM tournaments`).Scan(&count); err != nil {
-		t.Fatalf("count tournaments: %v", err)
-	}
-	if count != 0 {
-		t.Fatalf("tournaments must be empty after 056, got %d rows", count)
-	}
-
-	// The arena survived, detached from the deleted tournament, filter intact.
-	var (
-		name        string
-		anchor      *idpkg.ID
-		stillFilter *idpkg.ID
-	)
-	if err := pool.QueryRow(ctx,
-		`SELECT name, tournament_id, match_filter_id FROM arenas WHERE id = $1`, arenaID,
-	).Scan(&name, &anchor, &stillFilter); err != nil {
-		t.Fatalf("arena lookup after migration: %v", err)
-	}
-	if name != "Арена старого кэмпа" || anchor != nil || stillFilter == nil {
-		t.Fatalf("arena after 056: name=%q anchor=%v filter=%v", name, anchor, stillFilter)
-	}
-
-	// Players and games are untouched.
-	var players int
-	if err := pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM players WHERE id = $1`, playerID).Scan(&players); err != nil {
-		t.Fatalf("player lookup: %v", err)
-	}
-	if players != 1 {
-		t.Fatalf("player must survive the migration")
-	}
-
-	// The membership function: link-only branch (tournament/camp), then filter.
+	// A tournament arena: non-camp, no filter, anchor set; one linked match.
 	matchID := newID(t)
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO matches (id, date, game_id) VALUES ($1, NOW(), $2)`, matchID, gameID); err != nil {
 		t.Fatalf("insert probe match: %v", err)
 	}
-	// A live (post-rebuild) tournament whose arena link feeds the probe: the
-	// tournament plus the auto-created-arena shape (non-camp, no filter).
 	tournID := idpkg.New()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO tournaments (id, name, status, elimination) VALUES ($1, 'Миграционный турнир', 'running', 'single')`,
@@ -173,7 +113,7 @@ func TestTournament_Migration056RebuildEntity(t *testing.T) {
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO audit_log (id, actor_user_id, entity_type, entity_id, action, details_kind, details_schema_version, details)
 		 VALUES ($1, NULL, 'tournament', $2, 'updated', 'tournament-state', 1, '{"schema_version":1,"from":"running","to":"cancelled","reason":"deadline"}'::jsonb)`,
-		idpkg.NewMonotonic(), shellID); err != nil {
+		idpkg.NewMonotonic(), tournID); err != nil {
 		t.Fatalf("insert tournament audit row: %v", err)
 	}
 }

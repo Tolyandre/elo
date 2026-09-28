@@ -6,21 +6,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
-
-// The 041 baseline seeds exactly one camp tournament («Челябинский игровой
-// кэмп 2026», ADR-04/27); 051 auto-created its arena; 053 converts the arena
-// into a camp arena.
-const seededCampTournamentID = "00000000-0000-0000-0000-000000000001"
 
 type campArenaJSON struct {
 	Data []struct {
@@ -37,10 +30,10 @@ type campArenaJSON struct {
 	} `json:"data"`
 }
 
-// TestCamp_SeededTournamentConverted verifies on the template clone (which
-// ran the full 041→053 chain) that the seeded camp tournament's arena became a
-// camp arena: window copied from the tournament, filter and anchor dropped,
-// participants derived (empty on a fresh database).
+// TestCamp_SeededTournamentConverted verifies on the template clone (built
+// from the squashed init migration) that the seeded camp arena carries the
+// converted camp shape: the June window, no filter and no anchor, participants
+// derived (empty on a fresh database).
 func TestCamp_SeededTournamentConverted(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -65,7 +58,7 @@ func TestCamp_SeededTournamentConverted(t *testing.T) {
 		t.Fatalf("camp arena shape wrong: camp=%v filter=%v game=%v tournament=%v",
 			a.Camp, a.Filter, a.GameId, a.TournamentId)
 	}
-	// Window copied from the tournament (utc+5 seed dates).
+	// Seeded window (utc+5 dates).
 	wantStart := time.Date(2026, 6, 15, 0, 0, 0, 0, time.FixedZone("+05", 5*3600))
 	wantEnd := time.Date(2026, 6, 21, 23, 59, 0, 0, time.FixedZone("+05", 5*3600))
 	if a.StartsAt == nil || a.EndsAt == nil ||
@@ -84,186 +77,6 @@ func TestCamp_SeededTournamentConverted(t *testing.T) {
 	}
 	if filterID != nil {
 		t.Fatalf("camp arena must have no filter, got %s", *filterID)
-	}
-}
-
-// TestCamp_MigrationPreservesLinksAndStats rebuilds the pre-053 production
-// shape on a fresh database (migrated to 052, seeded with camp members +
-// linked matches, then migrated on) and verifies the conversion: links become
-// arena_matches, and after a recalculation the camp's settlements and medal
-// stats are exactly the linked matches' RANK semantics — stable across a
-// second recalc.
-func TestCamp_MigrationPreservesLinksAndStats(t *testing.T) {
-	ctx := context.Background()
-
-	// Fresh (non-template) database, migrated to the pre-camp version 052.
-	pool, dsn, cleanup := setupTestDBAtVersion(t, 52)
-	defer cleanup()
-
-	// Fixture: two camp members, two matches inside the tournament window,
-	// linked via match_tournament (the old association table).
-	p1 := createTestPlayer(t, pool, "(Кэмп) Миг1")
-	p2 := createTestPlayer(t, pool, "(Кэмп) Миг2")
-	gameID := createTestGame(t, pool, "Миггра игра")
-	m1, m2 := newID(t), newID(t)
-	campStart := time.Date(2026, 6, 15, 0, 0, 0, 0, time.FixedZone("+05", 5*3600))
-	campEnd := time.Date(2026, 6, 21, 23, 59, 0, 0, time.FixedZone("+05", 5*3600))
-	for _, mc := range []struct {
-		id     idpkg.ID
-		date   time.Time
-		s1, s2 float64
-	}{
-		{m1, campStart.Add(2 * time.Hour), 10, 5},
-		{m2, campStart.Add(26 * time.Hour), 5, 10},
-	} {
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO matches (id, date, game_id) VALUES ($1, $2, $3)`, mc.id, mc.date, gameID); err != nil {
-			t.Fatalf("insert match: %v", err)
-		}
-		if _, err := pool.Exec(ctx,
-			`INSERT INTO match_scores (match_id, player_id, score) VALUES ($1, $2, $3), ($1, $4, $5)`,
-			mc.id, p1, mc.s1, p2, mc.s2); err != nil {
-			t.Fatalf("insert scores: %v", err)
-		}
-	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournament_player_membership (tournament_id, player_id) VALUES ($1, $2), ($1, $3)`,
-		seededCampTournamentID, p1, p2); err != nil {
-		t.Fatalf("insert members: %v", err)
-	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO match_tournament (match_id, tournament_id) VALUES ($1, $3), ($2, $3)`,
-		m1, m2, seededCampTournamentID); err != nil {
-		t.Fatalf("insert match_tournament: %v", err)
-	}
-	var arenaID idpkg.ID
-	if err := pool.QueryRow(ctx,
-		`SELECT id FROM arenas WHERE tournament_id = $1`, seededCampTournamentID).Scan(&arenaID); err != nil {
-		t.Fatalf("pre-migration tournament arena missing: %v", err)
-	}
-	pool.Close()
-
-	// Apply 053 and verify the conversion.
-	migrateToVersion(t, dsn, 0)
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("reconnect: %v", err)
-	}
-	defer pool.Close()
-
-	var camp bool
-	var startsAt, endsAt time.Time
-	var filterID, anchorID *string
-	if err := pool.QueryRow(ctx,
-		`SELECT camp, starts_at, ends_at, match_filter_id::text, tournament_id::text FROM arenas WHERE id = $1`,
-		arenaID).Scan(&camp, &startsAt, &endsAt, &filterID, &anchorID); err != nil {
-		t.Fatalf("converted arena missing: %v", err)
-	}
-	if !camp || filterID != nil || anchorID != nil || !startsAt.Equal(campStart) || !endsAt.Equal(campEnd) {
-		t.Fatalf("conversion wrong: camp=%v filter=%v anchor=%v window=%v..%v", camp, filterID, anchorID, startsAt, endsAt)
-	}
-
-	var linked int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM arena_matches WHERE arena_id = $1`, arenaID).Scan(&linked); err != nil {
-		t.Fatalf("count arena_matches: %v", err)
-	}
-	if linked != 2 {
-		t.Fatalf("expected 2 preserved links, got %d", linked)
-	}
-
-	// Recalculate every arena; the camp must settle from arena_matches.
-	editor := createNamedTestUser(t, pool, "camp-mig-editor", "Кэмп Миг Редактор")
-	router := setupRouter(pool)
-	drain := func() {
-		t.Helper()
-		if w := doJSON(t, router, http.MethodPost, "/admin/update-arenas", editor, ""); w.Code != http.StatusOK {
-			t.Fatalf("POST /admin/update-arenas: %d %s", w.Code, w.Body.String())
-		}
-	}
-	drain()
-
-	snapshot := func(t *testing.T) string {
-		t.Helper()
-		rows, err := pool.Query(ctx,
-			`SELECT player_id, date, elo_after, rating_after, league FROM arena_settlements
-			 WHERE arena_id = $1 AND discriminator = 'match' ORDER BY date, id`, arenaID)
-		if err != nil {
-			t.Fatalf("read settlements: %v", err)
-		}
-		defer rows.Close()
-		out := ""
-		for rows.Next() {
-			var pid string
-			var date time.Time
-			var eloAfter, ratingAfter float64
-			var league *string
-			if err := rows.Scan(&pid, &date, &eloAfter, &ratingAfter, &league); err != nil {
-				t.Fatalf("scan settlement: %v", err)
-			}
-			if league != nil {
-				t.Fatalf("camp arena settlements must have null league, got %q", *league)
-			}
-			out += fmt.Sprintf("%s|%d|%.6f|%.6f\n", pid, date.Unix(), eloAfter, ratingAfter)
-		}
-		return out
-	}
-
-	first := snapshot(t)
-	if got := len(first); got == 0 {
-		t.Fatalf("no camp settlements after recalc")
-	}
-
-	// Players tab: matches_count=2 each, one first place each (RANK semantics).
-	w := doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/players", "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET arena players: %d %s", w.Code, w.Body.String())
-	}
-	var players arenaPlayersJSON
-	if err := json.Unmarshal(w.Body.Bytes(), &players); err != nil {
-		t.Fatalf("decode players: %v", err)
-	}
-	if len(players.Data) != 2 {
-		t.Fatalf("expected 2 camp players, got %d", len(players.Data))
-	}
-	for _, p := range players.Data {
-		if p.MatchesCount != 2 || p.FirstCount != 1 || p.SecondCount != 1 {
-			t.Fatalf("player %s stats: %+v, want matches=2 first=1 second=1", p.PlayerID, p)
-		}
-		if p.League != nil {
-			t.Fatalf("camp players must be league-less, got %q", *p.League)
-		}
-	}
-
-	// A second recalc must be a stable no-op over the settlements.
-	drain()
-	if second := snapshot(t); second != first {
-		t.Fatalf("camp recalc is not stable:\nfirst:\n%s\nsecond:\n%s", first, second)
-	}
-
-	// kind=camps lists the arena with the derived participants.
-	w = doJSON(t, router, http.MethodGet, "/arenas?kind=camps", "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET /arenas?kind=camps: %d %s", w.Code, w.Body.String())
-	}
-	var list campArenaJSON
-	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
-		t.Fatalf("decode arenas: %v", err)
-	}
-	var found *struct {
-		Id        string   `json:"id"`
-		PlayerIds []string `json:"player_ids"`
-	}
-	for i := range list.Data {
-		if list.Data[i].Id == shortOf(t, arenaID) {
-			pi := list.Data[i]
-			found = &struct {
-				Id        string   `json:"id"`
-				PlayerIds []string `json:"player_ids"`
-			}{pi.Id, pi.PlayerIds}
-		}
-	}
-	if found == nil || len(found.PlayerIds) != 2 {
-		t.Fatalf("camp listing must carry 2 derived participants, got %+v", found)
 	}
 }
 
