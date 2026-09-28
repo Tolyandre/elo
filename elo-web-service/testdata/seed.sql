@@ -34,6 +34,75 @@ INSERT INTO games (id, name) VALUES
     ('00000000-0000-0000-0000-000000000009', 'Этот Безумный Мир')
 ON CONFLICT (id) DO NOTHING;
 
+-- Per-game arenas (ADR-24): mirror what the app does when a game is created
+-- (EnsureGameArena, pkg/elo/arena.go) — a filter pinned to the game, an arena
+-- anchored at the game named after it, newbie+amateur leagues with the
+-- elo_settings newbie parameters, the 900 game starting rating, starting
+-- stale so the next recalculation fills it. The later arena_settlements /
+-- arena_player_stats sections key off these arenas. Deterministic ids (a2ec…
+-- arenas, a2ed… filters, suffixed with the game id); skipped when an arena
+-- for the game already exists (e.g. created by the app), keeping the seed
+-- idempotent.
+INSERT INTO match_filters (id, game_ids)
+SELECT 'a2ed0000-0000-0000-0000-000000000188', ARRAY[g.id]
+FROM games g
+WHERE g.id = '00000000-0000-0000-0000-000000000188'
+  AND NOT EXISTS (SELECT 1 FROM arenas WHERE game_id = g.id)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO match_filters (id, game_ids)
+SELECT 'a2ed0000-0000-0000-0000-000000000009', ARRAY[g.id]
+FROM games g
+WHERE g.id = '00000000-0000-0000-0000-000000000009'
+  AND NOT EXISTS (SELECT 1 FROM arenas WHERE game_id = g.id)
+ON CONFLICT (id) DO NOTHING;
+
+WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
+INSERT INTO arenas (id, name, match_filter_id, settings, game_id, stale_at)
+SELECT 'a2ec0000-0000-0000-0000-000000000188', g.name,
+       'a2ed0000-0000-0000-0000-000000000188',
+       jsonb_build_object(
+           'starting_rating', 900,
+           'leagues', jsonb_build_array(
+               jsonb_build_object(
+                   'kind', 'newbie',
+                   'goal_gap', s.newbie_league_goal_gap,
+                   'earned_min', s.newbie_league_earned_min,
+                   'earned_max', s.newbie_league_earned_max,
+                   'tau', s.newbie_league_earned_tau
+               ),
+               jsonb_build_object('kind', 'amateur')
+           )
+       ),
+       g.id, NOW()
+FROM games g CROSS JOIN s
+WHERE g.id = '00000000-0000-0000-0000-000000000188'
+  AND NOT EXISTS (SELECT 1 FROM arenas WHERE game_id = g.id)
+ON CONFLICT (id) DO NOTHING;
+
+WITH s AS (SELECT * FROM elo_settings ORDER BY effective_date DESC LIMIT 1)
+INSERT INTO arenas (id, name, match_filter_id, settings, game_id, stale_at)
+SELECT 'a2ec0000-0000-0000-0000-000000000009', g.name,
+       'a2ed0000-0000-0000-0000-000000000009',
+       jsonb_build_object(
+           'starting_rating', 900,
+           'leagues', jsonb_build_array(
+               jsonb_build_object(
+                   'kind', 'newbie',
+                   'goal_gap', s.newbie_league_goal_gap,
+                   'earned_min', s.newbie_league_earned_min,
+                   'earned_max', s.newbie_league_earned_max,
+                   'tau', s.newbie_league_earned_tau
+               ),
+               jsonb_build_object('kind', 'amateur')
+           )
+       ),
+       g.id, NOW()
+FROM games g CROSS JOIN s
+WHERE g.id = '00000000-0000-0000-0000-000000000009'
+  AND NOT EXISTS (SELECT 1 FROM arenas WHERE game_id = g.id)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO matches (id, date, game_id) VALUES
     ('00000000-0000-0000-0000-0000000000c8', NOW() - INTERVAL '7 days', '00000000-0000-0000-0000-000000000188'),
     ('00000000-0000-0000-0000-0000000000c9', NOW() - INTERVAL '3 days', '00000000-0000-0000-0000-000000000188'),
