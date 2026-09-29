@@ -16,6 +16,8 @@ export const CLUB_ICONS = [
     { key: "hm", label: "Хорошее Место" },
     { key: "hm-cup", label: "Хорошее Место (чашка)" },
     { key: "tbonk", label: "Тбонк" },
+    { key: "ural-game-club", label: "Уральский игровой клуб" },
+    { key: "chelcamp", label: "Челкэмп" },
 ] as const;
 
 export type ClubIconKey = (typeof CLUB_ICONS)[number]["key"];
