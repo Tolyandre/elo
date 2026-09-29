@@ -11,7 +11,7 @@
  * retiring an icon in a later release can't break rendering.
  */
 export const CLUB_ICONS = [
-    { key: "blue-figure", label: "Синяя фигура" },
+    { key: "blue-figure", label: "Синие люди" },
     { key: "clover", label: "Клевер" },
     { key: "hm", label: "Хорошее Место" },
     { key: "hm-cup", label: "Хорошее Место (чашка)" },
