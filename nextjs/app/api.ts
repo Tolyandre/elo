@@ -507,7 +507,9 @@ export async function getMePromise(): Promise<User | undefined> {
 }
 
 export async function oauth2Callback(params?: Record<string, string | string[]>): Promise<Status> {
-    // Manual fetch: non-standard query param assembly
+    // Manual fetch: non-standard query param assembly. The backend presents
+    // the redirect_uri of the mirror named in `state` (ADR-29), so all query
+    // params from Google's landing must be relayed.
     try {
         let url = `${EloWebServiceBaseUrl}/auth/oauth2-callback`;
         if (params && Object.keys(params).length > 0) {

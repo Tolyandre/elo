@@ -16,7 +16,6 @@ type Configuration struct {
 	Oauth2ClientSecret string `mapstructure:"oauth2_client_secret"`
 	Oauth2TokenUri     string `mapstructure:"oauth2_token_uri"`
 	Oauth2AuthUri      string `mapstructure:"oauth2_auth_uri"`
-	Oauth2RedirectUri  string `mapstructure:"oauth2_redirect_uri"`
 	Oauth2UserinfoUri  string `mapstructure:"oauth2_userinfo_uri"`
 	Oauth2Scopes       string `mapstructure:"oauth2_scopes"`
 	CookieJwtSecret    string `mapstructure:"cookie_jwt_secret"`
@@ -25,6 +24,13 @@ type Configuration struct {
 	FrontendUri        string `mapstructure:"frontend_uri"`
 	PostgresDSN        string `mapstructure:"postgres_dsn"`
 	PostgresPassword   string `mapstructure:"postgres_password"`
+
+	// AllowedFrontendUris lists every frontend mirror this deployment serves
+	// (frontend_uri included implicitly). Login requests may carry a "from"
+	// URI identifying the mirror the user started on; it must match one of
+	// these by origin, and is passed through Google OAuth as "state" so the
+	// callback page can return the user to the mirror they came from.
+	AllowedFrontendUris []string `mapstructure:"allowed_frontend_uris"`
 }
 
 var Config Configuration
@@ -114,13 +120,13 @@ var configKeys = []string{
 	"oauth2_client_secret",
 	"oauth2_token_uri",
 	"oauth2_auth_uri",
-	"oauth2_redirect_uri",
 	"oauth2_userinfo_uri",
 	"oauth2_scopes",
 	"cookie_jwt_secret",
 	"cookie_ttl_seconds",
 	"cookie_name",
 	"frontend_uri",
+	"allowed_frontend_uris",
 	"postgres_dsn",
 	"postgres_password",
 }
@@ -134,7 +140,6 @@ var requiredKeys = []string{
 	"oauth2_client_secret",
 	"oauth2_token_uri",
 	"oauth2_auth_uri",
-	"oauth2_redirect_uri",
 	"oauth2_userinfo_uri",
 	"cookie_jwt_secret",
 	"frontend_uri",

@@ -1,4 +1,6 @@
-{ pkgs ? import <nixpkgs> { } }:
+{
+  pkgs ? import <nixpkgs> { },
+}:
 
 import (pkgs.path + "/nixos/lib/eval-config.nix") {
   system = "x86_64-linux";
@@ -8,7 +10,6 @@ import (pkgs.path + "/nixos/lib/eval-config.nix") {
       services.elo-web-service.instances."elo-web-service" = {
         settings = {
           oauth2_auth_uri = "https://fake/oauth2_auth_uri";
-          oauth2_redirect_uri = "https://fake/oauth2_redirect_uri";
           oauth2_token_uri = "https://fake/oauth2_token_uri";
           oauth2_userinfo_uri = "https://fake/oauth2_userinfo_uri";
           frontend_uri = "https://tolyandre.github.io/elo";

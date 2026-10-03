@@ -17,7 +17,6 @@ pkgs.testers.nixosTest {
         settings = {
           address = "localhost:4949";
           oauth2_auth_uri = "https://fake/oauth2_auth_uri";
-          oauth2_redirect_uri = "https://fake/oauth2_redirect_uri";
           oauth2_token_uri = "https://fake/oauth2_token_uri";
           oauth2_userinfo_uri = "https://fake/oauth2_userinfo_uri";
           frontend_uri = "https://tolyandre.github.io/elo";

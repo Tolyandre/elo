@@ -45,11 +45,6 @@ let
                 description = "OAuth2 initial URI";
               };
 
-              oauth2_redirect_uri = lib.mkOption {
-                type = lib.types.str;
-                description = "OAuth2 redirect (callback) URI";
-              };
-
               oauth2_token_uri = lib.mkOption {
                 type = lib.types.str;
                 description = "Oauth2 url to get ID and access token";
@@ -69,6 +64,21 @@ let
               frontend_uri = lib.mkOption {
                 type = lib.types.str;
                 description = "Frontend URI (used for CORS and redirects)";
+              };
+
+              allowed_frontend_uris = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                example = [
+                  "https://tolyandre.github.io/elo"
+                  "https://toly.is-cool.dev/elo"
+                ];
+                description = ''
+                  Every frontend mirror of this deployment (frontend_uri is
+                  always allowed too). The /auth/login "from" parameter — the
+                  mirror a login starts from, returned to via the OAuth state —
+                  must match one of these by origin.
+                '';
               };
 
               cookie_ttl_seconds = lib.mkOption {

@@ -3187,7 +3187,7 @@ type ServerInterface interface {
 	// PatchMe Update current user's linked player
 	// (PATCH /auth/me)
 	PatchMe(c *gin.Context)
-	// AuthOAuth2Callback Google OAuth2 callback
+	// AuthOAuth2Callback Exchange the Google OAuth2 code for a session cookie
 	// (GET /auth/oauth2-callback)
 	AuthOAuth2Callback(c *gin.Context, params AuthOAuth2CallbackParams)
 	// ListClubs List all clubs
@@ -10554,7 +10554,7 @@ type StrictServerInterface interface {
 	// PatchMe Update current user's linked player
 	// (PATCH /auth/me)
 	PatchMe(ctx context.Context, request PatchMeRequestObject) (PatchMeResponseObject, error)
-	// AuthOAuth2Callback Google OAuth2 callback
+	// AuthOAuth2Callback Exchange the Google OAuth2 code for a session cookie
 	// (GET /auth/oauth2-callback)
 	AuthOAuth2Callback(ctx context.Context, request AuthOAuth2CallbackRequestObject) (AuthOAuth2CallbackResponseObject, error)
 	// ListClubs List all clubs

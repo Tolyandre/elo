@@ -9,6 +9,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircleIcon } from 'lucide-react';
 import { LoginLink } from '@/components/login-link';
 
+// The OAuth callback page of the mirror Google returned the browser to (its
+// URL is the registered redirect_uri, derived per mirror by the backend —
+// ADR-29). It exchanges the code for the session cookie via the API and stays
+// on this mirror: the cookie is set in the mirror's own first-party context,
+// which is what strict browser cookie protection (Firefox ETP, Opera) keeps.
 export default function Oauth2CallbackClient() {
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
@@ -37,7 +42,7 @@ export default function Oauth2CallbackClient() {
             try {
                 await oauth2Callback(params);
                 // The backend answered and sent Set-Cookie, but the cookie lives
-                // on the API domain — cross-site to the frontend. Strict browsers
+                // on the API domain — cross-site to this mirror. Strict browsers
                 // (Enhanced Tracking Protection in Firefox, Opera's tracker
                 // blocking) drop it silently, so verify the session really took
                 // before navigating. getMePromise returns undefined only on a

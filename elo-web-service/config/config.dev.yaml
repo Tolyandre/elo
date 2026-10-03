@@ -9,8 +9,8 @@ address: "localhost:8080"
 # Oauth2 initial url
 oauth2_auth_uri: https://accounts.google.com/o/oauth2/auth
 
-# Oauth2 callback url
-oauth2_redirect_uri: http://localhost:3000/oauth2-callback
+# The Google redirect_uri is derived per mirror: <frontend_uri|allowed_frontend_uris entry>/oauth2-callback
+# (see pkg/api/oauth2/auth.controller.go, ADR-29).
 
 # Oauth2 url to get ID and access token
 oauth2_token_uri: https://oauth2.googleapis.com/token
@@ -20,6 +20,10 @@ oauth2_scopes: "openid https://www.googleapis.com/auth/userinfo.profile"
 
 # Frontend domain and scheme
 frontend_uri: http://localhost:3000
+
+# Frontend mirrors users may start the login flow from (see Login handler).
+allowed_frontend_uris:
+  - "http://localhost:3000"
 
 # Cookie expiration time in seconds
 cookie_ttl_seconds: 86400

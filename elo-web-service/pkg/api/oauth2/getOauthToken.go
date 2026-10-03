@@ -17,14 +17,21 @@ type OauthToken struct {
 	Id_token     string
 }
 
-func GetOauthToken(code string) (*OauthToken, error) {
+// GetOauthToken exchanges the authorization code for tokens, presenting the
+// redirect_uri of the mirror the login started from — Google requires it to
+// match the authorization request exactly (ADR-29). Falls back to the primary
+// mirror when the caller has no specific one.
+func GetOauthTokenWithRedirect(code string, redirectUri string) (*OauthToken, error) {
+	if redirectUri == "" {
+		redirectUri = frontendCallbackUri(cfg.Config.FrontendUri)
+	}
 
 	values := url.Values{}
 	values.Add("grant_type", "authorization_code")
 	values.Add("code", code)
 	values.Add("client_id", cfg.Config.Oauth2ClientId)
 	values.Add("client_secret", cfg.Config.Oauth2ClientSecret)
-	values.Add("redirect_uri", cfg.Config.Oauth2RedirectUri)
+	values.Add("redirect_uri", redirectUri)
 
 	query := values.Encode()
 

@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { SiGoogle } from "@icons-pack/react-simple-icons";
 import { EloWebServiceBaseUrl } from "@/app/api";
+import { loginUrl } from "@/lib/login-url";
+import { redirectTo } from "@/lib/redirect";
 
 /**
  * A button-styled link that starts the Google OAuth2 login flow.
@@ -19,7 +21,16 @@ export function LoginLink({
 }) {
     return (
         <Button asChild size={size} variant={variant}>
-            <a href={`${EloWebServiceBaseUrl}/auth/login`}>
+            {/* Static href keeps the prerendered page working without
+                hydration; the click re-navigates with the current mirror in
+                "from" so the user is returned here after Google auth. */}
+            <a
+                href={`${EloWebServiceBaseUrl}/auth/login`}
+                onClick={(e) => {
+                    e.preventDefault();
+                    redirectTo(loginUrl());
+                }}
+            >
                 <SiGoogle className="mr-2 h-4 w-4" /> {label}
             </a>
         </Button>

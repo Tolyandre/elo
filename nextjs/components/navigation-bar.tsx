@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/navigation-menu"
 import { cn } from "@/lib/utils"
 import { setUrlQuery } from "@/lib/url-state"
-import { EloWebServiceBaseUrl } from "@/app/api"
+import { loginUrl } from "@/lib/login-url"
+import { redirectTo } from "@/lib/redirect"
 import { useMe } from "@/app/meContext"
 import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Trophy } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
@@ -106,7 +107,7 @@ export function NavigationBar() {
                 }
 
                 return (
-                  <ListItem href={`${EloWebServiceBaseUrl}/auth/login`} title={
+                  <ListItem onClick={() => redirectTo(loginUrl())} title={
                     <>
                       <SiGoogle className="inline-block mr-2 h-6 w-6 align-middle" />
                       Войти

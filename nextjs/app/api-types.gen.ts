@@ -784,7 +784,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Google OAuth2 callback */
+        /**
+         * Exchange the Google OAuth2 code for a session cookie
+         * @description Called by the frontend callback page of the mirror Google returned the browser to (its own /oauth2-callback). Exchanges the code for tokens — presenting the redirect_uri of the mirror in `state` — and sets the session cookie.
+         */
         get: operations["AuthOAuth2Callback"];
         put?: never;
         post?: never;
