@@ -815,16 +815,34 @@ func (e ListTournamentBracketPlansParamsElimination) Valid() bool {
 
 // Defines values for ListTournamentBracketPlansParamsByes.
 const (
-	With    ListTournamentBracketPlansParamsByes = "with"
-	Without ListTournamentBracketPlansParamsByes = "without"
+	ListTournamentBracketPlansParamsByesWith    ListTournamentBracketPlansParamsByes = "with"
+	ListTournamentBracketPlansParamsByesWithout ListTournamentBracketPlansParamsByes = "without"
 )
 
 // Valid indicates whether the value is a known member of the ListTournamentBracketPlansParamsByes enum.
 func (e ListTournamentBracketPlansParamsByes) Valid() bool {
 	switch e {
-	case With:
+	case ListTournamentBracketPlansParamsByesWith:
 		return true
-	case Without:
+	case ListTournamentBracketPlansParamsByesWithout:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTournamentBracketPlansParamsRematches.
+const (
+	ListTournamentBracketPlansParamsRematchesWith    ListTournamentBracketPlansParamsRematches = "with"
+	ListTournamentBracketPlansParamsRematchesWithout ListTournamentBracketPlansParamsRematches = "without"
+)
+
+// Valid indicates whether the value is a known member of the ListTournamentBracketPlansParamsRematches enum.
+func (e ListTournamentBracketPlansParamsRematches) Valid() bool {
+	switch e {
+	case ListTournamentBracketPlansParamsRematchesWith:
+		return true
+	case ListTournamentBracketPlansParamsRematchesWithout:
 		return true
 	default:
 		return false
@@ -2032,12 +2050,21 @@ type TablesUpdateTableStateRequest struct {
 type TournamentsBracketPlanFacets struct {
 	AllByes bool `json:"all_byes"`
 
+	// AllRematches Every plan seats players from the same previous-round slot together somewhere.
+	AllRematches bool `json:"all_rematches"`
+
 	// Eliminations Families that yielded plans, sorted.
 	Eliminations []TournamentsBracketPlanFacetsEliminations `json:"eliminations"`
 
 	// FirstShapes First-round table shapes (e.g. "4+4"), sorted.
 	FirstShapes []string `json:"first_shapes"`
 	HasByes     bool     `json:"has_byes"`
+
+	// HasRematches Some plan seats players from the same previous-round slot together in a next-round slot.
+	HasRematches bool `json:"has_rematches"`
+
+	// Promotes Distinct per-round promote values across those plans (a plan may mix values between rounds), sorted ascending.
+	Promotes []int `json:"promotes"`
 
 	// RoundCounts Total round counts across those plans, sorted ascending.
 	RoundCounts []int `json:"round_counts"`
@@ -2385,6 +2412,12 @@ type ListTournamentBracketPlansParams struct {
 
 	// FirstShapes First-round table shapes to keep (e.g. "4+4"); repeated; absent = all
 	FirstShapes *[]string `form:"first_shapes,omitempty" json:"first_shapes,omitempty"`
+
+	// Promotes Per-round promote counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all
+	Promotes *[]int `form:"promotes,omitempty" json:"promotes,omitempty"`
+
+	// Rematches Keep only plans where a next-round slot may seat several players from the same previous-round slot (with — an immediate rematch of tablemates is possible), or only plans where every slot takes its players from different previous-round slots (without); absent = any
+	Rematches *ListTournamentBracketPlansParamsRematches `form:"rematches,omitempty" json:"rematches,omitempty"`
 }
 
 // ListTournamentBracketPlansParamsElimination defines parameters for ListTournamentBracketPlans.
@@ -2392,6 +2425,9 @@ type ListTournamentBracketPlansParamsElimination string
 
 // ListTournamentBracketPlansParamsByes defines parameters for ListTournamentBracketPlans.
 type ListTournamentBracketPlansParamsByes string
+
+// ListTournamentBracketPlansParamsRematches defines parameters for ListTournamentBracketPlans.
+type ListTournamentBracketPlansParamsRematches string
 
 // AdjustTournamentSlotJSONBody defines parameters for AdjustTournamentSlot.
 type AdjustTournamentSlotJSONBody struct {
@@ -5078,6 +5114,22 @@ func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "first_shapes", c.Request.URL.Query(), &params.FirstShapes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter first_shapes: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "promotes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "promotes", c.Request.URL.Query(), &params.Promotes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter promotes: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "rematches" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "rematches", c.Request.URL.Query(), &params.Rematches, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter rematches: %w", err), http.StatusBadRequest)
 		return
 	}
 

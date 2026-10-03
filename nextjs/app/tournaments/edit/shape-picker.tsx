@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 
 type Family = "single" | "double";
 type ByeFilter = "any" | "with" | "without";
+type RematchFilter = "any" | "with" | "without";
 
 function toggleIn<T>(list: T[], v: T): T[] {
     return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
@@ -61,6 +62,8 @@ export function ShapePicker({
     const [roundsFilter, setRoundsFilter] = useState<number[]>([]);
     const [byeFilter, setByeFilter] = useState<ByeFilter>("any");
     const [shapeFilter, setShapeFilter] = useState<string[]>([]);
+    const [promoteFilter, setPromoteFilter] = useState<number[]>([]);
+    const [rematchFilter, setRematchFilter] = useState<RematchFilter>("any");
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [starting, setStarting] = useState(false);
     const [error2, setError2] = useState("");
@@ -71,8 +74,10 @@ export function ShapePicker({
             rounds: roundsFilter.length > 0 ? roundsFilter : undefined,
             byes: byeFilter !== "any" ? byeFilter : undefined,
             first_shapes: shapeFilter.length > 0 ? shapeFilter : undefined,
+            promotes: promoteFilter.length > 0 ? promoteFilter : undefined,
+            rematches: rematchFilter !== "any" ? rematchFilter : undefined,
         }),
-        [families, roundsFilter, byeFilter, shapeFilter],
+        [families, roundsFilter, byeFilter, shapeFilter, promoteFilter, rematchFilter],
     );
     const filtersKey = JSON.stringify(filters);
 
@@ -96,6 +101,8 @@ export function ShapePicker({
         setRoundsFilter([]);
         setByeFilter("any");
         setShapeFilter([]);
+        setPromoteFilter([]);
+        setRematchFilter("any");
         setSelectedCanon(null);
     }
 
@@ -173,6 +180,22 @@ export function ShapePicker({
                             ))}
                         </FilterRow>
                     )}
+                    {facets.promotes.length > 1 && (
+                        <FilterRow
+                            label="Продвижение"
+                            hint="Сколько игроков выходит из каждого стола в следующий круг — в превью это «→ N». Относится к каждому кругу, кроме финала: он всегда оставляет одного чемпиона."
+                        >
+                            {facets.promotes.map((n) => (
+                                <FilterChip
+                                    key={n}
+                                    active={promoteFilter.includes(n)}
+                                    onClick={() => setPromoteFilter(toggleIn(promoteFilter, n))}
+                                >
+                                    По {n}
+                                </FilterChip>
+                            ))}
+                        </FilterRow>
+                    )}
                     {facets.has_byes && !facets.all_byes && (
                         <FilterRow
                             label="Баи"
@@ -203,6 +226,25 @@ export function ShapePicker({
                                     {s}
                                 </FilterChip>
                             ))}
+                        </FilterRow>
+                    )}
+                    {facets.has_rematches && !facets.all_rematches && (
+                        <FilterRow
+                            label="Повторы"
+                            hint="Без повторов: каждый новый стол собирается из игроков с разных столов прошлого круга — те, кто играл вместе, сразу не встретятся. С повторами: возможен стол, где снова играют игроки одного стола прошлого круга."
+                        >
+                            <FilterChip
+                                active={rematchFilter === "without"}
+                                onClick={() => setRematchFilter(rematchFilter === "without" ? "any" : "without")}
+                            >
+                                Без повторов
+                            </FilterChip>
+                            <FilterChip
+                                active={rematchFilter === "with"}
+                                onClick={() => setRematchFilter(rematchFilter === "with" ? "any" : "with")}
+                            >
+                                С повторами
+                            </FilterChip>
                         </FilterRow>
                     )}
                     {data.plans.length > 0 ? (
@@ -242,7 +284,7 @@ export function ShapePicker({
                         </Select>
                     ) : (
                         <p className="text-sm text-muted-foreground">
-                            {filters.elimination || filters.rounds || filters.byes || filters.first_shapes
+                            {filters.elimination || filters.rounds || filters.byes || filters.first_shapes || filters.promotes || filters.rematches
                                 ? "Под выбранные фильтры не подходит ни одна форма — снимите часть фильтров."
                                 : "Для этого пула игр и числа участников форм сетки нет — измените пул (добавьте игры с другой вместимостью) или список участников."}
                         </p>
@@ -293,7 +335,9 @@ export function ShapePicker({
 function FilterRow({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
     return (
         <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex w-20 shrink-0 items-center gap-1 text-xs text-muted-foreground">
+            {/* w-28 fits the longest label («Продвижение» + the hint icon);
+                anything narrower lets the icon overflow onto the chips. */}
+            <span className="inline-flex w-28 shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
                 {label}
                 {hint && (
                     // A click-toggled popover, not a hover tooltip: Radix

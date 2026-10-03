@@ -37,6 +37,15 @@ const (
 	ByesWithout = "without"
 )
 
+// Rematches filter values (PlanFilter.Rematches): whether a next-round slot
+// may seat several players from the same previous-round slot — an immediate
+// rematch of tablemates.
+const (
+	RematchesAny     = ""
+	RematchesWith    = "with"
+	RematchesWithout = "without"
+)
+
 // PlanFilter narrows the enumeration to the organizer's current chip
 // selection (ADR-26 bracket-plans). Eliminations selects the families to
 // explore (empty = both); the rest are display filters applied to the plans.
@@ -47,6 +56,8 @@ type PlanFilter struct {
 	RoundCounts  []int
 	Byes         string
 	FirstShapes  []string // canonical "4+4" strings, see FirstShapeOf
+	Promotes     []int    // every round but the champion's must advance a listed count
+	Rematches    string
 }
 
 // matches reports whether a plan satisfies the display filters (the family
@@ -69,20 +80,46 @@ func (f PlanFilter) matches(p Plan) bool {
 	if len(f.FirstShapes) > 0 && !slices.Contains(f.FirstShapes, FirstShapeOf(p)) {
 		return false
 	}
+	if len(f.Promotes) > 0 {
+		// Every round except the champion round must advance a listed count:
+		// the last round always crowns the champion and promotes exactly 1,
+		// so selections without 1 would otherwise come up empty for every
+		// input.
+		for _, r := range p.Rounds[:len(p.Rounds)-1] {
+			if !slices.Contains(f.Promotes, r.Promote) {
+				return false
+			}
+		}
+	}
+	rematches := planHasRematches(p)
+	switch f.Rematches {
+	case RematchesWith:
+		if !rematches {
+			return false
+		}
+	case RematchesWithout:
+		if rematches {
+			return false
+		}
+	}
 	return true
 }
 
 // Facets describes the plans the requested families produce: which families
-// yielded plans, their round counts, whether byes occur (all/none), and the
-// first-round table shapes. Computed over every enumerated plan of the
-// explored families regardless of the display filters and the cap, so chips
-// never lose options because another chip is active.
+// yielded plans, their round counts, whether byes occur (all/none), the
+// first-round table shapes, the per-round promote values, and whether slots
+// repeat previous-round tablemates (all/none). Computed over every
+// enumerated plan of the explored families regardless of the display filters
+// and the cap, so chips never lose options because another chip is active.
 type Facets struct {
 	Eliminations []string `json:"eliminations"`
 	RoundCounts  []int    `json:"round_counts"`
 	HasByes      bool     `json:"has_byes"`
 	AllByes      bool     `json:"all_byes"`
 	FirstShapes  []string `json:"first_shapes"`
+	Promotes     []int    `json:"promotes"`
+	HasRematches bool     `json:"has_rematches"`
+	AllRematches bool     `json:"all_rematches"`
 }
 
 // planHasByes reports whether any seat of the plan is a bye.
@@ -93,6 +130,27 @@ func planHasByes(p Plan) bool {
 				if seat.Kind == SeatBye {
 					return true
 				}
+			}
+		}
+	}
+	return false
+}
+
+// planHasRematches reports whether some slot seats two or more players from
+// the same previous-round slot — tablemates who play together again right
+// away. Draw and bye seats have no source and never count.
+func planHasRematches(p Plan) bool {
+	for _, r := range p.Rounds {
+		for _, s := range r.Slots {
+			seen := map[int]bool{}
+			for _, seat := range s.Seats {
+				if seat.Kind != SeatSource || seat.SourceSlot == nil {
+					continue
+				}
+				if seen[*seat.SourceSlot] {
+					return true
+				}
+				seen[*seat.SourceSlot] = true
 			}
 		}
 	}
@@ -115,18 +173,21 @@ func FirstShapeOf(p Plan) string {
 // facetAccum accumulates facet data over every materialized (deduplicated)
 // plan of the explored families.
 type facetAccum struct {
-	fams     map[string]bool
-	rounds   map[int]bool
-	shapes   map[string]bool
-	withByes int
-	total    int
+	fams          map[string]bool
+	rounds        map[int]bool
+	shapes        map[string]bool
+	promotes      map[int]bool
+	withByes      int
+	withRematches int
+	total         int
 }
 
 func newFacetAccum() *facetAccum {
 	return &facetAccum{
-		fams:   map[string]bool{},
-		rounds: map[int]bool{},
-		shapes: map[string]bool{},
+		fams:     map[string]bool{},
+		rounds:   map[int]bool{},
+		shapes:   map[string]bool{},
+		promotes: map[int]bool{},
 	}
 }
 
@@ -134,8 +195,14 @@ func (a *facetAccum) record(p Plan) {
 	a.fams[p.Elimination] = true
 	a.rounds[len(p.Rounds)] = true
 	a.shapes[FirstShapeOf(p)] = true
+	for _, r := range p.Rounds {
+		a.promotes[r.Promote] = true
+	}
 	if planHasByes(p) {
 		a.withByes++
+	}
+	if planHasRematches(p) {
+		a.withRematches++
 	}
 	a.total++
 }
@@ -143,7 +210,7 @@ func (a *facetAccum) record(p Plan) {
 // emptyFacets is the zero-plan facet set; the slices are non-nil so the JSON
 // arrays come out as [] per the API contract (nil Go slices marshal as null).
 func emptyFacets() Facets {
-	return Facets{Eliminations: []string{}, RoundCounts: []int{}, FirstShapes: []string{}}
+	return Facets{Eliminations: []string{}, RoundCounts: []int{}, FirstShapes: []string{}, Promotes: []int{}}
 }
 
 func (a *facetAccum) result() Facets {
@@ -160,8 +227,14 @@ func (a *facetAccum) result() Facets {
 		out.FirstShapes = append(out.FirstShapes, s)
 	}
 	sort.Strings(out.FirstShapes)
+	for p := range a.promotes {
+		out.Promotes = append(out.Promotes, p)
+	}
+	sort.Ints(out.Promotes)
 	out.HasByes = a.withByes > 0
 	out.AllByes = a.total > 0 && a.withByes == a.total
+	out.HasRematches = a.withRematches > 0
+	out.AllRematches = a.total > 0 && a.withRematches == a.total
 	return out
 }
 

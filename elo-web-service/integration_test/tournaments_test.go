@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -144,32 +145,57 @@ type tournamentListJSON struct {
 	Data []tournamentJSON `json:"data"`
 }
 
+type bracketPlanDoc struct {
+	Elimination string `json:"elimination"`
+	Rounds      []struct {
+		Track   string `json:"track"`
+		Index   int    `json:"index"`
+		Promote int    `json:"promote"`
+		Slots   []struct {
+			SeatCount int `json:"seat_count"`
+			Seats     []struct {
+				Kind        string `json:"kind"`
+				SourceSlot  *int   `json:"source_slot"`
+				SourcePlace int    `json:"source_place"`
+			} `json:"seats"`
+		} `json:"slots"`
+	} `json:"rounds"`
+}
+
+// planHasRematch reports whether some slot seats two places of one
+// previous-round slot — an immediate rematch of tablemates.
+func planHasRematch(plan bracketPlanDoc) bool {
+	for _, r := range plan.Rounds {
+		for _, s := range r.Slots {
+			seen := map[int]bool{}
+			for _, seat := range s.Seats {
+				if seat.SourceSlot == nil {
+					continue
+				}
+				if seen[*seat.SourceSlot] {
+					return true
+				}
+				seen[*seat.SourceSlot] = true
+			}
+		}
+	}
+	return false
+}
+
 type bracketPlansJSON struct {
 	Data struct {
-		Plans []struct {
-			Elimination string `json:"elimination"`
-			Rounds      []struct {
-				Track   string `json:"track"`
-				Index   int    `json:"index"`
-				Promote int    `json:"promote"`
-				Slots   []struct {
-					SeatCount int `json:"seat_count"`
-					Seats     []struct {
-						Kind        string `json:"kind"`
-						SourceSlot  int    `json:"source_slot"`
-						SourcePlace int    `json:"source_place"`
-					} `json:"seats"`
-				} `json:"slots"`
-			} `json:"rounds"`
-		} `json:"plans"`
-		Truncated bool `json:"truncated"`
-		Cap       int  `json:"cap"`
+		Plans     []bracketPlanDoc `json:"plans"`
+		Truncated bool             `json:"truncated"`
+		Cap       int              `json:"cap"`
 		Facets    struct {
 			Eliminations []string `json:"eliminations"`
 			RoundCounts  []int    `json:"round_counts"`
 			HasByes      bool     `json:"has_byes"`
 			AllByes      bool     `json:"all_byes"`
 			FirstShapes  []string `json:"first_shapes"`
+			Promotes     []int    `json:"promotes"`
+			HasRematches bool     `json:"has_rematches"`
+			AllRematches bool     `json:"all_rematches"`
 		} `json:"facets"`
 	} `json:"data"`
 }
@@ -417,6 +443,81 @@ func TestTournament_BracketPlans(t *testing.T) {
 	}
 	if got := singlePlans.Data.Facets.Eliminations; len(got) != 1 || got[0] != "single" {
 		t.Fatalf("single-family facets: %v", got)
+	}
+	if !slices.Contains(singlePlans.Data.Facets.Promotes, 1) || !slices.Contains(singlePlans.Data.Facets.Promotes, 2) {
+		t.Fatalf("facets promotes: %v", singlePlans.Data.Facets.Promotes)
+	}
+	// On a 4-seat-only pool every plan opens 4+4 promote-2 (promoting one
+	// would strand two survivors no game can seat), so every plan seats
+	// tablemates of one previous-round slot together — the rematch facets are
+	// all-true and the UI hides the chip row.
+	if !singlePlans.Data.Facets.HasRematches || !singlePlans.Data.Facets.AllRematches {
+		t.Fatalf("facets rematches: has=%v all=%v", singlePlans.Data.Facets.HasRematches, singlePlans.Data.Facets.AllRematches)
+	}
+
+	// The promotes chip keeps plans whose every non-final round advances the
+	// listed count — the flagship 4+4 → 2 plan qualifies for promotes=2, and
+	// the facets still describe the whole space.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single&promotes=2", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans?promotes=2: %d %s", w.Code, w.Body.String())
+	}
+	var promotePlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &promotePlans); err != nil {
+		t.Fatalf("decode promote-2 plans: %v", err)
+	}
+	if len(promotePlans.Data.Plans) == 0 {
+		t.Fatalf("8/{{4}} must offer promote-2 plans")
+	}
+	for _, plan := range promotePlans.Data.Plans {
+		for _, r := range plan.Rounds[:len(plan.Rounds)-1] {
+			if r.Promote != 2 {
+				t.Fatalf("promotes=2 leaked promote %d: %+v", r.Promote, plan.Rounds)
+			}
+		}
+	}
+	if !slices.Contains(promotePlans.Data.Facets.Promotes, 1) {
+		t.Fatalf("facets must ignore the display filters: %v", promotePlans.Data.Facets.Promotes)
+	}
+
+	// The rematches=without chip keeps only plans whose every slot takes its
+	// players from different previous-round slots — no such plan exists on a
+	// 4-seat-only pool, so the list empties while the facets stay.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single&rematches=without", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans?rematches=without: %d %s", w.Code, w.Body.String())
+	}
+	var cleanPlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &cleanPlans); err != nil {
+		t.Fatalf("decode rematch-free plans: %v", err)
+	}
+	if len(cleanPlans.Data.Plans) != 0 {
+		t.Fatalf("8/{{4}} has no rematch-free plan, got %d", len(cleanPlans.Data.Plans))
+	}
+	if !cleanPlans.Data.Facets.HasRematches || !cleanPlans.Data.Facets.AllRematches {
+		t.Fatalf("facets must ignore the display filters: %+v", cleanPlans.Data.Facets)
+	}
+	if !planHasRematch(singlePlans.Data.Plans[0]) {
+		t.Fatalf("flagship 4+4 promote-2 plan must seat tablemates together")
+	}
+
+	// rematches=with keeps the whole single-elim space.
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single&rematches=with", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket-plans?rematches=with: %d %s", w.Code, w.Body.String())
+	}
+	var dirtyPlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &dirtyPlans); err != nil {
+		t.Fatalf("decode with-rematches plans: %v", err)
+	}
+	if len(dirtyPlans.Data.Plans) != len(singlePlans.Data.Plans) {
+		t.Fatalf("rematches=with must keep every single-elim plan: %d vs %d",
+			len(dirtyPlans.Data.Plans), len(singlePlans.Data.Plans))
+	}
+	for _, plan := range dirtyPlans.Data.Plans {
+		if !planHasRematch(plan) {
+			t.Fatalf("rematches=with leaked a rematch-free plan: %+v", plan.Rounds)
+		}
 	}
 
 	// The double-elim chip keeps only double plans.

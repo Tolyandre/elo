@@ -1766,6 +1766,12 @@ export interface components {
             all_byes: boolean;
             /** @description First-round table shapes (e.g. "4+4"), sorted. */
             first_shapes: string[];
+            /** @description Distinct per-round promote values across those plans (a plan may mix values between rounds), sorted ascending. */
+            promotes: number[];
+            /** @description Some plan seats players from the same previous-round slot together in a next-round slot. */
+            has_rematches: boolean;
+            /** @description Every plan seats players from the same previous-round slot together somewhere. */
+            all_rematches: boolean;
         };
         /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
         AuditArenaCampConfigDetails: {
@@ -3734,6 +3740,10 @@ export interface operations {
                 byes?: "with" | "without";
                 /** @description First-round table shapes to keep (e.g. "4+4"); repeated; absent = all */
                 first_shapes?: string[];
+                /** @description Per-round promote counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all */
+                promotes?: number[];
+                /** @description Keep only plans where a next-round slot may seat several players from the same previous-round slot (with — an immediate rematch of tablemates is possible), or only plans where every slot takes its players from different previous-round slots (without); absent = any */
+                rematches?: "with" | "without";
             };
             header?: never;
             path: {

@@ -224,7 +224,8 @@ The plan list is a pure function of `(participant count, game pool, families
 side by side** in one list; the elimination type is not a creation field but
 a property of the chosen plan (the family chips just narrow the list). The
 endpoint takes the chip selection as query parameters — the families to
-explore plus the display filters (round counts, byes, first-round shapes) —
+explore plus the display filters (round counts, byes, first-round shapes,
+per-round promote counts, rematch-free seating) —
 and the cap applies **after** them, so the response is always the first `cap`
 plans of the current condition; a family chip can never hide behind the
 other family's plans. The response also carries **facets** — the option
@@ -471,7 +472,8 @@ are gone (ADR-27). `AdjustTournamentSlot` takes only `game_id`.
     POST   /tournaments                                      editor — create, status=registration
     PUT    /tournaments/{id}                                  editor — pool, deadline, name while registration
     GET    /tournaments/{id}/bracket-plans                    editor — valid shapes for current n & pool;
-                                                              query: elimination, rounds, byes, first_shapes (chips)
+                                                              query: elimination, rounds, byes, first_shapes,
+                                                                     promotes, rematches (chips)
     POST   /tournaments/{id}/start                            editor — body: chosen plan; closes registration
     POST   /tournaments/{id}/cancel                           editor (also automatic on deadline)
     GET    /tournaments/{id}/bracket                          public — full bracket DTO
@@ -541,9 +543,9 @@ Feeds from the tournaments context (already preloaded for the match form).
   the selected plan as a visual mockup (the same column-per-round bracket
   skeleton with seat dots and promotion lines), select + confirm → `start`
   (which closes registration). Both families share the list; filter chips
-  (Сетка / Раунды / Баи / Первый круг) travel as query parameters and the
-  facets response drives the chip options. Pool edits refetch the plan
-  list — the UI makes that dependency visible.
+  (Сетка / Раунды / Продвижение / Баи / Первый круг / Повторы) travel as
+  query parameters and the facets response drives the chip options. Pool
+  edits refetch the plan list — the UI makes that dependency visible.
 - `running`: slot adjustments (game dropdown where the server allows), the
   **ruling dialog** (ordered promotion pick from current standings),
   attach/detach match dialogs, «Отменить турнир» with confirmation.

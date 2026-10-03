@@ -307,6 +307,29 @@ TournamentBracketPlans:
           items:
             type: string
         description: First-round table shapes to keep (e.g. "4+4"); repeated; absent = all
+      - name: promotes
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: integer
+        description: >-
+          Per-round promote counts to keep — a plan matches when every of its
+          rounds except the last one advances exactly a listed number of
+          players per slot (the champion round always advances the single
+          winner); repeated for several; absent = all
+      - name: rematches
+        in: query
+        schema:
+          type: string
+          enum: [with, without]
+        description: >-
+          Keep only plans where a next-round slot may seat several players from
+          the same previous-round slot (with — an immediate rematch of
+          tablemates is possible), or only plans where every slot takes its
+          players from different previous-round slots (without); absent = any
     responses:
       "200":
         description: Valid plans
@@ -707,7 +730,22 @@ BracketPlanFacets:
       items:
         type: string
       description: First-round table shapes (e.g. "4+4"), sorted.
-  required: [eliminations, round_counts, has_byes, all_byes, first_shapes]
+    promotes:
+      type: array
+      items:
+        type: integer
+      description: >-
+        Distinct per-round promote values across those plans (a plan may mix
+        values between rounds), sorted ascending.
+    has_rematches:
+      type: boolean
+      description: >-
+        Some plan seats players from the same previous-round slot together in
+        a next-round slot.
+    all_rematches:
+      type: boolean
+      description: Every plan seats players from the same previous-round slot together somewhere.
+  required: [eliminations, round_counts, has_byes, all_byes, first_shapes, promotes, has_rematches, all_rematches]
 
 # ─── Bracket DTO (rendering-ready, ADR-26) ───────────────────────────────────
 

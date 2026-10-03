@@ -33,6 +33,9 @@ vi.mock("@/app/api", () => ({
             has_byes: false,
             all_byes: false,
             first_shapes: ["2+2"],
+            promotes: [1],
+            has_rematches: false,
+            all_rematches: false,
         },
     })),
 }));

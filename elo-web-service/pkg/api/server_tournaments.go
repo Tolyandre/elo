@@ -148,6 +148,12 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	if request.Params.FirstShapes != nil {
 		filter.FirstShapes = *request.Params.FirstShapes
 	}
+	if request.Params.Promotes != nil {
+		filter.Promotes = *request.Params.Promotes
+	}
+	if request.Params.Rematches != nil {
+		filter.Rematches = string(*request.Params.Rematches)
+	}
 	res, err := s.api.TournamentService.ListBracketPlans(ctx, parseIDParam(request.Id), filter)
 	if err != nil {
 		switch domainStatusCode(err) {
@@ -413,6 +419,9 @@ func facetsToAPI(f bracket.Facets) TournamentsBracketPlanFacets {
 		HasByes:      f.HasByes,
 		AllByes:      f.AllByes,
 		FirstShapes:  f.FirstShapes,
+		Promotes:     f.Promotes,
+		HasRematches: f.HasRematches,
+		AllRematches: f.AllRematches,
 	}
 	for _, e := range f.Eliminations {
 		out.Eliminations = append(out.Eliminations, TournamentsBracketPlanFacetsEliminations(e))

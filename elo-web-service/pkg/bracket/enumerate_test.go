@@ -683,6 +683,113 @@ func TestEnumerateFilteredChips(t *testing.T) {
 	}
 }
 
+// TestPromoteAndRematchFilters pins the two seating-side chip filters. The
+// promote filter keeps plans whose every non-champion round advances a listed
+// count (the last round always crowns the champion with promote 1 and is
+// exempt, else a selection without 1 could never match). The rematches filter
+// splits the space by whether a next-round slot seats tablemates of one
+// previous-round slot together again. Facets keep describing the full space.
+func TestPromoteAndRematchFilters(t *testing.T) {
+	pool23 := []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}
+	pool24 := []GameCapacity{{Min: 2, Max: 2}, {Min: 4, Max: 4}}
+
+	all := EnumerateFiltered(8, pool23, PlanFilter{Eliminations: []string{EliminationSingle}}, DefaultPlanCap)
+	if all.Truncated {
+		t.Fatalf("8/{2,3} single must fit the default cap for the partition checks")
+	}
+	if !slices.Contains(all.Facets.Promotes, 1) || !slices.Contains(all.Facets.Promotes, 2) {
+		t.Fatalf("facets promotes: %v", all.Facets.Promotes)
+	}
+	// Winner-only plans are rematch-free by construction; a promote-2 round
+	// seats two places of one slot together, so both kinds must exist.
+	if !all.Facets.HasRematches || all.Facets.AllRematches {
+		t.Fatalf("facets rematches: has=%v all=%v", all.Facets.HasRematches, all.Facets.AllRematches)
+	}
+
+	// Promote-1 selection: only winner-of-table rounds survive.
+	p1 := EnumerateFiltered(8, pool23, PlanFilter{Promotes: []int{1}}, 0)
+	if len(p1.Plans) == 0 {
+		t.Fatalf("promote-1 plans must exist for 8/{2,3}")
+	}
+	for _, p := range p1.Plans {
+		for _, r := range p.Rounds[:len(p.Rounds)-1] {
+			if r.Promote != 1 {
+				t.Fatalf("promote filter leaked promote %d: %s", r.Promote, describe(p))
+			}
+		}
+	}
+	if !slices.Contains(p1.Facets.Promotes, 2) {
+		t.Fatalf("facets must ignore the display filters: %v", p1.Facets.Promotes)
+	}
+
+	// Promote-2 selection on a pool that can seat it (4+4 → 2, 4 → 2, final):
+	// the plan the facet promises must survive, and nothing else may leak.
+	all24 := EnumerateFiltered(8, pool24, PlanFilter{}, DefaultPlanCap)
+	if all24.Truncated {
+		t.Fatalf("8/{2,4} must fit the default cap")
+	}
+	var p2Plan *Plan
+	for i := range all24.Plans {
+		p := &all24.Plans[i]
+		uniform := true
+		for _, r := range p.Rounds[:len(p.Rounds)-1] {
+			if r.Promote != 2 {
+				uniform = false
+				break
+			}
+		}
+		if uniform {
+			p2Plan = p
+			break
+		}
+	}
+	if p2Plan == nil {
+		t.Fatalf("facets promise promote 2 but no 8/{2,4} plan advances two everywhere non-final")
+	}
+	p2 := EnumerateFiltered(8, pool24, PlanFilter{Promotes: []int{2}}, 0)
+	kept := false
+	for _, p := range p2.Plans {
+		for _, r := range p.Rounds[:len(p.Rounds)-1] {
+			if r.Promote != 2 {
+				t.Fatalf("promote filter leaked promote %d: %s", r.Promote, describe(p))
+			}
+		}
+		if p.CanonicalJSON() == p2Plan.CanonicalJSON() {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatalf("promote-2 selection lost the uniform plan: %s", describe(*p2Plan))
+	}
+	if !slices.Contains(p2.Facets.Promotes, 1) {
+		t.Fatalf("facets must ignore the display filters: %v", p2.Facets.Promotes)
+	}
+
+	// Rematches filter: the with/without selections partition the space.
+	without := EnumerateFiltered(8, pool23, PlanFilter{Eliminations: []string{EliminationSingle}, Rematches: RematchesWithout}, 0)
+	with := EnumerateFiltered(8, pool23, PlanFilter{Eliminations: []string{EliminationSingle}, Rematches: RematchesWith}, 0)
+	if len(without.Plans) == 0 || len(with.Plans) == 0 {
+		t.Fatalf("both rematch kinds must exist for 8/{2,3}: without=%d with=%d", len(without.Plans), len(with.Plans))
+	}
+	if len(without.Plans)+len(with.Plans) != len(all.Plans) {
+		t.Fatalf("rematch selections must partition the space: %d + %d != %d",
+			len(without.Plans), len(with.Plans), len(all.Plans))
+	}
+	for _, p := range without.Plans {
+		if planHasRematches(p) {
+			t.Fatalf("without-rematches leaked: %s", describe(p))
+		}
+	}
+	for _, p := range with.Plans {
+		if !planHasRematches(p) {
+			t.Fatalf("with-rematches leaked: %s", describe(p))
+		}
+	}
+	if !without.Facets.HasRematches || without.Facets.AllRematches {
+		t.Fatalf("facets must ignore the display filters: %+v", without.Facets)
+	}
+}
+
 // planSkipViolations checks a plan document for skipped rounds, independently
 // of Validate: every round's promotion places must be seated by the next
 // round of the same track — or, for a track's last round, by the grand

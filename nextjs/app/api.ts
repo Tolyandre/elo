@@ -882,6 +882,10 @@ export interface BracketPlanFilters {
     rounds?: number[];
     byes?: "with" | "without";
     first_shapes?: string[];
+    /** Per-round promote counts; every non-final round must be listed. */
+    promotes?: number[];
+    /** Whether a next-round slot may seat players of one previous-round slot together. */
+    rematches?: "with" | "without";
 }
 
 export async function getTournamentBracketPlansPromise(id: Base58ID, filters: BracketPlanFilters = {}): Promise<{
