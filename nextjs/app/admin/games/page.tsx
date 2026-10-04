@@ -422,7 +422,7 @@ function GameEditDialog({
         <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Изменить игру</DialogTitle>
+                    <DialogTitle>Изменить игру «{accentName(game)}»</DialogTitle>
                     <DialogDescription>
                         Отображаемое название: псевдоним, иначе русское, иначе оригинальное.
                     </DialogDescription>
