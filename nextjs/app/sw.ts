@@ -1,4 +1,4 @@
-import type { PrecacheEntry, SerwistGlobalConfig, SerwistPlugin } from "serwist";
+import type { PrecacheEntry, RouteHandler, SerwistGlobalConfig, SerwistPlugin } from "serwist";
 import { CacheableResponsePlugin, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 import type { SwToPageMessage } from "../lib/sw-messages";
@@ -134,13 +134,36 @@ const serwist = new Serwist({
             }),
         },
         {
-            // Every other API request — /ping, /auth/*, SSE, all writes, and
+            // SSE must never be proxied by the worker: a proxied EventSource
+            // holds its fetch event pending for the stream's lifetime, and per
+            // spec a waiting worker only activates once the old worker has no
+            // pending events — even with skipWaiting. A proxied stream would
+            // therefore keep every update stuck in "installed" while a
+            // signed-in user has the app open (the chip reaches 100%, but no
+            // controllerchange ever fires, so SwUpdateReloader never reloads;
+            // an installed PWA that never navigates would never pick the
+            // update up). Returning undefined synchronously makes the router
+            // skip respondWith, so the browser streams the event source
+            // natively and the worker holds nothing — the stream also
+            // survives worker termination and updates.
+            matcher: ({ url, request }) =>
+                apiBase !== "" &&
+                request.method === "GET" &&
+                url.href.startsWith(`${apiBase}/`) &&
+                url.pathname.endsWith("/events"),
+            handler: {
+                handle: () => undefined,
+            } as unknown as RouteHandler,
+        },
+        {
+            // Every other API request — /ping, /auth/*, all writes, and
             // the live-table reads — always hits the network and is never
             // cached. This keeps the health check honest, lets failed writes
             // fail fast (so they get queued offline) instead of being
             // swallowed by the cross-origin NetworkFirst rule in defaultCache,
             // and guarantees a table refetch can never resurrect a stale
-            // snapshot while offline.
+            // snapshot while offline. (SSE is excluded above, not here: it
+            // must bypass the worker's respondWith entirely.)
             matcher: ({ url }) => apiBase !== "" && url.href.startsWith(`${apiBase}/`),
             handler: new NetworkOnly(),
         },
