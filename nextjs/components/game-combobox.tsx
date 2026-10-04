@@ -120,7 +120,11 @@ export function GameCombobox({
       aria-expanded={open}
       className="w-full justify-between"
     >
-      {value ? displayName(value) : "Игра..."}
+      {value ? (
+        <span className="min-w-0 truncate">{displayName(value)}</span>
+      ) : (
+        "Игра..."
+      )}
       <ChevronsUpDown className="opacity-50" />
     </Button>
   )
@@ -161,12 +165,20 @@ export function GameCombobox({
                   keywords={game.game ? allNames(game.game) : [game.label]}
                   onSelect={handleSelect}
                 >
-                  <span className="min-w-0 truncate font-medium">{game.label}</span>
-                  {game.game && (
-                    <span className="min-w-0 truncate text-xs text-muted-foreground">
-                      {secondaryNames(game.game).join(" · ")}
-                    </span>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    {/* Inline flow: the secondary names start on the same
+                        line as the accent name and whatever does not fit
+                        wraps to the next line at full width. The accent name
+                        is plain inline text with nowrap (never inline-block:
+                        overflow-hidden boxes align by their bottom edge and
+                        break the shared baseline). */}
+                    <span className="mr-2 whitespace-nowrap">{game.label}</span>
+                    {game.game && (
+                      <span className="text-xs text-muted-foreground">
+                        {secondaryNames(game.game).join(" · ")}
+                      </span>
+                    )}
+                  </div>
                   <Check
                     className={cn(
                       "ml-auto shrink-0",
