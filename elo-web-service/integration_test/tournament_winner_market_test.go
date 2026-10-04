@@ -74,6 +74,63 @@ func finalSlotID(t *testing.T, router interface {
 	return br.Data.Rounds[0].Slots[0].Id
 }
 
+// winnersFinalPlan brackets 8 players into two 4-seat winners slots (promote 2)
+// whose top-2 feed a 4-seat final (promote 1) — the multi-round shape whose
+// early-round replays must not settle a tournament_winner market.
+const winnersFinalPlan = `{"plan":{"elimination":"single","rounds":[
+	{"track":"winners","index":1,"promote":2,"slots":[
+		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
+		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
+	{"track":"final","index":1,"promote":1,"slots":[
+		{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`
+
+// startWinnersFinalTournament creates an 8-player tournament with two winners
+// slots feeding a final and starts it. Returns the game, the tournament id,
+// and each winners slot's seated players (slot order).
+func startWinnersFinalTournament(t *testing.T, pool *pgxpool.Pool, adminToken string, name string) (gameID, tid idpkg.ID, semis [][]idpkg.ID) {
+	t.Helper()
+	router := setupRouter(pool)
+	gameID = createTestGame(t, pool, name+" game")
+
+	tid = newID(t)
+	players := make([]idpkg.ID, 0, 8)
+	ids := make([]string, 0, 8)
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("%s-%d", name, i))
+		players = append(players, p)
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": %q, "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), name, short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", adminToken, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", adminToken, winnersFinalPlan); w.Code != http.StatusOK {
+		t.Fatalf("start tournament: %d %s", w.Code, w.Body.String())
+	}
+
+	// Report each winners slot's seated order (the draw shuffles participants).
+	br := getBracket(t, router, short(tid))
+	byShort := make(map[string]idpkg.ID, len(players))
+	for _, p := range players {
+		byShort[short(p)] = p
+	}
+	for _, slot := range br.Data.Rounds[0].Slots {
+		seated := make([]idpkg.ID, 0, 4)
+		for _, seat := range slot.Seats {
+			if seat.PlayerId == nil {
+				t.Fatalf("winners seat not drawn: %+v", seat)
+			}
+			seated = append(seated, byShort[*seat.PlayerId])
+		}
+		semis = append(semis, seated)
+	}
+	if len(semis) != 2 {
+		t.Fatalf("winners slots = %d, want 2", len(semis))
+	}
+	return gameID, tid, semis
+}
+
 // createTournamentWinnerMarket creates the market on a running tournament and
 // backs it with a sole zero-fee guarantor so it becomes tradable.
 func createTournamentWinnerMarket(t *testing.T, ctx context.Context, pool *pgxpool.Pool, adminID idpkg.ID, tid idpkg.ID, participants []idpkg.ID) (*elo.MarketService, db.Market) {
@@ -487,6 +544,85 @@ func TestTournamentWinnerMarket_RecalcIdempotent(t *testing.T) {
 	}
 	if got := latestRating(t, pool, players[0]); math.Abs(got-snapshotRating) > epsilon {
 		t.Errorf("rating after recalc = %.6f, want %.6f", got, snapshotRating)
+	}
+}
+
+// TestTournamentWinnerMarket_RecalcKeepsFinalResolution: replaying a
+// multi-round bracket must keep the market resolved at the final's
+// determining match. Without the final-slot guard, the replay settled it at
+// the earliest winners-round determining match instead — the resolution moved
+// earlier, and the history-conflict validation then rejected the whole save
+// because bets placed between the rounds landed after the bogus resolution
+// time.
+func TestTournamentWinnerMarket_RecalcKeepsFinalResolution(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	adminToken, _ := createTestUserWithID(t, pool, true)
+	adminID := createTestAdmin(t, pool)
+	gameID, tid, semis := startWinnersFinalTournament(t, pool, adminToken, "Многокруговой кубок")
+
+	participants := append(append([]idpkg.ID{}, semis[0]...), semis[1]...)
+	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, participants)
+	guarantor := createTestPlayer(t, pool, "Досрочный поручитель")
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
+
+	// Both winners rounds play out with a strict top-2 cut, hours apart.
+	semiADate := time.Now().Add(-3 * time.Hour).Truncate(time.Second)
+	semiBDate := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	semiAScores := map[idpkg.ID]float64{semis[0][0]: 10, semis[0][1]: 8, semis[0][2]: 2, semis[0][3]: 0}
+	semiBScores := map[idpkg.ID]float64{semis[1][0]: 10, semis[1][1]: 8, semis[1][2]: 2, semis[1][3]: 0}
+	semiA := playMatch(t, ctx, pool, gameID, semiADate, semiAScores)
+	playMatch(t, ctx, pool, gameID, semiBDate, semiBScores)
+
+	// A bet lands between the rounds — inside the bogus window that a
+	// wrong replay opens when it resolves the market at a winners date.
+	setBetLimit(t, pool, semis[0][0], 16)
+	champion := semis[0][0]
+	outcomeChampion := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", champion)
+	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, champion, outcomeChampion, 1); err != nil {
+		t.Fatalf("PlaceBet between rounds: %v", err)
+	}
+
+	// The final is played by each semi's top-2 and crowns the champion; the
+	// market resolves at the final's date, attached to it.
+	finalDate := time.Now().Add(-time.Hour).Truncate(time.Second)
+	finalScores := map[idpkg.ID]float64{semis[0][0]: 10, semis[0][1]: 6, semis[1][0]: 2, semis[1][1]: 0}
+	final := playMatch(t, ctx, pool, gameID, finalDate, finalScores)
+
+	assertMarketResolvedAt := func(where string) {
+		t.Helper()
+		m, err := db.New(pool).GetMarket(ctx, market.ID)
+		if err != nil {
+			t.Fatalf("%s: GetMarket: %v", where, err)
+		}
+		if m.Status != "resolved" || m.ResolutionOutcome == nil || *m.ResolutionOutcome != outcomeChampion {
+			t.Fatalf("%s: market must be resolved onto the champion, got status=%q outcome=%v", where, m.Status, m.ResolutionOutcome)
+		}
+		if m.ResolutionMatchID == nil || *m.ResolutionMatchID != final.ID {
+			t.Errorf("%s: resolution_match_id = %v, want the final %s", where, m.ResolutionMatchID, final.ID)
+		}
+		if !m.ResolvedAt.Time.Equal(finalDate) {
+			t.Errorf("%s: resolved_at = %v, want the final date %v", where, m.ResolvedAt.Time, finalDate)
+		}
+	}
+	assertMarketResolvedAt("after completion")
+
+	snapshotEarned := playerMarketEarned(t, pool, market.ID, champion)
+
+	// A no-op rewrite of the first winners match replays the whole bracket
+	// from its date — over both winners rounds and the final — and must keep
+	// the resolution identical (same date, same determining match).
+	matchSvc := newMatchService(pool)
+	if _, err := matchSvc.UpdateMatch(ctx, semiA.ID, gameID, semiAScores, semiADate, elo.UpdateMatchOpts{}); err != nil {
+		t.Fatalf("UpdateMatch (recalc over earlier rounds): %v", err)
+	}
+
+	assertMarketResolvedAt("after replay")
+	const epsilon = 1e-6
+	if got := playerMarketEarned(t, pool, market.ID, champion); math.Abs(got-snapshotEarned) > epsilon {
+		t.Errorf("earned after replay = %.6f, want %.6f", got, snapshotEarned)
 	}
 }
 

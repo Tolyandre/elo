@@ -52,12 +52,13 @@ func (h *tournamentWinnerHandler) ResolutionTrigger() ResolutionTrigger {
 type tournamentWinnerTrigger struct{}
 
 // OnMatch settles a tournament's markets when the processed match is the
-// determining match of a tournament that is currently completed and whose
-// champion was derived from standings. In the live add flow the match is not
-// yet linked to its slot (acceptance runs later in the same transaction), so
-// this fires only on replays of already-linked matches — exactly where the
-// settlement rows must land to keep the arena ledger ordered. Ruling-decided
-// completions attach no match; the recalculation sweep re-settles those.
+// determining match of the tournament's final slot while the tournament is
+// currently completed and its champion was derived from standings. In the live
+// add flow the match is not yet linked to its slot (acceptance runs later in
+// the same transaction), so this fires only on replays of already-linked
+// matches — exactly where the settlement rows must land to keep the arena
+// ledger ordered. Ruling-decided completions attach no match; the
+// recalculation sweep re-settles those.
 func (t *tournamentWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, match MatchInfo, settle SettleFunc) error {
 	links, err := q.ListSlotMatchesForMatchIDs(ctx, []id.ID{match.Match.ID})
 	if err != nil {
@@ -76,14 +77,26 @@ func (t *tournamentWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, ma
 		return nil
 	}
 
-	slot, err := q.GetTournamentSlot(ctx, link.SlotID)
+	// The champion comes from the final slot only. The tournament tables are
+	// live state during a replay, so by the time an early-round determining
+	// match is replayed the tournament already reads completed — without this
+	// guard the market would resolve at that earlier round's date and never
+	// re-settle at the final (the sweep and the completion hook both settle
+	// from GetTournamentFinalSlot).
+	slot, err := q.GetTournamentFinalSlot(ctx, link.TournamentID)
+	if db.IsNoRows(err) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("get slot: %w", err)
+		return fmt.Errorf("get final slot: %w", err)
+	}
+	if slot.ID != link.SlotID {
+		return nil
 	}
 	if decidedByRuling(slot.Ruling, slot.Promote) {
 		return nil
 	}
-	latest, err := q.LatestSlotMatchID(ctx, link.SlotID)
+	latest, err := q.LatestSlotMatchID(ctx, slot.ID)
 	if db.IsNoRows(err) {
 		return nil // no linked matches — nothing this match could have decided
 	}
