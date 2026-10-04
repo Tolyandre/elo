@@ -2,8 +2,10 @@ package api
 
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
+	"github.com/tolyandre/elo-web-service/pkg/tesera"
 )
 
 type API struct {
@@ -26,6 +28,12 @@ type API struct {
 }
 
 func New(pool *pgxpool.Pool) *API {
+	return NewWithTesera(pool, tesera.NewClient(configuration.Config.TeseraBaseURL))
+}
+
+// NewWithTesera lets tests point the game-suggestion integration at a stub
+// server instead of the real Tesera API.
+func NewWithTesera(pool *pgxpool.Pool, teseraClient *tesera.Client) *API {
 	hub := elo.NewHub()
 	marketService := elo.NewMarketServiceWithHub(pool, hub)
 	arenaService := elo.NewArenaService(pool, hub)
@@ -33,7 +41,7 @@ func New(pool *pgxpool.Pool) *API {
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
-		GameService:        elo.NewGameService(pool, arenaService),
+		GameService:        elo.NewGameService(pool, arenaService, teseraClient),
 		PlayerService:      elo.NewPlayerService(pool),
 		MatchService:       elo.NewMatchService(pool, marketService, arenaService, tournamentService),
 		MarketService:      marketService,

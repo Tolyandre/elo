@@ -89,6 +89,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/games/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest base-game matches from the Tesera catalogue for a name being typed
+         * @description Proxies the tesera.ru search; additions and expansions are excluded. Exact (normalized) name matches sort first. Failures of the external API surface as errors — callers treat any failure as "no suggestions" and must not block on it.
+         */
+        get: operations["SuggestGames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/games/auto-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Match every game lacking a Tesera reference against the Tesera catalogue
+         * @description Applies only exact normalized matches with base games (each in its own transaction, audited). Per-game failures — ambiguous names, Tesera errors — are reported in the response and skipped, never fatal. This is the admin backfill for pre-existing games.
+         */
+        post: operations["AutoMatchGames"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/games/{id}": {
         parameters: {
             query?: never;
@@ -104,7 +144,10 @@ export interface paths {
         delete: operations["DeleteGame"];
         options?: never;
         head?: never;
-        /** Update game name */
+        /**
+         * Replace game metadata (names, alias, external references)
+         * @description Full-state update of the metadata fields: every field is set to the given value (null clears it). The display name is recomputed as alias, else localized ru name, else original name, and must not end up empty.
+         */
         patch: operations["PatchGame"];
         trace?: never;
     };
@@ -1093,7 +1136,18 @@ export interface components {
         };
         GameListItem: {
             id: components["schemas"]["Base58ID"];
+            /** @description Display name — alias if set, else localized ru name, else original name */
             name: string;
+            /** @description User-given custom name; set only when it differs from both canonical names */
+            alias?: string | null;
+            /** @description Original (usually English) title */
+            name_original?: string | null;
+            /** @description Localized Russian title, only when officially published in Russian */
+            name_ru?: string | null;
+            /** @description BoardGameGeek thing id (boardgamegeek.com/boardgame/{bgg_ref}) */
+            bgg_ref?: number | null;
+            /** @description Tesera game id (tesera.ru/game/{tesera_ref}) */
+            tesera_ref?: number | null;
             last_played_order: number;
             total_matches: number;
             /** @description Tags attached to the game, ordered by tag name */
@@ -1104,12 +1158,49 @@ export interface components {
         };
         Game: {
             id: components["schemas"]["Base58ID"];
+            /** @description Display name — alias if set, else localized ru name, else original name */
             name: string;
+            alias?: string | null;
+            name_original?: string | null;
+            name_ru?: string | null;
+            /** @description BoardGameGeek thing id */
+            bgg_ref?: number | null;
+            /** @description Tesera game id */
+            tesera_ref?: number | null;
             total_matches: number;
         };
         GameTag: {
             id: components["schemas"]["Base58ID"];
             name: string;
+        };
+        /** @description A match candidate from the Tesera catalogue. Base games sort before Tesera-flagged additions (the flag is unreliable, so nothing is filtered from the picker). */
+        GameSuggestion: {
+            tesera_ref: number;
+            /** @description Absent when Tesera knows no BoardGameGeek link */
+            bgg_ref?: number | null;
+            /** @description Localized Russian title, absent when the game was not published in Russian */
+            name_ru?: string | null;
+            name_original?: string | null;
+            /** @description Tesera's localized title, for display in pickers */
+            title: string;
+            year?: number | null;
+            photo_url?: string | null;
+            /** @description Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter) */
+            is_addition: boolean;
+        };
+        GameSuggestionList: {
+            games: components["schemas"]["GameSuggestion"][];
+        };
+        GameAutoMatchResult: {
+            id: components["schemas"]["Base58ID"];
+            /** @description The game's display name at the time of matching */
+            name: string;
+            matched: boolean;
+            /** @description Why the game was not matched ("no exact match", "tesera unavailable", "name conflict") */
+            reason?: string | null;
+        };
+        GameAutoMatchResults: {
+            games: components["schemas"]["GameAutoMatchResult"][];
         };
         /** @description The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. Camp arenas have no filter. */
         MatchFilter: {
@@ -2236,7 +2327,14 @@ export interface operations {
             content: {
                 "application/json": {
                     id: components["schemas"]["Base58ID"];
+                    /** @description The typed name; it becomes an alias when it differs from both canonical names below */
                     name: string;
+                    /** @description Original title from an accepted catalogue suggestion */
+                    name_original?: string | null;
+                    /** @description Localized Russian title from an accepted catalogue suggestion */
+                    name_ru?: string | null;
+                    bgg_ref?: number | null;
+                    tesera_ref?: number | null;
                 };
             };
         };
@@ -2285,6 +2383,99 @@ export interface operations {
             };
             /** @description Game with this name already exists */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    SuggestGames: {
+        parameters: {
+            query: {
+                query: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Match candidates (may be empty) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["GameSuggestionList"];
+                    };
+                };
+            };
+            /** @description Bad request (empty query) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    AutoMatchGames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-game match results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["GameAutoMatchResults"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2407,7 +2598,13 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    name: string;
+                    /** @description User-given custom display name; null removes it */
+                    alias?: string | null;
+                    name_original?: string | null;
+                    /** @description Localized Russian title; null when not published in Russian */
+                    name_ru?: string | null;
+                    bgg_ref?: number | null;
+                    tesera_ref?: number | null;
                 };
             };
         };
@@ -2423,11 +2620,16 @@ export interface operations {
                         data: {
                             id: components["schemas"]["Base58ID"];
                             name: string;
+                            alias?: string | null;
+                            name_original?: string | null;
+                            name_ru?: string | null;
+                            bgg_ref?: number | null;
+                            tesera_ref?: number | null;
                         };
                     };
                 };
             };
-            /** @description Bad request */
+            /** @description Bad request (no name would remain) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2456,6 +2658,15 @@ export interface operations {
             };
             /** @description Game not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Another game already uses this display name */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

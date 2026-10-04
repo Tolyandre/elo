@@ -28,3 +28,7 @@ cookie_ttl_seconds: 86400
 
 # Postgres on port 5433 (docker compose) — password set via .env.dev
 postgres_dsn: "postgres://elo@localhost:5433/elo?sslmode=disable"
+
+# Tesera API used to suggest BGG/Tesera links and localized game names.
+# Optional: empty means the default public API.
+tesera_base_url: "https://api.tesera.ru"

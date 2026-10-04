@@ -5,6 +5,7 @@ import { Check, ChevronsUpDown, Plus } from "lucide-react"
 
 import type { Base58ID } from "@/lib/id"
 import { cn } from "@/lib/utils"
+import { allNames, secondaryNames } from "@/lib/game-names"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -25,6 +26,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  AcceptedGameSuggestion,
+  AcceptedMetaLine,
+  GameSuggestionChips,
+  suggestionMeta,
+  useGameSuggestions,
+} from "@/components/game-suggestions"
 import { useGames } from "@/app/gamesContext"
 import { useTags } from "@/app/tagsContext"
 import { useMatches } from "@/app/matches/MatchesContext"
@@ -59,7 +67,7 @@ export function GameCombobox({
     return [
       {
         heading: "Офлайн (не сохранено)",
-        options: pendingGames.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)` })),
+        options: pendingGames.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)`, game: undefined })),
       },
       ...base,
     ];
@@ -150,13 +158,18 @@ export function GameCombobox({
                 <CommandItem
                   key={`${group.heading}-${game.value}`}
                   value={game.value}
-                  keywords={[game.label]}
+                  keywords={game.game ? allNames(game.game) : [game.label]}
                   onSelect={handleSelect}
                 >
-                  {game.label}
+                  <span className="min-w-0 truncate font-medium">{game.label}</span>
+                  {game.game && (
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      {secondaryNames(game.game).join(" · ")}
+                    </span>
+                  )}
                   <Check
                     className={cn(
-                      "ml-auto",
+                      "ml-auto shrink-0",
                       value === game.value ? "opacity-100" : "opacity-0"
                     )}
                   />
@@ -244,6 +257,11 @@ function GameCreateForm({
   const [name, setName] = React.useState(initialName)
   const [selectedTagIds, setSelectedTagIds] = React.useState<Set<Base58ID>>(new Set())
   const [creating, setCreating] = React.useState(false)
+  const [accepted, setAccepted] = React.useState<AcceptedGameSuggestion | null>(null)
+
+  // Catalogue suggestions for the typed name; best-effort — a network failure
+  // or offline state simply leaves the list empty and creation continues.
+  const suggestions = useGameSuggestions(name, true)
 
   const sortedTags = React.useMemo(
     () => [...tags].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
@@ -264,7 +282,12 @@ function GameCreateForm({
     if (!trimmed || creating) return
     setCreating(true)
     try {
-      const game = addPendingGame(trimmed, [...selectedTagIds])
+      const game = addPendingGame(trimmed, [...selectedTagIds], accepted ? {
+        nameOriginal: accepted.nameOriginal,
+        nameRu: accepted.nameRu,
+        bggRef: accepted.bggRef,
+        teseraRef: accepted.teseraRef,
+      } : undefined)
       onClose()
       onCreated(game.clientId)
     } finally {
@@ -283,6 +306,13 @@ function GameCreateForm({
         autoFocus
         aria-label="Название новой игры"
       />
+      <GameSuggestionChips
+        suggestions={suggestions}
+        accepted={accepted}
+        onAccept={(s) => setAccepted(suggestionMeta(s))}
+        onClear={() => setAccepted(null)}
+      />
+      {accepted && <AcceptedMetaLine accepted={accepted} />}
       {sortedTags.length > 0 && (
         <div className="flex flex-wrap gap-1 items-center">
           {sortedTags.map((tag) => {

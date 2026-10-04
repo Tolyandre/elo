@@ -1233,10 +1233,40 @@ type EloSettingEntry struct {
 
 // Game defines model for Game.
 type Game struct {
+	Alias *string `json:"alias,omitempty"`
+
+	// BggRef BoardGameGeek thing id
+	BggRef *int `json:"bgg_ref,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id           Base58ID `json:"id"`
-	Name         string   `json:"name"`
-	TotalMatches int      `json:"total_matches"`
+	Id Base58ID `json:"id"`
+
+	// Name Display name — alias if set, else localized ru name, else original name
+	Name         string  `json:"name"`
+	NameOriginal *string `json:"name_original,omitempty"`
+	NameRu       *string `json:"name_ru,omitempty"`
+
+	// TeseraRef Tesera game id
+	TeseraRef    *int `json:"tesera_ref,omitempty"`
+	TotalMatches int  `json:"total_matches"`
+}
+
+// GameAutoMatchResult defines model for GameAutoMatchResult.
+type GameAutoMatchResult struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id      Base58ID `json:"id"`
+	Matched bool     `json:"matched"`
+
+	// Name The game's display name at the time of matching
+	Name string `json:"name"`
+
+	// Reason Why the game was not matched ("no exact match", "tesera unavailable", "name conflict")
+	Reason *string `json:"reason,omitempty"`
+}
+
+// GameAutoMatchResults defines model for GameAutoMatchResults.
+type GameAutoMatchResults struct {
+	Games []GameAutoMatchResult `json:"games"`
 }
 
 // GameEloStat defines model for GameEloStat.
@@ -1255,14 +1285,31 @@ type GameList struct {
 
 // GameListItem defines model for GameListItem.
 type GameListItem struct {
+	// Alias User-given custom name; set only when it differs from both canonical names
+	Alias *string `json:"alias,omitempty"`
+
+	// BggRef BoardGameGeek thing id (boardgamegeek.com/boardgame/{bgg_ref})
+	BggRef *int `json:"bgg_ref,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id              Base58ID `json:"id"`
 	LastPlayedOrder int      `json:"last_played_order"`
-	Name            string   `json:"name"`
+
+	// Name Display name — alias if set, else localized ru name, else original name
+	Name string `json:"name"`
+
+	// NameOriginal Original (usually English) title
+	NameOriginal *string `json:"name_original,omitempty"`
+
+	// NameRu Localized Russian title, only when officially published in Russian
+	NameRu *string `json:"name_ru,omitempty"`
 
 	// Tags Tags attached to the game, ordered by tag name
-	Tags         []GameTag `json:"tags"`
-	TotalMatches int       `json:"total_matches"`
+	Tags []GameTag `json:"tags"`
+
+	// TeseraRef Tesera game id (tesera.ru/game/{tesera_ref})
+	TeseraRef    *int `json:"tesera_ref,omitempty"`
+	TotalMatches int  `json:"total_matches"`
 }
 
 // GameMatchStat defines model for GameMatchStat.
@@ -1280,6 +1327,30 @@ type GameMatchStat struct {
 
 	// SilverCount Number of 2nd-place (silver medal) finishes in this game.
 	SilverCount int `json:"silver_count"`
+}
+
+// GameSuggestion A match candidate from the Tesera catalogue. Base games sort before Tesera-flagged additions (the flag is unreliable, so nothing is filtered from the picker).
+type GameSuggestion struct {
+	// BggRef Absent when Tesera knows no BoardGameGeek link
+	BggRef *int `json:"bgg_ref,omitempty"`
+
+	// IsAddition Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter)
+	IsAddition   bool    `json:"is_addition"`
+	NameOriginal *string `json:"name_original,omitempty"`
+
+	// NameRu Localized Russian title, absent when the game was not published in Russian
+	NameRu    *string `json:"name_ru,omitempty"`
+	PhotoUrl  *string `json:"photo_url,omitempty"`
+	TeseraRef int     `json:"tesera_ref"`
+
+	// Title Tesera's localized title, for display in pickers
+	Title string `json:"title"`
+	Year  *int   `json:"year,omitempty"`
+}
+
+// GameSuggestionList defines model for GameSuggestionList.
+type GameSuggestionList struct {
+	Games []GameSuggestion `json:"games"`
 }
 
 // GameTag defines model for GameTag.
@@ -2183,14 +2254,37 @@ type ListCorrectionsParams struct {
 
 // CreateGameJSONBody defines parameters for CreateGame.
 type CreateGameJSONBody struct {
+	BggRef *int `json:"bgg_ref,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
+	Id Base58ID `json:"id"`
+
+	// Name The typed name; it becomes an alias when it differs from both canonical names below
+	Name string `json:"name"`
+
+	// NameOriginal Original title from an accepted catalogue suggestion
+	NameOriginal *string `json:"name_original,omitempty"`
+
+	// NameRu Localized Russian title from an accepted catalogue suggestion
+	NameRu    *string `json:"name_ru,omitempty"`
+	TeseraRef *int    `json:"tesera_ref,omitempty"`
+}
+
+// SuggestGamesParams defines parameters for SuggestGames.
+type SuggestGamesParams struct {
+	Query string `form:"query" json:"query"`
 }
 
 // PatchGameJSONBody defines parameters for PatchGame.
 type PatchGameJSONBody struct {
-	Name string `json:"name"`
+	// Alias User-given custom display name; null removes it
+	Alias        *string `json:"alias,omitempty"`
+	BggRef       *int    `json:"bgg_ref,omitempty"`
+	NameOriginal *string `json:"name_original,omitempty"`
+
+	// NameRu Localized Russian title; null when not published in Russian
+	NameRu    *string `json:"name_ru,omitempty"`
+	TeseraRef *int    `json:"tesera_ref,omitempty"`
 }
 
 // AddGameTagJSONBody defines parameters for AddGameTag.
@@ -3256,13 +3350,19 @@ type ServerInterface interface {
 	// CreateGame Create a new game
 	// (POST /games)
 	CreateGame(c *gin.Context)
+	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
+	// (POST /games/auto-match)
+	AutoMatchGames(c *gin.Context)
+	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
+	// (GET /games/suggestions)
+	SuggestGames(c *gin.Context, params SuggestGamesParams)
 	// DeleteGame Delete a game
 	// (DELETE /games/{id})
 	DeleteGame(c *gin.Context, id string)
 	// GetGame Get basic game info (the game's arena lives under /arenas, ADR-24)
 	// (GET /games/{id})
 	GetGame(c *gin.Context, id string)
-	// PatchGame Update game name
+	// PatchGame Replace game metadata (names, alias, external references)
 	// (PATCH /games/{id})
 	PatchGame(c *gin.Context, id string)
 	// AddGameTag Attach a tag to a game (idempotent)
@@ -4070,6 +4170,46 @@ func (siw *ServerInterfaceWrapper) CreateGame(c *gin.Context) {
 	}
 
 	siw.Handler.CreateGame(c)
+}
+
+// AutoMatchGames operation middleware
+func (siw *ServerInterfaceWrapper) AutoMatchGames(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.AutoMatchGames(c)
+}
+
+// SuggestGames operation middleware
+func (siw *ServerInterfaceWrapper) SuggestGames(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SuggestGamesParams
+
+	// ------------- Required query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "query", c.Request.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter query: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SuggestGames(c, params)
 }
 
 // DeleteGame operation middleware
@@ -5478,6 +5618,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/corrections", wrapper.ListCorrections)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
+	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
+	router.GET(options.BaseURL+"/games/suggestions", wrapper.SuggestGames)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
 	router.GET(options.BaseURL+"/games/:id", wrapper.GetGame)
 	router.PATCH(options.BaseURL+"/games/:id", wrapper.PatchGame)
@@ -6815,6 +6957,125 @@ func (response CreateGame409JSONResponse) VisitCreateGameResponse(w http.Respons
 	return err
 }
 
+type AutoMatchGamesRequestObject struct {
+}
+
+type AutoMatchGamesResponseObject interface {
+	VisitAutoMatchGamesResponse(w http.ResponseWriter) error
+}
+
+type AutoMatchGames200JSONResponse struct {
+	Data   GameAutoMatchResults `json:"data"`
+	Status string               `json:"status"`
+}
+
+func (response AutoMatchGames200JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AutoMatchGames401JSONResponse ApiError
+
+func (response AutoMatchGames401JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AutoMatchGames403JSONResponse ApiError
+
+func (response AutoMatchGames403JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SuggestGamesRequestObject struct {
+	Params SuggestGamesParams
+}
+
+type SuggestGamesResponseObject interface {
+	VisitSuggestGamesResponse(w http.ResponseWriter) error
+}
+
+type SuggestGames200JSONResponse struct {
+	Data   GameSuggestionList `json:"data"`
+	Status string             `json:"status"`
+}
+
+func (response SuggestGames200JSONResponse) VisitSuggestGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SuggestGames400JSONResponse ApiError
+
+func (response SuggestGames400JSONResponse) VisitSuggestGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SuggestGames401JSONResponse ApiError
+
+func (response SuggestGames401JSONResponse) VisitSuggestGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SuggestGames403JSONResponse ApiError
+
+func (response SuggestGames403JSONResponse) VisitSuggestGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteGameRequestObject struct {
 	Id string `json:"id"`
 }
@@ -6957,9 +7218,15 @@ type PatchGameResponseObject interface {
 
 type PatchGame200JSONResponse struct {
 	Data struct {
+		Alias  *string `json:"alias,omitempty"`
+		BggRef *int    `json:"bgg_ref,omitempty"`
+
 		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-		Id   Base58ID `json:"id"`
-		Name string   `json:"name"`
+		Id           Base58ID `json:"id"`
+		Name         string   `json:"name"`
+		NameOriginal *string  `json:"name_original,omitempty"`
+		NameRu       *string  `json:"name_ru,omitempty"`
+		TeseraRef    *int     `json:"tesera_ref,omitempty"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -7028,6 +7295,20 @@ func (response PatchGame404JSONResponse) VisitPatchGameResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchGame409JSONResponse ApiError
+
+func (response PatchGame409JSONResponse) VisitPatchGameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10639,13 +10920,19 @@ type StrictServerInterface interface {
 	// CreateGame Create a new game
 	// (POST /games)
 	CreateGame(ctx context.Context, request CreateGameRequestObject) (CreateGameResponseObject, error)
+	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
+	// (POST /games/auto-match)
+	AutoMatchGames(ctx context.Context, request AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error)
+	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
+	// (GET /games/suggestions)
+	SuggestGames(ctx context.Context, request SuggestGamesRequestObject) (SuggestGamesResponseObject, error)
 	// DeleteGame Delete a game
 	// (DELETE /games/{id})
 	DeleteGame(ctx context.Context, request DeleteGameRequestObject) (DeleteGameResponseObject, error)
 	// GetGame Get basic game info (the game's arena lives under /arenas, ADR-24)
 	// (GET /games/{id})
 	GetGame(ctx context.Context, request GetGameRequestObject) (GetGameResponseObject, error)
-	// PatchGame Update game name
+	// PatchGame Replace game metadata (names, alias, external references)
 	// (PATCH /games/{id})
 	PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error)
 	// AddGameTag Attach a tag to a game (idempotent)
@@ -11547,6 +11834,56 @@ func (sh *strictHandler) CreateGame(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(CreateGameResponseObject); ok {
 		if err := validResponse.VisitCreateGameResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AutoMatchGames operation middleware
+func (sh *strictHandler) AutoMatchGames(ctx *gin.Context) {
+	var request AutoMatchGamesRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.AutoMatchGames(ctx, request.(AutoMatchGamesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AutoMatchGames")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(AutoMatchGamesResponseObject); ok {
+		if err := validResponse.VisitAutoMatchGamesResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SuggestGames operation middleware
+func (sh *strictHandler) SuggestGames(ctx *gin.Context, params SuggestGamesParams) {
+	var request SuggestGamesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SuggestGames(ctx, request.(SuggestGamesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SuggestGames")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(SuggestGamesResponseObject); ok {
+		if err := validResponse.VisitSuggestGamesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

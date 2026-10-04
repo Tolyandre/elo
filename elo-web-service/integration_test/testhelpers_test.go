@@ -33,6 +33,7 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/tesera"
 )
 
 const testJWTSecret = "integration-test-jwt-secret"
@@ -152,13 +153,20 @@ func setupTestDBWithDSN(t *testing.T) (*pgxpool.Pool, string, func()) {
 
 // setupRouter builds a router identical to main.go for use in httptest requests.
 func setupRouter(pool *pgxpool.Pool) *gin.Engine {
+	return setupRouterWithTesera(pool, "")
+}
+
+// setupRouterWithTesera points the game-suggestion integration at a stub
+// server (empty = the real default Tesera URL; tests that don't touch the
+// suggestion endpoints never reach it).
+func setupRouterWithTesera(pool *pgxpool.Pool, teseraBaseURL string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	cfg.Config.CookieJwtSecret = testJWTSecret
 	cfg.Config.CookieTtlSeconds = 3600
 	cfg.Config.FrontendUri = "http://localhost:3000"
 
 	r := gin.New()
-	a := mainapi.New(pool)
+	a := mainapi.NewWithTesera(pool, tesera.NewClient(teseraBaseURL))
 	o := apioauth2.New(pool)
 
 	strictWrapper := &mainapi.ServerInterfaceWrapper{
@@ -179,6 +187,9 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 	r.GET("/matches/:id/markets", strictWrapper.GetMarketsByMatchId)
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
 	// Games and clubs: needed by the audit-log integration test (ADR-14).
+	r.GET("/games", strictWrapper.ListGames)
+	r.GET("/games/suggestions", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SuggestGames)
+	r.POST("/games/auto-match", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AutoMatchGames)
 	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)
 	r.PATCH("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchGame)
 	r.DELETE("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteGame)
@@ -601,7 +612,8 @@ func newTagService(pool *pgxpool.Pool) elo.ITagService {
 }
 
 func newGameService(pool *pgxpool.Pool) elo.IGameService {
-	return elo.NewGameService(pool, newArenaService(pool))
+	// No Tesera client: service-level tests don't touch suggestions.
+	return elo.NewGameService(pool, newArenaService(pool), nil)
 }
 
 func newCorrectionService(pool *pgxpool.Pool) elo.ICorrectionService {

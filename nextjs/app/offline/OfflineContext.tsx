@@ -75,7 +75,7 @@ type  OfflineState = {
     addPendingPlayer: (name: string, clubIds?: Base58ID[]) => PendingPlayer;
     updatePendingPlayer: (clientId: Base58ID, name: string) => void;
     deletePendingPlayer: (clientId: Base58ID) => void;
-    addPendingGame: (name: string, tagIds?: Base58ID[]) => PendingGame;
+    addPendingGame: (name: string, tagIds?: Base58ID[], meta?: PendingGame["meta"]) => PendingGame;
     updatePendingGame: (clientId: Base58ID, name: string) => void;
     deletePendingGame: (clientId: Base58ID) => void;
     /**
@@ -139,6 +139,7 @@ export function loadOfflineStore(): OfflineStore {
             status: g.status ?? "pending",
             name: g.name!,
             tagIds: g.tagIds ?? [],
+            meta: g.meta,
         }));
         return { games, players, matches };
     } catch {
@@ -451,13 +452,14 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const addPendingGame = useCallback(
-        (name: string, tagIds: Base58ID[] = []) => {
+        (name: string, tagIds: Base58ID[] = [], meta?: PendingGame["meta"]) => {
             const game: PendingGame = {
                 clientId: newOfflineId(),
                 createdAt: new Date().toISOString(),
                 status: "pending",
                 name,
                 tagIds,
+                meta,
             };
             mutateStore((s) => ({ ...s, games: [...s.games, game] }));
             return game;

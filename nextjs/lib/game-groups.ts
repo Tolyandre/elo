@@ -1,13 +1,21 @@
 import { GameListItem, Match } from "@/app/api";
 import type { Base58ID } from "@/lib/id";
+import { accentName } from "@/lib/game-names";
 
-type GameGroup = { heading: string; options: { value: string; label: string }[] };
+type GameGroup = {
+  heading: string;
+  options: { value: string; label: string; game?: GameListItem }[];
+};
 
 /**
  * Builds ordered game groups for comboboxes:
  * 1. "Недавние" — up to 7 games recently played by the current user's player (omitted if no playerId)
  * 2. "Популярные" — up to 7 games by total_matches (excluding recent)
  * 3. "Остальные" — all remaining games, sorted alphabetically
+ *
+ * The option label is the accent name (alias if set, else localized, else
+ * original); the full game rides along so pickers can search all names and
+ * render the secondary names muted.
  */
 export function buildGameGroups(
   games: GameListItem[],
@@ -16,6 +24,7 @@ export function buildGameGroups(
 ): GameGroup[] {
   const groups: GameGroup[] = [];
   const byId = new Map(games.map((g) => [g.id, g]));
+  const option = (g: GameListItem) => ({ value: g.id, label: accentName(g), game: g });
 
   // 1. Recent
   const recentIds: Base58ID[] = [];
@@ -31,7 +40,7 @@ export function buildGameGroups(
     if (recentIds.length > 0) {
       groups.push({
         heading: "Недавние",
-        options: recentIds.map((id) => ({ value: id, label: byId.get(id)!.name })),
+        options: recentIds.map((id) => option(byId.get(id)!)),
       });
     }
   }
@@ -47,7 +56,7 @@ export function buildGameGroups(
   if (popular.length > 0) {
     groups.push({
       heading: "Популярные",
-      options: popular.map((g) => ({ value: g.id, label: g.name })),
+      options: popular.map(option),
     });
   }
 
@@ -60,7 +69,7 @@ export function buildGameGroups(
   if (rest.length > 0) {
     groups.push({
       heading: "Остальные",
-      options: rest.map((g) => ({ value: g.id, label: g.name })),
+      options: rest.map(option),
     });
   }
 

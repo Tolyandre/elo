@@ -8,25 +8,47 @@ package db
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
 const addGame = `-- name: AddGame :one
-INSERT INTO games (id, name)
-VALUES ($1, $2)
+INSERT INTO games (id, name, name_original, name_ru, alias, bgg_id, tesera_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
-RETURNING id, name
+RETURNING id, name, name_original, name_ru, alias, bgg_id, tesera_id
 `
 
 type AddGameParams struct {
-	ID   id.ID  `json:"id"`
-	Name string `json:"name"`
+	ID           id.ID       `json:"id"`
+	Name         string      `json:"name"`
+	NameOriginal pgtype.Text `json:"name_original"`
+	NameRu       pgtype.Text `json:"name_ru"`
+	Alias        pgtype.Text `json:"alias"`
+	BggID        pgtype.Int4 `json:"bgg_id"`
+	TeseraID     pgtype.Int4 `json:"tesera_id"`
 }
 
 func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) {
-	row := q.db.QueryRow(ctx, addGame, arg.ID, arg.Name)
+	row := q.db.QueryRow(ctx, addGame,
+		arg.ID,
+		arg.Name,
+		arg.NameOriginal,
+		arg.NameRu,
+		arg.Alias,
+		arg.BggID,
+		arg.TeseraID,
+	)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NameOriginal,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+	)
 	return i, err
 }
 
@@ -42,15 +64,20 @@ type AddGamesIfNotExistsParams struct {
 	Column2 []string `json:"column_2"`
 }
 
-func (q *Queries) AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]Game, error) {
+type AddGamesIfNotExistsRow struct {
+	ID   id.ID  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]AddGamesIfNotExistsRow, error) {
 	rows, err := q.db.Query(ctx, addGamesIfNotExists, arg.Column1, arg.Column2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Game{}
+	items := []AddGamesIfNotExistsRow{}
 	for rows.Next() {
-		var i Game
+		var i AddGamesIfNotExistsRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
@@ -65,37 +92,61 @@ func (q *Queries) AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExis
 const deleteGame = `-- name: DeleteGame :one
 DELETE FROM games
 WHERE id = $1
-RETURNING id, name
+RETURNING id, name, name_original, name_ru, alias, bgg_id, tesera_id
 `
 
 func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
 	row := q.db.QueryRow(ctx, deleteGame, argID)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NameOriginal,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+	)
 	return i, err
 }
 
 const getGameByID = `-- name: GetGameByID :one
-SELECT id, name FROM games
+SELECT id, name, name_original, name_ru, alias, bgg_id, tesera_id FROM games
 WHERE id = $1
 `
 
 func (q *Queries) GetGameByID(ctx context.Context, argID id.ID) (Game, error) {
 	row := q.db.QueryRow(ctx, getGameByID, argID)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NameOriginal,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+	)
 	return i, err
 }
 
 const getGameByName = `-- name: GetGameByName :one
-SELECT id, name FROM games
+SELECT id, name, name_original, name_ru, alias, bgg_id, tesera_id FROM games
 WHERE name = $1
 `
 
 func (q *Queries) GetGameByName(ctx context.Context, name string) (Game, error) {
 	row := q.db.QueryRow(ctx, getGameByName, name)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NameOriginal,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+	)
 	return i, err
 }
 
@@ -103,17 +154,27 @@ const listGamesOrderedByLastPlayed = `-- name: ListGamesOrderedByLastPlayed :man
 SELECT
 	g.id AS id,
 	g.name AS name,
+	g.name_original AS name_original,
+	g.name_ru AS name_ru,
+	g.alias AS alias,
+	g.bgg_id AS bgg_id,
+	g.tesera_id AS tesera_id,
 	COUNT(m.id) AS total_matches
 FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
-GROUP BY g.id, g.name
+GROUP BY g.id, g.name, g.name_original, g.name_ru, g.alias, g.bgg_id, g.tesera_id
 ORDER BY MAX(m.date) DESC
 `
 
 type ListGamesOrderedByLastPlayedRow struct {
-	ID           id.ID  `json:"id"`
-	Name         string `json:"name"`
-	TotalMatches int64  `json:"total_matches"`
+	ID           id.ID       `json:"id"`
+	Name         string      `json:"name"`
+	NameOriginal pgtype.Text `json:"name_original"`
+	NameRu       pgtype.Text `json:"name_ru"`
+	Alias        pgtype.Text `json:"alias"`
+	BggID        pgtype.Int4 `json:"bgg_id"`
+	TeseraID     pgtype.Int4 `json:"tesera_id"`
+	TotalMatches int64       `json:"total_matches"`
 }
 
 func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error) {
@@ -125,7 +186,16 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 	items := []ListGamesOrderedByLastPlayedRow{}
 	for rows.Next() {
 		var i ListGamesOrderedByLastPlayedRow
-		if err := rows.Scan(&i.ID, &i.Name, &i.TotalMatches); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.NameOriginal,
+			&i.NameRu,
+			&i.Alias,
+			&i.BggID,
+			&i.TeseraID,
+			&i.TotalMatches,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -136,21 +206,81 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 	return items, nil
 }
 
-const updateGameName = `-- name: UpdateGameName :one
-UPDATE games
-SET name = $2
-WHERE id = $1
-RETURNING id, name
+const listGamesWithoutTeseraRef = `-- name: ListGamesWithoutTeseraRef :many
+SELECT id, name, name_original, name_ru, alias, bgg_id, tesera_id FROM games
+WHERE tesera_id IS NULL
+ORDER BY name
 `
 
-type UpdateGameNameParams struct {
-	ID   id.ID  `json:"id"`
-	Name string `json:"name"`
+func (q *Queries) ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error) {
+	rows, err := q.db.Query(ctx, listGamesWithoutTeseraRef)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Game{}
+	for rows.Next() {
+		var i Game
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.NameOriginal,
+			&i.NameRu,
+			&i.Alias,
+			&i.BggID,
+			&i.TeseraID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) UpdateGameName(ctx context.Context, arg UpdateGameNameParams) (Game, error) {
-	row := q.db.QueryRow(ctx, updateGameName, arg.ID, arg.Name)
+const updateGame = `-- name: UpdateGame :one
+UPDATE games
+SET name = $2,
+	name_original = $3,
+	name_ru = $4,
+	alias = $5,
+	bgg_id = $6,
+	tesera_id = $7
+WHERE id = $1
+RETURNING id, name, name_original, name_ru, alias, bgg_id, tesera_id
+`
+
+type UpdateGameParams struct {
+	ID           id.ID       `json:"id"`
+	Name         string      `json:"name"`
+	NameOriginal pgtype.Text `json:"name_original"`
+	NameRu       pgtype.Text `json:"name_ru"`
+	Alias        pgtype.Text `json:"alias"`
+	BggID        pgtype.Int4 `json:"bgg_id"`
+	TeseraID     pgtype.Int4 `json:"tesera_id"`
+}
+
+func (q *Queries) UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, error) {
+	row := q.db.QueryRow(ctx, updateGame,
+		arg.ID,
+		arg.Name,
+		arg.NameOriginal,
+		arg.NameRu,
+		arg.Alias,
+		arg.BggID,
+		arg.TeseraID,
+	)
 	var i Game
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NameOriginal,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+	)
 	return i, err
 }

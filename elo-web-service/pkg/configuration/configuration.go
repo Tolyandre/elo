@@ -31,6 +31,11 @@ type Configuration struct {
 	// these by origin, and is passed through Google OAuth as "state" so the
 	// callback page can return the user to the mirror they came from.
 	AllowedFrontendUris []string `mapstructure:"allowed_frontend_uris"`
+
+	// TeseraBaseURL is the base URL of the Tesera API used to suggest
+	// BGG/Tesera references and localized game names. Optional: empty means
+	// the default public API, so no deployment has to configure it.
+	TeseraBaseURL string `mapstructure:"tesera_base_url"`
 }
 
 var Config Configuration
@@ -129,6 +134,7 @@ var configKeys = []string{
 	"allowed_frontend_uris",
 	"postgres_dsn",
 	"postgres_password",
+	"tesera_base_url",
 }
 
 // requiredKeys are the string fields that must be non-empty at startup. Note

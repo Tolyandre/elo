@@ -116,8 +116,13 @@ type EloSetting struct {
 }
 
 type Game struct {
-	ID   id.ID  `json:"id"`
-	Name string `json:"name"`
+	ID           id.ID       `json:"id"`
+	Name         string      `json:"name"`
+	NameOriginal pgtype.Text `json:"name_original"`
+	NameRu       pgtype.Text `json:"name_ru"`
+	Alias        pgtype.Text `json:"alias"`
+	BggID        pgtype.Int4 `json:"bgg_id"`
+	TeseraID     pgtype.Int4 `json:"tesera_id"`
 }
 
 type GameTable struct {

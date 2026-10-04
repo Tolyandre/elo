@@ -108,12 +108,12 @@ func TestAuditGameLifecycleAndRename(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/games", alice, `{"id":"`+gameID+`","name":"Старое имя"}`); w.Code != http.StatusOK {
 		t.Fatalf("create game: %d %s", w.Code, w.Body.String())
 	}
-	if w := doJSON(t, router, http.MethodPatch, "/games/"+gameID, bob, `{"name":"Новое имя"}`); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPatch, "/games/"+gameID, bob, `{"alias":"Новое имя","name_original":"Старое имя"}`); w.Code != http.StatusOK {
 		t.Fatalf("rename game: %d %s", w.Code, w.Body.String())
 	}
 
 	// Rename to the same name: no change, no extra event.
-	if w := doJSON(t, router, http.MethodPatch, "/games/"+gameID, bob, `{"name":"Новое имя"}`); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPatch, "/games/"+gameID, bob, `{"alias":"Новое имя","name_original":"Старое имя"}`); w.Code != http.StatusOK {
 		t.Fatalf("no-op rename game: %d %s", w.Code, w.Body.String())
 	}
 

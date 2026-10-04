@@ -82,6 +82,8 @@ interface MultiSelectOption {
 	label: string;
 	/** The unique value associated with the option. */
 	value: string;
+	/** Extra search terms matched in addition to the label (e.g. all names of a game). */
+	keywords?: string[];
 	/** Optional custom renderer that replaces the label in the dropdown list. */
 	render?: React.ReactNode;
 	/** Optional icon component to display alongside the option. */
@@ -648,25 +650,21 @@ export const MultiSelect = React.forwardRef<MultiSelectRef, MultiSelectProps>(
 		const filteredOptions = React.useMemo(() => {
 			if (!searchable || !searchValue) return options;
 			if (options.length === 0) return [];
+			const matchesSearch = (option: MultiSelectOption) =>
+				option.label.toLowerCase().includes(searchValue.toLowerCase()) ||
+				option.value.toLowerCase().includes(searchValue.toLowerCase()) ||
+				(option.keywords ?? []).some((k) =>
+					k.toLowerCase().includes(searchValue.toLowerCase())
+				);
 			if (isGroupedOptions(options)) {
 				return options
 					.map((group) => ({
 						...group,
-						options: group.options.filter(
-							(option) =>
-								option.label
-									.toLowerCase()
-									.includes(searchValue.toLowerCase()) ||
-								option.value.toLowerCase().includes(searchValue.toLowerCase())
-						),
+						options: group.options.filter(matchesSearch),
 					}))
 					.filter((group) => group.options.length > 0);
 			}
-			return options.filter(
-				(option) =>
-					option.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-					option.value.toLowerCase().includes(searchValue.toLowerCase())
-			);
+			return options.filter(matchesSearch);
 		}, [options, searchValue, searchable, isGroupedOptions]);
 
 		// Active tab key, guarded against a stale value when the tab set changes.

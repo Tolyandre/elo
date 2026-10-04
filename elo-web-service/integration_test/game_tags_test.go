@@ -160,8 +160,9 @@ func TestAuditFilter_MultipleEntityTypes(t *testing.T) {
 	}
 	// A game rename adds one entity_type=game event; the tag rename adds a
 	// tag one; the attachment itself is not audited.
-	if _, err := gameSvc.UpdateGameName(ctx, gameID, "Аудит-игра-2", actor); err != nil {
-		t.Fatalf("UpdateGameName: %v", err)
+	renameTo := "Аудит-игра-2"
+	if _, err := gameSvc.UpdateGame(ctx, gameID, elo.GameMetaPatch{Alias: &renameTo}, actor); err != nil {
+		t.Fatalf("UpdateGame: %v", err)
 	}
 
 	rows, err := auditSvc.ListAuditEvents(ctx, db.ListAuditEventsParams{

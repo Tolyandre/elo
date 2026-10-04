@@ -119,6 +119,8 @@ export type GameListItem = components["schemas"]["GameListItem"];
 export type GameTag = components["schemas"]["GameTag"];
 export type Tag = components["schemas"]["Tag"];
 export type Game = components["schemas"]["Game"];
+export type GameSuggestion = components["schemas"]["GameSuggestion"];
+export type GameAutoMatchResult = components["schemas"]["GameAutoMatchResult"];
 export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
 export type Market = components["schemas"]["Market"];
 export type MarketDetail = components["schemas"]["MarketDetail"];
@@ -476,8 +478,35 @@ export async function getGamePromise(id: Base58ID): Promise<Game> {
     return (await unwrap(client.GET("/games/{id}", { params: { path: { id } } }))).data;
 }
 
-export async function patchGamePromise(id: Base58ID, payload: { name: string }) {
+export type GameMetadata = {
+    alias?: string | null;
+    name_original?: string | null;
+    name_ru?: string | null;
+    bgg_ref?: number | null;
+    tesera_ref?: number | null;
+};
+
+/** Full-state metadata update: every field is set to the given value, null clears it. */
+export async function patchGamePromise(id: Base58ID, payload: GameMetadata) {
     return (await unwrap(client.PATCH("/games/{id}", { params: { path: { id } }, body: payload }))).data;
+}
+
+/**
+ * Catalogue matches for a name being typed. Best-effort by design: any
+ * failure (network error, 5xx, offline) resolves to an empty list —
+ * suggestions must never block game creation.
+ */
+export async function suggestGamesPromise(query: string): Promise<GameSuggestion[]> {
+    try {
+        return (await unwrap(client.GET("/games/suggestions", { params: { query: { query } } }))).data.games;
+    } catch {
+        return [];
+    }
+}
+
+/** Bulk exact-name matching against Tesera for games lacking a Tesera link. */
+export async function autoMatchGamesPromise(): Promise<GameAutoMatchResult[]> {
+    return (await unwrap(client.POST("/games/auto-match"))).data.games;
 }
 
 export async function deleteGamePromise(id: Base58ID) {

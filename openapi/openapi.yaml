@@ -51,6 +51,14 @@ components:
       $ref: './games.yaml#/Game'
     GameTag:
       $ref: './games.yaml#/GameTag'
+    GameSuggestion:
+      $ref: './games.yaml#/GameSuggestion'
+    GameSuggestionList:
+      $ref: './games.yaml#/GameSuggestionList'
+    GameAutoMatchResult:
+      $ref: './games.yaml#/GameAutoMatchResult'
+    GameAutoMatchResults:
+      $ref: './games.yaml#/GameAutoMatchResults'
 
     # Arenas (ADR-24)
     MatchFilter:
@@ -219,6 +227,10 @@ paths:
   # Games
   /games:
     $ref: './games.yaml#/GamesCollection'
+  /games/suggestions:
+    $ref: './games.yaml#/GameSuggestionsPath'
+  /games/auto-match:
+    $ref: './games.yaml#/GameAutoMatchPath'
   /games/{id}:
     $ref: './games.yaml#/GameItem'
   /games/{id}/tags:

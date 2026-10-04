@@ -7,6 +7,7 @@ import { useMe } from "@/app/meContext"
 import { useMemo } from "react"
 import { MultiSelect, MultiSelectGroup } from "./multi-select"
 import { buildGameGroups } from "@/lib/game-groups"
+import { allNames } from "@/lib/game-names"
 
 export function GameMultiSelect({
   value,
@@ -20,7 +21,16 @@ export function GameMultiSelect({
   const { playerId } = useMe()
 
   const options: MultiSelectGroup[] = useMemo(
-    () => buildGameGroups(games, matches, playerId),
+    () =>
+      buildGameGroups(games, matches, playerId).map((group) => ({
+        heading: group.heading,
+        options: group.options.map((o) => ({
+          label: o.label,
+          value: o.value,
+          // Search matches every name, not just the accent one.
+          keywords: o.game ? allNames(o.game) : undefined,
+        })),
+      })),
     [games, matches, playerId]
   )
 

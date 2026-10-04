@@ -33,6 +33,18 @@ export type PendingGame = PendingBase & {
      * offline — they are picked from the server vocabulary.
      */
     tagIds?: Base58ID[];
+    /**
+     * Accepted catalogue suggestion at creation time: canonical names and
+     * external refs forwarded with the create on sync (the typed `name`
+     * becomes the alias server-side when it differs). Omitted when the game
+     * was created without suggestions or before this field existed.
+     */
+    meta?: {
+        nameOriginal?: string | null;
+        nameRu?: string | null;
+        bggRef?: number | null;
+        teseraRef?: number | null;
+    };
 };
 
 export type PendingMatch = PendingBase & {

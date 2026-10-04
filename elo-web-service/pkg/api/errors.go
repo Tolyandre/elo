@@ -48,6 +48,7 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTournamentSlotAdjustInvalid),
 		errors.Is(err, elo.ErrTournamentMatchFitsNoSlot),
 		errors.Is(err, elo.ErrGrandFinalDeadlinePassed),
+		errors.Is(err, elo.ErrGameNameRequired),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
@@ -59,6 +60,10 @@ func domainStatusCode(err error) int {
 	case errors.Is(err, elo.ErrMatchNotFound),
 		db.IsNoRows(err):
 		return http.StatusNotFound
+
+	// --- 503 Service Unavailable: external integration not reachable --------
+	case errors.Is(err, elo.ErrTeseraUnavailable):
+		return http.StatusServiceUnavailable
 
 	// --- 409 Conflict: concurrent / uniqueness / business conflict ----------
 	case errors.Is(err, elo.ErrHistoryChangeConflict),
