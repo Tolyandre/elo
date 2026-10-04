@@ -283,6 +283,16 @@ func setBetLimit(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID, limit floa
 	}
 }
 
+// matchDate returns an RFC3339 timestamp for a fixture match: daysBack days
+// before today, at the top of the current UTC hour plus minute minutes —
+// never future and well inside the 30-day window, so bracket tests can build
+// ordered fixture days (later rounds = smaller daysBack) without aging out
+// of the match-date validation the way hardcoded 2026-09-* constants did.
+func matchDate(daysBack, minute int) string {
+	return time.Now().UTC().AddDate(0, 0, -daysBack).Truncate(time.Hour).
+		Add(time.Duration(minute) * time.Minute).Format(time.RFC3339)
+}
+
 // marketOutcomeID returns the market's outcome row id of the given kind — the
 // identifier bets and resolution reference. For kind "player" the target
 // player's outcome is returned.

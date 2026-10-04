@@ -1033,10 +1033,9 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		return short(mid)
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
-	day := "2026-09-01T10:0%d:00Z"
 
 	// Match 1: shared top → the slot must stay playing with no promotions.
-	m1 := newMatch(fmt.Sprintf(day, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	m1 := newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA := slotAt(t, br, 0, 0)
 	if slotA.Status != "playing" {
@@ -1075,7 +1074,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// Match 2 (the replay): 3–4–2–1 → cumulative 7–8–4–2 → strict top-2.
-	newMatch(fmt.Sprintf(day, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	newMatch(matchDate(4, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" || len(slotA.Matches) != 2 {
@@ -1089,7 +1088,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 
 	// Table B: a decisive first match completes the slot immediately.
 	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
-	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	newMatch(matchDate(4, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotB := slotAt(t, br, 0, 1)
 	if slotB.Status != "completed" {
@@ -1110,7 +1109,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// The grand final: one match with a strict cut crowns the champion.
-	finalDate := "2026-09-02T10:00:00Z"
+	finalDate := matchDate(3, 0)
 	newMatch(finalDate, sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" {
@@ -1327,20 +1326,19 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		return short(mid)
 	}
 	editMatch := func(mid string, scores ...string) int {
-		body := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}}`,
-			short(gameID), strings.Join(scores, ","))
+		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
+			short(gameID), matchDate(4, 0), strings.Join(scores, ","))
 		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
-	day := "2026-09-01T10:0%d:00Z"
 
 	// A: tie, then decisive → completed {seat1, seat0}.
-	m1 := newMatch(fmt.Sprintf(day, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
-	m2 := newMatch(fmt.Sprintf(day, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	m1 := newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	// B: decisive.
-	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	newMatch(matchDate(4, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
 	// Final: one strict-cut match → the tournament completes.
-	fin := newMatch("2026-09-02T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	fin := newMatch(matchDate(3, 0), sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
 		t.Fatalf("pre-cascade completion: %+v", br.Data)
@@ -1363,8 +1361,8 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	// (nothing is recorded downstream of the final) — the champion is
 	// unrecorded, the completion reverts — and only then the first-round
 	// edit goes through.
-	unlink := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-02T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
-		short(gameID), strings.Join([]string{sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0)}, ","))
+	unlink := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(gameID), matchDate(3, 0), strings.Join([]string{sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPut, "/matches/"+fin, admin, unlink); w.Code != http.StatusOK {
 		t.Fatalf("unwind unlink of the final: %d %s", w.Code, w.Body.String())
 	}
@@ -1429,15 +1427,15 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 
 	// Association guards on a linked match (m1, slot A):
 	//   player set change → 409;
-	guard := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%q:9, %q:5, %q:1, %q:0}}`,
-		short(gameID), aSeat(0), aSeat(1), aSeat(2), short(createTestPlayer(t, pool, "Подменный")))
+	guard := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%q:9, %q:5, %q:1, %q:0}}`,
+		short(gameID), matchDate(4, 0), aSeat(0), aSeat(1), aSeat(2), short(createTestPlayer(t, pool, "Подменный")))
 	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
 		t.Fatalf("player-set change must 409, got %d %s", w.Code, w.Body.String())
 	}
 	//   game change → 409;
 	otherGame := createTestGame(t, pool, "Другая игра")
-	guard = fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}}`,
-		short(otherGame), strings.Join([]string{sc(aSeat(0), 9), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	guard = fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
+		short(otherGame), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 9), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
 		t.Fatalf("game change must 409, got %d", w.Code)
 	}
@@ -1450,8 +1448,8 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	// A skipped match stays unlinked without the explicit flag; edit-time
 	// linking via skip_tournament_link: false is covered by
 	// TestTournament_EditLinkChange below.
-	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-03T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
-		short(newID(t)), short(gameID), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(newID(t)), short(gameID), matchDate(2, 0), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
 		t.Fatalf("post skipped: %d %s", w.Code, w.Body.String())
 	}
@@ -1474,7 +1472,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	if refilled != 4 {
 		t.Fatalf("final seats must refill (%d/4)", refilled)
 	}
-	newMatch("2026-09-04T10:00:00Z", sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	newMatch(matchDate(1, 0), sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
 		t.Fatalf("re-completion: %+v", br.Data)
@@ -1521,17 +1519,16 @@ func TestTournament_EditLinkChange(t *testing.T) {
 		return short(mid)
 	}
 	editMatch := func(mid string, skip string, scores ...string) int {
-		body := fmt.Sprintf(`{"game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}%s}`,
-			short(gameID), strings.Join(scores, ","), skip)
+		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}%s}`,
+			short(gameID), matchDate(4, 0), strings.Join(scores, ","), skip)
 		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
-	day := "2026-09-01T10:0%d:00Z"
 
 	// A skipped match (created unchecked) is counted by the explicit edit.
 	m1id := newID(t)
-	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-01T10:00:00Z", "score": {%s}, "skip_tournament_link": true}`,
-		short(m1id), short(gameID), strings.Join([]string{sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(m1id), short(gameID), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
@@ -1583,7 +1580,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	// the cumulative top-2 tied with place 3, so the slot stays playing with
 	// two matches (a1=7, a0=6, a2=6, a3=3 — no strict cut: a0 and a2 tie at
 	// the cut boundary).
-	m2 := newMatch(fmt.Sprintf(day, 1), sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1))
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "playing" || len(slotA.Matches) != 2 {
@@ -1628,13 +1625,13 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 
 	// Slot B completes, the grand final is played, the tournament completes.
-	newMatch(fmt.Sprintf(day, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	newMatch(matchDate(4, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	final0 := seatPlayer(t, br, 1, 0, 0)
 	final1 := seatPlayer(t, br, 1, 0, 1)
 	final2 := seatPlayer(t, br, 1, 0, 2)
 	final3 := seatPlayer(t, br, 1, 0, 3)
-	newMatch("2026-09-02T10:00:00Z", sc(final0, 10), sc(final1, 6), sc(final2, 2), sc(final3, 0))
+	newMatch(matchDate(3, 0), sc(final0, 10), sc(final1, 6), sc(final2, 2), sc(final3, 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != final0 {
 		t.Fatalf("tournament must be completed with the final's winner: %+v", br.Data)
@@ -1649,7 +1646,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	// A match that fits no playing slot cannot be counted by an edit: with the
 	// bracket finished there are no playing slots at all (the same 400 the
 	// organizer attach endpoint answers with).
-	late := newMatch("2026-09-03T10:00:00Z", sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	late := newMatch(matchDate(2, 0), sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	if code := editMatch(late, `, "skip_tournament_link": false`, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusBadRequest {
 		t.Fatalf("edit-link with no playing slot must 400, got %d", code)
 	}
@@ -1708,8 +1705,8 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	midID := newID(t)
 	mid := short(midID)
 	// Posted with the skip flag: the organizer forgot the checkbox.
-	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": "2026-09-05T10:00:00Z", "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
-		mid, short(gameID), seat(0), seat(1), seat(2), seat(3))
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
+		mid, short(gameID), matchDate(0, 0), seat(0), seat(1), seat(2), seat(3))
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
@@ -1904,7 +1901,7 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 	}
 
 	// Slot A completes from a decisive match: {a0, a1} by points.
-	newMatch("2026-09-01T10:00:00Z", sc(aSeat(0), 10), sc(aSeat(1), 9), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 9), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA := slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" {
@@ -1940,13 +1937,13 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 
 	// Slot B completes; the final is played with the ruling's field and the
 	// tournament completes.
-	newMatch("2026-09-01T11:00:00Z", sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	newMatch(matchDate(4, 60), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	finalA1 := seatPlayer(t, br, 1, 0, 0) // aSeat(2) via the ruling
 	finalA2 := seatPlayer(t, br, 1, 0, 1) // aSeat(1)
 	finalB1 := seatPlayer(t, br, 1, 0, 2)
 	finalB2 := seatPlayer(t, br, 1, 0, 3)
-	newMatch("2026-09-02T10:00:00Z", sc(finalA1, 10), sc(finalA2, 6), sc(finalB1, 2), sc(finalB2, 0))
+	newMatch(matchDate(3, 0), sc(finalA1, 10), sc(finalA2, 6), sc(finalB1, 2), sc(finalB2, 0))
 	br = getBracket(t, router, short(tid))
 	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != finalA1 {
 		t.Fatalf("the final must complete on the ruling's field: %+v", br.Data)
