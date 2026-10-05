@@ -229,6 +229,37 @@ Store it outside the Nix store (e.g. via [sops-nix](https://github.com/Mic92/sop
 | `config.postgres.user` | `null` (= service name) | DB user |
 | `config.postgres.database` | `null` (= service name) | DB name |
 
+### Caddy integration
+
+`lib.caddySite` generates the Caddyfile directives that reverse-proxy a
+`services.elo-web-service` instance and serve a `services.elo-frontend` build
+under precise, non-overlapping path matchers. Interpolate it into your Caddy
+site block (e.g. `services.caddy.extraConfig`):
+
+```nix
+{ config, elo, ... }:
+{
+  services.caddy.extraConfig = ''
+    https://example.com {
+      ${elo.lib.caddySite {
+        backendAddress = config.services.elo-web-service.instances."elo-web-service".settings.address;
+        frontendRoot = config.services.elo-frontend.instances."elo".out;
+      }}
+    }
+  '';
+}
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `name` | `"elo"` | Prefix for the generated matcher names (`@<name>-api`, `@<name>-ui`); must be unique within the site block |
+| `basePath` | `"/elo"` | URL path the frontend is served under |
+| `apiPath` | `"/elo-web-service"` | URL path the backend API is served under (stripped before proxying) |
+| `backendAddress` | — | `host:port` of the backend instance (required) |
+| `frontendRoot` | — | The static frontend directory (`services.elo-frontend.instances.<name>.out`) (required) |
+| `siteAddresses` | `[]` | When non-empty, the directives are wrapped in a site block with these verbatim Caddy site addresses |
+| `extraDirectives` | `""` | Extra Caddyfile directives appended inside the block |
+
 ## Database (Postgres)
 
 ### Prepare a test database

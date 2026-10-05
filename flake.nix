@@ -17,6 +17,9 @@
         "aarch64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      # Caddyfile snippet generator for hosting elo behind Caddy; see the
+      # README "Hosting (NixOS)" section.
+      caddySite = import ./nix/caddy.nix { lib = nixpkgs.lib; };
     in
     {
       packages = forAllSystems (
@@ -56,6 +59,10 @@
         _module.args.elo-frontend-pkg = self.packages.${pkgs.system}.frontend;
       };
 
+      # Pure Caddyfile generator — usable from any host module, e.g.
+      # `${elo.lib.caddySite { backendAddress = ...; frontendRoot = ...; }}`.
+      lib.caddySite = caddySite;
+
       # The developer environment lives in devenv.nix / devenv.yaml (see
       # https://devenv.sh) — this flake only provides the deployment artifacts.
 
@@ -64,6 +71,11 @@
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
           elo-web-service-pkg = self.packages.x86_64-linux.default;
         };
-      };
+      } // forAllSystems (system: {
+        caddy-lib = import ./nix/test-caddy-lib.nix {
+          pkgs = nixpkgs.legacyPackages.${system};
+          inherit caddySite;
+        };
+      });
     };
 }
