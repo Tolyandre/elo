@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
@@ -29,403 +28,281 @@ func init() {
 // documents (ADR-30) and arena settings documents (ADR-24). Each family
 // is a no-op when nothing is out of date.
 func runDataMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	if err := migrateCalculatorData(ctx, pool); err != nil {
-		return err
+	migrations := make([]documentMigration, 0)
+	// Kinded families get one pass per registered kind: kinds without
+	// migrators skip the table scan entirely.
+	for _, kind := range calculator.Kinds() {
+		if !calculator.HasMigrators(kind) {
+			continue
+		}
+		migrations = append(migrations, documentMigrateCalculator(kind))
 	}
-	if err := migrateAuditDetailsData(ctx, pool); err != nil {
-		return err
+	for _, kind := range audit.Kinds() {
+		if !audit.HasMigrators(kind) {
+			continue
+		}
+		migrations = append(migrations, documentMigrateAudit(kind))
 	}
-	if err := migratePlanData(ctx, pool); err != nil {
-		return err
+	migrations = append(migrations, documentMigratePlans(), documentMigrateArenaSettings())
+
+	for _, m := range migrations {
+		if err := runDocumentMigration(ctx, pool, m); err != nil {
+			return err
+		}
 	}
-	return migrateArenaSettingsData(ctx, pool)
+	return nil
 }
 
 // PlanSchemaVersion is exported for the tournament-start write path, which
 // stores every freshly canonicalized plan at the current version.
 const PlanSchemaVersion = 2
 
-// migratePlanData rewrites stored tournament plans from v1 (rounds carrying
-// "promote") to v2 ("advance"). A plain JSON key rename — plan documents are
-// validated and canonicalized on write, so a stored plan is always
-// well-formed and the rename cannot lose information. Each row is upgraded in
-// its own transaction; any error is fatal for startup.
-func migratePlanData(ctx context.Context, pool *pgxpool.Pool) error {
-	rows, err := pool.Query(ctx, `
-		SELECT id, plan_schema_version, plan
-		FROM tournaments
-		WHERE plan IS NOT NULL AND plan_schema_version < $1
-	`, PlanSchemaVersion)
-	if err != nil {
-		return fmt.Errorf("query stale plans: %w", err)
-	}
-	defer rows.Close()
+// documentMigration describes one versioned-document column family. Every
+// family shares the same runner shape: select stale rows, upgrade each row via
+// migrate, persist it in its own transaction (a single corrupt row cannot roll
+// back an entire batch), re-read and re-validate the persisted form to catch a
+// migrator that wrote a structurally-invalid document. Any error is fatal for
+// startup, mirroring SQL schema migration failures. A new document family is a
+// ~20-line declaration below, not another copy of the loop.
+type documentMigration struct {
+	// family names the migration in logs and error messages.
+	family string
+	// query selects stale rows as (id, version, document[, kind]).
+	query  string
+	args   []any // filter arguments for query (e.g. current version; kind first)
+	kinded bool  // rows carry a kind column (selected last)
+	// migrate upgrades one row; kind is empty for unkinded families.
+	migrate func(kind string, fromVersion int, data json.RawMessage) (json.RawMessage, int, error)
+	// update rewrites one row: version = $2, document = $3 where id = $1.
+	update string
+	// reread re-selects (kind,) document for the post-write validation; when
+	// validate is nil the row is not re-read (families without a registry).
+	reread   string
+	validate func(kind string, data json.RawMessage) error
+}
 
-	type stalePlanRow struct {
-		ID            string
-		SchemaVersion int32
-		Data          []byte
+// staleRow is one row selected for upgrade.
+type staleRow struct {
+	ID      string
+	Version int32
+	Data    []byte
+	Kind    *string
+}
+
+func documentMigrateCalculator(kind string) documentMigration {
+	current, err := calculator.Lookup(kind)
+	if err != nil {
+		// Should not happen — kind came from Kinds().
+		panic(fmt.Sprintf("calculator migration: lookup kind %q: %v", kind, err))
 	}
-	stale := make([]stalePlanRow, 0)
-	for rows.Next() {
-		var r stalePlanRow
-		if err := rows.Scan(&r.ID, &r.SchemaVersion, &r.Data); err != nil {
-			return fmt.Errorf("scan row: %w", err)
-		}
-		stale = append(stale, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate rows: %w", err)
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-	log.Printf("plan migration: upgrading %d tournament plans from older versions", len(stale))
-	for _, r := range stale {
-		var doc struct {
-			Rounds []map[string]any `json:"rounds"`
-		}
-		if err := json.Unmarshal(r.Data, &doc); err != nil {
-			return fmt.Errorf("parse plan %s: %w", r.ID, err)
-		}
-		for _, round := range doc.Rounds {
-			if v, ok := round["promote"]; ok {
-				delete(round, "promote")
-				round["advance"] = v
+	return documentMigration{
+		family: "calculator migration",
+		// One pass per registered kind so the version filter can use the index.
+		query: `
+			SELECT id, calculator_schema_version, calculator_data, calculator_kind
+			FROM matches
+			WHERE calculator_kind = $1 AND calculator_schema_version < $2
+		`,
+		args:   []any{kind, current.CurrentVersion},
+		kinded: true,
+		migrate: func(kind string, fromVersion int, data json.RawMessage) (json.RawMessage, int, error) {
+			return calculator.MigrateData(kind, fromVersion, data)
+		},
+		update: `
+			UPDATE matches
+			SET calculator_schema_version = $2, calculator_data = $3
+			WHERE id = $1
+		`,
+		reread: `SELECT calculator_kind, calculator_data FROM matches WHERE id = $1`,
+		validate: func(kind string, data json.RawMessage) error {
+			if kind == "" {
+				return nil
 			}
-		}
-		upgraded, err := json.Marshal(doc)
-		if err != nil {
-			return fmt.Errorf("marshal plan %s: %w", r.ID, err)
-		}
-		tx, err := pool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("begin tx: %w", err)
-		}
-		if _, err := tx.Exec(ctx, `
+			return calculator.Validate(kind, data)
+		},
+	}
+}
+
+func documentMigrateAudit(kind string) documentMigration {
+	current, err := audit.Lookup(kind)
+	if err != nil {
+		// Should not happen — kind came from Kinds().
+		panic(fmt.Sprintf("audit migration: lookup kind %q: %v", kind, err))
+	}
+	return documentMigration{
+		family: "audit migration",
+		query: `
+			SELECT id, details_schema_version, details, details_kind
+			FROM audit_log
+			WHERE details_kind = $1 AND details_schema_version < $2
+		`,
+		args:   []any{kind, current.CurrentVersion},
+		kinded: true,
+		migrate: func(kind string, fromVersion int, data json.RawMessage) (json.RawMessage, int, error) {
+			return audit.MigrateData(kind, fromVersion, data)
+		},
+		update: `
+			UPDATE audit_log
+			SET details_schema_version = $2, details = $3
+			WHERE id = $1
+		`,
+		reread: `SELECT details_kind, details FROM audit_log WHERE id = $1`,
+		validate: func(kind string, data json.RawMessage) error {
+			if kind == "" {
+				return nil
+			}
+			return audit.Validate(kind, data)
+		},
+	}
+}
+
+// documentMigratePlans rewrites stored tournament plans from v1 (rounds
+// carrying "promote") to v2 ("advance", ADR-30). A plain JSON key rename —
+// plan documents are validated and canonicalized on write, so a stored plan is
+// always well-formed and the rename cannot lose information.
+func documentMigratePlans() documentMigration {
+	return documentMigration{
+		family: "plan migration",
+		query: `
+			SELECT id, plan_schema_version, plan
+			FROM tournaments
+			WHERE plan IS NOT NULL AND plan_schema_version < $1
+		`,
+		args: []any{PlanSchemaVersion},
+		migrate: func(_ string, _ int, data json.RawMessage) (json.RawMessage, int, error) {
+			var doc struct {
+				Rounds []map[string]any `json:"rounds"`
+			}
+			if err := json.Unmarshal(data, &doc); err != nil {
+				return nil, 0, err
+			}
+			for _, round := range doc.Rounds {
+				if v, ok := round["promote"]; ok {
+					delete(round, "promote")
+					round["advance"] = v
+				}
+			}
+			upgraded, err := json.Marshal(doc)
+			if err != nil {
+				return nil, 0, err
+			}
+			return upgraded, PlanSchemaVersion, nil
+		},
+		update: `
 			UPDATE tournaments
 			SET plan_schema_version = $2, plan = $3
 			WHERE id = $1
-		`, r.ID, PlanSchemaVersion, upgraded); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("update plan %s: %w", r.ID, err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit tx: %w", err)
-		}
-		log.Printf("plan migration: tournament %s v%d→v%d", r.ID, r.SchemaVersion, PlanSchemaVersion)
+		`,
 	}
-	return nil
 }
 
-// migrateCalculatorData walks every match whose calculator_schema_version is
-// behind the current version for its kind, applies the registered migrators,
-// and writes the upgraded document back. Each row is upgraded in its own
-// transaction so a single corrupt row cannot roll back an entire batch.
-//
-// On any error this function returns a non-nil error, which main treats as
-// fatal (the application refuses to start) — mirroring how SQL schema
-// migration failures are handled.
-func migrateCalculatorData(ctx context.Context, pool *pgxpool.Pool) error {
-	for _, kind := range calculator.Kinds() {
-		schema, err := calculator.Lookup(kind)
-		if err != nil {
-			// Should not happen — kind came from Kinds().
-			return fmt.Errorf("lookup kind %q: %w", kind, err)
-		}
-		if err := migrateKind(ctx, pool, kind, schema.CurrentVersion); err != nil {
-			return fmt.Errorf("kind %q: %w", kind, err)
-		}
-	}
-	return nil
-}
-
-func migrateKind(ctx context.Context, pool *pgxpool.Pool, kind string, currentVersion int) error {
-	// No migrators for this kind → nothing to do. (Saves a table scan.)
-	if !calculator.HasMigrators(kind) {
-		return nil
-	}
-
-	rows, err := pool.Query(ctx, `
-		SELECT id, calculator_schema_version, calculator_data
-		FROM matches
-		WHERE calculator_kind = $1 AND calculator_schema_version < $2
-	`, kind, currentVersion)
-	if err != nil {
-		return fmt.Errorf("query stale rows: %w", err)
-	}
-	defer rows.Close()
-
-	stale := make([]staleCalculatorRow, 0)
-	for rows.Next() {
-		var r staleCalculatorRow
-		var version *int32
-		if err := rows.Scan(&r.ID, &version, &r.Data); err != nil {
-			return fmt.Errorf("scan row: %w", err)
-		}
-		if version == nil {
-			// Defensive: should not happen given the WHERE clause, but CHECK
-			// allows NULL only when kind is also NULL — already excluded.
-			continue
-		}
-		r.Kind = kind
-		r.SchemaVersion = int(*version)
-		stale = append(stale, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate rows: %w", err)
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-
-	log.Printf("calculator migration: upgrading %d %q rows from older versions", len(stale), kind)
-	for _, r := range stale {
-		newData, newVersion, err := calculator.MigrateData(r.Kind, r.SchemaVersion, r.Data)
-		if err != nil {
-			return fmt.Errorf("migrate match %s: %w", r.ID, err)
-		}
-		if newVersion == r.SchemaVersion {
-			continue // no-op
-		}
-		if err := updateMatchCalculator(ctx, pool, r.ID, newVersion, newData); err != nil {
-			return fmt.Errorf("update match %s: %w", r.ID, err)
-		}
-		log.Printf("calculator migration: match %s %q v%d→v%d", r.ID, r.Kind, r.SchemaVersion, newVersion)
-	}
-	return nil
-}
-
-func updateMatchCalculator(ctx context.Context, pool *pgxpool.Pool, matchID string, version int, data json.RawMessage) error {
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	_, err = tx.Exec(ctx, `
-		UPDATE matches
-		SET calculator_schema_version = $2, calculator_data = $3
-		WHERE id = $1
-	`, matchID, version, []byte(data))
-	if err != nil {
-		return err
-	}
-	// Re-serialize to a plain map for validation via the registry (which works
-	// on json.RawMessage). We re-validate the persisted form to catch a
-	// migrator that wrote a structurally-invalid document.
-	if err := validateStored(ctx, tx, matchID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
-func validateStored(ctx context.Context, tx pgx.Tx, matchID string) error {
-	var kind *string
-	var data []byte
-	if err := tx.QueryRow(ctx, `
-		SELECT calculator_kind, calculator_data FROM matches WHERE id = $1
-	`, matchID).Scan(&kind, &data); err != nil {
-		return fmt.Errorf("re-read: %w", err)
-	}
-	if kind == nil {
-		return nil
-	}
-	// MigrateData already validated before the write, so this is belt-and-
-	// suspenders. Skip if there is nothing to validate.
-	if len(data) == 0 {
-		return nil
-	}
-	if err := calculator.Validate(*kind, json.RawMessage(data)); err != nil {
-		return fmt.Errorf("post-write validation: %w", err)
-	}
-	return nil
-}
-
-// migrateAuditDetailsData walks every audit_log row whose details_schema_version
-// is behind the current version for its kind, applies the registered migrators,
-// and writes the upgraded document back (ADR-14). Mirrors the calculator
-// migration: each row is upgraded in its own transaction, and any error is
-// fatal for startup. Audit rows are otherwise immutable.
-func migrateAuditDetailsData(ctx context.Context, pool *pgxpool.Pool) error {
-	for _, kind := range audit.Kinds() {
-		schema, err := audit.Lookup(kind)
-		if err != nil {
-			// Should not happen — kind came from Kinds().
-			return fmt.Errorf("lookup kind %q: %w", kind, err)
-		}
-		if !audit.HasMigrators(kind) {
-			// No migrators for this kind → nothing to do (saves a table scan).
-			continue
-		}
-		if err := migrateAuditKind(ctx, pool, kind, schema.CurrentVersion); err != nil {
-			return fmt.Errorf("kind %q: %w", kind, err)
-		}
-	}
-	return nil
-}
-
-func migrateAuditKind(ctx context.Context, pool *pgxpool.Pool, kind string, currentVersion int) error {
-	rows, err := pool.Query(ctx, `
-		SELECT id, details_schema_version, details
-		FROM audit_log
-		WHERE details_kind = $1 AND details_schema_version < $2
-	`, kind, currentVersion)
-	if err != nil {
-		return fmt.Errorf("query stale rows: %w", err)
-	}
-	defer rows.Close()
-
-	type staleAuditRow struct {
-		ID            string
-		SchemaVersion int
-		Data          json.RawMessage
-	}
-	stale := make([]staleAuditRow, 0)
-	for rows.Next() {
-		var r staleAuditRow
-		var version *int32
-		if err := rows.Scan(&r.ID, &version, &r.Data); err != nil {
-			return fmt.Errorf("scan row: %w", err)
-		}
-		if version == nil {
-			continue // defensive: excluded by the WHERE clause
-		}
-		r.SchemaVersion = int(*version)
-		stale = append(stale, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate rows: %w", err)
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-
-	log.Printf("audit migration: upgrading %d %q rows from older versions", len(stale), kind)
-	for _, r := range stale {
-		newData, newVersion, err := audit.MigrateData(kind, r.SchemaVersion, r.Data)
-		if err != nil {
-			return fmt.Errorf("migrate audit event %s: %w", r.ID, err)
-		}
-		if newVersion == r.SchemaVersion {
-			continue // no-op
-		}
-		if err := updateAuditDetails(ctx, pool, r.ID, newVersion, newData); err != nil {
-			return fmt.Errorf("update audit event %s: %w", r.ID, err)
-		}
-		log.Printf("audit migration: event %s %q v%d→v%d", r.ID, kind, r.SchemaVersion, newVersion)
-	}
-	return nil
-}
-
-func updateAuditDetails(ctx context.Context, pool *pgxpool.Pool, eventID string, version int, data json.RawMessage) error {
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `
-		UPDATE audit_log
-		SET details_schema_version = $2, details = $3
-		WHERE id = $1
-	`, eventID, version, []byte(data)); err != nil {
-		return err
-	}
-	// Re-read and re-validate the persisted form to catch a migrator that wrote
-	// a structurally-invalid document.
-	var kind *string
-	var stored []byte
-	if err := tx.QueryRow(ctx, `SELECT details_kind, details FROM audit_log WHERE id = $1`, eventID).Scan(&kind, &stored); err != nil {
-		return fmt.Errorf("re-read: %w", err)
-	}
-	if kind != nil && len(stored) > 0 {
-		if err := audit.Validate(*kind, json.RawMessage(stored)); err != nil {
-			return fmt.Errorf("post-write validation: %w", err)
-		}
-	}
-	return tx.Commit(ctx)
-}
-
-// migrateArenaSettingsData walks every arena whose settings_schema_version is
-// behind the current version (ADR-24), applies the registered migrators, and
-// writes the upgraded document back. Mirrors the audit migration: each row is
-// upgraded in its own transaction, and any error is fatal for startup.
-func migrateArenaSettingsData(ctx context.Context, pool *pgxpool.Pool) error {
-	// No migrators registered → nothing to do (saves a table scan).
-	if !arenasettings.HasMigrators() {
-		return nil
-	}
-
-	rows, err := pool.Query(ctx, `
-		SELECT id, settings_schema_version, settings
-		FROM arenas
-		WHERE settings_schema_version < $1
-	`, arenasettings.CurrentVersion)
-	if err != nil {
-		return fmt.Errorf("query stale rows: %w", err)
-	}
-	defer rows.Close()
-
-	type staleSettingsRow struct {
-		ID            string
-		SchemaVersion int
-		Data          json.RawMessage
-	}
-	stale := make([]staleSettingsRow, 0)
-	for rows.Next() {
-		var r staleSettingsRow
-		var version *int32
-		if err := rows.Scan(&r.ID, &version, &r.Data); err != nil {
-			return fmt.Errorf("scan row: %w", err)
-		}
-		if version == nil {
-			continue // defensive: excluded by the WHERE clause
-		}
-		r.SchemaVersion = int(*version)
-		stale = append(stale, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate rows: %w", err)
-	}
-	if len(stale) == 0 {
-		return nil
-	}
-
-	log.Printf("arena settings migration: upgrading %d arenas from older versions", len(stale))
-	for _, r := range stale {
-		newData, newVersion, err := arenasettings.MigrateData(r.SchemaVersion, r.Data)
-		if err != nil {
-			return fmt.Errorf("migrate arena %s: %w", r.ID, err)
-		}
-		if newVersion == r.SchemaVersion {
-			continue // no-op
-		}
-		tx, err := pool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("begin tx: %w", err)
-		}
-		if _, err := tx.Exec(ctx, `
+func documentMigrateArenaSettings() documentMigration {
+	return documentMigration{
+		family: "arena settings migration",
+		query: `
+			SELECT id, settings_schema_version, settings
+			FROM arenas
+			WHERE settings_schema_version < $1
+		`,
+		args: []any{arenasettings.CurrentVersion},
+		migrate: func(_ string, fromVersion int, data json.RawMessage) (json.RawMessage, int, error) {
+			return arenasettings.MigrateData(fromVersion, data)
+		},
+		update: `
 			UPDATE arenas
 			SET settings_schema_version = $2, settings = $3
 			WHERE id = $1
-		`, r.ID, newVersion, []byte(newData)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("update arena %s: %w", r.ID, err)
+		`,
+		reread: `SELECT settings FROM arenas WHERE id = $1`,
+		validate: func(_ string, data json.RawMessage) error {
+			return arenasettings.Validate(data)
+		},
+	}
+}
+
+// runDocumentMigration upgrades every stale row of one family. Each row is
+// upgraded in its own transaction so a single corrupt row cannot roll back an
+// entire batch; on any error the error propagates (fatal for startup).
+func runDocumentMigration(ctx context.Context, pool *pgxpool.Pool, m documentMigration) error {
+	rows, err := pool.Query(ctx, m.query, m.args...)
+	if err != nil {
+		return fmt.Errorf("%s: query stale rows: %w", m.family, err)
+	}
+	defer rows.Close()
+
+	stale := make([]staleRow, 0)
+	for rows.Next() {
+		var r staleRow
+		if m.kinded {
+			if err := rows.Scan(&r.ID, &r.Version, &r.Data, &r.Kind); err != nil {
+				return fmt.Errorf("%s: scan row: %w", m.family, err)
+			}
+		} else if err := rows.Scan(&r.ID, &r.Version, &r.Data); err != nil {
+			return fmt.Errorf("%s: scan row: %w", m.family, err)
 		}
-		// Re-read and re-validate the persisted form to catch a migrator that
-		// wrote a structurally-invalid document.
-		var stored []byte
-		if err := tx.QueryRow(ctx, `SELECT settings FROM arenas WHERE id = $1`, r.ID).Scan(&stored); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("re-read arena %s: %w", r.ID, err)
+		stale = append(stale, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("%s: iterate rows: %w", m.family, err)
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	log.Printf("%s: upgrading %d rows from older versions", m.family, len(stale))
+	for _, r := range stale {
+		kind := ""
+		if r.Kind != nil {
+			kind = *r.Kind
 		}
-		if err := arenasettings.Validate(json.RawMessage(stored)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("post-write validation arena %s: %w", r.ID, err)
+		newData, newVersion, err := m.migrate(kind, int(r.Version), r.Data)
+		if err != nil {
+			return fmt.Errorf("%s: migrate %s: %w", m.family, r.ID, err)
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit tx: %w", err)
+		if newVersion == int(r.Version) {
+			continue // no-op
 		}
-		log.Printf("arena settings migration: arena %s v%d→v%d", r.ID, r.SchemaVersion, newVersion)
+		if err := persistUpgradedRow(ctx, pool, m, r.ID, kind, newVersion, newData); err != nil {
+			return fmt.Errorf("%s: update %s: %w", m.family, r.ID, err)
+		}
+		log.Printf("%s: %s v%d→v%d", m.family, r.ID, r.Version, newVersion)
 	}
 	return nil
+}
+
+// persistUpgradedRow writes one upgraded row in its own transaction and
+// re-validates the persisted form, catching a migrator that produced a
+// structurally-invalid document before the transaction commits.
+func persistUpgradedRow(ctx context.Context, pool *pgxpool.Pool, m documentMigration, rowID, kind string, version int, data json.RawMessage) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if _, err := tx.Exec(ctx, m.update, rowID, version, []byte(data)); err != nil {
+		return err
+	}
+	if m.validate != nil {
+		var storedKind *string
+		var stored []byte
+		if m.kinded {
+			if err := tx.QueryRow(ctx, m.reread, rowID).Scan(&storedKind, &stored); err != nil {
+				return fmt.Errorf("re-read: %w", err)
+			}
+			if storedKind != nil {
+				kind = *storedKind
+			}
+		} else if err := tx.QueryRow(ctx, m.reread, rowID).Scan(&stored); err != nil {
+			return fmt.Errorf("re-read: %w", err)
+		}
+		// MigrateData already validated before the write, so this is
+		// belt-and-suspenders. Skip if there is nothing to validate.
+		if len(stored) > 0 {
+			if err := m.validate(kind, stored); err != nil {
+				return fmt.Errorf("post-write validation: %w", err)
+			}
+		}
+	}
+	return tx.Commit(ctx)
 }
