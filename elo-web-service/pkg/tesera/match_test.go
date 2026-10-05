@@ -30,8 +30,8 @@ func TestCandidateFromDetail(t *testing.T) {
 		if got == nil {
 			t.Fatal("want candidate, got nil")
 		}
-		if got.NameRu != "Каркассон" || got.NameOriginal != "Carcassonne" {
-			t.Errorf("names = %q / %q, want Каркассон / Carcassonne", got.NameRu, got.NameOriginal)
+		if got.NameRu != "Каркассон" || got.NameEn != "Carcassonne" {
+			t.Errorf("names = %q / %q, want Каркассон / Carcassonne", got.NameRu, got.NameEn)
 		}
 		if got.TeseraRef != 707 || got.BggRef != 822 {
 			t.Errorf("refs = %d/%d, want 707/822", got.TeseraRef, got.BggRef)
@@ -43,7 +43,7 @@ func TestCandidateFromDetail(t *testing.T) {
 			TeseraID: 1, BggID: 2,
 			Title: "Splendor", Title2: "Splendor",
 		})
-		if got == nil || got.NameRu != "" || got.NameOriginal != "Splendor" {
+		if got == nil || got.NameRu != "" || got.NameEn != "Splendor" {
 			t.Fatalf("got %+v, want empty ru / Splendor original", got)
 		}
 	})
@@ -52,8 +52,8 @@ func TestCandidateFromDetail(t *testing.T) {
 		got := CandidateFromDetail(&GameDetail{
 			TeseraID: 1, Title: "Семь чудес", Title2: "7 Wonders (2010)",
 		})
-		if got.NameOriginal != "7 Wonders" {
-			t.Errorf("original = %q, want 7 Wonders", got.NameOriginal)
+		if got.NameEn != "7 Wonders" {
+			t.Errorf("original = %q, want 7 Wonders", got.NameEn)
 		}
 		if got.NameRu != "Семь чудес" {
 			t.Errorf("ru = %q, want Семь чудес", got.NameRu)
@@ -66,8 +66,8 @@ func TestCandidateFromDetail(t *testing.T) {
 		got := CandidateFromDetail(&GameDetail{
 			TeseraID: 5114, BggID: 54043, Title: "Jaipur", Title2: "Джайпур",
 		})
-		if got.NameRu != "Джайпур" || got.NameOriginal != "Jaipur" {
-			t.Errorf("names = %q / %q, want Джайпур / Jaipur", got.NameRu, got.NameOriginal)
+		if got.NameRu != "Джайпур" || got.NameEn != "Jaipur" {
+			t.Errorf("names = %q / %q, want Джайпур / Jaipur", got.NameRu, got.NameEn)
 		}
 	})
 
@@ -75,14 +75,14 @@ func TestCandidateFromDetail(t *testing.T) {
 		got := CandidateFromDetail(&GameDetail{
 			TeseraID: 1, Title: "Каркассон. Река", Title2: "2001",
 		})
-		if got.NameOriginal != "Каркассон. Река" || got.NameRu != "" {
-			t.Errorf("names = %q / %q, want original fallback without ru", got.NameRu, got.NameOriginal)
+		if got.NameEn != "Каркассон. Река" || got.NameRu != "" {
+			t.Errorf("names = %q / %q, want original fallback without ru", got.NameRu, got.NameEn)
 		}
 	})
 
 	t.Run("missing original falls back to title", func(t *testing.T) {
 		got := CandidateFromDetail(&GameDetail{TeseraID: 5, Title: "Бутылочка"})
-		if got.NameOriginal != "Бутылочка" || got.NameRu != "" {
+		if got.NameEn != "Бутылочка" || got.NameRu != "" {
 			t.Errorf("got %+v, want original=Бутылочка, ru empty", got)
 		}
 	})

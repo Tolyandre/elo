@@ -19,7 +19,7 @@ import (
 type GameTitles struct {
 	Id           id.ID
 	Name         string
-	NameOriginal string
+	NameEn       string
 	NameRu       string
 	Alias        string
 	BggRef       int64
@@ -33,7 +33,7 @@ type GameTitles struct {
 type GameInfo struct {
 	ID           id.ID
 	Name         string
-	NameOriginal string
+	NameEn       string
 	NameRu       string
 	Alias        string
 	BggRef       int64
@@ -45,23 +45,23 @@ type GameInfo struct {
 // the complete new state (nil pointer = cleared field); for creation the
 // canonical names/refs are optional suggestions accepted from the picker.
 type GameMetaPatch struct {
-	Alias        *string
-	NameOriginal *string
-	NameRu       *string
-	BggRef       *int64
-	TeseraRef    *int64
+	Alias     *string
+	NameEn    *string
+	NameRu    *string
+	BggRef    *int64
+	TeseraRef *int64
 }
 
 // GameSuggestion is one Tesera match candidate for a name being typed.
 type GameSuggestion struct {
-	TeseraRef    int64
-	BggRef       int64
-	NameRu       string
-	NameOriginal string
-	Title        string
-	Year         int32
-	PhotoURL     string
-	IsAddition   bool
+	TeseraRef  int64
+	BggRef     int64
+	NameRu     string
+	NameEn     string
+	Title      string
+	Year       int32
+	PhotoURL   string
+	IsAddition bool
 }
 
 // AutoMatchResult reports the auto-match outcome for one previously
@@ -75,7 +75,7 @@ type AutoMatchResult struct {
 
 var (
 	// ErrGameNameRequired: an update would leave the game without any name
-	// (alias, localized, and original all empty).
+	// (alias, localized, and English all empty).
 	ErrGameNameRequired = errors.New("at least one game name is required")
 	// ErrTeseraUnavailable: the Tesera client is not configured.
 	ErrTeseraUnavailable = errors.New("tesera integration is unavailable")
@@ -148,7 +148,7 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 		gameList = append(gameList, GameTitles{
 			Id:           r.ID,
 			Name:         r.Name,
-			NameOriginal: textOf(r.NameOriginal),
+			NameEn:       textOf(r.NameEn),
 			NameRu:       textOf(r.NameRu),
 			Alias:        textOf(r.Alias),
 			BggRef:       int64Of(r.BggID),
@@ -176,7 +176,7 @@ func (s *GameService) GetGameInfo(ctx context.Context, gameID id.ID) (*GameInfo,
 	return &GameInfo{
 		ID:           game.ID,
 		Name:         game.Name,
-		NameOriginal: textOf(game.NameOriginal),
+		NameEn:       textOf(game.NameEn),
 		NameRu:       textOf(game.NameRu),
 		Alias:        textOf(game.Alias),
 		BggRef:       int64Of(game.BggID),
@@ -204,7 +204,7 @@ func (s *GameService) DeleteGame(ctx context.Context, gameID id.ID, actor id.ID)
 }
 
 // UpdateGame replaces the game's metadata. The display name is recomputed as
-// alias → name_ru → name_original and must not end up empty; a collision with
+// alias → name_ru → name_en and must not end up empty; a collision with
 // another game's display name surfaces the usual unique-constraint conflict.
 func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMetaPatch, actor id.ID) (*db.Game, error) {
 	var updated *db.Game
@@ -213,19 +213,20 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		if err != nil {
 			return err
 		}
-		alias, nameOriginal, nameRu := trimmed(meta.Alias), trimmed(meta.NameOriginal), trimmed(meta.NameRu)
-		name := displayName(alias, nameRu, nameOriginal)
+		alias, nameEn, nameRu := trimmed(meta.Alias), trimmed(meta.NameEn), trimmed(meta.NameRu)
+		name := displayName(alias, nameRu, nameEn)
 		if name == "" {
 			return ErrGameNameRequired
 		}
+		// games.name is a generated column (migration 063) — it follows the
+		// three source names written here.
 		g, err := q.UpdateGame(ctx, db.UpdateGameParams{
-			ID:           gameID,
-			Name:         name,
-			NameOriginal: pgText(nameOriginal),
-			NameRu:       pgText(nameRu),
-			Alias:        pgText(alias),
-			BggID:        pgInt4(meta.BggRef),
-			TeseraID:     pgInt4(meta.TeseraRef),
+			ID:       gameID,
+			NameEn:   pgText(nameEn),
+			NameRu:   pgText(nameRu),
+			Alias:    pgText(alias),
+			BggID:    pgInt4(meta.BggRef),
+			TeseraID: pgInt4(meta.TeseraRef),
 		})
 		if err != nil {
 			return err
@@ -246,7 +247,7 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		switch {
 		case old.Name != name:
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionRenamed, gameID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
-		case gameMetaChanged(old, alias, nameOriginal, nameRu, meta):
+		case gameMetaChanged(old, alias, nameEn, nameRu, meta):
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
 		}
 		return nil
@@ -261,23 +262,23 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 	// Without an accepted suggestion the typed name is the only canonical
 	// name; with one, a typed name equal to a canonical name (normalized)
 	// is not an alias — only genuinely custom names become aliases.
-	nameRu, nameOriginal := "", ""
+	nameRu, nameEn := "", ""
 	alias := ""
 	var bgg, teseraRef *int64
 	if len(meta) > 0 {
 		m := meta[0]
-		nameOriginal = trimmed(m.NameOriginal)
+		nameEn = trimmed(m.NameEn)
 		nameRu = trimmed(m.NameRu)
 		bgg, teseraRef = m.BggRef, m.TeseraRef
-		if nameOriginal == "" && nameRu == "" {
-			nameOriginal = strings.TrimSpace(name)
+		if nameEn == "" && nameRu == "" {
+			nameEn = strings.TrimSpace(name)
 		} else {
-			display, derivedAlias := canonicalizeNames(name, nameRu, nameOriginal)
+			display, derivedAlias := canonicalizeNames(name, nameRu, nameEn)
 			alias = derivedAlias
 			name = display
 		}
 	} else {
-		nameOriginal = strings.TrimSpace(name)
+		nameEn = strings.TrimSpace(name)
 	}
 
 	var added *db.Game
@@ -294,13 +295,12 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 			}
 		}
 		g, err := q.AddGame(ctx, db.AddGameParams{
-			ID:           gameID,
-			Name:         name,
-			NameOriginal: pgText(nameOriginal),
-			NameRu:       pgText(nameRu),
-			Alias:        pgText(alias),
-			BggID:        pgInt4(bgg),
-			TeseraID:     pgInt4(teseraRef),
+			ID:       gameID,
+			NameEn:   pgText(nameEn),
+			NameRu:   pgText(nameRu),
+			Alias:    pgText(alias),
+			BggID:    pgInt4(bgg),
+			TeseraID: pgInt4(teseraRef),
 		})
 		if err != nil {
 			return err
@@ -360,14 +360,14 @@ func (s *GameService) SuggestGames(ctx context.Context, query string) ([]GameSug
 		seen[cand.TeseraRef] = true
 		out = append(out, scored{
 			suggestion: GameSuggestion{
-				TeseraRef:    cand.TeseraRef,
-				BggRef:       cand.BggRef,
-				NameRu:       cand.NameRu,
-				NameOriginal: cand.NameOriginal,
-				Title:        cand.Title,
-				Year:         cand.Year,
-				PhotoURL:     cand.PhotoURL,
-				IsAddition:   cand.IsAddition,
+				TeseraRef:  cand.TeseraRef,
+				BggRef:     cand.BggRef,
+				NameRu:     cand.NameRu,
+				NameEn:     cand.NameEn,
+				Title:      cand.Title,
+				Year:       cand.Year,
+				PhotoURL:   cand.PhotoURL,
+				IsAddition: cand.IsAddition,
 			},
 			exact:    cand.MatchesName(query),
 			addition: cand.IsAddition,
@@ -415,15 +415,15 @@ func (s *GameService) AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMa
 		case cand == nil:
 			res.Reason = "no exact match"
 		default:
-			_, alias := canonicalizeNames(g.Name, cand.NameRu, cand.NameOriginal)
-			nameRu, nameOriginal := cand.NameRu, cand.NameOriginal
+			_, alias := canonicalizeNames(g.Name, cand.NameRu, cand.NameEn)
+			nameRu, nameEn := cand.NameRu, cand.NameEn
 			bgg, teseraRef := cand.BggRef, cand.TeseraRef
 			patch := GameMetaPatch{
-				Alias:        strPtr(alias),
-				NameOriginal: strPtr(nameOriginal),
-				NameRu:       strPtr(nameRu),
-				BggRef:       &bgg,
-				TeseraRef:    &teseraRef,
+				Alias:     strPtr(alias),
+				NameEn:    strPtr(nameEn),
+				NameRu:    strPtr(nameRu),
+				BggRef:    &bgg,
+				TeseraRef: &teseraRef,
 			}
 			if _, uerr := s.UpdateGame(ctx, g.ID, patch, actor); uerr != nil {
 				res.Reason = "name conflict"
@@ -439,7 +439,7 @@ func (s *GameService) AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMa
 	return results, nil
 }
 
-// findExactMatch returns the candidate whose localized or original title
+// findExactMatch returns the candidate whose localized or English title
 // equals name (normalized), preferring a base game when Tesera flags several
 // matches as additions (the flag is unreliable in both directions). Nil when
 // nothing matches exactly.
@@ -480,9 +480,9 @@ func (s *GameService) findExactMatch(ctx context.Context, name string) (*tesera.
 }
 
 // displayName is the stored games.name: alias if set, else the localized,
-// else the original name. Never empty for a valid row.
-func displayName(alias, nameRu, nameOriginal string) string {
-	for _, n := range []string{alias, nameRu, nameOriginal} {
+// else the English name. Never empty for a valid row.
+func displayName(alias, nameRu, nameEn string) string {
+	for _, n := range []string{alias, nameRu, nameEn} {
 		if n != "" {
 			return n
 		}
@@ -493,8 +493,8 @@ func displayName(alias, nameRu, nameOriginal string) string {
 // canonicalizeNames derives the alias and stored display name from the typed
 // name and the canonical names: a typed name equal to a canonical name
 // (normalized) replaces it as the display name instead of becoming an alias.
-func canonicalizeNames(typed, nameRu, nameOriginal string) (display, alias string) {
-	for _, canonical := range []string{nameRu, nameOriginal} {
+func canonicalizeNames(typed, nameRu, nameEn string) (display, alias string) {
+	for _, canonical := range []string{nameRu, nameEn} {
 		if canonical != "" && tesera.NormalizeName(typed) == tesera.NormalizeName(canonical) {
 			return canonical, ""
 		}
@@ -504,9 +504,9 @@ func canonicalizeNames(typed, nameRu, nameOriginal string) (display, alias strin
 
 // gameMetaChanged reports whether the metadata update touches anything
 // besides the (unchanged) display name.
-func gameMetaChanged(old db.Game, alias, nameOriginal, nameRu string, meta GameMetaPatch) bool {
+func gameMetaChanged(old db.Game, alias, nameEn, nameRu string, meta GameMetaPatch) bool {
 	return textOf(old.Alias) != alias ||
-		textOf(old.NameOriginal) != nameOriginal ||
+		textOf(old.NameEn) != nameEn ||
 		textOf(old.NameRu) != nameRu ||
 		int64Of(old.BggID) != derefInt64(meta.BggRef) ||
 		int64Of(old.TeseraID) != derefInt64(meta.TeseraRef)

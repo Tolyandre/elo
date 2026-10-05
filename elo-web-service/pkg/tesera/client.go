@@ -1,7 +1,7 @@
 // Package tesera is a minimal client for the undocumented public JSON API of
 // tesera.ru (the Russian board-game database). It powers game-reference
 // suggestions: Tesera game objects carry the localized Russian title, the
-// original title, and the BoardGameGeek id, which is exactly the metadata the
+// English title, and the BoardGameGeek id, which is exactly the metadata the
 // games catalogue stores.
 //
 // The API has no key and no SLA, and sits behind DDos-Guard, which rejects

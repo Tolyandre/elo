@@ -50,13 +50,13 @@ func TestDisplayName(t *testing.T) {
 }
 
 func TestGameMetaChanged(t *testing.T) {
-	old := db.Game{Name: "X", NameOriginal: pgText("X")}
+	old := db.Game{Name: "X", NameEn: pgText("X")}
 	same := GameMetaPatch{
-		Alias:        nil,
-		NameOriginal: strPtr("X"),
-		NameRu:       nil,
-		BggRef:       nil,
-		TeseraRef:    nil,
+		Alias:     nil,
+		NameEn:    strPtr("X"),
+		NameRu:    nil,
+		BggRef:    nil,
+		TeseraRef: nil,
 	}
 	if gameMetaChanged(old, "", "X", "", same) {
 		t.Error("identical metadata must not report a change")

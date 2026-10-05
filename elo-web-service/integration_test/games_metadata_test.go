@@ -98,12 +98,12 @@ func TestGameSuggestionsEndpoint(t *testing.T) {
 	var resp struct {
 		Data struct {
 			Games []struct {
-				TeseraRef    int     `json:"tesera_ref"`
-				BggRef       *int    `json:"bgg_ref"`
-				NameRu       *string `json:"name_ru"`
-				NameOriginal *string `json:"name_original"`
-				Title        string  `json:"title"`
-				IsAddition   bool    `json:"is_addition"`
+				TeseraRef  int     `json:"tesera_ref"`
+				BggRef     *int    `json:"bgg_ref"`
+				NameRu     *string `json:"name_ru"`
+				NameEn     *string `json:"name_en"`
+				Title      string  `json:"title"`
+				IsAddition bool    `json:"is_addition"`
 			} `json:"games"`
 		} `json:"data"`
 	}
@@ -119,7 +119,7 @@ func TestGameSuggestionsEndpoint(t *testing.T) {
 	if g.TeseraRef != 707 || g.BggRef == nil || *g.BggRef != 822 || g.IsAddition {
 		t.Errorf("first candidate = %+v, want tesera 707 / bgg 822 / base game", g)
 	}
-	if g.NameRu == nil || *g.NameRu != "Каркассон" || g.NameOriginal == nil || *g.NameOriginal != "Carcassonne" {
+	if g.NameRu == nil || *g.NameRu != "Каркассон" || g.NameEn == nil || *g.NameEn != "Carcassonne" {
 		t.Errorf("names = %+v, want Каркассон / Carcassonne", g)
 	}
 	river := resp.Data.Games[1]
@@ -135,7 +135,7 @@ func TestAutoMatchEndpoint(t *testing.T) {
 	router := setupRouterWithTesera(pool, stub.URL)
 	editorToken, _ := createTestUserWithID(t, pool, true)
 
-	// Created through the service so the name_original invariant holds.
+	// Created through the service so the name_en invariant holds.
 	createGame := func(name string) idpkg.ID {
 		t.Helper()
 		gid := newID(t)
@@ -193,7 +193,7 @@ func TestAutoMatchEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Name != "Каркассон" || !got.NameRu.Valid || got.NameRu.String != "Каркассон" ||
-		!got.NameOriginal.Valid || got.NameOriginal.String != "Carcassonne" || got.Alias.Valid {
+		!got.NameEn.Valid || got.NameEn.String != "Carcassonne" || got.Alias.Valid {
 		t.Errorf("Каркассон row = %+v", got)
 	}
 	if !got.BggID.Valid || got.BggID.Int32 != 822 || !got.TeseraID.Valid || got.TeseraID.Int32 != 707 {
@@ -241,13 +241,13 @@ func TestPatchGameMetadataEndpoint(t *testing.T) {
 	game := createGame("Бутылочка")
 
 	// Set the metadata; the typed name stays as the alias.
-	patch := `{"alias":"Бутылочка","name_original":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`
+	patch := `{"alias":"Бутылочка","name_en":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`
 	if w := doJSON(t, router, http.MethodPatch, "/games/"+game.String(), editorToken, patch); w.Code != http.StatusOK {
 		t.Fatalf("patch metadata: %d %s", w.Code, w.Body.String())
 	}
 
 	// Removing the alias falls the display back to the localized name.
-	if w := doJSON(t, router, http.MethodPatch, "/games/"+game.String(), editorToken, `{"name_original":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPatch, "/games/"+game.String(), editorToken, `{"name_en":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`); w.Code != http.StatusOK {
 		t.Fatalf("clear alias: %d %s", w.Code, w.Body.String())
 	}
 
@@ -309,14 +309,14 @@ func TestCreateGameWithSuggestionMetadata(t *testing.T) {
 
 	// A custom typed name over accepted canonical names becomes the alias.
 	gid := newID(t)
-	body := fmt.Sprintf(`{"id":%q,"name":"Бутылочка","name_original":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`, gid.String())
+	body := fmt.Sprintf(`{"id":%q,"name":"Бутылочка","name_en":"The Bottle Imp","name_ru":"Тень в бутылке","bgg_ref":12345,"tesera_ref":555}`, gid.String())
 	if w := doJSON(t, router, http.MethodPost, "/games", editorToken, body); w.Code != http.StatusOK {
 		t.Fatalf("create with meta: %d %s", w.Code, w.Body.String())
 	}
 
 	// A typed name equal to the localized name is canonicalized, not aliased.
 	gid2 := newID(t)
-	body2 := fmt.Sprintf(`{"id":%q,"name":"тень в бутылке","name_original":"The Bottle Imp","name_ru":"Тень в бутылке"}`, gid2.String())
+	body2 := fmt.Sprintf(`{"id":%q,"name":"тень в бутылке","name_en":"The Bottle Imp","name_ru":"Тень в бутылке"}`, gid2.String())
 	if w := doJSON(t, router, http.MethodPost, "/games", editorToken, body2); w.Code != http.StatusOK {
 		t.Fatalf("create canonical: %d %s", w.Code, w.Body.String())
 	}
@@ -337,7 +337,7 @@ func TestCreateGameWithSuggestionMetadata(t *testing.T) {
 	}
 	if got.Name != "Бутылочка" || !got.Alias.Valid || got.Alias.String != "Бутылочка" ||
 		!got.NameRu.Valid || got.NameRu.String != "Тень в бутылке" ||
-		!got.NameOriginal.Valid || got.NameOriginal.String != "The Bottle Imp" ||
+		!got.NameEn.Valid || got.NameEn.String != "The Bottle Imp" ||
 		!got.BggID.Valid || got.BggID.Int32 != 12345 || !got.TeseraID.Valid || got.TeseraID.Int32 != 555 {
 		t.Errorf("row = %+v", got)
 	}

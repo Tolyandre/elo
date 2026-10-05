@@ -93,7 +93,7 @@ export default function GamesAdminPage() {
         // Creates always queue (the clientId is the final server id); the
         // sync flushes it within a round trip while online.
         addPendingGame(newName.trim(), [], newAccepted ? {
-            nameOriginal: newAccepted.nameOriginal,
+            nameEn: newAccepted.nameEn,
             nameRu: newAccepted.nameRu,
             bggRef: newAccepted.bggRef,
             teseraRef: newAccepted.teseraRef,
@@ -366,7 +366,7 @@ function CatalogLinks({ game }: { game: GameRow }) {
  * Metadata editor: alias (removable), canonical names, BGG/Tesera ids, and a
  * catalogue picker that fills the canonical fields from Tesera. Saves the
  * full metadata state; the server recomputes the display name (alias →
- * ru → original) and rejects a save that leaves no name at all.
+ * ru → English) and rejects a save that leaves no name at all.
  */
 function GameEditDialog({
     game,
@@ -378,7 +378,7 @@ function GameEditDialog({
     onSaved: () => void;
 }) {
     const [alias, setAlias] = useState(game.alias ?? "");
-    const [nameOriginal, setNameOriginal] = useState(game.name_original ?? "");
+    const [nameEn, setNameEn] = useState(game.name_en ?? "");
     const [nameRu, setNameRu] = useState(game.name_ru ?? "");
     const [bggRef, setBggRef] = useState(game.bgg_ref != null ? String(game.bgg_ref) : "");
     const [teseraRef, setTeseraRef] = useState(game.tesera_ref != null ? String(game.tesera_ref) : "");
@@ -387,7 +387,7 @@ function GameEditDialog({
 
     const suggestions = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
 
-    const preview = [alias.trim(), nameRu.trim(), nameOriginal.trim()].find((n) => n !== "") ?? "";
+    const preview = [alias.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
 
     async function save() {
         if (!preview) return;
@@ -397,7 +397,7 @@ function GameEditDialog({
         try {
             await patchGamePromise(game.id, {
                 alias: alias.trim() || null,
-                name_original: nameOriginal.trim() || null,
+                name_en: nameEn.trim() || null,
                 name_ru: nameRu.trim() || null,
                 bgg_ref: bgg,
                 tesera_ref: tesera,
@@ -412,7 +412,7 @@ function GameEditDialog({
 
     /** Accepting a candidate fills the canonical names and links, keeping the alias. */
     function accept(s: GameSuggestion) {
-        setNameOriginal(s.name_original ?? "");
+        setNameEn(s.name_en ?? "");
         setNameRu(s.name_ru ?? "");
         setBggRef(s.bgg_ref != null ? String(s.bgg_ref) : "");
         setTeseraRef(s.tesera_ref != null ? String(s.tesera_ref) : "");
@@ -424,12 +424,12 @@ function GameEditDialog({
                 <DialogHeader>
                     <DialogTitle>Изменить игру «{accentName(game)}»</DialogTitle>
                     <DialogDescription>
-                        Отображаемое название: псевдоним, иначе русское, иначе оригинальное.
+                        Отображаемое название: псевдоним, иначе русское, иначе английское.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">
                     <label className="flex flex-col gap-1 text-sm">
-                        Псевдоним (пользовательское название)
+                        Псевдоним (удобное название на русском)
                         <div className="flex gap-2">
                             <input
                                 className="w-full rounded border p-2"
@@ -451,11 +451,11 @@ function GameEditDialog({
                         </div>
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
-                        Оригинальное название
+                        Название на английском (если игра издавалась официально)
                         <input
                             className="w-full rounded border p-2"
-                            value={nameOriginal}
-                            onChange={(e) => setNameOriginal(e.target.value)}
+                            value={nameEn}
+                            onChange={(e) => setNameEn(e.target.value)}
                             placeholder="например, The Bottle Imp"
                         />
                     </label>

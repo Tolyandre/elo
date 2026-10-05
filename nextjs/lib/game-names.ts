@@ -1,24 +1,24 @@
 // Multi-name rendering and search for games. A game carries up to three
-// names — the user alias, the localized Russian title, and the original
-// title — and one display name (server-maintained as alias → ru → original).
+// names — the user alias, the localized Russian title, and the official
+// English title — and one display name (server-maintained as alias → ru → en).
 // The accent name is what gets emphasis in pickers: the alias when set,
 // otherwise the localized title.
 
 export type GameWithNames = {
     name: string;
     alias?: string | null;
-    name_original?: string | null;
+    name_en?: string | null;
     name_ru?: string | null;
 };
 
-/** The name to emphasize in lists: alias if set, else localized, else original. */
+/** The name to emphasize in lists: alias if set, else localized, else English. */
 export function accentName(game: GameWithNames): string {
-    return game.alias || game.name_ru || game.name_original || game.name;
+    return game.alias || game.name_ru || game.name_en || game.name;
 }
 
 /** The other names, deduplicated, for muted display next to the accent name. */
 export function secondaryNames(game: GameWithNames): string[] {
-    const names = [game.alias, game.name_ru, game.name_original, game.name];
+    const names = [game.alias, game.name_ru, game.name_en, game.name];
     const seen = new Set<string>();
     const accent = accentName(game).toLowerCase();
     const out: string[] = [];

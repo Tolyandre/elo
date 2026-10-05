@@ -480,7 +480,7 @@ export async function getGamePromise(id: Base58ID): Promise<Game> {
 
 export type GameMetadata = {
     alias?: string | null;
-    name_original?: string | null;
+    name_en?: string | null;
     name_ru?: string | null;
     bgg_ref?: number | null;
     tesera_ref?: number | null;

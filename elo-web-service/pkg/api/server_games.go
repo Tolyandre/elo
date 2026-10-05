@@ -25,7 +25,7 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 			Id:              g.Id,
 			Name:            g.Name,
 			Alias:           strPtrOrNil(g.Alias),
-			NameOriginal:    strPtrOrNil(g.NameOriginal),
+			NameEn:          strPtrOrNil(g.NameEn),
 			NameRu:          strPtrOrNil(g.NameRu),
 			BggRef:          intPtrOrNil(g.BggRef),
 			TeseraRef:       intPtrOrNil(g.TeseraRef),
@@ -54,7 +54,7 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 			Id:           game.ID,
 			Name:         game.Name,
 			Alias:        strPtrOrNil(game.Alias),
-			NameOriginal: strPtrOrNil(game.NameOriginal),
+			NameEn:       strPtrOrNil(game.NameEn),
 			NameRu:       strPtrOrNil(game.NameRu),
 			BggRef:       intPtrOrNil(game.BggRef),
 			TeseraRef:    intPtrOrNil(game.TeseraRef),
@@ -90,25 +90,25 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 // createMeta carries the accepted catalogue suggestion (canonical names and
 // external refs) into AddGame; the alias is derived there, not sent.
 func createMeta(body *CreateGameJSONRequestBody) (elo.GameMetaPatch, bool) {
-	if body == nil || (body.NameOriginal == nil && body.NameRu == nil && body.BggRef == nil && body.TeseraRef == nil) {
+	if body == nil || (body.NameEn == nil && body.NameRu == nil && body.BggRef == nil && body.TeseraRef == nil) {
 		return elo.GameMetaPatch{}, false
 	}
 	return elo.GameMetaPatch{
-		NameOriginal: body.NameOriginal,
-		NameRu:       body.NameRu,
-		BggRef:       int64PtrOf(body.BggRef),
-		TeseraRef:    int64PtrOf(body.TeseraRef),
+		NameEn:    body.NameEn,
+		NameRu:    body.NameRu,
+		BggRef:    int64PtrOf(body.BggRef),
+		TeseraRef: int64PtrOf(body.TeseraRef),
 	}, true
 }
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
 	body := request.Body
 	meta := elo.GameMetaPatch{
-		Alias:        body.Alias,
-		NameOriginal: body.NameOriginal,
-		NameRu:       body.NameRu,
-		BggRef:       int64PtrOf(body.BggRef),
-		TeseraRef:    int64PtrOf(body.TeseraRef),
+		Alias:     body.Alias,
+		NameEn:    body.NameEn,
+		NameRu:    body.NameRu,
+		BggRef:    int64PtrOf(body.BggRef),
+		TeseraRef: int64PtrOf(body.TeseraRef),
 	}
 	game, err := s.api.GameService.UpdateGame(ctx, parseIDParam(request.Id), meta, currentActorID(ctx))
 	if err != nil {
@@ -127,7 +127,7 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 	resp.Data.Id = game.ID
 	resp.Data.Name = game.Name
 	resp.Data.Alias = strPtrOrNil(pgTextOf(game.Alias))
-	resp.Data.NameOriginal = strPtrOrNil(pgTextOf(game.NameOriginal))
+	resp.Data.NameEn = strPtrOrNil(pgTextOf(game.NameEn))
 	resp.Data.NameRu = strPtrOrNil(pgTextOf(game.NameRu))
 	resp.Data.BggRef = intPtrOrNil(pgInt64Of(game.BggID))
 	resp.Data.TeseraRef = intPtrOrNil(pgInt64Of(game.TeseraID))
@@ -162,14 +162,14 @@ func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesReq
 	items := make([]GameSuggestion, 0, len(suggestions))
 	for _, sug := range suggestions {
 		item := GameSuggestion{
-			TeseraRef:    int(sug.TeseraRef),
-			BggRef:       intPtrOrNil(sug.BggRef),
-			NameOriginal: strPtrOrNil(sug.NameOriginal),
-			NameRu:       strPtrOrNil(sug.NameRu),
-			Title:        sug.Title,
-			Year:         intPtrOrNil(int64(sug.Year)),
-			PhotoUrl:     strPtrOrNil(sug.PhotoURL),
-			IsAddition:   sug.IsAddition,
+			TeseraRef:  int(sug.TeseraRef),
+			BggRef:     intPtrOrNil(sug.BggRef),
+			NameEn:     strPtrOrNil(sug.NameEn),
+			NameRu:     strPtrOrNil(sug.NameRu),
+			Title:      sug.Title,
+			Year:       intPtrOrNil(int64(sug.Year)),
+			PhotoUrl:   strPtrOrNil(sug.PhotoURL),
+			IsAddition: sug.IsAddition,
 		}
 		items = append(items, item)
 	}

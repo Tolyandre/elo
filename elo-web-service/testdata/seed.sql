@@ -27,9 +27,11 @@ INSERT INTO player_club_membership (club_id, player_id) VALUES
     ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000067')
 ON CONFLICT (club_id, player_id) DO NOTHING;
 
--- Test matches. Game ids are the well-known constants pinned in
--- pkg/elo/game_ids.go (Skull King 0x188, IAWW 0x9).
-INSERT INTO games (id, name) VALUES
+-- Well-known games, ids pinned in pkg/elo/game_ids.go (Skull King 0x188,
+-- IAWW 0x9). A game created without an accepted catalogue suggestion carries
+-- its typed name as name_en (AddGame, pkg/elo/games.go); `name` itself is
+-- generated (migration 063) and must not be written.
+INSERT INTO games (id, name_en) VALUES
     ('00000000-0000-0000-0000-000000000188', 'Skull King'),
     ('00000000-0000-0000-0000-000000000009', 'Этот Безумный Мир')
 ON CONFLICT (id) DO NOTHING;

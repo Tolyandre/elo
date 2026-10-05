@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 /** Metadata carried into game creation from an accepted suggestion. */
 export type AcceptedGameSuggestion = {
-    nameOriginal: string | null
+    nameEn: string | null
     nameRu: string | null
     bggRef: number | null
     teseraRef: number | null
@@ -16,7 +16,7 @@ export type AcceptedGameSuggestion = {
 
 export function suggestionMeta(s: GameSuggestion): AcceptedGameSuggestion {
     return {
-        nameOriginal: s.name_original ?? null,
+        nameEn: s.name_en ?? null,
         nameRu: s.name_ru ?? null,
         bggRef: s.bgg_ref ?? null,
         teseraRef: s.tesera_ref ?? null,
@@ -55,7 +55,7 @@ export function useGameSuggestions(name: string, enabled: boolean): GameSuggesti
 
 export function suggestionLabel(s: GameSuggestion): string {
     const parts = [s.title]
-    if (s.name_original && s.name_original !== s.title) parts.push(s.name_original)
+    if (s.name_en && s.name_en !== s.title) parts.push(s.name_en)
     let label = parts.filter(Boolean).join(" · ")
     if (s.year) label += ` (${s.year})`
     // Tesera's addition flag is unreliable, so additions are marked rather
@@ -92,7 +92,7 @@ export function GameSuggestionChips({
                         className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary text-primary-foreground px-2 py-0.5 text-xs"
                         title="Убрать подобранную игру"
                     >
-                        {accepted.nameRu || accepted.nameOriginal || "Подобрано"}
+                        {accepted.nameRu || accepted.nameEn || "Подобрано"}
                         <X className="size-3" />
                     </button>
                 ) : (
@@ -116,8 +116,8 @@ export function GameSuggestionChips({
 /** Compact preview of the metadata an accepted suggestion will store. */
 export function AcceptedMetaLine({ accepted }: { accepted: AcceptedGameSuggestion }) {
     const bits: string[] = []
-    if (accepted.nameOriginal) bits.push(accepted.nameOriginal)
-    if (accepted.nameRu && accepted.nameRu !== accepted.nameOriginal) bits.push(accepted.nameRu)
+    if (accepted.nameEn) bits.push(accepted.nameEn)
+    if (accepted.nameRu && accepted.nameRu !== accepted.nameEn) bits.push(accepted.nameRu)
     if (accepted.bggRef) bits.push("BGG")
     if (accepted.teseraRef) bits.push("Тесера")
     if (bits.length === 0) return null

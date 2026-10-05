@@ -23,6 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -414,11 +415,19 @@ func createTestGame(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
-	g, err := q.AddGame(context.Background(), db.AddGameParams{ID: id, Name: name})
+	g, err := q.AddGame(context.Background(), db.AddGameParams{ID: id, NameEn: pgText(name)})
 	if err != nil {
 		t.Fatalf("create game %q: %v", name, err)
 	}
 	return g.ID
+}
+
+// pgText mirrors the service layer's helper: the empty string maps to SQL NULL.
+func pgText(s string) pgtype.Text {
+	if s == "" {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: s, Valid: true}
 }
 
 // createTestAdmin inserts a user with allow_editing=true and returns its ID.

@@ -1241,10 +1241,10 @@ type Game struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// Name Display name — alias if set, else localized ru name, else original name
-	Name         string  `json:"name"`
-	NameOriginal *string `json:"name_original,omitempty"`
-	NameRu       *string `json:"name_ru,omitempty"`
+	// Name Display name — alias if set, else localized ru name, else official English name
+	Name   string  `json:"name"`
+	NameEn *string `json:"name_en,omitempty"`
+	NameRu *string `json:"name_ru,omitempty"`
 
 	// TeseraRef Tesera game id
 	TeseraRef    *int `json:"tesera_ref,omitempty"`
@@ -1295,11 +1295,11 @@ type GameListItem struct {
 	Id              Base58ID `json:"id"`
 	LastPlayedOrder int      `json:"last_played_order"`
 
-	// Name Display name — alias if set, else localized ru name, else original name
+	// Name Display name — alias if set, else localized ru name, else official English name
 	Name string `json:"name"`
 
-	// NameOriginal Original (usually English) title
-	NameOriginal *string `json:"name_original,omitempty"`
+	// NameEn Official English title, only when the game was published in English
+	NameEn *string `json:"name_en,omitempty"`
 
 	// NameRu Localized Russian title, only when officially published in Russian
 	NameRu *string `json:"name_ru,omitempty"`
@@ -1335,8 +1335,8 @@ type GameSuggestion struct {
 	BggRef *int `json:"bgg_ref,omitempty"`
 
 	// IsAddition Tesera's addition/expansion flag (unreliable — shown as a hint, not a filter)
-	IsAddition   bool    `json:"is_addition"`
-	NameOriginal *string `json:"name_original,omitempty"`
+	IsAddition bool    `json:"is_addition"`
+	NameEn     *string `json:"name_en,omitempty"`
 
 	// NameRu Localized Russian title, absent when the game was not published in Russian
 	NameRu    *string `json:"name_ru,omitempty"`
@@ -2262,8 +2262,8 @@ type CreateGameJSONBody struct {
 	// Name The typed name; it becomes an alias when it differs from both canonical names below
 	Name string `json:"name"`
 
-	// NameOriginal Original title from an accepted catalogue suggestion
-	NameOriginal *string `json:"name_original,omitempty"`
+	// NameEn Official English title from an accepted catalogue suggestion
+	NameEn *string `json:"name_en,omitempty"`
 
 	// NameRu Localized Russian title from an accepted catalogue suggestion
 	NameRu    *string `json:"name_ru,omitempty"`
@@ -2278,9 +2278,9 @@ type SuggestGamesParams struct {
 // PatchGameJSONBody defines parameters for PatchGame.
 type PatchGameJSONBody struct {
 	// Alias User-given custom display name; null removes it
-	Alias        *string `json:"alias,omitempty"`
-	BggRef       *int    `json:"bgg_ref,omitempty"`
-	NameOriginal *string `json:"name_original,omitempty"`
+	Alias  *string `json:"alias,omitempty"`
+	BggRef *int    `json:"bgg_ref,omitempty"`
+	NameEn *string `json:"name_en,omitempty"`
 
 	// NameRu Localized Russian title; null when not published in Russian
 	NameRu    *string `json:"name_ru,omitempty"`
@@ -7222,11 +7222,11 @@ type PatchGame200JSONResponse struct {
 		BggRef *int    `json:"bgg_ref,omitempty"`
 
 		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-		Id           Base58ID `json:"id"`
-		Name         string   `json:"name"`
-		NameOriginal *string  `json:"name_original,omitempty"`
-		NameRu       *string  `json:"name_ru,omitempty"`
-		TeseraRef    *int     `json:"tesera_ref,omitempty"`
+		Id        Base58ID `json:"id"`
+		Name      string   `json:"name"`
+		NameEn    *string  `json:"name_en,omitempty"`
+		NameRu    *string  `json:"name_ru,omitempty"`
+		TeseraRef *int     `json:"tesera_ref,omitempty"`
 	} `json:"data"`
 	Status string `json:"status"`
 }

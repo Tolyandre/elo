@@ -146,7 +146,7 @@ export interface paths {
         head?: never;
         /**
          * Replace game metadata (names, alias, external references)
-         * @description Full-state update of the metadata fields: every field is set to the given value (null clears it). The display name is recomputed as alias, else localized ru name, else original name, and must not end up empty.
+         * @description Full-state update of the metadata fields: every field is set to the given value (null clears it). The display name is recomputed as alias, else localized ru name, else official English name, and must not end up empty.
          */
         patch: operations["PatchGame"];
         trace?: never;
@@ -1136,12 +1136,12 @@ export interface components {
         };
         GameListItem: {
             id: components["schemas"]["Base58ID"];
-            /** @description Display name — alias if set, else localized ru name, else original name */
+            /** @description Display name — alias if set, else localized ru name, else official English name */
             name: string;
             /** @description User-given custom name; set only when it differs from both canonical names */
             alias?: string | null;
-            /** @description Original (usually English) title */
-            name_original?: string | null;
+            /** @description Official English title, only when the game was published in English */
+            name_en?: string | null;
             /** @description Localized Russian title, only when officially published in Russian */
             name_ru?: string | null;
             /** @description BoardGameGeek thing id (boardgamegeek.com/boardgame/{bgg_ref}) */
@@ -1158,10 +1158,10 @@ export interface components {
         };
         Game: {
             id: components["schemas"]["Base58ID"];
-            /** @description Display name — alias if set, else localized ru name, else original name */
+            /** @description Display name — alias if set, else localized ru name, else official English name */
             name: string;
             alias?: string | null;
-            name_original?: string | null;
+            name_en?: string | null;
             name_ru?: string | null;
             /** @description BoardGameGeek thing id */
             bgg_ref?: number | null;
@@ -1180,7 +1180,7 @@ export interface components {
             bgg_ref?: number | null;
             /** @description Localized Russian title, absent when the game was not published in Russian */
             name_ru?: string | null;
-            name_original?: string | null;
+            name_en?: string | null;
             /** @description Tesera's localized title, for display in pickers */
             title: string;
             year?: number | null;
@@ -2329,8 +2329,8 @@ export interface operations {
                     id: components["schemas"]["Base58ID"];
                     /** @description The typed name; it becomes an alias when it differs from both canonical names below */
                     name: string;
-                    /** @description Original title from an accepted catalogue suggestion */
-                    name_original?: string | null;
+                    /** @description Official English title from an accepted catalogue suggestion */
+                    name_en?: string | null;
                     /** @description Localized Russian title from an accepted catalogue suggestion */
                     name_ru?: string | null;
                     bgg_ref?: number | null;
@@ -2600,7 +2600,7 @@ export interface operations {
                 "application/json": {
                     /** @description User-given custom display name; null removes it */
                     alias?: string | null;
-                    name_original?: string | null;
+                    name_en?: string | null;
                     /** @description Localized Russian title; null when not published in Russian */
                     name_ru?: string | null;
                     bgg_ref?: number | null;
@@ -2621,7 +2621,7 @@ export interface operations {
                             id: components["schemas"]["Base58ID"];
                             name: string;
                             alias?: string | null;
-                            name_original?: string | null;
+                            name_en?: string | null;
                             name_ru?: string | null;
                             bgg_ref?: number | null;
                             tesera_ref?: number | null;

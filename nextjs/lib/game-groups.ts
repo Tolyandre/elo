@@ -14,7 +14,7 @@ type GameGroup = {
  * 3. "Остальные" — all remaining games, sorted alphabetically
  *
  * The option label is the accent name (alias if set, else localized, else
- * original); the full game rides along so pickers can search all names and
+ * English); the full game rides along so pickers can search all names and
  * render the secondary names muted.
  */
 export function buildGameGroups(

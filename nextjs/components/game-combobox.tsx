@@ -295,7 +295,7 @@ function GameCreateForm({
     setCreating(true)
     try {
       const game = addPendingGame(trimmed, [...selectedTagIds], accepted ? {
-        nameOriginal: accepted.nameOriginal,
+        nameEn: accepted.nameEn,
         nameRu: accepted.nameRu,
         bggRef: accepted.bggRef,
         teseraRef: accepted.teseraRef,

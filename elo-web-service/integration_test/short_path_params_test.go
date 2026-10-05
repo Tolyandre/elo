@@ -35,7 +35,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	q := db.New(pool)
 	playerA, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000e1", Name: "PathA"})
 	playerB, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000e2", Name: "PathB"})
-	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000e3", Name: "PathGame"})
+	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000e3", NameEn: pgText("PathGame")})
 
 	marketSvc := elo.NewMarketService(pool)
 	matchSvc := newMatchService(pool)

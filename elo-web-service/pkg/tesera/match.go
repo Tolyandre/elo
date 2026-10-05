@@ -13,10 +13,10 @@ type Candidate struct {
 	// BggRef is 0 when Tesera knows no BoardGameGeek link for the game.
 	BggRef int64
 	// NameRu is the localized Russian title, empty when Tesera's title is
-	// not a localization of the original (game never published in Russian).
+	// not a localization of the English title (game never published in Russian).
 	NameRu string
-	// NameOriginal is the original title.
-	NameOriginal string
+	// NameEn is the official English title.
+	NameEn string
 	// Title is Tesera's raw localized title, for display in pickers.
 	Title    string
 	Year     int32
@@ -30,7 +30,7 @@ type Candidate struct {
 }
 
 // yearSuffix strips the trailing edition/year markers Tesera appends to some
-// original titles ("Carcassonne, 2001", "7 Wonders (2010)").
+// English titles ("Carcassonne, 2001", "7 Wonders (2010)").
 var yearSuffix = regexp.MustCompile(`\s*[,(]\s*(?:19|20)\d{2}\s*\)?$`)
 
 // CandidateFromDetail converts a detail object into a storable candidate.
@@ -44,36 +44,36 @@ func CandidateFromDetail(d *GameDetail) *Candidate {
 	if d == nil || d.TeseraID == 0 {
 		return nil
 	}
-	original := strings.TrimSpace(yearSuffix.ReplaceAllString(d.Title2, ""))
-	if isAllDigits(original) {
+	english := strings.TrimSpace(yearSuffix.ReplaceAllString(d.Title2, ""))
+	if isAllDigits(english) {
 		// A bare year in title2 ("2001") is junk, not a title.
-		original = ""
+		english = ""
 	}
 	ru := ""
 	switch {
-	case original == "":
-		// No original recorded: Tesera's title is all we have.
-		original = d.Title
-	case hasCyrillic(d.Title) && !hasCyrillic(original):
-		// Normal order: title is the localization, title2 the original.
-		if NormalizeName(d.Title) != NormalizeName(original) {
+	case english == "":
+		// No English title recorded: Tesera's title is all we have.
+		english = d.Title
+	case hasCyrillic(d.Title) && !hasCyrillic(english):
+		// Normal order: title is the localization, title2 the English title.
+		if NormalizeName(d.Title) != NormalizeName(english) {
 			ru = d.Title
 		}
-	case !hasCyrillic(d.Title) && hasCyrillic(original):
+	case !hasCyrillic(d.Title) && hasCyrillic(english):
 		// Swapped entry: the Russian name sits in title2.
-		ru = original
-		original = d.Title
+		ru = english
+		english = d.Title
 	}
 	return &Candidate{
-		TeseraRef:    d.TeseraID,
-		BggRef:       d.BggID,
-		NameRu:       ru,
-		NameOriginal: original,
-		Title:        d.Title,
-		Year:         d.Year,
-		Alias:        d.Alias,
-		PhotoURL:     d.PhotoURL,
-		IsAddition:   d.IsAddition,
+		TeseraRef:  d.TeseraID,
+		BggRef:     d.BggID,
+		NameRu:     ru,
+		NameEn:     english,
+		Title:      d.Title,
+		Year:       d.Year,
+		Alias:      d.Alias,
+		PhotoURL:   d.PhotoURL,
+		IsAddition: d.IsAddition,
 	}
 }
 
@@ -88,12 +88,12 @@ func isAllDigits(s string) bool {
 }
 
 // MatchesName reports whether name equals the candidate's localized or
-// original title under NormalizeName. This is the auto-match threshold:
+// English title under NormalizeName. This is the auto-match threshold:
 // only exact matches are applied without a human confirming them.
 func (c *Candidate) MatchesName(name string) bool {
 	n := NormalizeName(name)
 	return n != "" &&
-		(n == NormalizeName(c.Title) || n == NormalizeName(c.NameOriginal))
+		(n == NormalizeName(c.Title) || n == NormalizeName(c.NameEn))
 }
 
 // NormalizeName folds a title for comparison: case-insensitive, ё→е,

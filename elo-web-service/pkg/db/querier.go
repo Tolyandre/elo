@@ -24,7 +24,6 @@ type Querier interface {
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
-	AddGamesIfNotExists(ctx context.Context, arg AddGamesIfNotExistsParams) ([]AddGamesIfNotExistsRow, error)
 	AddPlayersIfNotExists(ctx context.Context, arg AddPlayersIfNotExistsParams) ([]AddPlayersIfNotExistsRow, error)
 	AddSlotMatch(ctx context.Context, arg AddSlotMatchParams) error
 	AddSlotPromotion(ctx context.Context, arg AddSlotPromotionParams) error
@@ -475,6 +474,7 @@ type Querier interface {
 	UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
+	// `name` is generated (migration 063) and follows the three source names.
 	UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, error)
 	UpdateGameTableState(ctx context.Context, arg UpdateGameTableStateParams) (GameTable, error)
 	UpdateMarketLiquidityB(ctx context.Context, arg UpdateMarketLiquidityBParams) error

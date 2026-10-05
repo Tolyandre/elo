@@ -15,7 +15,7 @@ export type SyncApi = {
     createGame(body: {
         id: Base58ID;
         name: string;
-        name_original?: string | null;
+        name_en?: string | null;
         name_ru?: string | null;
         bgg_ref?: number | null;
         tesera_ref?: number | null;
@@ -100,10 +100,13 @@ export async function syncOffline(
         let result: SyncCallResult<{ id: Base58ID }>;
         try {
             const meta = item.meta;
+            // Queued items saved before the nameOriginal → nameEn rename still
+            // carry the old key; read both so their English title survives.
+            const legacy = meta as { nameOriginal?: string | null } | undefined;
             result = await api.createGame({
                 id: item.clientId,
                 name: item.name,
-                name_original: meta?.nameOriginal ?? undefined,
+                name_en: meta?.nameEn ?? legacy?.nameOriginal ?? undefined,
                 name_ru: meta?.nameRu ?? undefined,
                 bgg_ref: meta?.bggRef ?? undefined,
                 tesera_ref: meta?.teseraRef ?? undefined,

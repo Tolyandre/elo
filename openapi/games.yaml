@@ -36,10 +36,10 @@ GamesCollection:
               name:
                 type: string
                 description: The typed name; it becomes an alias when it differs from both canonical names below
-              name_original:
+              name_en:
                 type: string
                 nullable: true
-                description: Original title from an accepted catalogue suggestion
+                description: Official English title from an accepted catalogue suggestion
               name_ru:
                 type: string
                 nullable: true
@@ -138,7 +138,7 @@ GameItem:
     description: >-
       Full-state update of the metadata fields: every field is set to the
       given value (null clears it). The display name is recomputed as
-      alias, else localized ru name, else original name, and must not end
+      alias, else localized ru name, else official English name, and must not end
       up empty.
     security:
       - cookieAuth: []
@@ -159,7 +159,7 @@ GameItem:
                 type: string
                 nullable: true
                 description: User-given custom display name; null removes it
-              name_original:
+              name_en:
                 type: string
                 nullable: true
               name_ru:
@@ -192,7 +192,7 @@ GameItem:
                     alias:
                       type: string
                       nullable: true
-                    name_original:
+                    name_en:
                       type: string
                       nullable: true
                     name_ru:
@@ -470,15 +470,15 @@ GameListItem:
       $ref: './common.yaml#/Base58ID'
     name:
       type: string
-      description: Display name — alias if set, else localized ru name, else original name
+      description: Display name — alias if set, else localized ru name, else official English name
     alias:
       type: string
       nullable: true
       description: User-given custom name; set only when it differs from both canonical names
-    name_original:
+    name_en:
       type: string
       nullable: true
-      description: Original (usually English) title
+      description: Official English title, only when the game was published in English
     name_ru:
       type: string
       nullable: true
@@ -527,11 +527,11 @@ Game:
       $ref: './common.yaml#/Base58ID'
     name:
       type: string
-      description: Display name — alias if set, else localized ru name, else original name
+      description: Display name — alias if set, else localized ru name, else official English name
     alias:
       type: string
       nullable: true
-    name_original:
+    name_en:
       type: string
       nullable: true
     name_ru:
@@ -566,7 +566,7 @@ GameSuggestion:
       type: string
       nullable: true
       description: Localized Russian title, absent when the game was not published in Russian
-    name_original:
+    name_en:
       type: string
       nullable: true
     title:

@@ -40,7 +40,7 @@ export type PendingGame = PendingBase & {
      * was created without suggestions or before this field existed.
      */
     meta?: {
-        nameOriginal?: string | null;
+        nameEn?: string | null;
         nameRu?: string | null;
         bggRef?: number | null;
         teseraRef?: number | null;

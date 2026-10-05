@@ -13,14 +13,14 @@ const bottleImp = {
     name: "Бутылочка",
     alias: "Бутылочка",
     name_ru: "Тень в бутылке",
-    name_original: "The Bottle Imp",
+    name_en: "The Bottle Imp",
 };
 
 describe("accentName", () => {
-    it("prefers alias, then localized, then original", () => {
+    it("prefers alias, then localized, then English", () => {
         expect(accentName(bottleImp)).toBe("Бутылочка");
-        expect(accentName({ name: "Тень в бутылке", name_ru: "Тень в бутылке", name_original: "The Bottle Imp" })).toBe("Тень в бутылке");
-        expect(accentName({ name: "Splendor", name_original: "Splendor" })).toBe("Splendor");
+        expect(accentName({ name: "Тень в бутылке", name_ru: "Тень в бутылке", name_en: "The Bottle Imp" })).toBe("Тень в бутылке");
+        expect(accentName({ name: "Splendor", name_en: "Splendor" })).toBe("Splendor");
     });
 
     it("falls back to display name when no canonical name exists", () => {
@@ -34,12 +34,12 @@ describe("secondaryNames", () => {
     });
 
     it("excludes names equal to the accent name (case-insensitive)", () => {
-        expect(secondaryNames({ name: "7 чудес", name_ru: "7 Чудес", name_original: "7 Wonders" })).toEqual(["7 Wonders"]);
+        expect(secondaryNames({ name: "7 чудес", name_ru: "7 Чудес", name_en: "7 Wonders" })).toEqual(["7 Wonders"]);
     });
 });
 
 describe("allNames / matchesAnyName", () => {
-    it("searches alias, localized, and original names", () => {
+    it("searches alias, localized, and English names", () => {
         expect(matchesAnyName(bottleImp, "бутыл")).toBe(true);
         expect(matchesAnyName(bottleImp, "bottle")).toBe(true);
         expect(matchesAnyName(bottleImp, "тень")).toBe(true);

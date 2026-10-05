@@ -38,7 +38,7 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 	paPlayer, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000a1", Name: "Alpha"})
 	pbPlayer, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-0000000000a2", Name: "Beta"})
 	pa, pb := paPlayer.ID, pbPlayer.ID
-	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000b1", Name: "ЭБМ"})
+	gameRow, _ := q.AddGame(ctx, db.AddGameParams{ID: "00000000-0000-0000-0000-0000000000b1", NameEn: pgText("ЭБМ")})
 	game := gameRow.ID
 
 	// Every known IAWW row id appears here — if any of them is corrupted by
