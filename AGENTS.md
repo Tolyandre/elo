@@ -129,6 +129,24 @@ Format Go code with `gofmt`; keep packages lowercase and tests named `*_test.go`
 
 **Database.** Key tables: `clubs`, `players`, `player_club_membership`, `games`, `matches`, `match_scores` (per-player scores), `player_ratings` (Elo time series), `users` (OAuth2 users with edit permissions), plus the arena/market/tournament tables introduced by later ADRs.
 
+## Adding a game kind (checklist)
+
+Backend (all document/versioned mechanics come from the shared registries — see ADR-09/16):
+
+1. `elo-web-service/pkg/elo/game_ids.go`: well-known game UUID + `Games` map entry (title); mirror the row in `testdata/seed.sql`.
+2. `elo-web-service/pkg/elo/table_game_<kind>.go`: a `tableGame` implementation — typed state struct + `normalize`/`applySubmit`/`playerIDs` — and a `tableGames` entry in `table_service.go`. The game owns its submit shape (decoded with `decodeSubmit`, which rejects unknown fields); no shared input union to extend.
+3. `elo-web-service/pkg/calculator/<kind>.go` + `<kind>.v1.json`: register the calculator kind (`reg.Register` in init) for history-mode match editing. Mark id properties `"x-entity-id": true`; never key a player by object key.
+4. `openapi/tables.yaml`: submit request-body union + game-state schema variants, then `make generate-api` (openapilint must pass).
+
+Frontend:
+
+5. `components/calculators/<kind>/`: `scoring.ts(x)` (pure scoring + types), `storage.ts` (`STORAGE_VERSION`, `toStorage`/`fromStorage`, `player_id` key convention), `merge.ts` (three-way merge on the shared `threeWay`), and the table/edit UI.
+6. `components/calculators/registry.ts`: `CalculatorAdapter` entry (editTitle, scoreFromState, toStorage, History).
+7. `components/tables/<kind>/game-view.tsx` + `components/tables/registry.tsx`: live view implementing `TableGameViewProps`, plus the `TABLE_GAMES` entry.
+8. `lib/game-apps.ts`: `GAME_ID_<KIND>` constant and the `GAME_APPS` entry — including `createInitialState`, `statusText`, and `mergeStates` (a game without `mergeStates` fails loudly at conflict time, by design).
+9. `app/matches/edit/<kind>-history.tsx`: saved-match history editor (pattern: `skull-king-history.tsx`).
+10. Tests mirroring `skull-king.test.ts`, `skull-king-merge.test.ts`, `calculator-registry.test.ts`, `calculator-storage.test.ts`; table fixtures live in `__tests__/test-utils.ts`.
+
 ## Testing Guidelines
 
 Add Vitest tests under `nextjs/__tests__/` using descriptive names like `offline-sync.test.ts`. Backend integration tests live in `elo-web-service/integration_test/` and require Docker, Podman, or Colima. When changing OpenAPI contracts, run generation plus relevant tests. For migrations, verify with `make dev-migrate` or `make dev-up`.
