@@ -306,7 +306,7 @@ type GetTournamentSlotRow struct {
 	SeatCount    int32           `json:"seat_count"`
 }
 
-// Bracket materialization queries (ADR-26, ADR-27): rounds, slots, seats, the
+// Bracket materialization queries (ADR-26, ADR-30): rounds, slots, seats, the
 // slot match series, and the recorded advancements. Standings are never
 // stored — they are derived from the linked matches' scores at
 // read/completion time.
@@ -837,7 +837,7 @@ type SetSlotAdjustmentParams struct {
 	SlotID   id.ID         `json:"slot_id"`
 }
 
-// Organizer adjustment (ADR-26, ADR-27): only for slots with zero linked
+// Organizer adjustment (ADR-26, ADR-30): only for slots with zero linked
 // matches. A NULL argument leaves the current value in place.
 func (q *Queries) SetSlotAdjustment(ctx context.Context, arg SetSlotAdjustmentParams) error {
 	_, err := q.db.Exec(ctx, setSlotAdjustment, arg.GameID, arg.MinScore, arg.SlotID)

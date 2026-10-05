@@ -268,15 +268,18 @@ GROUP BY r.player_id;
 -- ---------------------------------------------------------------------------
 
 -- name: ListArenaPlayers :many
--- Latest settlement state joined with the precalculated stats. Final ranking
--- (league priority, then rating) is applied by the service.
+-- Latest settlement state joined with the precalculated stats, plus the
+-- arena-filtered recent match counts the elite promotion hint needs (same
+-- counts as ListArenaPlayersAt, anchored at now). Final ranking (league
+-- priority, then rating) is applied by the service.
 SELECT p.id AS player_id, p.name AS player_name,
        -- CASE forces sqlc to infer a nullable type: a player whose latest
        -- settlement is after  (or who has none yet) yields a NULL row.
        CASE WHEN latest.rating_after IS NULL THEN NULL ELSE latest.rating_after END AS rating_after,
        CASE WHEN latest.elo_after IS NULL THEN NULL ELSE latest.elo_after END AS elo_after,
        latest.league,
-       st.matches_count, st.first_count, st.second_count, st.third_count, st.fourth_count
+       st.matches_count, st.first_count, st.second_count, st.third_count, st.fourth_count,
+       COALESCE(cnt60.cnt, 0) AS cnt_60, COALESCE(cnt180.cnt, 0) AS cnt_180
 FROM arena_player_stats st
 JOIN players p ON p.id = st.player_id
 LEFT JOIN LATERAL (
@@ -286,6 +289,34 @@ LEFT JOIN LATERAL (
     ORDER BY s.date DESC, s.id DESC
     LIMIT 1
 ) latest ON true
+LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS cnt
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = st.arena_id
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE ms.player_id = p.id
+      AND m.date >= (now() - interval '60 days') AND m.date <= now()
+      AND arena_contains_match(
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+) cnt60 ON true
+LEFT JOIN LATERAL (
+    SELECT COUNT(*)::int AS cnt
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    JOIN arenas a ON a.id = st.arena_id
+    LEFT JOIN match_filters f ON f.id = a.match_filter_id
+    WHERE ms.player_id = p.id
+      AND m.date >= (now() - interval '180 days') AND m.date <= now()
+      AND arena_contains_match(
+    a.camp OR a.tournament_id IS NOT NULL,
+    EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
+    EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
+    m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+) cnt180 ON true
 WHERE st.arena_id = sqlc.arg('arena_id')
 ORDER BY p.name;
 

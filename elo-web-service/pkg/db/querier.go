@@ -264,7 +264,7 @@ type Querier interface {
 	GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tournament, error)
 	GetTournamentOfSlot(ctx context.Context, argID id.ID) (Tournament, error)
 	GetTournamentPlan(ctx context.Context, argID id.ID) (GetTournamentPlanRow, error)
-	// Bracket materialization queries (ADR-26, ADR-27): rounds, slots, seats, the
+	// Bracket materialization queries (ADR-26, ADR-30): rounds, slots, seats, the
 	// slot match series, and the recorded advancements. Standings are never
 	// stored — they are derived from the linked matches' scores at
 	// read/completion time.
@@ -308,8 +308,10 @@ type Querier interface {
 	// ---------------------------------------------------------------------------
 	// Arena page reads
 	// ---------------------------------------------------------------------------
-	// Latest settlement state joined with the precalculated stats. Final ranking
-	// (league priority, then rating) is applied by the service.
+	// Latest settlement state joined with the precalculated stats, plus the
+	// arena-filtered recent match counts the elite promotion hint needs (same
+	// counts as ListArenaPlayersAt, anchored at now). Final ranking (league
+	// priority, then rating) is applied by the service.
 	ListArenaPlayers(ctx context.Context, arenaID id.ID) ([]ListArenaPlayersRow, error)
 	// Point-in-time standings of one arena (for rank-change history): the latest
 	// settlement at or before @at, plus the arena-filtered match counts the elite
@@ -448,7 +450,7 @@ type Querier interface {
 	// (cancellation is carried by the status column).
 	ResolveMarket(ctx context.Context, arg ResolveMarketParams) error
 	SetGameTableHost(ctx context.Context, arg SetGameTableHostParams) (GameTable, error)
-	// Organizer adjustment (ADR-26, ADR-27): only for slots with zero linked
+	// Organizer adjustment (ADR-26, ADR-30): only for slots with zero linked
 	// matches. A NULL argument leaves the current value in place.
 	SetSlotAdjustment(ctx context.Context, arg SetSlotAdjustmentParams) error
 	SetSlotRuling(ctx context.Context, arg SetSlotRulingParams) error

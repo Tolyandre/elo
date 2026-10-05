@@ -400,7 +400,7 @@ func (s *ArenaService) GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]Ar
 			FirstCount:   int(r.FirstCount), SecondCount: int(r.SecondCount),
 			ThirdCount: int(r.ThirdCount), FourthCount: int(r.FourthCount),
 		}
-		applyArenaPlayerHints(&p, float64Or(r.EloAfter, eloSettings.StartingElo), 0, 0, arena, eloSettings)
+		applyArenaPlayerHints(&p, float64Or(r.EloAfter, eloSettings.StartingElo), int(r.Cnt60), int(r.Cnt180), arena, eloSettings)
 		players = append(players, p)
 	}
 

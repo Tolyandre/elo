@@ -292,6 +292,85 @@ func TestArena_GlobalArenaBacksPlayersPage(t *testing.T) {
 	}
 }
 
+// TestArena_EliteHintCountsRecentMatches pins the amateur players-tab hint:
+// matches_left_for_elite must be the deficit against the player's actual
+// arena-filtered match counts in the 60/180-day windows, not the raw
+// requirement.
+func TestArena_EliteHintCountsRecentMatches(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	editor := createNamedTestUser(t, pool, "arenas-editor-hint", "Арена Редактор Хинт")
+	router := setupRouter(pool)
+
+	gameID := string(newID(t))
+	if w := doJSON(t, router, http.MethodPost, "/games", editor, `{"id":"`+gameID+`","name":"Хинтовая игра"}`); w.Code != http.StatusOK {
+		t.Fatalf("create game: %d %s", w.Code, w.Body.String())
+	}
+
+	// starting_rating equals the elo starting value (1000 in the test seed),
+	// so fresh players settle straight into the base (amateur) league.
+	body := `{"name":"Хинт арена","filter":{"game_ids":["` + gameID + `"],"tag_ids":[]},` +
+		`"settings":{"starting_rating":1000,"leagues":[{"kind":"amateur"},{"kind":"elite","matches_6m":20,"matches_2m":3}]}}`
+	w := doJSON(t, router, http.MethodPost, "/arenas", editor, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("create arena: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Id string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created arena: %v", err)
+	}
+
+	p1 := createTestPlayer(t, pool, "Хинт1")
+	p2 := createTestPlayer(t, pool, "Хинт2")
+	svc := newMatchService(pool)
+
+	now := time.Now()
+	for i := 1; i <= 5; i++ {
+		if _, err := svc.AddMatch(ctx, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
+			now.Add(-time.Duration(i)*time.Minute), newMatchOpts(t)); err != nil {
+			t.Fatalf("AddMatch: %v", err)
+		}
+	}
+	// One more match inside the 6-month window only (100 days ago):
+	// cnt60=5, cnt180=6 → deficit = max(20−6, 3−5) = 14 (the bug reported the raw 20).
+	if _, err := svc.AddMatch(ctx, idpkg.ID(gameID), map[idpkg.ID]float64{p1: 100, p2: 50},
+		now.AddDate(0, 0, -100), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch backdated: %v", err)
+	}
+
+	// Full replay so the user-created arena is settled deterministically.
+	if w := doJSON(t, router, http.MethodPost, "/admin/update-arenas", editor, ""); w.Code != http.StatusOK {
+		t.Fatalf("update-arenas: %d %s", w.Code, w.Body.String())
+	}
+
+	arenaID, err := idpkg.ParseTolerant(created.Data.Id)
+	if err != nil {
+		t.Fatalf("parse arena id: %v", err)
+	}
+	arenas := newArenaService(pool)
+	players, err := arenas.GetArenaPlayers(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("GetArenaPlayers: %v", err)
+	}
+	for _, p := range players {
+		if p.ID != p1 && p.ID != p2 {
+			continue
+		}
+		if p.League == nil || *p.League != "amateur" {
+			t.Fatalf("%s league: %v", p.Name, p.League)
+		}
+		if p.MatchesLeftForElite != 14 {
+			t.Fatalf("%s matches_left_for_elite = %d, want 14", p.Name, p.MatchesLeftForElite)
+		}
+	}
+}
+
 // TestArena_MatchesFiltersAndCursor covers the player filter and the cursor
 // pagination of the arena match list (the filter travels inside the token).
 func TestArena_MatchesFiltersAndCursor(t *testing.T) {
