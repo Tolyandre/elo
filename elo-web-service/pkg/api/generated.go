@@ -1143,7 +1143,7 @@ type BracketSlot struct {
 		// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 		MatchId Base58ID `json:"match_id"`
 
-		// Scores Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their share of the leader's margin, rounded to one decimal, in event order.
+		// Scores Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their win-reward-weighted share of the leader's margin, rounded to one decimal, in event order.
 		Scores []struct {
 			// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 			PlayerId Base58ID `json:"player_id"`

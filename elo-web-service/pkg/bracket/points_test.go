@@ -8,13 +8,19 @@ import (
 
 func mustID(s string) id.ID { return id.ID(s) }
 
-// match builds a MatchResult from a player→score map.
+// match builds a MatchResult from a player→score map at the seeded default
+// win reward 1.
 func match(mid string, scores map[string]float64) MatchResult {
+	return matchW(mid, scores, 1)
+}
+
+// matchW is match with an explicit win reward.
+func matchW(mid string, scores map[string]float64, winReward float64) MatchResult {
 	m := map[id.ID]float64{}
 	for pid, sc := range scores {
 		m[mustID(pid)] = sc
 	}
-	return MatchResult{MatchID: mustID(mid), Scores: m}
+	return MatchResult{MatchID: mustID(mid), Scores: m, WinReward: winReward}
 }
 
 func pointsOf(sts []Standing, pid string) int {
@@ -39,43 +45,59 @@ func TestMatchPoints(t *testing.T) {
 	// surplus, capped at 0.95 with +0.05 for every 1st place holder — in
 	// tenths, rounded.
 	cases := []struct {
-		name   string
-		scores map[string]float64
-		want   map[string]int
+		name      string
+		scores    map[string]float64
+		winReward float64
+		want      map[string]int
 	}{
 		{
 			// A 2-seat win: the winner rounds to 1.0, the loser to 0.
-			name:   "two-seat win earns the full 1.0",
-			scores: map[string]float64{"A": 10, "B": 2},
-			want:   map[string]int{"A": 10, "B": 0},
+			name:      "two-seat win earns the full 1.0",
+			scores:    map[string]float64{"A": 10, "B": 2},
+			winReward: 1,
+			want:      map[string]int{"A": 10, "B": 0},
 		},
 		{
 			// The motivating near-equal case (ADR-30): naive rounding
 			// collapsed 13/12 into a tie; the leader bonus keeps the winner
 			// visibly (0.1) ahead — 0.95·16/17 ≈ 0.898 rounds to 0.9.
-			name:   "near-equal finish keeps the winner 0.1 ahead",
-			scores: map[string]float64{"A": 13, "B": 12, "C": -4},
-			want:   map[string]int{"A": 10, "B": 9, "C": 0},
+			name:      "near-equal finish keeps the winner 0.1 ahead",
+			scores:    map[string]float64{"A": 13, "B": 12, "C": -4},
+			winReward: 1,
+			want:      map[string]int{"A": 10, "B": 9, "C": 0},
 		},
 		{
 			// A genuinely shared top: both 1st place holders round to 1.0 —
 			// the standings tie and the slot replays.
-			name:   "shared three-seat top earns 1.0 each",
-			scores: map[string]float64{"A": 3, "B": 3, "C": 1},
-			want:   map[string]int{"A": 10, "B": 10, "C": 0},
+			name:      "shared three-seat top earns 1.0 each",
+			scores:    map[string]float64{"A": 3, "B": 3, "C": 1},
+			winReward: 1,
+			want:      map[string]int{"A": 10, "B": 10, "C": 0},
 		},
 		{
 			// Surpluses 8/5/3/0 of the leader's 8: 1.0 / 0.594 / 0.356 / 0.
-			name:   "four seats split by margin",
-			scores: map[string]float64{"A": 10, "B": 7, "C": 5, "D": 2},
-			want:   map[string]int{"A": 10, "B": 6, "C": 4, "D": 0},
+			name:      "four seats split by margin",
+			scores:    map[string]float64{"A": 10, "B": 7, "C": 5, "D": 2},
+			winReward: 1,
+			want:      map[string]int{"A": 10, "B": 6, "C": 4, "D": 0},
 		},
 		{
 			// All-equal scores leave nothing to separate the players; the
 			// bare first-place bonus rounds to a uniform 0.1.
-			name:   "all-equal scores earn the uniform bonus tenth",
-			scores: map[string]float64{"A": 5, "B": 5, "C": 5},
-			want:   map[string]int{"A": 1, "B": 1, "C": 1},
+			name:      "all-equal scores earn the uniform bonus tenth",
+			scores:    map[string]float64{"A": 5, "B": 5, "C": 5},
+			winReward: 1,
+			want:      map[string]int{"A": 1, "B": 1, "C": 1},
+		},
+		{
+			// The win reward exponent sharpens the margin (ADR-30): the
+			// runner-up holds 0.4 of the leader's surplus, squared at W=2 to
+			// 0.16 — a 0.152 share — while at W=1 the same field earns 0.4.
+			// The same W meaning as the Elo settlement's earn part.
+			name:      "winReward 2 punishes small margins",
+			scores:    map[string]float64{"A": 10, "B": 4, "C": 0},
+			winReward: 2,
+			want:      map[string]int{"A": 10, "B": 2, "C": 0},
 		},
 	}
 	for _, tc := range cases {
@@ -84,10 +106,10 @@ func TestMatchPoints(t *testing.T) {
 			for pid, sc := range tc.scores {
 				m[mustID(pid)] = sc
 			}
-			got := MatchPoints(m)
+			got := MatchPoints(m, tc.winReward)
 			for pid, want := range tc.want {
 				if got[mustID(pid)] != want {
-					t.Errorf("MatchPoints(%v)[%s] = %d, want %d", tc.scores, pid, got[mustID(pid)], want)
+					t.Errorf("MatchPoints(%v, %v)[%s] = %d, want %d", tc.scores, tc.winReward, pid, got[mustID(pid)], want)
 				}
 			}
 		})
@@ -95,21 +117,24 @@ func TestMatchPoints(t *testing.T) {
 }
 
 // TestMatchPointsWinnerEdge pins the ADR-30 guarantee over a sweep of
-// near-equal fields: after rounding, a strict winner is always strictly above
-// the runner-up — by construction at least one tenth.
+// near-equal fields and win rewards: after rounding, a strict winner is
+// always strictly above the runner-up — by construction at least one tenth,
+// whatever the exponent.
 func TestMatchPointsWinnerEdge(t *testing.T) {
-	for leader := 1; leader <= 30; leader++ {
-		for second := 0; second < leader; second++ {
-			for other := 0; other <= second; other++ {
-				scores := map[id.ID]float64{
-					mustID("a"): float64(leader),
-					mustID("b"): float64(second),
-					mustID("c"): float64(other),
-				}
-				pts := MatchPoints(scores)
-				if pts[mustID("a")] <= pts[mustID("b")] {
-					t.Fatalf("leader %d / second %d / other %d: winner %d not above runner-up %d (%+v)",
-						leader, second, other, pts[mustID("a")], pts[mustID("b")], pts)
+	for _, winReward := range []float64{0.5, 1, 2, 5} {
+		for leader := 1; leader <= 30; leader++ {
+			for second := 0; second < leader; second++ {
+				for other := 0; other <= second; other++ {
+					scores := map[id.ID]float64{
+						mustID("a"): float64(leader),
+						mustID("b"): float64(second),
+						mustID("c"): float64(other),
+					}
+					pts := MatchPoints(scores, winReward)
+					if pts[mustID("a")] <= pts[mustID("b")] {
+						t.Fatalf("W=%v leader %d / second %d / other %d: winner %d not above runner-up %d (%+v)",
+							winReward, leader, second, other, pts[mustID("a")], pts[mustID("b")], pts)
+					}
 				}
 			}
 		}

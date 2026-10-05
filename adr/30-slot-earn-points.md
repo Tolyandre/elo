@@ -30,8 +30,11 @@ on the raw scores no longer derives, and the players must replay.
 
 **Slot points measure the margin to the match's leader (ADR-30).** Each match
 awards a share of 1 point per player: the leader's surplus over the worst
-score maps to 0.95, every other score proportionally below (`0.95 × (score −
-worst) / (leader − worst)`) — and every 1st place holder (a shared top
+score maps to 0.95, every other score proportionally below — weighted by the
+win reward, `0.95 × (score − worst)^W / (leader − worst)^W` where W is the
+`elo_settings.win_reward` effective at the match's date, the same exponent
+that shapes the Elo settlement's earn part so a bigger margin of victory
+converts into a bigger share — and every 1st place holder (a shared top
 included) adds 0.05 on top. The share is rounded to **one decimal per
 match**, and slot points are accumulated as **integer tenths**
 (`bracket.PointsTenths`): binary floats cannot represent 0.1, and the
@@ -39,15 +42,17 @@ completion rule compares points with `==`. The wire format divides by 10 once
 at the API boundary.
 
 The 0.95 cap plus the 0.05 first-place bonus give the scale its key property:
-a strict winner always rounds to exactly 1.0 while nobody else can pass 0.9 —
-**rounding can never collapse a decisive win into a tie**. The near-equal
-13/12/−4 finish derives 1.0/0.9/0 and the winner keeps a visible 0.1 edge; a
-genuinely shared top (3/3/1) derives 1.0/1.0/0 and the standings still tie.
-All-equal scores leave nothing to separate the players: everybody is a 1st
-place holder, and the bare bonus rounds to a uniform 0.1. Unlike the first
-revision, no W (win reward) shapes slot points — the share is a pure
-within-match margin, needs no `elo_settings` lookup, and a settings change
-can never influence slot standings.
+a strict winner always rounds to exactly 1.0 while nobody else can pass 0.9,
+whatever the exponent — **rounding can never collapse a decisive win into a
+tie**. The near-equal 13/12/−4 finish derives 1.0/0.9/0 and the winner keeps
+a visible 0.1 edge; a genuinely shared top (3/3/1) derives 1.0/1.0/0 and the
+standings still tie. All-equal scores leave nothing to separate the players:
+the ratio is 0/0 whatever the exponent, everybody is a 1st place holder, and
+the bare bonus rounds to a uniform 0.1. W is resolved per match from
+`elo_settings` effective at the match's date (the seed row starts at
+−infinity, so every date resolves), so a settings change never rewrites
+already-played slot history — the same effective-dating the Elo settlements
+use.
 
 **The minimal advance score.** A slot gains `min_score` (float, 0–10,
 default 0). The organizer sets it per slot after the bracket exists — only

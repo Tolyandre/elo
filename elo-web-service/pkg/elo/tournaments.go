@@ -873,11 +873,14 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 		if err != nil {
 			return db.Tournament{}, nil, fmt.Errorf("list slot matches: %w", err)
 		}
-		matchResults := slotMatchResults(results)
+		matchResults, err := slotMatchResults(ctx, s.Queries, results)
+		if err != nil {
+			return db.Tournament{}, nil, err
+		}
 		// Per-match earned points (ADR-30) in event order, participants in
 		// the query's player-id order.
 		for _, mr := range matchResults {
-			pts := bracket.MatchPoints(mr.Scores)
+			pts := bracket.MatchPoints(mr.Scores, mr.WinReward)
 			bm := BracketMatch{MatchID: mr.MatchID, Scores: make([]BracketMatchScore, 0, len(mr.Scores))}
 			for _, r := range results {
 				if r.MatchID == mr.MatchID {

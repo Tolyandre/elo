@@ -16,12 +16,14 @@ import (
 const PointsTenths = 10
 
 // The per-match share (ADR-30): the leader's surplus over the worst score
-// maps to topShareScale with every other score proportionally below, and
-// every 1st place holder (a shared top included) adds firstPlaceBonus — so
-// the rounded winner sits at exactly 1.0 while nobody else can pass 0.9.
-// Rounding therefore never collapses a decisive win into a tie: a near-equal
-// finish keeps the winner at least 0.1 ahead, and a genuinely shared top
-// still ties and replays.
+// maps to topShareScale with every other score proportionally below — both
+// raised to the winReward power, the same elo_settings win reward the Elo
+// settlement uses, so a bigger margin of victory converts into a bigger
+// share — and every 1st place holder (a shared top included) adds
+// firstPlaceBonus. The rounded winner sits at exactly 1.0 while nobody else
+// can pass 0.9, whatever the exponent: rounding can never collapse a
+// decisive win into a tie, a near-equal finish keeps the winner at least 0.1
+// ahead, and a genuinely shared top still ties and replays.
 const (
 	topShareScale   = 0.95
 	firstPlaceBonus = 0.05
@@ -29,13 +31,17 @@ const (
 
 // MatchPoints returns the slot points, in tenths, each player earns in one
 // match (ADR-30): their score surplus over the worst score as a share of the
-// leader's surplus, scaled to [0, 0.95]; every 1st place holder adds the
-// bonus and rounds to exactly 1.0. All-equal scores leave nothing to separate
-// the players — everybody is a 1st place holder, and the bare bonus rounds to
-// a uniform 0.1. Examples: 13/12/−4 → 1.0/0.9/0 (the near-equal runner-up
-// stays 0.1 behind); 3/3/1 → 1.0/1.0/0 (a shared top ties); a 2-seat win →
-// 1.0/0.
-func MatchPoints(scores map[id.ID]float64) map[id.ID]int {
+// leader's surplus, weighted by the win reward —
+// 0.95 × (score − worst)^winReward / (leader − worst)^winReward — and every
+// 1st place holder adds the bonus, rounding to exactly 1.0. winReward is the
+// elo_settings.win_reward effective at the match's date; the caller supplies
+// it per match so a settings change never rewrites already-played history.
+// All-equal scores leave nothing to separate the players — the ratio is 0/0
+// whatever the exponent — so everybody is a 1st place holder and the bare
+// bonus rounds to a uniform 0.1. Examples at winReward 1: 13/12/−4 →
+// 1.0/0.9/0 (the near-equal runner-up stays 0.1 behind); 3/3/1 → 1.0/1.0/0
+// (a shared top ties); a 2-seat win → 1.0/0.
+func MatchPoints(scores map[id.ID]float64, winReward float64) map[id.ID]int {
 	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(scores)
 	leaderScore := absoluteLoserScore
 	for _, sc := range scores {
@@ -52,7 +58,7 @@ func MatchPoints(scores map[id.ID]float64) map[id.ID]int {
 		return out
 	}
 	for pid, sc := range scores {
-		share := topShareScale * (sc - absoluteLoserScore) / (leaderScore - absoluteLoserScore)
+		share := topShareScale * math.Pow(sc-absoluteLoserScore, winReward) / math.Pow(leaderScore-absoluteLoserScore, winReward)
 		if sc == leaderScore {
 			share += firstPlaceBonus
 		}
@@ -100,17 +106,19 @@ func DerivePlaces(scores map[id.ID]float64) []PlayerPlace {
 
 // MatchResult is one linked match of a slot's series, in chronological order
 // (the caller supplies the order — match date, then id) with its player→score
-// map. Places are derived internally with the codebase's RANK semantics.
+// map and the win reward effective at the match's date. Places are derived
+// internally with the codebase's RANK semantics.
 type MatchResult struct {
-	MatchID id.ID
-	Scores  map[id.ID]float64
+	MatchID   id.ID
+	Scores    map[id.ID]float64
+	WinReward float64
 }
 
 // Standing is one player's cumulative slot standing.
 type Standing struct {
 	PlayerID id.ID
 	// Points is the cumulative slot score in tenths (ADR-30): each match
-	// contributes its per-match share rounded to one decimal.
+	// contributes its win-reward-weighted share rounded to one decimal.
 	Points int
 	// Order is the player's place in each linked match, most recent first —
 	// the display tie-break (a later match can overturn an earlier leader).
@@ -141,7 +149,7 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	accs := make(map[id.ID]*acc, seats*2)
 	ids := make([]id.ID, 0, seats)
 	for i, places := range derived {
-		points := MatchPoints(matches[i].Scores)
+		points := MatchPoints(matches[i].Scores, matches[i].WinReward)
 		for _, p := range places {
 			a := accs[p.PlayerID]
 			if a == nil {

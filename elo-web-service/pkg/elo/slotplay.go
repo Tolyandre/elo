@@ -265,7 +265,10 @@ func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries,
 	if err != nil {
 		return nil, false, fmt.Errorf("list slot matches: %w", err)
 	}
-	matchResults := slotMatchResults(results)
+	matchResults, err := slotMatchResults(ctx, q, results)
+	if err != nil {
+		return nil, false, err
+	}
 	if len(matchResults) > 0 {
 		sts := bracket.Standings(matchResults, int(slot.SeatCount))
 		if bracket.StrictCut(sts, int(slot.Advance), bracket.MinScoreTenths(slot.MinScore)) {
@@ -280,22 +283,36 @@ func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries,
 }
 
 // slotMatchResults assembles the slot's linked-match rows (event order:
-// date, then match id) into bracket.MatchResults for the standings math.
-func slotMatchResults(results []db.ListSlotMatchResultsRow) []bracket.MatchResult {
+// date, then match id) into bracket.MatchResults for the standings math,
+// resolving each match's win reward from the effective-dated elo_settings
+// (the seed row starts at -infinity, so every date resolves; one lookup per
+// distinct match keeps the read path cheap).
+func slotMatchResults(ctx context.Context, q *db.Queries, results []db.ListSlotMatchResultsRow) ([]bracket.MatchResult, error) {
+	rewards := make(map[id.ID]float64, len(results))
 	var matchResults []bracket.MatchResult
 	lastID := id.ID("")
 	for _, r := range results {
 		if r.MatchID != lastID {
+			w, ok := rewards[r.MatchID]
+			if !ok {
+				set, err := q.GetEloSettingsForDate(ctx, r.Date)
+				if err != nil {
+					return nil, fmt.Errorf("get elo settings for the date of match %s: %w", r.MatchID, err)
+				}
+				w = set.WinReward
+				rewards[r.MatchID] = w
+			}
 			matchResults = append(matchResults, bracket.MatchResult{
-				MatchID: r.MatchID,
-				Scores:  make(map[id.ID]float64, 4),
+				MatchID:   r.MatchID,
+				Scores:    make(map[id.ID]float64, 4),
+				WinReward: w,
 			})
 			lastID = r.MatchID
 		}
 		mr := &matchResults[len(matchResults)-1]
 		mr.Scores[r.PlayerID] = r.Score
 	}
-	return matchResults
+	return matchResults, nil
 }
 
 // outcomeChanged reports whether the desired ordered advancement set differs
@@ -1066,7 +1083,10 @@ func (s *TournamentService) refillSeatCaches(ctx context.Context, q *db.Queries,
 		return fmt.Errorf("list slot matches: %w", err)
 	}
 	if len(results) > 0 {
-		matchResults := slotMatchResults(results)
+		matchResults, err := slotMatchResults(ctx, q, results)
+		if err != nil {
+			return err
+		}
 		if len(matchResults) > 0 && source.SeatCount >= 2 {
 			sts := bracket.Standings(matchResults, int(source.SeatCount))
 			for _, st := range sts {
