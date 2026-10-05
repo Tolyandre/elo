@@ -2,6 +2,8 @@
 
 ## Project Structure & Module Organization
 
+Elo rating tracker for board games: a Go backend, a Next.js (Serwist PWA) frontend, PostgreSQL, OpenAPI-specified REST API, Google OAuth2 auth. This file is the single source of guidance for agents and contributors (CLAUDE.md points here).
+
 This repository contains a Go backend, Next.js frontend, OpenAPI specs, and deployment tooling.
 
 - `elo-web-service/`: Go service, migrations, generated API code, config, and integration tests in `integration_test/`.
@@ -15,7 +17,7 @@ This repository contains a Go backend, Next.js frontend, OpenAPI specs, and depl
 - `openapi/`: source API specifications. Update these before regenerating API clients/server bindings. Every id-bearing property MUST reference the shared `Base58ID` schema (`openapi/common.yaml`) — the openapilint test fails the build otherwise. Path/query params with id values stay plain `type: string` (parsed via `id.ParseTolerant` in handlers).
 - `nix/`, `flake.nix`, `flake.lock`: Nix packaging and deployment definitions (backend, frontend, NixOS modules, VM integration test). The dev environment lives in `devenv.nix`/`devenv.yaml`/`devenv.lock` instead.
 - `mock-oauth2/`: minimal OAuth2/OIDC mock for local dev (started by `make dev-up`). Its login page lists every user from the dev database (`DB_DSN`) and lets you log in as any of them or as a new display name (sub derived from the name; the backend creates the user on first login) — handy for debugging multi-user flows or after `make copy-prod-db-to-dev`.
-- `adr/`: architecture decision records.
+- `adr/`: architecture decision records; `adr/README.md` indexes them. When a change contradicts an ADR, update the ADR in the same change.
 
 ## Build, Test, and Development Commands
 
@@ -50,10 +52,15 @@ The service is pure Go (`CGO_ENABLED=0` everywhere, including the Nix build) —
 Container runtimes for the integration tests: `DOCKER_HOST`/`CONTAINER_HOST` are unset in the ambient environment, but the Makefile targets set `DOCKER_HOST=unix:///run/user/1000/podman/podman.sock` explicitly. That user-scoped podman socket must exist and be reachable; `podman ps` is the quick reachability check.
 
 - `make dev-up`: start Postgres and mock OAuth, run migrations, and seed local data.
+- `make dev-seed`: re-apply idempotent seed data (`elo-web-service/testdata/seed.sql`).
+- `make dev-migrate`: re-apply migrations against the dev DB.
 - `make backend-run`: run the Go backend with Docker-oriented config.
 - `make frontend-run`: run the Next.js dev server.
 - `make dev-down`: stop local Docker Compose dependencies.
 - `make generate-api`: regenerate Go and TypeScript API code after editing `openapi/`.
+- `sqlc generate` (inside `elo-web-service/`): regenerate `pkg/db` after editing `pkg/db/query/*.sql`.
+- `go test -C elo-web-service ./pkg/elo/ -run TestName`: run a single Go test.
+- Backend without make (inside `elo-web-service/`): `go run . --config-path ./config/config.dev.yaml`; migrations against an explicit DSN: `go run . --migrate-db-dsn=postgres://... --migrate-db`.
 - `gomod2nix generate` (run inside `elo-web-service/`): regenerate `gomod2nix.toml` after **any** change to `go.mod` (adding/upgrading a dependency via `go get`). Nix builds the Go service with `-mod=vendor` from `gomod2nix.toml`, so an out-of-date manifest breaks `nix build` / `nix flake check` even though `go build ./...` works. Always commit `go.mod`, `go.sum`, and `gomod2nix.toml` together.
 - `pnpm --dir ./nextjs lint`: lint frontend code.
 - `pnpm --dir ./nextjs test`: run frontend Vitest tests.
@@ -103,7 +110,23 @@ Keep one-off tools out of `devenv.nix` — pinning them there is a deliberate de
 
 Format Go code with `gofmt`; keep packages lowercase and tests named `*_test.go`. TypeScript/React code uses ESLint, functional components, and kebab-case route folders under `nextjs/app/`. Prefer patterns from `nextjs/components/` and shared UI primitives in `nextjs/components/ui/`. Update generated files such as `nextjs/app/api-types.gen.ts` via generation commands, not by hand.
 
+**Frontend UI:** use shadcn/ui primitives from `nextjs/components/ui/` (`Button`, `Card`, `Dialog`, `Label`, …) instead of raw HTML elements. Mobile-first: every page must work on small screens without horizontal scroll — for wide data use `hidden sm:block` desktop table + `sm:hidden` card/list layout; prefer `flex-col sm:flex-row` and `grid-cols-1 sm:grid-cols-2`.
+
 **Identifiers (ADR-12):** entity ids are `id.ID` (canonical UUID) in Go and a branded `Base58ID` in TypeScript; the Base58 wire conversion is structural — never hand-encode/decode ids in business code. In Go, take/return `id.ID` (DB and DTO fields are typed); parse raw path/query params with `api.parseIDParam`. In TypeScript, ids from URLs or untyped JSON go through `toBase58ID`; plain strings do not typecheck as ids. Adding an id field means referencing `#/Base58ID` in the spec and regenerating (`make generate-api`) — the openapilint test catches omissions.
+
+## Architecture Notes
+
+**Backend (Go).** `main.go` wires the Gin router (CORS, auth middleware, explicit route registrations), the DB pool, and the services. `pkg/api/` holds the HTTP handlers; `pkg/api/generated.go` and `pkg/db/*.sql.go` are generated — do not edit. `pkg/elo/` is the domain core: the Elo math (`CalculateNewElo` normalizes multi-player scores relative to the lowest, computes win expectations, adjusts ratings via K and D) plus the feature services (arenas, markets, tournaments, game tables). Go codegen is two steps, both automatic via `make generate-go-api` → `go generate ./pkg/api/`: (1) `tools/bundle-openapi` resolves cross-file `$ref`s into `openapi/bundled.json` (gitignored intermediate — never edit), preserving the short alias type names; (2) `oapi-codegen` writes `pkg/api/generated.go` (types, Gin server interface, strict handlers).
+
+**Schema migrations are up-only**: `elo-web-service/migrations/NNN_description.up.sql`, embedded via `embed_migrations.go`. No down files — to roll back, write a new forward migration.
+
+**OpenAPI contract.** `openapi/openapi.yaml` is the entry point with `$ref`s into per-domain files: `common`, `admin`, `arenas`, `audit`, `auth`, `clubs`, `games`, `markets`, `matches`, `players`, `settings`, `tables`, `tags`, `tournaments`, `users` (all `.yaml`). SSE endpoints are intentionally not in the spec — `nextjs/hooks/useTableSSE.ts` uses manual fetch.
+
+**Frontend state.** Pages are client components; global state lives in React contexts: `SettingsProvider` (Elo K/D), `PlayersProvider`, `MatchesProvider`, `GamesProvider`, `MeProvider` (identity; caches in localStorage so `canEdit` gating works offline), `OfflineProvider` (`app/offline/OfflineContext.tsx` — pending offline writes + auto-sync). `app/api.ts` is the central `openapi-fetch` client; `app/api-types.gen.ts` is generated from the spec.
+
+**Offline mode (PWA).** Offline-created matches/players/games live in localStorage (`offline-pending-v1`; types in `nextjs/lib/offline/types.ts`). Temp ids are `"offline:<uuid>"`, sent as `idempotency_key` on sync so retries never create duplicates. The sync engine (`nextjs/lib/offline/sync.ts`, pure/DI, vitest-covered) pushes games → players → matches in creation order, rewriting temp ids to server ids; HTTP errors mark the item `error` (user-editable), network errors abort the run, 401 sets `authRequired`. Pages and calculators submit matches via `useOffline().submitMatch(...)` — never `addMatchPromise` directly: it queues offline when there is no network OR the request fails at the network level. `OfflineContext` probes `/ping` with exponential backoff (30s→15min, reset on focus/online/navigation/new pending); `apiReachable === false` shows the crossed-cloud indicator (`components/sync-status.tsx`) and recovery auto-triggers a resync. Service worker: Serwist (`app/sw.ts`), precaching each page's HTML **and** RSC `.txt` payload; API GETs are NetworkFirst (`elo-api` cache); `/ping`, `/auth/*`, SSE, and all writes are NetworkOnly. **When adding a page, add its route to `nextjs/lib/offline/routes.ts`** — `scripts/check-precache.mjs` (runs after `pnpm build`) fails otherwise. Production builds use webpack (`next build --webpack`) because `@serwist/next` hooks webpack; `next dev` stays on Turbopack with the SW disabled. basePath comes from `NEXT_PUBLIC_BASE_PATH` (`/elo` on GitHub Pages).
+
+**Database.** Key tables: `clubs`, `players`, `player_club_membership`, `games`, `matches`, `match_scores` (per-player scores), `player_ratings` (Elo time series), `users` (OAuth2 users with edit permissions), plus the arena/market/tournament tables introduced by later ADRs.
 
 ## Testing Guidelines
 
@@ -116,3 +139,5 @@ Recent commits follow concise Conventional Commit-style subjects, for example `f
 ## Security & Configuration Tips
 
 Do not commit secrets. Use `.env.sample`, `.env.docker`, and local untracked env files as references. Document OAuth credentials, database passwords, and required manual setup in the PR.
+
+Backend config is `elo-web-service/config/config.dev.yaml`, overridable with `ELO_WEB_SERVICE_`-prefixed env vars. Required secrets: `ELO_WEB_SERVICE_OAUTH2_CLIENT_ID`, `ELO_WEB_SERVICE_OAUTH2_CLIENT_SECRET`, `ELO_WEB_SERVICE_COOKIE_JWT_SECRET`, `ELO_WEB_SERVICE_POSTGRES_PASSWORD`. Frontend needs `NEXT_PUBLIC_ELO_WEB_SERVICE_BASE_URL` (and `NEXT_PUBLIC_BASE_PATH` for static-export deploys) in `nextjs/.env.local`.

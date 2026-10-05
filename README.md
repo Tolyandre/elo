@@ -62,6 +62,8 @@ make frontend-run
 make dev-down
 ```
 
+`make dev-up` also starts the [mock-oauth2](mock-oauth2/) server for local development: its login page lists every user from the dev database and lets you sign in as any of them (or as a new display name) without real Google credentials.
+
 You can also run the project with vscode, see [launch.json](.vscode/launch.json).
 
 ## Google OAuth2
@@ -72,7 +74,7 @@ To setup credentials use [Google Cloud Console](https://console.developers.googl
 
 Create a new OAuth 2.0 Client ID for elo-web-service. Setup authorized JavaScript origins (where static html files are hosted, for GitHub pages I use `https://tolyandre.gitbub.com`). Setup Authorized redirect URIs (I use self-hosted server, in my case it is `https://toly.is-cool.dev/elo-web-service/sessions/oauth/google`).
 
-Download client secret and setup environment variables (see [.env.sample](./elo-web-service/.env.sample`))
+Download client secret and setup environment variables (see [.env.sample](./elo-web-service/.env.sample))
 
 Edit branding and OAuth consent screen.
 
@@ -229,9 +231,7 @@ Store it outside the Nix store (e.g. via [sops-nix](https://github.com/Mic92/sop
 
 ## Database (Postgres)
 
-Run following queries in context of a test database.
-
-## Prepare database
+### Prepare a test database
 
 Creating a user for testing:
 
