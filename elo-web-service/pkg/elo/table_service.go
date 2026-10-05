@@ -58,20 +58,35 @@ type TableSubmitInput struct {
 // TableSummary is the public representation sent to clients. GameState is the
 // per-game state document in its wire form (Base58 player ids) — every write
 // path normalizes through the game's typed state, so it passes through raw.
-// SSE frames bypass the idcodec middleware, hence the explicit short ids here.
-// HostClientToken identifies the device that last claimed hosting: a host
-// session whose token differs steps down to player/viewer mode (empty string
-// on legacy tables — nothing enforces it).
+// The id fields are typed: their JSON hooks emit the short wire form, so both
+// the HTTP responses and the SSE frames (which bypass the idcodec middleware)
+// encode ids identically (ADR-12). HostClientToken identifies the device that
+// last claimed hosting: a host session whose token differs steps down to
+// player/viewer mode (empty string on legacy tables — nothing enforces it).
 type TableSummary struct {
-	ID                 string          `json:"id"`
-	GameID             string          `json:"game_id"`
-	HostUserID         string          `json:"host_user_id"`
+	ID                 id.ID           `json:"id"`
+	GameID             id.ID           `json:"game_id"`
+	HostUserID         id.ID           `json:"host_user_id"`
 	HostClientToken    string          `json:"host_client_token"`
 	GameState          json.RawMessage `json:"game_state"`
-	ConnectedPlayerIDs []string        `json:"connected_player_ids"`
+	ConnectedPlayerIDs []id.ID         `json:"connected_player_ids"`
 	Version            int64           `json:"version"`
 	CreatedAt          time.Time       `json:"created_at"`
 	ExpiresAt          time.Time       `json:"expires_at"`
+}
+
+// savedMatchPayload is the "saved" SSE frame: the host saved the table's match,
+// and connected players redirect to it.
+type savedMatchPayload struct {
+	MatchID id.ID `json:"match_id"`
+}
+
+// tableInvitePayload is the transient "table-invite" SSE frame.
+type tableInvitePayload struct {
+	TableID  id.ID  `json:"table_id"`
+	GameID   id.ID  `json:"game_id"`
+	Game     string `json:"game"`
+	HostName string `json:"host_name"`
 }
 
 // ─── Per-game behavior ────────────────────────────────────────────────────────
@@ -145,20 +160,13 @@ func (s *TableService) toSummary(row db.GameTable) (TableSummary, error) {
 	if _, ok := tableGames[row.GameID]; !ok {
 		return TableSummary{}, fmt.Errorf("unknown game on table %s", row.ID)
 	}
-	// SSE frames bypass the idcodec middleware (it only rewrites buffered
-	// application/json responses), so the short id encoding every other payload
-	// uses is applied here, at construction.
-	connected := make([]string, len(row.ConnectedPlayerIds))
-	for i, pid := range row.ConnectedPlayerIds {
-		connected[i] = string(pid.Base58())
-	}
 	return TableSummary{
-		ID:                 string(row.ID.Base58()),
-		GameID:             string(row.GameID.Base58()),
-		HostUserID:         string(row.HostUserID.Base58()),
+		ID:                 row.ID,
+		GameID:             row.GameID,
+		HostUserID:         row.HostUserID,
 		HostClientToken:    row.HostClientToken,
 		GameState:          row.GameState,
-		ConnectedPlayerIDs: connected,
+		ConnectedPlayerIDs: row.ConnectedPlayerIds,
 		Version:            row.Version,
 		CreatedAt:          row.CreatedAt,
 		ExpiresAt:          row.ExpiresAt,
@@ -180,7 +188,7 @@ func (s *TableService) broadcast(tableID id.ID, summary TableSummary) {
 func (s *TableService) broadcastSavedMatch(tableID, matchID id.ID) {
 	payload, err := json.Marshal(SSEEvent{
 		Type: "saved",
-		Data: map[string]string{"match_id": string(matchID.Base58())},
+		Data: savedMatchPayload{MatchID: matchID},
 	})
 	if err != nil {
 		return
@@ -228,11 +236,11 @@ func (s *TableService) broadcastInvites(row db.GameTable, summary TableSummary, 
 
 	payload, err := json.Marshal(SSEEvent{
 		Type: "table-invite",
-		Data: map[string]string{
-			"table_id":  summary.ID,
-			"game_id":   summary.GameID,
-			"game":      Games[row.GameID].Title,
-			"host_name": host.GoogleOauthUserName,
+		Data: tableInvitePayload{
+			TableID:  summary.ID,
+			GameID:   summary.GameID,
+			Game:     Games[row.GameID].Title,
+			HostName: host.GoogleOauthUserName,
 		},
 	})
 	if err != nil {

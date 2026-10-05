@@ -95,6 +95,14 @@ func (a *API) broadcastDataChange(matches, players bool) {
 	}
 }
 
+// matchRecordedPayload is the "match-recorded" SSE frame. The id field is
+// typed: its JSON hook emits the short wire form even though SSE frames bypass
+// the JSON DTO layer (ADR-12).
+type matchRecordedPayload struct {
+	MatchID   id.ID  `json:"match_id"`
+	ActorName string `json:"actor_name"`
+}
+
 // notifyMatchRecorded sends a match-recorded event to the user controlling
 // each match player, except the acting editor (they know what they did).
 // Failures are silent: a missed notification must never fail the write.
@@ -108,11 +116,7 @@ func (a *API) notifyMatchRecorded(ctx context.Context, matchID id.ID, playerIDs 
 	}
 	payload, err := json.Marshal(elo.SSEEvent{
 		Type: "match-recorded",
-		Data: map[string]string{
-			// SSE frames bypass the JSON DTO layer — wire-form id (ADR-12).
-			"match_id":   string(matchID.Base58()),
-			"actor_name": actorName,
-		},
+		Data: matchRecordedPayload{MatchID: matchID, ActorName: actorName},
 	})
 	if err != nil {
 		return

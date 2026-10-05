@@ -542,7 +542,7 @@ func TestGameTables_JoinSignalsLobby(t *testing.T) {
 	}
 	found := false
 	for _, pid := range summary.ConnectedPlayerIDs {
-		if pid == string(guestPlayer.Base58()) {
+		if pid == guestPlayer {
 			found = true
 		}
 	}

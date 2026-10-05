@@ -14,30 +14,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-// idsToStrings / stringsToIDs bridge between canonical DB ids and the plain
-// string slices the response DTO layer still uses.
-func idsToStrings(ids []id.ID) []string {
-	if ids == nil {
-		return nil
-	}
-	out := make([]string, len(ids))
-	for i, v := range ids {
-		out[i] = string(v)
-	}
-	return out
-}
-
-func stringsToIDs(ss []string) []id.ID {
-	if ss == nil {
-		return nil
-	}
-	out := make([]id.ID, len(ss))
-	for i, v := range ss {
-		out[i] = id.ID(v)
-	}
-	return out
-}
-
 // marketParams is the base (non-pointer) type constraint: both Market_Params and
 // MarketDetail_Params expose the same discriminator-setting methods on their
 // pointer receivers. The pointer type is modeled separately (paramsFiller) so
