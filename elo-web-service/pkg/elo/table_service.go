@@ -1,6 +1,7 @@
 package elo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,19 +42,9 @@ type TablePlayer struct {
 	Name string `json:"name"`
 }
 
-// TableSubmitInput carries a connected player's submission. Which fields are
-// required is decided by the table's game: skull-king reads bid, or
-// actual+bonus (by phase); iaww reads a partial column update — directVp
-// (null keeps the current value), cells (count 0 clears a row), and done
-// (omitted behaves as true, the legacy one-shot submit).
-type TableSubmitInput struct {
-	Bid      *int       `json:"bid"`      // skull-king (waiting-for-bids)
-	Actual   *int       `json:"actual"`   // skull-king (result-entry)
-	Bonus    int        `json:"bonus"`    // skull-king (result-entry)
-	DirectVp *int       `json:"directVp"` // iaww
-	Cells    []IawwCell `json:"cells"`    // iaww
-	Done     *bool      `json:"done"`     // iaww
-}
+// TableSubmitInput was the shared submission union; each game now unmarshals
+// its own submit shape (see tableGame.applySubmit), so a game only ever sees
+// its own fields.
 
 // TableSummary is the public representation sent to clients. GameState is the
 // per-game state document in its wire form (Base58 player ids) — every write
@@ -96,9 +87,10 @@ type tableGame interface {
 	// normalize validates the state structure and returns its canonical
 	// wire-form encoding (Base58 player ids, ADR-12).
 	normalize(state json.RawMessage) (json.RawMessage, error)
-	// applySubmit validates the player's input against the current state and
-	// returns the mutated state. Called with the table row locked.
-	applySubmit(state json.RawMessage, playerID id.ID, input TableSubmitInput) (json.RawMessage, error)
+	// applySubmit unmarshals the raw submit body into the game's own input
+	// shape and applies it against the state. Called with the table row
+	// locked.
+	applySubmit(state json.RawMessage, playerID id.ID, submit json.RawMessage) (json.RawMessage, error)
 	// playerIDs extracts the app player ids participating in the state
 	// (invite fan-out).
 	playerIDs(state json.RawMessage) []id.ID
@@ -117,7 +109,7 @@ type ITableService interface {
 	GetTable(ctx context.Context, tableID id.ID) (TableSummary, error)
 	UpdateTableState(ctx context.Context, tableID, hostUserID id.ID, expectedVersion int64, newState json.RawMessage) (TableSummary, error)
 	JoinTable(ctx context.Context, tableID, playerID id.ID) (TableSummary, error)
-	SubmitTable(ctx context.Context, tableID, playerID id.ID, input TableSubmitInput) (TableSummary, error)
+	SubmitTable(ctx context.Context, tableID, playerID id.ID, submit json.RawMessage) (TableSummary, error)
 	TakeoverTable(ctx context.Context, tableID, userID id.ID, hostClientToken string, allowNonHost bool) (TableSummary, error)
 	DeleteTable(ctx context.Context, tableID, hostUserID id.ID, savedMatchID id.ID) error
 	DeleteExpiredTables(ctx context.Context) error
@@ -144,11 +136,24 @@ func NewTableService(pool *pgxpool.Pool, hub *Hub) ITableService {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// parseID canonicalizes a table id or fails.
 func parseID(s id.ID) (id.ID, error) {
 	if _, err := uuid.Parse(string(s)); err != nil {
 		return "", fmt.Errorf("invalid table id: %w", err)
 	}
 	return s, nil
+}
+
+// decodeSubmit decodes a raw submit body into a game's input shape, rejecting
+// fields the game does not know: a payload for another game (or a typo) is a
+// client bug, never an empty update.
+func decodeSubmit(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	return nil
 }
 
 // toSummary renders a row for clients; HostConnected is derived from the
@@ -469,9 +474,9 @@ func (s *TableService) TakeoverTable(ctx context.Context, tableID, userID id.ID,
 
 // SubmitTable applies a connected player's input (bid, round result, or
 // scoring) to the table's game state. The row is locked for the
-// read-modify-write so concurrent submissions never lose updates; validation
-// and the merge itself are delegated to the table's game.
-func (s *TableService) SubmitTable(ctx context.Context, tableID, playerID id.ID, input TableSubmitInput) (TableSummary, error) {
+// read-modify-write so concurrent submissions never lose updates; the raw
+// submit body is decoded by the table's game into its own input shape.
+func (s *TableService) SubmitTable(ctx context.Context, tableID, playerID id.ID, submit json.RawMessage) (TableSummary, error) {
 	pgID, err := parseID(tableID)
 	if err != nil {
 		return TableSummary{}, ErrTableNotFound
@@ -492,7 +497,7 @@ func (s *TableService) SubmitTable(ctx context.Context, tableID, playerID id.ID,
 			return db.GameTable{}, ErrUnknownGame
 		}
 
-		newState, err := game.applySubmit(row.GameState, playerID, input)
+		newState, err := game.applySubmit(row.GameState, playerID, submit)
 		if err != nil {
 			return db.GameTable{}, err
 		}

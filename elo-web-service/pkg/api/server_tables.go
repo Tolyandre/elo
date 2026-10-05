@@ -170,14 +170,9 @@ func (s *StrictServer) SubmitTable(ctx context.Context, request SubmitTableReque
 		return nil, err
 	}
 
-	// The submit union is a raw passthrough, so decode it into the service's
-	// input shape directly — the same body the gin handler bound before.
-	var input elo.TableSubmitInput
-	if err := json.Unmarshal(request.Body.union, &input); err != nil {
-		return SubmitTable400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
-	}
-
-	table, err := s.api.TableService.SubmitTable(ctx, parseIDParam(request.Id), playerID, input)
+	// The raw submit body goes to the table's game, which decodes its own
+	// input shape and maps decode failures to ErrInvalidInput (400).
+	table, err := s.api.TableService.SubmitTable(ctx, parseIDParam(request.Id), playerID, request.Body.union)
 	if errors.Is(err, elo.ErrTableNotFound) {
 		return SubmitTable404JSONResponse{Status: StatusFail, Message: "table not found"}, nil
 	}

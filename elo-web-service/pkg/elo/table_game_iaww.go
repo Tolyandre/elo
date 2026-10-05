@@ -70,14 +70,23 @@ func (iawwTableGame) normalize(raw json.RawMessage) (json.RawMessage, error) {
 	return json.Marshal(gs)
 }
 
-func (iawwTableGame) applySubmit(raw json.RawMessage, playerID id.ID, input TableSubmitInput) (json.RawMessage, error) {
+// iawwSubmit is the game's submit shape: a partial column update — directVp
+// (null keeps the current value), cells (count 0 clears a row), and done
+// (omitted behaves as true, the legacy one-shot submit).
+type iawwSubmit struct {
+	DirectVp *int       `json:"directVp"`
+	Cells    []IawwCell `json:"cells"`
+	Done     *bool      `json:"done"`
+}
+
+func (iawwTableGame) applySubmit(raw json.RawMessage, playerID id.ID, submit json.RawMessage) (json.RawMessage, error) {
 	var gs iawwGameState
 	if err := json.Unmarshal(raw, &gs); err != nil {
 		return nil, fmt.Errorf("corrupt game state: %w", err)
 	}
-
-	if input.Bid != nil || input.Actual != nil {
-		return nil, fmt.Errorf("%w: not a skull king table", ErrInvalidInput)
+	var input iawwSubmit
+	if err := decodeSubmit(submit, &input); err != nil {
+		return nil, err
 	}
 
 	entryIdx := -1

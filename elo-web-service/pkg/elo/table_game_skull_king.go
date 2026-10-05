@@ -54,10 +54,22 @@ func (skullKingTableGame) normalize(raw json.RawMessage) (json.RawMessage, error
 	return json.Marshal(gs)
 }
 
-func (skullKingTableGame) applySubmit(raw json.RawMessage, playerID id.ID, input TableSubmitInput) (json.RawMessage, error) {
+// skullKingSubmit is the game's submit shape: a bid (while waiting for bids)
+// or a round result (during result entry).
+type skullKingSubmit struct {
+	Bid    *int `json:"bid"`
+	Actual *int `json:"actual"`
+	Bonus  int  `json:"bonus"`
+}
+
+func (skullKingTableGame) applySubmit(raw json.RawMessage, playerID id.ID, submit json.RawMessage) (json.RawMessage, error) {
 	var gs skullKingGameState
 	if err := json.Unmarshal(raw, &gs); err != nil {
 		return nil, fmt.Errorf("corrupt game state: %w", err)
+	}
+	var input skullKingSubmit
+	if err := decodeSubmit(submit, &input); err != nil {
+		return nil, err
 	}
 	switch {
 	case input.Bid != nil:
