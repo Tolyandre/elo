@@ -101,10 +101,10 @@ describe("mergeTableStates", () => {
         expect(merged.currentRound).toBe(3);
     });
 
-    it("falls back to the fresh state for unknown games or mismatched shapes", () => {
+    it("fails loudly for an unregistered game instead of dropping the local edit", () => {
         const before = sk("waiting-for-bids", 2);
         const local = { ...before, phase: "bid-review" as const };
         const fresh = sk("result-entry", 3);
-        expect(mergeTableStates(pid("gUnknown"), before, local, fresh)).toBe(fresh);
+        expect(() => mergeTableStates(pid("gUnknown"), before, local, fresh)).toThrow(/no game app/);
     });
 });

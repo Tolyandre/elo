@@ -54,6 +54,13 @@ export type GameApp = {
     createInitialState(players: TablePlayer[]): TableGameState;
     /** One-line status of a running table for the lobby ("Раунд 3", …). */
     statusText(state: TableGameState): string;
+    /**
+     * Three-way merge of a stale local edit onto the fresh server state
+     * (version-conflict resolution, described in useTableSession). Typed
+     * here per game: the dispatch is by the table's game_id alone — the id
+     * is the explicit discriminant, so no structural checks are needed.
+     */
+    mergeStates(before: TableGameState, local: TableGameState, fresh: TableGameState): TableGameState;
 };
 
 export const GAME_APPS: GameApp[] = [
@@ -78,6 +85,12 @@ export const GAME_APPS: GameApp[] = [
             const s = state as SkullKingGameState; // only called with this game's state
             return s.phase === "setup" ? "Ожидание игроков" : `Раунд ${s.currentRound}`;
         },
+        mergeStates: (before, local, fresh) =>
+            mergeSkullKingStates(
+                before as SkullKingGameState,
+                local as SkullKingGameState,
+                fresh as SkullKingGameState,
+            ),
     },
     {
         id: GAME_ID_IAWW,
@@ -101,6 +114,8 @@ export const GAME_APPS: GameApp[] = [
             const done = s.entries.filter((e) => e.done).length;
             return `Готовы ${done}/${s.entries.length}`;
         },
+        mergeStates: (before, local, fresh) =>
+            mergeIawwStates(before as IawwGameState, local as IawwGameState, fresh as IawwGameState),
     },
 ];
 
@@ -129,9 +144,9 @@ export function isIawwState(state: TableGameState, gameId?: Base58ID): state is 
 /**
  * Three-way merge of a host patch with the fresh server state, dispatched by
  * the table's game (the per-game merges are described in useTableSession).
- * Falls back to the fresh state when the game or the state shapes do not
- * match — the tables page renders only known games, so this is a safety net,
- * not a normal path.
+ * Throws for an unregistered game: every GAME_APPS entry carries its merge,
+ * so reaching this with an unknown id means a game was wired up incompletely
+ * — failing loudly beats silently dropping the local edit.
  */
 export function mergeTableStates(
     gameId: Base58ID,
@@ -139,17 +154,7 @@ export function mergeTableStates(
     local: TableGameState,
     fresh: TableGameState,
 ): TableGameState {
-    if (
-        gameId === GAME_ID_SKULL_KING &&
-        isSkullKingState(before) && isSkullKingState(local) && isSkullKingState(fresh)
-    ) {
-        return mergeSkullKingStates(before, local, fresh);
-    }
-    if (
-        gameId === GAME_ID_IAWW &&
-        isIawwState(before) && isIawwState(local) && isIawwState(fresh)
-    ) {
-        return mergeIawwStates(before, local, fresh);
-    }
-    return fresh;
+    const app = gameAppByGameId(gameId);
+    if (!app) throw new Error(`mergeTableStates: no game app for game_id ${gameId}`);
+    return app.mergeStates(before, local, fresh);
 }

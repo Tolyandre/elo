@@ -6,12 +6,7 @@
 // informed choice happens in the edit dialog before saving).
 
 import type { IawwCell, IawwGameState } from "@/app/api";
-
-// If the editor didn't touch a field, the server's value wins; if they did,
-// their value wins (equal edits collapse naturally).
-function threeWay<T>(base: T, local: T, fresh: T): T {
-    return local === base ? fresh : local;
-}
+import { threeWay } from "@/lib/three-way";
 
 /** Merges multiplier cells keyed by row; absence counts as a value. */
 function mergeCells(before: IawwCell[], local: IawwCell[], fresh: IawwCell[]): IawwCell[] {

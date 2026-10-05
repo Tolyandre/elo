@@ -7,6 +7,7 @@
 // dialog). Mirrors components/calculators/iaww/merge.
 
 import type { SkullKingGameState, SkullKingRoundEntry } from "@/app/api";
+import { threeWay } from "@/lib/three-way";
 
 type RoundSlot = SkullKingRoundEntry | null;
 
@@ -14,13 +15,6 @@ function slotSame(a: RoundSlot, b: RoundSlot): boolean {
     if (a === b) return true;
     if (!a || !b) return false;
     return a.bid === b.bid && a.actual === b.actual && a.bonus === b.bonus;
-}
-
-// If the editor didn't touch a field, the server's value wins; if they did,
-// their value wins (equal edits collapse naturally). Slots compare by value:
-// fresh ones arrive unmarshaled, never by reference.
-function threeWay<T>(base: T, local: T, fresh: T): T {
-    return local === base ? fresh : local;
 }
 
 function threeWaySlot(base: RoundSlot, local: RoundSlot, fresh: RoundSlot): RoundSlot {
