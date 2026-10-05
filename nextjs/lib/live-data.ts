@@ -18,6 +18,27 @@ export type DataEventBatcher = {
     cancel: () => void;
 };
 
+/**
+ * Module-level fan-out for data-change batches, consumed by list holders that
+ * do not hang off MatchesContext/PlayersContext — the arena timelines
+ * (useArenaMatches) above all. Two producers feed it: the SSE batcher in
+ * LiveDataSubscriber (changes recorded anywhere) and OfflineContext.syncNow
+ * (changes just landed from this device's queue — the arena redirect races the
+ * background POST, so the timeline's mount-time fetch is routinely stale).
+ */
+const dataChangeListeners = new Set<(batch: DataChangeBatch) => void>();
+
+export function emitDataChange(batch: DataChangeBatch): void {
+    for (const listener of [...dataChangeListeners]) listener(batch);
+}
+
+export function subscribeDataChange(listener: (batch: DataChangeBatch) => void): () => void {
+    dataChangeListeners.add(listener);
+    return () => {
+        dataChangeListeners.delete(listener);
+    };
+}
+
 export function createDataEventBatcher(
     onBatch: (batch: DataChangeBatch) => void,
     delayMs = 500,

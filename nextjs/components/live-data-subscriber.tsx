@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useSSETopic } from "@/hooks/useSSETopic";
-import { createDataEventBatcher } from "@/lib/live-data";
+import { createDataEventBatcher, emitDataChange } from "@/lib/live-data";
 
 /**
  * Invisible app-wide subscriber to the global data-change signals (the
@@ -23,6 +23,9 @@ export function LiveDataSubscriber() {
     const batcher = useMemo(
         () =>
             createDataEventBatcher((batch) => {
+                // Arena timelines subscribe to the emitter instead of the
+                // contexts below (they render useArenaMatches, not MatchesContext).
+                emitDataChange(batch);
                 if (batch.matches) invalidateMatches();
                 if (batch.players) invalidatePlayers();
             }),

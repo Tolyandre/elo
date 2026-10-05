@@ -8,6 +8,7 @@ import {
     getArenaMatchesPagePromise,
     getCorrectionsPagePromise,
 } from "@/app/api";
+import { subscribeDataChange } from "@/lib/live-data";
 
 export type TimelineItem =
     | { type: "match"; data: Match }
@@ -74,9 +75,22 @@ export function useArenaMatches(
     const matchCursorRef = useRef<string | null>(null);
     const correctionCursorRef = useRef<string | null>(null);
 
+    // Live invalidation (mirrors MatchesContext): the timeline must reflect
+    // matches recorded elsewhere (SSE "matches-changed") and landed by this
+    // device's offline sync — the redirect to the arena races the background
+    // POST, so the mount-time fetch is routinely stale.
+    const [stamp, setStamp] = useState(0);
+    const invalidate = useCallback(() => setStamp((s) => s + 1), []);
+    useEffect(() => {
+        return subscribeDataChange((batch) => {
+            if (batch.matches) invalidate();
+        });
+    }, [invalidate]);
+
     const { playerId, clubId, gameId } = filters;
 
-    // (Re)load page 1 whenever the arena or the filters change.
+    // (Re)load page 1 whenever the arena, the filters, or the invalidation
+    // stamp change.
     useEffect(() => {
         if (!arenaId) return;
         let cancelled = false;
@@ -116,7 +130,7 @@ export function useArenaMatches(
         return () => {
             cancelled = true;
         };
-    }, [arenaId, playerId, clubId, gameId, includeCorrections]);
+    }, [arenaId, playerId, clubId, gameId, includeCorrections, stamp]);
 
     const loadMore = useCallback(() => {
         if (loadingMore || !arenaId) return;
@@ -180,5 +194,5 @@ export function useArenaMatches(
     const items = useMemo(() => mergeTimelineItems(matches, corrections), [matches, corrections]);
 
     const hasMore = matchHasMore || correctionsHasMore;
-    return { items, matches, allMatches: allMatches ?? matches, loading, loadingMore, hasMore, loadMore, loadAll };
+    return { items, matches, allMatches: allMatches ?? matches, loading, loadingMore, hasMore, loadMore, loadAll, invalidate };
 }

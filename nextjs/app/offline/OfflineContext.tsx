@@ -28,6 +28,7 @@ import {
 } from "@/lib/offline/types";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { parseSwMessage } from "@/lib/sw-messages";
+import { emitDataChange } from "@/lib/live-data";
 
 const STORAGE_KEY = "offline-pending-v1";
 
@@ -297,6 +298,11 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                     invalidatePlayers();
                     invalidateGames();
                     invalidateClubs();
+                    // Arena timelines render useArenaMatches, not the contexts
+                    // above — tell them the sync landed directly (same signal
+                    // the server's SSE echo carries, without depending on the
+                    // stream being connected).
+                    emitDataChange({ matches: true, players: true });
                 }
             })
             .finally(() => {

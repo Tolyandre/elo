@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDataEventBatcher } from '../lib/live-data';
+import { createDataEventBatcher, emitDataChange, subscribeDataChange } from '../lib/live-data';
 
 describe('createDataEventBatcher', () => {
     beforeEach(() => {
@@ -72,5 +72,26 @@ describe('createDataEventBatcher', () => {
         vi.advanceTimersByTime(500);
 
         expect(batches).toEqual([]);
+    });
+});
+
+describe('data-change emitter', () => {
+    it('delivers batches to every subscriber until they unsubscribe', () => {
+        const seenA: Array<{ matches: boolean; players: boolean }> = [];
+        const seenB: Array<{ matches: boolean; players: boolean }> = [];
+        const unsubA = subscribeDataChange((b) => seenA.push(b));
+        const unsubB = subscribeDataChange((b) => seenB.push(b));
+
+        emitDataChange({ matches: true, players: false });
+        unsubA();
+        unsubB();
+        emitDataChange({ matches: false, players: true });
+
+        expect(seenA).toEqual([{ matches: true, players: false }]);
+        expect(seenB).toEqual([{ matches: true, players: false }]);
+    });
+
+    it('emitting with no subscribers is a no-op', () => {
+        expect(() => emitDataChange({ matches: true, players: true })).not.toThrow();
     });
 });
