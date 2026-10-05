@@ -155,17 +155,18 @@ func main() {
 	// stale snapshot served from any HTTP/SW cache is worse than an error.
 	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
 	tbl := router.Group("/tables", noStore)
-	tbl.GET("", apiHandler.ListTables)
-	tbl.POST("", append(playerAuth(), apiHandler.CreateTable)...)
-	tbl.GET("/:id", apiHandler.GetTable)
-	tbl.PATCH("/:id/state", append(playerAuth(), apiHandler.UpdateTableState)...)
-	tbl.POST("/:id/join", append(playerAuth(), apiHandler.JoinTable)...)
-	tbl.POST("/:id/submit", append(playerAuth(), apiHandler.SubmitTable)...)
+	tbl.GET("", strictWrapper.ListTables)
+	tbl.POST("", append(playerAuth(), strictWrapper.CreateTable)...)
+	tbl.GET("/:id", strictWrapper.GetTable)
+	tbl.PATCH("/:id/state", append(playerAuth(), strictWrapper.UpdateTableState)...)
+	tbl.POST("/:id/join", append(playerAuth(), strictWrapper.JoinTable)...)
+	tbl.POST("/:id/submit", append(playerAuth(), strictWrapper.SubmitTable)...)
 	// Takeover needs a session; the handler allows the current host to
 	// re-claim (host resume on another device) and everyone else only with
 	// edit permission.
-	tbl.POST("/:id/takeover", oauth2Handler.DeserializeUser(), apiHandler.TakeoverTable)
-	tbl.DELETE("/:id", append(playerAuth(), apiHandler.DeleteTable)...)
+	tbl.POST("/:id/takeover", oauth2Handler.DeserializeUser(), strictWrapper.TakeoverTable)
+	tbl.DELETE("/:id", append(playerAuth(), strictWrapper.DeleteTable)...)
+	// SSE is intentionally not in the OpenAPI spec — raw gin handler.
 	tbl.GET("/:id/events", apiHandler.TableEvents)
 
 	// Clubs

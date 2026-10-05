@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -127,4 +129,34 @@ func (a *API) notifyMatchRecorded(ctx context.Context, matchID id.ID, playerIDs 
 		}
 		a.Hub.Broadcast(elo.UserTopic(link.UserID), payload)
 	}
+}
+
+// ─── Table events stream ──────────────────────────────────────────────────────
+
+// TableEvents streams the full table state: the current snapshot on connect,
+// then every broadcast (state update, join, submission, saved). Intentionally
+// not in the OpenAPI spec (SSE), so this stays a raw gin handler.
+func (a *API) TableEvents(c *gin.Context) {
+	tableID := parseIDParam(c.Param("id"))
+
+	table, err := a.TableService.GetTable(c.Request.Context(), tableID)
+	if errors.Is(err, elo.ErrTableNotFound) {
+		ErrorResponse(c, http.StatusNotFound, "table not found")
+		return
+	}
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// Send current state immediately on connect
+	initialPayload, err := json.Marshal(elo.SSEEvent{Type: "state", Data: table})
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	a.serveSSE(c, func() (<-chan []byte, func()) {
+		return a.Hub.Subscribe(elo.TableTopic(tableID))
+	}, initialPayload)
 }

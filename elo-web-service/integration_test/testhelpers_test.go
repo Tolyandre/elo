@@ -238,19 +238,19 @@ func setupRouterWithTesera(pool *pgxpool.Pool, teseraBaseURL string) *gin.Engine
 	// Realtime SSE (ADR-13): the multiplexed global-topics stream; auth is
 	// optional (anonymous callers silently get no "me" topic).
 	r.GET("/events", o.OptionalDeserializeUser(), a.Events)
-	// Live game tables (ADR-13, ADR-15, ADR-16): raw gin handlers mirroring the
-	// route group in main.go.
+	// Live game tables (ADR-13, ADR-15, ADR-16): strict handlers behind the
+	// same auth chain as main.go.
 	noStore := func(c *gin.Context) { c.Header("Cache-Control", "no-store"); c.Next() }
 	tblPlayerAuth := []gin.HandlerFunc{o.DeserializeUser(), a.RequirePlayerID()}
 	tbl := r.Group("/tables", noStore)
-	tbl.GET("", a.ListTables)
-	tbl.POST("", append(tblPlayerAuth, a.CreateTable)...)
-	tbl.GET("/:id", a.GetTable)
-	tbl.PATCH("/:id/state", append(tblPlayerAuth, a.UpdateTableState)...)
-	tbl.POST("/:id/join", append(tblPlayerAuth, a.JoinTable)...)
-	tbl.POST("/:id/submit", append(tblPlayerAuth, a.SubmitTable)...)
-	tbl.POST("/:id/takeover", o.DeserializeUser(), a.TakeoverTable)
-	tbl.DELETE("/:id", append(tblPlayerAuth, a.DeleteTable)...)
+	tbl.GET("", strictWrapper.ListTables)
+	tbl.POST("", append(tblPlayerAuth, strictWrapper.CreateTable)...)
+	tbl.GET("/:id", strictWrapper.GetTable)
+	tbl.PATCH("/:id/state", append(tblPlayerAuth, strictWrapper.UpdateTableState)...)
+	tbl.POST("/:id/join", append(tblPlayerAuth, strictWrapper.JoinTable)...)
+	tbl.POST("/:id/submit", append(tblPlayerAuth, strictWrapper.SubmitTable)...)
+	tbl.POST("/:id/takeover", o.DeserializeUser(), strictWrapper.TakeoverTable)
+	tbl.DELETE("/:id", append(tblPlayerAuth, strictWrapper.DeleteTable)...)
 	tbl.GET("/:id/events", a.TableEvents)
 	return r
 }
