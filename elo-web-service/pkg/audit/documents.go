@@ -13,17 +13,17 @@ import (
 // canonical ids; ids.go rewrites them to the wire form on egress.
 
 func init() {
-	register(&Schema{Kind: KindEntity, CurrentVersion: 1}, "entity.v1.json")
-	register(&Schema{Kind: KindRename, CurrentVersion: 1}, "rename.v1.json")
-	register(&Schema{Kind: KindMatchUpdate, CurrentVersion: 1}, "match_update.v1.json")
-	register(&Schema{Kind: KindArenaCampConf, CurrentVersion: 1}, "arena_camp_config.v1.json")
-	register(&Schema{Kind: KindCampLink, CurrentVersion: 1}, "camp_link.v1.json")
-	register(&Schema{Kind: KindTournamentConfig, CurrentVersion: 1}, "tournament_config.v1.json")
-	register(&Schema{Kind: KindTournamentStart, CurrentVersion: 1}, "tournament_start.v1.json")
-	register(&Schema{Kind: KindTournamentState, CurrentVersion: 1}, "tournament_state.v1.json")
-	register(&Schema{Kind: KindSlotRuling, CurrentVersion: 1}, "slot_ruling.v1.json")
-	register(&Schema{Kind: KindSlotLink, CurrentVersion: 1}, "slot_link.v1.json")
-	register(&Schema{Kind: KindSlotAdjust, CurrentVersion: 2}, "slot_adjust.v2.json")
+	reg.Register(KindEntity, 1, "entity.v1.json")
+	reg.Register(KindRename, 1, "rename.v1.json")
+	reg.Register(KindMatchUpdate, 1, "match_update.v1.json")
+	reg.Register(KindArenaCampConf, 1, "arena_camp_config.v1.json")
+	reg.Register(KindCampLink, 1, "camp_link.v1.json")
+	reg.Register(KindTournamentConfig, 1, "tournament_config.v1.json")
+	reg.Register(KindTournamentStart, 1, "tournament_start.v1.json")
+	reg.Register(KindTournamentState, 1, "tournament_state.v1.json")
+	reg.Register(KindSlotRuling, 1, "slot_ruling.v1.json")
+	reg.Register(KindSlotLink, 1, "slot_link.v1.json")
+	reg.Register(KindSlotAdjust, 2, "slot_adjust.v2.json")
 
 	// v2 adds the min_score op (ADR-30); v1 documents are identical but for
 	// the schema_version const.

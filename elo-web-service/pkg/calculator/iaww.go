@@ -30,13 +30,8 @@ import (
 //	  "fallback_game_id": "..." | null
 //	}
 func init() {
-	register(&Schema{
-		Kind:           KindIAWW,
-		CurrentVersion: 2,
-		migrators: map[int]migrator{
-			1: migrateIAWWv1ToV2,
-		},
-	}, "iaww.v2.json")
+	reg.Register(KindIAWW, 2, "iaww.v2.json")
+	reg.RegisterMigrator(KindIAWW, 1, migrateIAWWv1ToV2)
 }
 
 // knownIAWWRows is the fixed set of row identifiers used by the IAWW scoring

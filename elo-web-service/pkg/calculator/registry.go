@@ -3,19 +3,16 @@
 // produced, so the match can be re-opened in the same calculator (history mode)
 // and re-edited. See ADR-09.
 //
-// Each calculator kind is described by a Schema:
-//   - Kind: stable identifier stored in matches.calculator_kind (e.g.
-//     "skull-king", "iaww"). Renaming a kind is a breaking change.
-//   - CurrentVersion: the schema_version currently WRITTEN by new code.
-//   - jsonschema: an embedded JSON Schema (draft 2020-12) used to validate
-//     calculator_data on write. The schema is versioned via schema_version.
-//   - migrators: per-(fromVersion) functions that upgrade a stored document to
-//     the next version. Applied at startup (see MigrateData) so reads always
-//     return the current version.
+// Each calculator kind is registered (from init) into the shared versioned
+// document registry (pkg/docregistry): a stable Kind stored in
+// matches.calculator_kind (e.g. "skull-king", "iaww"), a CurrentVersion, an
+// embedded JSON Schema validating calculator_data on write, and per-version
+// migrators applied at startup (see MigrateData) so reads always return the
+// current version.
 //
 // Storage shape convention: every player reference lives under a key whose
 // schema entry is marked "x-entity-id": true (currently always "player_id"),
-// never as an object key, so the schema-driven id walk (ids.go) rewrites
+// never as an object key, so the schema-driven id walk rewrites
 // canonical/wire ids at the boundary — see ADR-12.
 package calculator
 
@@ -23,9 +20,8 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 
-	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/tolyandre/elo-web-service/pkg/docregistry"
 )
 
 //go:embed *.json
@@ -44,106 +40,44 @@ var ErrUnknownKind = errors.New("unknown calculator kind")
 // ErrInvalid is returned when a calculator_data document fails validation.
 var ErrInvalid = errors.New("invalid calculator data")
 
+var reg = docregistry.New("calculator", schemasFS, ErrUnknownKind, ErrInvalid)
+
 // Schema describes one calculator kind.
-type Schema struct {
-	Kind           string
-	CurrentVersion int
-	// map[fromVersion] → upgrade to fromVersion+1. Empty for v1-only kinds.
-	migrators map[int]migrator
-	validator *jsonschema.Schema
-	// rawSchema is the decoded JSON Schema document; the x-entity-id walk
-	// (ids.go) reads it to find id-marked properties.
-	rawSchema map[string]any
-}
-
-type migrator func(json.RawMessage) (json.RawMessage, error)
-
-var registry = map[string]*Schema{}
-
-// register is called from init() of each calculator's file.
-func register(s *Schema, schemaFile string) {
-	s.validator = mustLoadSchema(schemaFile)
-	s.rawSchema = mustLoadRawSchema(schemaFile)
-	registry[s.Kind] = s
-}
-
-func mustLoadRawSchema(file string) map[string]any {
-	b, err := schemasFS.ReadFile(file)
-	if err != nil {
-		panic(fmt.Sprintf("calculator: embed read %s: %v", file, err))
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(b, &doc); err != nil {
-		panic(fmt.Sprintf("calculator: parse %s: %v", file, err))
-	}
-	return doc
-}
-
-func mustLoadSchema(file string) *jsonschema.Schema {
-	b, err := schemasFS.ReadFile(file)
-	if err != nil {
-		panic(fmt.Sprintf("calculator: embed read %s: %v", file, err))
-	}
-	var doc any
-	if err := json.Unmarshal(b, &doc); err != nil {
-		panic(fmt.Sprintf("calculator: parse %s: %v", file, err))
-	}
-	c := jsonschema.NewCompiler()
-	if err := c.AddResource(file, doc); err != nil {
-		panic(fmt.Sprintf("calculator: add resource %s: %v", file, err))
-	}
-	sch, err := c.Compile(file)
-	if err != nil {
-		panic(fmt.Sprintf("calculator: compile %s: %v", file, err))
-	}
-	return sch
-}
+type Schema = docregistry.Kind
 
 // Lookup returns the schema for a kind, or ErrUnknownKind.
-func Lookup(kind string) (*Schema, error) {
-	s, ok := registry[kind]
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownKind, kind)
-	}
-	return s, nil
-}
+func Lookup(kind string) (*Schema, error) { return reg.Lookup(kind) }
 
 // Kinds returns the set of registered kinds.
-func Kinds() []string {
-	out := make([]string, 0, len(registry))
-	for k := range registry {
-		out = append(out, k)
-	}
-	return out
-}
+func Kinds() []string { return reg.Kinds() }
 
 // HasMigrators reports whether kind has any registered data migrators. Used by
 // the startup migration step to short-circuit a table scan for kinds that have
 // only ever shipped one version.
-func HasMigrators(kind string) bool {
-	s, ok := registry[kind]
-	if !ok {
-		return false
-	}
-	return len(s.migrators) > 0
-}
+func HasMigrators(kind string) bool { return reg.HasMigrators(kind) }
 
 // Validate validates raw against the JSON Schema for kind. Returns ErrInvalid
 // (with details) on failure.
-func Validate(kind string, raw json.RawMessage) error {
-	s, err := Lookup(kind)
-	if err != nil {
-		return err
-	}
-	if len(raw) == 0 || string(raw) == "null" {
-		return fmt.Errorf("%w: empty document", ErrInvalid)
-	}
-	var doc any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	if err := s.validator.Validate(doc); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	return nil
+func Validate(kind string, raw json.RawMessage) error { return reg.Validate(kind, raw) }
+
+// MigrateData upgrades a stored document of the given kind from fromVersion up
+// to the kind's CurrentVersion; see docregistry.Registry.Migrate.
+func MigrateData(kind string, fromVersion int, raw json.RawMessage) (json.RawMessage, int, error) {
+	return reg.Migrate(kind, fromVersion, raw)
+}
+
+// CanonicalizeIDs converts every x-entity-id property of raw from the wire
+// form (Base58 or canonical) to the canonical UUID. Runs on ingest, after
+// Validate, so stored documents always hold canonical ids.
+func CanonicalizeIDs(kind string, raw json.RawMessage) (json.RawMessage, error) {
+	return reg.CanonicalizeIDs(kind, raw)
+}
+
+// ShortenIDs is the inverse of CanonicalizeIDs: canonical UUIDs become the
+// Base58 wire form. Runs on egress, before the document is embedded in a
+// response. Unknown kinds and malformed documents pass through untouched —
+// the migrators keep stored rows current, so failing the response would only
+// hurt reads of hand-edited data.
+func ShortenIDs(kind string, raw json.RawMessage) (json.RawMessage, error) {
+	return reg.ShortenIDs(kind, raw)
 }

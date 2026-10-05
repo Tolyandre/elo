@@ -13,9 +13,5 @@ package calculator
 //	  "fallback_game_id": "..." | null
 //	}
 func init() {
-	register(&Schema{
-		Kind:           KindSkullKing,
-		CurrentVersion: 1,
-		migrators:      nil, // no older versions exist yet
-	}, "skull_king.v1.json")
+	reg.Register(KindSkullKing, 1, "skull_king.v1.json") // no older versions exist yet
 }
