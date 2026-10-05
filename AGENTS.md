@@ -103,6 +103,7 @@ Keep one-off tools out of `devenv.nix` — pinning them there is a deliberate de
 ### Gotchas
 
 - The Go module lives in `elo-web-service/`, so from the repo root `go build ./...` fails with "directory prefix . does not contain main module" — always pass `-C elo-web-service` (or `cd` first).
+- Generated files (`elo-web-service/pkg/api/generated.go`, `pkg/db/*.sql.go` + `models.go` + `querier.go`) are excluded from the agent workspace sync (`.zcodeignore`) to keep context small — `cat`/`grep` them through the shell when a task needs their exact contents. `nextjs/app/api-types.gen.ts` stays synced (it is the frontend's type reference).
 - Make recipes run under POSIX-mode `/bin/sh`, where `.` does **not** fall back to the current directory: source env files with a slash (`. ./.env.docker`), never `. .env.docker`.
 - The frontend is a Serwist PWA. A browser that has visited the app before serves its cached precache and RSC-prefetch caches even against `next dev`, so fresh frontend changes look like they never applied. When that happens, unregister the service worker and clear caches (DevTools → Application, or `navigator.serviceWorker.getRegistrations()` → `unregister()` plus `caches.keys()` → `delete`) and reload.
 

@@ -106,3 +106,12 @@ pip-wheel-metadata/
 wheels/
 # ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
 # 自定义规则写在下方（本行提示可删除）
+
+# Generated code (regenerate via make generate-api / sqlc generate). Excluded
+# from agent sync to keep context small — read through the shell when a task
+# needs their exact contents. nextjs/app/api-types.gen.ts stays synced on
+# purpose: it is the type reference for the frontend.
+/elo-web-service/pkg/api/generated.go
+/elo-web-service/pkg/db/models.go
+/elo-web-service/pkg/db/querier.go
+/elo-web-service/pkg/db/*.sql.go
