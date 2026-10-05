@@ -22,6 +22,14 @@ import (
 // They were extracted from the legacy gin handlers during the strict-server
 // migration; see ADR / git history for the originals.
 
+// Envelope status values shared by every JSON response (the ApiError and
+// ApiSuccessMessage schemas in openapi/common.yaml). Untyped so they assign to
+// both the plain `string` Status fields and the generated enum types.
+const (
+	StatusSuccess = "success"
+	StatusFail    = "fail"
+)
+
 // ---------------------------------------------------------------------------
 // Auth context helpers & middleware (extracted from the former users.go).
 // ---------------------------------------------------------------------------

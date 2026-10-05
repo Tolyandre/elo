@@ -19,21 +19,21 @@ func ErrorResponse(c *gin.Context, code int, err any) {
 	}
 
 	c.JSON(code, gin.H{
-		"status":  "fail",
+		"status":  StatusFail,
 		"message": message,
 	})
 }
 
 func SuccessMessageResponse(c *gin.Context, code int, message string) {
 	c.JSON(code, gin.H{
-		"status":  "success",
+		"status":  StatusSuccess,
 		"message": message,
 	})
 }
 
 func SuccessDataResponse(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
+		"status":  StatusSuccess,
 		"message": "Successfully retrieved data",
 		"data":    data,
 	})
@@ -41,7 +41,7 @@ func SuccessDataResponse(c *gin.Context, data interface{}) {
 
 func SuccessCreatedDataResponse(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusCreated, gin.H{
-		"status": "success",
+		"status": StatusSuccess,
 		"data":   data,
 	})
 }

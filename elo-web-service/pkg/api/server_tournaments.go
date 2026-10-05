@@ -32,7 +32,7 @@ func (s *StrictServer) CreateTournament(ctx context.Context, request CreateTourn
 	if err != nil {
 		return nil, err
 	}
-	return CreateTournament200JSONResponse{Status: "success", Data: tournamentToAPI(detail)}, nil
+	return CreateTournament200JSONResponse{Status: StatusSuccess, Data: tournamentToAPI(detail)}, nil
 }
 
 func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error) {
@@ -41,11 +41,11 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return UpdateTournament400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateTournament400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return UpdateTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return UpdateTournament404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		case http.StatusConflict:
-			return UpdateTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
@@ -54,18 +54,18 @@ func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTourn
 	if err != nil {
 		return nil, err
 	}
-	return UpdateTournament200JSONResponse{Status: "success", Data: tournamentToAPI(detail)}, nil
+	return UpdateTournament200JSONResponse{Status: StatusSuccess, Data: tournamentToAPI(detail)}, nil
 }
 
 func (s *StrictServer) GetTournament(ctx context.Context, request GetTournamentRequestObject) (GetTournamentResponseObject, error) {
 	detail, err := s.api.TournamentService.GetTournamentDetail(ctx, parseIDParam(request.Id))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return GetTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return GetTournament404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		}
 		return nil, err
 	}
-	return GetTournament200JSONResponse{Status: "success", Data: tournamentToAPI(detail)}, nil
+	return GetTournament200JSONResponse{Status: StatusSuccess, Data: tournamentToAPI(detail)}, nil
 }
 
 func (s *StrictServer) ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error) {
@@ -77,7 +77,7 @@ func (s *StrictServer) ListTournaments(ctx context.Context, request ListTourname
 	for _, t := range rows {
 		data = append(data, tournamentToAPI(t))
 	}
-	return ListTournaments200JSONResponse{Status: "success", Data: data}, nil
+	return ListTournaments200JSONResponse{Status: StatusSuccess, Data: data}, nil
 }
 
 func (s *StrictServer) RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error) {
@@ -87,11 +87,11 @@ func (s *StrictServer) RegisterInTournament(ctx context.Context, request Registe
 	}
 	switch code {
 	case http.StatusNotFound:
-		return RegisterInTournament404JSONResponse{Status: "fail", Message: message}, nil
+		return RegisterInTournament404JSONResponse{Status: StatusFail, Message: message}, nil
 	case http.StatusConflict:
-		return RegisterInTournament409JSONResponse{Status: "fail", Message: message}, nil
+		return RegisterInTournament409JSONResponse{Status: StatusFail, Message: message}, nil
 	}
-	return RegisterInTournament200JSONResponse{Status: "success", Message: "Registered"}, nil
+	return RegisterInTournament200JSONResponse{Status: StatusSuccess, Message: "Registered"}, nil
 }
 
 func (s *StrictServer) UnregisterFromTournament(ctx context.Context, request UnregisterFromTournamentRequestObject) (UnregisterFromTournamentResponseObject, error) {
@@ -101,11 +101,11 @@ func (s *StrictServer) UnregisterFromTournament(ctx context.Context, request Unr
 	}
 	switch code {
 	case http.StatusNotFound:
-		return UnregisterFromTournament404JSONResponse{Status: "fail", Message: message}, nil
+		return UnregisterFromTournament404JSONResponse{Status: StatusFail, Message: message}, nil
 	case http.StatusConflict:
-		return UnregisterFromTournament409JSONResponse{Status: "fail", Message: message}, nil
+		return UnregisterFromTournament409JSONResponse{Status: StatusFail, Message: message}, nil
 	}
-	return UnregisterFromTournament200JSONResponse{Status: "success", Message: "Withdrawn"}, nil
+	return UnregisterFromTournament200JSONResponse{Status: StatusSuccess, Message: "Withdrawn"}, nil
 }
 
 // changeRegistration resolves the caller's linked player (the route sits
@@ -158,11 +158,11 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return ListTournamentBracketPlans400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return ListTournamentBracketPlans400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return ListTournamentBracketPlans404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return ListTournamentBracketPlans404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		case http.StatusConflict:
-			return ListTournamentBracketPlans409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return ListTournamentBracketPlans409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	for _, p := range res.Plans {
 		plans = append(plans, planToAPI(p))
 	}
-	resp := ListTournamentBracketPlans200JSONResponse{Status: "success"}
+	resp := ListTournamentBracketPlans200JSONResponse{Status: StatusSuccess}
 	resp.Data.Plans = plans
 	resp.Data.Truncated = res.Truncated
 	resp.Data.Cap = res.Cap
@@ -184,7 +184,7 @@ func (s *StrictServer) StartTournament(ctx context.Context, request StartTournam
 	if request.Body != nil {
 		raw, perr := planToCanonicalRaw(request.Body.Plan)
 		if perr != nil {
-			return StartTournament400JSONResponse{Status: "fail", Message: perr.Error()}, nil
+			return StartTournament400JSONResponse{Status: StatusFail, Message: perr.Error()}, nil
 		}
 		planRaw = raw
 	}
@@ -193,17 +193,17 @@ func (s *StrictServer) StartTournament(ctx context.Context, request StartTournam
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return StartTournament400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return StartTournament400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return StartTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return StartTournament404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		case http.StatusConflict:
-			return StartTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return StartTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(true, true)
-	return StartTournament200JSONResponse{Status: "success", Message: "Tournament is started"}, nil
+	return StartTournament200JSONResponse{Status: StatusSuccess, Message: "Tournament is started"}, nil
 }
 
 func (s *StrictServer) CancelTournament(ctx context.Context, request CancelTournamentRequestObject) (CancelTournamentResponseObject, error) {
@@ -211,15 +211,15 @@ func (s *StrictServer) CancelTournament(ctx context.Context, request CancelTourn
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusNotFound:
-			return CancelTournament404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return CancelTournament404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		case http.StatusConflict:
-			return CancelTournament409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return CancelTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(false, true)
-	return CancelTournament200JSONResponse{Status: "success", Message: "Tournament is cancelled"}, nil
+	return CancelTournament200JSONResponse{Status: StatusSuccess, Message: "Tournament is cancelled"}, nil
 }
 
 func (s *StrictServer) GetTournamentBracket(ctx context.Context, request GetTournamentBracketRequestObject) (GetTournamentBracketResponseObject, error) {
@@ -227,12 +227,12 @@ func (s *StrictServer) GetTournamentBracket(ctx context.Context, request GetTour
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusNotFound:
-			return GetTournamentBracket404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+			return GetTournamentBracket404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 		default:
 			return nil, err
 		}
 	}
-	return GetTournamentBracket200JSONResponse{Status: "success", Data: bracketToAPI(t, rounds)}, nil
+	return GetTournamentBracket200JSONResponse{Status: StatusSuccess, Data: bracketToAPI(t, rounds)}, nil
 }
 
 // planToCanonicalRaw round-trips the wire plan through the strict parser so
@@ -274,7 +274,7 @@ func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 func (s *StrictServer) AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error) {
 	tid, sid := parseIDParam(request.Id), parseIDParam(request.Sid)
 	if request.Body.GameId == nil && request.Body.MinScore == nil {
-		return AdjustTournamentSlot400JSONResponse{Status: "fail", Message: "нужен хотя бы один параметр: game_id или min_score"}, nil
+		return AdjustTournamentSlot400JSONResponse{Status: StatusFail, Message: "нужен хотя бы один параметр: game_id или min_score"}, nil
 	}
 	var gameID *id.ID
 	if request.Body.GameId != nil {
@@ -290,15 +290,15 @@ func (s *StrictServer) AdjustTournamentSlot(ctx context.Context, request AdjustT
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return AdjustTournamentSlot400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return AdjustTournamentSlot400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return AdjustTournamentSlot404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+			return AdjustTournamentSlot404JSONResponse{Status: StatusFail, Message: "Турнир или стол не найден"}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(false, true)
-	return AdjustTournamentSlot200JSONResponse{Status: "success", Message: "Slot is adjusted"}, nil
+	return AdjustTournamentSlot200JSONResponse{Status: StatusSuccess, Message: "Slot is adjusted"}, nil
 }
 
 func (s *StrictServer) AttachTournamentSlotMatch(ctx context.Context, request AttachTournamentSlotMatchRequestObject) (AttachTournamentSlotMatchResponseObject, error) {
@@ -306,17 +306,17 @@ func (s *StrictServer) AttachTournamentSlotMatch(ctx context.Context, request At
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return AttachTournamentSlotMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return AttachTournamentSlotMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return AttachTournamentSlotMatch404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+			return AttachTournamentSlotMatch404JSONResponse{Status: StatusFail, Message: "Турнир или стол не найден"}, nil
 		case http.StatusConflict:
-			return AttachTournamentSlotMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return AttachTournamentSlotMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(true, true)
-	return AttachTournamentSlotMatch200JSONResponse{Status: "success", Message: "Match is attached"}, nil
+	return AttachTournamentSlotMatch200JSONResponse{Status: StatusSuccess, Message: "Match is attached"}, nil
 }
 
 func (s *StrictServer) DetachTournamentSlotMatch(ctx context.Context, request DetachTournamentSlotMatchRequestObject) (DetachTournamentSlotMatchResponseObject, error) {
@@ -324,15 +324,15 @@ func (s *StrictServer) DetachTournamentSlotMatch(ctx context.Context, request De
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusNotFound:
-			return DetachTournamentSlotMatch404JSONResponse{Status: "fail", Message: "Турнир, стол или связь не найдены"}, nil
+			return DetachTournamentSlotMatch404JSONResponse{Status: StatusFail, Message: "Турнир, стол или связь не найдены"}, nil
 		case http.StatusConflict:
-			return DetachTournamentSlotMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return DetachTournamentSlotMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(true, true)
-	return DetachTournamentSlotMatch200JSONResponse{Status: "success", Message: "Match is detached"}, nil
+	return DetachTournamentSlotMatch200JSONResponse{Status: StatusSuccess, Message: "Match is detached"}, nil
 }
 
 func (s *StrictServer) SetTournamentSlotRuling(ctx context.Context, request SetTournamentSlotRulingRequestObject) (SetTournamentSlotRulingResponseObject, error) {
@@ -344,17 +344,17 @@ func (s *StrictServer) SetTournamentSlotRuling(ctx context.Context, request SetT
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return SetTournamentSlotRuling400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return SetTournamentSlotRuling400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return SetTournamentSlotRuling404JSONResponse{Status: "fail", Message: "Турнир или стол не найден"}, nil
+			return SetTournamentSlotRuling404JSONResponse{Status: StatusFail, Message: "Турнир или стол не найден"}, nil
 		case http.StatusConflict:
-			return SetTournamentSlotRuling409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return SetTournamentSlotRuling409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 	s.api.broadcastDataChange(false, true)
-	return SetTournamentSlotRuling200JSONResponse{Status: "success", Message: "Ruling is recorded"}, nil
+	return SetTournamentSlotRuling200JSONResponse{Status: StatusSuccess, Message: "Ruling is recorded"}, nil
 }
 
 // ---------------------------------------------------------------------------

@@ -106,19 +106,19 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 		})
 	}
 
-	return ListPlayers200JSONResponse{Status: "success", Data: result}, nil
+	return ListPlayers200JSONResponse{Status: StatusSuccess, Data: result}, nil
 }
 
 func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerRequestObject) (CreatePlayerResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return CreatePlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return CreatePlayer400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	player, err := s.api.PlayerService.CreatePlayer(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
-			return CreatePlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
+			return CreatePlayer409JSONResponse{Status: StatusFail, Message: "player with this name already exists"}, nil
 		}
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 	s.api.broadcastDataChange(false, true)
 
 	return CreatePlayer200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: PlayerRef{
 			Id:   player.ID,
 			Name: player.Name,
@@ -137,16 +137,16 @@ func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerReq
 func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerRequestObject) (PatchPlayerResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return PatchPlayer400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return PatchPlayer400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	player, err := s.api.PlayerService.UpdatePlayer(ctx, parseIDParam(request.Id), name, currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return PatchPlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
+		return PatchPlayer404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
 	case domainStatusCode(err) == http.StatusConflict:
-		return PatchPlayer409JSONResponse{Status: "fail", Message: "player with this name already exists"}, nil
+		return PatchPlayer409JSONResponse{Status: StatusFail, Message: "player with this name already exists"}, nil
 	default:
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (s *StrictServer) PatchPlayer(ctx context.Context, request PatchPlayerReque
 	s.api.broadcastDataChange(false, true)
 
 	return PatchPlayer200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: PlayerRef{
 			Id:   player.ID,
 			Name: player.Name,
@@ -167,16 +167,16 @@ func (s *StrictServer) DeletePlayer(ctx context.Context, request DeletePlayerReq
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return DeletePlayer404JSONResponse{Status: "fail", Message: "player not found"}, nil
+		return DeletePlayer404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
 	case domainStatusCode(err) == http.StatusBadRequest:
-		return DeletePlayer400JSONResponse{Status: "fail", Message: "cannot delete player with matches"}, nil
+		return DeletePlayer400JSONResponse{Status: StatusFail, Message: "cannot delete player with matches"}, nil
 	default:
 		return nil, err
 	}
 
 	s.api.broadcastDataChange(false, true)
 
-	return DeletePlayer200JSONResponse{Status: "success", Message: "Player deleted"}, nil
+	return DeletePlayer200JSONResponse{Status: StatusSuccess, Message: "Player deleted"}, nil
 }
 
 func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStatsRequestObject) (GetPlayerStatsResponseObject, error) {
@@ -185,7 +185,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 	player, err := s.api.PlayerService.GetPlayer(ctx, playerID)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return GetPlayerStats404JSONResponse{Status: "fail", Message: "player not found"}, nil
+			return GetPlayerStats404JSONResponse{Status: StatusFail, Message: "player not found"}, nil
 		}
 		return nil, err
 	}
@@ -254,7 +254,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 	}
 
 	return GetPlayerStats200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: PlayerStats{
 			PlayerName:            player.Name,
 			RatingHistory:         ratingHistory,

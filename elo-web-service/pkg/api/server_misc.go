@@ -5,5 +5,5 @@ import (
 )
 
 func (s *StrictServer) GetPing(_ context.Context, _ GetPingRequestObject) (GetPingResponseObject, error) {
-	return GetPing200JSONResponse{Status: "success", Message: "pong"}, nil
+	return GetPing200JSONResponse{Status: StatusSuccess, Message: "pong"}, nil
 }

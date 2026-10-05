@@ -360,7 +360,7 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 	})
 
 	return ListMarkets200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: struct {
 			Active []Market `json:"active"`
 			Closed []Market `json:"closed"`
@@ -373,7 +373,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 
 	row, err := s.api.MarketQueries.GetMarket(ctx, marketID)
 	if err != nil {
-		return GetMarket404JSONResponse{Status: "fail", Message: "market not found"}, nil
+		return GetMarket404JSONResponse{Status: StatusFail, Message: "market not found"}, nil
 	}
 
 	if (row.Status == "open" || row.Status == "betting_closed") && row.ClosesAt.Valid && row.ClosesAt.Time.Before(time.Now()) {
@@ -440,15 +440,15 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 
 	s.enrichMarketDetailForPlayer(ctx, &detail, marketID)
 
-	return GetMarket200JSONResponse{Status: "success", Data: detail}, nil
+	return GetMarket200JSONResponse{Status: StatusSuccess, Data: detail}, nil
 }
 
 func (s *StrictServer) GetMarketProbabilityHistory(ctx context.Context, request GetMarketProbabilityHistoryRequestObject) (GetMarketProbabilityHistoryResponseObject, error) {
 	points, err := elo.MarketProbabilityHistory(ctx, s.api.MarketQueries, parseIDParam(request.Id))
 	if err != nil {
-		return GetMarketProbabilityHistory404JSONResponse{Status: "fail", Message: "market not found"}, nil
+		return GetMarketProbabilityHistory404JSONResponse{Status: StatusFail, Message: "market not found"}, nil
 	}
-	resp := GetMarketProbabilityHistory200JSONResponse{Status: "success"}
+	resp := GetMarketProbabilityHistory200JSONResponse{Status: StatusSuccess}
 	resp.Data.Points = make([]struct {
 		Probabilities []struct {
 			OutcomeId   Base58ID `json:"outcome_id"`
@@ -552,7 +552,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return CreateMarket401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+			return CreateMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
 	}
@@ -562,7 +562,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	startsAt := time.Now()
 	if body.StartsAt != nil {
 		if body.StartsAt.Before(time.Now()) {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "starts_at не может быть в прошлом"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "starts_at не может быть в прошлом"}, nil
 		}
 		startsAt = *body.StartsAt
 	}
@@ -581,7 +581,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	case "tournament_winner":
 	case "match_winner", "win_streak":
 		if body.ClosesAt == nil {
-			return CreateMarket400JSONResponse{Status: "fail", Message: string(body.MarketType) + " requires closes_at"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
 		}
 		params.ClosesAt = *body.ClosesAt
 	}
@@ -593,13 +593,13 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	switch string(body.MarketType) {
 	case "match_winner":
 		if body.TargetPlayerIds == nil || len(*body.TargetPlayerIds) == 0 {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "match_winner requires target_player_ids"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires target_player_ids"}, nil
 		}
 		if len(*body.TargetPlayerIds) > maxMatchWinnerTargets {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "слишком много целевых игроков"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "слишком много целевых игроков"}, nil
 		}
 		if body.AllowOtherPlayers == nil {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "match_winner requires allow_other_players"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires allow_other_players"}, nil
 		}
 		// Deduplicate while preserving order.
 		seen := make(map[id.ID]bool, len(*body.TargetPlayerIds))
@@ -614,7 +614,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		// A single named player without the shared "other" winner leaves a
 		// degenerate market: any other player's win would resolve nothing.
 		if len(targets) == 1 && !*body.AllowOtherPlayers {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
 		}
 		var gameIDs []id.ID
 		if body.GameIds != nil {
@@ -628,10 +628,10 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	case "win_streak":
 		if body.TargetPlayerId == nil || *body.TargetPlayerId == "" {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "invalid target_player_id"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "invalid target_player_id"}, nil
 		}
 		if body.WinsRequired == nil {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "win_streak requires wins_required"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "win_streak requires wins_required"}, nil
 		}
 		var streakGameIDs []id.ID
 		if body.StreakGameIds != nil {
@@ -651,17 +651,17 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	case "tournament_winner":
 		if body.TournamentId == nil || *body.TournamentId == "" {
-			return CreateMarket400JSONResponse{Status: "fail", Message: "tournament_winner requires tournament_id"}, nil
+			return CreateMarket400JSONResponse{Status: StatusFail, Message: "tournament_winner requires tournament_id"}, nil
 		}
 		tournamentID := id.ID(*body.TournamentId)
 		if err := s.api.TournamentService.ValidateTournamentWinnerTarget(ctx, tournamentID); err != nil {
 			switch domainStatusCode(err) {
 			case http.StatusNotFound:
-				return CreateMarket404JSONResponse{Status: "fail", Message: "Турнир не найден"}, nil
+				return CreateMarket404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
 			case http.StatusConflict:
-				return CreateMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
+				return CreateMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 			case http.StatusBadRequest:
-				return CreateMarket400JSONResponse{Status: "fail", Message: err.Error()}, nil
+				return CreateMarket400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 			default:
 				return nil, err
 			}
@@ -669,7 +669,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		params.TournamentWinner = &elo.TournamentWinnerCreateParams{TournamentID: tournamentID}
 
 	default:
-		return CreateMarket400JSONResponse{Status: "fail", Message: "unknown market_type: " + string(body.MarketType)}, nil
+		return CreateMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil
 	}
 
 	market, err := s.api.MarketService.CreateMarket(ctx, params)
@@ -677,7 +677,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		return nil, err
 	}
 
-	resp := CreateMarket201JSONResponse{Status: "success"}
+	resp := CreateMarket201JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = market.ID
 	return resp, nil
 }
@@ -687,20 +687,20 @@ func (s *StrictServer) PatchMarket(ctx context.Context, request PatchMarketReque
 	case "betting_closed":
 		if err := s.api.MarketService.LockMarketBetting(ctx, parseIDParam(request.Id)); err != nil {
 			if errors.Is(err, elo.ErrMarketNotOpen) {
-				return PatchMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
+				return PatchMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 			}
 			return nil, err
 		}
-		return PatchMarket200JSONResponse{Status: "success", Message: "Betting closed"}, nil
+		return PatchMarket200JSONResponse{Status: StatusSuccess, Message: "Betting closed"}, nil
 	default:
-		return PatchMarket400JSONResponse{Status: "fail", Message: "unsupported status transition: " + string(request.Body.Status)}, nil
+		return PatchMarket400JSONResponse{Status: StatusFail, Message: "unsupported status transition: " + string(request.Body.Status)}, nil
 	}
 }
 
 func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketRequestObject) (DeleteMarketResponseObject, error) {
 	if err := s.api.MatchService.DeleteMarketAndRecalculate(ctx, parseIDParam(request.Id)); err != nil {
 		if errors.Is(err, elo.ErrMarketNotOpen) {
-			return DeleteMarket409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return DeleteMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		}
 		return nil, err
 	}
@@ -709,7 +709,7 @@ func (s *StrictServer) DeleteMarket(ctx context.Context, request DeleteMarketReq
 	s.api.Hub.PublishSignal(elo.TopicLobbyMarkets, "markets-changed")
 	s.api.broadcastDataChange(true, true)
 
-	return DeleteMarket200JSONResponse{Status: "success", Message: "Market deleted"}, nil
+	return DeleteMarket200JSONResponse{Status: StatusSuccess, Message: "Market deleted"}, nil
 }
 
 func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObject) (PlaceBetResponseObject, error) {
@@ -721,17 +721,17 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return PlaceBet401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+			return PlaceBet401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
 	}
 	if user.PlayerID == nil {
-		return PlaceBet403JSONResponse{Status: "fail", Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
+		return PlaceBet403JSONResponse{Status: StatusFail, Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
 	}
 
 	body := request.Body
 	if body.Shares <= 0 {
-		return PlaceBet400JSONResponse{Status: "fail", Message: "shares must be positive"}, nil
+		return PlaceBet400JSONResponse{Status: StatusFail, Message: "shares must be positive"}, nil
 	}
 	// Closed interval: in a one-sided market the live probability legitimately
 	// saturates to exactly 0.0 or 1.0 in float64 (a q gap of ~37·b is enough),
@@ -739,24 +739,24 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 	// PlaceBet compares against the same server-computed value, so the
 	// endpoints pass it trivially; values outside [0, 1] are the only garbage.
 	if body.ExpectedProbability < 0 || body.ExpectedProbability > 1 {
-		return PlaceBet400JSONResponse{Status: "fail", Message: "expected_probability must be in [0, 1]"}, nil
+		return PlaceBet400JSONResponse{Status: StatusFail, Message: "expected_probability must be in [0, 1]"}, nil
 	}
 
 	outcome, err := s.api.MarketService.PlaceBet(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, id.ID(body.OutcomeId), body.Shares, body.ExpectedProbability)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrBetLimitExceeded):
-			return PlaceBet422JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return PlaceBet422JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketOutcomeNotFound):
-			return PlaceBet400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return PlaceBet400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrProbabilityChanged), errors.Is(err, elo.ErrMarketNeedsGuarantor):
-			return PlaceBet409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return PlaceBet409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 
-	resp := PlaceBet201JSONResponse{Status: "success"}
+	resp := PlaceBet201JSONResponse{Status: StatusSuccess}
 	resp.Data.Shares = outcome.Shares
 	resp.Data.CostPerShare = outcome.CostPerShare
 	resp.Data.Fee = outcome.Fee
@@ -776,37 +776,37 @@ func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request Create
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return CreateMarketGuarantee401JSONResponse{Status: "fail", Message: "authentication required"}, nil
+			return CreateMarketGuarantee401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
 	}
 	if user.PlayerID == nil {
-		return CreateMarketGuarantee403JSONResponse{Status: "fail", Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
+		return CreateMarketGuarantee403JSONResponse{Status: StatusFail, Message: elo.ErrPlayerHasNoLinkedPlayer.Error()}, nil
 	}
 
 	body := request.Body
 	if body.RiskAmount <= 0 {
-		return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: elo.ErrGuaranteeRiskNotPositive.Error()}, nil
+		return CreateMarketGuarantee422JSONResponse{Status: StatusFail, Message: elo.ErrGuaranteeRiskNotPositive.Error()}, nil
 	}
 	if body.FeeRate < 0 || body.FeeRate > 0.25 {
-		return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: elo.ErrGuaranteeFeeOutOfRange.Error()}, nil
+		return CreateMarketGuarantee422JSONResponse{Status: StatusFail, Message: elo.ErrGuaranteeFeeOutOfRange.Error()}, nil
 	}
 
 	outcome, err := s.api.MarketService.JoinAsGuarantee(ctx, id.ID(body.Id), parseIDParam(request.Id), *user.PlayerID, body.RiskAmount, body.FeeRate)
 	if err != nil {
 		switch {
 		case errors.Is(err, elo.ErrMarketNotOpen):
-			return CreateMarketGuarantee409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return CreateMarketGuarantee409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrBetLimitExceeded),
 			errors.Is(err, elo.ErrGuaranteeRiskNotPositive),
 			errors.Is(err, elo.ErrGuaranteeFeeOutOfRange):
-			return CreateMarketGuarantee422JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return CreateMarketGuarantee422JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
 
-	resp := CreateMarketGuarantee201JSONResponse{Status: "success"}
+	resp := CreateMarketGuarantee201JSONResponse{Status: StatusSuccess}
 	resp.Data.RiskAmount = outcome.RiskAmount
 	resp.Data.FeeRate = outcome.FeeRate
 	resp.Data.LiquidityB = outcome.LiquidityB
@@ -823,7 +823,7 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return GetMarketsByMatchId200JSONResponse{Status: "success", Data: []Market{}}, nil
+		return GetMarketsByMatchId200JSONResponse{Status: StatusSuccess, Data: []Market{}}, nil
 	}
 
 	liquidity := make(map[string]float64, len(rows))
@@ -848,5 +848,5 @@ func (s *StrictServer) GetMarketsByMatchId(ctx context.Context, request GetMarke
 		result = append(result, m)
 	}
 
-	return GetMarketsByMatchId200JSONResponse{Status: "success", Data: result}, nil
+	return GetMarketsByMatchId200JSONResponse{Status: StatusSuccess, Data: result}, nil
 }

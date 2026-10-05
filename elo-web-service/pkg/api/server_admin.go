@@ -15,7 +15,7 @@ func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestOb
 		// A moved market resolution can hit the same history-conflict guard
 		// the edit+save flow uses; surface it as a real status, not a 500.
 		if domainStatusCode(err) == http.StatusConflict {
-			return UpdateArenas409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateArenas409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		}
 		return nil, err
 	}
@@ -57,7 +57,7 @@ func (s *StrictServer) UpdateArenas(ctx context.Context, _ UpdateArenasRequestOb
 	s.api.broadcastDataChange(true, true)
 
 	return UpdateArenas200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: struct {
 			Arenas []ArenaUpdateReport `json:"arenas"`
 			Global GlobalReplayReport  `json:"global"`
@@ -81,11 +81,11 @@ func (s *StrictServer) CreatePlayerCorrection(ctx context.Context, request Creat
 	}
 
 	if _, err := MustGetCurrentUser(ginCtx, s.api.UserService); err != nil {
-		return CreatePlayerCorrection400JSONResponse{Status: "fail", Message: "authentication required"}, nil
+		return CreatePlayerCorrection400JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 	}
 
 	if request.Body == nil {
-		return CreatePlayerCorrection400JSONResponse{Status: "fail", Message: "request body required"}, nil
+		return CreatePlayerCorrection400JSONResponse{Status: StatusFail, Message: "request body required"}, nil
 	}
 
 	if err := s.api.CorrectionService.CreateGlobalArenaRatingCorrection(ctx, request.Body.Id, parseIDParam(request.Id), float64(request.Body.Diff)); err != nil {
@@ -95,5 +95,5 @@ func (s *StrictServer) CreatePlayerCorrection(ctx context.Context, request Creat
 	// Corrections shift ratings and appear in the matches timeline.
 	s.api.broadcastDataChange(true, true)
 
-	return CreatePlayerCorrection200JSONResponse{Status: "success", Message: "Correction applied"}, nil
+	return CreatePlayerCorrection200JSONResponse{Status: StatusSuccess, Message: "Correction applied"}, nil
 }

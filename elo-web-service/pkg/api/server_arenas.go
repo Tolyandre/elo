@@ -121,7 +121,7 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 		arena, err := s.api.ArenaService.GetArenaByTournament(ctx, parseIDParam(*request.Params.TournamentId))
 		if err != nil {
 			if db.IsNoRows(err) {
-				return ListArenas200JSONResponse{Status: "success", Data: data}, nil
+				return ListArenas200JSONResponse{Status: StatusSuccess, Data: data}, nil
 			}
 			return nil, err
 		}
@@ -152,7 +152,7 @@ func (s *StrictServer) ListArenas(ctx context.Context, request ListArenasRequest
 		}
 	}
 
-	return ListArenas200JSONResponse{Status: "success", Data: data}, nil
+	return ListArenas200JSONResponse{Status: StatusSuccess, Data: data}, nil
 }
 
 // arenaMatchesCount counts the matches meeting the arena's filter for the
@@ -173,7 +173,7 @@ func (s *StrictServer) arenaMatchesCount(ctx context.Context, a elo.Arena) (int,
 func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaRequestObject) (CreateArenaResponseObject, error) {
 	settings, err := json.Marshal(request.Body.Settings)
 	if err != nil {
-		return CreateArena400JSONResponse{Status: "fail", Message: "invalid settings document"}, nil
+		return CreateArena400JSONResponse{Status: StatusFail, Message: "invalid settings document"}, nil
 	}
 	arena, err := s.api.ArenaService.CreateArena(ctx, currentActorID(ctx), elo.ArenaWriteOpts{
 		Name:        request.Body.Name,
@@ -184,34 +184,34 @@ func (s *StrictServer) CreateArena(ctx context.Context, request CreateArenaReque
 		SettingsRaw: settings,
 	})
 	if msg, ok := invalidSettings(err); ok {
-		return CreateArena400JSONResponse{Status: "fail", Message: msg}, nil
+		return CreateArena400JSONResponse{Status: StatusFail, Message: msg}, nil
 	}
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return CreateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return CreateArena400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
 	}
-	return CreateArena200JSONResponse{Status: "success", Data: arenaToAPI(arena)}, nil
+	return CreateArena200JSONResponse{Status: StatusSuccess, Data: arenaToAPI(arena)}, nil
 }
 
 func (s *StrictServer) GetArena(ctx context.Context, request GetArenaRequestObject) (GetArenaResponseObject, error) {
 	arena, err := s.api.ArenaService.GetArena(ctx, parseIDParam(request.Id))
 	if err != nil {
 		if db.IsNoRows(err) {
-			return GetArena404JSONResponse{Status: "fail", Message: "Arena not found"}, nil
+			return GetArena404JSONResponse{Status: StatusFail, Message: "Arena not found"}, nil
 		}
 		return nil, err
 	}
-	return GetArena200JSONResponse{Status: "success", Data: arenaToAPI(arena)}, nil
+	return GetArena200JSONResponse{Status: StatusSuccess, Data: arenaToAPI(arena)}, nil
 }
 
 func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaRequestObject) (UpdateArenaResponseObject, error) {
 	settings, err := json.Marshal(request.Body.Settings)
 	if err != nil {
-		return UpdateArena400JSONResponse{Status: "fail", Message: "invalid settings document"}, nil
+		return UpdateArena400JSONResponse{Status: StatusFail, Message: "invalid settings document"}, nil
 	}
 	arena, err := s.api.ArenaService.UpdateArena(ctx, currentActorID(ctx), parseIDParam(request.Id), elo.ArenaWriteOpts{
 		Name:        request.Body.Name,
@@ -222,22 +222,22 @@ func (s *StrictServer) UpdateArena(ctx context.Context, request UpdateArenaReque
 		SettingsRaw: settings,
 	})
 	if msg, ok := invalidSettings(err); ok {
-		return UpdateArena400JSONResponse{Status: "fail", Message: msg}, nil
+		return UpdateArena400JSONResponse{Status: StatusFail, Message: msg}, nil
 	}
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return UpdateArena400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateArena400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusConflict:
-			return UpdateArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateArena409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {
-				return UpdateArena404JSONResponse{Status: "fail", Message: "Arena not found"}, nil
+				return UpdateArena404JSONResponse{Status: StatusFail, Message: "Arena not found"}, nil
 			}
 			return nil, err
 		}
 	}
-	return UpdateArena200JSONResponse{Status: "success", Data: arenaToAPI(arena)}, nil
+	return UpdateArena200JSONResponse{Status: StatusSuccess, Data: arenaToAPI(arena)}, nil
 }
 
 func (s *StrictServer) DeleteArena(ctx context.Context, request DeleteArenaRequestObject) (DeleteArenaResponseObject, error) {
@@ -245,15 +245,15 @@ func (s *StrictServer) DeleteArena(ctx context.Context, request DeleteArenaReque
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusConflict:
-			return DeleteArena409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return DeleteArena409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			if db.IsNoRows(err) {
-				return DeleteArena404JSONResponse{Status: "fail", Message: "Arena not found"}, nil
+				return DeleteArena404JSONResponse{Status: StatusFail, Message: "Arena not found"}, nil
 			}
 			return nil, err
 		}
 	}
-	return DeleteArena200JSONResponse{Status: "success", Message: "Arena deleted"}, nil
+	return DeleteArena200JSONResponse{Status: StatusSuccess, Message: "Arena deleted"}, nil
 }
 
 func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlayersRequestObject) (GetArenaPlayersResponseObject, error) {
@@ -261,7 +261,7 @@ func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlay
 	players, err := s.api.ArenaService.GetArenaPlayers(ctx, arenaID)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return GetArenaPlayers404JSONResponse{Status: "fail", Message: "Arena not found"}, nil
+			return GetArenaPlayers404JSONResponse{Status: StatusFail, Message: "Arena not found"}, nil
 		}
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (s *StrictServer) GetArenaPlayers(ctx context.Context, request GetArenaPlay
 		}
 		data = append(data, ap)
 	}
-	return GetArenaPlayers200JSONResponse{Status: "success", Data: data}, nil
+	return GetArenaPlayers200JSONResponse{Status: StatusSuccess, Data: data}, nil
 }
 
 func arenaPlayersByID(players []elo.ArenaPlayer) map[id.ID]elo.ArenaPlayer {
@@ -367,7 +367,7 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 	if request.Params.Next != nil && *request.Params.Next != "" {
 		c, date, err := decodeArenaMatchCursor(*request.Params.Next)
 		if err != nil {
-			return ListArenaMatches400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
+			return ListArenaMatches400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
 		}
 		playerID, clubID, gameID = c.PlayerID, c.ClubID, c.GameID
 		cursorDate = date
@@ -482,5 +482,5 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 		next = &token
 	}
 
-	return ListArenaMatches200JSONResponse{Status: "success", Data: data, Next: next}, nil
+	return ListArenaMatches200JSONResponse{Status: StatusSuccess, Data: data, Next: next}, nil
 }

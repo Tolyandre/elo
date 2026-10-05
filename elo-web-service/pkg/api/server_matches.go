@@ -26,7 +26,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		var err error
 		gameID, playerID, clubID, tournamentID, noClub, cursorDate, err = decodeMatchCursor(*params.Next)
 		if err != nil {
-			return ListMatches400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
+			return ListMatches400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
 		}
 	} else {
 		// Query params carry wire-form ids (Base58 or canonical); the cursor
@@ -150,7 +150,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}
 
 	return ListMatches200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data:   data,
 		Next:   next,
 	}, nil
@@ -159,7 +159,7 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObject) (AddMatchResponseObject, error) {
 	gameID, playerScores, err := parseMatchScores(request.Body.GameId, request.Body.Score)
 	if err != nil {
-		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		return AddMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	}
 
 	date := time.Now()
@@ -181,7 +181,7 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 	if request.Body.CalculatorKind != nil {
 		calc, cerr := buildCalculatorInput(*request.Body.CalculatorKind, request.Body.CalculatorData)
 		if cerr != nil {
-			return AddMatch400JSONResponse{Status: "fail", Message: cerr.Error()}, nil
+			return AddMatch400JSONResponse{Status: StatusFail, Message: cerr.Error()}, nil
 		}
 		opts.Calculator = calc
 	}
@@ -205,7 +205,7 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		}
 	}
 
-	resp := AddMatch200JSONResponse{Status: "success"}
+	resp := AddMatch200JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = match.ID
 	return resp, nil
 }
@@ -216,9 +216,9 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 func addMatchError(err error) (AddMatchResponseObject, error) {
 	switch domainStatusCode(err) {
 	case http.StatusBadRequest:
-		return AddMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		return AddMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	case http.StatusConflict:
-		return AddMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
+		return AddMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	default:
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return GetMatchById404JSONResponse{Status: "fail", Message: "Match not found"}, nil
+		return GetMatchById404JSONResponse{Status: StatusFail, Message: "Match not found"}, nil
 	}
 
 	matchesMap := make(map[id.ID]*tempMatch)
@@ -360,13 +360,13 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		}
 	}
 
-	return GetMatchById200JSONResponse{Status: "success", Data: match}, nil
+	return GetMatchById200JSONResponse{Status: StatusSuccess, Data: match}, nil
 }
 
 func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchRequestObject) (UpdateMatchResponseObject, error) {
 	gameID, playerScores, err := parseMatchScores(request.Body.GameId, request.Body.Score)
 	if err != nil {
-		return UpdateMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		return UpdateMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	}
 
 	opts := elo.UpdateMatchOpts{
@@ -390,7 +390,7 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	if request.Body.CalculatorKind != nil {
 		calc, cerr := buildCalculatorUpdate(*request.Body.CalculatorKind, request.Body.CalculatorData)
 		if cerr != nil {
-			return UpdateMatch400JSONResponse{Status: "fail", Message: cerr.Error()}, nil
+			return UpdateMatch400JSONResponse{Status: StatusFail, Message: cerr.Error()}, nil
 		}
 		opts.Calculator = calc
 	}
@@ -399,11 +399,11 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return UpdateMatch400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateMatch400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return UpdateMatch404JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateMatch404JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusConflict:
-			return UpdateMatch409JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return UpdateMatch409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
 			return nil, err
 		}
@@ -413,5 +413,5 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	// are stale for every connected client.
 	s.api.broadcastDataChange(true, true)
 
-	return UpdateMatch200JSONResponse{Status: "success", Message: "Match is updated"}, nil
+	return UpdateMatch200JSONResponse{Status: StatusSuccess, Message: "Match is updated"}, nil
 }

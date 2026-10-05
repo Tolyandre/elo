@@ -74,7 +74,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		var err error
 		entityTypes, entityID, createdAt, id, err = decodeAuditCursor(*params.Next)
 		if err != nil {
-			return ListAuditEvents400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
+			return ListAuditEvents400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
 		}
 		cursorCreatedAt = pgtype.Timestamptz{Time: createdAt, Valid: true}
 		cursorID = &id
@@ -87,7 +87,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 		if params.EntityId != nil {
 			eid := parseIDParam(*params.EntityId)
 			if eid.IsZero() {
-				return ListAuditEvents400JSONResponse{Status: "fail", Message: "invalid entity_id"}, nil
+				return ListAuditEvents400JSONResponse{Status: StatusFail, Message: "invalid entity_id"}, nil
 			}
 			s := string(eid)
 			entityID = &s
@@ -150,7 +150,7 @@ func (s *StrictServer) ListAuditEvents(ctx context.Context, request ListAuditEve
 	}
 
 	return ListAuditEvents200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data:   data,
 		Next:   next,
 	}, nil

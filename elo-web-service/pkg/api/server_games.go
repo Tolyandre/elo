@@ -35,7 +35,7 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 		})
 	}
 
-	return ListGames200JSONResponse{Status: "success", Data: GameList{Games: gameList}}, nil
+	return ListGames200JSONResponse{Status: StatusSuccess, Data: GameList{Games: gameList}}, nil
 }
 
 func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject) (GetGameResponseObject, error) {
@@ -43,13 +43,13 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 	game, err := s.api.GameService.GetGameInfo(ctx, gameID)
 	if err != nil {
 		if gameNotFound(err) {
-			return GetGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
+			return GetGame404JSONResponse{Status: StatusFail, Message: "game not found"}, nil
 		}
-		return GetGame400JSONResponse{Status: "fail", Message: err.Error()}, nil
+		return GetGame400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 	}
 
 	return GetGame200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: Game{
 			Id:           game.ID,
 			Name:         game.Name,
@@ -66,7 +66,7 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequestObject) (CreateGameResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return CreateGame400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return CreateGame400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	var meta []elo.GameMetaPatch
@@ -76,12 +76,12 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name, currentActorID(ctx), meta...)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
-			return CreateGame409JSONResponse{Status: "fail", Message: "game with this name already exists"}, nil
+			return CreateGame409JSONResponse{Status: StatusFail, Message: "game with this name already exists"}, nil
 		}
 		return nil, err
 	}
 
-	resp := CreateGame200JSONResponse{Status: "success"}
+	resp := CreateGame200JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = game.ID
 	resp.Data.Name = game.Name
 	return resp, nil
@@ -114,16 +114,16 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusNotFound:
-			return PatchGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
+			return PatchGame404JSONResponse{Status: StatusFail, Message: "game not found"}, nil
 		case http.StatusBadRequest:
-			return PatchGame400JSONResponse{Status: "fail", Message: err.Error()}, nil
+			return PatchGame400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusConflict:
-			return PatchGame409JSONResponse{Status: "fail", Message: "game with this display name already exists"}, nil
+			return PatchGame409JSONResponse{Status: StatusFail, Message: "game with this display name already exists"}, nil
 		}
 		return nil, err
 	}
 
-	resp := PatchGame200JSONResponse{Status: "success"}
+	resp := PatchGame200JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = game.ID
 	resp.Data.Name = game.Name
 	resp.Data.Alias = strPtrOrNil(pgTextOf(game.Alias))
@@ -139,20 +139,20 @@ func (s *StrictServer) DeleteGame(ctx context.Context, request DeleteGameRequest
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return DeleteGame404JSONResponse{Status: "fail", Message: "game not found"}, nil
+		return DeleteGame404JSONResponse{Status: StatusFail, Message: "game not found"}, nil
 	case domainStatusCode(err) == http.StatusBadRequest:
-		return DeleteGame400JSONResponse{Status: "fail", Message: "cannot delete game with matches"}, nil
+		return DeleteGame400JSONResponse{Status: StatusFail, Message: "cannot delete game with matches"}, nil
 	default:
 		return nil, err
 	}
 
-	return DeleteGame200JSONResponse{Status: "success", Message: "Game deleted"}, nil
+	return DeleteGame200JSONResponse{Status: StatusSuccess, Message: "Game deleted"}, nil
 }
 
 func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesRequestObject) (SuggestGamesResponseObject, error) {
 	query := strings.TrimSpace(request.Params.Query)
 	if query == "" {
-		return SuggestGames400JSONResponse{Status: "fail", Message: "query is required"}, nil
+		return SuggestGames400JSONResponse{Status: StatusFail, Message: "query is required"}, nil
 	}
 	suggestions, err := s.api.GameService.SuggestGames(ctx, query)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *StrictServer) SuggestGames(ctx context.Context, request SuggestGamesReq
 		}
 		items = append(items, item)
 	}
-	return SuggestGames200JSONResponse{Status: "success", Data: GameSuggestionList{Games: items}}, nil
+	return SuggestGames200JSONResponse{Status: StatusSuccess, Data: GameSuggestionList{Games: items}}, nil
 }
 
 func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error) {
@@ -191,7 +191,7 @@ func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesReque
 			Reason:  strPtrOrNil(r.Reason),
 		})
 	}
-	return AutoMatchGames200JSONResponse{Status: "success", Data: GameAutoMatchResults{Games: items}}, nil
+	return AutoMatchGames200JSONResponse{Status: StatusSuccess, Data: GameAutoMatchResults{Games: items}}, nil
 }
 
 // gameNotFound reports whether err is the games table's no-rows error.

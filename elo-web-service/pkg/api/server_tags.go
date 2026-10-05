@@ -22,45 +22,45 @@ func (s *StrictServer) ListTags(ctx context.Context, _ ListTagsRequestObject) (L
 		result = append(result, Tag{Id: t.Id, Name: t.Name, GameCount: t.GameCount})
 	}
 
-	return ListTags200JSONResponse{Status: "success", Data: result}, nil
+	return ListTags200JSONResponse{Status: StatusSuccess, Data: result}, nil
 }
 
 func (s *StrictServer) CreateTag(ctx context.Context, request CreateTagRequestObject) (CreateTagResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return CreateTag400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return CreateTag400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	tag, err := s.api.TagService.CreateTag(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
-			return CreateTag409JSONResponse{Status: "fail", Message: "tag with this name already exists"}, nil
+			return CreateTag409JSONResponse{Status: StatusFail, Message: "tag with this name already exists"}, nil
 		}
 		return nil, err
 	}
 
-	return CreateTag200JSONResponse{Status: "success", Data: tagFromDB(tag)}, nil
+	return CreateTag200JSONResponse{Status: StatusSuccess, Data: tagFromDB(tag)}, nil
 }
 
 func (s *StrictServer) PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return PatchTag400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return PatchTag400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	tag, err := s.api.TagService.UpdateTagName(ctx, parseIDParam(request.Id), name, currentActorID(ctx))
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return PatchTag404JSONResponse{Status: "fail", Message: "tag not found"}, nil
+		return PatchTag404JSONResponse{Status: StatusFail, Message: "tag not found"}, nil
 	case domainStatusCode(err) == http.StatusConflict:
-		return PatchTag409JSONResponse{Status: "fail", Message: "tag with this name already exists"}, nil
+		return PatchTag409JSONResponse{Status: StatusFail, Message: "tag with this name already exists"}, nil
 	default:
 		return nil, err
 	}
 
 	return PatchTag200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data:   Tag{Id: tag.Id, Name: tag.Name, GameCount: tag.GameCount},
 	}, nil
 }
@@ -70,12 +70,12 @@ func (s *StrictServer) DeleteTag(ctx context.Context, request DeleteTagRequestOb
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return DeleteTag404JSONResponse{Status: "fail", Message: "tag not found"}, nil
+		return DeleteTag404JSONResponse{Status: StatusFail, Message: "tag not found"}, nil
 	default:
 		return nil, err
 	}
 
-	return DeleteTag200JSONResponse{Status: "success", Message: "Tag deleted"}, nil
+	return DeleteTag200JSONResponse{Status: StatusSuccess, Message: "Tag deleted"}, nil
 }
 
 func (s *StrictServer) AddGameTag(ctx context.Context, request AddGameTagRequestObject) (AddGameTagResponseObject, error) {
@@ -84,12 +84,12 @@ func (s *StrictServer) AddGameTag(ctx context.Context, request AddGameTagRequest
 		// A foreign-key violation means the game or the tag does not exist;
 		// a duplicate attachment is a no-op (ON CONFLICT DO NOTHING).
 		if domainStatusCode(err) == http.StatusBadRequest {
-			return AddGameTag400JSONResponse{Status: "fail", Message: "game or tag not found"}, nil
+			return AddGameTag400JSONResponse{Status: StatusFail, Message: "game or tag not found"}, nil
 		}
 		return nil, err
 	}
 
-	return AddGameTag200JSONResponse{Status: "success", Message: "Tag added"}, nil
+	return AddGameTag200JSONResponse{Status: StatusSuccess, Message: "Tag added"}, nil
 }
 
 func (s *StrictServer) RemoveGameTag(ctx context.Context, request RemoveGameTagRequestObject) (RemoveGameTagResponseObject, error) {
@@ -98,5 +98,5 @@ func (s *StrictServer) RemoveGameTag(ctx context.Context, request RemoveGameTagR
 		return nil, err
 	}
 
-	return RemoveGameTag200JSONResponse{Status: "success", Message: "Tag removed"}, nil
+	return RemoveGameTag200JSONResponse{Status: StatusSuccess, Message: "Tag removed"}, nil
 }

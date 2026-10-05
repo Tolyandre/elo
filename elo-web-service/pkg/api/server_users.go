@@ -24,7 +24,7 @@ func (s *StrictServer) ListUsers(ctx context.Context, _ ListUsersRequestObject) 
 		out = append(out, user)
 	}
 
-	return ListUsers200JSONResponse{Status: "success", Data: out}, nil
+	return ListUsers200JSONResponse{Status: StatusSuccess, Data: out}, nil
 }
 
 func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestObject) (PatchUserResponseObject, error) {
@@ -35,7 +35,7 @@ func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestOb
 	user, err := s.api.UserService.GetUserByID(ctx, parseIDParam(request.UserId))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return PatchUser404JSONResponse{Status: "fail", Message: "user not found"}, nil
+			return PatchUser404JSONResponse{Status: StatusFail, Message: "user not found"}, nil
 		}
 		return nil, err
 	}
@@ -49,5 +49,5 @@ func (s *StrictServer) PatchUser(ctx context.Context, request PatchUserRequestOb
 		resp.PlayerId = user.PlayerID
 	}
 
-	return PatchUser200JSONResponse{Status: "success", Data: resp}, nil
+	return PatchUser200JSONResponse{Status: StatusSuccess, Data: resp}, nil
 }

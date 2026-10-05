@@ -53,7 +53,7 @@ func (s *StrictServer) ListCorrections(ctx context.Context, request ListCorrecti
 		var err error
 		playerID, clubID, noClub, cursorDate, err = decodeCorrectionCursor(*params.Next)
 		if err != nil {
-			return ListCorrections400JSONResponse{Status: "fail", Message: "Invalid cursor"}, nil
+			return ListCorrections400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
 		}
 	} else {
 		if params.PlayerId != nil {
@@ -105,7 +105,7 @@ func (s *StrictServer) ListCorrections(ctx context.Context, request ListCorrecti
 	}
 
 	return ListCorrections200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data:   data,
 		Next:   next,
 	}, nil

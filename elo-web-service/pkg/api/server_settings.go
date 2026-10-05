@@ -14,7 +14,7 @@ func (s *StrictServer) GetSettings(ctx context.Context, _ GetSettingsRequestObje
 		return nil, err
 	}
 	return GetSettings200JSONResponse{
-		Status: "success",
+		Status: StatusSuccess,
 		Data: Settings{
 			EloConstK:                 settings.EloConstK,
 			EloConstD:                 settings.EloConstD,
@@ -55,17 +55,17 @@ func (s *StrictServer) ListAllSettings(ctx context.Context, _ ListAllSettingsReq
 		})
 	}
 
-	return ListAllSettings200JSONResponse{Status: "success", Data: entries}, nil
+	return ListAllSettings200JSONResponse{Status: StatusSuccess, Data: entries}, nil
 }
 
 func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSettingsRequestObject) (CreateSettingsResponseObject, error) {
 	payload := request.Body
 
 	if payload.WinReward < 0.1 || payload.WinReward > 5 {
-		return CreateSettings400JSONResponse{Status: "fail", Message: "win_reward must be between 0.1 and 5"}, nil
+		return CreateSettings400JSONResponse{Status: StatusFail, Message: "win_reward must be between 0.1 and 5"}, nil
 	}
 	if !payload.EffectiveDate.After(time.Now()) {
-		return CreateSettings400JSONResponse{Status: "fail", Message: "effective_date must be in the future"}, nil
+		return CreateSettings400JSONResponse{Status: StatusFail, Message: "effective_date must be in the future"}, nil
 	}
 
 	// Preserve league-related fields not exposed in the admin UI by copying from the newest
@@ -94,13 +94,13 @@ func (s *StrictServer) CreateSettings(ctx context.Context, request CreateSetting
 		return nil, err
 	}
 
-	return CreateSettings201JSONResponse{Status: "success", Message: "Settings created"}, nil
+	return CreateSettings201JSONResponse{Status: StatusSuccess, Message: "Settings created"}, nil
 }
 
 func (s *StrictServer) DeleteSettings(ctx context.Context, request DeleteSettingsRequestObject) (DeleteSettingsResponseObject, error) {
 	effectiveDate := request.Body.EffectiveDate
 	if !effectiveDate.After(time.Now()) {
-		return DeleteSettings400JSONResponse{Status: "fail", Message: "can only delete future settings"}, nil
+		return DeleteSettings400JSONResponse{Status: StatusFail, Message: "can only delete future settings"}, nil
 	}
 
 	err := s.api.EloSettingsService.Delete(ctx, pgtype.Timestamptz{Time: effectiveDate, Valid: true})
@@ -108,5 +108,5 @@ func (s *StrictServer) DeleteSettings(ctx context.Context, request DeleteSetting
 		return nil, err
 	}
 
-	return DeleteSettings200JSONResponse{Status: "success", Message: "Settings deleted"}, nil
+	return DeleteSettings200JSONResponse{Status: StatusSuccess, Message: "Settings deleted"}, nil
 }

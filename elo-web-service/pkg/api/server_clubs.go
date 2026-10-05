@@ -72,7 +72,7 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 		result = append(result, *clubsMap[string(cid)])
 	}
 
-	return ListClubs200JSONResponse{Status: "success", Data: result}, nil
+	return ListClubs200JSONResponse{Status: StatusSuccess, Data: result}, nil
 }
 
 func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error) {
@@ -81,22 +81,22 @@ func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return GetClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+		return GetClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 	}
 
-	return GetClub200JSONResponse{Status: "success", Data: clubFromGetRows(rows)}, nil
+	return GetClub200JSONResponse{Status: StatusSuccess, Data: clubFromGetRows(rows)}, nil
 }
 
 func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequestObject) (CreateClubResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
-		return CreateClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return CreateClub400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	club, err := s.api.ClubService.CreateClub(ctx, request.Body.Id, name, currentActorID(ctx))
 	if err != nil {
 		if domainStatusCode(err) == http.StatusConflict {
-			return CreateClub409JSONResponse{Status: "fail", Message: "club with this name already exists"}, nil
+			return CreateClub409JSONResponse{Status: StatusFail, Message: "club with this name already exists"}, nil
 		}
 		return nil, err
 	}
@@ -112,22 +112,22 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 	}
 	c.Icon = textPtr(club.Icon)
 
-	return CreateClub200JSONResponse{Status: "success", Data: c}, nil
+	return CreateClub200JSONResponse{Status: StatusSuccess, Data: c}, nil
 }
 
 func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error) {
 	if request.Body == nil {
-		return PatchClub400JSONResponse{Status: "fail", Message: "request body is required"}, nil
+		return PatchClub400JSONResponse{Status: StatusFail, Message: "request body is required"}, nil
 	}
 
 	updateName := request.Body.Name != nil
 	updateIcon := request.Body.Icon != nil
 	if !updateName && !updateIcon {
-		return PatchClub400JSONResponse{Status: "fail", Message: "nothing to update"}, nil
+		return PatchClub400JSONResponse{Status: StatusFail, Message: "nothing to update"}, nil
 	}
 
 	if updateName && *request.Body.Name == "" {
-		return PatchClub400JSONResponse{Status: "fail", Message: "name is required"}, nil
+		return PatchClub400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
 
 	// Validate the icon key before touching the database so a bad key never partially applies.
@@ -140,7 +140,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		} else {
 			validated, err := validateClubIconKey(iconValue)
 			if err != nil {
-				return PatchClub400JSONResponse{Status: "fail", Message: "invalid icon: " + err.Error()}, nil
+				return PatchClub400JSONResponse{Status: StatusFail, Message: "invalid icon: " + err.Error()}, nil
 			}
 			iconArg = &validated
 		}
@@ -149,7 +149,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	if updateName {
 		if _, err := s.api.ClubService.UpdateClub(ctx, parseIDParam(request.Id), *request.Body.Name, currentActorID(ctx)); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
-				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 			}
 			// PatchClub's OpenAPI response only defines 200/400/401/403/404 — there
 			// is no 409, so a name uniqueness violation falls through to 500 via
@@ -161,7 +161,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	if updateIcon {
 		if _, err := s.api.ClubService.UpdateClubIcon(ctx, parseIDParam(request.Id), iconArg); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
-				return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 			}
 			return nil, err
 		}
@@ -172,10 +172,10 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return PatchClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+		return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 	}
 
-	return PatchClub200JSONResponse{Status: "success", Data: clubFromGetRows(rows)}, nil
+	return PatchClub200JSONResponse{Status: StatusSuccess, Data: clubFromGetRows(rows)}, nil
 }
 
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
@@ -183,20 +183,20 @@ func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequest
 	switch {
 	case err == nil:
 	case domainStatusCode(err) == http.StatusNotFound:
-		return DeleteClub404JSONResponse{Status: "fail", Message: "club not found"}, nil
+		return DeleteClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 	case domainStatusCode(err) == http.StatusBadRequest:
-		return DeleteClub400JSONResponse{Status: "fail", Message: "cannot delete club with members"}, nil
+		return DeleteClub400JSONResponse{Status: StatusFail, Message: "cannot delete club with members"}, nil
 	default:
 		return nil, err
 	}
 
-	return DeleteClub200JSONResponse{Status: "success", Message: "Club deleted"}, nil
+	return DeleteClub200JSONResponse{Status: StatusSuccess, Message: "Club deleted"}, nil
 }
 
 func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberRequestObject) (AddClubMemberResponseObject, error) {
 	playerID := request.Body.PlayerId
 	if playerID == "" {
-		return AddClubMember400JSONResponse{Status: "fail", Message: "player_id is required"}, nil
+		return AddClubMember400JSONResponse{Status: StatusFail, Message: "player_id is required"}, nil
 	}
 
 	err := s.api.ClubService.AddMember(ctx, parseIDParam(request.Id), playerID)
@@ -205,12 +205,12 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 		// (club_id, player_id) membership (unique violation) has no 409 in the
 		// contract and still falls through to 500 via errorMiddleware.
 		if domainStatusCode(err) == http.StatusBadRequest {
-			return AddClubMember400JSONResponse{Status: "fail", Message: "club or player not found"}, nil
+			return AddClubMember400JSONResponse{Status: StatusFail, Message: "club or player not found"}, nil
 		}
 		return nil, err
 	}
 
-	return AddClubMember200JSONResponse{Status: "success", Message: "Member added"}, nil
+	return AddClubMember200JSONResponse{Status: StatusSuccess, Message: "Member added"}, nil
 }
 
 func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error) {
@@ -219,5 +219,5 @@ func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubM
 		return nil, err
 	}
 
-	return RemoveClubMember200JSONResponse{Status: "success", Message: "Member removed"}, nil
+	return RemoveClubMember200JSONResponse{Status: StatusSuccess, Message: "Member removed"}, nil
 }
