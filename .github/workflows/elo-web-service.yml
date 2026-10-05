@@ -30,6 +30,15 @@ jobs:
     - name: Download Go modules
       run: go mod download
 
+    - name: gofmt check
+      run: |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "gofmt needed for:"
+          echo "$unformatted"
+          exit 1
+        fi
+
     - name: Build
       run: go build -v ./...
 

@@ -78,6 +78,10 @@ jobs:
         # binaries come via optionalDependencies). pnpm-workspace.yaml's
         # onlyBuiltDependencies still governs the real (Nix) build.
         run: pnpm --dir ./nextjs install --frozen-lockfile --ignore-scripts
+      - name: Lint
+        run: pnpm --dir ./nextjs lint
+      - name: Type-check
+        run: pnpm --dir ./nextjs exec tsc --noEmit
       - name: Run tests
         run: pnpm --dir ./nextjs test --run --reporter dot
         env:
