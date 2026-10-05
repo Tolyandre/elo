@@ -16,8 +16,7 @@ import { AuthWarning } from "@/components/auth-warning";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-import { getCalculator, type CalculatorState } from "@/components/calculators/registry";
-import { PendingMatch } from "@/lib/offline/types";
+import { getCalculator, type CalculatorAdapter, type CalculatorState } from "@/components/calculators/registry";
 
 export default function MatchEditPage() {
     return (
@@ -29,7 +28,7 @@ export default function MatchEditPage() {
 
 function MatchEditPageWrapped() {
     const router = useRouter();
-    const { pendingMatches, ready } = useOffline();
+    const { pendingMatches, ready, updatePendingMatch } = useOffline();
     const { matches, loading: matchesLoading, invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
     const me = useMe();
@@ -77,27 +76,33 @@ function MatchEditPageWrapped() {
     }, [needsDetail, matchFromContext, id]);
 
     const editSaved = matchFromApi ?? matchFromContext ?? undefined;
-    // We need calculator_data (absent from the list response) before we can
-    // render the calculator editor — so for calculator-backed matches we wait
-    // for the detail fetch to resolve. Rendering CalculatorEdit with empty data
-    // would seed its useState from empty storage and never recover once the
-    // fetch lands (useState initializer runs once).
-    const calculatorReady = !!editSaved?.calculator_kind && !!matchFromApi?.calculator_data;
     // True while the detail fetch is in flight for a non-calculator saved match
-    // (the calculator path is gated by calculatorReady above).
+    // (the calculator path is gated on calculator_data below).
     const fetchLoading = needsDetail && !editSaved && !fetchError;
 
     if (!id) return null;
 
-    // ── Calculator-backed pending match: dispatch to the pending calculator ──
-    // editor. Saves go through updatePendingMatch (carrying the recomputed
+    // ── Calculator-backed pending match: dispatch to the calculator editor. ───
+    // Saves go through updatePendingMatch (carrying the recomputed
     // calculator_data) instead of updateMatchPromise.
     if (editPending?.calculatorKind) {
+        const kind = editPending.calculatorKind;
         return (
-            <PendingCalculatorEdit
-                match={editPending}
+            <CalculatorEdit
+                kind={kind}
+                storage={(editPending.calculatorData ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
                 onSaved={() => router.push(`/matches/view?id=${editPending.clientId}`)}
+                save={(state, adapter) =>
+                    updatePendingMatch(editPending.clientId, {
+                        gameId: editPending.gameId,
+                        score: adapter.scoreFromState(state),
+                        createdAt: editPending.createdAt,
+                        campArenaIds: editPending.campArenaIds ?? [],
+                        calculatorKind: kind,
+                        calculatorData: adapter.toStorage(state),
+                    })
+                }
             />
         );
     }
@@ -108,7 +113,13 @@ function MatchEditPageWrapped() {
     // calculator_data can never drift apart. There is intentionally NO path to
     // the generic MatchForm for a calculator-backed match.
     if (editSaved?.calculator_kind) {
-        if (!calculatorReady) {
+        // calculator_data is absent from the list response, so wait for the
+        // detail fetch: rendering the editor with empty data would seed its
+        // useState from empty storage and never recover once the fetch lands
+        // (useState initializer runs once).
+        const match = matchFromApi;
+        const kind = match?.calculator_kind;
+        if (!match?.calculator_data || !kind) {
             return (
                 <main className="max-w-sm mx-auto p-4">
                     <p className="text-center">Загрузка…</p>
@@ -117,11 +128,24 @@ function MatchEditPageWrapped() {
         }
         return (
             <CalculatorEdit
-                match={matchFromApi}
+                kind={kind}
+                storage={(match.calculator_data ?? {}) as Record<string, unknown>}
                 readOnly={!me.canEdit}
-                onSaved={() => router.push(`/matches/view?id=${matchFromApi.id}`)}
-                invalidateMatches={invalidateMatches}
-                invalidatePlayers={invalidatePlayers}
+                onSaved={() => router.push(`/matches/view?id=${match.id}`)}
+                save={async (state, adapter) => {
+                    await updateMatchPromise(match.id, {
+                        game_id: match.game_id,
+                        score: adapter.scoreFromState(state),
+                        // The calculator editor never edits the date: resubmit the raw
+                        // server string verbatim (µs precision) — a Date round-trip
+                        // would truncate it to milliseconds.
+                        date: match.dateISO ?? (match.date ? match.date.toISOString() : new Date().toISOString()),
+                        calculator_kind: kind,
+                        calculator_data: adapter.toStorage(state) as Record<string, never>,
+                    });
+                    invalidateMatches();
+                    invalidatePlayers();
+                }}
             />
         );
     }
@@ -160,26 +184,26 @@ function MatchEditPageWrapped() {
     );
 }
 
-// CalculatorEdit is the saved-match calculator editor. It re-opens the saved
-// calculator state so the user can tweak the round/cell breakdown; saving
-// recomputes score from the calculator state and PUTs both together. Read-only
-// users can view but cannot save.
+// CalculatorEdit renders the calculator editor shared by the saved-match and
+// offline-pending dispatches above. The rendering is identical for both; only
+// the persist call differs, which the caller supplies as `save`. The calculator
+// UI is the single source of truth for scores — every save recomputes the score
+// map from the calculator state, so score and calculator_data can never drift
+// apart. Read-only users can view but cannot save.
 function CalculatorEdit({
-    match,
+    kind,
+    storage,
     readOnly,
+    save,
     onSaved,
-    invalidateMatches,
-    invalidatePlayers,
 }: {
-    match: Match;
+    kind: string;
+    storage: Record<string, unknown>;
     readOnly: boolean;
+    save: (state: CalculatorState, adapter: CalculatorAdapter) => Promise<void> | void;
     onSaved: () => void;
-    invalidateMatches: () => void;
-    invalidatePlayers: () => void;
 }) {
-    const kind = match.calculator_kind!;
     const adapter = getCalculator(kind);
-    const data = (match.calculator_data ?? {}) as Record<string, unknown>;
     const [state, setState] = useState<CalculatorState | null>(null);
     const [saving, setSaving] = useState(false);
 
@@ -187,20 +211,7 @@ function CalculatorEdit({
         if (!adapter || state === null) return;
         setSaving(true);
         try {
-            const score = adapter.scoreFromState(state);
-            const calcData = adapter.toStorage(state) as Record<string, never>;
-            await updateMatchPromise(match.id, {
-                game_id: match.game_id,
-                score,
-                // The calculator editor never edits the date: resubmit the raw
-                // server string verbatim (µs precision) — a Date round-trip
-                // would truncate it to milliseconds.
-                date: match.dateISO ?? (match.date ? match.date.toISOString() : new Date().toISOString()),
-                calculator_kind: kind,
-                calculator_data: calcData,
-            });
-            invalidateMatches();
-            invalidatePlayers();
+            await save(state, adapter);
             toast.success("Партия обновлена");
             onSaved();
         } catch (err) {
@@ -228,91 +239,7 @@ function CalculatorEdit({
 
             {adapter ? (
                 <adapter.History
-                    storage={data}
-                    readOnly={readOnly}
-                    onStateChange={setState}
-                />
-            ) : (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                        Неизвестный тип калькулятора: {kind}
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {!readOnly && adapter && (
-                <Button className="w-full" disabled={saving} onClick={handleSave}>
-                    {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Сохранение…</>) : "Сохранить изменения"}
-                </Button>
-            )}
-        </main>
-    );
-}
-
-// PendingCalculatorEdit is the offline counterpart of CalculatorEdit: it
-// re-opens the calculator state captured when the match was queued offline so
-// the round/cell breakdown can be tweaked. Saving recomputes score from the
-// calculator state and writes both back to the pending store via
-// updatePendingMatch (carrying the recomputed calculator_data).
-function PendingCalculatorEdit({
-    match,
-    readOnly,
-    onSaved,
-}: {
-    match: PendingMatch;
-    readOnly: boolean;
-    onSaved: () => void;
-}) {
-    const { updatePendingMatch } = useOffline();
-    const kind = match.calculatorKind!;
-    const adapter = getCalculator(kind);
-    const data = (match.calculatorData ?? {}) as Record<string, unknown>;
-    const [state, setState] = useState<CalculatorState | null>(null);
-    const [saving, setSaving] = useState(false);
-
-    async function handleSave() {
-        if (!adapter || state === null) return;
-        setSaving(true);
-        try {
-            const score = adapter.scoreFromState(state);
-            const calcData = adapter.toStorage(state) as Record<string, unknown>;
-            updatePendingMatch(match.clientId, {
-                gameId: match.gameId,
-                score,
-                createdAt: match.createdAt,
-                campArenaIds: match.campArenaIds ?? [],
-                calculatorKind: kind,
-                calculatorData: calcData,
-            });
-            toast.success("Партия обновлена");
-            onSaved();
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : String(err));
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    const title = adapter?.editTitle ?? "Редактирование партии";
-
-    return (
-        <main className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
-            <AuthWarning />
-            <PageHeader title={title} />
-            {readOnly && (
-                <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Только просмотр</AlertTitle>
-                    <AlertDescription>
-                        У вас нет прав на редактирование — изменения нельзя сохранить.
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {adapter ? (
-                <adapter.History
-                    storage={data}
+                    storage={storage}
                     readOnly={readOnly}
                     onStateChange={setState}
                 />
