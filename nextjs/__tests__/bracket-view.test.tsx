@@ -102,11 +102,19 @@ describe("BracketView", () => {
     it("shows one match row per played match with brief names and earned points", () => {
         const container = render(<BracketView bracket={bracket} />);
         // The «Партий: n» counter is gone; the match rows themselves carry
-        // the series (brief name + the ADR-27 earn share).
+        // the series (brief name + the ADR-30 earn share).
         expect(container.textContent).not.toContain("Партий:");
         const card = container.querySelector('[data-bracket-slot="s1"]')!;
         const matchRows = [...card.querySelectorAll("ul")].at(-1)!;
         expect(matchRows.textContent).toContain("Алиса 1 · Борис 0");
+    });
+
+    it("links every played match row to the match page", () => {
+        const container = render(<BracketView bracket={bracket} />);
+        const card = container.querySelector('[data-bracket-slot="s1"]')!;
+        const link = [...card.querySelectorAll("ul")].at(-1)!.querySelector("a")!;
+        expect(link.getAttribute("href")).toBe("/matches/view?id=m1");
+        expect(link.textContent).toContain("Алиса 1");
     });
 
     it("marks a slot with a minimal score next to the game name and pads empty rows", () => {

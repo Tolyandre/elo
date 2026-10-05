@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import type { Bracket, BracketRound, BracketSeat, BracketSlot } from "@/app/api";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
@@ -37,10 +38,15 @@ export function BracketView({
     bracket,
     resolvePlayerName,
     resolveGameName,
+    resolveMatchHref,
 }: {
     bracket: Bracket;
     resolvePlayerName?: (playerId: string) => string;
     resolveGameName?: (gameId: string) => string | undefined;
+    /** Href for a match's own page; undefined renders the row as plain text
+     * (the help page's baked example has no real matches to link). Defaults
+     * to the app's match view. */
+    resolveMatchHref?: (matchId: string) => string | undefined;
 }) {
     const contentRef = useRef<HTMLDivElement>(null);
     const [selected, setSelected] = useState<Selection | null>(null);
@@ -204,6 +210,7 @@ export function BracketView({
                     onSelectRow={toggleRow}
                     resolvePlayerName={resolvePlayerName}
                     resolveGameName={resolveGameName}
+                    resolveMatchHref={resolveMatchHref}
                 />
             </Fragment>
         ));
@@ -223,6 +230,7 @@ export function BracketView({
                 onSelectRow={toggleRow}
                 resolvePlayerName={resolvePlayerName}
                 resolveGameName={resolveGameName}
+                resolveMatchHref={resolveMatchHref}
             />
         ));
 
@@ -270,6 +278,7 @@ function RoundColumn({
     onSelectRow,
     resolvePlayerName,
     resolveGameName,
+    resolveMatchHref,
 }: {
     round: BracketRound;
     elimination: Bracket["elimination"];
@@ -278,6 +287,7 @@ function RoundColumn({
     onSelectRow: (sel: Selection) => void;
     resolvePlayerName?: (playerId: string) => string;
     resolveGameName?: (gameId: string) => string | undefined;
+    resolveMatchHref?: (matchId: string) => string | undefined;
 }) {
     return (
         <div className="flex w-56 flex-col">
@@ -294,6 +304,7 @@ function RoundColumn({
                         onSelectRow={onSelectRow}
                         resolvePlayerName={resolvePlayerName}
                         resolveGameName={resolveGameName}
+                        resolveMatchHref={resolveMatchHref}
                     />
                 ))}
             </div>
@@ -302,7 +313,7 @@ function RoundColumn({
 }
 
 /**
- * Slot points formatting (ADR-27): one-decimal earn shares render without
+ * Slot points formatting (ADR-30): one-decimal earn shares render without
  * trailing zeros («1», «0.5», «+1.2») — the wire values are already rounded
  * to one decimal, this only keeps the display tidy. `signed` prefixes a "+"
  * for positive standings totals.
@@ -335,6 +346,7 @@ function SlotCard({
     onSelectRow,
     resolvePlayerName,
     resolveGameName,
+    resolveMatchHref,
 }: {
     slot: BracketSlot;
     slotPositions: Map<string, number>;
@@ -342,6 +354,7 @@ function SlotCard({
     onSelectRow: (sel: Selection) => void;
     resolvePlayerName?: (playerId: string) => string;
     resolveGameName?: (gameId: string) => string | undefined;
+    resolveMatchHref?: (matchId: string) => string | undefined;
 }) {
     const { playerMap, playerDisplayName } = usePlayers();
     const { games } = useGames();
@@ -452,19 +465,33 @@ function SlotCard({
             )}
 
             {/* The match series: one row per played match with every
-                participant's earned points (ADR-27), then dim placeholders up
+                participant's earned points (ADR-30), then dim placeholders up
                 to the organizer's minimal score — the rows preview how many
                 matches the slot still expects. */}
             {(slot.matches.length > 0 || slot.min_score > 0) && (
                 <ul className="space-y-0.5 border-t pt-1">
-                    {slot.matches.map((m) => (
-                        <li
-                            key={m.match_id}
-                            className="text-xs text-muted-foreground break-words tabular-nums"
-                        >
-                            {m.scores.map((s) => `${briefName(playerName(s.player_id))} ${fmtPoints(s.points)}`).join(" · ")}
-                        </li>
-                    ))}
+                    {slot.matches.map((m) => {
+                        const href = resolveMatchHref
+                            ? resolveMatchHref(m.match_id)
+                            : `/matches/view?id=${m.match_id}`;
+                        const label = m.scores
+                            .map((s) => `${briefName(playerName(s.player_id))} ${fmtPoints(s.points)}`)
+                            .join(" · ");
+                        return (
+                            <li
+                                key={m.match_id}
+                                className="text-xs text-muted-foreground break-words tabular-nums"
+                            >
+                                {href ? (
+                                    <Link href={href} className="hover:text-foreground hover:underline">
+                                        {label}
+                                    </Link>
+                                ) : (
+                                    label
+                                )}
+                            </li>
+                        );
+                    })}
                     {Array.from({ length: placeholderRows(slot) }).map((_, i) => (
                         <li key={`empty-${i}`} className="text-xs text-muted-foreground/50">
                             —

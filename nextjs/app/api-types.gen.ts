@@ -500,7 +500,7 @@ export interface paths {
         head?: never;
         /**
          * Adjust a slot (organizer, running state)
-         * @description Reassign the slot's game and/or set its minimal advance score (ADR-27). Only for slots with zero linked matches; at least one field must be given. Audited as slot-adjust (op game / min_score).
+         * @description Reassign the slot's game and/or set its minimal advance score (ADR-30). Only for slots with zero linked matches; at least one field must be given. Audited as slot-adjust (op game / min_score).
          */
         patch: operations["AdjustTournamentSlot"];
         trace?: never;
@@ -1446,7 +1446,7 @@ export interface components {
             advance: number;
             /**
              * Format: double
-             * @description The organizer-set minimal slot score (ADR-27): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
+             * @description The organizer-set minimal slot score (ADR-30): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
              */
             min_score: number;
             /** @enum {string} */
@@ -1454,14 +1454,14 @@ export interface components {
             seats: components["schemas"]["BracketSeat"][];
             matches: {
                 match_id: components["schemas"]["Base58ID"];
-                /** @description Every participant's slot points earned in this match (ADR-27): the Elo earn part rounded to one decimal, in event order. */
+                /** @description Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their share of the leader's margin, rounded to one decimal, in event order. */
                 scores: {
                     player_id: components["schemas"]["Base58ID"];
                     /** Format: double */
                     points: number;
                 }[];
             }[];
-            /** @description Live standings derived from the linked matches' scores: cumulative slot points (the Elo earn part, ADR-27), current order, and the recorded advanced set. */
+            /** @description Live standings derived from the linked matches' scores: cumulative slot points (the per-match shares of ADR-30), current order, and the recorded advanced set. */
             standings: {
                 player_id: components["schemas"]["Base58ID"];
                 /** Format: double */

@@ -143,16 +143,20 @@ function planSeatOf(seat: SeatSpec) {
 }
 
 /**
- * Slot points of one match (ADR-27): the Elo earn part at the seeded default
- * win reward 1 — the score surplus over the worst score as a share of the
- * summed surplus, rounded to one decimal. Mirrors pkg/ratingmath so the
- * baked standings and the baked match rows agree with the real formula.
+ * Slot points of one match (ADR-30): the score surplus over the worst score
+ * as a share of the leader's surplus, capped at 0.95 with +0.05 for every
+ * 1st place holder — the winner rounds to exactly 1.0 — all in one-decimal
+ * steps. Mirrors pkg/bracket.MatchPoints so the baked standings and the
+ * baked match rows agree with the real formula.
  */
 function earnShares(raw: number[]): number[] {
     const min = Math.min(...raw);
-    const surplus = raw.map((s) => s - min);
-    const sum = surplus.reduce((acc, s) => acc + s, 0);
-    return surplus.map((s) => (sum === 0 ? 1 / raw.length : Math.round((s / sum) * 10) / 10));
+    const max = Math.max(...raw);
+    if (max === min) return raw.map(() => 0.1); // nothing to separate: the bare bonus tenth
+    return raw.map((s) => {
+        const share = (0.95 * (s - min)) / (max - min) + (s === max ? 0.05 : 0);
+        return Math.round(share * 10) / 10;
+    });
 }
 
 /** The plan shape (for the plan-preview figure): the same rounds without results. */
@@ -200,7 +204,7 @@ function slotFor(letter: string, position: number): BracketSlot {
                 points: shares[idx],
             })),
         }],
-        // Slot points (ADR-27): every player's earned share of the match.
+        // Slot points (ADR-30): every player's earned share of the match.
         standings: baked.places.map((playerId, idx) => ({
             player_id: id(playerId),
             points: shares[idx],
