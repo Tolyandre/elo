@@ -3,7 +3,7 @@ import type { Base58ID } from "@/lib/id";
 
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useCallback, useMemo, useRef, useState } from "react"
-import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./multi-select"
+import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./vendor/multi-select"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
 import { useCamps } from "@/app/arenas/campsContext"

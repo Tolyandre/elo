@@ -20,7 +20,7 @@ import { useTags } from "@/app/tagsContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { GameMultiSelect } from "@/components/game-multi-select";
-import { MultiSelect } from "@/components/multi-select";
+import { MultiSelect } from "@/components/vendor/multi-select";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

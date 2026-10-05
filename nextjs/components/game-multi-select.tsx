@@ -5,7 +5,7 @@ import { useGames } from "@/app/gamesContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
 import { useMemo } from "react"
-import { MultiSelect, MultiSelectGroup } from "./multi-select"
+import { MultiSelect, MultiSelectGroup } from "./vendor/multi-select"
 import { buildGameGroups } from "@/lib/game-groups"
 import { allNames } from "@/lib/game-names"
 

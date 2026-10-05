@@ -26,7 +26,7 @@ import {
 	CommandItem,
 	CommandList,
 } from "@/components/ui/command";
-import { BottomSheet } from "./ui/bottom-sheet";
+import { BottomSheet } from "../ui/bottom-sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
