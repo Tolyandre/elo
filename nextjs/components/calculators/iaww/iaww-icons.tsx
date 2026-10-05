@@ -154,17 +154,21 @@ export function ResearchIcon({ size }: { size?: string }) {
     );
 }
 
-/** Round token frame (for general and financier) */
-function TokenFrame({
-    rimColor,
-    rimColor2,
-    bg,
+/** Portrait-token frame shared by General / Culture / Financier, modelled on
+ *  the physical scoring tokens: colored rim, radially lit background and
+ *  clipped bust portrait (no value mark — the scoring UI shows it beside). */
+function PortraitToken({
+    rimLight,
+    rimDark,
+    bgLight,
+    bgDark,
     size = "2.6em",
     children,
 }: {
-    rimColor: string;
-    rimColor2: string;
-    bg: string;
+    rimLight: string;
+    rimDark: string;
+    bgLight: string;
+    bgDark: string;
     size?: string;
     children: React.ReactNode;
 }) {
@@ -175,85 +179,175 @@ function TokenFrame({
             style={{ width: size, height: size, display: "inline-block", verticalAlign: "middle" }}
         >
             <defs>
-                <radialGradient id={`${uid}rim`} cx="35%" cy="30%" r="70%">
-                    <stop offset="0%" stopColor={rimColor} />
-                    <stop offset="100%" stopColor={rimColor2} />
+                <radialGradient id={`${uid}rim`} cx="35%" cy="30%" r="75%">
+                    <stop offset="0%" stopColor={rimLight} />
+                    <stop offset="100%" stopColor={rimDark} />
                 </radialGradient>
+                <radialGradient id={`${uid}bg`} cx="38%" cy="28%" r="90%">
+                    <stop offset="0%" stopColor={bgLight} />
+                    <stop offset="100%" stopColor={bgDark} />
+                </radialGradient>
+                <clipPath id={`${uid}art`}>
+                    <circle cx="26" cy="26" r="21" />
+                </clipPath>
             </defs>
-            {/* Outer rim */}
+            {/* Rim + portrait background */}
             <circle cx="26" cy="26" r="25" fill={`url(#${uid}rim)`} />
-            {/* Inner portrait area */}
-            <circle cx="26" cy="26" r="21" fill={bg} />
-            {children}
+            <circle cx="26" cy="26" r="21" fill={`url(#${uid}bg)`} />
+            {/* Bust, cropped by the inner disc */}
+            <g clipPath={`url(#${uid}art)`}>{children}</g>
         </svg>
     );
 }
 
-/** 6. General token */
+/** Neck + shoulders. Identical geometry on every token so the three
+ *  portraits read as one family (head at 26,22 r 8.8/10; eye line y 21.6). */
+function Bust({ clothing }: { clothing: string }) {
+    return (
+        <path
+            d="M 10.6 47 C 11.2 38 16 33.6 22 32.9 L 23 31.4 L 29 31.4 L 30 32.9 C 36 33.6 40.8 38 41.4 47 Z"
+            fill={clothing}
+        />
+    );
+}
+
+function Eyes({ color }: { color: string }) {
+    return (
+        <g fill={color}>
+            <ellipse cx="22.2" cy="21.6" rx="1.15" ry="1.35" />
+            <ellipse cx="29.8" cy="21.6" rx="1.15" ry="1.35" />
+        </g>
+    );
+}
+
+function Nose({ color }: { color: string }) {
+    return (
+        <path d="M 26 21.8 L 26 24.4 Q 26 25.4 25.1 25.4" fill="none" stroke={color} strokeWidth="0.9" strokeLinecap="round" />
+    );
+}
+
+/** Handlebar mustache shared by the financier and the general */
+function Mustache({ color }: { color: string }) {
+    return (
+        <path
+            d="M 26 25.4 C 24 24.9 22 25.2 21.6 26.9 C 23.4 28.1 25.2 27.5 26 26.5 C 26.8 27.5 28.6 28.1 30.4 26.9 C 30 25.2 28 24.9 26 25.4 Z"
+            fill={color}
+        />
+    );
+}
+
+function starPoints(cx: number, cy: number, outer: number, inner: number): string {
+    const pts: string[] = [];
+    for (let k = 0; k < 5; k++) {
+        const ao = ((-90 + 72 * k) * Math.PI) / 180;
+        const ai = ((-54 + 72 * k) * Math.PI) / 180;
+        pts.push(`${(cx + outer * Math.cos(ao)).toFixed(2)},${(cy + outer * Math.sin(ao)).toFixed(2)}`);
+        pts.push(`${(cx + inner * Math.cos(ai)).toFixed(2)},${(cy + inner * Math.sin(ai)).toFixed(2)}`);
+    }
+    return pts.join(" ");
+}
+
+/** 6. General token — low forage cap with a star, mustache, olive tunic */
 export function GeneralToken({ size }: { size?: string }) {
     return (
-        <TokenFrame rimColor="#c8a060" rimColor2="#7a5820" bg="#3a2a1a" size={size}>
-            {/* Simplified soldier silhouette */}
-            {/* Military cap */}
-            <rect x="18" y="12" width="16" height="5" rx="2" fill="#7a9060" />
-            <rect x="16" y="16" width="20" height="3" rx="1" fill="#6a8050" />
-            {/* Head */}
-            <ellipse cx="26" cy="24" rx="7" ry="8" fill="#d4a878" />
-            {/* Eyes */}
-            <ellipse cx="23" cy="23" rx="1.5" ry="1.5" fill="#3a2a1a" />
-            <ellipse cx="29" cy="23" rx="1.5" ry="1.5" fill="#3a2a1a" />
-            {/* Collar / uniform */}
-            <path d="M19 32 Q19 38 26 40 Q33 38 33 32 L30 30 Q26 34 22 30 Z" fill="#5a6840" />
-            {/* Stars on collar */}
-            <polygon points="22,31 23,29 24,31 22.5,30 23.5,30" fill="#d4a010" />
-            <polygon points="28,31 29,29 30,31 28.5,30 29.5,30" fill="#d4a010" />
-        </TokenFrame>
+        <PortraitToken
+            rimLight="#e2bc6a" rimDark="#8a5c14"
+            bgLight="#f2c878" bgDark="#b06e20"
+            size={size}
+        >
+            {/* Neck, shoulders, head */}
+            <rect x="23.1" y="28.5" width="5.8" height="6" fill="#d49a64" />
+            <Bust clothing="#57633a" />
+            <ellipse cx="26" cy="32.4" rx="2.9" ry="1.3" fill="#b57e4c" />
+            <ellipse cx="26" cy="22" rx="8.8" ry="10" fill="#d49a64" />
+            {/* Forage cap worn low */}
+            <path d="M 16.9 18 C 16.4 10.8 20 8.6 26 8.6 C 32 8.6 35.6 10.8 35.1 18 C 30 15.4 22 15.4 16.9 18 Z" fill="#5c6636" />
+            <path d="M 16.9 18 C 22 15.4 30 15.4 35.1 18 L 35.1 20 C 30 17.4 22 17.4 16.9 20 Z" fill="#454e26" />
+            <polygon points={starPoints(26, 16.7, 1.6, 0.7)} fill="#e2bc6a" />
+            {/* Collar + tunic buttons */}
+            <rect x="22.8" y="31.2" width="6.4" height="2.4" rx="1" fill="#3f4826" />
+            <circle cx="26" cy="36.6" r="0.7" fill="#e2bc6a" />
+            <circle cx="26" cy="39.8" r="0.7" fill="#e2bc6a" />
+            {/* Stern brows */}
+            <path d="M 20.5 19.5 Q 22.3 19.1 24 20 M 31.5 19.5 Q 29.7 19.1 28 20" fill="none" stroke="#33220f" strokeWidth="1" strokeLinecap="round" />
+            <Eyes color="#2a1a08" />
+            <Nose color="#b57e4c" />
+            <Mustache color="#33220f" />
+            <path d="M 24.7 28.6 Q 26 29.1 27.3 28.6" fill="none" stroke="#8a5636" strokeWidth="0.8" strokeLinecap="round" />
+        </PortraitToken>
     );
 }
 
-/** 7. Culture token */
+/** 7. Culture token — smiling woman, curly hair, gold dress and jewelry */
 export function CultureToken({ size }: { size?: string }) {
     return (
-        <TokenFrame rimColor="#c8a060" rimColor2="#7a5000" bg="#5a2a4a" size={size}>
-            {/* Curly hair — wide mass around the head */}
-            <ellipse cx="26" cy="18" rx="11" ry="9" fill="#1a0d04" />
-            {/* Curly side locks */}
-            <ellipse cx="15" cy="24" rx="4" ry="7" fill="#1a0d04" />
-            <ellipse cx="37" cy="24" rx="4" ry="7" fill="#1a0d04" />
-            {/* Curl bumps on top */}
-            <ellipse cx="20" cy="13" rx="3.5" ry="3" fill="#241005" />
-            <ellipse cx="26" cy="11" rx="3.5" ry="3" fill="#241005" />
-            <ellipse cx="32" cy="13" rx="3.5" ry="3" fill="#241005" />
-            {/* Face */}
-            <ellipse cx="26" cy="25" rx="7" ry="8" fill="#d4a070" />
-            {/* Eyes */}
-            <ellipse cx="23" cy="24" rx="1.3" ry="1.5" fill="#2a1a08" />
-            <ellipse cx="29" cy="24" rx="1.3" ry="1.5" fill="#2a1a08" />
-            {/* Lips */}
-            <path d="M23 29.5 Q26 31.5 29 29.5" fill="none" stroke="#b06050" strokeWidth="1.2" strokeLinecap="round" />
-            {/* Clothing — warm amber/yellow neckline */}
-            <path d="M19 33 Q19 40 26 42 Q33 40 33 33 L30 31 Q26 35 22 31 Z" fill="#c87a10" />
-        </TokenFrame>
+        <PortraitToken
+            rimLight="#e2bc6a" rimDark="#8a5c14"
+            bgLight="#e8daf4" bgDark="#9a72c2"
+            size={size}
+        >
+            {/* Curly hair mass behind the face */}
+            <ellipse cx="26" cy="16.5" rx="11.8" ry="9.2" fill="#2a1608" />
+            <ellipse cx="14.9" cy="23.5" rx="4.2" ry="7.2" fill="#2a1608" />
+            <ellipse cx="37.1" cy="23.5" rx="4.2" ry="7.2" fill="#2a1608" />
+            {/* Neck, shoulders, head */}
+            <rect x="23.1" y="28.5" width="5.8" height="6" fill="#a86e42" />
+            <Bust clothing="#d89420" />
+            <ellipse cx="26" cy="32.4" rx="2.9" ry="1.3" fill="#8a5630" />
+            <ellipse cx="26" cy="22" rx="8.8" ry="10" fill="#a86e42" />
+            {/* Front curls framing the face */}
+            <circle cx="26" cy="11.6" r="2.7" fill="#2a1608" />
+            <circle cx="20.6" cy="13.1" r="2.5" fill="#2a1608" />
+            <circle cx="31.4" cy="13.1" r="2.5" fill="#2a1608" />
+            <circle cx="18.4" cy="16.2" r="2.3" fill="#2a1608" />
+            <circle cx="33.6" cy="16.2" r="2.3" fill="#2a1608" />
+            <circle cx="17.3" cy="20" r="2.1" fill="#3d2410" />
+            <circle cx="34.7" cy="20" r="2.1" fill="#3d2410" />
+            {/* Brows */}
+            <path d="M 20.7 19.5 Q 22.3 18.8 23.9 19.4 M 28.1 19.4 Q 29.7 18.8 31.3 19.5" fill="none" stroke="#241206" strokeWidth="0.9" strokeLinecap="round" />
+            <Eyes color="#1a0e04" />
+            <Nose color="#7c4e28" />
+            {/* Big open smile */}
+            <path d="M 22.6 26.2 Q 26 27.3 29.4 26.2 Q 29 30.7 26 30.9 Q 23 30.7 22.6 26.2 Z" fill="#f6efe4" stroke="#5f2a1a" strokeWidth="0.7" strokeLinejoin="round" />
+            {/* Hoop earrings */}
+            <circle cx="16.6" cy="27" r="1.9" fill="none" stroke="#f0c050" strokeWidth="1.3" />
+            <circle cx="35.4" cy="27" r="1.9" fill="none" stroke="#f0c050" strokeWidth="1.3" />
+            {/* Necklace + gem */}
+            <path d="M 21.6 33.6 Q 26 36.6 30.4 33.6" fill="none" stroke="#f2cc66" strokeWidth="1.1" />
+            <circle cx="26" cy="35.7" r="1.4" fill="#2ea86a" stroke="#f2cc66" strokeWidth="0.5" />
+        </PortraitToken>
     );
 }
 
-/** 8. Financier token */
+/** 8. Financier token — slicked hair, round glasses, mustache, suit and tie */
 export function FinancierToken({ size }: { size?: string }) {
     return (
-        <TokenFrame rimColor="#888888" rimColor2="#444444" bg="#2a2a3a" size={size}>
-            {/* Simplified businessman silhouette */}
-            {/* Hair */}
-            <ellipse cx="26" cy="17" rx="8" ry="6" fill="#2a1a0a" />
-            {/* Head */}
-            <ellipse cx="26" cy="24" rx="7" ry="8" fill="#c8a070" />
-            {/* Glasses */}
-            <circle cx="23" cy="23" r="2.5" fill="none" stroke="#888" strokeWidth="1" />
-            <circle cx="29" cy="23" r="2.5" fill="none" stroke="#888" strokeWidth="1" />
-            <line x1="25.5" y1="23" x2="26.5" y2="23" stroke="#888" strokeWidth="1" />
-            {/* Suit lapels */}
-            <path d="M19 32 L22 29 L26 34 L30 29 L33 32 Q33 40 26 41 Q19 40 19 32 Z" fill="#2a3a6a" />
-            {/* Tie */}
-            <path d="M24 30 L26 29 L28 30 L27 38 L26 39 L25 38 Z" fill="#cc2020" />
-        </TokenFrame>
+        <PortraitToken
+            rimLight="#b0bcc8" rimDark="#4e5a66"
+            bgLight="#9cc8e8" bgDark="#2c6494"
+            size={size}
+        >
+            {/* Neck, shoulders, head */}
+            <rect x="23.1" y="28.5" width="5.8" height="6" fill="#ecd0b0" />
+            <Bust clothing="#232f4e" />
+            <ellipse cx="26" cy="32.4" rx="2.9" ry="1.3" fill="#d0ac86" />
+            {/* Shirt, tie, lapels */}
+            <polygon points="23.2,30.9 28.8,30.9 26,36.6" fill="#e9e9ef" />
+            <polygon points="25.3,30.9 26.7,30.9 26.4,36.4 25.6,36.4" fill="#8a2432" />
+            <path d="M 23.2 30.9 L 24.7 34.8 M 28.8 30.9 L 27.3 34.8" stroke="#101a30" strokeWidth="0.9" />
+            <ellipse cx="26" cy="22" rx="8.8" ry="10" fill="#ecd0b0" />
+            {/* Slicked-back hair */}
+            <path d="M 17.2 22.8 C 17 12.4 20.2 11 26 11 C 31.8 11 35 12.4 34.8 22.8 C 34.3 17.2 32.2 14.9 28.6 14.8 C 24.4 14.7 19.8 15.6 17.2 22.8 Z" fill="#2e2018" />
+            <Nose color="#d0ac86" />
+            <Mustache color="#3a2a1a" />
+            <path d="M 24.6 28.9 Q 26 29.6 27.4 28.9" fill="none" stroke="#b07a56" strokeWidth="0.8" strokeLinecap="round" />
+            {/* Round glasses: light glass tint + dark rims, eyes drawn above the tint */}
+            <g fill="#d9ecf8" fillOpacity="0.85" stroke="#2c3440" strokeWidth="1.2">
+                <circle cx="22.2" cy="21.6" r="3.4" />
+                <circle cx="29.8" cy="21.6" r="3.4" />
+            </g>
+            <Eyes color="#2a3038" />
+            <path d="M 25.2 21.2 Q 26 20.7 26.8 21.2 M 18.8 21 L 17.3 20.4 M 33.2 21 L 34.7 20.4" fill="none" stroke="#2c3440" strokeWidth="1.2" strokeLinecap="round" />
+        </PortraitToken>
     );
 }
