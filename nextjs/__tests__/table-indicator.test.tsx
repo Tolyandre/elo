@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import { act } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { Base58ID } from "@/lib/id";
-import { GAME_ID_SKULL_KING, GAME_ID_IAWW } from "@/lib/game-apps";
+import { GAME_ID_IAWW } from "@/lib/game-apps";
 import type { IawwGameState, SkullKingGameState, TableGameState, TableSummary } from "@/app/api";
 import { TableIndicator } from "@/components/tables/table-indicator";
+import { pid, makeSkullKingState, makeTable as makeBaseTable } from "./test-utils";
 
 // Hoisted mutable state the mocks read at render time: tests mutate `me`
 // and bump `tick` (the tables-lobby SSE counter) between renders.
@@ -22,10 +21,13 @@ const mocks = vi.hoisted(() => ({
     tick: 0,
 }));
 
-vi.mock("@/app/api", () => ({
-    EloWebServiceBaseUrl: "http://api.test",
-    listTablesPromise: vi.fn(),
-}));
+vi.mock("@/app/api", async () => {
+    const { mockApiModule } = await import("./test-utils");
+    return mockApiModule({
+        EloWebServiceBaseUrl: "http://api.test",
+        listTablesPromise: vi.fn(),
+    });
+});
 
 vi.mock("@/app/meContext", () => ({
     useMe: () => mocks.me,
@@ -43,30 +45,13 @@ vi.mock("next/link", () => ({
 
 import { listTablesPromise } from "@/app/api";
 
-const pid = (s: string) => s as Base58ID;
+// The indicator asserts on the current round number, which this file pins to 1.
+const skState = (players: { id: Base58ID; name: string }[]): SkullKingGameState =>
+    makeSkullKingState({ currentRound: 1, players });
 
-function skState(players: { id: Base58ID; name: string }[]): SkullKingGameState {
-    return {
-        phase: "waiting-for-bids",
-        players,
-        currentRound: 1,
-        currentPlayerIndex: 0,
-        rounds: [],
-    };
-}
-
+// This file's tables are hosted by userHost.
 function makeTable(overrides: Partial<TableSummary> & { game_state: TableGameState }): TableSummary {
-    return {
-        id: pid("tableSk1"),
-        game_id: GAME_ID_SKULL_KING,
-        host_user_id: pid("userHost"),
-        host_client_token: "",
-        connected_player_ids: [],
-        version: 1,
-        created_at: "2026-01-01T00:00:00Z",
-        expires_at: "2026-01-02T00:00:00Z",
-        ...overrides,
-    };
+    return makeBaseTable({ id: pid("tableSk1"), host_user_id: pid("userHost"), ...overrides });
 }
 
 /** Renders the indicator and flushes the table-list fetch. */

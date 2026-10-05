@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Base58ID } from "@/lib/id";
-import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
 import type { SkullKingGameState, TableGameState, TableSummary } from "@/app/api";
 import { ActiveTables } from "@/components/tables/active-tables";
+import { pid, makeSkullKingState, makeTable } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
     push: vi.fn(),
@@ -18,33 +16,17 @@ vi.mock("next/navigation", () => ({
     useRouter: () => ({ push: mocks.push }),
 }));
 
-const pid = (s: string) => s as Base58ID;
-
-function skState(players: { id: Base58ID; name: string }[]): SkullKingGameState {
-    return {
-        phase: "waiting-for-bids",
-        players,
-        currentRound: 2,
-        currentPlayerIndex: 0,
-        rounds: [],
-    };
-}
-
-function makeTable(): TableSummary {
-    return {
+function lobbyTable(): TableSummary {
+    return makeTable({
         id: pid("tableSk1"),
-        game_id: GAME_ID_SKULL_KING,
         host_user_id: pid("userHost"),
-        host_client_token: "",
-        connected_player_ids: [],
-        version: 1,
-        created_at: "2026-01-01T00:00:00Z",
-        expires_at: "2026-01-02T00:00:00Z",
-        game_state: skState([
-            { id: pid("playerA"), name: "Аня" },
-            { id: pid("playerB"), name: "Боря" },
-        ]) satisfies SkullKingGameState as TableGameState,
-    };
+        game_state: makeSkullKingState({
+            players: [
+                { id: pid("playerA"), name: "Аня" },
+                { id: pid("playerB"), name: "Боря" },
+            ],
+        }) satisfies SkullKingGameState as TableGameState,
+    });
 }
 
 type Me = { isAuthenticated: boolean; playerId: Base58ID | undefined; id?: string };
@@ -54,7 +36,7 @@ function renderLobby(me: Me) {
     document.body.appendChild(container);
     const root = createRoot(container);
     act(() => {
-        root.render(<ActiveTables tables={[makeTable()]} me={me} />);
+        root.render(<ActiveTables tables={[lobbyTable()]} me={me} />);
     });
     return {
         button: () => {

@@ -2,7 +2,7 @@
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Base58ID } from "../lib/id";
 import type { Bracket } from "../app/api";
 
@@ -75,13 +75,26 @@ const bracket: Bracket = {
     ],
 };
 
+// Roots are tracked and unmounted after each test so no scheduled React work
+// outlives the jsdom environment (leaked setImmediate callbacks crash with
+// "window is not defined" in whatever file runs next).
+const mountedRoots: ReturnType<typeof createRoot>[] = [];
+
 function render(jsx: React.ReactElement) {
     const container = document.createElement("div");
+    const root = createRoot(container);
+    mountedRoots.push(root);
     act(() => {
-        createRoot(container).render(jsx);
+        root.render(jsx);
     });
     return container;
 }
+
+afterEach(() => {
+    for (const root of mountedRoots.splice(0)) {
+        act(() => root.unmount());
+    }
+});
 
 describe("BracketView", () => {
     it("renders a column per round with elimination-aware titles", () => {

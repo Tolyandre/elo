@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { Base58ID } from "@/lib/id";
@@ -11,6 +9,7 @@ import { TABLE_SESSION_KEY } from "@/hooks/useTableSession";
 import { GAME_ID_SKULL_KING, GAME_ID_IAWW, TABLE_PAGE_PATH } from "@/lib/game-apps";
 import { createTablePromise, type TableGameState, type TableSummary } from "@/app/api";
 import { toast } from "sonner";
+import { pid, makeSkullKingState, makeTable as makeBaseTable } from "./test-utils";
 
 const mocks = vi.hoisted(() => ({
     push: vi.fn(),
@@ -20,9 +19,10 @@ vi.mock("next/navigation", () => ({
     useRouter: () => ({ push: mocks.push }),
 }));
 
-vi.mock("@/app/api", () => ({
-    createTablePromise: vi.fn(),
-}));
+vi.mock("@/app/api", async () => {
+    const { mockApiModule } = await import("./test-utils");
+    return mockApiModule({ createTablePromise: vi.fn() });
+});
 
 vi.mock("@/app/meContext", () => ({
     useMe: vi.fn(),
@@ -32,14 +32,14 @@ vi.mock("@/app/players/PlayersContext", () => ({
     usePlayers: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({
-    toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
-}));
+vi.mock("sonner", async () => {
+    const { mockSonnerModule } = await import("./test-utils");
+    return mockSonnerModule();
+});
 
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 
-const pid = (s: string) => s as Base58ID;
 
 // The picker is a heavy provider-backed component; the form only needs to
 // drive the selected id list through it.
@@ -74,25 +74,13 @@ vi.mocked(usePlayers).mockReturnValue({
     playerDisplayName: (p: { name: string }) => `Дисплей ${p.name}`,
 } as never);
 
-function makeTable(id: string): TableSummary {
-    return {
+// Created tables are hosted by the current user with an empty initial state.
+const makeTable = (id: string): TableSummary =>
+    makeBaseTable({
         id: pid(id),
-        game_id: GAME_ID_SKULL_KING,
         host_user_id: pid("uMe"),
-        host_client_token: "",
-        connected_player_ids: [],
-        version: 1,
-        created_at: "2026-01-01T00:00:00Z",
-        expires_at: "2026-01-02T00:00:00Z",
-        game_state: {
-            phase: "waiting-for-bids",
-            players: [],
-            currentRound: 1,
-            currentPlayerIndex: 0,
-            rounds: [],
-        },
-    };
-}
+        game_state: makeSkullKingState({ players: [], currentRound: 1 }),
+    });
 
 function renderForm() {
     const container = document.createElement("div");

@@ -11,5 +11,6 @@ export default defineConfig({
         // Default to Node for the pure-logic suites. Hook/component tests opt
         // into jsdom via a `// @vitest-environment jsdom` file annotation.
         environment: "node",
+        setupFiles: ["./__tests__/setup.ts"],
     },
 });

@@ -1,70 +1,49 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import { act } from "react";
 import type { Base58ID } from "@/lib/id";
 import { useTableSession, TABLE_SESSION_KEY } from "@/hooks/useTableSession";
 import { useTableDeepLink } from "@/hooks/useTableDeepLink";
-import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
 import { renderHook } from "./render-hook";
 import { getTablePromise, joinTablePromise, type SkullKingGameState, type TableSummary } from "@/app/api";
 import { toast } from "sonner";
+import { pid, makeTable as makeBaseTable } from "./test-utils";
 
 vi.mock("next/navigation", () => ({
     useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
-vi.mock("@/app/api", () => ({
-    getTablePromise: vi.fn(),
-    joinTablePromise: vi.fn(),
-    submitTablePromise: vi.fn(),
-    takeoverTablePromise: vi.fn(),
-    updateTableState: vi.fn(),
-    isNetworkFailure: vi.fn(() => false),
-    ApiError: class extends Error { status?: number },
-}));
+vi.mock("@/app/api", async () => {
+    const { mockApiModule } = await import("./test-utils");
+    return mockApiModule({
+        getTablePromise: vi.fn(),
+        joinTablePromise: vi.fn(),
+        submitTablePromise: vi.fn(),
+        takeoverTablePromise: vi.fn(),
+        updateTableState: vi.fn(),
+    });
+});
 
 vi.mock("@/hooks/useTableSSE", () => ({
     useTableSSE: vi.fn(),
     useTablesLobbySSE: vi.fn(() => 0),
 }));
 
-vi.mock("sonner", () => ({
-    toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
-}));
+vi.mock("sonner", async () => {
+    const { mockSonnerModule } = await import("./test-utils");
+    return mockSonnerModule();
+});
 
 import { useTableSSE } from "@/hooks/useTableSSE";
 
-const pid = (s: string) => s as Base58ID;
-
 type SKState = SkullKingGameState;
 
-function makeState(phase: SKState["phase"] = "waiting-for-bids"): SKState {
-    return {
-        phase,
-        players: [{ id: pid("p1"), name: "Alice" }, { id: pid("p2"), name: "Bob" }],
-        currentRound: 2,
-        currentPlayerIndex: 0,
-        rounds: [],
-    };
+// This file's scenarios talk about table t9 hosted by someone else.
+function makeTable(overrides: Partial<TableSummary> & { game_state?: SKState } = {}): TableSummary {
+    return makeBaseTable({ id: pid("t9"), host_user_id: pid("uOther"), ...overrides });
 }
 
-function makeTable(overrides: Partial<TableSummary> & { game_state?: SKState } = {}): TableSummary {
-    return {
-        id: pid("t9"),
-        game_id: GAME_ID_SKULL_KING,
-        host_user_id: pid("uOther"),
-        host_client_token: "",
-        connected_player_ids: [],
-        version: 1,
-        created_at: "2026-01-01T00:00:00Z",
-        expires_at: "2026-01-02T00:00:00Z",
-        game_state: makeState(),
-        ...overrides,
-    };
-}
 
 const ME = { isAuthenticated: true, id: "uMe", playerId: pid("p1") };
 

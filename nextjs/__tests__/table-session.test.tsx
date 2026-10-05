@@ -1,66 +1,41 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Enable React's act() environment so async state updates don't warn.
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
 import { act } from "react";
 import type { Base58ID } from "@/lib/id";
 import type { UseTableSSEOptions } from "@/hooks/useTableSSE";
 import { useTableSession, TABLE_SESSION_KEY, writeTableSession } from "@/hooks/useTableSession";
 import { renderHook } from "./render-hook";
-import { joinTablePromise, type SkullKingGameState, type TableSummary } from "@/app/api";
-import { GAME_ID_SKULL_KING } from "@/lib/game-apps";
+import { joinTablePromise, type SkullKingGameState } from "@/app/api";
 import { toast } from "sonner";
+import { pid, makeSkullKingState, makeTable } from "./test-utils";
 
-vi.mock("@/app/api", () => ({
-    getTablePromise: vi.fn(),
-    joinTablePromise: vi.fn(),
-    submitTablePromise: vi.fn(),
-    takeoverTablePromise: vi.fn(),
-    updateTableState: vi.fn(),
-    isNetworkFailure: vi.fn(() => false),
-    ApiError: class extends Error { status?: number },
-}));
+vi.mock("@/app/api", async () => {
+    const { mockApiModule } = await import("./test-utils");
+    return mockApiModule({
+        getTablePromise: vi.fn(),
+        joinTablePromise: vi.fn(),
+        submitTablePromise: vi.fn(),
+        takeoverTablePromise: vi.fn(),
+        updateTableState: vi.fn(),
+    });
+});
 
 vi.mock("@/hooks/useTableSSE", () => ({
     useTableSSE: vi.fn(),
 }));
 
-vi.mock("sonner", () => ({
-    toast: { info: vi.fn(), error: vi.fn(), success: vi.fn() },
-}));
+vi.mock("sonner", async () => {
+    const { mockSonnerModule } = await import("./test-utils");
+    return mockSonnerModule();
+});
 
 import { useTableSSE } from "@/hooks/useTableSSE";
 import { getTablePromise, takeoverTablePromise, updateTableState } from "@/app/api";
 
-const pid = (s: string) => s as Base58ID;
-
 type SKState = SkullKingGameState;
 
-function makeState(phase: SKState["phase"] = "waiting-for-bids"): SKState {
-    return {
-        phase,
-        players: [{ id: pid("p1"), name: "Alice" }, { id: pid("p2"), name: "Bob" }],
-        currentRound: 2,
-        currentPlayerIndex: 0,
-        rounds: [],
-    };
-}
-
-function makeTable(overrides: Partial<TableSummary> & { game_state: SkullKingGameState }): TableSummary {
-    return {
-        id: pid("t1"),
-        game_id: GAME_ID_SKULL_KING,
-        host_user_id: pid("u1"),
-        host_client_token: "",
-        connected_player_ids: [],
-        version: 1,
-        created_at: "2026-01-01T00:00:00Z",
-        expires_at: "2026-01-02T00:00:00Z",
-        ...overrides,
-    };
-}
+const makeState = (phase: SKState["phase"] = "waiting-for-bids"): SKState => makeSkullKingState({ phase });
 
 const ME = { id: "u1", playerId: pid("p1") };
 
