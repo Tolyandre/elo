@@ -14,7 +14,7 @@ const plan: TournamentPlan = {
         {
             track: "winners",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 {
                     seat_count: 2,
@@ -35,7 +35,7 @@ const plan: TournamentPlan = {
         {
             track: "final",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 {
                     seat_count: 2,
@@ -82,15 +82,15 @@ describe("PlanBracketPreview", () => {
             elimination: "double",
             rounds: [
                 {
-                    track: "winners", index: 1, promote: 2,
+                    track: "winners", index: 1, advance: 2,
                     slots: [{ seat_count: 3, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }] }],
                 },
                 {
-                    track: "losers", index: 1, promote: 1,
+                    track: "losers", index: 1, advance: 1,
                     slots: [{ seat_count: 2, seats: [{ kind: "source", source_slot: 0, source_place: 3 }, { kind: "bye" }] }],
                 },
                 {
-                    track: "final", index: 1, promote: 1,
+                    track: "final", index: 1, advance: 1,
                     slots: [{ seat_count: 3, seats: [{ kind: "bye" }, { kind: "source", source_slot: 0, source_place: 1 }, { kind: "source", source_slot: 1, source_place: 1 }] }],
                 },
             ],

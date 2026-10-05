@@ -15,13 +15,13 @@ const singlePlan: TournamentPlan = {
     elimination: "single",
     rounds: [
         {
-            track: "winners", index: 1, promote: 2, slots: [
+            track: "winners", index: 1, advance: 2, slots: [
                 { seat_count: 4, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }, { kind: "draw" }] },
                 { seat_count: 4, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }, { kind: "draw" }] },
             ],
         },
         {
-            track: "final", index: 1, promote: 1, slots: [
+            track: "final", index: 1, advance: 1, slots: [
                 {
                     seat_count: 4, seats: [
                         { kind: "source", source_slot: 0, source_place: 1 },
@@ -39,18 +39,18 @@ const doublePlan: TournamentPlan = {
     elimination: "double",
     rounds: [
         {
-            track: "winners", index: 1, promote: 2, slots: [
+            track: "winners", index: 1, advance: 2, slots: [
                 { seat_count: 3, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }] },
                 { seat_count: 3, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }] },
             ],
         },
         {
-            track: "losers", index: 1, promote: 1, slots: [
+            track: "losers", index: 1, advance: 1, slots: [
                 { seat_count: 2, seats: [{ kind: "source", source_slot: 0, source_place: 3 }, { kind: "source", source_slot: 1, source_place: 3 }] },
             ],
         },
         {
-            track: "final", index: 1, promote: 1, slots: [
+            track: "final", index: 1, advance: 1, slots: [
                 { seat_count: 3, seats: [{ kind: "source", source_slot: 0, source_place: 1 }, { kind: "source", source_slot: 0, source_place: 2 }, { kind: "source", source_slot: 1, source_place: 1 }] },
             ],
         },
@@ -105,7 +105,7 @@ describe("tournament labels", () => {
 
     it("counts byes parenthetically in a round's shape", () => {
         const byeRound: PlanRound = {
-            track: "winners", index: 1, promote: 2, slots: [
+            track: "winners", index: 1, advance: 2, slots: [
                 { seat_count: 4, seats: [{ kind: "draw" }, { kind: "draw" }, { kind: "draw" }, { kind: "bye" }] },
                 { seat_count: 4, seats: [{ kind: "bye" }, { kind: "bye" }, { kind: "draw" }, { kind: "draw" }] },
             ],

@@ -134,7 +134,7 @@ function PlanRoundColumn({ plan, round }: { plan: TournamentPlan; round: Tournam
         <div className="flex w-16 flex-col">
             <h4 className="mb-2 text-center text-xs font-medium text-muted-foreground">
                 {roundTitle(round.track, round.index, plan.elimination)}
-                <span className="whitespace-nowrap"> → {round.promote}</span>
+                <span className="whitespace-nowrap"> → {round.advance}</span>
             </h4>
             <div className="flex flex-1 flex-col justify-around gap-3">
                 {round.slots.map((slot, si) => (

@@ -34,16 +34,23 @@ const bracket: Bracket = {
             index: 1,
             slots: [
                 {
-                    id: "s1" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 2,
+                    id: "s1" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 2,
+                    min_score: 0,
                     status: "playing",
                     seats: [
                         { position: 1, player_id: "p1" as Base58ID },
                         { position: 2, player_id: "p2" as Base58ID },
                     ],
-                    matches: [{ match_id: "m1" as Base58ID }],
+                    matches: [{
+                        match_id: "m1" as Base58ID,
+                        scores: [
+                            { player_id: "p1" as Base58ID, points: 1 },
+                            { player_id: "p2" as Base58ID, points: 0 },
+                        ],
+                    }],
                     standings: [
-                        { player_id: "p1" as Base58ID, points: 2, place: 1, promoted: true },
-                        { player_id: "p2" as Base58ID, points: 1, place: 2, promoted: false },
+                        { player_id: "p1" as Base58ID, points: 1, place: 1, advanced: true },
+                        { player_id: "p2" as Base58ID, points: 0, place: 2, advanced: false },
                     ],
                 },
             ],
@@ -53,7 +60,8 @@ const bracket: Bracket = {
             index: 1,
             slots: [
                 {
-                    id: "s2" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                    id: "s2" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                    min_score: 0,
                     status: "waiting",
                     seats: [
                         { position: 1, source_slot_id: "s1" as Base58ID, source_place: 1 },
@@ -89,7 +97,61 @@ describe("BracketView", () => {
         expect(container.textContent).toContain("Играет");
         expect(container.textContent).toContain("Алиса");
         expect(container.textContent).toContain("Борис");
-        expect(container.textContent).toContain("Партий: 1");
+    });
+
+    it("shows one match row per played match with brief names and earned points", () => {
+        const container = render(<BracketView bracket={bracket} />);
+        // The «Партий: n» counter is gone; the match rows themselves carry
+        // the series (brief name + the ADR-27 earn share).
+        expect(container.textContent).not.toContain("Партий:");
+        const card = container.querySelector('[data-bracket-slot="s1"]')!;
+        const matchRows = [...card.querySelectorAll("ul")].at(-1)!;
+        expect(matchRows.textContent).toContain("Алиса 1 · Борис 0");
+    });
+
+    it("marks a slot with a minimal score next to the game name and pads empty rows", () => {
+        const withMin: Bracket = {
+            ...bracket,
+            rounds: [
+                {
+                    ...bracket.rounds[0],
+                    slots: [
+                        {
+                            ...bracket.rounds[0].slots[0],
+                            min_score: 3,
+                            matches: [bracket.rounds[0].slots[0].matches[0]],
+                        },
+                    ],
+                },
+                bracket.rounds[1],
+            ],
+        };
+        const container = render(<BracketView bracket={withMin} />);
+        expect(container.textContent).toContain("Флажки · до 3 очков");
+        // One played match + two placeholder rows up to ⌈3⌉.
+        const card = container.querySelector('[data-bracket-slot="s1"]')!;
+        const matchRows = [...card.querySelectorAll("ul")].at(-1)!;
+        expect(matchRows.querySelectorAll("li").length).toBe(3);
+        expect(matchRows.textContent).toContain("—");
+    });
+
+    it("shows a fractional minimal score with one decimal and the genitive «очка» for 1", () => {
+        const frac: Bracket = {
+            ...bracket,
+            rounds: [{
+                ...bracket.rounds[0],
+                slots: [{ ...bracket.rounds[0].slots[0], min_score: 2.5 }],
+            }, bracket.rounds[1]],
+        };
+        const single: Bracket = {
+            ...bracket,
+            rounds: [{
+                ...bracket.rounds[0],
+                slots: [{ ...bracket.rounds[0].slots[0], min_score: 1 }],
+            }, bracket.rounds[1]],
+        };
+        expect(render(<BracketView bracket={frac} />).textContent).toContain("до 2.5 очков");
+        expect(render(<BracketView bracket={single} />).textContent).toContain("до 1 очка");
     });
 
     it("marks unresolved seats as placeholders carrying their provenance as a hint", () => {
@@ -122,16 +184,23 @@ describe("BracketView", () => {
                     index: 1,
                     slots: [
                         {
-                            id: "s4" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                            id: "s4" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                            min_score: 0,
                             status: "completed",
                             seats: [
                                 { position: 1, source_slot_id: "s1" as Base58ID, source_place: 1, player_id: "p1" as Base58ID },
                                 { position: 2, source_slot_id: "s1" as Base58ID, source_place: 2, player_id: "p2" as Base58ID },
                             ],
-                            matches: [{ match_id: "m2" as Base58ID }],
+                            matches: [{
+                                match_id: "m2" as Base58ID,
+                                scores: [
+                                    { player_id: "p1" as Base58ID, points: 1 },
+                                    { player_id: "p2" as Base58ID, points: 0 },
+                                ],
+                            }],
                             standings: [
-                                { player_id: "p1" as Base58ID, points: 3, place: 1, promoted: true },
-                                { player_id: "p2" as Base58ID, points: 1, place: 2, promoted: false },
+                                { player_id: "p1" as Base58ID, points: 1, place: 1, advanced: true },
+                                { player_id: "p2" as Base58ID, points: 0, place: 2, advanced: false },
                             ],
                         },
                     ],
@@ -143,11 +212,11 @@ describe("BracketView", () => {
         expect(container.querySelectorAll("svg path").length).toBe(2);
     });
 
-    it("renders live standings with points and the promoted set", () => {
+    it("renders live standings with points and the advanced set", () => {
         const container = render(<BracketView bracket={bracket} />);
         const rows = [...container.querySelectorAll("li")].map((li) => li.textContent);
-        expect(rows.some((r) => r?.includes("Алиса") && r.includes("+2"))).toBe(true);
-        expect(rows.some((r) => r?.includes("Борис") && r.includes("1"))).toBe(true);
+        expect(rows.some((r) => r?.includes("Алиса") && r.includes("+1"))).toBe(true);
+        expect(rows.some((r) => r?.includes("Борис") && r.includes("0"))).toBe(true);
     });
 
     it("shows an organizer ruling as a note at the bottom of the card, not a header chip", () => {
@@ -181,7 +250,8 @@ describe("BracketView", () => {
                     index: 1,
                     slots: [
                         {
-                            id: "w1" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                            id: "w1" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                            min_score: 0,
                             status: "playing",
                             seats: [
                                 { position: 1, player_id: "p1" as Base58ID },
@@ -191,7 +261,8 @@ describe("BracketView", () => {
                             standings: [],
                         },
                         {
-                            id: "w2" as Base58ID, game_id: "g1" as Base58ID, position: 2, promote: 1,
+                            id: "w2" as Base58ID, game_id: "g1" as Base58ID, position: 2, advance: 1,
+                            min_score: 0,
                             status: "playing",
                             seats: [
                                 { position: 1, player_id: "p3" as Base58ID },
@@ -207,7 +278,8 @@ describe("BracketView", () => {
                     index: 1,
                     slots: [
                         {
-                            id: "l1" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                            id: "l1" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                            min_score: 0,
                             status: "waiting",
                             seats: [
                                 { position: 1, source_slot_id: "w1" as Base58ID, source_place: 2 },
@@ -223,7 +295,8 @@ describe("BracketView", () => {
                     index: 1,
                     slots: [
                         {
-                            id: "f1" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                            id: "f1" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                            min_score: 0,
                             status: "waiting",
                             seats: [
                                 { position: 1, source_slot_id: "w1" as Base58ID, source_place: 1 },
@@ -261,16 +334,23 @@ describe("BracketView click-to-trace", () => {
                 index: 1,
                 slots: [
                     {
-                        id: "s4" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                        id: "s4" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1,
+                        min_score: 0,
                         status: "completed",
                         seats: [
                             { position: 1, source_slot_id: "s1" as Base58ID, source_place: 1, player_id: "p1" as Base58ID },
                             { position: 2, source_slot_id: "s1" as Base58ID, source_place: 2, player_id: "p2" as Base58ID },
                         ],
-                        matches: [{ match_id: "m2" as Base58ID }],
+                        matches: [{
+                            match_id: "m2" as Base58ID,
+                            scores: [
+                                { player_id: "p1" as Base58ID, points: 1 },
+                                { player_id: "p2" as Base58ID, points: 0 },
+                            ],
+                        }],
                         standings: [
-                            { player_id: "p1" as Base58ID, points: 3, place: 1, promoted: true },
-                            { player_id: "p2" as Base58ID, points: 1, place: 2, promoted: false },
+                            { player_id: "p1" as Base58ID, points: 1, place: 1, advanced: true },
+                            { player_id: "p2" as Base58ID, points: 0, place: 2, advanced: false },
                         ],
                     },
                 ],

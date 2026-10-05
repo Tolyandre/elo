@@ -911,8 +911,8 @@ export interface BracketPlanFilters {
     rounds?: number[];
     byes?: "with" | "without";
     first_shapes?: string[];
-    /** Per-round promote counts; every non-final round must be listed. */
-    promotes?: number[];
+    /** Per-round advance counts; every non-final round must be listed. */
+    advances?: number[];
     /** Whether a next-round slot may seat players of one previous-round slot together. */
     rematches?: "with" | "without";
 }
@@ -943,7 +943,7 @@ export async function getTournamentBracketPromise(id: Base58ID): Promise<Bracket
 export async function adjustTournamentSlotPromise(
     id: Base58ID,
     sid: Base58ID,
-    payload: { game_id: Base58ID },
+    payload: { game_id?: Base58ID; min_score?: number },
 ) {
     await unwrap(client.PATCH("/tournaments/{id}/slots/{sid}", {
         params: { path: { id, sid } },

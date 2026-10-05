@@ -48,10 +48,12 @@ const flatIndex = (letter: string) => FLAT.indexOf(letter);
 type SeatSpec = { player: string } | { source: [string, number] };
 
 interface BakedSlot {
-    promote: number;
+    advance: number;
     seats: SeatSpec[];
     /** Players ordered by final place (index 0 = place 1). */
     places: string[];
+    /** The single match's raw game scores, descending in place order. */
+    raw: number[];
 }
 
 // The tournament: Аня/Даша/Егор/Зина and Боря/Вера/Глеб/Женя open at two
@@ -59,18 +61,20 @@ interface BakedSlot {
 const SLOTS: Record<string, BakedSlot> = {
     // Верх 1: по 2 лучших со стола проходят, места 3–4 падают в Низ.
     sA: {
-        promote: 2,
+        advance: 2,
         seats: [{ player: "p1" }, { player: "p5" }, { player: "p6" }, { player: "p8" }],
         places: ["p6", "p1", "p5", "p8"], // Егор, Аня — дальше; Даша, Зина — в Низ
+        raw: [10, 6, 4, 1],
     },
     sB: {
-        promote: 2,
+        advance: 2,
         seats: [{ player: "p2" }, { player: "p3" }, { player: "p4" }, { player: "p7" }],
         places: ["p3", "p2", "p4", "p7"], // Вера, Боря — дальше; Глеб, Женя — в Низ
+        raw: [9, 5, 4, 0],
     },
     // Верх 2: победитель идёт в финал, остальные — в Низ 2.
     sC: {
-        promote: 1,
+        advance: 1,
         seats: [
             { source: ["sA", 1] },
             { source: ["sA", 2] },
@@ -78,10 +82,11 @@ const SLOTS: Record<string, BakedSlot> = {
             { source: ["sB", 2] },
         ],
         places: ["p6", "p3", "p1", "p2"], // Егор — в финал; Вера, Аня, Боря — в Низ 2
+        raw: [8, 4, 3, 2],
     },
     // Низ 1: четыре выбывших из Верха 1, выживает один.
     sD: {
-        promote: 1,
+        advance: 1,
         seats: [
             { source: ["sA", 3] },
             { source: ["sA", 4] },
@@ -89,10 +94,11 @@ const SLOTS: Record<string, BakedSlot> = {
             { source: ["sB", 4] },
         ],
         places: ["p5", "p4", "p7", "p8"], // Даша — в Низ 2
+        raw: [7, 5, 4, 3],
     },
     // Низ 2: выживший Низа 1 + три выбывших Верха 2, двое — в финал.
     sE: {
-        promote: 2,
+        advance: 2,
         seats: [
             { source: ["sD", 1] },
             { source: ["sC", 2] },
@@ -100,16 +106,18 @@ const SLOTS: Record<string, BakedSlot> = {
             { source: ["sC", 4] },
         ],
         places: ["p3", "p2", "p5", "p1"], // Вера, Боря — в финал
+        raw: [10, 8, 5, 2],
     },
     // Финал на троих: финалист Верха + двое из Низа.
     sF: {
-        promote: 1,
+        advance: 1,
         seats: [
             { source: ["sC", 1] },
             { source: ["sE", 1] },
             { source: ["sE", 2] },
         ],
         places: ["p3", "p6", "p2"], // Вера — чемпион!
+        raw: [9, 5, 4],
     },
 };
 
@@ -134,13 +142,26 @@ function planSeatOf(seat: SeatSpec) {
         : { kind: "source" as const, source_slot: flatIndex(seat.source[0]), source_place: seat.source[1] };
 }
 
+/**
+ * Slot points of one match (ADR-27): the Elo earn part at the seeded default
+ * win reward 1 — the score surplus over the worst score as a share of the
+ * summed surplus, rounded to one decimal. Mirrors pkg/ratingmath so the
+ * baked standings and the baked match rows agree with the real formula.
+ */
+function earnShares(raw: number[]): number[] {
+    const min = Math.min(...raw);
+    const surplus = raw.map((s) => s - min);
+    const sum = surplus.reduce((acc, s) => acc + s, 0);
+    return surplus.map((s) => (sum === 0 ? 1 / raw.length : Math.round((s / sum) * 10) / 10));
+}
+
 /** The plan shape (for the plan-preview figure): the same rounds without results. */
 export const EXAMPLE_PLAN: TournamentPlan = {
     elimination: "double",
     rounds: ROUNDS.map((round) => ({
         track: round.track,
         index: round.index,
-        promote: SLOTS[round.letters[0]].promote,
+        advance: SLOTS[round.letters[0]].advance,
         slots: round.letters.map((letter) => ({
             seat_count: SLOTS[letter].seats.length,
             seats: SLOTS[letter].seats.map(planSeatOf),
@@ -163,21 +184,28 @@ function seatFor(letter: string, seatIdx: number): BracketSeat {
 
 function slotFor(letter: string, position: number): BracketSlot {
     const baked = SLOTS[letter];
-    const seatCount = baked.seats.length;
+    const shares = earnShares(baked.raw);
     return {
         id: slotId(letter),
         game_id: EXAMPLE_GAME_ID,
         position,
-        promote: baked.promote,
+        advance: baked.advance,
+        min_score: 0,
         status: "completed",
         seats: baked.seats.map((_, seatIdx) => seatFor(letter, seatIdx)),
-        matches: [{ match_id: id(`m${letter}`) }],
-        // Placement points (ADR-26): place i of an s-seat table scores s−i+1.
+        matches: [{
+            match_id: id(`m${letter}`),
+            scores: baked.places.map((playerId, idx) => ({
+                player_id: id(playerId),
+                points: shares[idx],
+            })),
+        }],
+        // Slot points (ADR-27): every player's earned share of the match.
         standings: baked.places.map((playerId, idx) => ({
             player_id: id(playerId),
-            points: seatCount - idx,
+            points: shares[idx],
             place: idx + 1,
-            promoted: idx < baked.promote,
+            advanced: idx < baked.advance,
         })),
     };
 }

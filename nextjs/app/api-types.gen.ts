@@ -499,8 +499,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Reassign a slot's game (organizer, running state)
-         * @description Only for slots with zero linked matches. Audited as slot-adjust (op game).
+         * Adjust a slot (organizer, running state)
+         * @description Reassign the slot's game and/or set its minimal advance score (ADR-27). Only for slots with zero linked matches; at least one field must be given. Audited as slot-adjust (op game / min_score).
          */
         patch: operations["AdjustTournamentSlot"];
         trace?: never;
@@ -556,7 +556,7 @@ export interface paths {
         put?: never;
         /**
          * Complete a slot by hand with an ordered promotion set (organizer)
-         * @description An ordered list of exactly `promote` seated players — covers abandoned matches, no-shows, disputes. The ruling replaces the current outcome (standings-based or a prior ruling) and stays in force until the organizer cancels it or a cascade voids it; the standings never silently override an explicit decision. An empty list cancels the ruling: the standings-based result takes over again, and the slot reopens when nothing decides it. Changing an outcome that feeds downstream rounds with played matches or recorded rulings is refused (409) — unwind those rounds first, from the last one backwards. Every ruling and reversion is audited (slot-ruling).
+         * @description An ordered list of exactly `advance` seated players — covers abandoned matches, no-shows, disputes. The ruling replaces the current outcome (standings-based or a prior ruling) and stays in force until the organizer cancels it or a cascade voids it; the standings never silently override an explicit decision. An empty list cancels the ruling: the standings-based result takes over again, and the slot reopens when nothing decides it. Changing an outcome that feeds downstream rounds with played matches or recorded rulings is refused (409) — unwind those rounds first, from the last one backwards. Every ruling and reversion is audited (slot-ruling).
          */
         post: operations["SetTournamentSlotRuling"];
         delete?: never;
@@ -1408,12 +1408,12 @@ export interface components {
             seat_count: number;
             seats: components["schemas"]["PlanSeat"][];
         };
-        /** @description One elimination round; promote is uniform across the round. */
+        /** @description One elimination round; advance is uniform across the round. */
         PlanRound: {
             /** @enum {string} */
             track: "winners" | "losers" | "final";
             index: number;
-            promote: number;
+            advance: number;
             slots: components["schemas"]["PlanSlot"][];
         };
         /** @description A complete, pre-computed bracket shape: every round, every slot, every seat's provenance. Game-free and id-free — the server assigns a pool-fitting game to every slot at start. */
@@ -1443,19 +1443,31 @@ export interface components {
             game_id: components["schemas"]["Base58ID"];
             /** @description Table number within the round */
             position: number;
-            promote: number;
+            advance: number;
+            /**
+             * Format: double
+             * @description The organizer-set minimal slot score (ADR-27): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
+             */
+            min_score: number;
             /** @enum {string} */
             status: "waiting" | "playing" | "completed";
             seats: components["schemas"]["BracketSeat"][];
             matches: {
                 match_id: components["schemas"]["Base58ID"];
+                /** @description Every participant's slot points earned in this match (ADR-27): the Elo earn part rounded to one decimal, in event order. */
+                scores: {
+                    player_id: components["schemas"]["Base58ID"];
+                    /** Format: double */
+                    points: number;
+                }[];
             }[];
-            /** @description Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set. */
+            /** @description Live standings derived from the linked matches' scores: cumulative slot points (the Elo earn part, ADR-27), current order, and the recorded advanced set. */
             standings: {
                 player_id: components["schemas"]["Base58ID"];
+                /** Format: double */
                 points: number;
                 place: number;
-                promoted: boolean;
+                advanced: boolean;
             }[];
             /** @description The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it. */
             ruling_player_ids?: components["schemas"]["Base58ID"][];
@@ -1857,8 +1869,8 @@ export interface components {
             all_byes: boolean;
             /** @description First-round table shapes (e.g. "4+4"), sorted. */
             first_shapes: string[];
-            /** @description Distinct per-round promote values across those plans (a plan may mix values between rounds), sorted ascending. */
-            promotes: number[];
+            /** @description Distinct per-round advance values across those plans (a plan may mix values between rounds), sorted ascending. */
+            advances: number[];
             /** @description Some plan seats players from the same previous-round slot together in a next-round slot. */
             has_rematches: boolean;
             /** @description Every plan seats players from the same previous-round slot together somewhere. */
@@ -3951,8 +3963,8 @@ export interface operations {
                 byes?: "with" | "without";
                 /** @description First-round table shapes to keep (e.g. "4+4"); repeated; absent = all */
                 first_shapes?: string[];
-                /** @description Per-round promote counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all */
-                promotes?: number[];
+                /** @description Per-round advance counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all */
+                advances?: number[];
                 /** @description Keep only plans where a next-round slot may seat several players from the same previous-round slot (with — an immediate rematch of tablemates is possible), or only plans where every slot takes its players from different previous-round slots (without); absent = any */
                 rematches?: "with" | "without";
             };
@@ -4204,7 +4216,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    game_id: components["schemas"]["Base58ID"];
+                    game_id?: components["schemas"]["Base58ID"];
+                    /**
+                     * Format: double
+                     * @description The minimal slot score the leader must hold before the slot may complete (0 — the strict standings cut alone decides).
+                     */
+                    min_score?: number;
                 };
             };
         };
@@ -4418,7 +4435,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiSuccessMessage"];
                 };
             };
-            /** @description Not exactly promote seated players */
+            /** @description Not exactly advance seated players */
             400: {
                 headers: {
                     [name: string]: unknown;

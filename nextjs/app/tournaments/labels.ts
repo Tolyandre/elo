@@ -71,7 +71,7 @@ export function seatSourceLabel(sourceSlotPosition: number, sourcePlace?: number
         : `из стола ${sourceSlotPosition}`;
 }
 
-/** Seat shape of one round: «3+3 (1 бай) → 2» — table sizes plus byes and the promote count. */
+/** Seat shape of one round: «3+3 (1 бай) → 2» — table sizes plus byes and the advance count. */
 export function roundShapeLabel(round: PlanRound): string {
     // Bye-kind seats occupy real seats of later rounds (the players
     // sat an earlier round out) — they add no capacity, so they go
@@ -79,7 +79,7 @@ export function roundShapeLabel(round: PlanRound): string {
     const byes = round.slots.reduce(
         (n, s) => n + s.seats.filter((seat) => seat.kind === "bye").length, 0);
     const shape = round.slots.map((s) => s.seat_count).join("+") + (byes > 0 ? ` (${byes} бай)` : "");
-    return `${shape} → ${round.promote}`;
+    return `${shape} → ${round.advance}`;
 }
 
 /** Full one-round label: «Тур 1: 3+3 → 2». */

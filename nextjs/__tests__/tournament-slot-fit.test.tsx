@@ -43,7 +43,7 @@ const brackets: Record<string, Bracket> = {
                 index: 1,
                 slots: [
                     {
-                        id: "s1" as Base58ID, game_id: "g1" as Base58ID, position: 1, promote: 1,
+                        id: "s1" as Base58ID, game_id: "g1" as Base58ID, position: 1, advance: 1, min_score: 0,
                         status: "playing",
                         seats: [
                             { position: 1, player_id: "p1" as Base58ID },
@@ -53,7 +53,7 @@ const brackets: Record<string, Bracket> = {
                         standings: [],
                     },
                     {
-                        id: "s2" as Base58ID, game_id: "g2" as Base58ID, position: 2, promote: 1,
+                        id: "s2" as Base58ID, game_id: "g2" as Base58ID, position: 2, advance: 1, min_score: 0,
                         status: "waiting",
                         seats: [
                             { position: 1, source_slot_id: "s1" as Base58ID, source_place: 1 },

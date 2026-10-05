@@ -24,6 +24,11 @@ import {
 import { RulingDialog } from "./ruling-dialog";
 import { AttachMatchDialog } from "./attach-match-dialog";
 
+/** Минимальный счёт в поле ввода: целые без дробной части, иначе одна десятая. */
+function fmtScore(v: number): string {
+    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
 /**
  * Running-state organizer tools (ADR-26 §UI): per slot — game reassignment
  * (while no match is linked), detach, the ruling dialog and attach of a
@@ -106,7 +111,7 @@ function SlotEditor({
         <div className="rounded-xl border p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">Стол {slot.position}</span>
-                <span className="text-xs text-muted-foreground">promote: {slot.promote}</span>
+                <span className="text-xs text-muted-foreground">advance: {slot.advance}</span>
             </div>
 
             {adjustableGame ? (
@@ -129,6 +134,32 @@ function SlotEditor({
                 <p className="text-sm text-muted-foreground">
                     Игра: {games.find((g) => g.id === slot.game_id)?.name ?? "—"}
                 </p>
+            )}
+
+            {/* Минимальный счёт (ADR-27): как и игра, настраивается, только
+                пока к столу не привязана ни одна партия. */}
+            {noMatches ? (
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Мин. очков:</span>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        max={10}
+                        step={0.5}
+                        className="border rounded px-2 py-1 h-8 w-24 text-sm"
+                        defaultValue={slot.min_score}
+                        key={`${slot.id}-${slot.min_score}`}
+                        disabled={busy}
+                        onBlur={(e) => {
+                            const raw = e.target.value === "" ? 0 : Number(e.target.value);
+                            if (Number.isNaN(raw) || raw === slot.min_score) return;
+                            run(() => adjustTournamentSlotPromise(t.id, slot.id, { min_score: raw }));
+                        }}
+                    />
+                </div>
+            ) : (
+                <p className="text-xs text-muted-foreground">Мин. очков: {fmtScore(slot.min_score)}</p>
             )}
             {error && <p className="text-red-600 text-sm">{error}</p>}
 

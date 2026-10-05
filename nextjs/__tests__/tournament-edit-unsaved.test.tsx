@@ -33,7 +33,7 @@ vi.mock("@/app/api", () => ({
             has_byes: false,
             all_byes: false,
             first_shapes: ["2+2"],
-            promotes: [1],
+            advances: [1],
             has_rematches: false,
             all_rematches: false,
         },
@@ -65,7 +65,7 @@ const plan: TournamentPlan = {
         {
             track: "winners",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 { seat_count: 2, seats: [{ kind: "draw" }, { kind: "draw" }] },
                 { seat_count: 2, seats: [{ kind: "draw" }, { kind: "draw" }] },
@@ -74,7 +74,7 @@ const plan: TournamentPlan = {
         {
             track: "final",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 {
                     seat_count: 2,

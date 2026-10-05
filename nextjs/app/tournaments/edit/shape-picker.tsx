@@ -62,7 +62,7 @@ export function ShapePicker({
     const [roundsFilter, setRoundsFilter] = useState<number[]>([]);
     const [byeFilter, setByeFilter] = useState<ByeFilter>("any");
     const [shapeFilter, setShapeFilter] = useState<string[]>([]);
-    const [promoteFilter, setPromoteFilter] = useState<number[]>([]);
+    const [advanceFilter, setAdvanceFilter] = useState<number[]>([]);
     const [rematchFilter, setRematchFilter] = useState<RematchFilter>("any");
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [starting, setStarting] = useState(false);
@@ -74,10 +74,10 @@ export function ShapePicker({
             rounds: roundsFilter.length > 0 ? roundsFilter : undefined,
             byes: byeFilter !== "any" ? byeFilter : undefined,
             first_shapes: shapeFilter.length > 0 ? shapeFilter : undefined,
-            promotes: promoteFilter.length > 0 ? promoteFilter : undefined,
+            advances: advanceFilter.length > 0 ? advanceFilter : undefined,
             rematches: rematchFilter !== "any" ? rematchFilter : undefined,
         }),
-        [families, roundsFilter, byeFilter, shapeFilter, promoteFilter, rematchFilter],
+        [families, roundsFilter, byeFilter, shapeFilter, advanceFilter, rematchFilter],
     );
     const filtersKey = JSON.stringify(filters);
 
@@ -101,7 +101,7 @@ export function ShapePicker({
         setRoundsFilter([]);
         setByeFilter("any");
         setShapeFilter([]);
-        setPromoteFilter([]);
+        setAdvanceFilter([]);
         setRematchFilter("any");
         setSelectedCanon(null);
     }
@@ -180,16 +180,16 @@ export function ShapePicker({
                             ))}
                         </FilterRow>
                     )}
-                    {facets.promotes.length > 1 && (
+                    {facets.advances.length > 1 && (
                         <FilterRow
                             label="Продвижение"
                             hint="Сколько игроков выходит из каждого стола в следующий круг — в превью это «→ N». Относится к каждому кругу, кроме финала: он всегда оставляет одного чемпиона."
                         >
-                            {facets.promotes.map((n) => (
+                            {facets.advances.map((n) => (
                                 <FilterChip
                                     key={n}
-                                    active={promoteFilter.includes(n)}
-                                    onClick={() => setPromoteFilter(toggleIn(promoteFilter, n))}
+                                    active={advanceFilter.includes(n)}
+                                    onClick={() => setAdvanceFilter(toggleIn(advanceFilter, n))}
                                 >
                                     По {n}
                                 </FilterChip>
@@ -284,7 +284,7 @@ export function ShapePicker({
                         </Select>
                     ) : (
                         <p className="text-sm text-muted-foreground">
-                            {filters.elimination || filters.rounds || filters.byes || filters.first_shapes || filters.promotes || filters.rematches
+                            {filters.elimination || filters.rounds || filters.byes || filters.first_shapes || filters.advances || filters.rematches
                                 ? "Под выбранные фильтры не подходит ни одна форма — снимите часть фильтров."
                                 : "Для этого пула игр и числа участников форм сетки нет — измените пул (добавьте игры с другой вместимостью) или список участников."}
                         </p>

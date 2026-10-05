@@ -8,7 +8,7 @@ import { ConfirmDialogWithContent } from "@/components/confirm-dialog";
 
 /**
  * The organizer ruling dialog (ADR-26): an ordered promotion set of exactly
- * `promote` seated players — picks happen in click order and replace the
+ * `advance` seated players — picks happen in click order and replace the
  * slot's outcome (the standings-based result or a prior ruling), recomputing
  * the downstream cascade server-side. While a ruling is in force it is
  * prefilled, so the dialog edits the standing decision.
@@ -72,7 +72,7 @@ export function RulingDialog({
             open={open}
             onOpenChange={onOpenChange}
             title={`Решение организатора — стол ${slot.position}`}
-            description={`Выберите по порядку ${slot.promote} игрока(ов) для повышения. Порядок выбора = места. Решение заменит текущий результат стола и будет действовать, пока вы его не отмените.`}
+            description={`Выберите по порядку ${slot.advance} игрока(ов), которые проходят дальше. Порядок выбора = места. Решение заменит текущий результат стола и будет действовать, пока вы его не отмените.`}
             confirmText="Записать решение"
             loading={pending}
             onConfirm={confirm}

@@ -93,7 +93,7 @@ export function BracketView({
     }, [bracket.rounds, slotRound]);
 
     // The connector graph plus the indexes behind click-to-trace: one
-    // connector per seat with a known source slot (the line the promoted
+    // connector per seat with a known source slot (the line the advancing
     // player — or the pending place — travels along), and per-player row
     // sets so a click highlights the player's whole path through the bracket.
     const graph = useMemo(() => {
@@ -301,6 +301,33 @@ function RoundColumn({
     );
 }
 
+/**
+ * Slot points formatting (ADR-27): one-decimal earn shares render without
+ * trailing zeros («1», «0.5», «+1.2») — the wire values are already rounded
+ * to one decimal, this only keeps the display tidy. `signed` prefixes a "+"
+ * for positive standings totals.
+ */
+function fmtPoints(p: number, signed = false): string {
+    const s = Number.isInteger(p) ? String(p) : p.toFixed(1);
+    return signed && p > 0 ? `+${s}` : s;
+}
+
+/** Brief name for the compact match rows: the first word of the display name. */
+function briefName(displayName: string): string {
+    const first = displayName.trim().split(/\s+/)[0];
+    return first.length > 0 ? first : displayName;
+}
+
+/**
+ * Placeholder rows for unplayed matches: with a minimal score set, the row
+ * count reaches at least ⌈min_score⌉ — one match row per potential point —
+ * so the card previews the series length still expected.
+ */
+function placeholderRows(slot: BracketSlot): number {
+    if (slot.min_score <= 0) return 0;
+    return Math.max(0, Math.ceil(slot.min_score) - slot.matches.length);
+}
+
 function SlotCard({
     slot,
     slotPositions,
@@ -351,7 +378,14 @@ function SlotCard({
                     </Badge>
                 </span>
             </div>
-            {gameName && <p className="text-xs text-muted-foreground truncate">{gameName}</p>}
+            {gameName && (
+                <p className="text-xs text-muted-foreground truncate">
+                    {gameName}
+                    {slot.min_score > 0 && (
+                        <> · до {fmtPoints(slot.min_score)} {slot.min_score === 1 ? "очка" : "очков"}</>
+                    )}
+                </p>
+            )}
 
             {/* Before results exist the seat list carries the names (with
                 the provenance as a tooltip); once standings show them, the
@@ -388,9 +422,6 @@ function SlotCard({
 
             {standings.length > 0 && (
                 <div>
-                    {slot.matches.length > 0 && (
-                        <h4 className="text-xs text-muted-foreground mb-1">Партий: {slot.matches.length}</h4>
-                    )}
                     <ul className="space-y-0.5">
                         {standings.map((st) => (
                             <li
@@ -407,12 +438,12 @@ function SlotCard({
                                     highlightRows?.has(`place:${slot.id}:${st.place}`)
                                         ? "bg-primary/10 ring-1 ring-primary/40"
                                         : ""
-                                } ${st.promoted ? "font-semibold" : ""}`}
+                                } ${st.advanced ? "font-semibold" : ""}`}
                             >
                                 <RankIcon rank={st.place} className="inline-block h-4 w-4 shrink-0" />
                                 <span className="min-w-0 truncate">{playerName(st.player_id)}</span>
-                                <span className={`ml-auto shrink-0 tabular-nums ${st.promoted ? "" : "text-muted-foreground"}`}>
-                                    {st.points > 0 ? `+${st.points}` : st.points}
+                                <span className={`ml-auto shrink-0 tabular-nums ${st.advanced ? "" : "text-muted-foreground"}`}>
+                                    {fmtPoints(st.points, st.points > 0)}
                                 </span>
                             </li>
                         ))}
@@ -420,8 +451,26 @@ function SlotCard({
                 </div>
             )}
 
-            {standings.length === 0 && slot.matches.length > 0 && (
-                <p className="text-xs text-muted-foreground">Партий: {slot.matches.length}</p>
+            {/* The match series: one row per played match with every
+                participant's earned points (ADR-27), then dim placeholders up
+                to the organizer's minimal score — the rows preview how many
+                matches the slot still expects. */}
+            {(slot.matches.length > 0 || slot.min_score > 0) && (
+                <ul className="space-y-0.5 border-t pt-1">
+                    {slot.matches.map((m) => (
+                        <li
+                            key={m.match_id}
+                            className="text-xs text-muted-foreground break-words tabular-nums"
+                        >
+                            {m.scores.map((s) => `${briefName(playerName(s.player_id))} ${fmtPoints(s.points)}`).join(" · ")}
+                        </li>
+                    ))}
+                    {Array.from({ length: placeholderRows(slot) }).map((_, i) => (
+                        <li key={`empty-${i}`} className="text-xs text-muted-foreground/50">
+                            —
+                        </li>
+                    ))}
+                </ul>
             )}
 
             {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (

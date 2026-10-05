@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Base58ID } from "../lib/id";
 import type { BracketPlanFilters, Tournament, TournamentPlan } from "../app/api";
 
-// The shape picker's chip rows travel as query parameters: the promote chips
+// The shape picker's chip rows travel as query parameters: the advance chips
 // multi-select the per-round advancement counts, the rematch chips toggle
 // between mutually exclusive with/without (clicking the active one releases
 // the filter). The mock captures every query so the assertions read the wire
@@ -33,7 +33,7 @@ const facets = {
     has_byes: false,
     all_byes: false,
     first_shapes: ["2+2"],
-    promotes: [1, 2],
+    advances: [1, 2],
     has_rematches: true,
     all_rematches: false,
 };
@@ -44,7 +44,7 @@ const plan: TournamentPlan = {
         {
             track: "winners",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 { seat_count: 2, seats: [{ kind: "draw" }, { kind: "draw" }] },
                 { seat_count: 2, seats: [{ kind: "draw" }, { kind: "draw" }] },
@@ -53,7 +53,7 @@ const plan: TournamentPlan = {
         {
             track: "final",
             index: 1,
-            promote: 1,
+            advance: 1,
             slots: [
                 {
                     seat_count: 2,
@@ -119,7 +119,7 @@ async function click(button: HTMLButtonElement) {
     });
 }
 
-describe("shape picker: promote and rematch chips", () => {
+describe("shape picker: advance and rematch chips", () => {
     it("renders the new rows from facets and sends the selection as query params", async () => {
         const view = renderPicker();
         await act(async () => {}); // flush the plans fetch
@@ -128,22 +128,22 @@ describe("shape picker: promote and rematch chips", () => {
         expect(view.text()).toContain("Повторы");
         expect(mocks.queries.at(-1)).toEqual({});
 
-        // The promote chips multi-select the per-round counts.
+        // The advance chips multi-select the per-round counts.
         await click(view.button("По 2"));
-        expect(mocks.queries.at(-1)?.promotes).toEqual([2]);
+        expect(mocks.queries.at(-1)?.advances).toEqual([2]);
         await click(view.button("По 1"));
-        expect(mocks.queries.at(-1)?.promotes).toEqual([2, 1]);
+        expect(mocks.queries.at(-1)?.advances).toEqual([2, 1]);
         await click(view.button("По 1"));
-        expect(mocks.queries.at(-1)?.promotes).toEqual([2]);
+        expect(mocks.queries.at(-1)?.advances).toEqual([2]);
         await click(view.button("По 2"));
-        expect(mocks.queries.at(-1)?.promotes).toBeUndefined();
+        expect(mocks.queries.at(-1)?.advances).toBeUndefined();
 
         // The rematch chips are mutually exclusive; the active one releases.
         await click(view.button("Без повторов"));
         expect(mocks.queries.at(-1)?.rematches).toBe("without");
         await click(view.button("С повторами"));
         expect(mocks.queries.at(-1)?.rematches).toBe("with");
-        expect(mocks.queries.at(-1)?.promotes).toBeUndefined();
+        expect(mocks.queries.at(-1)?.advances).toBeUndefined();
         await click(view.button("С повторами"));
         expect(mocks.queries.at(-1)?.rematches).toBeUndefined();
         view.unmount();
