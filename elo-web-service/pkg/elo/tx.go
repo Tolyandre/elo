@@ -13,10 +13,10 @@ import (
 // transaction has been committed. This is the project's canonical transaction
 // shape; use it for new code instead of open-coding Begin/Rollback/Commit.
 //
-// Note: the existing services predate this helper and several have multi-step
-// control flow (early returns, nested conditionals) that don't fit the single-
-// callback shape, so they still open-code their transactions. Prefer this helper
-// for new, linear transactional methods.
+// The remaining open-coded transactions (PlaceBet, JoinAsGuarantee) have
+// post-commit broadcasts that need several in-tx variables — returning them
+// through the callback would need a bundle struct that costs more than the
+// explicit tx.
 func runInTx(ctx context.Context, pool *pgxpool.Pool, fn func(q *db.Queries) error) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {

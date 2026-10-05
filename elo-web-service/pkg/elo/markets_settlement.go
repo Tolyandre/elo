@@ -359,28 +359,21 @@ func (s *MarketService) upsertMarketSettlement(
 // LockMarketBetting stops accepting new bets on an open market (user event).
 // betting_closed_at is stored permanently and never cleared during recalculation.
 func (s *MarketService) LockMarketBetting(ctx context.Context, marketID id.ID) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	if err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		market, err := q.GetMarket(ctx, marketID)
+		if err != nil {
+			return fmt.Errorf("get market: %w", err)
+		}
+		if market.Status != "open" {
+			return ErrMarketNotOpen
+		}
 
-	q := s.Queries.WithTx(tx)
-
-	market, err := q.GetMarket(ctx, marketID)
-	if err != nil {
-		return fmt.Errorf("get market: %w", err)
-	}
-	if market.Status != "open" {
-		return ErrMarketNotOpen
-	}
-
-	if err := q.LockMarketBetting(ctx, marketID); err != nil {
-		return fmt.Errorf("lock market betting: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
+		if err := q.LockMarketBetting(ctx, marketID); err != nil {
+			return fmt.Errorf("lock market betting: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// The markets list shows betting status, so lobby subscribers must hear

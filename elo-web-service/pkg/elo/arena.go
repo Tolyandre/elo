@@ -1035,39 +1035,30 @@ func (s *ArenaService) RecalculateArenas(ctx context.Context) ([]ArenaUpdateRepo
 func (s *ArenaService) recalculateArena(ctx context.Context, a ArenaWithCount) (ArenaUpdateReport, error) {
 	report := ArenaUpdateReport{ArenaID: a.ID, ArenaName: a.Name, MatchesReplayed: a.MatchesCount}
 
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return report, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.Queries.WithTx(tx)
+	return runInTxResult(ctx, s.Pool, func(q *db.Queries) (ArenaUpdateReport, error) {
+		before, err := q.ListLatestArenaStatePerPlayer(ctx, a.ID)
+		if err != nil {
+			return report, fmt.Errorf("snapshot before: %w", err)
+		}
 
-	before, err := q.ListLatestArenaStatePerPlayer(ctx, a.ID)
-	if err != nil {
-		return report, fmt.Errorf("snapshot before: %w", err)
-	}
+		if err := q.MarkArenasStaleFull(ctx, []id.ID{a.ID}); err != nil {
+			return report, fmt.Errorf("mark stale: %w", err)
+		}
+		locked, err := s.GetArena(ctx, a.ID)
+		if err != nil {
+			return report, err
+		}
+		if err := s.updateArenaWithinTx(ctx, q, locked); err != nil {
+			return report, err
+		}
 
-	if err := q.MarkArenasStaleFull(ctx, []id.ID{a.ID}); err != nil {
-		return report, fmt.Errorf("mark stale: %w", err)
-	}
-	locked, err := s.GetArena(ctx, a.ID)
-	if err != nil {
-		return report, err
-	}
-	if err := s.updateArenaWithinTx(ctx, q, locked); err != nil {
-		return report, err
-	}
-
-	after, err := q.ListLatestArenaStatePerPlayer(ctx, a.ID)
-	if err != nil {
-		return report, fmt.Errorf("snapshot after: %w", err)
-	}
-	report.ChangedPlayers = diffArenaState(before, after)
-
-	if err := tx.Commit(ctx); err != nil {
-		return report, fmt.Errorf("commit tx: %w", err)
-	}
-	return report, nil
+		after, err := q.ListLatestArenaStatePerPlayer(ctx, a.ID)
+		if err != nil {
+			return report, fmt.Errorf("snapshot after: %w", err)
+		}
+		report.ChangedPlayers = diffArenaState(before, after)
+		return report, nil
+	})
 }
 
 // ScheduleNextUpdate is the background worker loop: every poll interval it

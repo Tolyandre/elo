@@ -23,21 +23,14 @@ func (s *MarketService) ExpireMarketsAtDate(ctx context.Context, q *db.Queries, 
 // ExpireOverdueMarkets settles or cancels markets whose closes_at has passed.
 // Runs in its own transaction.
 func (s *MarketService) ExpireOverdueMarkets(ctx context.Context) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	q := s.Queries.WithTx(tx)
-
-	for marketType, handler := range marketTypeHandlers {
-		if err := handler.ResolutionTrigger().OnOverdue(ctx, q, s.SettleMarket); err != nil {
-			return fmt.Errorf("expire %s markets: %w", marketType, err)
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		for marketType, handler := range marketTypeHandlers {
+			if err := handler.ResolutionTrigger().OnOverdue(ctx, q, s.SettleMarket); err != nil {
+				return fmt.Errorf("expire %s markets: %w", marketType, err)
+			}
 		}
-	}
-
-	return tx.Commit(ctx)
+		return nil
+	})
 }
 
 // ScheduleNextExpiry sets a timer for the closest upcoming market expiry.

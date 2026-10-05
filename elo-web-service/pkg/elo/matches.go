@@ -494,41 +494,34 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 // DeleteMarketAndRecalculate hard-deletes an open market and recalculates Elo
 // from the market's created_at date. Everything runs in a single transaction.
 func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID id.ID) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	if err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		market, err := q.GetMarket(ctx, marketID)
+		if err != nil {
+			return fmt.Errorf("get market: %w", err)
+		}
+		if market.Status != "open" && market.Status != "betting_closed" {
+			return ErrMarketNotOpen
+		}
 
-	q := s.Queries.WithTx(tx)
+		createdAt := market.CreatedAt.Time
 
-	market, err := q.GetMarket(ctx, marketID)
-	if err != nil {
-		return fmt.Errorf("get market: %w", err)
-	}
-	if market.Status != "open" && market.Status != "betting_closed" {
-		return ErrMarketNotOpen
-	}
+		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
+			ArenaID:  GlobalArenaID,
+			MarketID: &marketID,
+		}); err != nil {
+			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
+		}
 
-	createdAt := market.CreatedAt.Time
+		if err := q.DeleteMarket(ctx, marketID); err != nil {
+			return fmt.Errorf("delete market %s: %w", marketID, err)
+		}
 
-	if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
-		ArenaID:  GlobalArenaID,
-		MarketID: &marketID,
+		if err := s.recalculateEloFromDate(ctx, q, createdAt); err != nil {
+			return fmt.Errorf("recalculate elo from %v: %w", createdAt, err)
+		}
+		return nil
 	}); err != nil {
-		return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
-	}
-
-	if err := q.DeleteMarket(ctx, marketID); err != nil {
-		return fmt.Errorf("delete market %s: %w", marketID, err)
-	}
-
-	if err := s.recalculateEloFromDate(ctx, q, createdAt); err != nil {
-		return fmt.Errorf("recalculate elo from %v: %w", createdAt, err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
+		return err
 	}
 
 	s.MarketService.ScheduleNextExpiry(context.Background())

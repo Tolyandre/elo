@@ -32,29 +32,22 @@ func (s *CorrectionService) ListCorrectionsPaginated(ctx context.Context, arg db
 }
 
 func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, correctionID, playerID id.ID, diff float64) error {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		correction, err := q.CreateCorrection(ctx, db.CreateCorrectionParams{
+			ID:            correctionID,
+			PlayerID:      playerID,
+			Discriminator: "correction",
+			Diff:          diff,
+		})
+		if err != nil {
+			return fmt.Errorf("create correction: %w", err)
+		}
 
-	q := db.New(tx)
-
-	correction, err := q.CreateCorrection(ctx, db.CreateCorrectionParams{
-		ID:            correctionID,
-		PlayerID:      playerID,
-		Discriminator: "correction",
-		Diff:          diff,
+		if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
+			return fmt.Errorf("apply correction: %w", err)
+		}
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("create correction: %w", err)
-	}
-
-	if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
-		return fmt.Errorf("apply correction: %w", err)
-	}
-
-	return tx.Commit(ctx)
 }
 
 // applyCorrectionWithinTx applies a rating correction to the global arena

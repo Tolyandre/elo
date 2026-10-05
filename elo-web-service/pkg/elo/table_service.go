@@ -469,39 +469,33 @@ func (s *TableService) SubmitTable(ctx context.Context, tableID, playerID id.ID,
 		return TableSummary{}, ErrTableNotFound
 	}
 
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return TableSummary{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	updated, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.GameTable, error) {
+		// The row is locked for the read-modify-write so concurrent
+		// submissions never lose updates.
+		row, err := q.GetGameTableForUpdate(ctx, pgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.GameTable{}, ErrTableNotFound
+		}
+		if err != nil {
+			return db.GameTable{}, err
+		}
+		game, ok := tableGames[row.GameID]
+		if !ok {
+			return db.GameTable{}, ErrUnknownGame
+		}
 
-	q := s.Queries.WithTx(tx)
-	row, err := q.GetGameTableForUpdate(ctx, pgID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return TableSummary{}, ErrTableNotFound
-	}
-	if err != nil {
-		return TableSummary{}, err
-	}
-	game, ok := tableGames[row.GameID]
-	if !ok {
-		return TableSummary{}, ErrUnknownGame
-	}
+		newState, err := game.applySubmit(row.GameState, playerID, input)
+		if err != nil {
+			return db.GameTable{}, err
+		}
 
-	newState, err := game.applySubmit(row.GameState, playerID, input)
-	if err != nil {
-		return TableSummary{}, err
-	}
-
-	updated, err := q.UpdateGameTableState(ctx, db.UpdateGameTableStateParams{
-		ID:        pgID,
-		Version:   row.Version, // row is locked; the check always matches
-		GameState: newState,
+		return q.UpdateGameTableState(ctx, db.UpdateGameTableStateParams{
+			ID:        pgID,
+			Version:   row.Version, // row is locked; the check always matches
+			GameState: newState,
+		})
 	})
 	if err != nil {
-		return TableSummary{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return TableSummary{}, err
 	}
 

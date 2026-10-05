@@ -78,56 +78,32 @@ func (s *UserService) GetUserByID(ctx context.Context, userID id.ID) (*db.User, 
 }
 
 func (s *UserService) CreateOrUpdateGoogleUser(ctx context.Context, googleOauthUserId string, googleOauthUserName string) (id.ID, error) {
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return "", err
-	}
+	return runInTxResult(ctx, s.Pool, func(q *db.Queries) (id.ID, error) {
+		user, err := q.GetUserByGoogleOAuthUserID(ctx, googleOauthUserId)
 
-	defer func() { _ = tx.Rollback(ctx) }()
-	q := s.Queries.WithTx(tx)
-
-	user, err := q.GetUserByGoogleOAuthUserID(ctx, googleOauthUserId)
-
-	if db.IsNoRows(err) {
-		userId, err := q.CreateUser(ctx, db.CreateUserParams{
-			ID:                  id.New(),
-			AllowEditing:        false,
-			GoogleOauthUserID:   googleOauthUserId,
-			GoogleOauthUserName: googleOauthUserName,
-		})
-
+		if db.IsNoRows(err) {
+			return q.CreateUser(ctx, db.CreateUserParams{
+				ID:                  id.New(),
+				AllowEditing:        false,
+				GoogleOauthUserID:   googleOauthUserId,
+				GoogleOauthUserName: googleOauthUserName,
+			})
+		}
 		if err != nil {
 			return "", err
 		}
 
-		if err := tx.Commit(ctx); err != nil {
-			return "", err
+		if user.GoogleOauthUserName != googleOauthUserName {
+			if err := q.UpdateUserName(ctx, db.UpdateUserNameParams{
+				ID:                  user.ID,
+				GoogleOauthUserName: googleOauthUserName,
+			}); err != nil {
+				return "", err
+			}
 		}
 
-		return userId, nil
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	if user.GoogleOauthUserName != googleOauthUserName {
-		err := q.UpdateUserName(ctx, db.UpdateUserNameParams{
-			ID:                  user.ID,
-			GoogleOauthUserName: googleOauthUserName,
-		})
-
-		if err != nil {
-			return "", err
-		}
-
-		if err := tx.Commit(ctx); err != nil {
-			return "", err
-		}
 		return user.ID, nil
-	}
-
-	return user.ID, nil
+	})
 }
 
 func (s *UserService) AllowEditing(ctx context.Context, userID id.ID, allow bool) error {

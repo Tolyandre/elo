@@ -35,42 +35,36 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		}
 	}
 
-	tx, err := s.Pool.Begin(ctx)
-	if err != nil {
-		return db.Market{}, fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	q := s.Queries.WithTx(tx)
-
 	// A tournament_winner market has no deadline of its own — it resolves when
 	// the tournament completes and is refunded when it is cancelled. Infinity
 	// keeps the NOT NULL column happy while making the expiry scheduler never
 	// pick the market up; the API reports closes_at = null for the type.
-	closesAt := pgtype.Timestamptz{Time: params.ClosesAt, Valid: true}
-	if params.MarketType == "tournament_winner" {
-		closesAt = pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
-	}
+	market, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Market, error) {
+		closesAt := pgtype.Timestamptz{Time: params.ClosesAt, Valid: true}
+		if params.MarketType == "tournament_winner" {
+			closesAt = pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
+		}
 
-	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
-		ID:               params.ID,
-		MarketType:       params.MarketType,
-		StartsAt:         pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
-		ClosesAt:         closesAt,
-		CreatedBy:        params.CreatedBy,
-		LiquidityB:       0,
-		MaxGuarantorLoss: maxGuarantorLoss,
+		market, err := q.CreateMarket(ctx, db.CreateMarketParams{
+			ID:               params.ID,
+			MarketType:       params.MarketType,
+			StartsAt:         pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
+			ClosesAt:         closesAt,
+			CreatedBy:        params.CreatedBy,
+			LiquidityB:       0,
+			MaxGuarantorLoss: maxGuarantorLoss,
+		})
+		if err != nil {
+			return db.Market{}, fmt.Errorf("insert market: %w", err)
+		}
+
+		if err := handler.CreateParams(ctx, q, market.ID, params); err != nil {
+			return db.Market{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
+		}
+		return market, nil
 	})
 	if err != nil {
-		return db.Market{}, fmt.Errorf("insert market: %w", err)
-	}
-
-	if err := handler.CreateParams(ctx, q, market.ID, params); err != nil {
-		return db.Market{}, fmt.Errorf("create %s params: %w", params.MarketType, err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return db.Market{}, fmt.Errorf("commit tx: %w", err)
+		return db.Market{}, err
 	}
 
 	s.ScheduleNextExpiry(context.Background())
