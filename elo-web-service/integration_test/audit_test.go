@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -72,25 +71,6 @@ func listAudit(t *testing.T, router interface {
 		t.Fatalf("decode audit page: %v", err)
 	}
 	return page
-}
-
-func doJSON(t *testing.T, router interface {
-	ServeHTTP(http.ResponseWriter, *http.Request)
-}, method, path, token, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	var req *http.Request
-	if body == "" {
-		req = httptest.NewRequest(method, path, nil)
-	} else {
-		req = httptest.NewRequest(method, path, strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	return w
 }
 
 // TestAuditGameLifecycleAndRename covers the admin-entity audit flow over HTTP:

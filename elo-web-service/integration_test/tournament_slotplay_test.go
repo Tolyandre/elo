@@ -1,0 +1,987 @@
+//go:build integration
+
+package integration_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+func TestTournament_MatchSkipAndNonFit(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Пропускная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Пропуск%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пропусков", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	smallPlan := `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"advance":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, smallPlan); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	s0 := short(createTestPlayer(t, pool, "n0"))
+	p1 := br.Data.Rounds[0].Slots[0].Seats[0].PlayerId
+	p2 := br.Data.Rounds[0].Slots[0].Seats[1].PlayerId
+	p3 := br.Data.Rounds[0].Slots[0].Seats[2].PlayerId
+	p4 := br.Data.Rounds[0].Slots[0].Seats[3].PlayerId
+	_ = s0
+
+	// Fitting roster with the skip flag: accepted into the arena but not the
+	// bracket.
+	scores := fmt.Sprintf(`%q:10, %q:2, %q:1, %q:0`, *p1, *p2, *p3, *p4)
+	skippedID := short(newID(t))
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}, "skip_tournament_link": true}`, skippedID, short(gameID), scores)
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+	w := doJSON(t, router, http.MethodGet, "/matches/"+skippedID, "", "")
+	var mr struct {
+		Data struct {
+			Tournament *string `json:"tournament"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mr.Data.Tournament != nil {
+		t.Fatalf("skipped match must be unlinked: %+v", mr.Data.Tournament)
+	}
+	br = getBracket(t, router, short(tid))
+	if len(br.Data.Rounds[0].Slots[0].Matches) != 0 {
+		t.Fatalf("skipped match must not count for the slot")
+	}
+
+	// A non-fitting roster (a stranger at the table) never links.
+	stranger := createTestPlayer(t, pool, "Посторонний")
+	strangerID := short(newID(t))
+	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%q:10, %q:2, %q:1, %q:0}}`,
+		strangerID, short(gameID), *p1, *p2, *p3, short(stranger))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post stranger match: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodGet, "/matches/"+strangerID, "", "")
+	mr.Data.Tournament = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if mr.Data.Tournament != nil {
+		t.Fatalf("non-fitting match must be unlinked")
+	}
+
+	// And the fitting roster without the flag links and completes the slot
+	// (strict cut 4–3–2–1).
+	fittingID := short(newID(t))
+	body = fmt.Sprintf(`{"id": %q, "game_id": %q, "score": {%s}}`, fittingID, short(gameID), scores)
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post fitting match: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	slot := br.Data.Rounds[0].Slots[0]
+	if slot.Status != "completed" || len(slot.Matches) != 1 || slot.Matches[0].MatchId != fittingID {
+		t.Fatalf("fitting match must complete the slot: %+v", slot)
+	}
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != *p1 {
+		t.Fatalf("tournament completed with the highest scorer: %+v", br.Data)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: edit consistency — 409 guards, recompute, cascade void
+// ---------------------------------------------------------------------------
+
+// TestTournament_EditCascadeAndGuards drives the ADR-26 edit story: an edit
+// that overturns an advanced set reopens the slot, clears the downstream seats
+// and voids the already-played final (audited with the origin chain); a
+// completed tournament reverts to running; association-breaking edits are
+// 409 while score edits stay free.
+func TestTournament_EditCascadeAndGuards(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Каскадная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Каскад%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Каскадный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	editMatch := func(mid string, scores ...string) int {
+		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
+			short(gameID), matchDate(4, 0), strings.Join(scores, ","))
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+
+	// A: tie, then decisive → completed {seat1, seat0}.
+	m1 := newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	// B: decisive.
+	newMatch(matchDate(4, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	// Final: one strict-cut match → the tournament completes.
+	fin := newMatch(matchDate(3, 0), sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("pre-cascade completion: %+v", br.Data)
+	}
+
+	// The overturning edit (m2's scores become a shared top → the cumulative
+	// standings tie inside the advanced set) is refused while the final is
+	// played: it would rewrite slot A's outcome feeding the recorded final —
+	// and the refused edit rolls back whole, leaving the bracket untouched.
+	code := editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusConflict {
+		t.Fatalf("overturning edit under a played final must 409, got %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("the refused edit must leave the bracket untouched: %+v", br.Data)
+	}
+
+	// The unwind the guard enforces: the latest match is unlinked first
+	// (nothing is recorded downstream of the final) — the champion is
+	// unrecorded, the completion reverts — and only then the first-round
+	// edit goes through.
+	unlink := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(gameID), matchDate(3, 0), strings.Join([]string{sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+fin, admin, unlink); w.Code != http.StatusOK {
+		t.Fatalf("unwind unlink of the final: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("the unwind must revert the completion: %+v", br.Data)
+	}
+
+	// Now the overturning edit passes: slot A reopens, the final waits again
+	// with the seats fed by A cleared (slot B's outcome stands).
+	code = editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusOK {
+		t.Fatalf("overturning edit after the unwind: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("tournament must stay running: %+v", br.Data)
+	}
+	slotA := slotAt(t, br, 0, 0)
+	if slotA.Status != "playing" {
+		t.Fatalf("slot A must reopen: %s", slotA.Status)
+	}
+	finalSlot := slotAt(t, br, 1, 0)
+	if len(finalSlot.Matches) != 0 || finalSlot.Status != "waiting" {
+		t.Fatalf("final must be voided back to waiting: %+v", finalSlot)
+	}
+	for _, seat := range finalSlot.Seats {
+		// Only the seats fed by the reopened slot A must clear; slot B's
+		// outcome stands, so its fed seats keep their caches.
+		if seat.SourceSlotId != nil && *seat.SourceSlotId == slotA.Id && seat.PlayerId != nil {
+			t.Fatalf("final seat cache from reopened slot A must be cleared: %+v", seat)
+		}
+	}
+
+	// The audit chain: the unwind's unlink is a match-edit-origin detach; the
+	// completion reverted as a cascade state transition; nothing was
+	// cascade-voided (the final's match left explicitly, by the unlink).
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	unlinksWithOrigin, voidsWithOrigin, cascadeStates := 0, 0, 0
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		if d["op"] == "detach" && d["origin_kind"] == "match-edit" {
+			unlinksWithOrigin++
+		}
+		if d["op"] == "void" && d["origin_kind"] == "match-edit" && d["origin_id"] == m2 {
+			voidsWithOrigin++
+		}
+		if d["reason"] == "cascade" && d["from"] == "completed" && d["to"] == "running" {
+			cascadeStates++
+		}
+	}
+	if unlinksWithOrigin != 1 || voidsWithOrigin != 0 || cascadeStates != 1 {
+		t.Fatalf("audit chain: %d unlinks, %d voids with match-edit origin, %d cascade reverts",
+			unlinksWithOrigin, voidsWithOrigin, cascadeStates)
+	}
+
+	// Association guards on a linked match (m1, slot A):
+	//   player set change → 409;
+	guard := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%q:9, %q:5, %q:1, %q:0}}`,
+		short(gameID), matchDate(4, 0), aSeat(0), aSeat(1), aSeat(2), short(createTestPlayer(t, pool, "Подменный")))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+		t.Fatalf("player-set change must 409, got %d %s", w.Code, w.Body.String())
+	}
+	//   game change → 409;
+	otherGame := createTestGame(t, pool, "Другая игра")
+	guard = fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}}`,
+		short(otherGame), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 9), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
+		t.Fatalf("game change must 409, got %d", w.Code)
+	}
+	//   score-only edit → allowed (200). The 3/10 reversal puts seat1 clearly
+	//   ahead in the cumulative shares (this match alone: a0 0.3, a1 1.0).
+	code = editMatch(m1, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code != http.StatusOK {
+		t.Fatalf("score edit must pass: %d", code)
+	}
+
+	// A skipped match stays unlinked without the explicit flag; edit-time
+	// linking via skip_tournament_link: false is covered by
+	// TestTournament_EditLinkChange below.
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(newID(t)), short(gameID), matchDate(2, 0), strings.Join([]string{sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+		t.Fatalf("post skipped: %d %s", w.Code, w.Body.String())
+	}
+
+	// Re-complete: the decisive m2 restores slot A (already re-decided by the
+	// score edit above via m1's 9/10 reversal), the final is re-played with a
+	// fresh match, and the tournament completes again.
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Status != "completed" {
+		t.Fatalf("slot A must re-complete after the decisive edits: %s", slotA.Status)
+	}
+	finalSeats := br.Data.Rounds[1].Slots[0].Seats
+	refilled := 0
+	for _, seat := range finalSeats {
+		if seat.PlayerId != nil {
+			refilled++
+		}
+	}
+	if refilled != 4 {
+		t.Fatalf("final seats must refill (%d/4)", refilled)
+	}
+	newMatch(matchDate(1, 0), sc(aSeat(1), 10), sc(bSeat(0), 6), sc(aSeat(0), 2), sc(bSeat(1), 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != aSeat(1) {
+		t.Fatalf("re-completion: %+v", br.Data)
+	}
+}
+
+// TestTournament_EditLinkChange covers the edit form's tournament checkbox
+// (ADR-26): an unlinked match may be counted by an explicit
+// skip_tournament_link: false edit, a linked one may be unchecked — but only
+// while no downstream slot holds played matches; otherwise 409.
+func TestTournament_EditLinkChange(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Правочная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Правка%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок правок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	editMatch := func(mid string, skip string, scores ...string) int {
+		body := fmt.Sprintf(`{"game_id": %q, "date": %q, "score": {%s}%s}`,
+			short(gameID), matchDate(4, 0), strings.Join(scores, ","), skip)
+		return doJSON(t, router, http.MethodPut, "/matches/"+mid, admin, body).Code
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+
+	// A skipped match (created unchecked) is counted by the explicit edit.
+	m1id := newID(t)
+	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
+		short(m1id), short(gameID), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)}, ","))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+	m1 := short(m1id)
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("edit-link: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA := slotAt(t, br, 0, 0)
+	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
+		t.Fatalf("edited match must count for slot A: %+v", slotA.Matches)
+	}
+	// The link change is audited with the match-edit origin.
+	editLinkAudits := func() (attaches, detaches int) {
+		page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+		for _, e := range page.Data {
+			if e.Details == nil {
+				continue
+			}
+			var d map[string]any
+			if err := json.Unmarshal(e.Details, &d); err != nil {
+				continue
+			}
+			if d["origin_kind"] != "match-edit" || d["slot_id"] != slotA.Id {
+				continue
+			}
+			switch d["op"] {
+			case "attach":
+				attaches++
+			case "detach":
+				detaches++
+			}
+		}
+		return attaches, detaches
+	}
+	if attaches, detaches := editLinkAudits(); attaches != 1 || detaches != 0 {
+		t.Fatalf("audit after edit-link: %d attaches, %d detaches", attaches, detaches)
+	}
+
+	// A no-op edit (desired state already holds) emits no second audit row.
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("no-op edit: %d", code)
+	}
+	if attaches, _ := editLinkAudits(); attaches != 1 {
+		t.Fatalf("no-op edit must not re-attach: %d attaches", attaches)
+	}
+
+	// The second slot-A match links by the default acceptance; its points keep
+	// the top-2 tied at the cut boundary, so the slot stays playing with two
+	// matches (m1: a0 1.0, a1 1.0, a2 0.4 — a shared top alone must not
+	// complete; cumulative with m2: a1 1.4, a2 1.4, a0 1.1 — the leaders tie).
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 8), sc(aSeat(1), 4), sc(aSeat(0), 2), sc(aSeat(3), 1))
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Status != "playing" || len(slotA.Matches) != 2 {
+		t.Fatalf("slot A must stay playing on two matches: %s with %d", slotA.Status, len(slotA.Matches))
+	}
+
+	// Unchecking a linked match is allowed while the downstream final has no
+	// played matches: the slot recomputes from the remaining match only and
+	// completes with a different advanced set {seat2, seat1}.
+	if code := editMatch(m1, `, "skip_tournament_link": true`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
+		t.Fatalf("edit-unlink before downstream play: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m2 {
+		t.Fatalf("m1 must be out of the bracket: %+v", slotA.Matches)
+	}
+	if slotA.Status != "completed" || slotA.Standings[0].PlayerId != aSeat(2) || slotA.Standings[1].PlayerId != aSeat(1) {
+		t.Fatalf("slot A must re-complete from the remaining match: %s %+v", slotA.Status, slotA.Standings)
+	}
+	// The unlinked match left the tournament arena together with the bracket
+	// (ADR-26, revised): no membership row, no arena settlements.
+	var m1Memberships, m1Settlements int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT
+            (SELECT COUNT(*) FROM arena_matches am
+             JOIN arenas a ON a.id = am.arena_id
+             WHERE a.tournament_id = $2 AND am.match_id = $1),
+            (SELECT COUNT(*) FROM arena_settlements s
+             WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
+		m1id, tid).Scan(&m1Memberships, &m1Settlements); err != nil {
+		t.Fatalf("arena membership after unlink: %v", err)
+	}
+	if m1Memberships != 0 || m1Settlements != 0 {
+		t.Fatalf("unlinked match must leave the arena: %d memberships, %d settlements", m1Memberships, m1Settlements)
+	}
+
+	// Checking m1 back is now refused: the slot re-completed from m2 alone, so
+	// no playing slot fits (the same 400 the organizer attach answers with).
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusBadRequest {
+		t.Fatalf("edit-relink into a completed slot must 400, got %d", code)
+	}
+
+	// Slot B completes, the grand final is played, the tournament completes.
+	newMatch(matchDate(4, 2), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	final0 := seatPlayer(t, br, 1, 0, 0)
+	final1 := seatPlayer(t, br, 1, 0, 1)
+	final2 := seatPlayer(t, br, 1, 0, 2)
+	final3 := seatPlayer(t, br, 1, 0, 3)
+	newMatch(matchDate(3, 0), sc(final0, 10), sc(final1, 6), sc(final2, 2), sc(final3, 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != final0 {
+		t.Fatalf("tournament must be completed with the final's winner: %+v", br.Data)
+	}
+
+	// Now unchecking would void the played final → 409, the organizer's
+	// explicit detach is the tool for that.
+	if code := editMatch(m2, `, "skip_tournament_link": true`, sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1)); code != http.StatusConflict {
+		t.Fatalf("edit-unlink after downstream play must 409, got %d", code)
+	}
+
+	// A match that fits no playing slot cannot be counted by an edit: with the
+	// bracket finished there are no playing slots at all (the same 400 the
+	// organizer attach endpoint answers with).
+	late := newMatch(matchDate(2, 0), sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	if code := editMatch(late, `, "skip_tournament_link": false`, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusBadRequest {
+		t.Fatalf("edit-link with no playing slot must 400, got %d", code)
+	}
+
+	// Audit totals for slot A: one edit-link attach and one edit-unlink
+	// detach (the refused relink and unlink emit nothing).
+	if attaches, detaches := editLinkAudits(); attaches != 1 || detaches != 1 {
+		t.Fatalf("audit totals: %d attaches, %d detaches (want 1, 1)", attaches, detaches)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7: rulings, attach/detach, WB+LB, deadline
+// ---------------------------------------------------------------------------
+
+// TestTournament_RulingAttachDetach covers the organizer corrections: attach
+// of a mistakenly-unchecked match, a hand ruling that completes the slot,
+// ruling persistence over a detach, and the audit documents.
+func TestTournament_RulingAttachDetach(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Судейская игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 4; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Судья%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок судей", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	// One 4-seat grand final: the whole tournament is one table.
+	plan := `{"plan":{"elimination":"single","rounds":[
+		{"track":"final","index":1,"advance":1,"slots":[
+			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, plan); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slot := br.Data.Rounds[0].Slots[0]
+	seat := func(i int) string {
+		p := slot.Seats[i].PlayerId
+		if p == nil {
+			t.Fatalf("seat %d not drawn", i)
+		}
+		return *p
+	}
+
+	// The organizer forgot the checkbox: the match was posted skipped.
+	midID := newID(t)
+	mid := short(midID)
+	// Posted with the skip flag: the organizer forgot the checkbox.
+	body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%q:10, %q:10, %q:1, %q:0}, "skip_tournament_link": true}`,
+		mid, short(gameID), matchDate(0, 0), seat(0), seat(1), seat(2), seat(3))
+	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
+	}
+
+	// Attach repairs it; the tie means no strict cut — the slot keeps playing.
+	w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":`+`"`+mid+`"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("attach: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if len(br.Data.Rounds[0].Slots[0].Matches) != 1 {
+		t.Fatalf("attach must link the match")
+	}
+
+	// A second attach of the same match is a 409.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":"`+mid+`"}`); w.Code != http.StatusConflict {
+		t.Fatalf("double attach must 409, got %d", w.Code)
+	}
+
+	// The ruling completes the slot by hand (abandoned table).
+	ruling := fmt.Sprintf(`{"player_ids": [%q]}`, seat(1))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, ruling); w.Code != http.StatusOK {
+		t.Fatalf("ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != seat(1) {
+		t.Fatalf("ruling must crown seat 1: %+v", br.Data)
+	}
+
+	// Detaching the (tie) match keeps the ruling in force — the slot stays
+	// completed through the recompute.
+	if w := doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches/"+mid, admin, ""); w.Code != http.StatusOK {
+		t.Fatalf("detach: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" {
+		t.Fatalf("the ruling must stand after the detach: %s", br.Data.Status)
+	}
+	// The detached match left the tournament arena too (ADR-26, revised).
+	var matchMemberships, matchSettlements int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT
+            (SELECT COUNT(*) FROM arena_matches am
+             JOIN arenas a ON a.id = am.arena_id
+             WHERE a.tournament_id = $2 AND am.match_id = $1),
+            (SELECT COUNT(*) FROM arena_settlements s
+             WHERE s.match_id = $1 AND s.arena_id IN (SELECT id FROM arenas WHERE tournament_id = $2))`,
+		midID, tid).Scan(&matchMemberships, &matchSettlements); err != nil {
+		t.Fatalf("arena membership after detach: %v", err)
+	}
+	if matchMemberships != 0 || matchSettlements != 0 {
+		t.Fatalf("detached match must leave the arena: %d memberships, %d settlements", matchMemberships, matchSettlements)
+	}
+
+	// Audit: attach (organizer), ruling set, detach.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var attaches, rulings, detaches int
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		switch {
+		case d["op"] == "attach" && d["origin_kind"] == "organizer":
+			attaches++
+		case d["op"] == "set" && d["after_player_ids"] != nil:
+			rulings++
+		case d["op"] == "detach":
+			detaches++
+		}
+	}
+	if attaches != 1 || rulings != 1 || detaches != 1 {
+		t.Fatalf("audit: %d attaches, %d rulings, %d detaches (want 1 each)", attaches, rulings, detaches)
+	}
+
+	// Cancelling the ruling (an empty player list) reopens the abandoned
+	// table: the tournament reverts to running, the slot goes back to playing
+	// with no ruling in force — the organizer can link a match again.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, `{"player_ids": []}`); w.Code != http.StatusOK {
+		t.Fatalf("cancel ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("cancel must revert the completion: %+v", br.Data)
+	}
+	reopened := slotAt(t, br, 0, 0)
+	if reopened.Status != "playing" || reopened.Ruling != nil {
+		t.Fatalf("cancel must reopen the slot with no ruling: %s %+v", reopened.Status, reopened.Ruling)
+	}
+
+	// The re-attach the cancel exists for: the detached match links again
+	// (the tie keeps the slot playing), and a fresh ruling re-completes it.
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/matches", admin, `{"match_id":"`+mid+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("re-attach after cancel: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slot.Id+"/ruling", admin, ruling); w.Code != http.StatusOK {
+		t.Fatalf("re-ruling: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != seat(1) {
+		t.Fatalf("re-ruling must re-complete: %+v", br.Data)
+	}
+
+	// Audit totals: the cancel added one revert; the repair added one attach
+	// and one set.
+	page = listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var reverts int
+	attaches, rulings, detaches = 0, 0, 0
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			continue
+		}
+		switch {
+		case d["op"] == "attach" && d["origin_kind"] == "organizer":
+			attaches++
+		case d["op"] == "set" && d["after_player_ids"] != nil:
+			rulings++
+		case d["op"] == "revert":
+			reverts++
+		case d["op"] == "detach":
+			detaches++
+		}
+	}
+	if attaches != 2 || rulings != 2 || reverts != 1 || detaches != 1 {
+		t.Fatalf("audit totals: %d attaches, %d rulings, %d reverts, %d detaches (want 2, 2, 1, 1)",
+			attaches, rulings, reverts, detaches)
+	}
+}
+
+// TestTournament_RulingOverridesAndGuards pins the ruling semantics and their
+// history guards (ADR-26, revised): the ruling overrides a standings-based
+// outcome (and propagates to the downstream seats in its own order), and any
+// ruling change or unlink that would rewrite an outcome feeding played or
+// ruled downstream rounds is refused with 409 — those rounds are unwound
+// explicitly, from the last one backwards.
+func TestTournament_RulingOverridesAndGuards(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Гарантная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Гарант%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Гарантный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	bSeat := func(i int) string { return seatPlayer(t, br, 0, 1, i) }
+
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		body := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+	ruling := func(playerIDs ...string) string {
+		quoted := make([]string, 0, len(playerIDs))
+		for _, p := range playerIDs {
+			quoted = append(quoted, fmt.Sprintf("%q", p))
+		}
+		return `{"player_ids": [` + strings.Join(quoted, ",") + `]}`
+	}
+	setRuling := func(body string) int {
+		return doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+slotAt(t, getBracket(t, router, short(tid)), 0, 0).Id+"/ruling", admin, body).Code
+	}
+	detach := func(roundIdx, pos int, matchID string) int {
+		slotID := slotAt(t, getBracket(t, router, short(tid)), roundIdx, pos).Id
+		return doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/slots/"+slotID+"/matches/"+matchID, admin, "").Code
+	}
+
+	// Slot A completes from a decisive match: {a0, a1} by points
+	// (shares 1.0–0.4–0–0)..
+	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA := slotAt(t, br, 0, 0)
+	if slotA.Status != "completed" {
+		t.Fatalf("slot A must complete by points: %s", slotA.Status)
+	}
+
+	// The ruling overrides the standings-based outcome (it used to be
+	// silently ignored while a strict cut stood) and the final's seats follow
+	// the ruling's order, not the points order.
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling must override the standings outcome: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	slotA = slotAt(t, br, 0, 0)
+	if slotA.Ruling == nil || len(*slotA.Ruling) != 2 || (*slotA.Ruling)[0] != aSeat(2) {
+		t.Fatalf("the ruling must be exposed in force: %+v", slotA.Ruling)
+	}
+	advanced := map[string]bool{}
+	for _, st := range slotA.Standings {
+		if st.Advanced {
+			advanced[st.PlayerId] = true
+		}
+	}
+	if !advanced[aSeat(2)] || !advanced[aSeat(1)] || advanced[aSeat(0)] {
+		t.Fatalf("the advanced set must follow the ruling: %+v", slotA.Standings)
+	}
+	if got := br.Data.Rounds[1].Slots[0].Seats[0].PlayerId; got == nil || *got != aSeat(2) {
+		t.Fatalf("final place-1 seat must follow the ruling, got %+v", br.Data.Rounds[1].Slots[0].Seats[0])
+	}
+	if got := br.Data.Rounds[1].Slots[0].Seats[1].PlayerId; got == nil || *got != aSeat(1) {
+		t.Fatalf("final place-2 seat must follow the ruling, got %+v", br.Data.Rounds[1].Slots[0].Seats[1])
+	}
+
+	// Slot B completes; the final is played with the ruling's field and the
+	// tournament completes.
+	newMatch(matchDate(4, 60), sc(bSeat(0), 10), sc(bSeat(1), 2), sc(bSeat(2), 1), sc(bSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	finalA1 := seatPlayer(t, br, 1, 0, 0) // aSeat(2) via the ruling
+	finalA2 := seatPlayer(t, br, 1, 0, 1) // aSeat(1)
+	finalB1 := seatPlayer(t, br, 1, 0, 2)
+	finalB2 := seatPlayer(t, br, 1, 0, 3)
+	newMatch(matchDate(3, 0), sc(finalA1, 10), sc(finalA2, 6), sc(finalB1, 2), sc(finalB2, 0))
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "completed" || br.Data.WinnerPlayerId == nil || *br.Data.WinnerPlayerId != finalA1 {
+		t.Fatalf("the final must complete on the ruling's field: %+v", br.Data)
+	}
+	aMatches := slotAt(t, br, 0, 0).Matches
+
+	// The guards: with the final played, first-round corrections are refused.
+	if code := setRuling(ruling(aSeat(0), aSeat(1))); code != http.StatusConflict {
+		t.Fatalf("ruling change after downstream play must 409, got %d", code)
+	}
+	if code := setRuling(ruling()); code != http.StatusConflict {
+		t.Fatalf("ruling cancel after downstream play must 409, got %d", code)
+	}
+	if code := detach(0, 0, aMatches[0].MatchId); code != http.StatusConflict {
+		t.Fatalf("organizer detach after downstream play must 409, got %d", code)
+	}
+	// A no-op re-issue of the same ordered ruling passes (nothing cascades).
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("no-op ruling re-issue must pass, got %d", code)
+	}
+
+	// The step-by-step unwind: detach the final's match first (nothing is
+	// recorded downstream of it) — the tournament reverts to running and the
+	// voided final reopens for play instead of staying completed-and-empty.
+	finalMatch := slotAt(t, getBracket(t, router, short(tid)), 1, 0).Matches[0].MatchId
+	if code := detach(1, 0, finalMatch); code != http.StatusOK {
+		t.Fatalf("unwind detach of the final: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if br.Data.Status != "running" || br.Data.WinnerPlayerId != nil {
+		t.Fatalf("the unwind must revert the completion: %+v", br.Data)
+	}
+	final := slotAt(t, br, 1, 0)
+	if final.Status != "playing" || len(final.Matches) != 0 {
+		t.Fatalf("the voided final must reopen for play: %s with %d matches", final.Status, len(final.Matches))
+	}
+
+	// Now the first-round ruling change goes through and re-seats the final.
+	if code := setRuling(ruling(aSeat(0), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling change after the unwind must pass: %d", code)
+	}
+	br = getBracket(t, router, short(tid))
+	if got := br.Data.Rounds[1].Slots[0].Seats[0].PlayerId; got == nil || *got != aSeat(0) {
+		t.Fatalf("final place-1 seat must re-fill from the new ruling: %+v", br.Data.Rounds[1].Slots[0].Seats[0])
+	}
+
+	// The guard also covers ruled (not just played) downstream rounds: a
+	// ruling on the final completes the tournament again, and the first-round
+	// change is refused until that ruling is canceled.
+	br = getBracket(t, router, short(tid))
+	finalSeat1 := seatPlayer(t, br, 1, 0, 0)
+	if code := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+final.Id+"/ruling", admin, ruling(finalSeat1)).Code; code != http.StatusOK {
+		t.Fatalf("ruling on the final: %d", code)
+	}
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusConflict {
+		t.Fatalf("ruling change under a ruled downstream must 409, got %d", code)
+	}
+	if code := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/slots/"+final.Id+"/ruling", admin, ruling()).Code; code != http.StatusOK {
+		t.Fatalf("cancel the final's ruling: %d", code)
+	}
+	if code := setRuling(ruling(aSeat(2), aSeat(1))); code != http.StatusOK {
+		t.Fatalf("ruling change after canceling the downstream ruling must pass: %d", code)
+	}
+}
+
+// TestTournament_SlotAdjustAuditFeed covers the organizer game reassignment
+// and its audit document: the tournament audit feed must serve the slot-adjust
+// details kind (it used to fail the whole feed with "unknown audit details
+// kind" — the kind was missing from the wire union).
+func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Кубочная игра")
+	gameID2 := createTestGame(t, pool, "Пересадочная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Пересадка%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пересадок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}, {"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), short(gameID2), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slotA := br.Data.Rounds[0].Slots[0]
+
+	// Reassign the first table's game: audited as slot-adjust / game.
+	body := fmt.Sprintf(`{"game_id": %q}`, short(gameID2))
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusOK {
+		t.Fatalf("adjust: %d %s", w.Code, w.Body.String())
+	}
+
+	// The bug this test pins: the audit feed must serve the slot-adjust
+	// details instead of failing the whole request.
+	page := listAudit(t, router, "?entity_type=tournament&entity_id="+short(tid))
+	var found map[string]any
+	for _, e := range page.Data {
+		if e.Details == nil {
+			continue
+		}
+		var d map[string]any
+		if err := json.Unmarshal(e.Details, &d); err != nil {
+			t.Fatalf("decode details: %v", err)
+		}
+		if d["op"] == "game" {
+			found = d
+		}
+	}
+	if found == nil {
+		t.Fatalf("no slot-adjust details in the feed: %+v", page.Data)
+	}
+	if found["game_id"] != short(gameID2) || found["slot_id"] != slotA.Id {
+		t.Fatalf("slot-adjust details: %+v (want game_id %s, slot %s)", found, short(gameID2), slotA.Id)
+	}
+}
+
+// TestTournament_MinScoreGate drives the ADR-30 minimal advance score: the
+// organizer sets it while the slot has no matches (out-of-range and
+// after-matches changes are refused), a strict cut below the minimum keeps
+// the slot playing, and a later match that pushes the leader over the
+// minimum completes it.
+func TestTournament_MinScoreGate(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Минимальная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Минимал%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок минимума", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slotA := br.Data.Rounds[0].Slots[0]
+
+	// Out-of-range values are refused before anything is written.
+	for _, bad := range []string{"10.5", "-0.5"} {
+		body := fmt.Sprintf(`{"min_score": %s}`, bad)
+		if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusBadRequest {
+			t.Fatalf("min_score %s must be rejected: %d %s", bad, w.Code, w.Body.String())
+		}
+	}
+
+	// The organizer sets 1.5 on the untouched table.
+	body := `{"min_score": 1.5}`
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusOK {
+		t.Fatalf("set min_score: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if got := br.Data.Rounds[0].Slots[0].MinScore; got != 1.5 {
+		t.Fatalf("min_score on the wire: %v, want 1.5", got)
+	}
+
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		matchBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, matchBody); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+
+	// A decisive first win — the strict cut holds, but the leader's 1.0 is
+	// below the 1.5 minimum: the slot keeps playing.
+	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA = br.Data.Rounds[0].Slots[0]
+	if slotA.Status != "playing" {
+		t.Fatalf("strict cut below the minimum must keep the slot playing: %s", slotA.Status)
+	}
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 1 {
+		t.Fatalf("leader points: %+v", slotA.Standings)
+	}
+
+	// With a match linked, the minimal score is locked.
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, `{"min_score": 0}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("min_score change with linked matches must be refused: %d %s", w.Code, w.Body.String())
+	}
+
+	// A second decisive win pushes the leader to 2.0 ≥ 1.5: the slot completes.
+	newMatch(matchDate(4, 1), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA = br.Data.Rounds[0].Slots[0]
+	if slotA.Status != "completed" {
+		t.Fatalf("leader above the minimum must complete the slot: %s (%+v)", slotA.Status, slotA.Standings)
+	}
+	if slotA.Standings[0].Points != 2 || !slotA.Standings[0].Advanced {
+		t.Fatalf("leader standings: %+v", slotA.Standings)
+	}
+}
+
+// TestTournament_DeadlineAutoCancel verifies the lazy enforcement: a stale
+// running status flips to cancelled (system actor, reason "deadline") on the
+// next bracket read or match write, and a past deadline blocks start.

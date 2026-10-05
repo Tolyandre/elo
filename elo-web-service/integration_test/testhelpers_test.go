@@ -15,8 +15,11 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -642,3 +645,29 @@ func newCorrectionService(pool *pgxpool.Pool) elo.ICorrectionService {
 // GlobalArenaID re-exported for raw SQL assertions against the unified
 // settlement table.
 var globalArenaUUID = "a2ea0000-0000-0000-0000-000000000001"
+
+// short encodes a canonical uuid to the Base58 wire form.
+func short(canonical idpkg.ID) string {
+	return string(canonical.Base58())
+}
+
+// doJSON performs one request against the test router with an optional
+// bearer token and JSON body.
+func doJSON(t *testing.T, router interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}, method, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if body == "" {
+		req = httptest.NewRequest(method, path, nil)
+	} else {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
