@@ -1,4 +1,4 @@
--- Tournament slots (ADR-26, amended by ADR-27): the advancement terminology
+-- Tournament slots (ADR-26, amended by ADR-30): the advancement terminology
 -- replaces "promote", and slots gain an organizer-set minimal score a player
 -- must reach before the slot may complete.
 --
@@ -8,7 +8,7 @@
 ALTER TABLE tournament_slots RENAME COLUMN promote TO advance;
 ALTER TABLE tournament_slot_promotions RENAME TO tournament_slot_advances;
 
--- The minimal score gate (ADR-27): with the default 0 the slot completes on
+-- The minimal score gate (ADR-30): with the default 0 the slot completes on
 -- the strict standings cut alone (the previous behavior); with a value m > 0
 -- the leader must additionally hold at least m slot points before the cut
 -- counts. Slot points are the Elo earn part rounded to one decimal, so m

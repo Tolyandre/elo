@@ -1143,7 +1143,7 @@ type BracketSlot struct {
 		// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 		MatchId Base58ID `json:"match_id"`
 
-		// Scores Every participant's slot points earned in this match (ADR-27): the Elo earn part rounded to one decimal, in event order.
+		// Scores Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their share of the leader's margin, rounded to one decimal, in event order.
 		Scores []struct {
 			// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 			PlayerId Base58ID `json:"player_id"`
@@ -1151,7 +1151,7 @@ type BracketSlot struct {
 		} `json:"scores"`
 	} `json:"matches"`
 
-	// MinScore The organizer-set minimal slot score (ADR-27): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
+	// MinScore The organizer-set minimal slot score (ADR-30): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
 	MinScore float64 `json:"min_score"`
 
 	// Position Table number within the round
@@ -1161,7 +1161,7 @@ type BracketSlot struct {
 	RulingPlayerIds *[]Base58ID   `json:"ruling_player_ids,omitempty"`
 	Seats           []BracketSeat `json:"seats"`
 
-	// Standings Live standings derived from the linked matches' scores: cumulative slot points (the Elo earn part, ADR-27), current order, and the recorded advanced set.
+	// Standings Live standings derived from the linked matches' scores: cumulative slot points (the per-match shares of ADR-30), current order, and the recorded advanced set.
 	Standings []struct {
 		Advanced bool `json:"advanced"`
 		Place    int  `json:"place"`

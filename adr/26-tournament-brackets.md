@@ -1,6 +1,7 @@
 # Bracket tournaments
 
-Amended by ADR-30: slot points are the Elo earn part (integer tenths), slots
+Amended by ADR-30: slot points measure each player's margin to the match
+leader (a decisive win rounds to exactly 1.0, one decimal per match), slots
 may carry an organizer-set minimal advance score, and the promote vocabulary
 is now "advance".
 

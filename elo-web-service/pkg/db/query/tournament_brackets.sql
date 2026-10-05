@@ -1,4 +1,4 @@
--- Bracket materialization queries (ADR-26, ADR-27): rounds, slots, seats, the
+-- Bracket materialization queries (ADR-26, ADR-30): rounds, slots, seats, the
 -- slot match series, and the recorded advancements. Standings are never
 -- stored — they are derived from the linked matches' scores at
 -- read/completion time.
@@ -164,7 +164,7 @@ UPDATE tournament_slots SET status = $2, ruling = $3 WHERE id = $1;
 UPDATE tournament_slots SET ruling = $2 WHERE id = $1;
 
 -- name: SetSlotAdjustment :exec
--- Organizer adjustment (ADR-26, ADR-27): only for slots with zero linked
+-- Organizer adjustment (ADR-26, ADR-30): only for slots with zero linked
 -- matches. A NULL argument leaves the current value in place.
 UPDATE tournament_slots
 SET game_id = COALESCE(sqlc.narg('game_id'), game_id),

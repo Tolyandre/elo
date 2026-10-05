@@ -1059,11 +1059,11 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
 		t.Fatalf("slot A matches: %+v", slotA.Matches)
 	}
-	// Live standings show the 0.5-0.5-0-0 shares (equal points share the
+	// Live standings show the 1.0-1.0-0.1-0 shares (equal points share the
 	// rank) while the slot replays; the advanced flags stay off and the final
 	// seat stays unfilled.
-	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 0.5 || slotA.Standings[1].Points != 0.5 ||
-		slotA.Standings[2].Points != 0 || slotA.Standings[3].Points != 0 ||
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 1 || slotA.Standings[1].Points != 1 ||
+		slotA.Standings[2].Points != 0.1 || slotA.Standings[3].Points != 0 ||
 		slotA.Standings[0].Place != 1 || slotA.Standings[1].Place != 1 || slotA.Standings[2].Place != 3 ||
 		slotA.Standings[0].Advanced || slotA.Standings[1].Advanced ||
 		br.Data.Rounds[1].Slots[0].Seats[0].PlayerId != nil {
@@ -1089,16 +1089,16 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// Match 2 (the replay): seat1 takes a decisive win → cumulative
-	// 1.1–0.8–0.1–0 → strict top-2.
+	// 2.0–1.5–0.2–0 → strict top-2.
 	newMatch(matchDate(4, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" || len(slotA.Matches) != 2 {
 		t.Fatalf("slot A after the replay: %s with %d matches", slotA.Status, len(slotA.Matches))
 	}
-	// Standings (shares): 1.1–0.8–0.1–0, advanced {seat1, seat0}.
+	// Standings (shares): 2.0–1.5–0.2–0, advanced {seat1, seat0}.
 	if len(slotA.Standings) != 4 || slotA.Standings[0].PlayerId != aSeat(1) || slotA.Standings[1].PlayerId != aSeat(0) ||
-		!slotA.Standings[0].Advanced || !slotA.Standings[1].Advanced || slotA.Standings[0].Points != 1.1 || slotA.Standings[1].Points != 0.8 {
+		!slotA.Standings[0].Advanced || !slotA.Standings[1].Advanced || slotA.Standings[0].Points != 2 || slotA.Standings[1].Points != 1.5 {
 		t.Fatalf("slot A standings: %+v", slotA.Standings)
 	}
 
@@ -1456,7 +1456,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 		t.Fatalf("game change must 409, got %d", w.Code)
 	}
 	//   score-only edit → allowed (200). The 3/10 reversal puts seat1 clearly
-	//   ahead in the cumulative shares (0.7 vs 0.2 from this match).
+	//   ahead in the cumulative shares (this match alone: a0 0.3, a1 1.0).
 	code = editMatch(m1, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	if code != http.StatusOK {
 		t.Fatalf("score edit must pass: %d", code)
@@ -1545,12 +1545,12 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	// A skipped match (created unchecked) is counted by the explicit edit.
 	m1id := newID(t)
 	skipBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}, "skip_tournament_link": true}`,
-		short(m1id), short(gameID), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)}, ","))
+		short(m1id), short(gameID), matchDate(4, 0), strings.Join([]string{sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)}, ","))
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, skipBody); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
 	m1 := short(m1id)
-	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
 		t.Fatalf("edit-link: %d", code)
 	}
 	br = getBracket(t, router, short(tid))
@@ -1586,7 +1586,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 
 	// A no-op edit (desired state already holds) emits no second audit row.
-	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
 		t.Fatalf("no-op edit: %d", code)
 	}
 	if attaches, _ := editLinkAudits(); attaches != 1 {
@@ -1594,10 +1594,10 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 
 	// The second slot-A match links by the default acceptance; its points keep
-	// the cumulative top-2 tied at the cut boundary, so the slot stays playing
-	// with two matches (a1=0.8, a0=0.6, a2=0.6, a3=0 — no strict cut: a0 and
-	// a2 tie at the cut boundary).
-	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 7), sc(aSeat(1), 4), sc(aSeat(0), 2), sc(aSeat(3), 1))
+	// the top-2 tied at the cut boundary, so the slot stays playing with two
+	// matches (m1: a0 1.0, a1 1.0, a2 0.4 — a shared top alone must not
+	// complete; cumulative with m2: a1 1.4, a2 1.4, a0 1.1 — the leaders tie).
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 8), sc(aSeat(1), 4), sc(aSeat(0), 2), sc(aSeat(3), 1))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "playing" || len(slotA.Matches) != 2 {
@@ -1607,7 +1607,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	// Unchecking a linked match is allowed while the downstream final has no
 	// played matches: the slot recomputes from the remaining match only and
 	// completes with a different advanced set {seat2, seat1}.
-	if code := editMatch(m1, `, "skip_tournament_link": true`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
+	if code := editMatch(m1, `, "skip_tournament_link": true`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusOK {
 		t.Fatalf("edit-unlink before downstream play: %d", code)
 	}
 	br = getBracket(t, router, short(tid))
@@ -1637,7 +1637,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 
 	// Checking m1 back is now refused: the slot re-completed from m2 alone, so
 	// no playing slot fits (the same 400 the organizer attach answers with).
-	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusBadRequest {
+	if code := editMatch(m1, `, "skip_tournament_link": false`, sc(aSeat(0), 19), sc(aSeat(1), 19), sc(aSeat(2), 8), sc(aSeat(3), 0)); code != http.StatusBadRequest {
 		t.Fatalf("edit-relink into a completed slot must 400, got %d", code)
 	}
 
@@ -1918,7 +1918,7 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 	}
 
 	// Slot A completes from a decisive match: {a0, a1} by points
-	// (shares 0.6–0.3–0.1–0).
+	// (shares 1.0–0.4–0–0)..
 	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA := slotAt(t, br, 0, 0)
@@ -2087,7 +2087,7 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 	}
 }
 
-// TestTournament_MinScoreGate drives the ADR-27 minimal advance score: the
+// TestTournament_MinScoreGate drives the ADR-30 minimal advance score: the
 // organizer sets it while the slot has no matches (out-of-range and
 // after-matches changes are refused), a strict cut below the minimum keeps
 // the slot playing, and a later match that pushes the leader over the
@@ -2147,7 +2147,7 @@ func TestTournament_MinScoreGate(t *testing.T) {
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
 
-	// A decisive first win — the strict cut holds, but the leader's 0.8 is
+	// A decisive first win — the strict cut holds, but the leader's 1.0 is
 	// below the 1.5 minimum: the slot keeps playing.
 	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
@@ -2155,7 +2155,7 @@ func TestTournament_MinScoreGate(t *testing.T) {
 	if slotA.Status != "playing" {
 		t.Fatalf("strict cut below the minimum must keep the slot playing: %s", slotA.Status)
 	}
-	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 0.8 {
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 1 {
 		t.Fatalf("leader points: %+v", slotA.Standings)
 	}
 
@@ -2164,14 +2164,14 @@ func TestTournament_MinScoreGate(t *testing.T) {
 		t.Fatalf("min_score change with linked matches must be refused: %d %s", w.Code, w.Body.String())
 	}
 
-	// A second decisive win pushes the leader to 1.6 ≥ 1.5: the slot completes.
+	// A second decisive win pushes the leader to 2.0 ≥ 1.5: the slot completes.
 	newMatch(matchDate(4, 1), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA = br.Data.Rounds[0].Slots[0]
 	if slotA.Status != "completed" {
 		t.Fatalf("leader above the minimum must complete the slot: %s (%+v)", slotA.Status, slotA.Standings)
 	}
-	if slotA.Standings[0].Points != 1.6 || !slotA.Standings[0].Advanced {
+	if slotA.Standings[0].Points != 2 || !slotA.Standings[0].Advanced {
 		t.Fatalf("leader standings: %+v", slotA.Standings)
 	}
 }

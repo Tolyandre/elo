@@ -8,28 +8,55 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
 )
 
-// PointsTenths is the slot-points scale (ADR-27): slot points are the Elo earn
-// part — ratingmath.NormalizedScore, a share in [0, 1] — scaled by 10 and
-// rounded to one decimal per match, so every per-match contribution is an
-// integer number of tenths. Integer tenths keep the cumulative sums exact:
-// binary floats cannot represent 0.1, and the completion rule (StrictCut)
-// compares points with ==.
+// PointsTenths is the slot-points scale (ADR-30): slot points are rounded to
+// one decimal per match, so every per-match contribution is an integer number
+// of tenths. Integer tenths keep the cumulative sums exact: binary floats
+// cannot represent 0.1, and the completion rule (StrictCut) compares points
+// with ==.
 const PointsTenths = 10
 
+// The per-match share (ADR-30): the leader's surplus over the worst score
+// maps to topShareScale with every other score proportionally below, and
+// every 1st place holder (a shared top included) adds firstPlaceBonus — so
+// the rounded winner sits at exactly 1.0 while nobody else can pass 0.9.
+// Rounding therefore never collapses a decisive win into a tie: a near-equal
+// finish keeps the winner at least 0.1 ahead, and a genuinely shared top
+// still ties and replays.
+const (
+	topShareScale   = 0.95
+	firstPlaceBonus = 0.05
+)
+
 // MatchPoints returns the slot points, in tenths, each player earns in one
-// match: their Elo earn part — the W-normalized share of the match's score
-// surplus over the worst score (ratingmath.NormalizedScore, no K, no D) —
-// rounded to one decimal. winReward is the elo_settings.win_reward effective
-// at the match's date; the caller supplies it per match so a settings change
-// never rewrites already-played history. Unlike the old placement points,
-// the amount varies with the margin: a 2-seat win always earns the full 1.0,
-// while a tied 3-seat win (scores 3/3/1) earns 0.5 — and a comeback is a
-// matter of accumulating shares, not of fixed place offsets.
-func MatchPoints(scores map[id.ID]float64, winReward float64) map[id.ID]int {
+// match (ADR-30): their score surplus over the worst score as a share of the
+// leader's surplus, scaled to [0, 0.95]; every 1st place holder adds the
+// bonus and rounds to exactly 1.0. All-equal scores leave nothing to separate
+// the players — everybody is a 1st place holder, and the bare bonus rounds to
+// a uniform 0.1. Examples: 13/12/−4 → 1.0/0.9/0 (the near-equal runner-up
+// stays 0.1 behind); 3/3/1 → 1.0/1.0/0 (a shared top ties); a 2-seat win →
+// 1.0/0.
+func MatchPoints(scores map[id.ID]float64) map[id.ID]int {
 	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(scores)
+	leaderScore := absoluteLoserScore
+	for _, sc := range scores {
+		if sc > leaderScore {
+			leaderScore = sc
+		}
+	}
+
 	out := make(map[id.ID]int, len(scores))
+	if leaderScore == absoluteLoserScore {
+		for pid := range scores {
+			out[pid] = int(math.Round(firstPlaceBonus * PointsTenths))
+		}
+		return out
+	}
 	for pid, sc := range scores {
-		out[pid] = int(math.Round(ratingmath.NormalizedScore(sc, scores, absoluteLoserScore, winReward) * PointsTenths))
+		share := topShareScale * (sc - absoluteLoserScore) / (leaderScore - absoluteLoserScore)
+		if sc == leaderScore {
+			share += firstPlaceBonus
+		}
+		out[pid] = int(math.Round(share * PointsTenths))
 	}
 	return out
 }
@@ -73,19 +100,17 @@ func DerivePlaces(scores map[id.ID]float64) []PlayerPlace {
 
 // MatchResult is one linked match of a slot's series, in chronological order
 // (the caller supplies the order — match date, then id) with its player→score
-// map and the win reward effective at the match's date. Places are derived
-// internally with the codebase's RANK semantics.
+// map. Places are derived internally with the codebase's RANK semantics.
 type MatchResult struct {
-	MatchID   id.ID
-	Scores    map[id.ID]float64
-	WinReward float64
+	MatchID id.ID
+	Scores  map[id.ID]float64
 }
 
 // Standing is one player's cumulative slot standing.
 type Standing struct {
 	PlayerID id.ID
-	// Points is the cumulative slot score in tenths (ADR-27): each match
-	// contributes its Elo earn part rounded to one decimal.
+	// Points is the cumulative slot score in tenths (ADR-30): each match
+	// contributes its per-match share rounded to one decimal.
 	Points int
 	// Order is the player's place in each linked match, most recent first —
 	// the display tie-break (a later match can overturn an earlier leader).
@@ -98,7 +123,7 @@ type Standing struct {
 	Advanced bool
 }
 
-// Standings accumulates match points (ADR-27) over a slot's linked matches
+// Standings accumulates match points (ADR-30) over a slot's linked matches
 // (each match's places derived from its scores) and orders them: points DESC,
 // then the place-vector from the most recent match backwards, then player id —
 // a deterministic total order. The completion rule does not rely on the
@@ -116,7 +141,7 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	accs := make(map[id.ID]*acc, seats*2)
 	ids := make([]id.ID, 0, seats)
 	for i, places := range derived {
-		points := MatchPoints(matches[i].Scores, matches[i].WinReward)
+		points := MatchPoints(matches[i].Scores)
 		for _, p := range places {
 			a := accs[p.PlayerID]
 			if a == nil {
@@ -162,7 +187,7 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	return out
 }
 
-// StrictCut reports whether the slot may complete (ADR-26, ADR-27): the
+// StrictCut reports whether the slot may complete (ADR-26, ADR-30): the
 // top-advance set must be strictly separated — every boundary from 1st
 // through the (advance+1)-th has strictly decreasing points (ADR-26's
 // shared-top example: 4–4–2–1 replays — the cut against the rest is clean,

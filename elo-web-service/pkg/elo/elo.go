@@ -46,7 +46,7 @@ func WinExpectation(currentElo float64, playersScore map[id.ID]float64, starting
 
 // NormalizedScore and GetAbsoluteLoserScore live in pkg/ratingmath: the
 // tournament bracket derives slot points from the same earn-part arithmetic
-// (ADR-27), and the leaf package keeps that shared without a cycle.
+// (ADR-30), and the leaf package keeps that shared without a cycle.
 
 func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score map[id.ID]float64,
 	eloConstK float64, eloConstD float64, winReward float64) map[id.ID]float64 {

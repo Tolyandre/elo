@@ -757,7 +757,7 @@ type BracketSeat struct {
 	SourcePlace  *int
 }
 
-// BracketMatchScore is one player's earned slot points (ADR-27) in one match
+// BracketMatchScore is one player's earned slot points (ADR-30) in one match
 // of the slot's series — the per-match earn share rounded to one decimal.
 type BracketMatchScore struct {
 	PlayerID id.ID
@@ -777,14 +777,14 @@ type BracketSlot struct {
 	Position int
 	GameID   id.ID
 	Advance  int
-	// MinScore is the organizer-set minimal score (ADR-27): the leader must
+	// MinScore is the organizer-set minimal score (ADR-30): the leader must
 	// hold at least this many slot points before the slot may complete.
 	MinScore float64
 	Status   string
 	Seats    []BracketSeat
 	Matches  []BracketMatch
 	// Standings carry cumulative slot points in tenths (Standing.Points,
-	// ADR-27); the API layer divides by 10 for display.
+	// ADR-30); the API layer divides by 10 for display.
 	Standings []bracket.Standing
 	// Ruling is the organizer ruling in force, ordered by place; nil when the
 	// outcome comes from the standings.
@@ -873,14 +873,11 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 		if err != nil {
 			return db.Tournament{}, nil, fmt.Errorf("list slot matches: %w", err)
 		}
-		matchResults, err := buildMatchResults(ctx, s.Queries, results)
-		if err != nil {
-			return db.Tournament{}, nil, err
-		}
-		// Per-match earned points (ADR-27) in event order, participants in
+		matchResults := slotMatchResults(results)
+		// Per-match earned points (ADR-30) in event order, participants in
 		// the query's player-id order.
 		for _, mr := range matchResults {
-			pts := bracket.MatchPoints(mr.Scores, mr.WinReward)
+			pts := bracket.MatchPoints(mr.Scores)
 			bm := BracketMatch{MatchID: mr.MatchID, Scores: make([]BracketMatchScore, 0, len(mr.Scores))}
 			for _, r := range results {
 				if r.MatchID == mr.MatchID {

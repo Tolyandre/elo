@@ -26,8 +26,8 @@ func init() {
 
 // runDataMigrations applies every in-process data migration family: calculator
 // documents (ADR-09), audit details documents (ADR-14), tournament plan
-// documents (ADR-27) and arena settings documents (ADR-24). Each family is a
-// no-op when nothing is out of date.
+// documents (ADR-30) and arena settings documents (ADR-24). Each family
+// is a no-op when nothing is out of date.
 func runDataMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := migrateCalculatorData(ctx, pool); err != nil {
 		return err

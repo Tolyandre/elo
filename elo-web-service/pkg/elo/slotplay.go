@@ -14,14 +14,14 @@ import (
 )
 
 // Slot play (ADR-26 §Slot play / §Acceptance / §Editing without paradoxes,
-// scoring amended by ADR-27). A slot is a small series played by the same
+// scoring amended by ADR-30). A slot is a small series played by the same
 // seated players until the advanced set is beyond doubt: every linked match
-// scores slot points — the Elo earn part (ADR-27) — and the slot completes
-// when the top-advance set of the cumulative standings is strictly separated
-// and the leader holds at least the organizer's minimal score (when one is
-// set). Scores of linked matches are freely editable and an advanced set may
-// legitimately change — the invariant is kept by re-derivation plus recursive
-// cascade invalidation, never by prohibition.
+// scores slot points — a share of the leader's margin (ADR-30) — and the
+// slot completes when the top-advance set of the cumulative standings is
+// strictly separated and the leader holds at least the organizer's minimal
+// score (when one is set). Scores of linked matches are freely editable and
+// an advanced set may legitimately change — the invariant is kept by
+// re-derivation plus recursive cascade invalidation, never by prohibition.
 
 // ITournamentPlay is the match-write-side surface of the tournament service
 // (acceptance inside the match-write transaction, re-evaluation after edits).
@@ -257,7 +257,7 @@ func (s *TournamentService) desiredOutcome(ctx context.Context, q *db.Queries, s
 
 // standingsOutcome is desiredOutcome's scores-only half: the strict
 // top-advance cut of the cumulative standings — with the organizer's minimal
-// score as an extra gate (ADR-27) — or nothing while the cut is not strictly
+// score as an extra gate (ADR-30) — or nothing while the cut is not strictly
 // separated. Used directly by the ruling-cancel path, whose outcome must
 // ignore the ruling being canceled.
 func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries, slot db.GetTournamentSlotRow) (desired []id.ID, have bool, err error) {
@@ -265,10 +265,7 @@ func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries,
 	if err != nil {
 		return nil, false, fmt.Errorf("list slot matches: %w", err)
 	}
-	matchResults, err := buildMatchResults(ctx, q, results)
-	if err != nil {
-		return nil, false, err
-	}
+	matchResults := slotMatchResults(results)
 	if len(matchResults) > 0 {
 		sts := bracket.Standings(matchResults, int(slot.SeatCount))
 		if bracket.StrictCut(sts, int(slot.Advance), bracket.MinScoreTenths(slot.MinScore)) {
@@ -282,37 +279,23 @@ func (s *TournamentService) standingsOutcome(ctx context.Context, q *db.Queries,
 	return nil, false, nil
 }
 
-// buildMatchResults converts the slot's linked-match rows (event order:
-// date, then match id) into bracket.MatchResults, resolving each match's win
-// reward from the effective-dated elo_settings (the seed row starts at
-// -infinity, so every date resolves; one lookup per distinct match keeps the
-// read path cheap).
-func buildMatchResults(ctx context.Context, q *db.Queries, results []db.ListSlotMatchResultsRow) ([]bracket.MatchResult, error) {
-	rewards := make(map[id.ID]float64, len(results))
+// slotMatchResults assembles the slot's linked-match rows (event order:
+// date, then match id) into bracket.MatchResults for the standings math.
+func slotMatchResults(results []db.ListSlotMatchResultsRow) []bracket.MatchResult {
 	var matchResults []bracket.MatchResult
 	lastID := id.ID("")
 	for _, r := range results {
 		if r.MatchID != lastID {
-			w, ok := rewards[r.MatchID]
-			if !ok {
-				set, err := q.GetEloSettingsForDate(ctx, r.Date)
-				if err != nil {
-					return nil, fmt.Errorf("get elo settings for the date of match %s: %w", r.MatchID, err)
-				}
-				w = set.WinReward
-				rewards[r.MatchID] = w
-			}
 			matchResults = append(matchResults, bracket.MatchResult{
-				MatchID:   r.MatchID,
-				Scores:    make(map[id.ID]float64, 4),
-				WinReward: w,
+				MatchID: r.MatchID,
+				Scores:  make(map[id.ID]float64, 4),
 			})
 			lastID = r.MatchID
 		}
 		mr := &matchResults[len(matchResults)-1]
 		mr.Scores[r.PlayerID] = r.Score
 	}
-	return matchResults, nil
+	return matchResults
 }
 
 // outcomeChanged reports whether the desired ordered advancement set differs
@@ -916,7 +899,7 @@ func (s *TournamentService) DetachMatch(ctx context.Context, tid, slotID, matchI
 }
 
 // AdjustSlot applies an organizer adjustment to a slot — the game
-// reassignment and/or the minimal advance score (ADR-27) — only while no
+// reassignment and/or the minimal advance score (ADR-30) — only while no
 // match is linked. A nil argument leaves the current value in place. The
 // recompute after the write is a no-op in practice (with zero linked matches
 // only a ruling can decide an outcome, and rulings survive adjustments); it
@@ -1083,10 +1066,7 @@ func (s *TournamentService) refillSeatCaches(ctx context.Context, q *db.Queries,
 		return fmt.Errorf("list slot matches: %w", err)
 	}
 	if len(results) > 0 {
-		matchResults, err := buildMatchResults(ctx, q, results)
-		if err != nil {
-			return err
-		}
+		matchResults := slotMatchResults(results)
 		if len(matchResults) > 0 && source.SeatCount >= 2 {
 			sts := bracket.Standings(matchResults, int(source.SeatCount))
 			for _, st := range sts {

@@ -25,7 +25,7 @@ func init() {
 	register(&Schema{Kind: KindSlotLink, CurrentVersion: 1}, "slot_link.v1.json")
 	register(&Schema{Kind: KindSlotAdjust, CurrentVersion: 2}, "slot_adjust.v2.json")
 
-	// v2 adds the min_score op (ADR-27); v1 documents are identical but for
+	// v2 adds the min_score op (ADR-30); v1 documents are identical but for
 	// the schema_version const.
 	registerMigrator(KindSlotAdjust, 1, func(raw json.RawMessage) (json.RawMessage, error) {
 		var doc map[string]any
@@ -352,7 +352,7 @@ type SlotAdjustDetails struct {
 	SlotID        string `json:"slot_id"`
 	// GameID is the (new) game for op=game.
 	GameID string `json:"game_id,omitempty"`
-	// MinScore is the (new) minimal advance score for op=min_score (ADR-27).
+	// MinScore is the (new) minimal advance score for op=min_score (ADR-30).
 	MinScore *float64 `json:"min_score,omitempty"`
 }
 
@@ -363,7 +363,7 @@ func NewSlotGameAdjust(slotID string, gameID string) SlotAdjustDetails {
 }
 
 // NewSlotMinScoreAdjust builds the details of a minimal-advance-score
-// adjustment (ADR-27).
+// adjustment (ADR-30).
 func NewSlotMinScoreAdjust(slotID string, minScore float64) SlotAdjustDetails {
 	return SlotAdjustDetails{SchemaVersion: 2, Op: "min_score", SlotID: slotID, MinScore: &minScore}
 }
