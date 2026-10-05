@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
 )
 
 // newSettlementID mints a server-generated UUIDv7 for settlement rows.
@@ -43,31 +44,9 @@ func WinExpectation(currentElo float64, playersScore map[id.ID]float64, starting
 	return (sum - 0.5) / (playersCount * (playersCount - 1) / 2)
 }
 
-func NormalizedScore(currentScore float64, playersScore map[id.ID]float64, absoluteLoserScore float64, winReward float64) float64 {
-	var sumPow float64 = 0
-	for _, p := range slices.Sorted(maps.Keys(playersScore)) {
-		sumPow += math.Pow(playersScore[p]-absoluteLoserScore, winReward)
-	}
-	score := math.Pow(currentScore-absoluteLoserScore, winReward) / sumPow
-	if math.IsNaN(score) {
-		score = 1 / float64(len(playersScore))
-	}
-	return score
-}
-
-func GetAbsoluteLoserScore(playersScore map[id.ID]float64) float64 {
-	var minSet = false
-	var min float64 = 0
-	for _, s := range playersScore {
-		if minSet {
-			min = math.Min(min, s)
-		} else {
-			min = s
-		}
-		minSet = true
-	}
-	return min
-}
+// NormalizedScore and GetAbsoluteLoserScore live in pkg/ratingmath: the
+// tournament bracket derives slot points from the same earn-part arithmetic
+// (ADR-27), and the leaf package keeps that shared without a cycle.
 
 func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score map[id.ID]float64,
 	eloConstK float64, eloConstD float64, winReward float64) map[id.ID]float64 {
@@ -75,7 +54,7 @@ func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score m
 	newElo := make(map[id.ID]float64, len(previousElo))
 	maps.Copy(newElo, previousElo)
 
-	absoluteLoserScore := GetAbsoluteLoserScore(score)
+	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(score)
 
 	// for every player in this match calculate new elo
 	for pid, sc := range score {
@@ -85,7 +64,7 @@ func CalculateNewElo(previousElo map[id.ID]float64, startingElo float64, score m
 			prev = v
 		}
 
-		norm := NormalizedScore(sc, score, absoluteLoserScore, winReward)
+		norm := ratingmath.NormalizedScore(sc, score, absoluteLoserScore, winReward)
 		expect := WinExpectation(prev, score, startingElo, previousElo, eloConstD)
 
 		delta := eloConstK * (norm - expect)

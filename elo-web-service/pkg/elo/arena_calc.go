@@ -10,6 +10,7 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
 )
 
 // ArenaPrevState bundles the per-player prior state needed to compute one
@@ -199,14 +200,14 @@ func buildArenaResults(playerScores map[id.ID]float64, prev ArenaPrevState, aren
 	s := prev.Settings
 
 	newElos := CalculateNewElo(prev.Elo, s.StartingElo, playerScores, s.K, s.D, s.WinReward)
-	absoluteLoserScore := GetAbsoluteLoserScore(playerScores)
+	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(playerScores)
 	nl, hasNewbie := arena.Settings.Newbie()
 
 	results := make(map[id.ID]arenaPlayerResult, len(playerScores))
 	for pid, score := range playerScores {
 		// Elo track.
 		eloStaked := -s.K * WinExpectation(prev.Elo[pid], playerScores, s.StartingElo, prev.Elo, s.D)
-		eloEarned := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
+		eloEarned := s.K * ratingmath.NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 
 		// Rating track: the player's own rating replaces their elo in
 		// WinExpectation; earned/staked are scaled by the elo↔rating gap.
@@ -217,7 +218,7 @@ func buildArenaResults(playerScores map[id.ID]float64, prev ArenaPrevState, aren
 		prevEloForRating[pid] = prev.Rating[pid]
 
 		ratingStakedRaw := -s.K * WinExpectation(prev.Rating[pid], playerScores, s.StartingElo, prevEloForRating, s.D)
-		ratingEarnedRaw := s.K * NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
+		ratingEarnedRaw := s.K * ratingmath.NormalizedScore(score, playerScores, absoluteLoserScore, s.WinReward)
 		ratingStaked, ratingEarned := ratingStakedRaw, ratingEarnedRaw
 		if hasNewbie {
 			ratingStaked = scaleRatingStaked(ratingStakedRaw, prev.Elo[pid], prev.Rating[pid], nl, s)

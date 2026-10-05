@@ -20,7 +20,7 @@ import (
 // runs after the settlement replay in every match-write path, so the
 // settlement is never undone by it.
 func (s *MarketService) SettleTournamentWinnerMarketsOnComplete(ctx context.Context, q *db.Queries, tid, winner id.ID, slot db.GetTournamentSlotRow) error {
-	return settleCompletedTournamentWinnerMarkets(ctx, q, s.SettleMarket, tid, winner, slot.ID, slot.Ruling, slot.Promote)
+	return settleCompletedTournamentWinnerMarkets(ctx, q, s.SettleMarket, tid, winner, slot.ID, slot.Ruling, slot.Advance)
 }
 
 // ReopenTournamentWinnerMarkets unsets the resolved tournament_winner markets
@@ -85,7 +85,7 @@ func (s *MarketService) ResolveTournamentWinnerMarkets(ctx context.Context, q *d
 			if err != nil {
 				return fmt.Errorf("get final slot of tournament %s: %w", row.TournamentID, err)
 			}
-			if err := settleCompletedTournamentWinnerMarkets(ctx, q, s.SettleMarket, row.TournamentID, *row.WinnerPlayerID, slot.ID, slot.Ruling, slot.Promote); err != nil {
+			if err := settleCompletedTournamentWinnerMarkets(ctx, q, s.SettleMarket, row.TournamentID, *row.WinnerPlayerID, slot.ID, slot.Ruling, slot.Advance); err != nil {
 				return err
 			}
 		case TournamentCancelled:
@@ -102,9 +102,9 @@ func (s *MarketService) ResolveTournamentWinnerMarkets(ctx context.Context, q *d
 // state: a standing ruling means the organizer decided the champion (no match
 // attached), otherwise the slot's latest match determined it.
 func settleCompletedTournamentWinnerMarkets(
-	ctx context.Context, q *db.Queries, settle SettleFunc, tid, winner, slotID id.ID, ruling json.RawMessage, promote int32,
+	ctx context.Context, q *db.Queries, settle SettleFunc, tid, winner, slotID id.ID, ruling json.RawMessage, advance int32,
 ) error {
-	if decidedByRuling(ruling, promote) {
+	if decidedByRuling(ruling, advance) {
 		return settleTournamentWinnerMarkets(ctx, q, tid, winner, time.Now(), nil, settle)
 	}
 	latest, err := q.LatestSlotMatchID(ctx, slotID)

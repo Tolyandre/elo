@@ -21,7 +21,7 @@ import (
 // finalOnlyPlan is the minimal bracket: a single final slot seating all four
 // participants directly; one match with a strict top-1 crowns the champion.
 const finalOnlyPlan = `{"plan":{"elimination":"single","rounds":[
-	{"track":"final","index":1,"promote":1,"slots":[
+	{"track":"final","index":1,"advance":1,"slots":[
 		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
 
 // startFinalOnlyTournament creates a 4-player tournament whose bracket is a
@@ -74,14 +74,14 @@ func finalSlotID(t *testing.T, router interface {
 	return br.Data.Rounds[0].Slots[0].Id
 }
 
-// winnersFinalPlan brackets 8 players into two 4-seat winners slots (promote 2)
-// whose top-2 feed a 4-seat final (promote 1) — the multi-round shape whose
+// winnersFinalPlan brackets 8 players into two 4-seat winners slots (advance 2)
+// whose top-2 feed a 4-seat final (advance 1) — the multi-round shape whose
 // early-round replays must not settle a tournament_winner market.
 const winnersFinalPlan = `{"plan":{"elimination":"single","rounds":[
-	{"track":"winners","index":1,"promote":2,"slots":[
+	{"track":"winners","index":1,"advance":2,"slots":[
 		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
 		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
-	{"track":"final","index":1,"promote":1,"slots":[
+	{"track":"final","index":1,"advance":1,"slots":[
 		{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`
 
 // startWinnersFinalTournament creates an 8-player tournament with two winners

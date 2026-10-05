@@ -36,7 +36,7 @@ func TestEnumerateSingle8Pool4Flagship(t *testing.T) {
 		t.Fatalf("flagship must have 2 rounds, got %d: %s", len(p.Rounds), describe(p))
 	}
 	r1 := p.Rounds[0]
-	if r1.Track != TrackWinners || r1.Index != 1 || r1.Promote != 2 || len(r1.Slots) != 2 ||
+	if r1.Track != TrackWinners || r1.Index != 1 || r1.Advance != 2 || len(r1.Slots) != 2 ||
 		r1.Slots[0].SeatCount != 4 || r1.Slots[1].SeatCount != 4 {
 		t.Fatalf("round 1 shape wrong: %+v", r1)
 	}
@@ -48,7 +48,7 @@ func TestEnumerateSingle8Pool4Flagship(t *testing.T) {
 		}
 	}
 	final := p.Rounds[1]
-	if final.Track != TrackFinal || final.Promote != 1 || len(final.Slots) != 1 || final.Slots[0].SeatCount != 4 {
+	if final.Track != TrackFinal || final.Advance != 1 || len(final.Slots) != 1 || final.Slots[0].SeatCount != 4 {
 		t.Fatalf("final round shape wrong: %+v", final)
 	}
 	want := []PlanSeat{srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1), srcSeat(1, 2)}
@@ -75,7 +75,7 @@ func sameSeat(a, b PlanSeat) bool {
 func describe(p Plan) string {
 	out := ""
 	for _, r := range p.Rounds {
-		out += fmt.Sprintf("[%s%d p%d:", r.Track, r.Index, r.Promote)
+		out += fmt.Sprintf("[%s%d p%d:", r.Track, r.Index, r.Advance)
 		for i, s := range r.Slots {
 			if i > 0 {
 				out += ","
@@ -194,7 +194,7 @@ func TestStrictPool18Feasible(t *testing.T) {
 	}
 }
 
-func TestPromoteBoundsUniform(t *testing.T) {
+func TestAdvanceBoundsUniform(t *testing.T) {
 	pools := [][]GameCapacity{
 		{{Min: 2, Max: 2}, {Min: 3, Max: 3}, {Min: 4, Max: 4}},
 		{{Min: 3, Max: 4}},
@@ -210,13 +210,13 @@ func TestPromoteBoundsUniform(t *testing.T) {
 					t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(p))
 				}
 				for _, r := range p.Rounds {
-					if r.Promote < 1 {
-						t.Fatalf("promote < 1: %s", describe(p))
+					if r.Advance < 1 {
+						t.Fatalf("advance < 1: %s", describe(p))
 					}
 					for _, s := range r.Slots {
-						// Uniform per round + promote < every seat count.
-						if r.Promote >= s.SeatCount {
-							t.Fatalf("promote %d >= seat count %d: %s", r.Promote, s.SeatCount, describe(p))
+						// Uniform per round + advance < every seat count.
+						if r.Advance >= s.SeatCount {
+							t.Fatalf("advance %d >= seat count %d: %s", r.Advance, s.SeatCount, describe(p))
 						}
 					}
 				}
@@ -400,8 +400,8 @@ func doubleElimPools() []struct {
 
 // TestDoubleTraditionalFlow pins the traditional double-elimination flow of
 // ADR-26 on every enumerated plan: a WB drop (a place beyond the source
-// slot's promote) can reach the grand final only through the losers track —
-// the final seats WB finalists (places within the source slot's promote) and
+// slot's advance) can reach the grand final only through the losers track —
+// the final seats WB finalists (places within the source slot's advance) and
 // LB winners. The lone exception is a plan without losers rounds at all,
 // where a single WB drop is the LB winner by waiting (no LB round can exist;
 // the n=2/n=3 rematch shapes).
@@ -415,9 +415,9 @@ func TestDoubleTraditionalFlow(t *testing.T) {
 			if err := p.Validate(); err != nil {
 				t.Fatalf("enumerated plan invalid: %v\n%s", err, describe(p))
 			}
-			// Flat slot index → (track, promote).
+			// Flat slot index → (track, advance).
 			trackOf := map[int]string{}
-			promoteOf := map[int]int{}
+			advanceOf := map[int]int{}
 			flat := 0
 			hasLosers := false
 			finalRounds := 0
@@ -430,7 +430,7 @@ func TestDoubleTraditionalFlow(t *testing.T) {
 				}
 				for range r.Slots {
 					trackOf[flat] = r.Track
-					promoteOf[flat] = r.Promote
+					advanceOf[flat] = r.Advance
 					flat++
 				}
 			}
@@ -455,7 +455,7 @@ func TestDoubleTraditionalFlow(t *testing.T) {
 						case TrackWinners:
 							// WB finalists only; a dropped place in the
 							// final means the player skipped the LB.
-							if seat.SourcePlace > promoteOf[*seat.SourceSlot] && hasLosers {
+							if seat.SourcePlace > advanceOf[*seat.SourceSlot] && hasLosers {
 								t.Fatalf("%d/%v: WB drop %d of slot %d skips the losers track into the final: %s",
 									tc.n, tc.pool, seat.SourcePlace, *seat.SourceSlot, describe(p))
 							}
@@ -683,13 +683,13 @@ func TestEnumerateFilteredChips(t *testing.T) {
 	}
 }
 
-// TestPromoteAndRematchFilters pins the two seating-side chip filters. The
-// promote filter keeps plans whose every non-champion round advances a listed
-// count (the last round always crowns the champion with promote 1 and is
+// TestAdvanceAndRematchFilters pins the two seating-side chip filters. The
+// advance filter keeps plans whose every non-champion round advances a listed
+// count (the last round always crowns the champion with advance 1 and is
 // exempt, else a selection without 1 could never match). The rematches filter
 // splits the space by whether a next-round slot seats tablemates of one
 // previous-round slot together again. Facets keep describing the full space.
-func TestPromoteAndRematchFilters(t *testing.T) {
+func TestAdvanceAndRematchFilters(t *testing.T) {
 	pool23 := []GameCapacity{{Min: 2, Max: 2}, {Min: 3, Max: 3}}
 	pool24 := []GameCapacity{{Min: 2, Max: 2}, {Min: 4, Max: 4}}
 
@@ -697,32 +697,32 @@ func TestPromoteAndRematchFilters(t *testing.T) {
 	if all.Truncated {
 		t.Fatalf("8/{2,3} single must fit the default cap for the partition checks")
 	}
-	if !slices.Contains(all.Facets.Promotes, 1) || !slices.Contains(all.Facets.Promotes, 2) {
-		t.Fatalf("facets promotes: %v", all.Facets.Promotes)
+	if !slices.Contains(all.Facets.Advances, 1) || !slices.Contains(all.Facets.Advances, 2) {
+		t.Fatalf("facets advances: %v", all.Facets.Advances)
 	}
-	// Winner-only plans are rematch-free by construction; a promote-2 round
+	// Winner-only plans are rematch-free by construction; an advance-2 round
 	// seats two places of one slot together, so both kinds must exist.
 	if !all.Facets.HasRematches || all.Facets.AllRematches {
 		t.Fatalf("facets rematches: has=%v all=%v", all.Facets.HasRematches, all.Facets.AllRematches)
 	}
 
-	// Promote-1 selection: only winner-of-table rounds survive.
-	p1 := EnumerateFiltered(8, pool23, PlanFilter{Promotes: []int{1}}, 0)
+	// Advance-1 selection: only winner-of-table rounds survive.
+	p1 := EnumerateFiltered(8, pool23, PlanFilter{Advances: []int{1}}, 0)
 	if len(p1.Plans) == 0 {
-		t.Fatalf("promote-1 plans must exist for 8/{2,3}")
+		t.Fatalf("advance-1 plans must exist for 8/{2,3}")
 	}
 	for _, p := range p1.Plans {
 		for _, r := range p.Rounds[:len(p.Rounds)-1] {
-			if r.Promote != 1 {
-				t.Fatalf("promote filter leaked promote %d: %s", r.Promote, describe(p))
+			if r.Advance != 1 {
+				t.Fatalf("advance filter leaked advance %d: %s", r.Advance, describe(p))
 			}
 		}
 	}
-	if !slices.Contains(p1.Facets.Promotes, 2) {
-		t.Fatalf("facets must ignore the display filters: %v", p1.Facets.Promotes)
+	if !slices.Contains(p1.Facets.Advances, 2) {
+		t.Fatalf("facets must ignore the display filters: %v", p1.Facets.Advances)
 	}
 
-	// Promote-2 selection on a pool that can seat it (4+4 → 2, 4 → 2, final):
+	// Advance-2 selection on a pool that can seat it (4+4 → 2, 4 → 2, final):
 	// the plan the facet promises must survive, and nothing else may leak.
 	all24 := EnumerateFiltered(8, pool24, PlanFilter{}, DefaultPlanCap)
 	if all24.Truncated {
@@ -733,7 +733,7 @@ func TestPromoteAndRematchFilters(t *testing.T) {
 		p := &all24.Plans[i]
 		uniform := true
 		for _, r := range p.Rounds[:len(p.Rounds)-1] {
-			if r.Promote != 2 {
+			if r.Advance != 2 {
 				uniform = false
 				break
 			}
@@ -744,14 +744,14 @@ func TestPromoteAndRematchFilters(t *testing.T) {
 		}
 	}
 	if p2Plan == nil {
-		t.Fatalf("facets promise promote 2 but no 8/{2,4} plan advances two everywhere non-final")
+		t.Fatalf("facets promise advance 2 but no 8/{2,4} plan advances two everywhere non-final")
 	}
-	p2 := EnumerateFiltered(8, pool24, PlanFilter{Promotes: []int{2}}, 0)
+	p2 := EnumerateFiltered(8, pool24, PlanFilter{Advances: []int{2}}, 0)
 	kept := false
 	for _, p := range p2.Plans {
 		for _, r := range p.Rounds[:len(p.Rounds)-1] {
-			if r.Promote != 2 {
-				t.Fatalf("promote filter leaked promote %d: %s", r.Promote, describe(p))
+			if r.Advance != 2 {
+				t.Fatalf("advance filter leaked advance %d: %s", r.Advance, describe(p))
 			}
 		}
 		if p.CanonicalJSON() == p2Plan.CanonicalJSON() {
@@ -759,10 +759,10 @@ func TestPromoteAndRematchFilters(t *testing.T) {
 		}
 	}
 	if !kept {
-		t.Fatalf("promote-2 selection lost the uniform plan: %s", describe(*p2Plan))
+		t.Fatalf("advance-2 selection lost the uniform plan: %s", describe(*p2Plan))
 	}
-	if !slices.Contains(p2.Facets.Promotes, 1) {
-		t.Fatalf("facets must ignore the display filters: %v", p2.Facets.Promotes)
+	if !slices.Contains(p2.Facets.Advances, 1) {
+		t.Fatalf("facets must ignore the display filters: %v", p2.Facets.Advances)
 	}
 
 	// Rematches filter: the with/without selections partition the space.
@@ -791,21 +791,21 @@ func TestPromoteAndRematchFilters(t *testing.T) {
 }
 
 // planSkipViolations checks a plan document for skipped rounds, independently
-// of Validate: every round's promotion places must be seated by the next
+// of Validate: every round's advancement places must be seated by the next
 // round of the same track — or, for a track's last round, by the grand
 // final. Byes (players who have not started) and WB drops (through the
-// losers bracket) are the only seats allowed to skip a round; promotion
+// losers bracket) are the only seats allowed to skip a round; advancement
 // places are neither.
 func planSkipViolations(p Plan) []string {
 	type roundShape struct {
 		track                 string
-		first, slots, promote int
+		first, slots, advance int
 		fed                   map[[2]int]bool
 	}
 	var rounds []roundShape
 	flat := 0
 	for _, r := range p.Rounds {
-		sh := roundShape{track: r.Track, first: flat, slots: len(r.Slots), promote: r.Promote, fed: map[[2]int]bool{}}
+		sh := roundShape{track: r.Track, first: flat, slots: len(r.Slots), advance: r.Advance, fed: map[[2]int]bool{}}
 		for _, s := range r.Slots {
 			for _, seat := range s.Seats {
 				if seat.Kind == SeatSource {
@@ -820,9 +820,9 @@ func planSkipViolations(p Plan) []string {
 	missing := func(dst map[[2]int]bool, src *roundShape) []string {
 		var out []string
 		for slot := src.first; slot < src.first+src.slots; slot++ {
-			for place := 1; place <= src.promote; place++ {
+			for place := 1; place <= src.advance; place++ {
 				if !dst[[2]int{slot, place}] {
-					out = append(out, fmt.Sprintf("%s promotion place %d of slot %d unseated", src.track, place, slot))
+					out = append(out, fmt.Sprintf("%s advancement place %d of slot %d unseated", src.track, place, slot))
 				}
 			}
 		}
@@ -892,7 +892,7 @@ func TestWinnersNeverSkipARound(t *testing.T) {
 	res := Enumerate(6, pool34, EliminationSingle, 0)
 	allFour := false
 	for _, p := range res.Plans {
-		if len(p.Rounds) == 2 && p.Rounds[0].Promote == 2 && len(p.Rounds[0].Slots) == 2 &&
+		if len(p.Rounds) == 2 && p.Rounds[0].Advance == 2 && len(p.Rounds[0].Slots) == 2 &&
 			p.Rounds[1].Slots[0].SeatCount == 4 {
 			allFour = true
 		}

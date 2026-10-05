@@ -1,12 +1,13 @@
--- Bracket materialization queries (ADR-26): rounds, slots, seats, the slot
--- match series, and the recorded promotions. Standings are never stored —
--- they are derived from the linked matches' scores at read/completion time.
+-- Bracket materialization queries (ADR-26, ADR-27): rounds, slots, seats, the
+-- slot match series, and the recorded advancements. Standings are never
+-- stored — they are derived from the linked matches' scores at
+-- read/completion time.
 
 -- name: GetTournamentSlot :one
 -- The slot plus its round coordinates (the (tournament, track, index,
 -- position) address used for deterministic ordering and display) and its
 -- seat count.
-SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+SELECT s.id, s.round_id, s.position, s.game_id, s.advance, s.min_score, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id,
        (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
 FROM tournament_slots s
@@ -24,7 +25,7 @@ SELECT * FROM tournament_rounds WHERE tournament_id = $1
 ORDER BY CASE track WHEN 'winners' THEN 0 WHEN 'losers' THEN 1 ELSE 2 END, "index";
 
 -- name: ListTournamentSlots :many
-SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+SELECT s.id, s.round_id, s.position, s.game_id, s.advance, s.min_score, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id
 FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id
@@ -35,7 +36,7 @@ ORDER BY CASE r.track WHEN 'winners' THEN 0 WHEN 'losers' THEN 1 ELSE 2 END,
 -- name: ListSlotsBySource :many
 -- Slots whose seats are fed by the given slot (downstream neighbours for the
 -- seat refill / cascade invalidation).
-SELECT DISTINCT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+SELECT DISTINCT s.id, s.round_id, s.position, s.game_id, s.advance, s.min_score, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id
 FROM tournament_slots s
 JOIN tournament_seats se ON se.slot_id = s.id
@@ -49,7 +50,7 @@ VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: CreateTournamentSlot :one
-INSERT INTO tournament_slots (id, round_id, position, game_id, promote, status)
+INSERT INTO tournament_slots (id, round_id, position, game_id, advance, status)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
@@ -65,18 +66,18 @@ ORDER BY slot_id, position;
 -- name: ListSeatsBySourceSlot :many
 SELECT * FROM tournament_seats WHERE source_slot_id = sqlc.arg('source_slot_id')::uuid ORDER BY position;
 
--- name: SetSlotSeatsFromPromotions :exec
+-- name: SetSlotSeatsFromAdvances :exec
 -- Refill the seat caches fed by a completed source slot: place i of the
--- source seats the i-th promoted player.
+-- source seats the i-th advanced player.
 UPDATE tournament_seats se
 SET player_id = p.player_id
-FROM tournament_slot_promotions p
+FROM tournament_slot_advances p
 WHERE se.source_slot_id = p.slot_id
   AND se.source_place = p.place
   AND se.slot_id = sqlc.arg('slot_id')::uuid;
 
 -- name: ClearSlotSeatCaches :exec
--- Invalidate the seat caches fed by a source slot whose promotion set was
+-- Invalidate the seat caches fed by a source slot whose advancement set was
 -- rewritten or voided (the downstream slot re-derives on its next completion).
 UPDATE tournament_seats SET player_id = NULL WHERE source_slot_id = sqlc.arg('source_slot_id')::uuid;
 
@@ -116,14 +117,14 @@ ORDER BY m.date DESC, tsm.match_id DESC
 LIMIT 1;
 
 -- name: GetTournamentFinalSlot :one
--- The champion slot: the final-track slot promoting exactly one player
+-- The champion slot: the final-track slot advancing exactly one player
 -- (a bracket has exactly one; a tournament-winner market resolves against it).
-SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+SELECT s.id, s.round_id, s.position, s.game_id, s.advance, s.min_score, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id,
        (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
 FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id
-WHERE r.tournament_id = $1 AND r.track = 'final' AND s.promote = 1
+WHERE r.tournament_id = $1 AND r.track = 'final' AND s.advance = 1
 ORDER BY s.position
 LIMIT 1;
 
@@ -137,19 +138,19 @@ JOIN tournament_rounds r ON r.id = s.round_id
 JOIN tournaments t ON t.id = r.tournament_id
 WHERE tsm.match_id = ANY(sqlc.arg('match_ids')::uuid[]);
 
--- name: ListSlotPromotions :many
-SELECT slot_id, player_id, place FROM tournament_slot_promotions
+-- name: ListSlotAdvances :many
+SELECT slot_id, player_id, place FROM tournament_slot_advances
 WHERE slot_id = $1
 ORDER BY place;
 
--- name: SlotHasPromotions :one
-SELECT EXISTS(SELECT 1 FROM tournament_slot_promotions WHERE slot_id = $1) AS has;
+-- name: SlotHasAdvances :one
+SELECT EXISTS(SELECT 1 FROM tournament_slot_advances WHERE slot_id = $1) AS has;
 
--- name: DeleteSlotPromotions :exec
-DELETE FROM tournament_slot_promotions WHERE slot_id = $1;
+-- name: DeleteSlotAdvances :exec
+DELETE FROM tournament_slot_advances WHERE slot_id = $1;
 
--- name: AddSlotPromotion :exec
-INSERT INTO tournament_slot_promotions (slot_id, player_id, place)
+-- name: AddSlotAdvance :exec
+INSERT INTO tournament_slot_advances (slot_id, player_id, place)
 VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING;
 
@@ -162,15 +163,19 @@ UPDATE tournament_slots SET status = $2, ruling = $3 WHERE id = $1;
 -- name: SetSlotRuling :exec
 UPDATE tournament_slots SET ruling = $2 WHERE id = $1;
 
--- name: SetSlotGame :exec
--- Organizer adjustment (ADR-26): only for slots with zero linked matches.
-UPDATE tournament_slots SET game_id = $2 WHERE id = $1;
+-- name: SetSlotAdjustment :exec
+-- Organizer adjustment (ADR-26, ADR-27): only for slots with zero linked
+-- matches. A NULL argument leaves the current value in place.
+UPDATE tournament_slots
+SET game_id = COALESCE(sqlc.narg('game_id'), game_id),
+    min_score = COALESCE(sqlc.narg('min_score'), min_score)
+WHERE id = sqlc.arg('slot_id')::uuid;
 
 -- name: ListAcceptanceCandidates :many
 -- Playing slots of running tournaments hosting the given game, in the
 -- deterministic acceptance order (track, round index, table position). The
 -- seated-set equality is checked by the caller (small candidate lists).
-SELECT s.id, s.game_id, s.promote, s.status, s.ruling,
+SELECT s.id, s.game_id, s.advance, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id,
        (SELECT COUNT(*)::int FROM tournament_seats se WHERE se.slot_id = s.id) AS seat_count
 FROM tournament_slots s
@@ -200,7 +205,7 @@ WHERE t.status = 'running'
 DELETE FROM tournament_seats WHERE slot_id = $1;
 
 -- name: ListSlotsOfTournamentByAddress :many
-SELECT s.id, s.round_id, s.position, s.game_id, s.promote, s.status, s.ruling,
+SELECT s.id, s.round_id, s.position, s.game_id, s.advance, s.min_score, s.status, s.ruling,
        r.track, r."index" AS round_index, r.tournament_id
 FROM tournament_slots s
 JOIN tournament_rounds r ON r.id = s.round_id

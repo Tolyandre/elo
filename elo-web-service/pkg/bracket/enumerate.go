@@ -56,7 +56,7 @@ type PlanFilter struct {
 	RoundCounts  []int
 	Byes         string
 	FirstShapes  []string // canonical "4+4" strings, see FirstShapeOf
-	Promotes     []int    // every round but the champion's must advance a listed count
+	Advances     []int    // every round but the champion's must advance a listed count
 	Rematches    string
 }
 
@@ -80,13 +80,13 @@ func (f PlanFilter) matches(p Plan) bool {
 	if len(f.FirstShapes) > 0 && !slices.Contains(f.FirstShapes, FirstShapeOf(p)) {
 		return false
 	}
-	if len(f.Promotes) > 0 {
+	if len(f.Advances) > 0 {
 		// Every round except the champion round must advance a listed count:
-		// the last round always crowns the champion and promotes exactly 1,
+		// the last round always crowns the champion and advances exactly 1,
 		// so selections without 1 would otherwise come up empty for every
 		// input.
 		for _, r := range p.Rounds[:len(p.Rounds)-1] {
-			if !slices.Contains(f.Promotes, r.Promote) {
+			if !slices.Contains(f.Advances, r.Advance) {
 				return false
 			}
 		}
@@ -107,7 +107,7 @@ func (f PlanFilter) matches(p Plan) bool {
 
 // Facets describes the plans the requested families produce: which families
 // yielded plans, their round counts, whether byes occur (all/none), the
-// first-round table shapes, the per-round promote values, and whether slots
+// first-round table shapes, the per-round advance values, and whether slots
 // repeat previous-round tablemates (all/none). Computed over every
 // enumerated plan of the explored families regardless of the display filters
 // and the cap, so chips never lose options because another chip is active.
@@ -117,7 +117,7 @@ type Facets struct {
 	HasByes      bool     `json:"has_byes"`
 	AllByes      bool     `json:"all_byes"`
 	FirstShapes  []string `json:"first_shapes"`
-	Promotes     []int    `json:"promotes"`
+	Advances     []int    `json:"advances"`
 	HasRematches bool     `json:"has_rematches"`
 	AllRematches bool     `json:"all_rematches"`
 }
@@ -176,7 +176,7 @@ type facetAccum struct {
 	fams          map[string]bool
 	rounds        map[int]bool
 	shapes        map[string]bool
-	promotes      map[int]bool
+	advances      map[int]bool
 	withByes      int
 	withRematches int
 	total         int
@@ -187,7 +187,7 @@ func newFacetAccum() *facetAccum {
 		fams:     map[string]bool{},
 		rounds:   map[int]bool{},
 		shapes:   map[string]bool{},
-		promotes: map[int]bool{},
+		advances: map[int]bool{},
 	}
 }
 
@@ -196,7 +196,7 @@ func (a *facetAccum) record(p Plan) {
 	a.rounds[len(p.Rounds)] = true
 	a.shapes[FirstShapeOf(p)] = true
 	for _, r := range p.Rounds {
-		a.promotes[r.Promote] = true
+		a.advances[r.Advance] = true
 	}
 	if planHasByes(p) {
 		a.withByes++
@@ -210,7 +210,7 @@ func (a *facetAccum) record(p Plan) {
 // emptyFacets is the zero-plan facet set; the slices are non-nil so the JSON
 // arrays come out as [] per the API contract (nil Go slices marshal as null).
 func emptyFacets() Facets {
-	return Facets{Eliminations: []string{}, RoundCounts: []int{}, FirstShapes: []string{}, Promotes: []int{}}
+	return Facets{Eliminations: []string{}, RoundCounts: []int{}, FirstShapes: []string{}, Advances: []int{}}
 }
 
 func (a *facetAccum) result() Facets {
@@ -227,10 +227,10 @@ func (a *facetAccum) result() Facets {
 		out.FirstShapes = append(out.FirstShapes, s)
 	}
 	sort.Strings(out.FirstShapes)
-	for p := range a.promotes {
-		out.Promotes = append(out.Promotes, p)
+	for p := range a.advances {
+		out.Advances = append(out.Advances, p)
 	}
-	sort.Ints(out.Promotes)
+	sort.Ints(out.Advances)
 	out.HasByes = a.withByes > 0
 	out.AllByes = a.total > 0 && a.withByes == a.total
 	out.HasRematches = a.withRematches > 0
@@ -464,7 +464,7 @@ type seatRef struct {
 	rid  int // builtRound.rid the source points to
 	pos  int // slot position within that round
 	// place is set for source refs: the 1-based place in the source slot.
-	// Places ≤ promote are promotions; places > promote are the drops the
+	// Places ≤ advance are advancements; places > advance are the drops the
 	// losers bracket seats.
 	place int
 	// lbSurvivor marks a player who has won at least one losers-track round.
@@ -500,7 +500,7 @@ type builtRound struct {
 	rid     int
 	track   string
 	index   int
-	promote int
+	advance int
 	sizes   []int
 	seats   [][]seatRef
 }
@@ -535,7 +535,7 @@ func (e *enumerator) overBudget() bool {
 
 // minRoundsNeeded is a lower bound on the rounds still required to seat t
 // players down to one: no round can do better than halving the field (a
-// 2-seat slot promoting exactly 1). Branches whose horizon cannot possibly
+// 2-seat slot advancing exactly 1). Branches whose horizon cannot possibly
 // reach a champion are cut immediately instead of explored.
 func minRoundsNeeded(t int) int {
 	if t <= 1 {
@@ -631,10 +631,10 @@ func seatTotal(ms []int) int {
 }
 
 // buildRound seats pool refs into the candidate slot set ms (slot-ordered)
-// with uniform promotion count p. Slots fill positionally from the pool in
+// with uniform advance count p. Slots fill positionally from the pool in
 // canonical order. Returns the round (track/index set by the caller), the
-// promoted pool (refs into this round, then the carried remainder), and the
-// drop pool (places > promote).
+// advancing pool (refs into this round, then the carried remainder), and the
+// drop pool (places > advance).
 //
 // The unseated remainder is carried into the next round verbatim. It may
 // only contain not-yet-played refs (the bye remainder — see
@@ -643,7 +643,7 @@ func seatTotal(ms []int) int {
 func buildRound(rid int, pool []seatRef, ms []int, p int) (builtRound, []seatRef, []seatRef) {
 	r := builtRound{
 		rid:     rid,
-		promote: p,
+		advance: p,
 		sizes:   append([]int(nil), ms...),
 		seats:   make([][]seatRef, len(ms)),
 	}
@@ -703,7 +703,7 @@ func (e *enumerator) singleDFS(pool []seatRef, rounds []builtRound, wIdx, depthL
 // doubleDFS explores the (winners, losers) state space: run a winners round
 // (only the unplayed remainder waits as byes — a survivor never skips a
 // round), run a losers round when the LB pool seats exactly (LB
-// non-promoted players are out), or — once both tracks are exhausted — merge
+// non-advancing players are out), or — once both tracks are exhausted — merge
 // into the final track. The merge is the traditional grand final: the WB
 // must be finished (no winners round can seat its survivors any more) and
 // the LB must be down to its winner set (lbResolved) — a WB drop that the LB
@@ -752,7 +752,7 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 	}
 
 	// Losers round: seats the LB pool exactly; the drops are out for good.
-	// Its promotions have now won an LB round — the only way through to the
+	// Its advancements have now won an LB round — the only way through to the
 	// grand final.
 	if nl >= 2 && canSeat(nl, e.sizes) {
 		for _, ms := range e.multisetsFor(nl, false) {
@@ -783,7 +783,7 @@ func (e *enumerator) doubleDFS(wpool, lpool []seatRef, rounds []builtRound, wIdx
 }
 
 // finalDFS seats the merged field at ONE grand-final table — the plan's
-// single final round, promoting exactly one player.
+// single final round, advancing exactly one player.
 func (e *enumerator) finalDFS(pool []seatRef, rounds []builtRound, fIdx, depthLeft int) {
 	if e.overBudget() {
 		return
@@ -830,7 +830,7 @@ func (e *enumerator) emit(rounds []builtRound, family string) {
 
 	plan := Plan{Elimination: family, Rounds: make([]PlanRound, 0, len(sorted))}
 	for _, r := range sorted {
-		pr := PlanRound{Track: r.track, Index: r.index, Promote: r.promote, Slots: make([]PlanSlot, 0, len(r.sizes))}
+		pr := PlanRound{Track: r.track, Index: r.index, Advance: r.advance, Slots: make([]PlanSlot, 0, len(r.sizes))}
 		for i, k := range r.sizes {
 			ps := PlanSlot{SeatCount: k, Seats: make([]PlanSeat, k)}
 			for j, ref := range r.seats[i] {

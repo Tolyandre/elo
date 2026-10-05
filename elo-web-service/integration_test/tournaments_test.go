@@ -150,7 +150,7 @@ type bracketPlanDoc struct {
 	Rounds      []struct {
 		Track   string `json:"track"`
 		Index   int    `json:"index"`
-		Promote int    `json:"promote"`
+		Advance int    `json:"advance"`
 		Slots   []struct {
 			SeatCount int `json:"seat_count"`
 			Seats     []struct {
@@ -193,7 +193,7 @@ type bracketPlansJSON struct {
 			HasByes      bool     `json:"has_byes"`
 			AllByes      bool     `json:"all_byes"`
 			FirstShapes  []string `json:"first_shapes"`
-			Promotes     []int    `json:"promotes"`
+			Advances     []int    `json:"advances"`
 			HasRematches bool     `json:"has_rematches"`
 			AllRematches bool     `json:"all_rematches"`
 		} `json:"facets"`
@@ -421,7 +421,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 	}
 
 	// The elimination chip narrows the list; the flagship single-elim plan
-	// (4+4 promote-2 → final 4 promote-1) heads it — longer bye-grinding
+	// (4+4 advance-2 → final 4 advance-1) heads it — longer bye-grinding
 	// shapes follow.
 	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single", admin, "")
 	if w.Code != http.StatusOK {
@@ -435,7 +435,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 		t.Fatalf("8/{{4}} must offer single plans, got %d truncated=%v", len(singlePlans.Data.Plans), singlePlans.Data.Truncated)
 	}
 	p := singlePlans.Data.Plans[0]
-	if len(p.Rounds) != 2 || p.Rounds[0].Promote != 2 || len(p.Rounds[0].Slots) != 2 || p.Rounds[0].Slots[0].SeatCount != 4 {
+	if len(p.Rounds) != 2 || p.Rounds[0].Advance != 2 || len(p.Rounds[0].Slots) != 2 || p.Rounds[0].Slots[0].SeatCount != 4 {
 		t.Fatalf("flagship plan shape: %+v", p.Rounds)
 	}
 	if p.Rounds[1].Track != "final" || p.Rounds[1].Slots[0].Seats[0].Kind != "source" {
@@ -444,10 +444,10 @@ func TestTournament_BracketPlans(t *testing.T) {
 	if got := singlePlans.Data.Facets.Eliminations; len(got) != 1 || got[0] != "single" {
 		t.Fatalf("single-family facets: %v", got)
 	}
-	if !slices.Contains(singlePlans.Data.Facets.Promotes, 1) || !slices.Contains(singlePlans.Data.Facets.Promotes, 2) {
-		t.Fatalf("facets promotes: %v", singlePlans.Data.Facets.Promotes)
+	if !slices.Contains(singlePlans.Data.Facets.Advances, 1) || !slices.Contains(singlePlans.Data.Facets.Advances, 2) {
+		t.Fatalf("facets advances: %v", singlePlans.Data.Facets.Advances)
 	}
-	// On a 4-seat-only pool every plan opens 4+4 promote-2 (promoting one
+	// On a 4-seat-only pool every plan opens 4+4 advance-2 (advancing one
 	// would strand two survivors no game can seat), so every plan seats
 	// tablemates of one previous-round slot together — the rematch facets are
 	// all-true and the UI hides the chip row.
@@ -455,29 +455,29 @@ func TestTournament_BracketPlans(t *testing.T) {
 		t.Fatalf("facets rematches: has=%v all=%v", singlePlans.Data.Facets.HasRematches, singlePlans.Data.Facets.AllRematches)
 	}
 
-	// The promotes chip keeps plans whose every non-final round advances the
-	// listed count — the flagship 4+4 → 2 plan qualifies for promotes=2, and
+	// The advances chip keeps plans whose every non-final round advances the
+	// listed count — the flagship 4+4 → 2 plan qualifies for advances=2, and
 	// the facets still describe the whole space.
-	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single&promotes=2", admin, "")
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(tid)+"/bracket-plans?elimination=single&advances=2", admin, "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("bracket-plans?promotes=2: %d %s", w.Code, w.Body.String())
+		t.Fatalf("bracket-plans?advances=2: %d %s", w.Code, w.Body.String())
 	}
-	var promotePlans bracketPlansJSON
-	if err := json.Unmarshal(w.Body.Bytes(), &promotePlans); err != nil {
-		t.Fatalf("decode promote-2 plans: %v", err)
+	var advancePlans bracketPlansJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &advancePlans); err != nil {
+		t.Fatalf("decode advance-2 plans: %v", err)
 	}
-	if len(promotePlans.Data.Plans) == 0 {
-		t.Fatalf("8/{{4}} must offer promote-2 plans")
+	if len(advancePlans.Data.Plans) == 0 {
+		t.Fatalf("8/{{4}} must offer advance-2 plans")
 	}
-	for _, plan := range promotePlans.Data.Plans {
+	for _, plan := range advancePlans.Data.Plans {
 		for _, r := range plan.Rounds[:len(plan.Rounds)-1] {
-			if r.Promote != 2 {
-				t.Fatalf("promotes=2 leaked promote %d: %+v", r.Promote, plan.Rounds)
+			if r.Advance != 2 {
+				t.Fatalf("advances=2 leaked advance %d: %+v", r.Advance, plan.Rounds)
 			}
 		}
 	}
-	if !slices.Contains(promotePlans.Data.Facets.Promotes, 1) {
-		t.Fatalf("facets must ignore the display filters: %v", promotePlans.Data.Facets.Promotes)
+	if !slices.Contains(advancePlans.Data.Facets.Advances, 1) {
+		t.Fatalf("facets must ignore the display filters: %v", advancePlans.Data.Facets.Advances)
 	}
 
 	// The rematches=without chip keeps only plans whose every slot takes its
@@ -498,7 +498,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 		t.Fatalf("facets must ignore the display filters: %+v", cleanPlans.Data.Facets)
 	}
 	if !planHasRematch(singlePlans.Data.Plans[0]) {
-		t.Fatalf("flagship 4+4 promote-2 plan must seat tablemates together")
+		t.Fatalf("flagship 4+4 advance-2 plan must seat tablemates together")
 	}
 
 	// rematches=with keeps the whole single-elim space.
@@ -587,11 +587,12 @@ type bracketJSON struct {
 			Track string `json:"track"`
 			Index int    `json:"index"`
 			Slots []struct {
-				Id       string `json:"id"`
-				GameId   string `json:"game_id"`
-				Position int    `json:"position"`
-				Promote  int    `json:"promote"`
-				Status   string `json:"status"`
+				Id       string  `json:"id"`
+				GameId   string  `json:"game_id"`
+				Position int     `json:"position"`
+				Advance  int     `json:"advance"`
+				MinScore float64 `json:"min_score"`
+				Status   string  `json:"status"`
 				Seats    []struct {
 					Position     int     `json:"position"`
 					PlayerId     *string `json:"player_id"`
@@ -600,12 +601,16 @@ type bracketJSON struct {
 				} `json:"seats"`
 				Matches []struct {
 					MatchId string `json:"match_id"`
+					Scores  []struct {
+						PlayerId string  `json:"player_id"`
+						Points   float64 `json:"points"`
+					} `json:"scores"`
 				} `json:"matches"`
 				Standings []struct {
-					PlayerId string `json:"player_id"`
-					Points   int    `json:"points"`
-					Place    int    `json:"place"`
-					Promoted bool   `json:"promoted"`
+					PlayerId string  `json:"player_id"`
+					Points   float64 `json:"points"`
+					Place    int     `json:"place"`
+					Advanced bool    `json:"advanced"`
 				} `json:"standings"`
 				Ruling *[]string `json:"ruling_player_ids"`
 			} `json:"slots"`
@@ -639,14 +644,14 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 
-	// A hand-forged plan (promote 3 against 4-seat tables is fine per bounds,
+	// A hand-forged plan (advance 3 against 4-seat tables is fine per bounds,
 	// but this shape leaves 3 players output where the final needs 4 — not
 	// offered by the enumerator) must be rejected.
 	handForged := `{"elimination":"single","rounds":[
-		{"track":"winners","index":1,"promote":3,"slots":[
+		{"track":"winners","index":1,"advance":3,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":6,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":0,"source_place":3},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2},{"kind":"source","source_slot":1,"source_place":3}]}]}]}`
 	w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":`+handForged+`}`)
 	if w.Code != http.StatusBadRequest {
@@ -655,10 +660,10 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 
 	// The flagship plan goes through.
 	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
-		{"track":"winners","index":1,"promote":2,"slots":[
+		{"track":"winners","index":1,"advance":2,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
@@ -666,10 +671,10 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 
 	// A second start is a 409.
 	w = doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
-		{"track":"winners","index":1,"promote":2,"slots":[
+		{"track":"winners","index":1,"advance":2,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("second start must 409, got %d", w.Code)
@@ -694,7 +699,7 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, slot := range r1.Slots {
-		if slot.Status != "playing" || slot.GameId != short(gameID) || slot.Promote != 2 {
+		if slot.Status != "playing" || slot.GameId != short(gameID) || slot.Advance != 2 {
 			t.Fatalf("round-1 slot: %+v", slot)
 		}
 		for _, seat := range slot.Seats {
@@ -904,7 +909,8 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 	Id       string
 	GameId   string
 	Position int
-	Promote  int
+	Advance  int
+	MinScore float64
 	Status   string
 	Seats    []struct {
 		Position     int     `json:"position"`
@@ -914,12 +920,16 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 	}
 	Matches []struct {
 		MatchId string `json:"match_id"`
+		Scores  []struct {
+			PlayerId string  `json:"player_id"`
+			Points   float64 `json:"points"`
+		} `json:"scores"`
 	} `json:"matches"`
 	Standings []struct {
-		PlayerId string `json:"player_id"`
-		Points   int    `json:"points"`
-		Place    int    `json:"place"`
-		Promoted bool   `json:"promoted"`
+		PlayerId string  `json:"player_id"`
+		Points   float64 `json:"points"`
+		Place    int     `json:"place"`
+		Advanced bool    `json:"advanced"`
 	} `json:"standings"`
 	Ruling *[]string `json:"ruling_player_ids"`
 } {
@@ -929,7 +939,8 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 		Id       string
 		GameId   string
 		Position int
-		Promote  int
+		Advance  int
+		MinScore float64
 		Status   string
 		Seats    []struct {
 			Position     int     `json:"position"`
@@ -939,16 +950,20 @@ func slotAt(t *testing.T, br *bracketJSON, roundIdx int, pos int) *struct {
 		}
 		Matches []struct {
 			MatchId string `json:"match_id"`
+			Scores  []struct {
+				PlayerId string  `json:"player_id"`
+				Points   float64 `json:"points"`
+			} `json:"scores"`
 		} `json:"matches"`
 		Standings []struct {
-			PlayerId string `json:"player_id"`
-			Points   int    `json:"points"`
-			Place    int    `json:"place"`
-			Promoted bool   `json:"promoted"`
+			PlayerId string  `json:"player_id"`
+			Points   float64 `json:"points"`
+			Place    int     `json:"place"`
+			Advanced bool    `json:"advanced"`
 		} `json:"standings"`
 		Ruling *[]string `json:"ruling_player_ids"`
 	}{
-		Id: slot.Id, GameId: slot.GameId, Position: slot.Position, Promote: slot.Promote,
+		Id: slot.Id, GameId: slot.GameId, Position: slot.Position, Advance: slot.Advance, MinScore: slot.MinScore,
 		Status: slot.Status, Seats: slot.Seats, Matches: slot.Matches, Standings: slot.Standings,
 		Ruling: slot.Ruling,
 	}
@@ -980,15 +995,15 @@ func getBracket(t *testing.T, router interface {
 }
 
 const flagshipPlanBody = `{"plan":{"elimination":"single","rounds":[
-	{"track":"winners","index":1,"promote":2,"slots":[
+	{"track":"winners","index":1,"advance":2,"slots":[
 		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]},
 		{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]},
-	{"track":"final","index":1,"promote":1,"slots":[
+	{"track":"final","index":1,"advance":1,"slots":[
 		{"seat_count":4,"seats":[{"kind":"source","source_slot":0,"source_place":1},{"kind":"source","source_slot":0,"source_place":2},{"kind":"source","source_slot":1,"source_place":1},{"kind":"source","source_slot":1,"source_place":2}]}]}]}}`
 
 // TestTournament_SingleElimEndToEnd is the ADR-26 rollout's flagship: an
-// 8-player single-elimination on a 4-seat-only pool (4+4 promote-2 → final 4
-// promote-1) including a slot that needed a replay (shared top game score in
+// 8-player single-elimination on a 4-seat-only pool (4+4 advance-2 → final 4
+// advance-1) including a slot that needed a replay (shared top game score in
 // the first match → no strict cut → the same table plays again).
 func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
@@ -1021,7 +1036,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// Table A (round 1, position 1) — first match ends with a shared top
-	// score: 4–4–2–1, no strict cut, the slot replays.
+	// score → 5–5–0–0 (tenths), no strict cut, the slot replays.
 	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
 	newMatch := func(mdate string, scores ...string) string {
 		mid := newID(t)
@@ -1034,7 +1049,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
 
-	// Match 1: shared top → the slot must stay playing with no promotions.
+	// Match 1: shared top → the slot must stay playing with no advancements.
 	m1 := newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA := slotAt(t, br, 0, 0)
@@ -1044,15 +1059,15 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	if len(slotA.Matches) != 1 || slotA.Matches[0].MatchId != m1 {
 		t.Fatalf("slot A matches: %+v", slotA.Matches)
 	}
-	// Live standings show the 4-4-2-1 points (equal points share the rank)
-	// while the slot replays; the promoted flags stay off and the final seat
-	// stays unfilled.
-	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 4 || slotA.Standings[1].Points != 4 ||
-		slotA.Standings[2].Points != 2 || slotA.Standings[3].Points != 1 ||
+	// Live standings show the 0.5-0.5-0-0 shares (equal points share the
+	// rank) while the slot replays; the advanced flags stay off and the final
+	// seat stays unfilled.
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 0.5 || slotA.Standings[1].Points != 0.5 ||
+		slotA.Standings[2].Points != 0 || slotA.Standings[3].Points != 0 ||
 		slotA.Standings[0].Place != 1 || slotA.Standings[1].Place != 1 || slotA.Standings[2].Place != 3 ||
-		slotA.Standings[0].Promoted || slotA.Standings[1].Promoted ||
+		slotA.Standings[0].Advanced || slotA.Standings[1].Advanced ||
 		br.Data.Rounds[1].Slots[0].Seats[0].PlayerId != nil {
-		t.Fatalf("tied match: live standings but no promotion: %+v", slotA.Standings)
+		t.Fatalf("tied match: live standings but no advancement: %+v", slotA.Standings)
 	}
 
 	// The match DTO carries the tournament badge.
@@ -1073,16 +1088,17 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		t.Fatalf("match badge: %+v", matchResp.Data.Tournament)
 	}
 
-	// Match 2 (the replay): 3–4–2–1 → cumulative 7–8–4–2 → strict top-2.
+	// Match 2 (the replay): seat1 takes a decisive win → cumulative
+	// 1.1–0.8–0.1–0 → strict top-2.
 	newMatch(matchDate(4, 1), sc(aSeat(0), 5), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" || len(slotA.Matches) != 2 {
 		t.Fatalf("slot A after the replay: %s with %d matches", slotA.Status, len(slotA.Matches))
 	}
-	// Standings: 8–7–4–2, promoted {seat1, seat0}.
+	// Standings (shares): 1.1–0.8–0.1–0, advanced {seat1, seat0}.
 	if len(slotA.Standings) != 4 || slotA.Standings[0].PlayerId != aSeat(1) || slotA.Standings[1].PlayerId != aSeat(0) ||
-		!slotA.Standings[0].Promoted || !slotA.Standings[1].Promoted || slotA.Standings[0].Points != 8 || slotA.Standings[1].Points != 7 {
+		!slotA.Standings[0].Advanced || !slotA.Standings[1].Advanced || slotA.Standings[0].Points != 1.1 || slotA.Standings[1].Points != 0.8 {
 		t.Fatalf("slot A standings: %+v", slotA.Standings)
 	}
 
@@ -1095,7 +1111,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		t.Fatalf("slot B must complete on a strict cut: %s", slotB.Status)
 	}
 
-	// The final's seat caches are refilled with the promoted players.
+	// The final's seat caches are refilled with the advanced players.
 	finalSeats := br.Data.Rounds[1].Slots[0].Seats
 	gotFinal := map[string]bool{}
 	for _, seat := range finalSeats {
@@ -1209,7 +1225,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	smallPlan := `{"plan":{"elimination":"single","rounds":[
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, smallPlan); w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
@@ -1286,7 +1302,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestTournament_EditCascadeAndGuards drives the ADR-26 edit story: an edit
-// that overturns a promoted set reopens the slot, clears the downstream seats
+// that overturns an advanced set reopens the slot, clears the downstream seats
 // and voids the already-played final (audited with the origin chain); a
 // completed tournament reverts to running; association-breaking edits are
 // 409 while score edits stay free.
@@ -1345,7 +1361,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	}
 
 	// The overturning edit (m2's scores become a shared top → the cumulative
-	// standings tie inside the promoted set) is refused while the final is
+	// standings tie inside the advanced set) is refused while the final is
 	// played: it would rewrite slot A's outcome feeding the recorded final —
 	// and the refused edit rolls back whole, leaving the bracket untouched.
 	code := editMatch(m2, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
@@ -1439,8 +1455,9 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPut, "/matches/"+m1, admin, guard); w.Code != http.StatusConflict {
 		t.Fatalf("game change must 409, got %d", w.Code)
 	}
-	//   score-only edit → allowed (200).
-	code = editMatch(m1, sc(aSeat(0), 9), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	//   score-only edit → allowed (200). The 3/10 reversal puts seat1 clearly
+	//   ahead in the cumulative shares (0.7 vs 0.2 from this match).
+	code = editMatch(m1, sc(aSeat(0), 3), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	if code != http.StatusOK {
 		t.Fatalf("score edit must pass: %d", code)
 	}
@@ -1577,10 +1594,10 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 
 	// The second slot-A match links by the default acceptance; its points keep
-	// the cumulative top-2 tied with place 3, so the slot stays playing with
-	// two matches (a1=7, a0=6, a2=6, a3=3 — no strict cut: a0 and a2 tie at
-	// the cut boundary).
-	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 10), sc(aSeat(1), 9), sc(aSeat(0), 1), sc(aSeat(3), 1))
+	// the cumulative top-2 tied at the cut boundary, so the slot stays playing
+	// with two matches (a1=0.8, a0=0.6, a2=0.6, a3=0 — no strict cut: a0 and
+	// a2 tie at the cut boundary).
+	m2 := newMatch(matchDate(4, 1), sc(aSeat(2), 7), sc(aSeat(1), 4), sc(aSeat(0), 2), sc(aSeat(3), 1))
 	br = getBracket(t, router, short(tid))
 	slotA = slotAt(t, br, 0, 0)
 	if slotA.Status != "playing" || len(slotA.Matches) != 2 {
@@ -1589,7 +1606,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 
 	// Unchecking a linked match is allowed while the downstream final has no
 	// played matches: the slot recomputes from the remaining match only and
-	// completes with a different promoted set {seat2, seat1}.
+	// completes with a different advanced set {seat2, seat1}.
 	if code := editMatch(m1, `, "skip_tournament_link": true`, sc(aSeat(0), 10), sc(aSeat(1), 10), sc(aSeat(2), 1), sc(aSeat(3), 0)); code != http.StatusOK {
 		t.Fatalf("edit-unlink before downstream play: %d", code)
 	}
@@ -1686,7 +1703,7 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 	// One 4-seat grand final: the whole tournament is one table.
 	plan := `{"plan":{"elimination":"single","rounds":[
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, plan); w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
@@ -1900,8 +1917,9 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 		return doJSON(t, router, http.MethodDelete, "/tournaments/"+short(tid)+"/slots/"+slotID+"/matches/"+matchID, admin, "").Code
 	}
 
-	// Slot A completes from a decisive match: {a0, a1} by points.
-	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 9), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	// Slot A completes from a decisive match: {a0, a1} by points
+	// (shares 0.6–0.3–0.1–0).
+	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 5), sc(aSeat(2), 1), sc(aSeat(3), 0))
 	br = getBracket(t, router, short(tid))
 	slotA := slotAt(t, br, 0, 0)
 	if slotA.Status != "completed" {
@@ -1919,14 +1937,14 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 	if slotA.Ruling == nil || len(*slotA.Ruling) != 2 || (*slotA.Ruling)[0] != aSeat(2) {
 		t.Fatalf("the ruling must be exposed in force: %+v", slotA.Ruling)
 	}
-	promoted := map[string]bool{}
+	advanced := map[string]bool{}
 	for _, st := range slotA.Standings {
-		if st.Promoted {
-			promoted[st.PlayerId] = true
+		if st.Advanced {
+			advanced[st.PlayerId] = true
 		}
 	}
-	if !promoted[aSeat(2)] || !promoted[aSeat(1)] || promoted[aSeat(0)] {
-		t.Fatalf("the promoted set must follow the ruling: %+v", slotA.Standings)
+	if !advanced[aSeat(2)] || !advanced[aSeat(1)] || advanced[aSeat(0)] {
+		t.Fatalf("the advanced set must follow the ruling: %+v", slotA.Standings)
 	}
 	if got := br.Data.Rounds[1].Slots[0].Seats[0].PlayerId; got == nil || *got != aSeat(2) {
 		t.Fatalf("final place-1 seat must follow the ruling, got %+v", br.Data.Rounds[1].Slots[0].Seats[0])
@@ -2069,6 +2087,95 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 	}
 }
 
+// TestTournament_MinScoreGate drives the ADR-27 minimal advance score: the
+// organizer sets it while the slot has no matches (out-of-range and
+// after-matches changes are refused), a strict cut below the minimum keeps
+// the slot playing, and a later match that pushes the leader over the
+// minimum completes it.
+func TestTournament_MinScoreGate(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupRouter(pool)
+
+	admin, _ := createTestUserWithID(t, pool, true)
+	gameID := createTestGame(t, pool, "Минимальная игра")
+
+	tid := newID(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		p := createTestPlayer(t, pool, fmt.Sprintf("Минимал%d", i))
+		ids = append(ids, fmt.Sprintf("%q", short(p)))
+	}
+	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок минимума", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
+		short(tid), short(gameID), strings.Join(ids, ","))
+	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", w.Code, w.Body.String())
+	}
+	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	br := getBracket(t, router, short(tid))
+	slotA := br.Data.Rounds[0].Slots[0]
+
+	// Out-of-range values are refused before anything is written.
+	for _, bad := range []string{"10.5", "-0.5"} {
+		body := fmt.Sprintf(`{"min_score": %s}`, bad)
+		if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusBadRequest {
+			t.Fatalf("min_score %s must be rejected: %d %s", bad, w.Code, w.Body.String())
+		}
+	}
+
+	// The organizer sets 1.5 on the untouched table.
+	body := `{"min_score": 1.5}`
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, body); w.Code != http.StatusOK {
+		t.Fatalf("set min_score: %d %s", w.Code, w.Body.String())
+	}
+	br = getBracket(t, router, short(tid))
+	if got := br.Data.Rounds[0].Slots[0].MinScore; got != 1.5 {
+		t.Fatalf("min_score on the wire: %v, want 1.5", got)
+	}
+
+	aSeat := func(i int) string { return seatPlayer(t, br, 0, 0, i) }
+	newMatch := func(mdate string, scores ...string) string {
+		mid := newID(t)
+		matchBody := fmt.Sprintf(`{"id": %q, "game_id": %q, "date": %q, "score": {%s}}`,
+			short(mid), short(gameID), mdate, strings.Join(scores, ","))
+		if w := doJSON(t, router, http.MethodPost, "/matches", admin, matchBody); w.Code != http.StatusOK {
+			t.Fatalf("post match: %d %s", w.Code, w.Body.String())
+		}
+		return short(mid)
+	}
+	sc := func(pid string, v float64) string { return fmt.Sprintf(`%q:%v`, pid, v) }
+
+	// A decisive first win — the strict cut holds, but the leader's 0.8 is
+	// below the 1.5 minimum: the slot keeps playing.
+	newMatch(matchDate(4, 0), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA = br.Data.Rounds[0].Slots[0]
+	if slotA.Status != "playing" {
+		t.Fatalf("strict cut below the minimum must keep the slot playing: %s", slotA.Status)
+	}
+	if len(slotA.Standings) != 4 || slotA.Standings[0].Points != 0.8 {
+		t.Fatalf("leader points: %+v", slotA.Standings)
+	}
+
+	// With a match linked, the minimal score is locked.
+	if w := doJSON(t, router, http.MethodPatch, "/tournaments/"+short(tid)+"/slots/"+slotA.Id, admin, `{"min_score": 0}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("min_score change with linked matches must be refused: %d %s", w.Code, w.Body.String())
+	}
+
+	// A second decisive win pushes the leader to 1.6 ≥ 1.5: the slot completes.
+	newMatch(matchDate(4, 1), sc(aSeat(0), 10), sc(aSeat(1), 2), sc(aSeat(2), 1), sc(aSeat(3), 0))
+	br = getBracket(t, router, short(tid))
+	slotA = br.Data.Rounds[0].Slots[0]
+	if slotA.Status != "completed" {
+		t.Fatalf("leader above the minimum must complete the slot: %s (%+v)", slotA.Status, slotA.Standings)
+	}
+	if slotA.Standings[0].Points != 1.6 || !slotA.Standings[0].Advanced {
+		t.Fatalf("leader standings: %+v", slotA.Standings)
+	}
+}
+
 // TestTournament_DeadlineAutoCancel verifies the lazy enforcement: a stale
 // running status flips to cancelled (system actor, reason "deadline") on the
 // next bracket read or match write, and a past deadline blocks start.
@@ -2098,7 +2205,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 		t.Fatalf("backdate deadline: %v", err)
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`); w.Code != http.StatusBadRequest {
 		t.Fatalf("start with past deadline must 400, got %d", w.Code)
 	}
@@ -2110,7 +2217,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 		t.Fatalf("refuture deadline: %v", err)
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, `{"plan":{"elimination":"single","rounds":[
-		{"track":"final","index":1,"promote":1,"slots":[
+		{"track":"final","index":1,"advance":1,"slots":[
 			{"seat_count":4,"seats":[{"kind":"draw"},{"kind":"draw"},{"kind":"draw"},{"kind":"draw"}]}]}]}}`); w.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
 	}
@@ -2228,7 +2335,7 @@ func TestTournament_WBLBRunWithMerge(t *testing.T) {
 	}
 
 	// Driver: play every fully-seated playing slot (distinct scores → strict
-	// cut for any promote count), then repeat until the champion emerges.
+	// cut for any advance count), then repeat until the champion emerges.
 	gameShort := short(gameID)
 	mday := 10
 	for round := 0; ; round++ {

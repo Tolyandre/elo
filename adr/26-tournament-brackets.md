@@ -1,5 +1,9 @@
 # Bracket tournaments
 
+Amended by ADR-30: slot points are the Elo earn part (integer tenths), slots
+may carry an organizer-set minimal advance score, and the promote vocabulary
+is now "advance".
+
 Revises ADR-04 (which ADR-27 supersedes: camps are arenas now, and
 `tournaments` means brackets only). Backend first; the UI plan is part of
 this document and ships after the backend phases. Depends on ADR-27

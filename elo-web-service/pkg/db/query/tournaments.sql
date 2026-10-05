@@ -39,7 +39,7 @@ SET status = 'running', seed = $2, plan = $3, plan_schema_version = $4, eliminat
 WHERE id = $1;
 
 -- name: SetTournamentCompleted :exec
--- The grand final promoted exactly one player (ADR-26): read-only from here.
+-- The grand final advanced exactly one player (ADR-26): read-only from here.
 UPDATE tournaments SET status = 'completed', winner_player_id = $2 WHERE id = $1;
 
 -- name: SetTournamentStatus :exec

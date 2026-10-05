@@ -1,17 +1,43 @@
 package bracket
 
 import (
+	"math"
 	"sort"
 
 	"github.com/tolyandre/elo-web-service/pkg/id"
+	"github.com/tolyandre/elo-web-service/pkg/ratingmath"
 )
 
-// PlacementPoints returns the placement points a place-i player earns in a
-// slot table of s seats (ADR-26): place 1 → s, place 2 → s−1, …, the last
-// place → 1. Points are relative only; every place scores. Shared places
-// (tied game scores) share points.
-func PlacementPoints(place, seats int) int {
-	return seats - place + 1
+// PointsTenths is the slot-points scale (ADR-27): slot points are the Elo earn
+// part — ratingmath.NormalizedScore, a share in [0, 1] — scaled by 10 and
+// rounded to one decimal per match, so every per-match contribution is an
+// integer number of tenths. Integer tenths keep the cumulative sums exact:
+// binary floats cannot represent 0.1, and the completion rule (StrictCut)
+// compares points with ==.
+const PointsTenths = 10
+
+// MatchPoints returns the slot points, in tenths, each player earns in one
+// match: their Elo earn part — the W-normalized share of the match's score
+// surplus over the worst score (ratingmath.NormalizedScore, no K, no D) —
+// rounded to one decimal. winReward is the elo_settings.win_reward effective
+// at the match's date; the caller supplies it per match so a settings change
+// never rewrites already-played history. Unlike the old placement points,
+// the amount varies with the margin: a 2-seat win always earns the full 1.0,
+// while a tied 3-seat win (scores 3/3/1) earns 0.5 — and a comeback is a
+// matter of accumulating shares, not of fixed place offsets.
+func MatchPoints(scores map[id.ID]float64, winReward float64) map[id.ID]int {
+	absoluteLoserScore := ratingmath.GetAbsoluteLoserScore(scores)
+	out := make(map[id.ID]int, len(scores))
+	for pid, sc := range scores {
+		out[pid] = int(math.Round(ratingmath.NormalizedScore(sc, scores, absoluteLoserScore, winReward) * PointsTenths))
+	}
+	return out
+}
+
+// MinScoreTenths converts an organizer-set minimal score (slot points, 0–10)
+// into tenths for the completion comparisons.
+func MinScoreTenths(minScore float64) int {
+	return int(math.Round(minScore * PointsTenths))
 }
 
 // PlayerPlace is one player's derived place in one match.
@@ -47,16 +73,20 @@ func DerivePlaces(scores map[id.ID]float64) []PlayerPlace {
 
 // MatchResult is one linked match of a slot's series, in chronological order
 // (the caller supplies the order — match date, then id) with its player→score
-// map. Places are derived internally with the codebase's RANK semantics.
+// map and the win reward effective at the match's date. Places are derived
+// internally with the codebase's RANK semantics.
 type MatchResult struct {
-	MatchID id.ID
-	Scores  map[id.ID]float64
+	MatchID   id.ID
+	Scores    map[id.ID]float64
+	WinReward float64
 }
 
 // Standing is one player's cumulative slot standing.
 type Standing struct {
 	PlayerID id.ID
-	Points   int
+	// Points is the cumulative slot score in tenths (ADR-27): each match
+	// contributes its Elo earn part rounded to one decimal.
+	Points int
 	// Order is the player's place in each linked match, most recent first —
 	// the display tie-break (a later match can overturn an earlier leader).
 	Order []int
@@ -65,14 +95,14 @@ type Standing struct {
 	// semantics as the per-match places); the sort's tie-breaks keep the
 	// row order deterministic.
 	Place    int
-	Promoted bool
+	Advanced bool
 }
 
-// Standings accumulates placement points over a slot's linked matches (each
-// match's places derived from its scores) and orders them: points DESC, then
-// the place-vector from the most recent match backwards, then player id — a
-// deterministic total order. The completion rule does not rely on the
-// tie-break (see StrictCut): a promoted set is only ever recorded with
+// Standings accumulates match points (ADR-27) over a slot's linked matches
+// (each match's places derived from its scores) and orders them: points DESC,
+// then the place-vector from the most recent match backwards, then player id —
+// a deterministic total order. The completion rule does not rely on the
+// tie-break (see StrictCut): an advanced set is only ever recorded with
 // strictly separated points.
 func Standings(matches []MatchResult, seats int) []Standing {
 	derived := make([][]PlayerPlace, len(matches))
@@ -85,7 +115,8 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	}
 	accs := make(map[id.ID]*acc, seats*2)
 	ids := make([]id.ID, 0, seats)
-	for _, places := range derived {
+	for i, places := range derived {
+		points := MatchPoints(matches[i].Scores, matches[i].WinReward)
 		for _, p := range places {
 			a := accs[p.PlayerID]
 			if a == nil {
@@ -93,7 +124,7 @@ func Standings(matches []MatchResult, seats int) []Standing {
 				accs[p.PlayerID] = a
 				ids = append(ids, p.PlayerID)
 			}
-			a.points += PlacementPoints(p.Place, seats)
+			a.points += points[p.PlayerID]
 		}
 	}
 
@@ -131,17 +162,23 @@ func Standings(matches []MatchResult, seats int) []Standing {
 	return out
 }
 
-// StrictCut reports whether the slot's top-promote set is strictly separated
-// — every boundary from 1st through the (promote+1)-th has strictly
-// decreasing points (ADR-26's shared-top example: 4–4–2–1 replays — the cut
-// against the rest is clean, but the two co-leaders tie, and the downstream
-// order must never be ambiguous). Ties keep the slot open: the players
-// simply play the same slot again.
-func StrictCut(sts []Standing, promote int) bool {
-	if promote <= 0 || promote >= len(sts) {
+// StrictCut reports whether the slot may complete (ADR-26, ADR-27): the
+// top-advance set must be strictly separated — every boundary from 1st
+// through the (advance+1)-th has strictly decreasing points (ADR-26's
+// shared-top example: 4–4–2–1 replays — the cut against the rest is clean,
+// but the two co-leaders tie, and the downstream order must never be
+// ambiguous) — and, when the organizer set a minimal score (minScoreTenths
+// > 0), the leader must hold at least that many points. Ties or a leader
+// short of the minimum keep the slot open: the players simply play the same
+// slot again.
+func StrictCut(sts []Standing, advance int, minScoreTenths int) bool {
+	if advance <= 0 || advance >= len(sts) {
 		return false
 	}
-	for i := 0; i < promote; i++ {
+	if minScoreTenths > 0 && sts[0].Points < minScoreTenths {
+		return false
+	}
+	for i := 0; i < advance; i++ {
 		if sts[i].Points <= sts[i+1].Points {
 			return false
 		}

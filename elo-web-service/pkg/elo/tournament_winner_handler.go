@@ -93,7 +93,7 @@ func (t *tournamentWinnerTrigger) OnMatch(ctx context.Context, q *db.Queries, ma
 	if slot.ID != link.SlotID {
 		return nil
 	}
-	if decidedByRuling(slot.Ruling, slot.Promote) {
+	if decidedByRuling(slot.Ruling, slot.Advance) {
 		return nil
 	}
 	latest, err := q.LatestSlotMatchID(ctx, slot.ID)
@@ -121,8 +121,8 @@ func (t *tournamentWinnerTrigger) OnOverdue(ctx context.Context, q *db.Queries, 
 
 // decidedByRuling reports whether a slot's current outcome comes from a
 // standing organizer ruling — the same validity rule desiredOutcome applies
-// (a ruling must hold exactly the promoted count to be in force).
-func decidedByRuling(ruling json.RawMessage, promote int32) bool {
+// (a ruling must hold exactly the advance count to be in force).
+func decidedByRuling(ruling json.RawMessage, advance int32) bool {
 	if ruling == nil {
 		return false
 	}
@@ -130,7 +130,7 @@ func decidedByRuling(ruling json.RawMessage, promote int32) bool {
 	if err := json.Unmarshal(ruling, &parsed); err != nil {
 		return false
 	}
-	return len(parsed) == int(promote)
+	return len(parsed) == int(advance)
 }
 
 // settleTournamentWinnerMarkets resolves every open tournament_winner market

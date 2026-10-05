@@ -23,7 +23,18 @@ func init() {
 	register(&Schema{Kind: KindTournamentState, CurrentVersion: 1}, "tournament_state.v1.json")
 	register(&Schema{Kind: KindSlotRuling, CurrentVersion: 1}, "slot_ruling.v1.json")
 	register(&Schema{Kind: KindSlotLink, CurrentVersion: 1}, "slot_link.v1.json")
-	register(&Schema{Kind: KindSlotAdjust, CurrentVersion: 1}, "slot_adjust.v1.json")
+	register(&Schema{Kind: KindSlotAdjust, CurrentVersion: 2}, "slot_adjust.v2.json")
+
+	// v2 adds the min_score op (ADR-27); v1 documents are identical but for
+	// the schema_version const.
+	registerMigrator(KindSlotAdjust, 1, func(raw json.RawMessage) (json.RawMessage, error) {
+		var doc map[string]any
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return nil, err
+		}
+		doc["schema_version"] = 2
+		return json.Marshal(doc)
+	})
 }
 
 // EntityDetails names the entity at the moment it was created or deleted (the
@@ -288,7 +299,7 @@ const (
 )
 
 // SlotRulingDetails records an organizer ruling on one slot: the ordered
-// promotion set before (null while the slot was playing) and after (null on
+// advancement set before (null while the slot was playing) and after (null on
 // revert to the standings-based result).
 type SlotRulingDetails struct {
 	SchemaVersion   int      `json:"schema_version"`
@@ -334,17 +345,25 @@ func NewSlotLinkDetails(op, slotID, matchID, originKind, originID string) SlotLi
 }
 
 // SlotAdjustDetails records an organizer adjustment of one running slot
-// (game reassignment) — KindSlotAdjust.
+// (game reassignment, minimal advance score) — KindSlotAdjust.
 type SlotAdjustDetails struct {
 	SchemaVersion int    `json:"schema_version"`
 	Op            string `json:"op"`
 	SlotID        string `json:"slot_id"`
 	// GameID is the (new) game for op=game.
 	GameID string `json:"game_id,omitempty"`
+	// MinScore is the (new) minimal advance score for op=min_score (ADR-27).
+	MinScore *float64 `json:"min_score,omitempty"`
 }
 
 // NewSlotGameAdjust builds the details of a game reassignment. gameID is
 // typed id.ID for the x-entity-id walk convenience; pass id.ID(gameIDString).
 func NewSlotGameAdjust(slotID string, gameID string) SlotAdjustDetails {
-	return SlotAdjustDetails{SchemaVersion: 1, Op: "game", SlotID: slotID, GameID: gameID}
+	return SlotAdjustDetails{SchemaVersion: 2, Op: "game", SlotID: slotID, GameID: gameID}
+}
+
+// NewSlotMinScoreAdjust builds the details of a minimal-advance-score
+// adjustment (ADR-27).
+func NewSlotMinScoreAdjust(slotID string, minScore float64) SlotAdjustDetails {
+	return SlotAdjustDetails{SchemaVersion: 2, Op: "min_score", SlotID: slotID, MinScore: &minScore}
 }

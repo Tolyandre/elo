@@ -282,20 +282,21 @@ type TournamentSlot struct {
 	RoundID  id.ID           `json:"round_id"`
 	Position int32           `json:"position"`
 	GameID   id.ID           `json:"game_id"`
-	Promote  int32           `json:"promote"`
+	Advance  int32           `json:"advance"`
 	Status   string          `json:"status"`
 	Ruling   json.RawMessage `json:"ruling"`
+	MinScore float64         `json:"min_score"`
+}
+
+type TournamentSlotAdvance struct {
+	SlotID   id.ID `json:"slot_id"`
+	PlayerID id.ID `json:"player_id"`
+	Place    int32 `json:"place"`
 }
 
 type TournamentSlotMatch struct {
 	SlotID  id.ID `json:"slot_id"`
 	MatchID id.ID `json:"match_id"`
-}
-
-type TournamentSlotPromotion struct {
-	SlotID   id.ID `json:"slot_id"`
-	PlayerID id.ID `json:"player_id"`
-	Place    int32 `json:"place"`
 }
 
 type User struct {

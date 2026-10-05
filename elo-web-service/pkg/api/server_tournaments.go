@@ -148,8 +148,8 @@ func (s *StrictServer) ListTournamentBracketPlans(ctx context.Context, request L
 	if request.Params.FirstShapes != nil {
 		filter.FirstShapes = *request.Params.FirstShapes
 	}
-	if request.Params.Promotes != nil {
-		filter.Promotes = *request.Params.Promotes
+	if request.Params.Advances != nil {
+		filter.Advances = *request.Params.Advances
 	}
 	if request.Params.Rematches != nil {
 		filter.Rematches = string(*request.Params.Rematches)
@@ -244,7 +244,7 @@ func (s *StrictServer) GetTournamentBracket(ctx context.Context, request GetTour
 func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 	plan := bracket.Plan{Elimination: string(p.Elimination)}
 	for _, r := range p.Rounds {
-		pr := bracket.PlanRound{Track: string(r.Track), Index: r.Index, Promote: r.Promote}
+		pr := bracket.PlanRound{Track: string(r.Track), Index: r.Index, Advance: r.Advance}
 		for _, sl := range r.Slots {
 			ps := bracket.PlanSlot{SeatCount: sl.SeatCount}
 			for _, seat := range sl.Seats {
@@ -273,7 +273,20 @@ func planToCanonicalRaw(p TournamentPlan) (json.RawMessage, error) {
 
 func (s *StrictServer) AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error) {
 	tid, sid := parseIDParam(request.Id), parseIDParam(request.Sid)
-	err := s.api.TournamentService.AdjustSlotGame(ctx, tid, sid, id.ID(request.Body.GameId), currentActorID(ctx))
+	if request.Body.GameId == nil && request.Body.MinScore == nil {
+		return AdjustTournamentSlot400JSONResponse{Status: "fail", Message: "нужен хотя бы один параметр: game_id или min_score"}, nil
+	}
+	var gameID *id.ID
+	if request.Body.GameId != nil {
+		gid := parseIDParam(string(*request.Body.GameId))
+		gameID = &gid
+	}
+	var minScore *float64
+	if request.Body.MinScore != nil {
+		ms := float64(*request.Body.MinScore)
+		minScore = &ms
+	}
+	err := s.api.TournamentService.AdjustSlot(ctx, tid, sid, currentActorID(ctx), gameID, minScore)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
@@ -419,7 +432,7 @@ func facetsToAPI(f bracket.Facets) TournamentsBracketPlanFacets {
 		HasByes:      f.HasByes,
 		AllByes:      f.AllByes,
 		FirstShapes:  f.FirstShapes,
-		Promotes:     f.Promotes,
+		Advances:     f.Advances,
 		HasRematches: f.HasRematches,
 		AllRematches: f.AllRematches,
 	}
@@ -438,7 +451,7 @@ func planToAPI(p bracket.Plan) TournamentPlan {
 		pr := PlanRound{
 			Track:   PlanRoundTrack(r.Track),
 			Index:   r.Index,
-			Promote: r.Promote,
+			Advance: r.Advance,
 			Slots:   make([]PlanSlot, 0, len(r.Slots)),
 		}
 		for _, sl := range r.Slots {
@@ -482,17 +495,22 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 				Id:       Base58ID(sl.ID),
 				GameId:   Base58ID(sl.GameID),
 				Position: sl.Position,
-				Promote:  sl.Promote,
+				Advance:  sl.Advance,
+				MinScore: sl.MinScore,
 				Status:   BracketSlotStatus(sl.Status),
 				Seats:    make([]BracketSeat, 0, len(sl.Seats)),
 				Matches: []struct {
 					MatchId Base58ID `json:"match_id"`
+					Scores  []struct {
+						PlayerId Base58ID `json:"player_id"`
+						Points   float64  `json:"points"`
+					} `json:"scores"`
 				}{},
 				Standings: []struct {
+					Advanced bool     `json:"advanced"`
 					Place    int      `json:"place"`
 					PlayerId Base58ID `json:"player_id"`
-					Points   int      `json:"points"`
-					Promoted bool     `json:"promoted"`
+					Points   float64  `json:"points"`
 				}{},
 			}
 			for _, seat := range sl.Seats {
@@ -511,10 +529,21 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 				}
 				bs.Seats = append(bs.Seats, seatOut)
 			}
-			for _, mid := range sl.MatchIDs {
-				bs.Matches = append(bs.Matches, struct {
+			for _, m := range sl.Matches {
+				matchOut := struct {
 					MatchId Base58ID `json:"match_id"`
-				}{MatchId: Base58ID(mid)})
+					Scores  []struct {
+						PlayerId Base58ID `json:"player_id"`
+						Points   float64  `json:"points"`
+					} `json:"scores"`
+				}{MatchId: Base58ID(m.MatchID)}
+				for _, sc := range m.Scores {
+					matchOut.Scores = append(matchOut.Scores, struct {
+						PlayerId Base58ID `json:"player_id"`
+						Points   float64  `json:"points"`
+					}{PlayerId: Base58ID(sc.PlayerID), Points: sc.Points})
+				}
+				bs.Matches = append(bs.Matches, matchOut)
 			}
 			if len(sl.Ruling) > 0 {
 				ruling := make([]Base58ID, 0, len(sl.Ruling))
@@ -525,15 +554,15 @@ func bracketToAPI(t db.Tournament, rounds []elo.BracketRound) Bracket {
 			}
 			for _, st := range sl.Standings {
 				bs.Standings = append(bs.Standings, struct {
+					Advanced bool     `json:"advanced"`
 					Place    int      `json:"place"`
 					PlayerId Base58ID `json:"player_id"`
-					Points   int      `json:"points"`
-					Promoted bool     `json:"promoted"`
+					Points   float64  `json:"points"`
 				}{
 					PlayerId: Base58ID(st.PlayerID),
-					Points:   st.Points,
+					Points:   float64(st.Points) / float64(bracket.PointsTenths),
 					Place:    st.Place,
-					Promoted: st.Promoted,
+					Advanced: st.Advanced,
 				})
 			}
 			br.Slots = append(br.Slots, bs)

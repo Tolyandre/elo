@@ -46,6 +46,7 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTournamentPlanInvalid),
 		errors.Is(err, elo.ErrTournamentRulingInvalid),
 		errors.Is(err, elo.ErrTournamentSlotAdjustInvalid),
+		errors.Is(err, elo.ErrTournamentSlotMinScoreInvalid),
 		errors.Is(err, elo.ErrTournamentMatchFitsNoSlot),
 		errors.Is(err, elo.ErrGrandFinalDeadlinePassed),
 		errors.Is(err, elo.ErrGameNameRequired),

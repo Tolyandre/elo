@@ -644,7 +644,7 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 				}
 				if _, err := q.CreateTournamentSlot(ctx, db.CreateTournamentSlotParams{
 					ID: slotID, RoundID: roundID, Position: int32(slotPos + 1),
-					GameID: game, Promote: int32(pr.Promote), Status: status,
+					GameID: game, Advance: int32(pr.Advance), Status: status,
 				}); err != nil {
 					return fmt.Errorf("create slot: %w", err)
 				}
@@ -690,7 +690,7 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		}
 
 		if err := q.SetTournamentRunning(ctx, db.SetTournamentRunningParams{
-			ID: tid, Seed: pgtype.Int8{Int64: seed, Valid: true}, Plan: []byte(canonical), PlanSchemaVersion: 1,
+			ID: tid, Seed: pgtype.Int8{Int64: seed, Valid: true}, Plan: []byte(canonical), PlanSchemaVersion: db.PlanSchemaVersion,
 			Elimination: pgtype.Text{String: plan.Elimination, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("set running: %w", err)
@@ -757,15 +757,34 @@ type BracketSeat struct {
 	SourcePlace  *int
 }
 
+// BracketMatchScore is one player's earned slot points (ADR-27) in one match
+// of the slot's series — the per-match earn share rounded to one decimal.
+type BracketMatchScore struct {
+	PlayerID id.ID
+	Points   float64
+}
+
+// BracketMatch is one linked match of the slot's series (event order) with
+// every participant's earned points.
+type BracketMatch struct {
+	MatchID id.ID
+	Scores  []BracketMatchScore
+}
+
 // BracketSlot is one rendered table of the bracket DTO.
 type BracketSlot struct {
-	ID        id.ID
-	Position  int
-	GameID    id.ID
-	Promote   int
-	Status    string
-	Seats     []BracketSeat
-	MatchIDs  []id.ID
+	ID       id.ID
+	Position int
+	GameID   id.ID
+	Advance  int
+	// MinScore is the organizer-set minimal score (ADR-27): the leader must
+	// hold at least this many slot points before the slot may complete.
+	MinScore float64
+	Status   string
+	Seats    []BracketSeat
+	Matches  []BracketMatch
+	// Standings carry cumulative slot points in tenths (Standing.Points,
+	// ADR-27); the API layer divides by 10 for display.
 	Standings []bracket.Standing
 	// Ruling is the organizer ruling in force, ordered by place; nil when the
 	// outcome comes from the standings.
@@ -819,7 +838,8 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 			ID:       sl.ID,
 			Position: int(sl.Position),
 			GameID:   sl.GameID,
-			Promote:  int(sl.Promote),
+			Advance:  int(sl.Advance),
+			MinScore: sl.MinScore,
 			Status:   sl.Status,
 		}
 		if len(sl.Ruling) > 0 {
@@ -845,7 +865,7 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 		bracketSlots[sl.ID] = bs
 	}
 
-	// Matches, promotions and the live standings per slot.
+	// Matches, advancements and the live standings per slot.
 	for i := range slots {
 		sl := slots[i]
 		bs := bracketSlots[sl.ID]
@@ -853,32 +873,37 @@ func (s *TournamentService) GetBracket(ctx context.Context, tid id.ID) (db.Tourn
 		if err != nil {
 			return db.Tournament{}, nil, fmt.Errorf("list slot matches: %w", err)
 		}
-		var matchResults []bracket.MatchResult
-		lastID := id.ID("")
-		for _, r := range results {
-			if r.MatchID != lastID {
-				matchResults = append(matchResults, bracket.MatchResult{
-					MatchID: r.MatchID,
-					Scores:  make(map[id.ID]float64, 4),
-				})
-				bs.MatchIDs = append(bs.MatchIDs, r.MatchID)
-				lastID = r.MatchID
+		matchResults, err := buildMatchResults(ctx, s.Queries, results)
+		if err != nil {
+			return db.Tournament{}, nil, err
+		}
+		// Per-match earned points (ADR-27) in event order, participants in
+		// the query's player-id order.
+		for _, mr := range matchResults {
+			pts := bracket.MatchPoints(mr.Scores, mr.WinReward)
+			bm := BracketMatch{MatchID: mr.MatchID, Scores: make([]BracketMatchScore, 0, len(mr.Scores))}
+			for _, r := range results {
+				if r.MatchID == mr.MatchID {
+					bm.Scores = append(bm.Scores, BracketMatchScore{
+						PlayerID: r.PlayerID,
+						Points:   float64(pts[r.PlayerID]) / bracket.PointsTenths,
+					})
+				}
 			}
-			mr := &matchResults[len(matchResults)-1]
-			mr.Scores[r.PlayerID] = r.Score
+			bs.Matches = append(bs.Matches, bm)
 		}
 		if len(matchResults) > 0 && len(bs.Seats) >= 2 {
 			sts := bracket.Standings(matchResults, len(bs.Seats))
-			promos, err := s.Queries.ListSlotPromotions(ctx, sl.ID)
+			advances, err := s.Queries.ListSlotAdvances(ctx, sl.ID)
 			if err != nil {
-				return db.Tournament{}, nil, fmt.Errorf("list promotions: %w", err)
+				return db.Tournament{}, nil, fmt.Errorf("list advances: %w", err)
 			}
-			promoted := make(map[id.ID]bool, len(promos))
-			for _, p := range promos {
-				promoted[p.PlayerID] = true
+			advanced := make(map[id.ID]bool, len(advances))
+			for _, a := range advances {
+				advanced[a.PlayerID] = true
 			}
 			for si := range sts {
-				sts[si].Promoted = promoted[sts[si].PlayerID]
+				sts[si].Advanced = advanced[sts[si].PlayerID]
 			}
 			bs.Standings = sts
 		}

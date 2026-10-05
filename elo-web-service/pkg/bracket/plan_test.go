@@ -14,12 +14,12 @@ func srcSeat(slot, place int) PlanSeat {
 	return PlanSeat{Kind: SeatSource, SourceSlot: &slot, SourcePlace: place}
 }
 func tslot(seats ...PlanSeat) PlanSlot { return PlanSlot{SeatCount: len(seats), Seats: seats} }
-func trnd(track string, index, promote int, slots ...PlanSlot) PlanRound {
-	return PlanRound{Track: track, Index: index, Promote: promote, Slots: slots}
+func trnd(track string, index, advance int, slots ...PlanSlot) PlanRound {
+	return PlanRound{Track: track, Index: index, Advance: advance, Slots: slots}
 }
 
 // flagshipSingle is the ADR rollout's integration shape: 8 players, 4-seat
-// pool, 4+4 promote-2 → final 4 promote-1.
+// pool, 4+4 advance-2 → final 4 advance-1.
 func flagshipSingle() Plan {
 	return Plan{Elimination: EliminationSingle, Rounds: []PlanRound{
 		trnd(TrackWinners, 1, 2, tslot(drawSeat(), drawSeat(), drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat(), drawSeat(), drawSeat())),
@@ -74,11 +74,11 @@ func TestValidateRejectsBrokenStructures(t *testing.T) {
 	cases := map[string]Plan{
 		"unknown elimination": {Elimination: "triple", Rounds: flagshipSingle().Rounds},
 		"no rounds":           {Elimination: EliminationSingle},
-		"promote >= seat count": {Elimination: EliminationSingle, Rounds: []PlanRound{
+		"advance >= seat count": {Elimination: EliminationSingle, Rounds: []PlanRound{
 			trnd(TrackWinners, 1, 4, tslot(drawSeat(), drawSeat(), drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat(), drawSeat(), drawSeat())),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1), srcSeat(1, 2))),
 		}},
-		"promote 0": {Elimination: EliminationSingle, Rounds: []PlanRound{
+		"advance 0": {Elimination: EliminationSingle, Rounds: []PlanRound{
 			trnd(TrackWinners, 1, 0, tslot(drawSeat(), drawSeat())),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(0, 1), srcSeat(0, 2))),
 		}},
@@ -124,12 +124,12 @@ func TestValidateRejectsBrokenStructures(t *testing.T) {
 			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat(), drawSeat())),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(0, 1), srcSeat(0, 1))),
 		}},
-		"winners round skips a promotion": {Elimination: EliminationSingle, Rounds: []PlanRound{
+		"winners round skips an advancement": {Elimination: EliminationSingle, Rounds: []PlanRound{
 			trnd(TrackWinners, 1, 2, tslot(drawSeat(), drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat(), drawSeat())),
 			trnd(TrackWinners, 2, 2, tslot(srcSeat(0, 1), srcSeat(0, 2), srcSeat(1, 1))),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(2, 1), srcSeat(2, 2), srcSeat(1, 2))),
 		}},
-		"grand final skips the last winners promotion": {Elimination: EliminationSingle, Rounds: []PlanRound{
+		"grand final skips the last winners advancement": {Elimination: EliminationSingle, Rounds: []PlanRound{
 			trnd(TrackWinners, 1, 1, tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat()), tslot(drawSeat(), drawSeat())),
 			trnd(TrackWinners, 2, 3, tslot(srcSeat(0, 1), srcSeat(1, 1), srcSeat(2, 1), byeSeat(), byeSeat())),
 			trnd(TrackFinal, 1, 1, tslot(srcSeat(3, 1), srcSeat(3, 2), byeSeat())),

@@ -140,6 +140,19 @@ func Kinds() []string {
 	return out
 }
 
+// registerMigrator adds a version-upgrade step for a kind. Called from init()
+// once a kind ships a second schema version (fromVersion → fromVersion+1).
+func registerMigrator(kind string, fromVersion int, fn migrator) {
+	s, ok := registry[kind]
+	if !ok {
+		panic(fmt.Sprintf("audit: migrator for unknown kind %q", kind))
+	}
+	if s.migrators == nil {
+		s.migrators = map[int]migrator{}
+	}
+	s.migrators[fromVersion] = fn
+}
+
 // HasMigrators reports whether kind has any registered data migrators. Used by
 // the startup migration step to short-circuit a table scan for kinds that have
 // only ever shipped one version.

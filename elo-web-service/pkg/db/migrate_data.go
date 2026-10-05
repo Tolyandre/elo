@@ -25,8 +25,9 @@ func init() {
 }
 
 // runDataMigrations applies every in-process data migration family: calculator
-// documents (ADR-09), audit details documents (ADR-14) and arena settings
-// documents (ADR-24). Each family is a no-op when nothing is out of date.
+// documents (ADR-09), audit details documents (ADR-14), tournament plan
+// documents (ADR-27) and arena settings documents (ADR-24). Each family is a
+// no-op when nothing is out of date.
 func runDataMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := migrateCalculatorData(ctx, pool); err != nil {
 		return err
@@ -34,7 +35,87 @@ func runDataMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	if err := migrateAuditDetailsData(ctx, pool); err != nil {
 		return err
 	}
+	if err := migratePlanData(ctx, pool); err != nil {
+		return err
+	}
 	return migrateArenaSettingsData(ctx, pool)
+}
+
+// PlanSchemaVersion is exported for the tournament-start write path, which
+// stores every freshly canonicalized plan at the current version.
+const PlanSchemaVersion = 2
+
+// migratePlanData rewrites stored tournament plans from v1 (rounds carrying
+// "promote") to v2 ("advance"). A plain JSON key rename — plan documents are
+// validated and canonicalized on write, so a stored plan is always
+// well-formed and the rename cannot lose information. Each row is upgraded in
+// its own transaction; any error is fatal for startup.
+func migratePlanData(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `
+		SELECT id, plan_schema_version, plan
+		FROM tournaments
+		WHERE plan IS NOT NULL AND plan_schema_version < $1
+	`, PlanSchemaVersion)
+	if err != nil {
+		return fmt.Errorf("query stale plans: %w", err)
+	}
+	defer rows.Close()
+
+	type stalePlanRow struct {
+		ID            string
+		SchemaVersion int32
+		Data          []byte
+	}
+	stale := make([]stalePlanRow, 0)
+	for rows.Next() {
+		var r stalePlanRow
+		if err := rows.Scan(&r.ID, &r.SchemaVersion, &r.Data); err != nil {
+			return fmt.Errorf("scan row: %w", err)
+		}
+		stale = append(stale, r)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate rows: %w", err)
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	log.Printf("plan migration: upgrading %d tournament plans from older versions", len(stale))
+	for _, r := range stale {
+		var doc struct {
+			Rounds []map[string]any `json:"rounds"`
+		}
+		if err := json.Unmarshal(r.Data, &doc); err != nil {
+			return fmt.Errorf("parse plan %s: %w", r.ID, err)
+		}
+		for _, round := range doc.Rounds {
+			if v, ok := round["promote"]; ok {
+				delete(round, "promote")
+				round["advance"] = v
+			}
+		}
+		upgraded, err := json.Marshal(doc)
+		if err != nil {
+			return fmt.Errorf("marshal plan %s: %w", r.ID, err)
+		}
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("begin tx: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE tournaments
+			SET plan_schema_version = $2, plan = $3
+			WHERE id = $1
+		`, r.ID, PlanSchemaVersion, upgraded); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("update plan %s: %w", r.ID, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("commit tx: %w", err)
+		}
+		log.Printf("plan migration: tournament %s v%d→v%d", r.ID, r.SchemaVersion, PlanSchemaVersion)
+	}
+	return nil
 }
 
 // migrateCalculatorData walks every match whose calculator_schema_version is

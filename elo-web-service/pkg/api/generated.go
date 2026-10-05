@@ -1132,6 +1132,8 @@ type BracketSeat struct {
 
 // BracketSlot defines model for BracketSlot.
 type BracketSlot struct {
+	Advance int `json:"advance"`
+
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId Base58ID `json:"game_id"`
 
@@ -1140,24 +1142,33 @@ type BracketSlot struct {
 	Matches []struct {
 		// MatchId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 		MatchId Base58ID `json:"match_id"`
+
+		// Scores Every participant's slot points earned in this match (ADR-27): the Elo earn part rounded to one decimal, in event order.
+		Scores []struct {
+			// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+			PlayerId Base58ID `json:"player_id"`
+			Points   float64  `json:"points"`
+		} `json:"scores"`
 	} `json:"matches"`
+
+	// MinScore The organizer-set minimal slot score (ADR-27): the leader must hold at least this many points before the slot may complete. 0 means the strict standings cut alone decides.
+	MinScore float64 `json:"min_score"`
 
 	// Position Table number within the round
 	Position int `json:"position"`
-	Promote  int `json:"promote"`
 
 	// RulingPlayerIds The organizer ruling in force, ordered by place (place 1 first). Absent while the outcome comes from the standings. An empty player_ids body on the ruling endpoint cancels it.
 	RulingPlayerIds *[]Base58ID   `json:"ruling_player_ids,omitempty"`
 	Seats           []BracketSeat `json:"seats"`
 
-	// Standings Live standings derived from the linked matches' scores: placement points, current order, and the recorded promoted set.
+	// Standings Live standings derived from the linked matches' scores: cumulative slot points (the Elo earn part, ADR-27), current order, and the recorded advanced set.
 	Standings []struct {
-		Place int `json:"place"`
+		Advanced bool `json:"advanced"`
+		Place    int  `json:"place"`
 
 		// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 		PlayerId Base58ID `json:"player_id"`
-		Points   int      `json:"points"`
-		Promoted bool     `json:"promoted"`
+		Points   float64  `json:"points"`
 	} `json:"standings"`
 	Status BracketSlotStatus `json:"status"`
 }
@@ -1630,10 +1641,10 @@ type MatchesPage struct {
 	Status string  `json:"status"`
 }
 
-// PlanRound One elimination round; promote is uniform across the round.
+// PlanRound One elimination round; advance is uniform across the round.
 type PlanRound struct {
+	Advance int            `json:"advance"`
 	Index   int            `json:"index"`
-	Promote int            `json:"promote"`
 	Slots   []PlanSlot     `json:"slots"`
 	Track   PlanRoundTrack `json:"track"`
 }
@@ -2119,7 +2130,9 @@ type TablesUpdateTableStateRequest struct {
 
 // TournamentsBracketPlanFacets The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options.
 type TournamentsBracketPlanFacets struct {
-	AllByes bool `json:"all_byes"`
+	// Advances Distinct per-round advance values across those plans (a plan may mix values between rounds), sorted ascending.
+	Advances []int `json:"advances"`
+	AllByes  bool  `json:"all_byes"`
 
 	// AllRematches Every plan seats players from the same previous-round slot together somewhere.
 	AllRematches bool `json:"all_rematches"`
@@ -2133,9 +2146,6 @@ type TournamentsBracketPlanFacets struct {
 
 	// HasRematches Some plan seats players from the same previous-round slot together in a next-round slot.
 	HasRematches bool `json:"has_rematches"`
-
-	// Promotes Distinct per-round promote values across those plans (a plan may mix values between rounds), sorted ascending.
-	Promotes []int `json:"promotes"`
 
 	// RoundCounts Total round counts across those plans, sorted ascending.
 	RoundCounts []int `json:"round_counts"`
@@ -2507,8 +2517,8 @@ type ListTournamentBracketPlansParams struct {
 	// FirstShapes First-round table shapes to keep (e.g. "4+4"); repeated; absent = all
 	FirstShapes *[]string `form:"first_shapes,omitempty" json:"first_shapes,omitempty"`
 
-	// Promotes Per-round promote counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all
-	Promotes *[]int `form:"promotes,omitempty" json:"promotes,omitempty"`
+	// Advances Per-round advance counts to keep — a plan matches when every of its rounds except the last one advances exactly a listed number of players per slot (the champion round always advances the single winner); repeated for several; absent = all
+	Advances *[]int `form:"advances,omitempty" json:"advances,omitempty"`
 
 	// Rematches Keep only plans where a next-round slot may seat several players from the same previous-round slot (with — an immediate rematch of tablemates is possible), or only plans where every slot takes its players from different previous-round slots (without); absent = any
 	Rematches *ListTournamentBracketPlansParamsRematches `form:"rematches,omitempty" json:"rematches,omitempty"`
@@ -2526,7 +2536,10 @@ type ListTournamentBracketPlansParamsRematches string
 // AdjustTournamentSlotJSONBody defines parameters for AdjustTournamentSlot.
 type AdjustTournamentSlotJSONBody struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	GameId Base58ID `json:"game_id"`
+	GameId *Base58ID `json:"game_id,omitempty"`
+
+	// MinScore The minimal slot score the leader must hold before the slot may complete (0 — the strict standings cut alone decides).
+	MinScore *float64 `json:"min_score,omitempty"`
 }
 
 // AttachTournamentSlotMatchJSONBody defines parameters for AttachTournamentSlotMatch.
@@ -3503,7 +3516,7 @@ type ServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(c *gin.Context, id string)
-	// AdjustTournamentSlot Reassign a slot's game (organizer, running state)
+	// AdjustTournamentSlot Adjust a slot (organizer, running state)
 	// (PATCH /tournaments/{id}/slots/{sid})
 	AdjustTournamentSlot(c *gin.Context, id string, sid string)
 	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)
@@ -5257,11 +5270,11 @@ func (siw *ServerInterfaceWrapper) ListTournamentBracketPlans(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "promotes" -------------
+	// ------------- Optional query parameter "advances" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "promotes", c.Request.URL.Query(), &params.Promotes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "advances", c.Request.URL.Query(), &params.Advances, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter promotes: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter advances: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -11073,7 +11086,7 @@ type StrictServerInterface interface {
 	// RegisterInTournament Register the current user's linked player
 	// (POST /tournaments/{id}/registration)
 	RegisterInTournament(ctx context.Context, request RegisterInTournamentRequestObject) (RegisterInTournamentResponseObject, error)
-	// AdjustTournamentSlot Reassign a slot's game (organizer, running state)
+	// AdjustTournamentSlot Adjust a slot (organizer, running state)
 	// (PATCH /tournaments/{id}/slots/{sid})
 	AdjustTournamentSlot(ctx context.Context, request AdjustTournamentSlotRequestObject) (AdjustTournamentSlotResponseObject, error)
 	// AttachTournamentSlotMatch Attach an existing unlinked match to a playing slot (organizer)

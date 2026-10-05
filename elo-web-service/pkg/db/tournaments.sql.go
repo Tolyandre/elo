@@ -376,7 +376,7 @@ type SetTournamentCompletedParams struct {
 	WinnerPlayerID *id.ID `json:"winner_player_id"`
 }
 
-// The grand final promoted exactly one player (ADR-26): read-only from here.
+// The grand final advanced exactly one player (ADR-26): read-only from here.
 func (q *Queries) SetTournamentCompleted(ctx context.Context, arg SetTournamentCompletedParams) error {
 	_, err := q.db.Exec(ctx, setTournamentCompleted, arg.ID, arg.WinnerPlayerID)
 	return err

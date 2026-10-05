@@ -441,7 +441,7 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 	}
 
 	// ADR-26: scores changed → points recompute → completion re-evaluates →
-	// possibly a different promotion set (with the cascade invalidation) —
+	// possibly a different advancement set (with the cascade invalidation) —
 	// still inside the match-write transaction, before the arena drain.
 	if s.Tournaments != nil {
 		if err := s.Tournaments.OnMatchChanged(ctx, q, matchID, opts.ActorUserID); err != nil {
