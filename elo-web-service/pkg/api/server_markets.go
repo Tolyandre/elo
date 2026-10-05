@@ -84,17 +84,55 @@ type marketRow struct {
 }
 
 func marketRowFromList(r db.ListMarketsRow) marketRow {
-	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
-		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
-		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
-		r.TwTournamentID, r.TwTournamentName}
+	return marketRow{
+		ID:                r.ID,
+		MarketType:        r.MarketType,
+		Status:            r.Status,
+		ResolutionOutcome: r.ResolutionOutcome,
+		ResolutionMatchID: r.ResolutionMatchID,
+		StartsAt:          r.StartsAt,
+		ClosesAt:          r.ClosesAt,
+		CreatedAt:         r.CreatedAt,
+		ResolvedAt:        r.ResolvedAt,
+		BettingClosedAt:   r.BettingClosedAt,
+		LiquidityB:        r.LiquidityB,
+		MaxGuarantorLoss:  r.MaxGuarantorLoss,
+		TargetPlayerIds:   r.TargetPlayerIds,
+		AllowOtherPlayers: r.AllowOtherPlayers,
+		MwGameIds:         r.MwGameIds,
+		WsTargetPlayerID:  r.WsTargetPlayerID,
+		WsGameIds:         r.WsGameIds,
+		WinsRequired:      r.WinsRequired,
+		MaxLosses:         r.MaxLosses,
+		TwTournamentID:    r.TwTournamentID,
+		TwTournamentName:  r.TwTournamentName,
+	}
 }
 
 func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
-	return marketRow{r.ID, r.MarketType, r.Status, r.ResolutionOutcome, r.ResolutionMatchID,
-		r.StartsAt, r.ClosesAt, r.CreatedAt, r.ResolvedAt, r.BettingClosedAt, r.LiquidityB, r.MaxGuarantorLoss,
-		r.TargetPlayerIds, r.AllowOtherPlayers, r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
-		r.TwTournamentID, r.TwTournamentName}
+	return marketRow{
+		ID:                r.ID,
+		MarketType:        r.MarketType,
+		Status:            r.Status,
+		ResolutionOutcome: r.ResolutionOutcome,
+		ResolutionMatchID: r.ResolutionMatchID,
+		StartsAt:          r.StartsAt,
+		ClosesAt:          r.ClosesAt,
+		CreatedAt:         r.CreatedAt,
+		ResolvedAt:        r.ResolvedAt,
+		BettingClosedAt:   r.BettingClosedAt,
+		LiquidityB:        r.LiquidityB,
+		MaxGuarantorLoss:  r.MaxGuarantorLoss,
+		TargetPlayerIds:   r.TargetPlayerIds,
+		AllowOtherPlayers: r.AllowOtherPlayers,
+		MwGameIds:         r.MwGameIds,
+		WsTargetPlayerID:  r.WsTargetPlayerID,
+		WsGameIds:         r.WsGameIds,
+		WinsRequired:      r.WinsRequired,
+		MaxLosses:         r.MaxLosses,
+		TwTournamentID:    r.TwTournamentID,
+		TwTournamentName:  r.TwTournamentName,
+	}
 }
 
 // buildTypedParams converts raw DB columns to the typed params union. It is
