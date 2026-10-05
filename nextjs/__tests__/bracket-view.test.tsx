@@ -106,7 +106,7 @@ describe("BracketView", () => {
         expect(container.textContent).not.toContain("Партий:");
         const card = container.querySelector('[data-bracket-slot="s1"]')!;
         const matchRows = [...card.querySelectorAll("ul")].at(-1)!;
-        expect(matchRows.textContent).toContain("Алиса 1 · Борис 0");
+        expect(matchRows.textContent).toContain("Алиса 1.0 · Борис 0.0");
     });
 
     it("links every played match row to the match page", () => {
@@ -114,7 +114,7 @@ describe("BracketView", () => {
         const card = container.querySelector('[data-bracket-slot="s1"]')!;
         const link = [...card.querySelectorAll("ul")].at(-1)!.querySelector("a")!;
         expect(link.getAttribute("href")).toBe("/matches/view?id=m1");
-        expect(link.textContent).toContain("Алиса 1");
+        expect(link.textContent).toContain("Алиса 1.0");
     });
 
     it("marks a slot with a minimal score next to the game name and pads empty rows", () => {
@@ -143,7 +143,7 @@ describe("BracketView", () => {
         expect(matchRows.textContent).toContain("—");
     });
 
-    it("shows a fractional minimal score with one decimal and the genitive «очка» for 1", () => {
+    it("shows a whole minimal score bare, a fractional one with a decimal, and the genitive «очка» for 1", () => {
         const frac: Bracket = {
             ...bracket,
             rounds: [{

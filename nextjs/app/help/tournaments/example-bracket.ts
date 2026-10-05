@@ -147,14 +147,16 @@ function planSeatOf(seat: SeatSpec) {
  * as a share of the leader's surplus, capped at 0.95 with +0.05 for every
  * 1st place holder — the winner rounds to exactly 1.0 — all in one-decimal
  * steps. Mirrors pkg/bracket.MatchPoints so the baked standings and the
- * baked match rows agree with the real formula.
+ * baked match rows agree with the real formula (the baked matches sit at
+ * the seeded default win reward 1).
  */
-function earnShares(raw: number[]): number[] {
+function earnShares(raw: number[], winReward = 1): number[] {
     const min = Math.min(...raw);
     const max = Math.max(...raw);
     if (max === min) return raw.map(() => 0.1); // nothing to separate: the bare bonus tenth
     return raw.map((s) => {
-        const share = (0.95 * (s - min)) / (max - min) + (s === max ? 0.05 : 0);
+        const ratio = Math.pow(s - min, winReward) / Math.pow(max - min, winReward);
+        const share = 0.95 * ratio + (s === max ? 0.05 : 0);
         return Math.round(share * 10) / 10;
     });
 }

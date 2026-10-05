@@ -313,14 +313,23 @@ function RoundColumn({
 }
 
 /**
- * Slot points formatting (ADR-30): one-decimal earn shares render without
- * trailing zeros («1», «0.5», «+1.2») — the wire values are already rounded
- * to one decimal, this only keeps the display tidy. `signed` prefixes a "+"
- * for positive standings totals.
+ * Slot points formatting (ADR-30): always one decimal («1.0», «0.5»,
+ * «+1.2») — the scale is one-decimal shares, so the display keeps the
+ * trailing zero, and this also masks float32 wire artifacts. `signed`
+ * prefixes a "+" for positive standings totals.
  */
 function fmtPoints(p: number, signed = false): string {
-    const s = Number.isInteger(p) ? String(p) : p.toFixed(1);
+    const s = p.toFixed(1);
     return signed && p > 0 ? `+${s}` : s;
+}
+
+/**
+ * Minimal score formatting: the editor accepts whole numbers only, so they
+ * display bare («до 1 очка»); fractional values kept from older tournaments
+ * stay one-decimal («до 2.5 очков»).
+ */
+function fmtMinScore(v: number): string {
+    return Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
 }
 
 /** Brief name for the compact match rows: the first word of the display name. */
@@ -395,7 +404,7 @@ function SlotCard({
                 <p className="text-xs text-muted-foreground truncate">
                     {gameName}
                     {slot.min_score > 0 && (
-                        <> · до {fmtPoints(slot.min_score)} {slot.min_score === 1 ? "очка" : "очков"}</>
+                        <> · до {fmtMinScore(slot.min_score)} {slot.min_score === 1 ? "очка" : "очков"}</>
                     )}
                 </p>
             )}

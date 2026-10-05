@@ -1454,7 +1454,7 @@ export interface components {
             seats: components["schemas"]["BracketSeat"][];
             matches: {
                 match_id: components["schemas"]["Base58ID"];
-                /** @description Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their share of the leader's margin, rounded to one decimal, in event order. */
+                /** @description Every participant's slot points earned in this match (ADR-30): the leader's 1.0 and everyone else their win-reward-weighted share of the leader's margin, rounded to one decimal, in event order. */
                 scores: {
                     player_id: components["schemas"]["Base58ID"];
                     /** Format: double */

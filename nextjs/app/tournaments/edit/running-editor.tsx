@@ -24,9 +24,9 @@ import {
 import { RulingDialog } from "./ruling-dialog";
 import { AttachMatchDialog } from "./attach-match-dialog";
 
-/** Минимальный счёт в поле ввода: целые без дробной части, иначе одна десятая. */
+/** Минимальный счёт: целые числа без десятых, старые дробные — с одной. */
 function fmtScore(v: number): string {
-    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+    return Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1);
 }
 
 /**
@@ -143,10 +143,10 @@ function SlotEditor({
                     <span className="text-xs text-muted-foreground">Мин. очков:</span>
                     <input
                         type="number"
-                        inputMode="decimal"
+                        inputMode="numeric"
                         min={0}
                         max={10}
-                        step={0.5}
+                        step={1}
                         className="border rounded px-2 py-1 h-8 w-24 text-sm"
                         defaultValue={slot.min_score}
                         key={`${slot.id}-${slot.min_score}`}
