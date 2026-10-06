@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Edit2 } from "lucide-react";
+import { MeepleIcon } from "@/components/meeple-icon";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type DeleteTarget = { id: Base58ID; name: string };
@@ -136,7 +137,7 @@ export default function PlayersAdminPage() {
 
     return (
         <PageContainer width="full">
-            <PageHeader title="Управление игроками" />
+            <PageHeader title="Управление игроками" icon={<MeepleIcon className="h-6 w-6 shrink-0" />} />
             <BackButton href="/admin" />
 
             <AdminPageTabs entityType="player" mainLabel="Игроки">
@@ -186,7 +187,7 @@ export default function PlayersAdminPage() {
                     )}
                 </h2>
                 {players.length === 0 ? (
-                    <EmptyState title="Нет игроков" />
+                    <EmptyState icon={MeepleIcon} title="Нет игроков" />
                 ) : (
                     <ResponsiveTable
                         mobile={
