@@ -19,60 +19,16 @@ const LEAGUE_TITLES: Record<string, string> = {
 export type ArenaRankPeriod = "day_ago" | "week_ago";
 
 /**
- * Recomputes display ranks for a filtered subset of arena players (club
- * filter): same rules as the server — leagues in descending promotion order,
- * rating descending within a league, ties sharing a rank.
- */
-export function computeDisplayRanks(
-  players: ArenaPlayer[],
-  leagues: string[],
-): Map<string, number | null> {
-  const priority = (league: string | null) => {
-    if (league == null) return leagues.length;
-    const i = leagues.indexOf(league);
-    return i === -1 ? leagues.length : leagues.length - 1 - i;
-  };
-  const ranked = players.filter((p) => p.rank != null);
-  const entries = ranked.map((p) => ({ id: p.player_id, league: p.league, rating: p.rating }));
-  entries.sort((a, b) => {
-    const pd = priority(a.league) - priority(b.league);
-    if (pd !== 0) return pd;
-    return b.rating - a.rating;
-  });
-
-  const map = new Map<string, number | null>();
-  let counter = 0;
-  let prevRounded: number | null = null;
-  let prevLeague: string | null = null;
-  let prevRank: number | null = null;
-  for (const e of entries) {
-    const rounded = Math.round(e.rating);
-    if (prevRounded === rounded && prevLeague === e.league && prevRank != null) {
-      map.set(e.id, prevRank);
-    } else {
-      prevRank = counter + 1;
-      map.set(e.id, prevRank);
-      prevRounded = rounded;
-      prevLeague = e.league;
-    }
-    counter++;
-  }
-  return map;
-}
-
-/**
  * Ranked arena players table (ADR-24): rank icon, club icons, name, rating
  * with the per-period diff and the rank-change badge — styled like the
- * /players page. `ranks` carries display ranks for the current club filter
- * (falls back to the server ranks).
+ * /players page. The rank is always the player's global server rank, even
+ * when the club filter narrows the list.
  */
 export function ArenaPlayersTable({
   players,
-  ranks,
   period,
 }: {
   players: ArenaPlayer[];
-  ranks?: Map<string, number | null>;
   period?: ArenaRankPeriod;
 }) {
   if (players.length === 0) {
@@ -82,7 +38,7 @@ export function ArenaPlayersTable({
     <table className="table-auto border-collapse w-full text-sm">
       <tbody>
         {players.map((player) => {
-          const displayRank = (ranks?.get(player.player_id) ?? player.rank) ?? null;
+          const displayRank = player.rank ?? null;
           const history = player.rank_history ?? null;
           const point = period != null && history ? history[period] : null;
           return (
@@ -139,17 +95,15 @@ export function ArenaPlayersTable({
 export function ArenaPlayersGroups({
   players,
   arena,
-  ranks,
   period,
 }: {
   players: ArenaPlayer[];
   arena: Arena;
-  ranks?: Map<string, number | null>;
   period?: ArenaRankPeriod;
 }) {
   const { leagues } = parseArenaSettings(arena.settings);
   if (leagues.length === 0) {
-    return <ArenaPlayersTable players={players} ranks={ranks} period={period} />;
+    return <ArenaPlayersTable players={players} period={period} />;
   }
   return (
     <>
@@ -162,7 +116,6 @@ export function ArenaPlayersGroups({
             </h2>
             <ArenaPlayersTable
               players={leaguePlayers}
-              ranks={ranks}
               period={period}
             />
             <LeagueFooter kind={league.kind} arena={arena} />

@@ -15,7 +15,7 @@ import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArenaPlayersGroups, computeDisplayRanks, type ArenaRankPeriod } from "@/components/arena-players-table";
+import { ArenaPlayersGroups, type ArenaRankPeriod } from "@/components/arena-players-table";
 import { ScoreLeadersTab } from "@/components/score-leaders-tab";
 import { ClubSelect } from "@/components/club-select";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -98,8 +98,9 @@ export function ArenaView() {
   // merges them in there and nowhere else).
   const feed = useArenaFeed(explicitId == null, effectiveId, filters);
 
-  // Players tab: period for the change indicators, club filter with
-  // client-side rank recompute (same as the /players page had).
+  // Players tab: period for the change indicators, club filter. The filter
+  // only narrows the list — ranks stay the server-computed global ones, and
+  // the change indicators keep comparing global rank to global history.
   const [period, setPeriod] = useLocalStorage<ArenaRankPeriod>("arena-players-period", "day_ago");
   const [clubId, setClubId] = useState<Base58ID | null>(null);
   const { clubs } = useClubs();
@@ -112,14 +113,6 @@ export function ArenaView() {
     const clubPlayerIds = new Set(clubs.find((c) => c.id === clubId)?.player_ids ?? []);
     return players.filter((p) => clubPlayerIds.has(p.player_id));
   }, [players, clubId, clubs]);
-  const leagues = useMemo(() => {
-    const settings = arena ? parseArenaLeagues(arena) : [];
-    return settings;
-  }, [arena]);
-  const displayRanks = useMemo(
-    () => computeDisplayRanks(displayedPlayers, leagues),
-    [displayedPlayers, leagues],
-  );
 
   // The leaders tab (score winners) only makes sense for a single-game arena.
   const singleGameId =
@@ -250,7 +243,6 @@ export function ArenaView() {
               <ArenaPlayersGroups
                 players={displayedPlayers}
                 arena={arena}
-                ranks={clubId == null ? undefined : displayRanks}
                 period={period}
               />
             </TabsContent>
@@ -284,11 +276,6 @@ export function ArenaView() {
       </div>
     </PageContainer>
   );
-}
-
-function parseArenaLeagues(arena: Arena): string[] {
-  const settings = arena.settings as { leagues?: { kind: string }[] };
-  return (settings.leagues ?? []).map((l) => l.kind);
 }
 
 function isUnconditional(arena: Arena): boolean {

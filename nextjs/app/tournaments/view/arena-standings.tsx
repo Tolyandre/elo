@@ -78,7 +78,7 @@ export function TournamentArenaStandings({ tournamentId }: { tournamentId: Base5
                             за неделю
                         </button>
                     </div>
-                    <ArenaPlayersGroups players={players} arena={arena} ranks={undefined} period={period} />
+                    <ArenaPlayersGroups players={players} arena={arena} period={period} />
                 </section>
                 <section className="min-w-0 space-y-2">
                     <h2 className="text-sm font-medium text-muted-foreground">Медали</h2>
