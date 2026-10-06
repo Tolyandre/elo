@@ -144,6 +144,7 @@ export function ArenaFeedTab({
                                     key={`m-${event.data.id}`}
                                     match={event.data}
                                     roundToInteger={roundToInteger}
+                                    clickable
                                 />
                             );
                         case "correction":
