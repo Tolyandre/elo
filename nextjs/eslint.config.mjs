@@ -1,9 +1,56 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
+// UI guardrails, described in the "Frontend UI recipe" section of AGENTS.md.
+// They keep every new page on the shared primitives instead of growing its own
+// style:
+//   1. no raw <input>/<select>/<textarea> — form controls come from
+//      components/ui (Input, Select, …);
+//   2. no raw Tailwind palette classes (text-red-600, bg-emerald-500, …) —
+//      colors go through the semantic tokens (text-destructive, text-success,
+//      text-warning, text-info, muted, chart colors).
+// components/ui and components/vendor are exempt: the primitives themselves
+// and vendored code may render raw elements and palettes.
+const UI_GUARDED_FILES = [
+  "app/**/*.{ts,tsx}",
+  "components/**/*.{ts,tsx}",
+  "hooks/**/*.{ts,tsx}",
+  "lib/**/*.{ts,tsx}",
+];
+
+const uiGuardrails = [
+  {
+    files: UI_GUARDED_FILES,
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "JSXOpeningElement[name.name=/^(input|select|textarea)$/]",
+          message:
+            "Raw form elements are banned — use components/ui (Input, Select, …) so controls stay consistent. See the 'Frontend UI recipe' section in AGENTS.md.",
+        },
+        {
+          selector:
+            "Literal[value=/\\b(text|bg|border|ring|fill|stroke|from|to|via|divide|outline|accent|decoration)-(red|green|blue|yellow|amber|orange|emerald|lime|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose|slate|gray|grey|zinc|neutral|stone)-[0-9]+/]",
+          message:
+            "Raw palette classes are banned — use the semantic tokens (text-destructive, text-success, text-warning, text-info, …) or chart colors; add new colors as CSS variables in app/globals.css. See the 'Frontend UI recipe' section in AGENTS.md.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["components/ui/**/*.{ts,tsx}", "components/vendor/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
+];
+
 const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
+  ...uiGuardrails,
   {
     ignores: [
       "node_modules/**",

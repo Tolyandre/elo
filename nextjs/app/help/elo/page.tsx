@@ -176,9 +176,9 @@ export default function HelpEloPage() {
                 </p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                    <Card className="border-green-200 dark:border-green-800">
+                    <Card className="border-success/30">
                         <CardContent className="pt-4 space-y-2">
-                            <p className="font-semibold text-green-700 dark:text-green-400">
+                            <p className="font-semibold text-success">
                                 Подходит
                             </p>
                             <ul className="space-y-1 text-sm list-none">
@@ -189,7 +189,7 @@ export default function HelpEloPage() {
                                     "Шахматы, шашки, го — победа кодируется как 1, поражение как 0",
                                 ].map(item => (
                                     <li key={item} className="flex gap-2">
-                                        <span className="text-green-600 dark:text-green-400 shrink-0">✓</span>
+                                        <span className="text-success shrink-0">✓</span>
                                         {item}
                                     </li>
                                 ))}
@@ -197,9 +197,9 @@ export default function HelpEloPage() {
                         </CardContent>
                     </Card>
 
-                    <Card className="border-red-200 dark:border-red-800">
+                    <Card className="border-destructive/30">
                         <CardContent className="pt-4 space-y-2">
-                            <p className="font-semibold text-red-700 dark:text-red-400">
+                            <p className="font-semibold text-destructive">
                                 Не подходит
                             </p>
                             <ul className="space-y-1 text-sm list-none">
@@ -210,7 +210,7 @@ export default function HelpEloPage() {
                                     "Игры с сильным элементом случайности без навыка",
                                 ].map(item => (
                                     <li key={item} className="flex gap-2">
-                                        <span className="text-red-600 dark:text-red-400 shrink-0">✗</span>
+                                        <span className="text-destructive shrink-0">✗</span>
                                         {item}
                                     </li>
                                 ))}

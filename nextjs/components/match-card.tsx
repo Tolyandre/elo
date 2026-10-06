@@ -87,22 +87,22 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
                   <RankIcon rank={ranks[idx]} className="inline-block align-middle mr-1" />
                   <ClubIcons playerId={p.playerId} className="align-middle mr-1" />
                   {p.playerId === myPlayerId
-                    ? <span className="break-words align-middle bg-blue-100 dark:bg-blue-900/40 rounded px-1">{p.name}</span>
+                    ? <span className="break-words align-middle bg-info/15 rounded px-1">{p.name}</span>
                     : <span className="break-words align-middle">{p.name}</span>}
                   {p.ratingAfter != null && (
                     <span className="text-xs text-muted-foreground align-middle ml-1">{Math.round(p.ratingAfter)}</span>
                   )}
                 </div>
 
-                <div className="relative h-2 bg-gray-200 rounded overflow-hidden">
+                <div className="relative h-2 bg-muted rounded overflow-hidden">
                   {/* Earned Elo indicator */}
                   <div
-                    className="absolute top-0 h-1 bg-green-400"
+                    className="absolute top-0 h-1 bg-success"
                     style={{ width: `${(p.ratingEarned / totalEarn) * 100}%` }}
                   />
                   {/* Staked rating indicator */}
                   <div
-                    className="absolute bottom-0 h-1 bg-red-400"
+                    className="absolute bottom-0 h-1 bg-destructive"
                     style={{ width: `${(Math.abs(p.ratingStaked) / Math.abs(totalPay)) * 100}%` }}
                   />
                 </div>
@@ -115,7 +115,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
               <div className="text-right w-16 flex-shrink-0">
                 <div
                   className={`font-semibold text-sm ${
-                    p.ratingChange > 0 ? "text-green-600" : p.ratingChange < 0 ? "text-red-600" : "text-gray-600"
+                    p.ratingChange > 0 ? "text-success" : p.ratingChange < 0 ? "text-destructive" : "text-muted-foreground"
                   }`}
                 >
                   {p.ratingChange >= 0 ? "+" : ""}

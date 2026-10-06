@@ -16,7 +16,7 @@ export function RankChangeIndicator({
 
   if (previous == null) {
     return (
-      <span className="text-green-600 text-xs" aria-label="New">
+      <span className="text-success text-xs" aria-label="New">
         New!
       </span>
     );
@@ -27,14 +27,14 @@ export function RankChangeIndicator({
 
   if (delta > 0) {
     return (
-      <span className="text-green-600 text-xs" aria-label={`Rank up ${delta}`}>
+      <span className="text-success text-xs" aria-label={`Rank up ${delta}`}>
         <span className="mr-1">▴</span>
         <span>{delta}</span>
       </span>
     );
   }
   return (
-    <span className="text-red-600 text-xs" aria-label={`Rank down ${-delta}`}>
+    <span className="text-destructive text-xs" aria-label={`Rank down ${-delta}`}>
       <span className="mr-1">▾</span>
       <span>{-delta}</span>
     </span>
@@ -51,7 +51,7 @@ export function RatingDiff({ current, previous }: { current: number; previous?: 
   return (
     <span className="whitespace-nowrap">
       <span className="inline-block min-w-10 text-right tabular-nums">{current.toFixed(0)}</span>
-      <span className="inline-block min-w-14 text-sm text-gray-500">
+      <span className="inline-block min-w-14 text-sm text-muted-foreground">
         {diff == null ? "" : `(${diff > 0 ? "+" : ""}${diff.toFixed(1)})`}
       </span>
     </span>

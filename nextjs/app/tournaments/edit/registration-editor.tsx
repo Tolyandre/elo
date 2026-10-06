@@ -8,12 +8,8 @@ import { useGames } from "@/app/gamesContext";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
-
-function toDatetimeLocal(iso: string): string {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+import { Input } from "@/components/ui/input";
+import { toDatetimeLocal } from "@/lib/datetime";
 
 type FormState = {
     name: string;
@@ -112,11 +108,10 @@ export function RegistrationEditor({
         <div className="space-y-6">
             <div>
                 <label htmlFor="t-name" className="block font-semibold mb-2">Название:</label>
-                <input
+                <Input
                     id="t-name"
                     value={form.name}
                     onChange={(e) => update({ name: e.target.value })}
-                    className="border rounded px-2 py-1 w-full"
                 />
             </div>
 
@@ -124,12 +119,11 @@ export function RegistrationEditor({
                 <label htmlFor="t-deadline" className="block font-semibold mb-2">
                     Дедлайн гранд-финала (необязательно):
                 </label>
-                <input
+                <Input
                     id="t-deadline"
                     type="datetime-local"
                     value={form.deadline}
                     onChange={(e) => update({ deadline: e.target.value })}
-                    className="border rounded px-2 py-1 w-full"
                 />
             </div>
 
@@ -141,28 +135,28 @@ export function RegistrationEditor({
                             <span className="min-w-0 truncate flex-1">{gameName(g.game_id)}</span>
                             <label className="text-xs text-muted-foreground whitespace-nowrap">
                                 от{" "}
-                                <input
+                                <Input
                                     type="number"
                                     min={2}
                                     value={g.min_players}
                                     onChange={(e) => updateRow(g.game_id, { min_players: Number(e.target.value) })}
-                                    className="border rounded px-1 py-0.5 w-14"
+                                    className="w-14"
                                 />
                             </label>
                             <label className="text-xs text-muted-foreground whitespace-nowrap">
                                 до{" "}
-                                <input
+                                <Input
                                     type="number"
                                     min={g.min_players}
                                     value={g.max_players}
                                     onChange={(e) => updateRow(g.game_id, { max_players: Number(e.target.value) })}
-                                    className="border rounded px-1 py-0.5 w-14"
+                                    className="w-14"
                                 />
                             </label>
                             <button
                                 type="button"
                                 aria-label={`Убрать ${gameName(g.game_id)}`}
-                                className="text-red-600 text-sm px-1"
+                                className="text-destructive text-sm px-1"
                                 onClick={() => update({ pool: form.pool.filter((row) => row.game_id !== g.game_id) })}
                             >
                                 ✕
@@ -183,7 +177,7 @@ export function RegistrationEditor({
                 <PlayerMultiSelect value={form.participantIds} onChange={(ids) => update({ participantIds: ids })} />
             </div>
 
-            {error && <div className="text-red-600 text-sm">{error}</div>}
+            {error && <div className="text-destructive text-sm">{error}</div>}
             <Button onClick={handleSave} disabled={saving} aria-busy={saving}>
                 {saving ? "Сохранение..." : "Сохранить"}
             </Button>

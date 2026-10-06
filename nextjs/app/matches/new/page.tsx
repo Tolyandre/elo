@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUrlQuery, setUrlQuery } from "@/lib/url-state";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
 import { MatchForm, MatchFormAuthAlerts } from "../MatchForm";
 import { CreateTableForm } from "@/components/tables/create-table-form";
 
@@ -15,7 +16,7 @@ export default function NewMatchPage() {
     const tab = params.get("tab") === "table" ? "table" : "match";
 
     return (
-        <main className="max-w-sm mx-auto p-4 space-y-6">
+        <PageContainer width="form">
             <PageHeader title="Добавить партию" />
             <MatchFormAuthAlerts />
             <Tabs value={tab} onValueChange={(v) => setUrlQuery((p) => p.set("tab", v))}>
@@ -30,6 +31,6 @@ export default function NewMatchPage() {
                     <CreateTableForm />
                 </TabsContent>
             </Tabs>
-        </main>
+        </PageContainer>
     );
 }

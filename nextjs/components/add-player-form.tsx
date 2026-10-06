@@ -6,6 +6,7 @@ import { useClubs } from "@/app/clubsContext";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ClubIcon } from "@/components/club-icon";
 import { cn } from "@/lib/utils";
 
@@ -105,8 +106,8 @@ export const AddPlayerForm = forwardRef<AddPlayerFormHandle, {
     return (
         <div className={cn("flex flex-col gap-2", compact ? "" : "sm:flex-row sm:items-stretch sm:gap-2")}>
             <div className={cn("flex", compact ? "flex-col gap-2" : "flex-col sm:flex-row sm:items-center")}>
-                <input
-                    className="border rounded p-2 flex-1 min-w-0"
+                <Input
+                    className="flex-1 min-w-0"
                     placeholder="Имя игрока"
                     value={name}
                     onChange={(e) => setName(e.target.value)}

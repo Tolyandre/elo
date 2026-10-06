@@ -45,7 +45,7 @@ export function ScoringTable({
                     {ROWS.map((row, rowIdx) => (
                         <tr key={row.id} className={rowIdx % 2 === 0 ? "" : "bg-muted/30"}>
                             <td className="sticky left-0 z-10 bg-background border border-border p-1 text-center"
-                                style={{ backgroundColor: rowIdx % 2 === 0 ? undefined : "hsl(var(--muted)/0.3)" }}>
+                                style={{ backgroundColor: rowIdx % 2 === 0 ? undefined : "color-mix(in oklab, var(--muted) 30%, transparent)" }}>
                                 {row.kind === "direct"
                                     ? <VictoryPoints hideValue />
                                     : row.kind === "pair"

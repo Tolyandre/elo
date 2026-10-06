@@ -7,7 +7,9 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMe } from "@/app/meContext";
 import { ErrorAlert } from "@/components/error-alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingRows } from "@/components/loading-rows";
+import { EmptyState } from "@/components/empty-state";
+import { PageContainer } from "@/components/page-container";
 import { TournamentList } from "./tournament-list";
 
 /**
@@ -19,7 +21,7 @@ export default function TournamentsPage() {
     const { data: tournaments, loading, error } = useAsyncResource(() => getTournamentsPromise());
 
     return (
-        <main className="max-w-sm mx-auto space-y-6">
+        <PageContainer width="narrow">
             <PageHeader
                 title="Турниры"
                 action={canEdit ? (
@@ -27,19 +29,13 @@ export default function TournamentsPage() {
                 ) : undefined}
             />
             {error && <ErrorAlert message={error} />}
-            {loading && (
-                <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <Skeleton key={i} className="h-12 w-full rounded-xl" />
-                    ))}
-                </div>
-            )}
+            {loading && <LoadingRows count={3} />}
             {tournaments && tournaments.length === 0 && (
-                <p className="text-sm text-muted-foreground">Турниров пока нет</p>
+                <EmptyState title="Турниров пока нет" />
             )}
             {tournaments && tournaments.length > 0 && (
                 <TournamentList tournaments={tournaments} />
             )}
-        </main>
+        </PageContainer>
     );
 }

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { VictoryPoints } from "./victory-points";
 import { ScoringBadge } from "./scoring-badge";
@@ -124,24 +125,24 @@ export function EditDialog({
                         {isDirect ? (
                             <div>
                                 <label className="text-sm font-medium block mb-1">Победные очки</label>
-                                <input
+                                <Input
                                     type="number" min="0" autoFocus
                                     value={directVal}
                                     onChange={e => setDirectVal(e.target.value.replace(/\D/g, ""))}
                                     onKeyDown={onlyDigits}
-                                    className="w-full border rounded px-3 py-2 text-xl text-center bg-background"
+                                    className="text-xl text-center"
                                     inputMode="numeric"
                                 />
                             </div>
                         ) : isPair ? (
                             <div>
                                 <label className="text-sm font-medium block mb-1">Количество сетов</label>
-                                <input
+                                <Input
                                     type="number" min="0" autoFocus
                                     value={count}
                                     onChange={e => setCount(e.target.value.replace(/\D/g, ""))}
                                     onKeyDown={onlyDigits}
-                                    className="w-full border rounded px-3 py-2 text-xl text-center bg-background"
+                                    className="text-xl text-center"
                                     inputMode="numeric"
                                 />
                             </div>
@@ -149,23 +150,23 @@ export function EditDialog({
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-sm font-medium block mb-1">ПО за сет</label>
-                                    <input
+                                    <Input
                                         type="number" min="0" autoFocus
                                         value={coeff}
                                         onChange={e => setCoeff(e.target.value.replace(/\D/g, ""))}
                                         onKeyDown={onlyDigits}
-                                        className="w-full border rounded px-2 py-2 text-xl text-center bg-background"
+                                        className="text-xl text-center"
                                         inputMode="numeric"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium block mb-1">Кол-во сетов</label>
-                                    <input
+                                    <Input
                                         type="number" min="0"
                                         value={count}
                                         onChange={e => setCount(e.target.value.replace(/\D/g, ""))}
                                         onKeyDown={onlyDigits}
-                                        className="w-full border rounded px-2 py-2 text-xl text-center bg-background"
+                                        className="text-xl text-center"
                                         inputMode="numeric"
                                     />
                                 </div>

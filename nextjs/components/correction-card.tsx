@@ -20,7 +20,7 @@ export function CorrectionCard({ correction }: { correction: Correction }) {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                     <span className="font-medium">{correction.player_name}</span>
-                    <span className={`font-semibold tabular-nums shrink-0 ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                    <span className={`font-semibold tabular-nums shrink-0 ${positive ? "text-success" : "text-destructive"}`}>
                         {diffLabel}
                     </span>
                 </div>

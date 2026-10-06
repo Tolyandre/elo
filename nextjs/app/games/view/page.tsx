@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
 import { Arena, getArenasPromise, getGamePromise, parseArenaSettings } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
@@ -38,10 +39,10 @@ function GameContent() {
 
   if (!id) {
     return (
-      <main className="space-y-8 max-w-sm mx-auto">
+      <PageContainer width="narrow">
         <PageHeader title="Игра" />
-        <p className="text-gray-600">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
-      </main>
+        <p className="text-muted-foreground">Please provide a game id in the query string, e.g. ?id=GAME_ID</p>
+      </PageContainer>
     );
   }
 
@@ -49,7 +50,7 @@ function GameContent() {
   const arenas = data?.arenas ?? [];
 
   return (
-    <main className="max-w-sm mx-auto">
+    <PageContainer width="narrow">
       <BackButton href="/games" label="Назад к играм" />
       <div className="space-y-4">
         <PageHeader title={game?.name ?? ""} />
@@ -69,7 +70,7 @@ function GameContent() {
           <ArenaCard key={arena.id} arena={arena} />
         ))}
       </div>
-    </main>
+    </PageContainer>
   );
 }
 

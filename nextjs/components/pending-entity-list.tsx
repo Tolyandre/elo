@@ -4,6 +4,7 @@ import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { CloudOff } from "lucide-react";
 import {
     Dialog,
@@ -98,8 +99,7 @@ export function PendingEntityList({
                         <DialogDescription>Запись ещё не сохранена на сервере — изменение сохранится локально.</DialogDescription>
                     </DialogHeader>
                     <div className="mt-2">
-                        <input
-                            className="w-full rounded border p-2"
+                        <Input
                             value={renameValue}
                             onChange={(e) => setRenameValue(e.target.value)}
                             aria-label="New name"

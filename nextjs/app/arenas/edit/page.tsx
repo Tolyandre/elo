@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
 import { BackButton } from "@/components/back-button";
 import { Arena, getArenaPromise } from "@/app/api";
 import { ArenaForm } from "../ArenaForm";
@@ -38,12 +39,12 @@ function EditArenaContent() {
 
 export default function EditArenaPage() {
     return (
-        <main className="max-w-md mx-auto space-y-6">
+        <PageContainer width="form">
             <PageHeader title="Редактирование" />
             <BackButton href="/arenas" />
             <Suspense fallback={<p>Загрузка...</p>}>
                 <EditArenaContent />
             </Suspense>
-        </main>
+        </PageContainer>
     );
 }

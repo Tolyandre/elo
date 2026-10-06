@@ -8,6 +8,9 @@ import { useClubs } from "@/app/clubsContext";
 import { ClubIcon } from "@/components/club-icon";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/page-container";
+import { EmptyState } from "@/components/empty-state";
 import { BackButton } from "@/components/back-button";
 
 export default function ClubsAdminPage() {
@@ -33,14 +36,14 @@ export default function ClubsAdminPage() {
     }
 
     return (
-        <main className="p-4">
+        <PageContainer width="full">
             <PageHeader title="Управление клубами" />
             <BackButton href="/admin" />
 
             <AdminPageTabs entityType="club" mainLabel="Клубы">
             <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <input
-                    className="border rounded p-2 flex-1"
+                <Input
+                    className="flex-1"
                     placeholder="Название клуба"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
@@ -54,7 +57,7 @@ export default function ClubsAdminPage() {
                 </div>
             </div>
 
-            {sortedClubs.length === 0 && <p>Нет клубов</p>}
+            {sortedClubs.length === 0 && <EmptyState title="Нет клубов" />}
 
             {sortedClubs.length > 0 && (
                 <section>
@@ -75,6 +78,6 @@ export default function ClubsAdminPage() {
                 </section>
             )}
             </AdminPageTabs>
-        </main>
+        </PageContainer>
     );
 }

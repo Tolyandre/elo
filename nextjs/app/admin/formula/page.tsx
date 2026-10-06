@@ -13,6 +13,10 @@ import { BackButton } from "@/components/back-button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
+import { EmptyState } from "@/components/empty-state";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { formatDateTimeLong } from "@/lib/datetime";
 
@@ -124,11 +128,11 @@ export default function FormulaAdminPage() {
     const minDateStr = minDate.toISOString().slice(0, 16);
 
     return (
-        <main className="p-4 max-w-3xl">
+        <PageContainer width="wide">
             <PageHeader title="Настройка формулы Elo" />
             <BackButton href="/admin" />
 
-            {loading && <p>Загрузка...</p>}
+            {loading && <LoadingRows />}
 
             {!loading && entries && (() => {
                 const current = entries.find((e) => isCurrentEntry(e, entries)) ?? null;
@@ -158,7 +162,7 @@ export default function FormulaAdminPage() {
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-sm text-muted-foreground">Нет активной настройки</p>
+                                <EmptyState title="Нет активной настройки" />
                             )}
                         </CardContent>
                     </Card>
@@ -177,10 +181,10 @@ export default function FormulaAdminPage() {
                         <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="sm:col-span-2">
                                 <Label htmlFor="formDate">Дата</Label>
-                                <input
+                                <Input
                                     id="formDate"
                                     type="datetime-local"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    className="mt-1"
                                     value={formDate}
                                     min={minDateStr}
                                     onChange={(e) => setFormDate(e.target.value)}
@@ -189,10 +193,10 @@ export default function FormulaAdminPage() {
                             </div>
                             <div>
                                 <Label htmlFor="formK">K — волатильность</Label>
-                                <input
+                                <Input
                                     id="formK"
                                     type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    className="mt-1"
                                     value={formK}
                                     step="1"
                                     min="1"
@@ -203,10 +207,10 @@ export default function FormulaAdminPage() {
                             </div>
                             <div>
                                 <Label htmlFor="formD">D — масштаб</Label>
-                                <input
+                                <Input
                                     id="formD"
                                     type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    className="mt-1"
                                     value={formD}
                                     step="1"
                                     min="100"
@@ -217,10 +221,10 @@ export default function FormulaAdminPage() {
                             </div>
                             <div>
                                 <Label htmlFor="formStartingElo">Начальный Elo</Label>
-                                <input
+                                <Input
                                     id="formStartingElo"
                                     type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    className="mt-1"
                                     value={formStartingElo}
                                     step="1"
                                     min="0"
@@ -230,10 +234,10 @@ export default function FormulaAdminPage() {
                             </div>
                             <div>
                                 <Label htmlFor="formWinReward">W — Win Reward</Label>
-                                <input
+                                <Input
                                     id="formWinReward"
                                     type="number"
-                                    className="mt-1 border rounded-md p-2 w-full bg-background text-foreground"
+                                    className="mt-1"
                                     value={formWinReward}
                                     step="0.1"
                                     min="0.1"
@@ -283,12 +287,12 @@ export default function FormulaAdminPage() {
                                                 <td className="py-2 pr-4">
                                                     <span>{formatDate(entry.effective_date)}</span>
                                                     {isCurrent && (
-                                                        <Badge className="ml-2 bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 hover:bg-green-100">
+                                                        <Badge className="ml-2 bg-success/10 text-success hover:bg-success/10">
                                                             Действует
                                                         </Badge>
                                                     )}
                                                     {isFuture && (
-                                                        <Badge className="ml-2 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 hover:bg-blue-100">
+                                                        <Badge className="ml-2 bg-info/10 text-info hover:bg-info/10">
                                                             Запланировано
                                                         </Badge>
                                                     )}
@@ -324,7 +328,7 @@ export default function FormulaAdminPage() {
                                 return (
                                     <div
                                         key={entry.effective_date}
-                                        className={`rounded-lg border p-3 ${isCurrent ? "border-green-300 dark:border-green-700" : ""}`}
+                                        className={`rounded-lg border p-3 ${isCurrent ? "border-success" : ""}`}
                                     >
                                         <div className="flex items-start justify-between gap-2 mb-2">
                                             <div className="flex flex-wrap items-center gap-1.5">
@@ -332,12 +336,12 @@ export default function FormulaAdminPage() {
                                                     {formatDate(entry.effective_date)}
                                                 </span>
                                                 {isCurrent && (
-                                                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 hover:bg-green-100">
+                                                    <Badge className="bg-success/10 text-success hover:bg-success/10">
                                                         Действует
                                                     </Badge>
                                                 )}
                                                 {isFuture && (
-                                                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 hover:bg-blue-100">
+                                                    <Badge className="bg-info/10 text-info hover:bg-info/10">
                                                         Запланировано
                                                     </Badge>
                                                 )}
@@ -391,6 +395,6 @@ export default function FormulaAdminPage() {
                 loading={del.pending}
                 onConfirm={del.confirm}
             />
-        </main>
+        </PageContainer>
     );
 }

@@ -32,7 +32,7 @@ describe("MatchSaveSection", () => {
                 <button>Сохранить партию</button>
             </MatchSaveSection>,
         );
-        expect(c.querySelector('input[type="checkbox"]')).not.toBeNull();
+        expect(c.querySelector('[role="checkbox"]')).not.toBeNull();
         expect(c.textContent).toContain("Открытый кэмп");
         expect(c.textContent).toContain("Не удалось сохранить");
         expect(c.textContent).toContain("Сохранить партию");
@@ -53,7 +53,7 @@ describe("MatchSaveSection", () => {
                 <button>Сохранить</button>
             </MatchSaveSection>,
         );
-        const input = c.querySelector('input[type="checkbox"]') as HTMLInputElement;
+        const input = c.querySelector('[role="checkbox"]') as HTMLInputElement;
         act(() => {
             input.click();
         });
@@ -67,7 +67,7 @@ describe("MatchSaveSection", () => {
                 <button>Сохранить</button>
             </MatchSaveSection>,
         );
-        expect(c.querySelector('input[type="checkbox"]')).toBeNull();
+        expect(c.querySelector('[role="checkbox"]')).toBeNull();
         expect(c.textContent).toContain("Сохранить");
     });
 });

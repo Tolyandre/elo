@@ -21,7 +21,7 @@ export function ScoringBadge({
     return (
         <span className="inline-flex items-center gap-1">
             <VictoryPoints value={vp} />
-            <span className="font-bold text-amber-700">×</span>
+            <span className="font-bold text-warning">×</span>
             <span className="inline-flex items-center gap-0">
                 <span style={{ display: "inline-flex", width: "2.4em", height: "2.4em" }}>{icon}</span>
                 {icon2 && <span style={{ display: "inline-flex", width: "2.4em", height: "2.4em" }}>{icon2}</span>}

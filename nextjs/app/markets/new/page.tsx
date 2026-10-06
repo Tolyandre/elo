@@ -9,6 +9,8 @@ import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
     Select,
@@ -24,6 +26,7 @@ import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { formatDateTime } from "@/lib/datetime";
+import { PageContainer } from "@/components/page-container";
 import { DEFAULT_MAX_GUARANTOR_LOSS } from "./liquidity";
 import { matchWinnerFormIssue, tournamentWinnerFormIssue } from "./validation";
 
@@ -203,7 +206,7 @@ export default function NewMarketPage() {
     }
 
     return (
-        <main className="max-w-sm mx-auto space-y-6">
+        <PageContainer width="form">
             <PageHeader title="Создать рынок" />
 
             {!canEdit && (
@@ -246,9 +249,9 @@ export default function NewMarketPage() {
                         </div>
                     </RadioGroup>
                     {startsAtMode === "specific" && (
-                        <input
+                        <Input
                             type="datetime-local"
-                            className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                            className="mt-1"
                             value={startsAt}
                             onChange={e => setStartsAt(e.target.value)}
                             required
@@ -259,10 +262,9 @@ export default function NewMarketPage() {
                 {marketType !== "tournament_winner" && (
                     <div className="space-y-1.5">
                         <Label htmlFor="closes_at">Закрытие</Label>
-                        <input
+                        <Input
                             id="closes_at"
                             type="datetime-local"
-                            className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                             value={closesAt}
                             onChange={e => setClosesAt(e.target.value)}
                             required
@@ -306,11 +308,9 @@ export default function NewMarketPage() {
                         </div>
                         <div className="space-y-1.5">
                             <label className="flex items-center gap-2 font-normal cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="size-4 rounded border-input"
+                                <Checkbox
                                     checked={allowOtherPlayers}
-                                    onChange={e => setAllowOtherPlayers(e.target.checked)}
+                                    onCheckedChange={(v) => setAllowOtherPlayers(v === true)}
                                 />
                                 Разрешить других игроков
                             </label>
@@ -340,11 +340,10 @@ export default function NewMarketPage() {
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="wins_required">Побед требуется</Label>
-                            <input
+                            <Input
                                 id="wins_required"
                                 type="number"
                                 min={1}
-                                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                 value={winsRequired}
                                 onChange={e => setWinsRequired(e.target.value)}
                                 required
@@ -354,11 +353,10 @@ export default function NewMarketPage() {
                             {/* max_losses is the defeat count that resolves «Нет»:
                                 the Nth defeat ends the streak race. */}
                             <Label htmlFor="max_losses">Поражений до «Нет» (необязательно)</Label>
-                            <input
+                            <Input
                                 id="max_losses"
                                 type="number"
                                 min={1}
-                                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                 value={maxLosses}
                                 onChange={e => setMaxLosses(e.target.value)}
                                 placeholder="без ограничений"
@@ -371,12 +369,11 @@ export default function NewMarketPage() {
 
                 <div className="space-y-1.5">
                     <Label htmlFor="max_guarantor_loss">Макс. убыток поручителей (L)</Label>
-                    <input
+                    <Input
                         id="max_guarantor_loss"
                         type="number"
                         min={1}
                         step="any"
-                        className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                         value={maxGuarantorLoss}
                         onChange={e => setMaxGuarantorLoss(e.target.value)}
                     />
@@ -396,6 +393,6 @@ export default function NewMarketPage() {
                     {submitting ? "Создание..." : "Создать"}
                 </Button>
             </form>
-        </main>
+        </PageContainer>
     );
 }

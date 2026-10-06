@@ -86,7 +86,7 @@ export function AttachMatchDialog({
             cancelText="Закрыть"
         >
             <div className="space-y-2 max-h-72 overflow-y-auto">
-                {error && <div className="text-red-600 text-sm">{error}</div>}
+                {error && <div className="text-destructive text-sm">{error}</div>}
                 {candidates == null && <p className="text-sm text-muted-foreground">Загрузка…</p>}
                 {candidates != null && candidates.length === 0 && (
                     <p className="text-sm text-muted-foreground">Подходящих партий нет.</p>

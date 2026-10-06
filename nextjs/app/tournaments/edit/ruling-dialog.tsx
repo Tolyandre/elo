@@ -5,6 +5,7 @@ import type { BracketSlot, Tournament } from "@/app/api";
 import type { Base58ID } from "@/lib/id";
 import { setTournamentSlotRulingPromise } from "@/app/api";
 import { ConfirmDialogWithContent } from "@/components/confirm-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /**
  * The organizer ruling dialog (ADR-26): an ordered promotion set of exactly
@@ -83,11 +84,9 @@ export function RulingDialog({
                     return (
                         <li key={pid}>
                             <label className="flex items-center gap-2 cursor-pointer text-sm">
-                                <input
-                                    type="checkbox"
-                                    className="h-4 w-4"
+                                <Checkbox
                                     checked={idx >= 0}
-                                    onChange={() => toggle(pid)}
+                                    onCheckedChange={() => toggle(pid)}
                                 />
                                 <span className="min-w-0 truncate">{playerName(pid)}</span>
                                 {idx >= 0 && (

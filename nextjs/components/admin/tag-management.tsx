@@ -6,6 +6,8 @@ import { useTags } from "@/app/tagsContext";
 import { useMe } from "@/app/meContext";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/empty-state";
 
 /**
  * Game-tag vocabulary management (the "Теги" tab of /admin/games): create,
@@ -65,8 +67,8 @@ export function TagManagement() {
             <p>Удалить можно только тег, который не присвоен ни одной игре. Переименование меняет тег у всех игр.</p>
 
             <div className="mb-6 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <input
-                    className="border rounded p-2 flex-1"
+                <Input
+                    className="flex-1"
                     placeholder="Новый тег"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
@@ -84,7 +86,7 @@ export function TagManagement() {
             <section>
                 <h2 className="text-lg font-medium mb-3">Список тегов</h2>
                 {sortedTags.length === 0 ? (
-                    <p>Теги ещё не созданы</p>
+                    <EmptyState title="Теги ещё не созданы" />
                 ) : (
                     <div className="space-y-2">
                         {sortedTags.map((tag) => {
@@ -107,7 +109,7 @@ export function TagManagement() {
                                                 setRenameValue(tag.name);
                                             }}
                                         >
-                                            Rename
+                                            Переименовать
                                         </Button>
                                         <Button
                                             variant="destructive"
@@ -116,7 +118,7 @@ export function TagManagement() {
                                             onClick={() => del.trigger(tag)}
                                             title={unused ? undefined : "Сначала уберите тег у всех игр"}
                                         >
-                                            Delete
+                                            Удалить
                                         </Button>
                                     </div>
                                 </div>
@@ -135,8 +137,7 @@ export function TagManagement() {
                 onConfirm={confirmRename}
             >
                 <div className="mt-2">
-                    <input
-                        className="w-full rounded border p-2"
+                    <Input
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
                         aria-label="Новое имя тега"

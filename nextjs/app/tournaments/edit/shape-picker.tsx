@@ -300,9 +300,9 @@ export function ShapePicker({
                             <PlanBracketPreview plan={plan} />
                         </div>
                     )}
-                    {error2 && <div className="text-red-600 text-sm">{error2}</div>}
+                    {error2 && <div className="text-destructive text-sm">{error2}</div>}
                     {unsavedChanges && (
-                        <p className="text-sm text-amber-600">
+                        <p className="text-sm text-warning">
                             Есть несохранённые изменения конфигурации — сохраните их, прежде чем начинать турнир.
                         </p>
                     )}

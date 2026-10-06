@@ -45,7 +45,7 @@ export function PlayerName({
     <span className={cn("inline-flex items-center gap-1 min-w-0", className)}>
       <ClubIcons playerId={player.id} />
       {me ? (
-        <span className="truncate bg-blue-100 dark:bg-blue-900/40 rounded px-1">{name}</span>
+        <span className="truncate bg-info/10 rounded px-1">{name}</span>
       ) : (
         <span className="truncate">{name}</span>
       )}

@@ -7,6 +7,8 @@ import { useMe } from "@/app/meContext";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { ErrorAlert } from "@/components/error-alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/page-container";
 import { toast } from "sonner";
 
 /**
@@ -26,10 +28,10 @@ export default function NewTournamentPage() {
 
     if (!canEdit) {
         return (
-            <main className="max-w-sm mx-auto space-y-4">
+            <PageContainer width="form">
                 <PageHeader title="Новый турнир" />
                 <ErrorAlert message="Создавать турниры могут только редакторы" />
-            </main>
+            </PageContainer>
         );
     }
 
@@ -57,16 +59,15 @@ export default function NewTournamentPage() {
     };
 
     return (
-        <main className="max-w-sm mx-auto space-y-6">
+        <PageContainer width="form">
             <PageHeader title="Новый турнир" />
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit}>
                 <div>
                     <label htmlFor="tournament-name" className="block font-semibold mb-2">Название:</label>
-                    <input
+                    <Input
                         id="tournament-name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="border rounded px-2 py-1 w-full"
                         required
                     />
                 </div>
@@ -74,22 +75,21 @@ export default function NewTournamentPage() {
                     <label htmlFor="tournament-deadline" className="block font-semibold mb-2">
                         Дедлайн гранд-финала (необязательно):
                     </label>
-                    <input
+                    <Input
                         id="tournament-deadline"
                         type="datetime-local"
                         value={deadline}
                         onChange={(e) => setDeadline(e.target.value)}
-                        className="border rounded px-2 py-1 w-full"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                         Если к дедлайну финал не сыгран, турнир автоматически отменяется.
                     </p>
                 </div>
-                {error && <div className="text-red-600 text-sm">{error}</div>}
+                {error && <div className="text-destructive text-sm">{error}</div>}
                 <Button type="submit" disabled={submitting} aria-busy={submitting}>
                     {submitting ? "Создание..." : "Создать турнир"}
                 </Button>
             </form>
-        </main>
+        </PageContainer>
     );
 }

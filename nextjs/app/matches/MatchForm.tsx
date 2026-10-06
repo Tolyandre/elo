@@ -14,12 +14,16 @@ import { useTournamentSlotFit } from "@/hooks/useTournamentSlotFit";
 import { CampCheckboxes } from "@/components/camp-checkboxes";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon, CloudOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { LoadingRows } from "@/components/loading-rows";
 import { LoginLink } from "@/components/login-link";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
 import { ClubIcons } from "@/components/player-name";
 import { GameCombobox } from "@/components/game-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { PendingMatch } from "@/lib/offline/types";
+import { toDatetimeLocal } from "@/lib/datetime";
 import { toast } from "sonner";
 
 type Participant = {
@@ -309,7 +313,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
         }
     };
 
-    if (loading && !offline) return <div className="p-4">Загрузка игроков...</div>;
+    if (loading && !offline) return <LoadingRows />;
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -336,12 +340,11 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     <label className="block font-semibold mb-2" htmlFor="matchDate">
                         Дата и время:
                     </label>
-                    <input
+                    <Input
                         id="matchDate"
                         type="datetime-local"
                         value={editDate}
                         onChange={(e) => setEditDate(e.target.value)}
-                        className="border rounded px-2 py-1 w-full"
                         required
                     />
                 </div>
@@ -361,9 +364,9 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 <div>
                     <h2 className="font-semibold mb-2">Турнир:</h2>
                     <label className="flex items-center gap-2 cursor-pointer">
-                        <input
+                        <Input
                             type="checkbox"
-                            className="h-4 w-4"
+                            className="h-4 w-4 p-0"
                             checked={tournamentChecked}
                             onChange={(e) => setTournamentChecked(e.target.checked)}
                         />
@@ -391,20 +394,21 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                                         <ClubIcons playerId={p.id} />
                                         <span className="truncate">{participantName(p)}</span>
                                     </span>
-                                    <input
+                                    <Input
                                         type="text"
                                         inputMode="numeric"
                                         value={p.points}
                                         onChange={(e) =>
                                             handlePointsChange(p.id, e.target.value)
                                         }
-                                        className={`border rounded px-2 py-1 w-20 ${errors[p.id] ? "border-red-500" : ""}`}
+                                        aria-invalid={errors[p.id] || undefined}
+                                        className="w-20"
                                         required
                                     />
                                     <span>очков</span>
                                 </div>
                                 {errors[p.id] && (
-                                    <span className="text-red-600 text-xs">Некорректный формат числа</span>
+                                    <span className="text-destructive text-xs">Некорректный формат числа</span>
                                 )}
                             </div>
                         ))}
@@ -412,11 +416,10 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 </div>
             )}
             {bottomErrorMessage && (
-                <div className="text-red-600 text-sm">{bottomErrorMessage}</div>
+                <div className="text-destructive text-sm">{bottomErrorMessage}</div>
             )}
-            <button
+            <Button
                 type="submit"
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 transition-colors flex items-center justify-center"
                 disabled={participants.length === 0 || !selectedGameId || submitting || syncBlocked}
                 aria-busy={submitting}
             >
@@ -431,12 +434,12 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                 ) : (
                     isEdit ? 'Сохранить изменения' : offline ? 'Сохранить офлайн' : 'Сохранить результат'
                 )}
-            </button>
+            </Button>
             {syncBlocked && (
                 <div className="text-muted-foreground text-sm">Идёт синхронизация — подождите…</div>
             )}
             {success && (
-                <div className="text-green-600 font-semibold mt-2">
+                <div className="text-success font-semibold mt-2">
                     Партия добавлена! Перенаправление...
                 </div>
             )}
@@ -448,13 +451,4 @@ function isNumber(value?: string | number): boolean {
     return ((value != null) &&
         (value !== '') &&
         !isNaN(Number(value.toString())));
-}
-
-function toDatetimeLocal(d: Date): string {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    const hours = String(d.getHours()).padStart(2, "0");
-    const minutes = String(d.getMinutes()).padStart(2, "0");
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
 }

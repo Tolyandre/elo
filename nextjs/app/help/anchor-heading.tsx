@@ -45,7 +45,7 @@ export function AnchorHeading({ id, level = 2, children }: {
                 className="shrink-0 rounded p-0.5 text-muted-foreground opacity-70 transition-opacity hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
             >
                 {copied
-                    ? <CheckIcon className="size-4 text-green-600 dark:text-green-400" />
+                    ? <CheckIcon className="size-4 text-success" />
                     : <Link2Icon className="size-4" />}
             </button>
         </Heading>

@@ -4,6 +4,7 @@ import { useMemo, useEffect, useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -169,19 +170,17 @@ export function EloCalculator() {
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">Текущий Elo</Label>
-                                            <input
+                                            <Input
                                                 type="number"
                                                 inputMode="numeric"
-                                                className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                                 {...register(`players.${i}.elo`)}
                                             />
                                         </div>
                                         <div className="space-y-1">
                                             <Label className="text-xs text-muted-foreground">Очки</Label>
-                                            <input
+                                            <Input
                                                 type="number"
                                                 inputMode="numeric"
-                                                className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                                 {...register(`players.${i}.score`)}
                                             />
                                         </div>
@@ -194,7 +193,7 @@ export function EloCalculator() {
                                         <span className="text-muted-foreground font-medium">Elo</span>
                                         <span>{negKE.toFixed(1)}</span>
                                         <span>{ksVal.toFixed(1)}</span>
-                                        <span className={`font-semibold ${delta >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                        <span className={`font-semibold ${delta >= 0 ? "text-success" : "text-destructive"}`}>
                                             {delta >= 0 ? "+" : ""}{delta.toFixed(1)}
                                         </span>
                                         <span>{Math.round(currentElo + delta)}</span>
@@ -229,18 +228,16 @@ export function EloCalculator() {
                                 <tr key={i} className="border-t">
                                     <td className="py-2 pr-2 font-medium">{i + 1}</td>
                                     <td className="py-2 pr-2">
-                                        <input
+                                        <Input
                                             type="number"
                                             inputMode="numeric"
-                                            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                             {...register(`players.${i}.elo`)}
                                         />
                                     </td>
                                     <td className="py-2 pr-2">
-                                        <input
+                                        <Input
                                             type="number"
                                             inputMode="numeric"
-                                            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
                                             {...register(`players.${i}.score`)}
                                         />
                                     </td>
@@ -248,7 +245,7 @@ export function EloCalculator() {
                                         {negKE.toFixed(1)}
                                     </td>
                                     <td className="py-2 pr-2 tabular-nums">{ksVal.toFixed(1)}</td>
-                                    <td className={`py-2 pr-2 tabular-nums font-semibold ${delta >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                    <td className={`py-2 pr-2 tabular-nums font-semibold ${delta >= 0 ? "text-success" : "text-destructive"}`}>
                                         {delta >= 0 ? "+" : ""}{delta.toFixed(1)}
                                     </td>
                                     <td className="py-2 tabular-nums">{Math.round(currentElo + delta)}</td>

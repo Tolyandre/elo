@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
@@ -76,7 +77,7 @@ function PlaygroundOutcomeCard({
             : `×${multiplier.toFixed(2)}`
         : probability.toFixed(2);
     return (
-        <div className={`flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
+        <div className={`flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-success" : ""}`}>
             <div className="text-center min-w-0">
                 <h4 className="font-semibold text-base truncate" style={{ color }} title={label}>
                     {isWinner ? "✓ " : ""}{label}
@@ -389,8 +390,7 @@ export function MarketPlayground() {
                         <p className="text-xs font-medium">Стать поручителем ({playerName})</p>
                         <label className="block space-y-1">
                             <span className="text-xs text-muted-foreground">Риск</span>
-                            <input
-                                className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
+                            <Input
                                 type="number"
                                 min={0.5}
                                 step="any"
@@ -426,7 +426,7 @@ export function MarketPlayground() {
                         >
                             Стать поручителем
                         </Button>
-                        {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+                        {error && <p className="text-xs text-destructive text-center">{error}</p>}
                     </div>
                 </CardContent>
             </Card>

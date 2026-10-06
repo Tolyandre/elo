@@ -46,7 +46,7 @@ function OutcomeDonut({ market, nameOf }: { market: Market; nameOf: (o: MarketOu
         id: o.id,
         name: nameOf(o),
         value: Math.max(o.probability, 0) * 100,
-        color: colors.get(o.id) ?? "#94a3b8",
+        color: colors.get(o.id) ?? "var(--muted-foreground)",
     }));
 
     return (
@@ -123,7 +123,7 @@ export function ProbabilityChart({ points, outcomes, nameOf }: { points: Probabi
     return (
         <ChartContainer
             className="h-36 pt-2 -mx-2 aspect-auto w-full"
-            config={Object.fromEntries(outcomes.map((o) => [o.id, { label: nameOf(o), color: colors.get(o.id) ?? "#94a3b8" }]))}
+            config={Object.fromEntries(outcomes.map((o) => [o.id, { label: nameOf(o), color: colors.get(o.id) ?? "var(--muted-foreground)" }]))}
         >
             <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
@@ -151,7 +151,7 @@ export function ProbabilityChart({ points, outcomes, nameOf }: { points: Probabi
                         type="monotone"
                         dataKey={o.id}
                         name={o.id}
-                        stroke={colors.get(o.id) ?? "#94a3b8"}
+                        stroke={colors.get(o.id) ?? "var(--muted-foreground)"}
                         strokeWidth={2}
                         dot={points.length <= 50 ? { r: 0.1 } : false}
                         isAnimationActive={false}
@@ -180,7 +180,7 @@ export function SettlementList({ details, showFlow = true }: { details: Settleme
                             {showFlow && (
                                 <span className="text-muted-foreground">({d.staked.toFixed(1)} → {d.earned.toFixed(1)})</span>
                             )}
-                            <span className={`w-10 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                            <span className={`w-10 text-right font-medium ${positive ? "text-success" : "text-destructive"}`}>
                                 {positive ? "+" : ""}{delta.toFixed(1)}
                             </span>
                         </span>

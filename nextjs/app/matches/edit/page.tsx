@@ -4,6 +4,8 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toBase58ID } from "@/lib/id";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
 import { useMatches } from "../MatchesContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
@@ -121,9 +123,9 @@ function MatchEditPageWrapped() {
         const kind = match?.calculator_kind;
         if (!match?.calculator_data || !kind) {
             return (
-                <main className="max-w-sm mx-auto p-4">
-                    <p className="text-center">Загрузка…</p>
-                </main>
+                <PageContainer width="wide">
+                    <LoadingRows />
+                </PageContainer>
             );
         }
         return (
@@ -160,7 +162,7 @@ function MatchEditPageWrapped() {
             : "Результат партии";
 
     return (
-        <main className="max-w-sm mx-auto p-4">
+        <PageContainer width="form">
             <PageHeader title={title} />
             <MatchFormAuthAlerts />
             {isSaved && !editSaved && fetchError ? (
@@ -169,7 +171,7 @@ function MatchEditPageWrapped() {
                     <AlertDescription>Ошибка: {fetchError}</AlertDescription>
                 </Alert>
             ) : (isSaved && !editSaved && (fetchLoading || matchesLoading)) || (!ready && !!id) ? (
-                <p className="text-center">Загрузка...</p>
+                <LoadingRows />
             ) : (
                 // When ?id= points to a pending match that no longer exists (already
                 // synced or deleted), editPending is undefined and we fall back to the
@@ -180,7 +182,7 @@ function MatchEditPageWrapped() {
                     editSaved={editSaved}
                 />
             )}
-        </main>
+        </PageContainer>
     );
 }
 
@@ -224,7 +226,7 @@ function CalculatorEdit({
     const title = adapter?.editTitle ?? "Редактирование партии";
 
     return (
-        <main className="max-w-5xl mx-auto p-3 sm:p-4 space-y-4">
+        <PageContainer width="wide">
             <AuthWarning />
             <PageHeader title={title} />
             {readOnly && (
@@ -257,6 +259,6 @@ function CalculatorEdit({
                     {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Сохранение…</>) : "Сохранить изменения"}
                 </Button>
             )}
-        </main>
+        </PageContainer>
     );
 }

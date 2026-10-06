@@ -36,6 +36,10 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/page-container";
+import { EmptyState } from "@/components/empty-state";
+import { ResponsiveTable } from "@/components/responsive-table";
 import { BackButton } from "@/components/back-button";
 import { cn } from "@/lib/utils";
 import { accentName, bggUrl, matchesAnyName, secondaryNames, teseraUrl } from "@/lib/game-names";
@@ -124,7 +128,7 @@ export default function GamesAdminPage() {
     const unmatchedCount = gamesFromContext.filter((g) => !g.tesera_ref).length;
 
     return (
-        <main className="p-4">
+        <PageContainer width="full">
                 <PageHeader title="Управление играми" />
                 <BackButton href="/admin" />
 
@@ -156,8 +160,8 @@ export default function GamesAdminPage() {
             </section>
 
             <div className="mb-2 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <input
-                    className="border rounded p-2 flex-1"
+                <Input
+                    className="flex-1"
                     placeholder="Название игры"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
@@ -201,11 +205,12 @@ export default function GamesAdminPage() {
                     )}
                 </h2>
                 {games.length === 0 ? (
-                    <p>Нет игр</p>
+                    <EmptyState title="Нет игр" />
                 ) : (
-                    <>
-                        {/* Mobile list */}
-                        <div className="sm:hidden space-y-2 mb-4">
+                    <ResponsiveTable
+                        mobile={
+                            // Mobile list
+                            <div className="space-y-2 mb-4">
                             {games.map((game) => (
                                 <div key={game.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
@@ -236,10 +241,11 @@ export default function GamesAdminPage() {
                                     <GameTagChips game={game} />
                                 </div>
                             ))}
-                        </div>
-
-                        {/* Desktop / larger screens: table with horizontal scroll if needed */}
-                        <div className="hidden sm:block overflow-x-auto">
+                            </div>
+                        }
+                        desktop={
+                            // Desktop / larger screens: table with horizontal scroll if needed
+                            <div className="overflow-x-auto">
                             <table className="min-w-full table-auto border-collapse mb-6">
                                 <thead>
                                     <tr>
@@ -287,8 +293,9 @@ export default function GamesAdminPage() {
                                     ))}
                                 </tbody>
                             </table>
-                        </div>
-                    </>
+                            </div>
+                        }
+                    />
                 )}
             </section>
             </AdminPageTabs>
@@ -315,7 +322,7 @@ export default function GamesAdminPage() {
                 loading={del.pending}
                 onConfirm={del.confirm}
             />
-        </main>
+        </PageContainer>
     );
 }
 
@@ -431,8 +438,7 @@ function GameEditDialog({
                     <label className="flex flex-col gap-1 text-sm">
                         Псевдоним (удобное название на русском)
                         <div className="flex gap-2">
-                            <input
-                                className="w-full rounded border p-2"
+                            <Input
                                 value={alias}
                                 onChange={(e) => setAlias(e.target.value)}
                                 placeholder="например, Бутылочка"
@@ -452,8 +458,7 @@ function GameEditDialog({
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                         Название на английском (если игра издавалась официально)
-                        <input
-                            className="w-full rounded border p-2"
+                        <Input
                             value={nameEn}
                             onChange={(e) => setNameEn(e.target.value)}
                             placeholder="например, The Bottle Imp"
@@ -461,8 +466,7 @@ function GameEditDialog({
                     </label>
                     <label className="flex flex-col gap-1 text-sm">
                         Русское название (если игра издавалась официально)
-                        <input
-                            className="w-full rounded border p-2"
+                        <Input
                             value={nameRu}
                             onChange={(e) => setNameRu(e.target.value)}
                             placeholder="например, Тень в бутылке"
@@ -471,8 +475,7 @@ function GameEditDialog({
                     <div className="grid grid-cols-2 gap-2">
                         <label className="flex flex-col gap-1 text-sm">
                             BGG id
-                            <input
-                                className="w-full rounded border p-2"
+                            <Input
                                 inputMode="numeric"
                                 value={bggRef}
                                 onChange={(e) => setBggRef(e.target.value.replace(/[^\d]/g, ""))}
@@ -480,8 +483,7 @@ function GameEditDialog({
                         </label>
                         <label className="flex flex-col gap-1 text-sm">
                             Tesera id
-                            <input
-                                className="w-full rounded border p-2"
+                            <Input
                                 inputMode="numeric"
                                 value={teseraRef}
                                 onChange={(e) => setTeseraRef(e.target.value.replace(/[^\d]/g, ""))}
@@ -496,8 +498,7 @@ function GameEditDialog({
 
                     <div className="border-t pt-3 flex flex-col gap-2">
                         <p className="text-sm font-medium">Подобрать в каталоге Tesera</p>
-                        <input
-                            className="w-full rounded border p-2"
+                        <Input
                             placeholder="Название для поиска"
                             value={pickerQuery}
                             onChange={(e) => setPickerQuery(e.target.value)}

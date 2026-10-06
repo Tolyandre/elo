@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { Skull, Crosshair, Timer } from "lucide-react"
+import { PageHeader } from "@/app/pageHeaderContext"
+import { PageContainer } from "@/components/page-container"
 
 // Live game tables (Skull King, Этот Безумный Мир) are created from
 // /matches/new — see lib/game-apps.ts. This page lists the standalone tools only.
@@ -24,7 +26,8 @@ const items = [
 
 export default function CalculatorsPage() {
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <PageContainer width="form">
+      <PageHeader title="Калькуляторы" />
       <ul className="divide-y">
         {items.map((item) => (
           <li key={item.href}>
@@ -38,6 +41,6 @@ export default function CalculatorsPage() {
           </li>
         ))}
       </ul>
-    </div>
+    </PageContainer>
   )
 }

@@ -6,6 +6,7 @@ import { MarketDetail, MarketGuarantee, createGuaranteePromise } from "@/app/api
 import { formatAmount } from "@/app/markets/format";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClubIcons } from "@/components/player-name";
 
@@ -184,8 +185,7 @@ export function MarketGuarantees({
                             <p className="text-xs font-medium">Стать поручителем</p>
                             <label className="block space-y-1">
                                 <span className="text-xs text-muted-foreground">Риск</span>
-                                <input
-                                    className="w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
+                                <Input
                                     type="number"
                                     min={0.5}
                                     step="any"
@@ -224,7 +224,7 @@ export function MarketGuarantees({
                             {!canJoin && disabledReason && (
                                 <p className="text-xs text-muted-foreground text-center">{disabledReason}</p>
                             )}
-                            {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+                            {error && <p className="text-xs text-destructive text-center">{error}</p>}
                         </div>
                     )}
                 </AccordionContent>

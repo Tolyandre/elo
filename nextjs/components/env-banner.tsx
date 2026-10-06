@@ -8,7 +8,7 @@ export function EnvBanner() {
   return (
     <div
       role="status"
-      className="sticky top-0 z-50 w-full bg-amber-500 py-1 text-center text-sm font-medium text-black"
+      className="sticky top-0 z-50 w-full bg-warning py-1 text-center text-sm font-medium text-primary-foreground"
     >
       {label}
     </div>

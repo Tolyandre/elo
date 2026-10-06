@@ -18,6 +18,10 @@ import { useMe } from "@/app/meContext";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
+import { EmptyState } from "@/components/empty-state";
 import { BackButton } from "@/components/back-button";
 import { ClubIcons } from "@/components/player-name";
 import { CLUB_ICONS, clubIconSrc, isValidClubIcon } from "@/lib/club-icons";
@@ -25,7 +29,7 @@ import { cn } from "@/lib/utils";
 
 export default function ClubAdminPage() {
     return (
-        <Suspense fallback={<main className="p-4"><p>Загрузка...</p></main>}>
+        <Suspense fallback={<PageContainer width="form"><LoadingRows /></PageContainer>}>
             <ClubAdminContent />
         </Suspense>
     );
@@ -118,15 +122,15 @@ function ClubAdminContent() {
     }
 
     if (!clubId) {
-        return <main className="p-4"><p>Не указан ID клуба.</p></main>;
+        return <PageContainer width="form"><EmptyState title="Не указан ID клуба." /></PageContainer>;
     }
 
     if (loading) {
-        return <main className="p-4"><p>Загрузка...</p></main>;
+        return <PageContainer width="form"><LoadingRows /></PageContainer>;
     }
 
     if (!club) {
-        return <main className="p-4"><p>Клуб не найден.</p></main>;
+        return <PageContainer width="form"><EmptyState title="Клуб не найден." /></PageContainer>;
     }
 
     const memberSet = new Set(club.player_ids);
@@ -135,7 +139,7 @@ function ClubAdminContent() {
     );
 
     return (
-        <main className="p-4">
+        <PageContainer width="form">
             <PageHeader title={clubDisplayName(club)} />
             <BackButton href="/admin/clubs" label="Назад к клубам" />
             <p className="text-sm text-muted-foreground mb-4">
@@ -170,7 +174,7 @@ function ClubAdminContent() {
                         disabled={!canEdit || iconLoading}
                         className={cn(
                             "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30 text-xs text-muted-foreground",
-                            !isValidClubIcon(club.icon) && "ring-2 ring-blue-500 border-blue-500",
+                            !isValidClubIcon(club.icon) && "ring-2 ring-info border-info",
                         )}
                         title="Без иконки"
                     >
@@ -184,7 +188,7 @@ function ClubAdminContent() {
                             disabled={!canEdit || iconLoading}
                             className={cn(
                                 "inline-flex h-12 w-12 items-center justify-center rounded border bg-muted/30",
-                                club.icon === key && "ring-2 ring-blue-500 border-blue-500",
+                                club.icon === key && "ring-2 ring-info border-info",
                             )}
                             title={label}
                         >
@@ -196,7 +200,7 @@ function ClubAdminContent() {
                 <p className="text-sm text-muted-foreground mt-2">
                     Выберите одну из встроенных иконок. Иконка отображается перед названием клуба и перед именами его игроков.
                 </p>
-                {iconError && <p className="text-sm text-red-600 mt-1">{iconError}</p>}
+                {iconError && <p className="text-sm text-destructive mt-1">{iconError}</p>}
             </section>
 
             <section>
@@ -204,7 +208,7 @@ function ClubAdminContent() {
                     Игроки клуба ({club.player_ids.length})
                 </h2>
                 {sortedPlayers.length === 0 ? (
-                    <p>Нет игроков</p>
+                    <EmptyState title="Нет игроков" />
                 ) : (
                     <div className="space-y-1">
                         {sortedPlayers.map((player) => {
@@ -243,12 +247,11 @@ function ClubAdminContent() {
                 onConfirm={confirmRename}
             >
                 <div className="mt-2">
-                    <input
-                        className="w-full rounded border p-2"
+                    <Input
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") confirmRename(); }}
-                        aria-label="New club name"
+                        aria-label="Новое название клуба"
                     />
                 </div>
             </ConfirmDialogWithContent>
@@ -264,6 +267,6 @@ function ClubAdminContent() {
                 loading={del.pending}
                 onConfirm={del.confirm}
             />
-        </main>
+        </PageContainer>
     );
 }

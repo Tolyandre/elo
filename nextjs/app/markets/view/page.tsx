@@ -21,6 +21,8 @@ import { TriangleAlertIcon } from "lucide-react";
 import { MarketGuarantees } from "@/components/market-guarantees";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMarketProbabilitiesSSE } from "@/hooks/useMarketsSSE";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
 import { outcomeDisplayName } from "@/app/markets/marketTypes";
 import { outcomeColors } from "@/app/markets/outcomeColors";
 import { sharesForTotal, buyQuote } from "@/app/markets/lmsr";
@@ -35,7 +37,7 @@ function DeltaRow({ label, net, earned, totalStaked }: { label: string; net: num
             <span className="text-muted-foreground truncate" title={label}>{label}</span>
             <span className="flex gap-2 shrink-0">
                 <span className="text-muted-foreground">({totalStaked.toFixed(1)} → {earned.toFixed(1)})</span>
-                <span className={`w-12 text-right font-medium ${positive ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
+                <span className={`w-12 text-right font-medium ${positive ? "text-success" : "text-destructive"}`}>
                     {positive ? "+" : ""}{net.toFixed(1)}
                 </span>
             </span>
@@ -116,7 +118,7 @@ function OutcomeColumn({
         : probability.toFixed(2);
     const buyLabel = "Поставить 1";
     return (
-        <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-green-500" : ""}`}>
+        <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-success" : ""}`}>
             <div className="text-center min-w-0">
                 <h3 className="font-semibold text-lg truncate" style={{ color: titleColor }} title={label}>{isWinner ? "✓ " : ""}{label}</h3>
                 <p className="text-2xl font-bold leading-tight">{headline}</p>
@@ -206,9 +208,9 @@ function MarketPageContent() {
 
     if (loading || !market) {
         return (
-            <main className="max-w-sm mx-auto">
-                <p className="text-muted-foreground">{loading ? "Загрузка..." : "Рынок не найден"}</p>
-            </main>
+            <PageContainer width="narrow">
+                {loading ? <LoadingRows /> : <p className="text-muted-foreground">Рынок не найден</p>}
+            </PageContainer>
         );
     }
 
@@ -285,7 +287,7 @@ function MarketPageContent() {
     const reserved = displayMarket.reserved;
     const betLimit = displayMarket.bet_limit;
     return (
-        <main className="max-w-sm mx-auto space-y-4">
+        <PageContainer width="narrow">
             <BackButton href="/markets" label="Назад к ставкам" />
             <PageHeader title="Ставки" />
             <MarketCard market={displayMarket} probabilityHistory={probabilityHistory} />
@@ -360,7 +362,7 @@ function MarketPageContent() {
             <ResolutionDescription market={displayMarket} />
 
             <MarketRelatedMatches market={displayMarket} roundToInteger={me.roundToInteger} />
-        </main>
+        </PageContainer>
     );
 }
 

@@ -14,6 +14,7 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { roundTitle } from "../labels";
 import { useConfirmAction, ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
     Select,
     SelectContent,
@@ -141,13 +142,13 @@ function SlotEditor({
             {noMatches ? (
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Мин. очков:</span>
-                    <input
+                    <Input
                         type="number"
                         inputMode="numeric"
                         min={0}
                         max={10}
                         step={1}
-                        className="border rounded px-2 py-1 h-8 w-24 text-sm"
+                        className="h-8 w-24 text-sm"
                         defaultValue={slot.min_score}
                         key={`${slot.id}-${slot.min_score}`}
                         disabled={busy}
@@ -161,7 +162,7 @@ function SlotEditor({
             ) : (
                 <p className="text-xs text-muted-foreground">Мин. очков: {fmtScore(slot.min_score)}</p>
             )}
-            {error && <p className="text-red-600 text-sm">{error}</p>}
+            {error && <p className="text-destructive text-sm">{error}</p>}
 
             {slot.ruling_player_ids != null && slot.ruling_player_ids.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-md bg-muted px-2 py-1">
@@ -188,7 +189,7 @@ function SlotEditor({
                         </Link>
                         <button
                             type="button"
-                            className="text-red-600 text-sm px-1 shrink-0"
+                            className="text-destructive text-sm px-1 shrink-0"
                             aria-label="Открепить партию"
                             onClick={() => detach.trigger(m.match_id)}
                         >

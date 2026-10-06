@@ -8,6 +8,9 @@ import { MarketCard } from "@/components/market-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMarketsLobbySSE } from "@/hooks/useMarketsSSE";
+import { PageContainer } from "@/components/page-container";
+import { SectionHeader } from "@/components/section-header";
+import { EmptyState } from "@/components/empty-state";
 
 export default function MarketsPage() {
     const [data, setData] = useState<{ active: Market[]; closed: Market[] } | null>(null);
@@ -25,7 +28,7 @@ export default function MarketsPage() {
     }, [lobbyTick]);
 
     return (
-        <main className="max-w-sm mx-auto space-y-6">
+        <PageContainer width="narrow">
             <PageHeader
                 title="Ставки"
                 action={<Button asChild size="sm"><Link href="/markets/new">Создать рынок</Link></Button>}
@@ -43,7 +46,7 @@ export default function MarketsPage() {
                 <>
                     {data.active.length > 0 && (
                         <section className="space-y-4">
-                            <h2 className="text-lg font-medium">Активные рынки</h2>
+                            <SectionHeader>Активные рынки</SectionHeader>
                             {data.active.map(m => (
                                 <Link key={m.id} href={`/markets/view?id=${m.id}`} className="block">
                                     <MarketCard market={m} className="hover:bg-accent transition-colors cursor-pointer" />
@@ -53,12 +56,12 @@ export default function MarketsPage() {
                     )}
 
                     {data.active.length === 0 && data.closed.length === 0 && (
-                        <p className="text-muted-foreground text-center py-8">Нет рынков</p>
+                        <EmptyState title="Нет рынков" />
                     )}
 
                     {data.closed.length > 0 && (
                         <section className="space-y-4">
-                            <h2 className="text-lg font-medium">Завершённые рынки</h2>
+                            <SectionHeader>Завершённые рынки</SectionHeader>
                             {data.closed.map(m => (
                                 <Link key={m.id} href={`/markets/view?id=${m.id}`} className="block">
                                     <MarketCard market={m} className="hover:bg-accent transition-colors cursor-pointer" />
@@ -68,6 +71,6 @@ export default function MarketsPage() {
                     )}
                 </>
             )}
-        </main>
+        </PageContainer>
     );
 }

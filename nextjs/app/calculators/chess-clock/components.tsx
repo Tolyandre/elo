@@ -23,6 +23,7 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import {
     GripVertical,
     ChevronUp,
@@ -545,7 +546,7 @@ export function SetupScreen({
                             <div>
                                 <Label className="text-sm font-medium">Время на партию</Label>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <input
+                                    <Input
                                         type="number"
                                         min="0"
                                         max="120"
@@ -555,10 +556,10 @@ export function SetupScreen({
                                                 Math.max(0, parseInt(e.target.value) || 0)
                                             )
                                         }
-                                        className="w-16 rounded border border-input bg-background px-2 py-1 text-sm text-center"
+                                        className="w-16 text-center"
                                     />
                                     <span className="text-sm text-muted-foreground">мин</span>
-                                    <input
+                                    <Input
                                         type="number"
                                         min="0"
                                         max="59"
@@ -568,7 +569,7 @@ export function SetupScreen({
                                                 Math.max(0, Math.min(59, parseInt(e.target.value) || 0))
                                             )
                                         }
-                                        className="w-16 rounded border border-input bg-background px-2 py-1 text-sm text-center"
+                                        className="w-16 text-center"
                                     />
                                     <span className="text-sm text-muted-foreground">сек</span>
                                 </div>
@@ -576,7 +577,7 @@ export function SetupScreen({
                             <div>
                                 <Label className="text-sm font-medium">Инкремент (Фишер)</Label>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <input
+                                    <Input
                                         type="number"
                                         min="0"
                                         max="60"
@@ -586,7 +587,7 @@ export function SetupScreen({
                                                 Math.max(0, parseInt(e.target.value) || 0)
                                             )
                                         }
-                                        className="w-16 rounded border border-input bg-background px-2 py-1 text-sm text-center"
+                                        className="w-16 text-center"
                                     />
                                     <span className="text-sm text-muted-foreground">сек</span>
                                 </div>

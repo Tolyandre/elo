@@ -1,6 +1,7 @@
 "use client"
 import React from "react";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
 import { useMe } from "@/app/meContext";
 import { AuthWarning } from "@/components/auth-warning";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -125,7 +126,7 @@ export default function DebugPage() {
   const globalChanged = report?.global.changed_players ?? [];
 
   return (
-    <main className="p-4 max-w-2xl mx-auto space-y-4">
+    <PageContainer width="wide">
       <PageHeader title="Debug" />
 
       <Card>
@@ -197,6 +198,6 @@ export default function DebugPage() {
           if (await runUpdate()) setConfirmOpen(false);
         }}
       />
-    </main>
+    </PageContainer>
   );
 }

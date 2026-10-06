@@ -4,24 +4,24 @@ import { MarketOutcome } from "@/app/api";
 // Да/Нет pair keeps the historical green/red, "Ничья" is neutral gray, and player
 // outcomes take palette colors in outcome order.
 const PLAYER_PALETTE = [
-    "#3b82f6", // blue
-    "#f59e0b", // amber
-    "#8b5cf6", // violet
-    "#14b8a6", // teal
-    "#ec4899", // pink
-    "#6366f1", // indigo
-    "#84cc16", // lime
-    "#f97316", // orange
-    "#06b6d4", // cyan
-    "#f43f5e", // rose
-    "#a855f7", // purple
-    "#65a30d", // olive
+    "var(--chart-8)", // blue
+    "var(--chart-5)", // amber
+    "var(--chart-6)", // violet
+    "var(--chart-2)", // teal
+    "var(--chart-9)", // pink
+    "var(--chart-8)", // indigo
+    "var(--chart-7)", // lime
+    "var(--chart-1)", // orange
+    "var(--chart-2)", // cyan
+    "var(--chart-1)", // rose
+    "var(--chart-6)", // purple
+    "var(--chart-7)", // olive
 ] as const;
 
 const FIXED_KIND_COLORS: Partial<Record<MarketOutcome["kind"], string>> = {
-    yes: "#22c55e", // green
-    no: "#ef4444", // red
-    other: "#94a3b8", // slate
+    yes: "var(--chart-7)", // green
+    no: "var(--chart-1)", // red
+    other: "var(--muted-foreground)", // slate
 };
 
 /** Returns the outcome id → color map for a market's outcomes. */

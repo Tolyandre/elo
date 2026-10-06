@@ -3,6 +3,7 @@ import type { Base58ID } from "@/lib/id";
 
 import { useMe } from "@/app/meContext"
 import { PageHeader } from "@/app/pageHeaderContext"
+import { PageContainer } from "@/components/page-container"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -29,7 +30,7 @@ export default function SettingsPage() {
     }
 
     return (
-        <main className="max-w-sm mx-auto">
+        <PageContainer width="narrow">
             <PageHeader title="Мои настройки" />
 
             <div className="space-y-6">
@@ -87,6 +88,6 @@ export default function SettingsPage() {
                     </div>
                 )}
             </div>
-        </main>
+        </PageContainer>
     )
 }

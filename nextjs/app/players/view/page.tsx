@@ -11,6 +11,7 @@ import { findExtremes } from '@/lib/rating-chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
 import { PageHeader } from '@/app/pageHeaderContext'
+import { PageContainer } from '@/components/page-container'
 import { ErrorAlert } from '@/components/error-alert'
 import { RankIcon } from '@/components/rank-icon'
 import { formatDate } from '@/lib/datetime'
@@ -49,7 +50,7 @@ function EloTable({ rows, title }: { rows: GameEloStat[]; title: string }) {
                                 {rows.map(row => (
                                     <tr key={row.game_id} className="border-b last:border-0">
                                         <td className="py-2 pr-4">{row.game_name}</td>
-                                        <td className={`py-2 text-right font-mono ${row.elo_earned >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                        <td className={`py-2 text-right font-mono ${row.elo_earned >= 0 ? 'text-success' : 'text-destructive'}`}>
                                             {formatElo(row.elo_earned, roundToInteger)}
                                         </td>
                                     </tr>
@@ -105,13 +106,13 @@ function MatchesTable({ rows }: { rows: GameMatchStat[] }) {
 
 function LoadingSkeleton() {
     return (
-        <div className="space-y-6 p-4 max-w-3xl mx-auto">
+        <PageContainer width="wide">
             <Skeleton className="h-9 w-48" />
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-48 w-full" />
             <Skeleton className="h-48 w-full" />
             <Skeleton className="h-48 w-full" />
-        </div>
+        </PageContainer>
     )
 }
 
@@ -121,7 +122,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
     const extremes = useMemo(() => findExtremes(history), [history])
 
     return (
-        <div className="space-y-6 p-4 max-w-3xl mx-auto">
+        <PageContainer width="wide">
             <BackButton href="/" label="Назад к рейтингу" />
             <PageHeader title={stats.player_name} />
 
@@ -154,7 +155,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
             <MatchesTable rows={stats.top_games_by_matches} />
             <EloTable rows={stats.top_games_by_elo_earned} title="Успешные игры" />
             <EloTable rows={stats.worst_games_by_elo_earned} title="&quot;Я понял как играть&quot;" />
-        </div>
+        </PageContainer>
     )
 }
 

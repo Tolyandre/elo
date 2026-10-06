@@ -95,7 +95,7 @@ export function GameTable({
                                                     <span className="text-muted-foreground text-center whitespace-nowrap" style={{ fontSize: `clamp(${6 * scalePct}px, ${6 * scalePct}cqi, ${12 * scalePct}px)` }}>
                                                         {entry.actual !== null ? entry.actual : ""}/{isMasked ? "?" : entry.bid}
                                                     </span>
-                                                    <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-red-600" : "text-green-700"}`} style={{ fontSize: `clamp(${6 * scalePct}px, ${7 * scalePct}cqi, ${14 * scalePct}px)` }}>
+                                                    <span className={`font-semibold text-center whitespace-nowrap ${score! < 0 ? "text-destructive" : "text-success"}`} style={{ fontSize: `clamp(${6 * scalePct}px, ${7 * scalePct}cqi, ${14 * scalePct}px)` }}>
                                                         {scoreDisplay ?? ""}
                                                     </span>
                                                 </div>
@@ -117,7 +117,7 @@ export function GameTable({
                             {totals.map((total, pi) => {
                                 const isHidden = hideTotalPlayerIndices?.includes(pi);
                                 return (
-                                    <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold ${isHidden ? "text-muted-foreground" : total < 0 ? "text-red-600" : "text-green-700"}`}>
+                                    <td key={pi} className={`border border-border px-2 py-1 md:px-3 md:py-2 text-center text-base md:text-lg font-bold ${isHidden ? "text-muted-foreground" : total < 0 ? "text-destructive" : "text-success"}`}>
                                         {isHidden ? "—" : total}
                                     </td>
                                 );

@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react"
 import { useForm, FormProvider, useWatch, useController } from "react-hook-form"
 
 import { Slider } from "@/components/ui/slider"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 
 import {
     Card,
@@ -240,29 +241,21 @@ export function StPatrickCalculator() {
                     <CardContent className="space-y-6">
                         <RHFField name="numberOfPlayers" label="Количество игроков:">
                             {({ value, onChange }) => (
-                                <div className="flex gap-4">
+                                <RadioGroup
+                                    className="flex gap-4"
+                                    value={String(value)}
+                                    onValueChange={(v) => onChange(Number(v))}
+                                >
                                     <label className="inline-flex items-center gap-2">
-                                        <input
-                                            type="radio"
-                                            name="numberOfPlayers"
-                                            value={3}
-                                            checked={value === 3}
-                                            onChange={() => onChange(3)}
-                                        />
+                                        <RadioGroupItem value="3" />
                                         <span>3</span>
                                     </label>
 
                                     <label className="inline-flex items-center gap-2">
-                                        <input
-                                            type="radio"
-                                            name="numberOfPlayers"
-                                            value={4}
-                                            checked={value === 4}
-                                            onChange={() => onChange(4)}
-                                        />
+                                        <RadioGroupItem value="4" />
                                         <span>4</span>
                                     </label>
-                                </div>
+                                </RadioGroup>
                             )}
                         </RHFField>
 

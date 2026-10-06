@@ -61,7 +61,7 @@ export function PlayerMultiSelect({
       <span className="inline-flex items-center gap-1 min-w-0">
         <ClubIcons playerId={o.value} />
         {o.value === myPlayerId
-          ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{o.label}</span>
+          ? <span className="bg-info/10 rounded px-1">{o.label}</span>
           : <span>{o.label}</span>}
       </span>
     ),

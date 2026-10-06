@@ -18,6 +18,9 @@ import {
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { BackButton } from "@/components/back-button";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
+import { EmptyState } from "@/components/empty-state";
 
 export default function AdminUsersPage() {
   const { id: currentUserId } = useMe();
@@ -59,11 +62,11 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <main className="p-4 max-w-2xl">
+    <PageContainer width="wide">
       <PageHeader title="Управление пользователями" />
       <BackButton href="/admin" />
 
-      {loading && <p>Загрузка...</p>}
+      {loading && <LoadingRows />}
 
       {error && (
         <p className="text-sm text-destructive mb-4">{error}</p>
@@ -73,7 +76,7 @@ export default function AdminUsersPage() {
         <p className="text-sm text-destructive mb-4">{toggleError}</p>
       )}
 
-      {!loading && users && users.length === 0 && <p>Пользователей нет</p>}
+      {!loading && users && users.length === 0 && <EmptyState title="Нет пользователей" />}
 
       {!loading && users && users.length > 0 && (
         <div className="space-y-1">
@@ -122,6 +125,6 @@ export default function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageContainer>
   );
 }

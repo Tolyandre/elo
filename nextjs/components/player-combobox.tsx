@@ -139,7 +139,7 @@ function PlayerCommand({ value, tabs, allOptions, onSelect, listClassName, allow
     >
       <ClubIcons playerId={option.value} />
       {option.value === playerId
-        ? <span className="bg-blue-100 dark:bg-blue-900/40 rounded px-1">{option.label}</span>
+        ? <span className="bg-info/10 rounded px-1">{option.label}</span>
         : option.label}
       <Check className={cn("ml-auto", value === option.value ? "opacity-100" : "opacity-0")} />
     </CommandItem>

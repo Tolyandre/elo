@@ -20,6 +20,7 @@ import {
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { TableGameViewProps } from "@/components/tables/registry";
+import { CellConflictDialog, useCellConflict } from "@/components/tables/cell-conflict";
 
 type CellEditValue = number | CellValue | null;
 
@@ -68,7 +69,11 @@ export function IawwGameView({
     // The cell's value as the dialog opened — what the user is editing on top
     // of. Compared against the latest server value at save time (Google
     // Sheets-style): equal → proceed silently; changed meanwhile → warn.
-    const [editSeen, setEditSeen] = useState<number | CellValue | null>(null);
+    const conflict = useCellConflict<EditTarget, number | CellValue>({
+        readCurrent: readCellValue,
+        isEqual: cellValuesEqual,
+        apply: applyCellEdit,
+    });
 
     const calcState: GameState | null = useMemo(() => (state ? liveToCalc(state) : null), [state]);
 
@@ -83,7 +88,7 @@ export function IawwGameView({
     }
 
     function openEdit(target: EditTarget) {
-        setEditSeen(readCellValue(target));
+        conflict.markSeen(readCellValue(target));
         setEditTarget(target);
     }
 
@@ -144,32 +149,6 @@ export function IawwGameView({
         });
     }
 
-    // The user confirmed the dialog: if nobody changed the cell since they
-    // saw it — or their value already matches what's there now (someone saved
-    // exactly this) — apply the edit; otherwise let them choose.
-    function handleSaveCell(target: EditTarget, value: number | CellValue) {
-        const current = readCellValue(target);
-        if (cellValuesEqual(editSeen, current) || cellValuesEqual(value, current)) {
-            applyCellEdit(target, value);
-            return;
-        }
-        setOverwriteChoice({ target, value, seen: editSeen, current });
-    }
-
-    // Someone changed the cell between dialog open and save — the user
-    // decides (same UX for the host and a connected player).
-    const [overwriteChoice, setOverwriteChoice] = useState<{
-        target: EditTarget;
-        value: number | CellValue;
-        seen: number | CellValue | null;
-        current: number | CellValue | null;
-    } | null>(null);
-
-    function settleOverwrite(apply: boolean) {
-        if (overwriteChoice && apply) applyCellEdit(overwriteChoice.target, overwriteChoice.value);
-        setOverwriteChoice(null);
-    }
-
     const [isSending, setIsSending] = useState(false);
 
     async function submitMyScore() {
@@ -220,7 +199,7 @@ export function IawwGameView({
                         return (
                             <div key={p.id} className="flex items-center gap-1">
                                 {done
-                                    ? <Check className="h-3 w-3 text-green-600" />
+                                    ? <Check className="h-3 w-3 text-success" />
                                     : <span className="h-3 w-3 rounded-full border border-muted-foreground inline-block shrink-0" />
                                 }
                                 <span className={done ? "text-foreground" : "text-muted-foreground"}>
@@ -251,7 +230,7 @@ export function IawwGameView({
                 target={editTarget}
                 state={calcState}
                 onClose={() => setEditTarget(null)}
-                onSave={handleSaveCell}
+                onSave={(target, value) => conflict.save(target, value)}
                 readOnly={isHost ? false : !canEditOwnColumn}
             />
 
@@ -266,7 +245,7 @@ export function IawwGameView({
                 </Button>
             )}
             {!isHost && myEntry?.done && (
-                <p className="text-sm text-green-700 text-center flex items-center justify-center gap-2">
+                <p className="text-sm text-success text-center flex items-center justify-center gap-2">
                     <Check className="h-4 w-4" />
                     Счёт отправлен — ждите ведущего
                 </p>
@@ -307,31 +286,11 @@ export function IawwGameView({
             {/* The cell changed between dialog open and save (someone else's
                 edit landed): the user decides whose value wins — the same UX
                 for the host and a connected player. */}
-            <AlertDialog
-                open={!!overwriteChoice}
-                onOpenChange={(open) => {
-                    if (!open && overwriteChoice) settleOverwrite(false);
-                }}
-            >
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Ячейку уже изменили</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Пока вы редактировали, значение изменилось: было «{formatCellValue(overwriteChoice?.seen ?? null)}»,
-                            стало «{formatCellValue(overwriteChoice?.current ?? null)}».
-                            Сохранить ваше «{formatCellValue(overwriteChoice?.value ?? null)}»?
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel onClick={() => settleOverwrite(false)}>
-                            Оставить новое
-                        </AlertDialogCancel>
-                        <AlertDialogAction onClick={() => settleOverwrite(true)}>
-                            Сохранить моё
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <CellConflictDialog
+                pending={conflict.pending}
+                format={formatCellValue}
+                onSettle={conflict.settle}
+            />
         </>
     );
 }

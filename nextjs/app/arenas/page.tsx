@@ -11,10 +11,11 @@ import { useMe } from "@/app/meContext";
 import { useGames } from "@/app/gamesContext";
 import { useMatches } from "@/app/matches/MatchesContext";
 import { arenaMatchesCount, buildArenaGroups, type ArenaGroup } from "@/lib/arena-groups";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
 import { ErrorAlert } from "@/components/error-alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GameCombobox } from "@/components/game-combobox";
 import { TournamentList } from "@/app/tournaments/tournament-list";
@@ -41,7 +42,7 @@ export default function ArenasPage() {
   };
   const action = canEdit ? actionByTab[tab] : null;
   return (
-    <main className="max-w-sm mx-auto space-y-6">
+    <PageContainer>
       <PageHeader
         title="Арены"
         action={action ? (
@@ -49,7 +50,7 @@ export default function ArenasPage() {
         ) : undefined}
       />
       <ArenasContent />
-    </main>
+    </PageContainer>
   );
 }
 
@@ -153,13 +154,7 @@ function ArenasContent() {
       )}
 
       {error && <ErrorAlert message={error} />}
-      {loading && (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-xl" />
-          ))}
-        </div>
-      )}
+      {loading && <LoadingRows count={4} />}
 
       {tab === "games" && (
         <>
@@ -218,13 +213,7 @@ function ArenasContent() {
       {tab === "tournaments" && (
         <>
           {tournamentsError && <ErrorAlert message={tournamentsError} />}
-          {tournamentsLoading && (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-xl" />
-              ))}
-            </div>
-          )}
+          {tournamentsLoading && <LoadingRows count={3} />}
           {tournaments && tournaments.length === 0 && (
             <p className="text-sm text-muted-foreground">Турниров пока нет</p>
           )}

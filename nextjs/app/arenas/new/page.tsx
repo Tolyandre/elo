@@ -3,6 +3,7 @@
 import React, { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
 import { BackButton } from "@/components/back-button";
 import { ArenaForm } from "../ArenaForm";
 
@@ -23,11 +24,11 @@ function NewArenaContent() {
 
 export default function NewArenaPage() {
     return (
-        <main className="max-w-md mx-auto space-y-6">
+        <PageContainer width="form">
             <BackButton href="/arenas" />
             <Suspense fallback={<p>Загрузка...</p>}>
                 <NewArenaContent />
             </Suspense>
-        </main>
+        </PageContainer>
     );
 }

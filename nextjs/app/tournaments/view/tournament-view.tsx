@@ -22,6 +22,7 @@ import { TournamentArenaStandings } from "./arena-standings";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
 import { PlayerLinkNotice } from "@/components/player-link-notice";
+import { PageContainer } from "@/components/page-container";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,10 +56,10 @@ export function TournamentView() {
 
     if (!id) {
         return (
-            <main className="max-w-sm sm:max-w-5xl mx-auto space-y-4">
+            <PageContainer width="narrow" className="sm:max-w-5xl">
                 <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
                 <p className="text-muted-foreground">Турнир не найден — проверьте ссылку.</p>
-            </main>
+            </PageContainer>
         );
     }
 
@@ -67,7 +68,7 @@ export function TournamentView() {
     }
 
     return (
-        <main className="max-w-sm sm:max-w-5xl mx-auto space-y-4">
+        <PageContainer width="narrow" className="sm:max-w-5xl">
             <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
             {error && <ErrorAlert message={error} />}
             {loading && (
@@ -86,7 +87,7 @@ export function TournamentView() {
                     setTab={setTab}
                 />
             )}
-        </main>
+        </PageContainer>
     );
 }
 
@@ -162,9 +163,9 @@ function TournamentViewLoaded({
             </div>
 
             {winnerId && (
-                <Card className="border-amber-400/60">
+                <Card className="border-warning/60">
                     <CardContent className="flex items-center gap-2 py-3">
-                        <Trophy className="h-5 w-5 text-amber-500 shrink-0" />
+                        <Trophy className="h-5 w-5 text-warning shrink-0" />
                         <span>
                             Победитель:{" "}
                             <Link href={`/players/view?id=${winnerId}`} className="font-semibold underline">

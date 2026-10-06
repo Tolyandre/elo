@@ -28,7 +28,7 @@ export function MatchSaveSection({
                 checked={selection.checked}
                 onToggle={selection.toggle}
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             {children}
         </div>
     );

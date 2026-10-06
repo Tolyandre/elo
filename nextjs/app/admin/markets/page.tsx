@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { MarketCard } from "@/components/market-card";
 import { ErrorAlert } from "@/components/error-alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageContainer } from "@/components/page-container";
+import { EmptyState } from "@/components/empty-state";
 import { getMarketTitle } from "@/app/markets/marketTypes";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
@@ -32,7 +34,7 @@ export default function AdminMarketsPage() {
     });
 
     return (
-        <main className="p-4 max-w-sm mx-auto space-y-4">
+        <PageContainer width="narrow">
             <PageHeader title="Активные рынки" />
             <BackButton href="/admin" />
 
@@ -45,7 +47,7 @@ export default function AdminMarketsPage() {
                 </>
             )}
             {!loading && !error && markets.length === 0 && (
-                <p className="text-muted-foreground">Активных рынков нет</p>
+                <EmptyState title="Нет активных рынков" />
             )}
 
             {markets.map((market) => (
@@ -99,6 +101,6 @@ export default function AdminMarketsPage() {
                 loading={del.pending}
                 onConfirm={del.confirm}
             />
-        </main>
+        </PageContainer>
     );
 }

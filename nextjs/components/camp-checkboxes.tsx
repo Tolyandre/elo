@@ -2,6 +2,7 @@
 
 import type { CampArena } from "@/app/arenas/campsContext";
 import type { Base58ID } from "@/lib/id";
+import { Checkbox } from "@/components/ui/checkbox";
 
 /**
  * Camp arena picker (ADR-27) used by the match form and the calculators.
@@ -27,11 +28,9 @@ export function CampCheckboxes({
             <div className="flex flex-col gap-2">
                 {active.map((c) => (
                     <label key={c.id} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4"
+                        <Checkbox
                             checked={checked.includes(c.id)}
-                            onChange={(e) => onToggle(c.id, e.target.checked)}
+                            onCheckedChange={(v) => onToggle(c.id, v === true)}
                         />
                         <span>{c.name}</span>
                     </label>

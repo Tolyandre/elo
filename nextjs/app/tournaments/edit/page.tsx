@@ -10,6 +10,7 @@ import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
 import { LoginLink } from "@/components/login-link";
+import { PageContainer } from "@/components/page-container";
 import { Skeleton } from "@/components/ui/skeleton";
 import { tournamentStatusLabel } from "../labels";
 import { RegistrationEditor } from "./registration-editor";
@@ -30,15 +31,15 @@ export default function TournamentEditPage() {
 
     if (!id) {
         return (
-            <main className="max-w-sm mx-auto space-y-4">
+            <PageContainer width="form">
                 <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
                 <p className="text-muted-foreground">Турнир не найден — проверьте ссылку.</p>
-            </main>
+            </PageContainer>
         );
     }
 
     return (
-        <main className="max-w-sm mx-auto space-y-4">
+        <PageContainer width="form">
             <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
             {!meLoading && !canEdit && (
                 <div className="space-y-2">
@@ -47,7 +48,7 @@ export default function TournamentEditPage() {
                 </div>
             )}
             {canEdit && <TournamentEditLoaded tournamentId={id} />}
-        </main>
+        </PageContainer>
     );
 }
 

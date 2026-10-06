@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { SkullKingCalculator } from "@/app/games/skull-king-calculator"
 import { PageHeader } from "@/app/pageHeaderContext"
+import { PageContainer } from "@/components/page-container"
 
 export const metadata: Metadata = {
   title: "Skull King",
@@ -9,9 +10,9 @@ export const metadata: Metadata = {
 
 export default function SkullKingCalculatorPage() {
     return (
-        <main className="max-w-sm mx-auto">
+        <PageContainer width="narrow">
             <PageHeader title="Skull King" />
             <SkullKingCalculator />
-        </main>
+        </PageContainer>
     )
 }

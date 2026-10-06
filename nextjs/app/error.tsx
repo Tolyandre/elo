@@ -27,7 +27,7 @@ export default function ErrorPage({
     }, [error]);
 
     return (
-        <main className="max-w-sm mx-auto space-y-4 p-4">
+        <main className="max-w-sm mx-auto space-y-4">
             <Alert variant="destructive">
                 <AlertCircleIcon />
                 <AlertTitle>Что-то пошло не так</AlertTitle>

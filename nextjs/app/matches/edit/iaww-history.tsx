@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
 import { ScoringTable } from "@/components/calculators/iaww/scoring-table";
 import { EditDialog } from "@/components/calculators/iaww/edit-dialog";
 import { fromStorage } from "@/components/calculators/iaww/storage";
 import type { IAWWStorage } from "@/components/calculators/iaww/storage";
 import type { CellValue, EditTarget, GameState } from "@/components/calculators/iaww/scoring";
+import { CalculatorHistory } from "@/components/calculators/calculator-history";
 
 /**
  * It's a Wonderful World calculator in history mode — re-opens a saved
@@ -23,41 +23,40 @@ export function IawwHistory({
     readOnly: boolean;
     onStateChange: (state: unknown) => void;
 }) {
-    const [state, setState] = useState<GameState>(() => fromStorage(storage as unknown as IAWWStorage));
-    const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
-
-    function handleSaveCell(target: EditTarget, value: number | CellValue) {
-        let next: GameState;
-        if (target.kind === "direct") {
-            next = {
-                ...state,
-                directVP: { ...state.directVP, [target.playerId]: value as number },
-            };
-        } else {
-            const row = state.multipliers[target.rowId] ?? {};
-            next = {
-                ...state,
-                multipliers: {
-                    ...state.multipliers,
-                    [target.rowId]: { ...row, [target.playerId]: value as CellValue },
-                },
-            };
-        }
-        setState(next);
-        onStateChange(next);
-    }
-
     return (
-        <div className="space-y-3">
-            <ScoringTable state={state} onEdit={readOnly ? () => {} : setEditTarget} readOnly={readOnly} />
-            <EditDialog
-                target={editTarget}
-                state={state}
-                onClose={() => setEditTarget(null)}
-                onSave={handleSaveCell}
-                readOnly={readOnly}
-            />
-        </div>
+        <CalculatorHistory<GameState, EditTarget>
+            storage={storage}
+            readOnly={readOnly}
+            onStateChange={onStateChange}
+            fromStorage={s => fromStorage(s as unknown as IAWWStorage)}
+            applyEdit={(state, target, value) => {
+                if (target.kind === "direct") {
+                    return {
+                        ...state,
+                        directVP: { ...state.directVP, [target.playerId]: value as number },
+                    };
+                }
+                const row = state.multipliers[target.rowId] ?? {};
+                return {
+                    ...state,
+                    multipliers: {
+                        ...state.multipliers,
+                        [target.rowId]: { ...row, [target.playerId]: value as CellValue },
+                    },
+                };
+            }}
+            table={(state, requestEdit) => (
+                <ScoringTable state={state} onEdit={requestEdit} readOnly={readOnly} />
+            )}
+            dialog={({ state, target, save, close }) => (
+                <EditDialog
+                    target={target}
+                    state={state}
+                    onClose={close}
+                    onSave={(editTarget, value) => save(editTarget, value)}
+                    readOnly={readOnly}
+                />
+            )}
+        />
     );
 }
-

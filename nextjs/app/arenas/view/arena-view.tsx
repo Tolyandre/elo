@@ -11,6 +11,7 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
+import { PageContainer } from "@/components/page-container";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -158,7 +159,7 @@ export function ArenaView() {
   const pendingGameId = filters.gameId ?? singleGameId ?? undefined;
 
   return (
-    <main className="max-w-sm mx-auto">
+    <PageContainer width="narrow">
       {!isGlobal && <BackButton href="/arenas" label="Назад к аренам" />}
       <div className="space-y-4">
         <PageHeader
@@ -232,14 +233,14 @@ export function ArenaView() {
                 <button
                   type="button"
                   onClick={() => setPeriod("day_ago")}
-                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-info underline decoration-dashed"}`}
                 >
                   за день
                 </button>
                 <button
                   type="button"
                   onClick={() => setPeriod("week_ago")}
-                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                  className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-info underline decoration-dashed"}`}
                 >
                   за неделю
                 </button>
@@ -279,7 +280,7 @@ export function ArenaView() {
           </Tabs>
         )}
       </div>
-    </main>
+    </PageContainer>
   );
 }
 

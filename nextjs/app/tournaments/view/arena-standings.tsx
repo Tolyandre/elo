@@ -66,14 +66,14 @@ export function TournamentArenaStandings({ tournamentId }: { tournamentId: Base5
                         <button
                             type="button"
                             onClick={() => setPeriod("day_ago")}
-                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "day_ago" ? "font-medium" : "text-info underline decoration-dashed"}`}
                         >
                             за день
                         </button>
                         <button
                             type="button"
                             onClick={() => setPeriod("week_ago")}
-                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-blue-600 underline decoration-dashed"}`}
+                            className={`px-3 py-1 rounded text-sm whitespace-nowrap ${period === "week_ago" ? "font-medium" : "text-info underline decoration-dashed"}`}
                         >
                             за неделю
                         </button>

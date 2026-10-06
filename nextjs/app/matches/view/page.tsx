@@ -15,6 +15,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Edit2, Trash2, ClipboardEdit } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/app/pageHeaderContext";
+import { PageContainer } from "@/components/page-container";
+import { LoadingRows } from "@/components/loading-rows";
 import { MatchCard } from "@/components/match-card";
 import { MatchAudit } from "@/components/audit/match-audit";
 import { PendingMatchCard } from "@/components/pending-match-card";
@@ -49,9 +51,9 @@ function MatchViewPageWrapped() {
   // wait — otherwise a pending match would flash the saved-match fetch (and 404).
   if (!ready) {
     return (
-      <main className="max-w-sm mx-auto p-4">
-        <p className="text-center">Загрузка...</p>
-      </main>
+      <PageContainer width="narrow">
+        <LoadingRows />
+      </PageContainer>
     );
   }
   if (pendingMatches.some((m) => m.clientId === id)) return <PendingMatchView clientId={id} />;
@@ -60,13 +62,13 @@ function MatchViewPageWrapped() {
 
 function NotFound() {
   return (
-    <main className="max-w-sm mx-auto p-4">
+    <PageContainer width="narrow">
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>Партия не найдена</AlertDescription>
       </Alert>
       <BackButton href="/?tab=matches" label="Вернуться к списку партий" />
-    </main>
+    </PageContainer>
   );
 }
 
@@ -126,27 +128,27 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   if (loading) {
     return (
-      <main className="max-w-sm mx-auto p-4">
-        <p className="text-center">Загрузка...</p>
-      </main>
+      <PageContainer width="narrow">
+        <LoadingRows />
+      </PageContainer>
     );
   }
 
   if (error) {
     return (
-      <main className="max-w-sm mx-auto p-4">
+      <PageContainer width="narrow">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>Ошибка: {error}</AlertDescription>
         </Alert>
-      </main>
+      </PageContainer>
     );
   }
 
   if (!match) return <NotFound />;
 
   return (
-    <main className="max-w-sm mx-auto p-4 space-y-4">
+    <PageContainer width="narrow">
       <BackButton href="/?tab=matches" label="Назад к партиям" />
 
       <PageHeader title="Просмотр партии" action={<EditAction id={match.id} viaCalculator={!!match.calculator_kind} />} />
@@ -176,7 +178,7 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
           ))}
         </div>
       )}
-    </main>
+    </PageContainer>
   );
 }
 
@@ -203,16 +205,16 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
 
   if (!ready || !match) {
     return (
-      <main className="max-w-sm mx-auto p-4">
-        <p className="text-center">Загрузка...</p>
-      </main>
+      <PageContainer width="narrow">
+        <LoadingRows />
+      </PageContainer>
     );
   }
 
   if (!match) return <NotFound />;
 
   return (
-    <main className="max-w-sm mx-auto p-4 space-y-4">
+    <PageContainer width="narrow">
       <BackButton href="/?tab=matches" label="Назад к партиям" />
 
       <PageHeader
@@ -223,7 +225,7 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
       <PendingMatchCard match={match} />
 
       {canEdit && (
-        <Button variant="destructive" disabled={isSyncing} onClick={() => setDeleteOpen(true)}>
+        <Button variant="destructive" size="sm" disabled={isSyncing} onClick={() => setDeleteOpen(true)}>
           <Trash2 />
           Удалить
         </Button>
@@ -254,6 +256,6 @@ function PendingMatchView({ clientId }: { clientId: Base58ID }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </PageContainer>
   );
 }

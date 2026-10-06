@@ -15,6 +15,7 @@ import {
 } from "@/components/calculators/skull-king";
 import { toStorage as skToStorage } from "@/components/calculators/skull-king/storage";
 import { MatchSaveSection } from "@/components/tables/match-save-section";
+import { CellConflictDialog, useCellConflict } from "@/components/tables/cell-conflict";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ResultEntryCard } from "./result-entry-card";
@@ -41,6 +42,20 @@ import type { TableGameViewProps } from "@/components/tables/registry";
 // hand (manual bidding / cell edits) and saves the final match. Participants
 // are picked at table creation — there is no setup phase here.
 
+/** Cells hold {bid, actual, bonus}; nulls count as equal to absent fields. */
+function roundEntriesEqual(a: RoundEntry | null, b: RoundEntry | null): boolean {
+    if (!a || !b) return !a && !b;
+    return (a.bid ?? null) === (b.bid ?? null)
+        && (a.actual ?? null) === (b.actual ?? null)
+        && (a.bonus ?? null) === (b.bonus ?? null);
+}
+
+function formatRoundEntry(e: RoundEntry | null): string {
+    if (!e) return "—";
+    if (e.actual == null) return `ставка ${e.bid}`;
+    return `${e.actual}${e.bonus ? `+${e.bonus}` : ""}`;
+}
+
 export function SkullKingGameView({
     gameState,
     isHost,
@@ -66,8 +81,20 @@ export function SkullKingGameView({
 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isBidRevealed, setIsBidRevealed] = useState(false);
-    // Edit cell dialog state
+    // Edit cell dialog state; `conflict` re-checks the cell at save time so a
+    // concurrent edit (SSE) is not silently overwritten — same protection as
+    // the IAWW view (components/tables/cell-conflict.tsx).
     const [editCell, setEditCell] = useState<{ roundIndex: number; playerIndex: number } | null>(null);
+    const conflict = useCellConflict<{ roundIndex: number; playerIndex: number }, RoundEntry>({
+        readCurrent: (cell) => state?.rounds[cell.roundIndex]?.[cell.playerIndex] ?? null,
+        isEqual: roundEntriesEqual,
+        apply: (cell, entry) => handleCellEdit(cell.roundIndex, cell.playerIndex, entry),
+    });
+
+    function openCellEdit(roundIndex: number, playerIndex: number) {
+        conflict.markSeen(state?.rounds[roundIndex]?.[playerIndex] ?? null);
+        setEditCell({ roundIndex, playerIndex });
+    }
 
     // Auto-advance to round-complete when all results are filled (triggered via SSE in table mode)
     useEffect(() => {
@@ -332,7 +359,7 @@ export function SkullKingGameView({
                             <CardContent className="space-y-4">
                                 {mySlotBidSet ? (
                                     <div className="space-y-2">
-                                        <p className="text-green-700 font-medium flex items-center gap-2">
+                                        <p className="text-success font-medium flex items-center gap-2">
                                             <Check className="h-4 w-4" />
                                             Ставка принята:{" "}
                                             <span
@@ -382,7 +409,7 @@ export function SkullKingGameView({
                                     state={state}
                                     maskedRoundIndex={currentRound - 1}
                                     planRoundIndex={currentRound - 1}
-                                    onCellClick={(ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi })}
+                                    onCellClick={(ri, pi) => openCellEdit(ri, pi)}
                                 />
                                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm mt-1">
                                     {players.map((p, pi) => {
@@ -391,7 +418,7 @@ export function SkullKingGameView({
                                         return (
                                             <div key={pi} className="flex items-center gap-1">
                                                 {hasBid
-                                                    ? <Check className="h-3 w-3 text-green-600" />
+                                                    ? <Check className="h-3 w-3 text-success" />
                                                     : <span className="h-3 w-3 rounded-full border border-muted-foreground inline-block shrink-0" />
                                                 }
                                                 <span className={hasBid ? "text-foreground" : "text-muted-foreground"}>{p.name}</span>
@@ -470,7 +497,7 @@ export function SkullKingGameView({
                         <CardContent>
                             <GameTable
                                 state={state}
-                                onCellClick={isHost ? (ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi }) : undefined}
+                                onCellClick={isHost ? (ri, pi) => openCellEdit(ri, pi) : undefined}
                                 planRoundIndex={currentRound - 1}
                             />
                             <div className="text-sm text-muted-foreground mt-3 space-y-1">
@@ -512,7 +539,7 @@ export function SkullKingGameView({
                                 <>
                                     {mySlotResultSet ? (
                                         <div className="space-y-2">
-                                            <p className="text-green-700 font-medium flex items-center gap-2">
+                                            <p className="text-success font-medium flex items-center gap-2">
                                                 <Check className="h-4 w-4" />
                                                 Результат принят: {rounds[currentRound - 1]?.[myPlayerIndex]?.actual}
                                             </p>
@@ -574,7 +601,7 @@ export function SkullKingGameView({
                                     <div className="mt-4">
                                         <GameTable
                                             state={state}
-                                            onCellClick={(ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi })}
+                                            onCellClick={(ri, pi) => openCellEdit(ri, pi)}
                                             planRoundIndex={currentRound - 1}
                                         />
                                     </div>
@@ -619,7 +646,7 @@ export function SkullKingGameView({
                         <CardContent>
                             <GameTable
                                 state={state}
-                                onCellClick={isHost ? (ri, pi) => setEditCell({ roundIndex: ri, playerIndex: pi }) : undefined}
+                                onCellClick={isHost ? (ri, pi) => openCellEdit(ri, pi) : undefined}
                             />
                             {isHost && (
                                 <p className="text-xs text-muted-foreground mt-2">
@@ -677,9 +704,17 @@ export function SkullKingGameView({
                     roundIndex={editCell.roundIndex}
                     playerIndex={editCell.playerIndex}
                     state={state}
-                    onSave={handleCellEdit}
+                    onSave={(ri, pi, entry) => conflict.save({ roundIndex: ri, playerIndex: pi }, entry)}
                 />
             )}
+
+            {/* The cell changed between dialog open and save (someone else's
+                edit landed via SSE): the user decides whose value wins. */}
+            <CellConflictDialog
+                pending={conflict.pending}
+                format={formatRoundEntry}
+                onSettle={conflict.settle}
+            />
         </>
     );
 }

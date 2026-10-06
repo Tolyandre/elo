@@ -14,6 +14,9 @@ import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { BackButton } from "@/components/back-button";
+import { PageContainer } from "@/components/page-container";
+import { EmptyState } from "@/components/empty-state";
+import { ResponsiveTable } from "@/components/responsive-table";
 import {
     Dialog,
     DialogContent,
@@ -23,6 +26,7 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Edit2 } from "lucide-react";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
@@ -131,7 +135,7 @@ export default function PlayersAdminPage() {
     }
 
     return (
-        <main className="p-4">
+        <PageContainer width="full">
             <PageHeader title="Управление игроками" />
             <BackButton href="/admin" />
 
@@ -146,8 +150,8 @@ export default function PlayersAdminPage() {
             <p>Удаление возможно для игроков без партий.</p>
 
             <div className="mb-4 mt-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <input
-                    className="border rounded p-2 flex-1"
+                <Input
+                    className="flex-1"
                     placeholder="Имя игрока (поиск / добавление)"
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
@@ -182,11 +186,12 @@ export default function PlayersAdminPage() {
                     )}
                 </h2>
                 {players.length === 0 ? (
-                    <p>Нет игроков</p>
+                    <EmptyState title="Нет игроков" />
                 ) : (
-                    <>
-                        {/* Mobile list */}
-                        <div className="sm:hidden space-y-2 mb-4">
+                    <ResponsiveTable
+                        mobile={
+                            // Mobile list
+                            <div className="space-y-2 mb-4">
                             {players.map((player) => (
                                 <div key={player.id} className="border rounded p-3">
                                     <div className="flex justify-between items-start">
@@ -220,7 +225,7 @@ export default function PlayersAdminPage() {
                                                 onClick={() => openRename(player.id, player.name)}
                                                 disabled={!canEdit}
                                             >
-                                                Rename
+                                                Переименовать
                                             </Button>
                                             <Button
                                                 variant="destructive"
@@ -228,16 +233,17 @@ export default function PlayersAdminPage() {
                                                 onClick={() => del.trigger({ id: player.id, name: player.name })}
                                                 disabled={!canEdit}
                                             >
-                                                Delete
+                                                Удалить
                                             </Button>
                                         </div>
                                     </div>
                                 </div>
                             ))}
-                        </div>
-
-                        {/* Desktop / larger screens: table with horizontal scroll if needed */}
-                        <div className="hidden sm:block overflow-x-auto">
+                            </div>
+                        }
+                        desktop={
+                            // Desktop / larger screens: table with horizontal scroll if needed
+                            <div className="overflow-x-auto">
                             <table className="min-w-full table-auto border-collapse mb-6">
                                 <thead>
                                     <tr>
@@ -284,7 +290,7 @@ export default function PlayersAdminPage() {
                                                         onClick={() => openRename(player.id, player.name)}
                                                         disabled={!canEdit}
                                                     >
-                                                        Rename
+                                                        Переименовать
                                                     </Button>
                                                     <Button
                                                         variant="destructive"
@@ -292,7 +298,7 @@ export default function PlayersAdminPage() {
                                                         onClick={() => del.trigger({ id: player.id, name: player.name })}
                                                         disabled={!canEdit}
                                                     >
-                                                        Delete
+                                                        Удалить
                                                     </Button>
                                                 </div>
                                             </td>
@@ -300,8 +306,9 @@ export default function PlayersAdminPage() {
                                     ))}
                                 </tbody>
                             </table>
-                        </div>
-                    </>
+                            </div>
+                        }
+                    />
                 )}
             </section>
             </AdminPageTabs>
@@ -345,11 +352,10 @@ export default function PlayersAdminPage() {
                 onConfirm={confirmRename}
             >
                 <div className="mt-2">
-                    <input
-                        className="w-full rounded border p-2"
+                    <Input
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
-                        aria-label="New player name"
+                        aria-label="Новое имя игрока"
                     />
                 </div>
             </ConfirmDialogWithContent>
@@ -386,14 +392,14 @@ export default function PlayersAdminPage() {
                             </Button>
                         )}
                         <div className="flex gap-2 items-center">
-                            <input
+                            <Input
                                 type="number"
                                 step="1"
-                                className="border rounded p-2 flex-1"
+                                className="flex-1"
                                 placeholder="Изменение рейтинга"
                                 value={correctionValue}
                                 onChange={(e) => setCorrectionValue(e.target.value)}
-                                aria-label="Correction value"
+                                aria-label="Значение корректировки"
                             />
                             <Button
                                 variant="destructive"
@@ -409,6 +415,6 @@ export default function PlayersAdminPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </main>
+        </PageContainer>
     );
 }

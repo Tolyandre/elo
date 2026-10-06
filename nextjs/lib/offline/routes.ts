@@ -41,6 +41,7 @@ export const PAGES = [
     "/oauth2-callback",
     "/players/view",
     "/settings",
+    "/styleguide",
     "/tournaments",
     "/tournaments/edit",
     "/tournaments/new",

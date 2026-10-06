@@ -22,16 +22,12 @@ import { useOffline } from "@/app/offline/OfflineContext";
 import { GameMultiSelect } from "@/components/game-multi-select";
 import { MultiSelect } from "@/components/vendor/multi-select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
+import { toDatetimeLocal } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
-
-function toDatetimeLocal(iso: string): string {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 type LeagueValues = {
     newbie: boolean;
@@ -319,13 +315,12 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
 
             <div>
                 <label className="block font-semibold mb-2" htmlFor="arenaName">Название:</label>
-                <input
+                <Input
                     id="arenaName"
                     type="text"
                     value={values.name}
                     placeholder={defaultName || "Название арены"}
                     onChange={(e) => set("name", e.target.value)}
-                    className="border rounded px-2 py-1 w-full"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                     Название должно быть уникальным.
@@ -335,7 +330,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                             <button
                                 type="button"
                                 onClick={() => set("name", defaultName)}
-                                className="text-blue-600 underline decoration-dashed underline-offset-2"
+                                className="text-info underline decoration-dashed underline-offset-2"
                             >
                                 {defaultName}
                             </button>
@@ -368,23 +363,21 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
             <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1">
                     <label className="block font-semibold mb-2" htmlFor="arenaDateFrom">{isCamp ? "Начало:" : "Начало (необязательно):"}</label>
-                    <input
+                    <Input
                         id="arenaDateFrom"
                         type="datetime-local"
                         value={values.dateFrom}
                         onChange={(e) => set("dateFrom", e.target.value)}
-                        className="border rounded px-2 py-1 w-full"
                         required={isCamp}
                     />
                 </div>
                 <div className="flex-1">
                     <label className="block font-semibold mb-2" htmlFor="arenaDateTo">{isCamp ? "Окончание:" : "Окончание (необязательно):"}</label>
-                    <input
+                    <Input
                         id="arenaDateTo"
                         type="datetime-local"
                         value={values.dateTo}
                         onChange={(e) => set("dateTo", e.target.value)}
-                        className="border rounded px-2 py-1 w-full"
                         required={isCamp}
                     />
                 </div>
@@ -395,12 +388,12 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                 <h2 className="font-semibold">{isCamp ? "Рейтинг:" : "Рейтинг и лиги:"}</h2>
                 <div className="flex items-center gap-2 text-sm">
                     <label htmlFor="arenaStartingRating">Стартовый рейтинг:</label>
-                    <input
+                    <Input
                         id="arenaStartingRating"
                         type="number"
                         value={values.startingRating}
                         onChange={(e) => set("startingRating", e.target.value)}
-                        className="border rounded px-2 py-1 w-24"
+                        className="w-24"
                     />
                     <InfoHint label="Что такое стартовый рейтинг">
                         <p>Рейтинг, с которого игрок начинает в этой арене, пока не сыграл в ней ни одной партии.</p>
@@ -493,7 +486,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
             </div>
             )}
 
-            {error && <div className="text-red-600 text-sm">{error}</div>}
+            {error && <div className="text-destructive text-sm">{error}</div>}
 
             <div className="flex flex-wrap gap-2">
                 <Button type="submit" disabled={!canSubmit}>
@@ -590,12 +583,12 @@ function NumberField({
     return (
         <div className="flex items-center gap-1.5 text-sm">
             <label htmlFor={id} className="whitespace-nowrap">{label}:</label>
-            <input
+            <Input
                 id={id}
                 type="number"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                className="border rounded px-2 py-1 w-24"
+                className="w-24"
             />
             <InfoHint label={label}>{info}</InfoHint>
         </div>

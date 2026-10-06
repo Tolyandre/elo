@@ -7,6 +7,7 @@ import type { Base58ID } from "@/lib/id"
 import { cn } from "@/lib/utils"
 import { allNames, secondaryNames } from "@/lib/game-names"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Command,
   CommandEmpty,
@@ -309,8 +310,7 @@ function GameCreateForm({
 
   return (
     <>
-      <input
-        className="w-full rounded border p-2"
+      <Input
         placeholder="Название игры"
         value={name}
         onChange={(e) => setName(e.target.value)}
