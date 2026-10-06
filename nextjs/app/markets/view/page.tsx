@@ -81,7 +81,6 @@ function formatPercent(rate: number): string {
 function OutcomeColumn({
     label,
     titleColor,
-    probability,
     multiplier,
     fee,
     myStaked,
@@ -93,8 +92,6 @@ function OutcomeColumn({
 }: {
     label: string;
     titleColor?: string;
-    /** Probability (LMSR marginal price) in (0,1) — what the donut and the chart show. */
-    probability: number;
     /** Voices per 1 elo of the pending buy (1/pricePerShare) — the ×multiplier headline. */
     multiplier?: number;
     /** Total maker fee of the pending 1-elo buy (ADR-20) — the guarantor's take. */
@@ -106,16 +103,18 @@ function OutcomeColumn({
     buying: boolean;
     isWinner: boolean;
 }) {
-    // The card quotes the pending buy as a ×multiplier headline (voices per
-    // elo) plus the total maker fee the guarantor earns on it. The button
+    // The card always quotes the pending buy as a ×multiplier headline (voices
+    // per elo) plus the total maker fee the guarantor earns on it. The button
     // always stakes a fixed 1 elo. In a saturated market the underdog share
     // costs a float-dust ~0: its true multiplier (~×1e16) is capped at
-    // ×1000+ — the buy itself still charges the exact LMSR cost.
+    // ×1000+ — the buy itself still charges the exact LMSR cost. With no
+    // guarantors (liquidity_b = 0, the quote is NaN) the market prices
+    // nothing yet: the natural multiplier is ×1.00 — one voice per elo.
     const headline = multiplier != null && Number.isFinite(multiplier)
         ? multiplier > 1000
             ? "×1000+"
             : `×${multiplier.toFixed(2)}`
-        : probability.toFixed(2);
+        : "×1.00";
     const buyLabel = "Поставить 1";
     return (
         <div className={`flex-1 flex flex-col p-3 border rounded-lg gap-2 ${isWinner ? "border-success" : ""}`}>
@@ -314,7 +313,6 @@ function MarketPageContent() {
                             key={o.id}
                             label={nameOf(o)}
                             titleColor={colors.get(o.id)}
-                            probability={o.probability}
                             multiplier={quote.multiplier}
                             fee={quote.fee}
                             myStaked={stakedByOutcome.get(o.id)}
