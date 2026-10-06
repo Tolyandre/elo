@@ -141,7 +141,7 @@ function ClubAdminContent() {
     return (
         <PageContainer width="form">
             <PageHeader title={clubDisplayName(club)} />
-            <BackButton href="/admin/clubs" label="Назад к клубам" />
+            <BackButton href="/admin/clubs" />
             <p className="text-sm text-muted-foreground mb-4">
                 Удаление клуба возможно только если в нём нет игроков.
             </p>

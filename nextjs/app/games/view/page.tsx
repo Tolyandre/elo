@@ -53,7 +53,7 @@ function GameContent() {
 
   return (
     <PageContainer width="narrow">
-      <BackButton href="/games" label="Назад к играм" />
+      <BackButton href="/games" />
       <div className="space-y-4">
         <PageHeader title={game?.name ?? ""} />
         {imageUrl && (

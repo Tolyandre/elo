@@ -57,7 +57,7 @@ export function TournamentView() {
     if (!id) {
         return (
             <PageContainer width="narrow" className="sm:max-w-5xl">
-                <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
+                <BackButton href="/arenas?tab=tournaments" />
                 <p className="text-muted-foreground">Турнир не найден — проверьте ссылку.</p>
             </PageContainer>
         );
@@ -69,7 +69,7 @@ export function TournamentView() {
 
     return (
         <PageContainer width="narrow" className="sm:max-w-5xl">
-            <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
+            <BackButton href="/arenas?tab=tournaments" />
             {error && <ErrorAlert message={error} />}
             {loading && (
                 <div className="space-y-2">

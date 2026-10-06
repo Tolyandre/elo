@@ -32,7 +32,7 @@ export default function TournamentEditPage() {
     if (!id) {
         return (
             <PageContainer width="form">
-                <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
+                <BackButton href="/arenas?tab=tournaments" />
                 <p className="text-muted-foreground">Турнир не найден — проверьте ссылку.</p>
             </PageContainer>
         );
@@ -40,7 +40,7 @@ export default function TournamentEditPage() {
 
     return (
         <PageContainer width="form">
-            <BackButton href="/arenas?tab=tournaments" label="Назад к турнирам" />
+            <BackButton href="/arenas?tab=tournaments" />
             {!meLoading && !canEdit && (
                 <div className="space-y-2">
                     <ErrorAlert message="Управлять турниром могут только редакторы" />

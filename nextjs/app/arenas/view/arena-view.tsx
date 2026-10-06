@@ -155,7 +155,7 @@ export function ArenaView() {
 
   return (
     <PageContainer width="narrow">
-      {!isGlobal && <BackButton href="/arenas" label="Назад к аренам" />}
+      {!isGlobal && <BackButton href="/arenas" />}
       <div className="space-y-4">
         <PageHeader
           title={arena?.name ?? "Главная"}

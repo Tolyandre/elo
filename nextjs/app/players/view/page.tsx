@@ -123,7 +123,7 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 
     return (
         <PageContainer width="wide">
-            <BackButton href="/" label="Назад к рейтингу" />
+            <BackButton href="/" />
             <PageHeader title={stats.player_name} />
 
             <Card>
