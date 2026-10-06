@@ -14,6 +14,7 @@ import { Market, MarketOutcome, SettlementDetail } from "@/app/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
+import { TrendingUp } from "lucide-react";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useGames } from "@/app/gamesContext";
 import { getMarketTitle, outcomeDisplayName } from "@/app/markets/marketTypes";
@@ -226,7 +227,11 @@ export function MarketCard({ market, probabilityHistory, className }: { market: 
         <Card className={className}>
             <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-base">{title}</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-2">
+                        {/* The market mark, as the «Ставки» menu item wore it. */}
+                        <TrendingUp className="h-5 w-5 shrink-0" />
+                        {title}
+                    </CardTitle>
                     {/* Open is the unremarkable default — only final/intermediate
                         statuses get a badge. */}
                     {!isOpen && (

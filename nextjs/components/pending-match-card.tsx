@@ -55,7 +55,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
         const won = match.gameWon === true;
         return (
             <Card
-                className={clickable ? "border-dashed cursor-pointer hover:bg-accent/50 transition-colors" : "border-dashed"}
+                className={clickable ? "border-dashed cursor-pointer hover:bg-accent transition-colors" : "border-dashed"}
                 onClick={clickable ? () => router.push(`/matches/view?id=${encodeURIComponent(match.clientId)}`) : undefined}
             >
                 <CardHeader>
@@ -111,7 +111,7 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
 
     return (
         <Card
-            className={clickable ? "border-dashed cursor-pointer hover:bg-accent/50 transition-colors" : "border-dashed"}
+            className={clickable ? "border-dashed cursor-pointer hover:bg-accent transition-colors" : "border-dashed"}
             onClick={clickable ? () => router.push(`/matches/view?id=${encodeURIComponent(match.clientId)}`) : undefined}
         >
             <CardHeader>

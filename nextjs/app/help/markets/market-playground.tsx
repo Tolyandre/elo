@@ -17,7 +17,7 @@ import { InfoIcon, TriangleAlertIcon } from "lucide-react"
 import { buyFee, sharesForTotal } from "@/app/markets/lmsr"
 import { formatAmount } from "@/app/markets/format"
 import { outcomeColors } from "@/app/markets/outcomeColors"
-import { DEFAULT_MAX_GUARANTOR_LOSS } from "@/app/markets/new/liquidity"
+import { DEFAULT_MAX_GUARANTOR_LOSS } from "@/components/markets/liquidity"
 import {
     PlaygroundResolution,
     PlaygroundState,

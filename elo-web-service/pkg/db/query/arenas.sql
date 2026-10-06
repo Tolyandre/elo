@@ -327,9 +327,12 @@ ORDER BY p.name;
 
 -- name: ListArenaFeedEvents :many
 -- One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
--- correction and market-resolution events. Corrections and market resolutions
--- settle only into the global arena (ADR-24), so their branches join the union
--- only when the caller passes include_settlements. The player/club/game
+-- correction and market events. A market enters at its creation moment while
+-- it is active (open/betting_closed) and re-enters at its resolution moment
+-- once settled, so a match-triggered resolution sits right after its match.
+-- Corrections and market events settle only into the global arena (ADR-24),
+-- so their branches join the union only when the caller passes
+-- include_settlements. The player/club/game
 -- filters apply to the match and market branches; corrections stay
 -- unfiltered. The cursor is the last returned (sort_date, event_type, id)
 -- tuple; the token carries the filters, so continuation requests pass only
@@ -371,10 +374,24 @@ WITH events AS (
     FROM corrections c
     WHERE sqlc.arg('include_settlements')::bool
     UNION ALL
-    SELECT om.id, om.resolved_at, 'market'::text
+    -- Every market appears once: an active market (open or betting-locked)
+    -- sorts at its creation moment, a settled one (resolved or cancelled —
+    -- cancellation rides only on the status column) at its resolution
+    -- moment. A match-triggered settlement stamps resolved_at with the
+    -- match's date and the (event_type DESC, id DESC) tiebreak puts matches
+    -- above markets at the same instant, so a resolution lands immediately
+    -- after the match that resolved it.
+    SELECT om.id,
+           CASE WHEN om.status IN ('open', 'betting_closed') THEN om.created_at
+                ELSE om.resolved_at
+           END AS sort_date,
+           'market'::text
     FROM markets om
     WHERE sqlc.arg('include_settlements')::bool
-      AND om.status = 'resolved' AND om.resolved_at IS NOT NULL
+      AND (
+          (om.status IN ('open', 'betting_closed') AND om.created_at IS NOT NULL)
+          OR (om.status IN ('resolved', 'cancelled') AND om.resolved_at IS NOT NULL)
+      )
       -- A market matches a player when he is its resolution condition
       -- (match-winner targets, win-streak target), is referred to by any
       -- outcome (the only place tournament-winner names players), guaranteed

@@ -6,6 +6,7 @@ import { Tent, Trophy } from "lucide-react";
 import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
+import { MarketsHighlight } from "@/components/markets-highlight";
 import { RunningTables } from "@/components/tables/running-tables";
 
 /**
@@ -74,6 +75,10 @@ export default function MainPage() {
                 something that needs attention right now (a table waiting for
                 a bid) outranks the tabbed lists below. */}
             <RunningTables />
+            {/* Active markets and the day's resolutions — the markets lobby
+                used to live on its own page; the feed below carries the rest
+                of the market story (ADR-32). */}
+            <MarketsHighlight />
             <ArenaView />
         </>
     );

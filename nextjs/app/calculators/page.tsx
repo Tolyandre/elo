@@ -4,7 +4,7 @@ import { PageHeader } from "@/app/pageHeaderContext"
 import { PageContainer } from "@/components/page-container"
 
 // Live game tables (Skull King, Этот Безумный Мир) are created from
-// /matches/new — see lib/game-apps.ts. This page lists the standalone tools only.
+// /new — see lib/game-apps.ts. This page lists the standalone tools only.
 
 const items = [
   {

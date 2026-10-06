@@ -10,6 +10,7 @@ import {
     type FeedPage,
 } from "@/app/api";
 import { subscribeDataChange } from "@/lib/live-data";
+import { useMarketsLobbySSE } from "@/hooks/useMarketsSSE";
 
 export type ArenaMatchFilters = {
     playerId?: Base58ID;
@@ -60,9 +61,12 @@ export function useArenaFeed(
     // Live invalidation: the feed must reflect matches recorded elsewhere
     // (SSE "matches-changed") and landed by this device's offline sync — the
     // redirect to the arena races the background POST, so the mount-time
-    // fetch is routinely stale.
+    // fetch is routinely stale. The home feed also carries markets (ADR-32),
+    // so a market opening, being locked or settling — the markets-lobby SSE
+    // tick — reloads it too; for arena feeds the subscription stays off.
     const [stamp, setStamp] = useState(0);
     const invalidate = useCallback(() => setStamp((s) => s + 1), []);
+    const marketsTick = useMarketsLobbySSE(isHome);
     useEffect(() => {
         return subscribeDataChange((batch) => {
             if (batch.matches) invalidate();
@@ -77,8 +81,8 @@ export function useArenaFeed(
         [isHome, arenaId],
     );
 
-    // (Re)load page 1 whenever the scope, the filters, or the invalidation
-    // stamp change.
+    // (Re)load page 1 whenever the scope, the filters, the invalidation
+    // stamp, or the markets tick change.
     useEffect(() => {
         if (!isHome && !arenaId) return;
         let cancelled = false;
@@ -104,7 +108,7 @@ export function useArenaFeed(
         return () => {
             cancelled = true;
         };
-    }, [isHome, arenaId, playerId, clubId, gameId, stamp, fetchPage]);
+    }, [isHome, arenaId, playerId, clubId, gameId, stamp, marketsTick, fetchPage]);
 
     const loadMore = useCallback(() => {
         if (loadingMore || (!isHome && !arenaId)) return;

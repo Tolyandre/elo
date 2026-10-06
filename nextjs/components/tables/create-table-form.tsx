@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
- * The «Стол» tab on /matches/new: pick the game and the participants in
+ * The «Стол» tab on /new: pick the game and the participants in
  * seating order (order matters — it is the order the game starts with), then
  * create the table and open it. Joining existing tables happens via the
  * «Сейчас играют» lobby or an invite toast; creating requires auth and a

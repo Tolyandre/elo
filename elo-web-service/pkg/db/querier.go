@@ -302,9 +302,12 @@ type Querier interface {
 	// The active list is small and bounded; payloads come from ListMarketsByIDs.
 	ListActiveMarketIDs(ctx context.Context) ([]id.ID, error)
 	// One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
-	// correction and market-resolution events. Corrections and market resolutions
-	// settle only into the global arena (ADR-24), so their branches join the union
-	// only when the caller passes include_settlements. The player/club/game
+	// correction and market events. A market enters at its creation moment while
+	// it is active (open/betting_closed) and re-enters at its resolution moment
+	// once settled, so a match-triggered resolution sits right after its match.
+	// Corrections and market events settle only into the global arena (ADR-24),
+	// so their branches join the union only when the caller passes
+	// include_settlements. The player/club/game
 	// filters apply to the match and market branches; corrections stay
 	// unfiltered. The cursor is the last returned (sort_date, event_type, id)
 	// tuple; the token carries the filters, so continuation requests pass only

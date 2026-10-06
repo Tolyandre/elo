@@ -71,7 +71,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     const won = match.game_won === true;
     return (
       <Card
-        className={clickable ? "cursor-pointer hover:bg-accent/50 transition-colors" : ""}
+        className={clickable ? "cursor-pointer hover:bg-accent transition-colors" : ""}
         onClick={handleClick}
       >
         <CardHeader>
@@ -133,7 +133,7 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
 
   return (
     <Card
-      className={clickable ? "cursor-pointer hover:bg-accent/50 transition-colors" : ""}
+      className={clickable ? "cursor-pointer hover:bg-accent transition-colors" : ""}
       onClick={handleClick}
     >
       <CardHeader>

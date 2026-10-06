@@ -62,10 +62,16 @@ with `/matches`.
 ### Ordering and cursor
 
 One stream, ordered by `(sort_date DESC, event_type DESC, id DESC)` where
-`sort_date` is the match date, the correction date, or the market's
-`resolved_at`. The type tiebreak puts a match above its market resolution at
-the shared instant (a match-triggered settlement stamps `resolved_at` with the
-match date) and above corrections. The cursor is the last returned
+`sort_date` is the match date, the correction date, or the market's feed
+position: an **active** market (open / betting-closed) enters the feed at its
+`created_at`; a **settled** market (resolved or cancelled — cancellation rides
+only on the status column) sits at its `resolved_at`, so a market occupies
+exactly one position at any moment and "moves" from its creation position to
+its resolution position when it settles. A match-triggered settlement stamps
+`resolved_at` with the match date, and the type tiebreak puts a match above
+its market resolution at the shared instant — the resolution lands
+immediately after the match that resolved it. The same tiebreak orders a
+match above corrections. The cursor is the last returned
 `(sort_date, event_type, id)` tuple (base64 JSON, filters embedded — the
 `matchCursor` convention), which closes the date-only cursor's same-timestamp
 straddle: no event is skipped or repeated across page boundaries.
@@ -103,6 +109,15 @@ page's tab URL becomes `/?tab=feed`. In-app links are rewritten; a stale
 legacy alias). Event rendering dispatches per type: match cards, correction
 cards, market cards (linked to the market page); markets are no longer nested
 under match rows.
+
+With the feed carrying every market (active ones at their creation moment),
+the dedicated markets lobby page (`/markets`) is gone: the main page shows a
+compact «Ставки» section between «Сейчас играют» and the feed tabs — every
+active market plus the markets resolved within the last day (cancelled
+excluded) — and the feed holds the full market story. Creating a market moved
+from `/markets/new` into a «Рынок» tab of the adding hub, which itself moved
+from `/matches/new` to `/new` («Добавить»). The lobby endpoint `GET /markets`
+stays — the main-page section renders from it.
 
 ## Consequences
 

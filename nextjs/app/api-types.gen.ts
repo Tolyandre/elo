@@ -1744,7 +1744,7 @@ export interface components {
             type: "correction";
             data: components["schemas"]["Correction"];
         };
-        /** @description A resolved market (global arena only, ADR-24) — the resolution is the event. */
+        /** @description A market (global arena only, ADR-24). An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date. */
         FeedMarketEvent: {
             /**
              * @description discriminator enum property added by openapi-typescript

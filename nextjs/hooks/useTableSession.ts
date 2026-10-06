@@ -74,7 +74,7 @@ function readStoredSession(): TableSession | null {
 
 /**
  * Stashes a host session for a table created outside the tables page (the
- * create-table form on /matches/new); the page then resumes it on hydration.
+ * create-table form on /new); the page then resumes it on hydration.
  */
 export function writeTableSession(session: TableSession): void {
     localStorage.setItem(TABLE_SESSION_KEY, JSON.stringify(session));

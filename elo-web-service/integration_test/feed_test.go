@@ -19,6 +19,7 @@ type feedEventJSON struct {
 	Data struct {
 		Id         string `json:"id"`
 		PlayerName string `json:"player_name"`
+		Status     string `json:"status"`
 	} `json:"data"`
 }
 
@@ -109,7 +110,8 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 
 	// The home feed: correction first, then the resolving match above its
 	// market resolution (tie at the trigger instant: 'match' > 'market'),
-	// then the warm-up match.
+	// then the warm-up match. The market appears once — at its resolution
+	// position; its creation event existed only while it was active.
 	home := decodeFeedPage(t, router, "/feed")
 	gotTypes := make([]string, 0, len(home.Data))
 	for _, e := range home.Data {
@@ -564,5 +566,128 @@ func TestMarkets_ListClosedCursorPagination(t *testing.T) {
 	}
 	if walked[2] != short(expiredIDs[0]) {
 		t.Fatalf("oldest resolution must come last: got %s, want %s", walked[2], short(expiredIDs[0]))
+	}
+}
+
+// TestArena_Feed_MarketLifecycleOrdering pins the market branch's ordering
+// semantics: an active market (open or betting-locked) enters the feed at its
+// creation moment, a settled one (match-resolved, time-cancelled) at its
+// resolution moment — a match-triggered resolution lands immediately after
+// the match that resolved it, because resolved_at carries the match's date.
+func TestArena_Feed_MarketLifecycleOrdering(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	router := setupRouter(pool)
+
+	playerA := createTestPlayer(t, pool, "ЖизнА")
+	playerB := createTestPlayer(t, pool, "ЖизнБ")
+	playerC := createTestPlayer(t, pool, "ЖизнВ")
+	playerD := createTestPlayer(t, pool, "ЖизнГ")
+	adminID := createTestAdmin(t, pool)
+	gameID := createTestGame(t, pool, "ЖизнИгра")
+
+	matchSvc := newMatchService(pool)
+	marketSvc := elo.NewMarketService(pool)
+
+	newMatchWinner := func(targets ...idpkg.ID) elo.CreateMarketParams {
+		return elo.CreateMarketParams{
+			ID:         newID(t),
+			MarketType: "match_winner",
+			StartsAt:   time.Now().Add(-time.Minute),
+			ClosesAt:   time.Now().Add(24 * time.Hour),
+			CreatedBy:  adminID,
+			MatchWinner: &elo.MatchWinnerCreateParams{
+				TargetPlayerIDs:   targets,
+				AllowOtherPlayers: true,
+			},
+		}
+	}
+
+	// The feed's oldest event: a match on A/B predating every market.
+	matchOld, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 6, playerB: 4}, time.Now().Add(-4*time.Hour), newMatchOpts(t))
+	if err != nil {
+		t.Fatalf("old AddMatch: %v", err)
+	}
+
+	// Two active markets on C/D, created in this order so their creation
+	// events stack deterministically (created_at DESC): the locked one above
+	// the open one. They share no players with A/B, so the resolving match
+	// below leaves them alone.
+	marketOpen, err := marketSvc.CreateMarket(ctx, newMatchWinner(playerC, playerD))
+	if err != nil {
+		t.Fatalf("CreateMarket open: %v", err)
+	}
+	marketLocked, err := marketSvc.CreateMarket(ctx, newMatchWinner(playerC, playerD))
+	if err != nil {
+		t.Fatalf("CreateMarket locked: %v", err)
+	}
+	if err := marketSvc.LockMarketBetting(ctx, marketLocked.ID); err != nil {
+		t.Fatalf("LockMarketBetting: %v", err)
+	}
+
+	// A market on A/B with an already-past closes_at: expiry cancels it and
+	// stamps resolved_at = closes_at, putting its feed event between the
+	// creation events and the old match.
+	marketCancelled, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-2 * time.Hour),
+		ClosesAt:   time.Now().Add(-time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
+			AllowOtherPlayers: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket cancelled: %v", err)
+	}
+	if err := marketSvc.ExpireOverdueMarkets(ctx); err != nil {
+		t.Fatalf("ExpireOverdueMarkets: %v", err)
+	}
+
+	// A market on A/B resolved by a future-dated match (the feed's newest
+	// event): its resolution event must sit immediately after that match.
+	marketResolved, err := marketSvc.CreateMarket(ctx, newMatchWinner(playerA, playerB))
+	if err != nil {
+		t.Fatalf("CreateMarket resolved: %v", err)
+	}
+	matchResolveDate := time.Now().Add(2 * time.Minute)
+	matchResolved, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 10, playerB: 2}, matchResolveDate, newMatchOpts(t))
+	if err != nil {
+		t.Fatalf("resolving AddMatch: %v", err)
+	}
+
+	// Newest first: the resolving match, its market resolution right below
+	// it, then the betting-locked and open markets at their creation moments,
+	// then the cancelled market at its cancellation moment, then the old
+	// match.
+	page := decodeFeedPage(t, router, "/feed")
+	want := []struct {
+		typ    string
+		id     string
+		status string
+	}{
+		{"match", short(matchResolved.ID), ""},
+		{"market", short(marketResolved.ID), "resolved"},
+		{"market", short(marketLocked.ID), "betting_closed"},
+		{"market", short(marketOpen.ID), "open"},
+		{"market", short(marketCancelled.ID), "cancelled"},
+		{"match", short(matchOld.ID), ""},
+	}
+	if len(page.Data) != len(want) {
+		var got []string
+		for _, e := range page.Data {
+			got = append(got, e.Type+":"+e.Data.Status)
+		}
+		t.Fatalf("feed holds %d events, want %d: %v", len(page.Data), len(want), got)
+	}
+	for i, w := range want {
+		e := page.Data[i]
+		if e.Type != w.typ || e.Data.Id != w.id || e.Data.Status != w.status {
+			t.Fatalf("feed[%d] = %s/%s/%s, want %s/%s/%s", i, e.Type, e.Data.Id, e.Data.Status, w.typ, w.id, w.status)
+		}
 	}
 }

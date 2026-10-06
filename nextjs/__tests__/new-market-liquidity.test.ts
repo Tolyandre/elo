@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_MAX_GUARANTOR_LOSS } from '../app/markets/new/liquidity'
+import { DEFAULT_MAX_GUARANTOR_LOSS } from '../components/markets/liquidity'
 
 describe('new-market liquidity defaults', () => {
     // Since guarantees became voluntary (ADR-20) the form sends only the max

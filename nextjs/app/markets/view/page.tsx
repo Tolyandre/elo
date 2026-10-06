@@ -288,7 +288,7 @@ function MarketPageContent() {
     const betLimit = displayMarket.bet_limit;
     return (
         <PageContainer width="narrow">
-            <BackButton href="/markets" label="Назад к ставкам" />
+            <BackButton href="/" />
             <PageHeader title="Ставки" />
             <MarketCard market={displayMarket} probabilityHistory={probabilityHistory} />
 

@@ -63,7 +63,7 @@ function EmptyStateCard() {
             </CardHeader>
             <CardContent>
                 <Button asChild className="w-full">
-                    <Link href="/matches/new?tab=table">Создать стол</Link>
+                    <Link href="/new?tab=table">Создать стол</Link>
                 </Button>
             </CardContent>
         </Card>
@@ -83,7 +83,7 @@ function LegacySetupCard() {
             </CardHeader>
             <CardContent>
                 <Button asChild className="w-full">
-                    <Link href="/matches/new?tab=table">Создать новый стол</Link>
+                    <Link href="/new?tab=table">Создать новый стол</Link>
                 </Button>
             </CardContent>
         </Card>
@@ -211,7 +211,7 @@ export function TablePage() {
 
     // Host: confirm + delete the server table, then return to the matches
     // lobby (rejoining happens from there; new tables are created from
-    // /matches/new).
+    // /new).
     const [isResetting, setIsResetting] = useState(false);
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
     async function closeTable() {

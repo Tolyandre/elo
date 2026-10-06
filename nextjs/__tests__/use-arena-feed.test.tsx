@@ -16,6 +16,14 @@ vi.mock("@/app/api", () => ({
     getHomeFeedPagePromise: vi.fn(),
 }));
 
+// The markets-lobby SSE subscription stays mocked out: the tests assert fetch
+// behavior, not the connection. The mock honors `enabled` like the real hook
+// (a disabled subscription never ticks), and tests drive the tick value.
+const marketsSSE = vi.hoisted(() => ({ tick: 0 }));
+vi.mock("@/hooks/useMarketsSSE", () => ({
+    useMarketsLobbySSE: vi.fn((enabled: boolean) => (enabled ? marketsSSE.tick : 0)),
+}));
+
 const ARENA_ID = "arena-1" as Base58ID;
 
 function matchEvent(id: string): FeedEvent {
@@ -56,6 +64,7 @@ describe("useArenaFeed endpoint selection", () => {
         vi.mocked(getHomeFeedPagePromise).mockReset();
         vi.mocked(getArenaFeedPagePromise).mockResolvedValue({ items: [], next: null });
         vi.mocked(getHomeFeedPagePromise).mockResolvedValue({ items: [], next: null });
+        marketsSSE.tick = 0;
     });
 
     it("uses the home feed for the main page and the arena feed for an explicit arena", async () => {
@@ -121,6 +130,7 @@ describe("useArenaFeed live invalidation", () => {
         vi.mocked(getHomeFeedPagePromise).mockReset();
         vi.mocked(getArenaFeedPagePromise).mockResolvedValue({ items: [], next: null });
         vi.mocked(getHomeFeedPagePromise).mockResolvedValue({ items: [], next: null });
+        marketsSSE.tick = 0;
     });
 
     it("refetches page 1 when a matches data-change batch arrives", async () => {
@@ -135,6 +145,30 @@ describe("useArenaFeed live invalidation", () => {
         expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
         expect(current.value.loading).toBe(false);
         unmount();
+    });
+
+    it("refetches the home feed on a markets tick, but never the arena feed", async () => {
+        const { rerender, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        await flushFetches();
+        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
+
+        marketsSSE.tick = 1;
+        rerender(() => useArenaFeed(true, ARENA_ID, {}));
+        await flushFetches();
+        expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
+        unmount();
+
+        const { rerender: rerenderArena, unmount: unmountArena } = renderHook(() =>
+            useArenaFeed(false, ARENA_ID, {}),
+        );
+        await flushFetches();
+        expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
+
+        marketsSSE.tick = 2;
+        rerenderArena(() => useArenaFeed(false, ARENA_ID, {}));
+        await flushFetches();
+        expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
+        unmountArena();
     });
 
     it("ignores players-only batches", async () => {
@@ -177,6 +211,7 @@ describe("useArenaFeed loadAll (leaders tab)", () => {
     beforeEach(() => {
         vi.mocked(getArenaFeedPagePromise).mockReset();
         vi.mocked(getHomeFeedPagePromise).mockReset();
+        marketsSSE.tick = 0;
     });
 
     it("drains the cursor keeping only match events", async () => {

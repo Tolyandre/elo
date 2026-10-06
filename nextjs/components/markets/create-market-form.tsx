@@ -1,7 +1,6 @@
 "use client"
 import type { Base58ID } from "@/lib/id";
 import React, { useState } from "react";
-import { PageHeader } from "@/app/pageHeaderContext";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise, getTournamentsPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
@@ -27,7 +26,6 @@ import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { formatDateTime } from "@/lib/datetime";
-import { PageContainer } from "@/components/page-container";
 import { DEFAULT_MAX_GUARANTOR_LOSS } from "./liquidity";
 import { matchWinnerFormIssue, tournamentWinnerFormIssue } from "./validation";
 
@@ -48,7 +46,12 @@ const STORAGE_KEYS = [
     "new-market/maxGuarantorLoss",
 ] as const;
 
-export default function NewMarketPage() {
+/**
+ * The market creation form, the «Рынок» tab of the /new hub page. The hub
+ * supplies the page container and the header; on success the app lands on the
+ * main page's feed, where the new market enters at its creation moment.
+ */
+export function CreateMarketForm() {
     const me = useMe();
     const router = useRouter();
 
@@ -131,7 +134,7 @@ export default function NewMarketPage() {
                 : undefined;
             await createMarketPromise(payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
-            router.push("/markets");
+            router.push("/?tab=feed");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Ошибка");
         } finally {
@@ -207,9 +210,7 @@ export default function NewMarketPage() {
     }
 
     return (
-        <PageContainer width="form">
-            <PageHeader title="Создать рынок" />
-
+        <>
             {!canEdit && (
                 <Alert>
                     <AlertCircleIcon className="h-4 w-4" />
@@ -394,6 +395,6 @@ export default function NewMarketPage() {
                     {submitting ? "Создание..." : "Создать"}
                 </Button>
             </form>
-        </PageContainer>
+        </>
     );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchWinnerFormIssue, tournamentWinnerFormIssue } from '../app/markets/new/validation'
+import { matchWinnerFormIssue, tournamentWinnerFormIssue } from '../components/markets/validation'
 
 describe('matchWinnerFormIssue', () => {
     it('stays silent on an untouched empty form (submit button is disabled instead)', () => {

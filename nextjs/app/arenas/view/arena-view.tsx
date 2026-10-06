@@ -170,7 +170,7 @@ export function ArenaView() {
                 </Button>
               )}
               <Button asChild size="sm">
-                <Link href="/matches/new">Добавить партию</Link>
+                <Link href="/new">Добавить</Link>
               </Button>
             </div>
           }

@@ -19,7 +19,7 @@ import { setUrlQuery } from "@/lib/url-state"
 import { loginUrl } from "@/lib/login-url"
 import { redirectTo } from "@/lib/redirect"
 import { useMe } from "@/app/meContext"
-import { LogOut, LayoutGrid, Settings, SlidersHorizontal, TrendingUp, Trophy } from "lucide-react"
+import { LogOut, LayoutGrid, Settings, SlidersHorizontal, Trophy } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -55,12 +55,8 @@ export function NavigationBar() {
                 </>
               } />
 
-              <ListItem href="/markets" title={
-                <>
-                  <TrendingUp className="inline-block mr-2 h-6 w-6 align-middle" />
-                  Ставки
-                </>
-              } />
+              {/* Ставки живут на главной («Ставки» после «Сейчас играют»
+                  и лента), создание рынка — таб на /new. */}
 
               <ListItem href="/arenas" title={
                 <>

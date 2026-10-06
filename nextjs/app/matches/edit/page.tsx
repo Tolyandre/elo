@@ -37,9 +37,9 @@ function MatchEditPageWrapped() {
     const searchParams = useSearchParams();
     const id = toBase58ID(searchParams.get("id") ?? "");
 
-    // Editing needs a target; a bare /matches/edit is the dedicated "new match" route.
+    // Editing needs a target; a bare /matches/edit falls back to the add hub.
     useEffect(() => {
-        if (!id) router.replace("/matches/new");
+        if (!id) router.replace("/new");
     }, [id, router]);
 
     // Offline (pending) target — wait for the store to hydrate before deciding.
