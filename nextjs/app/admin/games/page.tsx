@@ -3,12 +3,11 @@ import type { Base58ID } from "@/lib/id";
 import React from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Dices } from "lucide-react";
+import { Dices, Pencil, Plus, Trash2 } from "lucide-react";
 import { SiBoardgamegeek } from "@icons-pack/react-simple-icons";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useState } from "react";
 import {
-    patchGamePromise,
     deleteGamePromise,
     addGameTagPromise,
     removeGameTagPromise,
@@ -16,7 +15,6 @@ import {
     enrichGameImagesPromise,
     Tag,
     GameListItem,
-    GameSuggestion,
 } from "@/app/api";
 import { LoginLink } from "@/components/login-link";
 import { useGames } from "@/app/gamesContext";
@@ -26,27 +24,11 @@ import { useOffline } from "@/app/offline/OfflineContext";
 import { PendingEntityList } from "@/components/pending-entity-list";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
+import { GameEditDialog } from "@/components/admin/game-edit-dialog";
 import { TagManagement } from "@/components/admin/tag-management";
 import { Button } from "@/components/ui/button";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
 import { GameImage } from "@/components/game-image";
@@ -54,22 +36,17 @@ import { ResponsiveTable } from "@/components/responsive-table";
 import { BackButton } from "@/components/back-button";
 import { cn } from "@/lib/utils";
 import { accentName, bggUrl, matchesAnyName, secondaryNames, teseraUrl } from "@/lib/game-names";
-import {
-    GameSuggestionChips,
-    suggestionLabel,
-    suggestionMeta,
-    useGameSuggestions,
-} from "@/components/game-suggestions";
 
 type GameRow = GameListItem;
 
 export default function GamesAdminPage() {
     const { games: gamesFromContext, invalidate: invalidateGames } = useGames();
     const { isAuthenticated, canEdit, loading: meLoading } = useMe();
-    const { pendingGames, offline, addPendingGame, updatePendingGame, deletePendingGame } = useOffline();
-    const [newName, setNewName] = useState<string>("");
-    const [newAccepted, setNewAccepted] = useState<ReturnType<typeof suggestionMeta> | null>(null);
+    const { pendingGames, offline, updatePendingGame, deletePendingGame } = useOffline();
+    const [search, setSearch] = useState<string>("");
     const [filterTagIds, setFilterTagIds] = useState<Set<Base58ID>>(new Set());
+    const [tab, setTab] = useState("main");
+    const [createOpen, setCreateOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<GameRow | null>(null);
     const [matching, setMatching] = useState(false);
     const [enriching, setEnriching] = useState(false);
@@ -79,19 +56,15 @@ export default function GamesAdminPage() {
         invalidateGames();
     });
 
-    // Сatalogue suggestions for the "add game" input; best-effort — a network
-    // failure or offline state leaves the list empty and adding still works.
-    const newSuggestions = useGameSuggestions(newName, true);
-
     // Sort games alphabetically for admin view
     const sortedGames = [...gamesFromContext].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
     // Filter games by any of their names and/or by tag selection: selected
     // tags are OR-ed (a game matches when it carries any of them), then
     // AND-ed with the name filter.
-    const search = newName.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
     const games = sortedGames.filter(g =>
-        (search === "" || matchesAnyName(g, search)) &&
+        (query === "" || matchesAnyName(g, query)) &&
         (filterTagIds.size === 0 || g.tags.some(t => filterTagIds.has(t.id)))
     );
 
@@ -102,20 +75,6 @@ export default function GamesAdminPage() {
             else next.add(id);
             return next;
         });
-    }
-
-    function addGame() {
-        if (!newName || newName.trim() === "") return;
-        // Creates always queue (the clientId is the final server id); the
-        // sync flushes it within a round trip while online.
-        addPendingGame(newName.trim(), [], newAccepted ? {
-            nameEn: newAccepted.nameEn,
-            nameRu: newAccepted.nameRu,
-            bggRef: newAccepted.bggRef,
-            teseraRef: newAccepted.teseraRef,
-        } : undefined);
-        setNewName("");
-        setNewAccepted(null);
     }
 
     /** Bulk exact-name matching against Tesera for games without a Tesera link. */
@@ -163,10 +122,18 @@ export default function GamesAdminPage() {
 
     return (
         <PageContainer width="full">
-                <PageHeader title="Управление играми" />
+                <PageHeader
+                    title="Управление играми"
+                    action={tab === "main" && (
+                        <Button onClick={() => setCreateOpen(true)} disabled={!canEdit}>
+                            <Plus className="size-4" />
+                            {offline ? "Добавить офлайн" : "Добавить"}
+                        </Button>
+                    )}
+                />
                 <BackButton href="/admin" />
 
-            <AdminPageTabs entityType={["game", "tag"]} mainLabel="Игры" extraTab={{ label: "Теги", content: <TagManagement /> }}>
+            <AdminPageTabs entityType={["game", "tag"]} mainLabel="Игры" extraTab={{ label: "Теги", content: <TagManagement /> }} value={tab} onValueChange={setTab}>
             {!meLoading && !isAuthenticated && (
                 <div className="flex flex-col items-start gap-2">
                     <p>Для редактирования необходимо авторизоваться.</p>
@@ -202,31 +169,12 @@ export default function GamesAdminPage() {
                 </div>
             </section>
 
-            <div className="mb-2 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <Input
-                    className="flex-1"
-                    placeholder="Название игры"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGame(); } }}
-                />
-                <div className="w-full sm:w-auto">
-                    <Button
-                        onClick={addGame}
-                        disabled={!canEdit}
-                    >
-                        {offline ? "Добавить офлайн" : "Добавить"}
-                    </Button>
-                </div>
-            </div>
-            <div className="mb-4">
-                <GameSuggestionChips
-                    suggestions={newSuggestions}
-                    accepted={newAccepted}
-                    onAccept={(s) => setNewAccepted(suggestionMeta(s))}
-                    onClear={() => setNewAccepted(null)}
-                />
-            </div>
+            <Input
+                className="mb-4"
+                placeholder="Поиск по названию"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
 
             <TagFilterRow selected={filterTagIds} onToggle={toggleFilterTag} />
 
@@ -241,7 +189,7 @@ export default function GamesAdminPage() {
             <section className="mt-6">
                 <h2 className="text-lg font-medium mb-3">
                     Список игр
-                    {(newName.trim() !== "" || filterTagIds.size > 0) && (
+                    {(search.trim() !== "" || filterTagIds.size > 0) && (
                         <span className="text-sm font-normal text-muted-foreground ml-2">
                             (найдено: {games.length} из {sortedGames.length})
                         </span>
@@ -262,22 +210,27 @@ export default function GamesAdminPage() {
                                             <div className="text-sm text-muted-foreground">Партий: {game.total_matches}</div>
                                             <CatalogLinks game={game} />
                                         </div>
-                                        <div className="flex gap-2 ml-4 shrink-0">
+                                        {/* Icon actions keep the title wide on phones (the
+                                            text buttons used to squeeze it to ~100px). */}
+                                        <div className="flex gap-1 ml-2 shrink-0">
                                             <Button
-                                                variant="secondary"
-                                                size="sm"
+                                                variant="ghost"
+                                                size="icon-sm"
                                                 onClick={() => setEditTarget(game)}
                                                 disabled={!canEdit}
+                                                aria-label="Изменить игру"
                                             >
-                                                Изменить
+                                                <Pencil className="size-4" />
                                             </Button>
                                             <Button
-                                                variant="destructive"
-                                                size="sm"
+                                                variant="ghost"
+                                                size="icon-sm"
+                                                className="text-destructive hover:text-destructive"
                                                 onClick={() => del.trigger(game)}
                                                 disabled={!canEdit}
+                                                aria-label="Удалить игру"
                                             >
-                                                Удалить
+                                                <Trash2 className="size-4" />
                                             </Button>
                                         </div>
                                     </div>
@@ -342,6 +295,17 @@ export default function GamesAdminPage() {
                 )}
             </section>
             </AdminPageTabs>
+            {/* Create dialog: the same metadata editor, queued through the offline store. */}
+            {createOpen && (
+                <GameEditDialog
+                    game={null}
+                    onClose={() => setCreateOpen(false)}
+                    onSaved={() => {
+                        setCreateOpen(false);
+                        invalidateGames();
+                    }}
+                />
+            )}
             {/* Metadata edit dialog */}
             {editTarget && (
                 <GameEditDialog
@@ -414,201 +378,6 @@ function CatalogLinks({ game }: { game: GameRow }) {
                 </a>
             )}
         </div>
-    );
-}
-
-/**
- * Metadata editor: alias (removable), canonical names, BGG/Tesera ids, and a
- * catalogue picker that fills the canonical fields from Tesera. Saves the
- * full metadata state; the server recomputes the display name (alias →
- * ru → English) and rejects a save that leaves no name at all.
- */
-function GameEditDialog({
-    game,
-    onClose,
-    onSaved,
-}: {
-    game: GameRow;
-    onClose: () => void;
-    onSaved: () => void;
-}) {
-    const [alias, setAlias] = useState(game.alias ?? "");
-    const [nameEn, setNameEn] = useState(game.name_en ?? "");
-    const [nameRu, setNameRu] = useState(game.name_ru ?? "");
-    const [bggRef, setBggRef] = useState(game.bgg_ref != null ? String(game.bgg_ref) : "");
-    const [teseraRef, setTeseraRef] = useState(game.tesera_ref != null ? String(game.tesera_ref) : "");
-    const [gameMode, setGameMode] = useState<GameMode>(game.game_mode);
-    const [saving, setSaving] = useState(false);
-    const [pickerQuery, setPickerQuery] = useState("");
-
-    const suggestions = useGameSuggestions(pickerQuery, pickerQuery.trim().length >= 2);
-
-    const preview = [alias.trim(), nameRu.trim(), nameEn.trim()].find((n) => n !== "") ?? "";
-
-    async function save() {
-        if (!preview) return;
-        const bgg = bggRef.trim() ? Number.parseInt(bggRef, 10) : null;
-        const tesera = teseraRef.trim() ? Number.parseInt(teseraRef, 10) : null;
-        setSaving(true);
-        try {
-            await patchGamePromise(game.id, {
-                alias: alias.trim() || null,
-                name_en: nameEn.trim() || null,
-                name_ru: nameRu.trim() || null,
-                bgg_ref: bgg,
-                tesera_ref: tesera,
-                game_mode: gameMode,
-            });
-            onSaved();
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    /** Accepting a candidate fills the canonical names and links, keeping the alias. */
-    function accept(s: GameSuggestion) {
-        setNameEn(s.name_en ?? "");
-        setNameRu(s.name_ru ?? "");
-        setBggRef(s.bgg_ref != null ? String(s.bgg_ref) : "");
-        setTeseraRef(s.tesera_ref != null ? String(s.tesera_ref) : "");
-    }
-
-    return (
-        <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Изменить игру «{accentName(game)}»</DialogTitle>
-                    <DialogDescription>
-                        Отображаемое название: псевдоним, иначе русское, иначе английское.
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="flex flex-col gap-3">
-                    <label className="flex flex-col gap-1 text-sm">
-                        Псевдоним (удобное название на русском)
-                        <div className="flex gap-2">
-                            <Input
-                                value={alias}
-                                onChange={(e) => setAlias(e.target.value)}
-                                placeholder="например, Бутылочка"
-                            />
-                            {game.alias && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setAlias("")}
-                                    title="Убрать псевдоним — игра будет отображаться под каноническим названием"
-                                >
-                                    Убрать
-                                </Button>
-                            )}
-                        </div>
-                    </label>
-                    <label className="flex flex-col gap-1 text-sm">
-                        Название на английском (если игра издавалась официально)
-                        <Input
-                            value={nameEn}
-                            onChange={(e) => setNameEn(e.target.value)}
-                            placeholder="например, The Bottle Imp"
-                        />
-                    </label>
-                    <label className="flex flex-col gap-1 text-sm">
-                        Русское название (если игра издавалась официально)
-                        <Input
-                            value={nameRu}
-                            onChange={(e) => setNameRu(e.target.value)}
-                            placeholder="например, Тень в бутылке"
-                        />
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="flex flex-col gap-1 text-sm">
-                            BGG id
-                            <Input
-                                inputMode="numeric"
-                                value={bggRef}
-                                onChange={(e) => setBggRef(e.target.value.replace(/[^\d]/g, ""))}
-                            />
-                        </label>
-                        <label className="flex flex-col gap-1 text-sm">
-                            Tesera id
-                            <Input
-                                inputMode="numeric"
-                                value={teseraRef}
-                                onChange={(e) => setTeseraRef(e.target.value.replace(/[^\d]/g, ""))}
-                            />
-                        </label>
-                    </div>
-                    <div className="flex flex-col gap-1 text-sm">
-                        <Label htmlFor="game-mode">Режим игры</Label>
-                        <Select value={gameMode} onValueChange={(v) => setGameMode(v as GameMode)}>
-                            <SelectTrigger id="game-mode" className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {GAME_MODES.map((m) => (
-                                    <SelectItem key={m} value={m}>
-                                        {GAME_MODE_LABELS[m]}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                            {gameMode === "coop"
-                                ? "Кооперативные и сольные партии не влияют на рейтинг, арены, рынки и турниры."
-                                : gameMode === "mixed"
-                                    ? "Режим выбирается при записи каждой партии."
-                                    : "Обычные партии с очками за каждого игрока."}
-                        </p>
-                    </div>
-                    {preview && (
-                        <p className="text-xs text-muted-foreground">
-                            Отображается как: <span className="font-medium text-foreground">{preview}</span>
-                        </p>
-                    )}
-
-                    <div className="border-t pt-3 flex flex-col gap-2">
-                        <p className="text-sm font-medium">Подобрать в каталоге Tesera</p>
-                        <Input
-                            placeholder="Название для поиска"
-                            value={pickerQuery}
-                            onChange={(e) => setPickerQuery(e.target.value)}
-                        />
-                        {pickerQuery.trim().length >= 2 && suggestions.length === 0 && (
-                            <p className="text-xs text-muted-foreground">Ничего не найдено (или каталог недоступен).</p>
-                        )}
-                        <div className="flex flex-wrap gap-1">
-                            {suggestions.map((s) => (
-                                <button
-                                    key={s.tesera_ref}
-                                    type="button"
-                                    onClick={() => {
-                                        accept(s);
-                                        setPickerQuery("");
-                                    }}
-                                    className={cn(
-                                        "rounded-full border px-2 py-0.5 text-xs transition-colors hover:bg-accent text-left",
-                                        s.is_addition && "opacity-70",
-                                    )}
-                                >
-                                    {suggestionLabel(s)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose} disabled={saving}>
-                        Отмена
-                    </Button>
-                    <Button onClick={save} disabled={saving || !preview} aria-busy={saving}>
-                        {saving && <Spinner className="size-4" />}
-                        Сохранить
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
     );
 }
 

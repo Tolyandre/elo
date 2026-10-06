@@ -17,6 +17,8 @@ export function AdminPageTabs({
     mainLabel = "Основное",
     extraTab,
     children,
+    value,
+    onValueChange,
 }: {
     entityType: AuditEntityType | AuditEntityType[];
     /** Narrow the log to one entity (club detail page); omit for the type-wide feed. */
@@ -25,9 +27,12 @@ export function AdminPageTabs({
     /** Optional middle tab between the main tab and the audit log (e.g. games → tags). */
     extraTab?: { label: string; content: ReactNode };
     children: ReactNode;
+    /** Controlled active tab (e.g. to scope a header action to one tab); omit for uncontrolled. */
+    value?: string;
+    onValueChange?: (value: string) => void;
 }) {
     return (
-        <Tabs defaultValue="main" className="mt-4">
+        <Tabs defaultValue="main" value={value} onValueChange={onValueChange} className="mt-4">
             <TabsList>
                 <TabsTrigger value="main">{mainLabel}</TabsTrigger>
                 {extraTab && <TabsTrigger value="extra">{extraTab.label}</TabsTrigger>}
