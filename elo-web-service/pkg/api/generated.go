@@ -1252,6 +1252,12 @@ type Game struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
+	// ImageThumbUrl Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
+
+	// ImageUrl Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+	ImageUrl *string `json:"image_url,omitempty"`
+
 	// Name Display name — alias if set, else localized ru name, else official English name
 	Name   string  `json:"name"`
 	NameEn *string `json:"name_en,omitempty"`
@@ -1303,8 +1309,14 @@ type GameListItem struct {
 	BggRef *int `json:"bgg_ref,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id              Base58ID `json:"id"`
-	LastPlayedOrder int      `json:"last_played_order"`
+	Id Base58ID `json:"id"`
+
+	// ImageThumbUrl Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+	ImageThumbUrl *string `json:"image_thumb_url,omitempty"`
+
+	// ImageUrl Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+	ImageUrl        *string `json:"image_url,omitempty"`
+	LastPlayedOrder int     `json:"last_played_order"`
 
 	// Name Display name — alias if set, else localized ru name, else official English name
 	Name string `json:"name"`
@@ -2040,6 +2052,25 @@ type AuditAuditTournamentStateDetailsReason string
 
 // AuditAuditTournamentStateDetailsTo defines model for AuditAuditTournamentStateDetails.To.
 type AuditAuditTournamentStateDetailsTo string
+
+// GamesGameEnrichResult defines model for games_GameEnrichResult.
+type GamesGameEnrichResult struct {
+	Enriched bool `json:"enriched"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// Name The game's display name at the time of enrichment
+	Name string `json:"name"`
+
+	// Reason Why the game was not enriched ("no image on BGG", "not found on BGG", "bgg request failed", "update failed")
+	Reason *string `json:"reason,omitempty"`
+}
+
+// GamesGameEnrichResults defines model for games_GameEnrichResults.
+type GamesGameEnrichResults struct {
+	Games []GamesGameEnrichResult `json:"games"`
+}
 
 // MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
@@ -3366,6 +3397,9 @@ type ServerInterface interface {
 	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
 	// (POST /games/auto-match)
 	AutoMatchGames(c *gin.Context)
+	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
+	// (POST /games/bgg-enrich)
+	EnrichGameImages(c *gin.Context)
 	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(c *gin.Context, params SuggestGamesParams)
@@ -4196,6 +4230,19 @@ func (siw *ServerInterfaceWrapper) AutoMatchGames(c *gin.Context) {
 	}
 
 	siw.Handler.AutoMatchGames(c)
+}
+
+// EnrichGameImages operation middleware
+func (siw *ServerInterfaceWrapper) EnrichGameImages(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.EnrichGameImages(c)
 }
 
 // SuggestGames operation middleware
@@ -5632,6 +5679,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
 	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
+	router.POST(options.BaseURL+"/games/bgg-enrich", wrapper.EnrichGameImages)
 	router.GET(options.BaseURL+"/games/suggestions", wrapper.SuggestGames)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
 	router.GET(options.BaseURL+"/games/:id", wrapper.GetGame)
@@ -7011,6 +7059,58 @@ func (response AutoMatchGames401JSONResponse) VisitAutoMatchGamesResponse(w http
 type AutoMatchGames403JSONResponse ApiError
 
 func (response AutoMatchGames403JSONResponse) VisitAutoMatchGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnrichGameImagesRequestObject struct {
+}
+
+type EnrichGameImagesResponseObject interface {
+	VisitEnrichGameImagesResponse(w http.ResponseWriter) error
+}
+
+type EnrichGameImages200JSONResponse struct {
+	Data   GamesGameEnrichResults `json:"data"`
+	Status string                 `json:"status"`
+}
+
+func (response EnrichGameImages200JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnrichGameImages401JSONResponse ApiError
+
+func (response EnrichGameImages401JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EnrichGameImages403JSONResponse ApiError
+
+func (response EnrichGameImages403JSONResponse) VisitEnrichGameImagesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -10936,6 +11036,9 @@ type StrictServerInterface interface {
 	// AutoMatchGames Match every game lacking a Tesera reference against the Tesera catalogue
 	// (POST /games/auto-match)
 	AutoMatchGames(ctx context.Context, request AutoMatchGamesRequestObject) (AutoMatchGamesResponseObject, error)
+	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
+	// (POST /games/bgg-enrich)
+	EnrichGameImages(ctx context.Context, request EnrichGameImagesRequestObject) (EnrichGameImagesResponseObject, error)
 	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(ctx context.Context, request SuggestGamesRequestObject) (SuggestGamesResponseObject, error)
@@ -11871,6 +11974,30 @@ func (sh *strictHandler) AutoMatchGames(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(AutoMatchGamesResponseObject); ok {
 		if err := validResponse.VisitAutoMatchGamesResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnrichGameImages operation middleware
+func (sh *strictHandler) EnrichGameImages(ctx *gin.Context) {
+	var request EnrichGameImagesRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.EnrichGameImages(ctx, request.(EnrichGameImagesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnrichGameImages")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(EnrichGameImagesResponseObject); ok {
+		if err := validResponse.VisitEnrichGameImagesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

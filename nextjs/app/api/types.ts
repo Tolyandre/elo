@@ -15,6 +15,7 @@ export type Tag = components["schemas"]["Tag"];
 export type Game = components["schemas"]["Game"];
 export type GameSuggestion = components["schemas"]["GameSuggestion"];
 export type GameAutoMatchResult = components["schemas"]["GameAutoMatchResult"];
+export type GameEnrichResult = components["schemas"]["GameEnrichResult"];
 export type EloSettingEntry = components["schemas"]["EloSettingEntry"];
 export type Market = components["schemas"]["Market"];
 export type MarketDetail = components["schemas"]["MarketDetail"];

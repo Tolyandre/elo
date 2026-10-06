@@ -16,7 +16,7 @@ const addGame = `-- name: AddGame :one
 INSERT INTO games (id, name_en, name_ru, alias, bgg_id, tesera_id)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url
 `
 
 type AddGameParams struct {
@@ -46,6 +46,8 @@ func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) 
 		&i.BggID,
 		&i.TeseraID,
 		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
 	)
 	return i, err
 }
@@ -53,7 +55,7 @@ func (q *Queries) AddGame(ctx context.Context, arg AddGameParams) (Game, error) 
 const deleteGame = `-- name: DeleteGame :one
 DELETE FROM games
 WHERE id = $1
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url
 `
 
 func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
@@ -67,12 +69,14 @@ func (q *Queries) DeleteGame(ctx context.Context, argID id.ID) (Game, error) {
 		&i.BggID,
 		&i.TeseraID,
 		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
 	)
 	return i, err
 }
 
 const getGameByID = `-- name: GetGameByID :one
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name FROM games
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url FROM games
 WHERE id = $1
 `
 
@@ -87,12 +91,14 @@ func (q *Queries) GetGameByID(ctx context.Context, argID id.ID) (Game, error) {
 		&i.BggID,
 		&i.TeseraID,
 		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
 	)
 	return i, err
 }
 
 const getGameByName = `-- name: GetGameByName :one
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name FROM games
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url FROM games
 WHERE name = $1
 `
 
@@ -107,8 +113,49 @@ func (q *Queries) GetGameByName(ctx context.Context, name string) (Game, error) 
 		&i.BggID,
 		&i.TeseraID,
 		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
 	)
 	return i, err
+}
+
+const listGamesForBggEnrich = `-- name: ListGamesForBggEnrich :many
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url FROM games
+WHERE bgg_id IS NOT NULL AND image_url IS NULL AND image_thumb_url IS NULL
+ORDER BY id
+`
+
+// Games carrying a BGG reference whose box art has not been fetched yet.
+// The both-NULL predicate means a row enriched with only one URL (BGG has a
+// thumbnail but no full image) leaves the enrichment set for good.
+func (q *Queries) ListGamesForBggEnrich(ctx context.Context) ([]Game, error) {
+	rows, err := q.db.Query(ctx, listGamesForBggEnrich)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Game{}
+	for rows.Next() {
+		var i Game
+		if err := rows.Scan(
+			&i.ID,
+			&i.NameEn,
+			&i.NameRu,
+			&i.Alias,
+			&i.BggID,
+			&i.TeseraID,
+			&i.Name,
+			&i.ImageUrl,
+			&i.ImageThumbUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listGamesOrderedByLastPlayed = `-- name: ListGamesOrderedByLastPlayed :many
@@ -120,22 +167,26 @@ SELECT
 	g.alias AS alias,
 	g.bgg_id AS bgg_id,
 	g.tesera_id AS tesera_id,
+	g.image_url AS image_url,
+	g.image_thumb_url AS image_thumb_url,
 	COUNT(m.id) AS total_matches
 FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
-GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id
+GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url
 ORDER BY MAX(m.date) DESC
 `
 
 type ListGamesOrderedByLastPlayedRow struct {
-	ID           id.ID       `json:"id"`
-	Name         string      `json:"name"`
-	NameEn       pgtype.Text `json:"name_en"`
-	NameRu       pgtype.Text `json:"name_ru"`
-	Alias        pgtype.Text `json:"alias"`
-	BggID        pgtype.Int4 `json:"bgg_id"`
-	TeseraID     pgtype.Int4 `json:"tesera_id"`
-	TotalMatches int64       `json:"total_matches"`
+	ID            id.ID       `json:"id"`
+	Name          string      `json:"name"`
+	NameEn        pgtype.Text `json:"name_en"`
+	NameRu        pgtype.Text `json:"name_ru"`
+	Alias         pgtype.Text `json:"alias"`
+	BggID         pgtype.Int4 `json:"bgg_id"`
+	TeseraID      pgtype.Int4 `json:"tesera_id"`
+	ImageUrl      pgtype.Text `json:"image_url"`
+	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
+	TotalMatches  int64       `json:"total_matches"`
 }
 
 func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error) {
@@ -155,6 +206,8 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 			&i.Alias,
 			&i.BggID,
 			&i.TeseraID,
+			&i.ImageUrl,
+			&i.ImageThumbUrl,
 			&i.TotalMatches,
 		); err != nil {
 			return nil, err
@@ -168,7 +221,7 @@ func (q *Queries) ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGames
 }
 
 const listGamesWithoutTeseraRef = `-- name: ListGamesWithoutTeseraRef :many
-SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name FROM games
+SELECT id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url FROM games
 WHERE tesera_id IS NULL
 ORDER BY name
 `
@@ -190,6 +243,8 @@ func (q *Queries) ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error)
 			&i.BggID,
 			&i.TeseraID,
 			&i.Name,
+			&i.ImageUrl,
+			&i.ImageThumbUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -209,7 +264,7 @@ SET	name_en = $2,
 	bgg_id = $5,
 	tesera_id = $6
 WHERE id = $1
-RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url
 `
 
 type UpdateGameParams struct {
@@ -240,6 +295,39 @@ func (q *Queries) UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, e
 		&i.BggID,
 		&i.TeseraID,
 		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
+	)
+	return i, err
+}
+
+const updateGameBggImages = `-- name: UpdateGameBggImages :one
+UPDATE games
+SET	image_url = $2,
+	image_thumb_url = $3
+WHERE id = $1
+RETURNING id, name_en, name_ru, alias, bgg_id, tesera_id, name, image_url, image_thumb_url
+`
+
+type UpdateGameBggImagesParams struct {
+	ID            id.ID       `json:"id"`
+	ImageUrl      pgtype.Text `json:"image_url"`
+	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
+}
+
+func (q *Queries) UpdateGameBggImages(ctx context.Context, arg UpdateGameBggImagesParams) (Game, error) {
+	row := q.db.QueryRow(ctx, updateGameBggImages, arg.ID, arg.ImageUrl, arg.ImageThumbUrl)
+	var i Game
+	err := row.Scan(
+		&i.ID,
+		&i.NameEn,
+		&i.NameRu,
+		&i.Alias,
+		&i.BggID,
+		&i.TeseraID,
+		&i.Name,
+		&i.ImageUrl,
+		&i.ImageThumbUrl,
 	)
 	return i, err
 }

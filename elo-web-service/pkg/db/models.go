@@ -116,13 +116,15 @@ type EloSetting struct {
 }
 
 type Game struct {
-	ID       id.ID       `json:"id"`
-	NameEn   pgtype.Text `json:"name_en"`
-	NameRu   pgtype.Text `json:"name_ru"`
-	Alias    pgtype.Text `json:"alias"`
-	BggID    pgtype.Int4 `json:"bgg_id"`
-	TeseraID pgtype.Int4 `json:"tesera_id"`
-	Name     string      `json:"name"`
+	ID            id.ID       `json:"id"`
+	NameEn        pgtype.Text `json:"name_en"`
+	NameRu        pgtype.Text `json:"name_ru"`
+	Alias         pgtype.Text `json:"alias"`
+	BggID         pgtype.Int4 `json:"bgg_id"`
+	TeseraID      pgtype.Int4 `json:"tesera_id"`
+	Name          string      `json:"name"`
+	ImageUrl      pgtype.Text `json:"image_url"`
+	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
 }
 
 type GameTable struct {

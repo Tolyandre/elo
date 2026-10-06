@@ -33,6 +33,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	mainapi "github.com/tolyandre/elo-web-service/pkg/api"
 	apioauth2 "github.com/tolyandre/elo-web-service/pkg/api/oauth2"
+	"github.com/tolyandre/elo-web-service/pkg/bgg"
 	cfg "github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
@@ -164,13 +165,24 @@ func setupRouter(pool *pgxpool.Pool) *gin.Engine {
 // server (empty = the real default Tesera URL; tests that don't touch the
 // suggestion endpoints never reach it).
 func setupRouterWithTesera(pool *pgxpool.Pool, teseraBaseURL string) *gin.Engine {
+	return setupRouterWithClients(pool, teseraBaseURL, "")
+}
+
+// setupRouterWithClients additionally points the BGG image-enrichment
+// integration at a stub server (empty = disabled, like the tests that don't
+// touch the enrich endpoint).
+func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	cfg.Config.CookieJwtSecret = testJWTSecret
 	cfg.Config.CookieTtlSeconds = 3600
 	cfg.Config.FrontendUri = "http://localhost:3000"
 
 	r := gin.New()
-	a := mainapi.NewWithTesera(pool, tesera.NewClient(teseraBaseURL))
+	var bggClient *bgg.Client
+	if bggBaseURL != "" {
+		bggClient = bgg.NewClient(bggBaseURL, "test-token")
+	}
+	a := mainapi.NewWithClients(pool, tesera.NewClient(teseraBaseURL), bggClient)
 	o := apioauth2.New(pool)
 
 	strictWrapper := &mainapi.ServerInterfaceWrapper{
@@ -194,6 +206,8 @@ func setupRouterWithTesera(pool *pgxpool.Pool, teseraBaseURL string) *gin.Engine
 	r.GET("/games", strictWrapper.ListGames)
 	r.GET("/games/suggestions", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SuggestGames)
 	r.POST("/games/auto-match", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AutoMatchGames)
+	r.POST("/games/bgg-enrich", o.DeserializeUser(), a.RequireEditor(), strictWrapper.EnrichGameImages)
+	r.GET("/games/:id", strictWrapper.GetGame)
 	r.POST("/games", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateGame)
 	r.PATCH("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchGame)
 	r.DELETE("/games/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteGame)
@@ -634,8 +648,8 @@ func newTagService(pool *pgxpool.Pool) elo.ITagService {
 }
 
 func newGameService(pool *pgxpool.Pool) elo.IGameService {
-	// No Tesera client: service-level tests don't touch suggestions.
-	return elo.NewGameService(pool, newArenaService(pool), nil)
+	// No Tesera/BGG clients: service-level tests don't touch the catalogues.
+	return elo.NewGameService(pool, newArenaService(pool), nil, nil)
 }
 
 func newCorrectionService(pool *pgxpool.Pool) elo.ICorrectionService {

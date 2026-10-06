@@ -1,5 +1,5 @@
 import type { PrecacheEntry, RouteHandler, SerwistGlobalConfig, SerwistPlugin } from "serwist";
-import { CacheableResponsePlugin, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
+import { CacheableResponsePlugin, CacheFirst, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 import type { SwToPageMessage } from "../lib/sw-messages";
 
@@ -166,6 +166,23 @@ const serwist = new Serwist({
             // must bypass the worker's respondWith entirely.)
             matcher: ({ url }) => apiBase !== "" && url.href.startsWith(`${apiBase}/`),
             handler: new NetworkOnly(),
+        },
+        {
+            // BGG box art (ADR-31): immutable content-addressed URLs, so serve
+            // from cache immediately and keep them offline-capable. Only
+            // 2xx responses enter the cache; capped so one long session
+            // cannot grow it unboundedly.
+            matcher: ({ url }) => url.hostname === "cf.geekdo-images.com",
+            handler: new CacheFirst({
+                cacheName: "bgg-images",
+                plugins: [
+                    new CacheableResponsePlugin({ statuses: [200] }),
+                    new ExpirationPlugin({
+                        maxEntries: 300,
+                        maxAgeSeconds: 30 * 24 * 60 * 60,
+                    }),
+                ],
+            }),
         },
         ...defaultCache,
     ],

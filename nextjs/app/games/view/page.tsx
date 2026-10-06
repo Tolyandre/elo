@@ -10,6 +10,7 @@ import { Arena, getArenasPromise, getGamePromise, parseArenaSettings } from "@/a
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { BackButton } from "@/components/back-button";
 import { ErrorAlert } from "@/components/error-alert";
+import { GameImage } from "@/components/game-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trophy } from "lucide-react";
 
@@ -48,12 +49,16 @@ function GameContent() {
 
   const game = data?.game ?? null;
   const arenas = data?.arenas ?? [];
+  const imageUrl = game?.image_url ?? game?.image_thumb_url ?? null;
 
   return (
     <PageContainer width="narrow">
       <BackButton href="/games" label="Назад к играм" />
       <div className="space-y-4">
         <PageHeader title={game?.name ?? ""} />
+        {imageUrl && (
+          <GameImage src={imageUrl} alt={game?.name ?? ""} className="max-h-44 w-auto rounded-md border object-contain" />
+        )}
         <p className="text-sm text-muted-foreground">Партий: {game?.total_matches ?? "…"}</p>
 
         {error && <ErrorAlert message={error} />}

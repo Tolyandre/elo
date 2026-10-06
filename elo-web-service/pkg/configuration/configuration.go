@@ -36,6 +36,12 @@ type Configuration struct {
 	// BGG/Tesera references and localized game names. Optional: empty means
 	// the default public API, so no deployment has to configure it.
 	TeseraBaseURL string `mapstructure:"tesera_base_url"`
+
+	// BggApiAccessToken is the BoardGameGeek XML API application token
+	// (https://boardgamegeek.com/using_the_xml_api) used by the box-art
+	// enrichment. Optional: empty disables BGG enrichment entirely, so
+	// deployments and tests without a token keep working.
+	BggApiAccessToken string `mapstructure:"bgg_api_access_token"`
 }
 
 var Config Configuration
@@ -135,6 +141,7 @@ var configKeys = []string{
 	"postgres_dsn",
 	"postgres_password",
 	"tesera_base_url",
+	"bgg_api_access_token",
 }
 
 // requiredKeys are the string fields that must be non-empty at startup. Note

@@ -130,6 +130,7 @@ func main() {
 	router.GET("/games", strictWrapper.ListGames)
 	router.GET("/games/suggestions", append(editorAuth(), strictWrapper.SuggestGames)...)
 	router.POST("/games/auto-match", append(editorAuth(), strictWrapper.AutoMatchGames)...)
+	router.POST("/games/bgg-enrich", append(editorAuth(), strictWrapper.EnrichGameImages)...)
 	router.GET("/games/:id", strictWrapper.GetGame)
 	router.DELETE("/games/:id", append(editorAuth(), strictWrapper.DeleteGame)...)
 	router.PATCH("/games/:id", append(editorAuth(), strictWrapper.PatchGame)...)

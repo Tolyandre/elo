@@ -345,6 +345,10 @@ type Querier interface {
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
 	ListGameTables(ctx context.Context) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
+	// Games carrying a BGG reference whose box art has not been fetched yet.
+	// The both-NULL predicate means a row enriched with only one URL (BGG has a
+	// thumbnail but no full image) leaves the enrichment set for good.
+	ListGamesForBggEnrich(ctx context.Context) ([]Game, error)
 	ListGamesOrderedByLastPlayed(ctx context.Context) ([]ListGamesOrderedByLastPlayedRow, error)
 	ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error)
 	// The current state (latest settlement row) of every player in the arena.
@@ -480,6 +484,7 @@ type Querier interface {
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
 	// `name` is generated (migration 063) and follows the three source names.
 	UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, error)
+	UpdateGameBggImages(ctx context.Context, arg UpdateGameBggImagesParams) (Game, error)
 	UpdateGameTableState(ctx context.Context, arg UpdateGameTableStateParams) (GameTable, error)
 	UpdateMarketLiquidityB(ctx context.Context, arg UpdateMarketLiquidityBParams) error
 	// Persists one component of the LMSR state vector after a bet shifts the

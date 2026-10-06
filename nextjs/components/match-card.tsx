@@ -4,10 +4,12 @@ import React, { useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePlayers } from "@/app/players/PlayersContext";
+import { useGames } from "@/app/gamesContext";
 import { useMe } from "@/app/meContext";
 import { Match } from "@/app/api";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { GameImage } from "@/components/game-image";
 import { RankIcon } from "@/components/rank-icon";
 import { ClubIcons } from "@/components/player-name";
 import { formatDateTime } from "@/lib/datetime";
@@ -21,8 +23,17 @@ type MatchCardProps = {
 
 export const MatchCard = React.memo(function MatchCard({ match, roundToInteger = false, clickable = false }: MatchCardProps) {
   const { playerMap, playerDisplayName } = usePlayers();
+  const { games } = useGames();
   const { playerId: myPlayerId } = useMe();
   const router = useRouter();
+
+  // The match response carries only the game's name; the image comes from
+  // the games list (absent offline-before-first-load — the thumb is optional
+  // decoration and simply does not render).
+  const gameImage = useMemo(
+    () => games.find((g) => g.id === match.game_id)?.image_thumb_url ?? null,
+    [games, match.game_id],
+  );
 
   const { players, ranks, totalEarn, totalPay } = useMemo(() => {
     const players = Object.entries(match.score)
@@ -61,13 +72,16 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     >
       <CardHeader>
         <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
-          <Link
-            href={`/games/view?id=${match.game_id}`}
-            className="underline"
-            onClick={(e) => clickable && e.stopPropagation()}
-          >
-            {match.game_name}
-          </Link>
+          <span className="flex items-center gap-2 min-w-0">
+            {gameImage && <GameImage src={gameImage} alt="" className="size-7 shrink-0 rounded" />}
+            <Link
+              href={`/games/view?id=${match.game_id}`}
+              className="underline"
+              onClick={(e) => clickable && e.stopPropagation()}
+            >
+              {match.game_name}
+            </Link>
+          </span>
           {match.date && (
             <span className="text-muted-foreground text-sm">
               {formatDateTime(match.date)}

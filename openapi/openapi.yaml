@@ -231,6 +231,8 @@ paths:
     $ref: './games.yaml#/GameSuggestionsPath'
   /games/auto-match:
     $ref: './games.yaml#/GameAutoMatchPath'
+  /games/bgg-enrich:
+    $ref: './games.yaml#/GameBggEnrichPath'
   /games/{id}:
     $ref: './games.yaml#/GameItem'
   /games/{id}/tags:

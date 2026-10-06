@@ -129,6 +129,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/games/bgg-enrich": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
+         * @description Batched /xmlapi2/thing lookups paced per BGG's documented rate guidance; the resulting URLs are stored on the game and hotlinked at render time (ADR-31). Per-game failures are reported in the response and skipped, never fatal. Requires a configured BGG API token server-side — without one the endpoint errors, same as the Tesera endpoints when their client is not configured.
+         */
+        post: operations["EnrichGameImages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/games/{id}": {
         parameters: {
             query?: never;
@@ -1148,6 +1168,10 @@ export interface components {
             bgg_ref?: number | null;
             /** @description Tesera game id (tesera.ru/game/{tesera_ref}) */
             tesera_ref?: number | null;
+            /** @description Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
+            image_url?: string | null;
+            /** @description Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
+            image_thumb_url?: string | null;
             last_played_order: number;
             total_matches: number;
             /** @description Tags attached to the game, ordered by tag name */
@@ -1167,6 +1191,10 @@ export interface components {
             bgg_ref?: number | null;
             /** @description Tesera game id */
             tesera_ref?: number | null;
+            /** @description Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
+            image_url?: string | null;
+            /** @description Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
+            image_thumb_url?: string | null;
             total_matches: number;
         };
         GameTag: {
@@ -1826,6 +1854,17 @@ export interface components {
             /** @description The player has submitted their final scoring */
             done: boolean;
         };
+        GameEnrichResult: {
+            id: components["schemas"]["Base58ID"];
+            /** @description The game's display name at the time of enrichment */
+            name: string;
+            enriched: boolean;
+            /** @description Why the game was not enriched ("no image on BGG", "not found on BGG", "bgg request failed", "update failed") */
+            reason?: string | null;
+        };
+        GameEnrichResults: {
+            games: components["schemas"]["GameEnrichResult"][];
+        };
         /** @description One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»). */
         MarketOutcome: {
             id: components["schemas"]["Base58ID"];
@@ -2474,6 +2513,47 @@ export interface operations {
                     "application/json": {
                         status: string;
                         data: components["schemas"]["GameAutoMatchResults"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    EnrichGameImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Per-game enrichment results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["GameEnrichResults"];
                     };
                 };
             };

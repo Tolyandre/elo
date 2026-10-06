@@ -461,6 +461,46 @@ GameAutoMatchPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
+GameBggEnrichPath:
+  post:
+    operationId: EnrichGameImages
+    tags: [games]
+    summary: Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
+    description: >-
+      Batched /xmlapi2/thing lookups paced per BGG's documented rate
+      guidance; the resulting URLs are stored on the game and hotlinked at
+      render time (ADR-31). Per-game failures are reported in the response
+      and skipped, never fatal. Requires a configured BGG API token
+      server-side — without one the endpoint errors, same as the Tesera
+      endpoints when their client is not configured.
+    security:
+      - cookieAuth: []
+    responses:
+      "200":
+        description: Per-game enrichment results
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/GameEnrichResults'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 GameListItem:
@@ -491,6 +531,14 @@ GameListItem:
       type: integer
       nullable: true
       description: Tesera game id (tesera.ru/game/{tesera_ref})
+    image_url:
+      type: string
+      nullable: true
+      description: Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+    image_thumb_url:
+      type: string
+      nullable: true
+      description: Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
     last_played_order:
       type: integer
     total_matches:
@@ -545,6 +593,14 @@ Game:
       type: integer
       nullable: true
       description: Tesera game id
+    image_url:
+      type: string
+      nullable: true
+      description: Full box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+    image_thumb_url:
+      type: string
+      nullable: true
+      description: Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
     total_matches:
       type: integer
   required: [id, name, total_matches]
@@ -615,4 +671,31 @@ GameAutoMatchResults:
       type: array
       items:
         $ref: '#/GameAutoMatchResult'
+  required: [games]
+
+GameEnrichResult:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+      description: The game's display name at the time of enrichment
+    enriched:
+      type: boolean
+    reason:
+      type: string
+      nullable: true
+      description: >-
+        Why the game was not enriched ("no image on BGG", "not found on BGG",
+        "bgg request failed", "update failed")
+  required: [id, name, enriched]
+
+GameEnrichResults:
+  type: object
+  properties:
+    games:
+      type: array
+      items:
+        $ref: '#/GameEnrichResult'
   required: [games]

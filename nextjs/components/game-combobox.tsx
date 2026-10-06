@@ -18,6 +18,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
+import { GameImage } from "@/components/game-image"
 import {
   Dialog,
   DialogContent,
@@ -166,6 +167,9 @@ export function GameCombobox({
                   keywords={game.game ? allNames(game.game) : [game.label]}
                   onSelect={handleSelect}
                 >
+                  {game.game?.image_thumb_url && (
+                    <GameImage src={game.game.image_thumb_url} alt="" className="size-7 shrink-0 rounded-sm" />
+                  )}
                   <div className="min-w-0 flex-1">
                     {/* Inline flow: the secondary names start on the same
                         line as the accent name and whatever does not fit

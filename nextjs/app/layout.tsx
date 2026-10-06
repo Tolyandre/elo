@@ -19,6 +19,7 @@ import { OfflineProvider } from "./offline/OfflineContext";
 import { SwUpdateReloader } from "@/components/sw-update-reloader";
 import { RootRscPayloadRewrite } from "@/components/root-rsc-payload-rewrite";
 import { EnvBanner } from "@/components/env-banner";
+import { SiteFooter } from "@/components/site-footer";
 import { LiveDataSubscriber } from "@/components/live-data-subscriber";
 import { UserEventsSubscriber } from "@/components/user-events-subscriber";
 
@@ -108,6 +109,9 @@ export default function RootLayout({
                           </div>
                         </PageHeaderProvider>
                       </div>
+                      {/* The "Powered by BGG" attribution (XML API Terms of Use,
+                          ADR-31): on every public page, one place covers all. */}
+                      <SiteFooter />
                     </div>
                   </ThemeProvider>
                 </body>

@@ -1,7 +1,10 @@
 package api
 
 import (
+	"log"
+
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/bgg"
 	"github.com/tolyandre/elo-web-service/pkg/configuration"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	elo "github.com/tolyandre/elo-web-service/pkg/elo"
@@ -28,12 +31,22 @@ type API struct {
 }
 
 func New(pool *pgxpool.Pool) *API {
-	return NewWithTesera(pool, tesera.NewClient(configuration.Config.TeseraBaseURL))
+	// An empty token yields a nil client: BGG enrichment stays off. Log it
+	// once at boot — a missing token otherwise surfaces only as an opaque
+	// "unavailable" error when the enrich action is clicked.
+	bggClient := bgg.NewClient("", configuration.Config.BggApiAccessToken)
+	if bggClient == nil {
+		log.Printf("bgg enrichment disabled: ELO_WEB_SERVICE_BGG_API_ACCESS_TOKEN is not set")
+	}
+	return NewWithClients(pool,
+		tesera.NewClient(configuration.Config.TeseraBaseURL),
+		bggClient)
 }
 
-// NewWithTesera lets tests point the game-suggestion integration at a stub
-// server instead of the real Tesera API.
-func NewWithTesera(pool *pgxpool.Pool, teseraClient *tesera.Client) *API {
+// NewWithClients lets tests point the catalogue integrations (Tesera
+// suggestions, BGG image enrichment) at stub servers instead of the real
+// APIs; a nil client disables that integration.
+func NewWithClients(pool *pgxpool.Pool, teseraClient *tesera.Client, bggClient *bgg.Client) *API {
 	hub := elo.NewHub()
 	marketService := elo.NewMarketServiceWithHub(pool, hub)
 	arenaService := elo.NewArenaService(pool, hub)
@@ -41,7 +54,7 @@ func NewWithTesera(pool *pgxpool.Pool, teseraClient *tesera.Client) *API {
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
-		GameService:        elo.NewGameService(pool, arenaService, teseraClient),
+		GameService:        elo.NewGameService(pool, arenaService, teseraClient, bggClient),
 		PlayerService:      elo.NewPlayerService(pool),
 		MatchService:       elo.NewMatchService(pool, marketService, arenaService, tournamentService),
 		MarketService:      marketService,
@@ -57,4 +70,10 @@ func NewWithTesera(pool *pgxpool.Pool, teseraClient *tesera.Client) *API {
 		MatchQueries:       db.New(pool),
 		Hub:                hub,
 	}
+}
+
+// NewWithTesera is NewWithClients without BGG, kept for the existing
+// suggestion-focused tests.
+func NewWithTesera(pool *pgxpool.Pool, teseraClient *tesera.Client) *API {
+	return NewWithClients(pool, teseraClient, nil)
 }

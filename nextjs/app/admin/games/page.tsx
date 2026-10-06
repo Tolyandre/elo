@@ -13,6 +13,7 @@ import {
     addGameTagPromise,
     removeGameTagPromise,
     autoMatchGamesPromise,
+    enrichGameImagesPromise,
     Tag,
     GameListItem,
     GameSuggestion,
@@ -39,6 +40,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
+import { GameImage } from "@/components/game-image";
 import { ResponsiveTable } from "@/components/responsive-table";
 import { BackButton } from "@/components/back-button";
 import { cn } from "@/lib/utils";
@@ -61,6 +63,7 @@ export default function GamesAdminPage() {
     const [filterTagIds, setFilterTagIds] = useState<Set<Base58ID>>(new Set());
     const [editTarget, setEditTarget] = useState<GameRow | null>(null);
     const [matching, setMatching] = useState(false);
+    const [enriching, setEnriching] = useState(false);
 
     const del = useConfirmAction(async (g: GameRow) => {
         await deleteGamePromise(g.id);
@@ -126,6 +129,28 @@ export default function GamesAdminPage() {
     }
 
     const unmatchedCount = gamesFromContext.filter((g) => !g.tesera_ref).length;
+    // Games with a BGG link whose box art was not fetched yet (the enrich run
+    // fills image URLs for exactly this set).
+    const unenrichedCount = gamesFromContext.filter((g) => g.bgg_ref && !g.image_url && !g.image_thumb_url).length;
+
+    /** BGG box-art backfill for games with a bgg_ref and no image yet. */
+    async function runBggEnrich() {
+        setEnriching(true);
+        try {
+            const results = await enrichGameImagesPromise();
+            const enriched = results.filter((r) => r.enriched).length;
+            if (results.length === 0) {
+                toast.success("Все обложки уже загружены");
+            } else {
+                toast.success(`Загружено обложек: ${enriched} из ${results.length}`);
+            }
+            invalidateGames();
+        } catch {
+            // toast shown by API helper
+        } finally {
+            setEnriching(false);
+        }
+    }
 
     return (
         <PageContainer width="full">
@@ -146,17 +171,26 @@ export default function GamesAdminPage() {
                 <div className="flex-1 min-w-0">
                     <h3 className="text-sm font-medium">Сопоставление с каталогами</h3>
                     <p className="text-sm text-muted-foreground">
-                        Автоматически проставить ссылки на BoardGameGeek и Тесеру.
+                        Автоматически проставить ссылки на BoardGameGeek и Тесеру, загрузить обложки из BGG.
                     </p>
                 </div>
-                <Button
-                    onClick={runAutoMatch}
-                    disabled={!canEdit || matching}
-                    className="shrink-0"
-                >
-                    {matching && <Spinner className="size-4" />}
-                    Подобрать ссылки{unmatchedCount > 0 ? ` (${unmatchedCount})` : ""}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                    <Button
+                        onClick={runAutoMatch}
+                        disabled={!canEdit || matching}
+                    >
+                        {matching && <Spinner className="size-4" />}
+                        Подобрать ссылки{unmatchedCount > 0 ? ` (${unmatchedCount})` : ""}
+                    </Button>
+                    <Button
+                        onClick={runBggEnrich}
+                        disabled={!canEdit || enriching}
+                        variant="outline"
+                    >
+                        {enriching ? <Spinner className="size-4" /> : <SiBoardgamegeek className="size-4" />}
+                        Загрузить обложки{unenrichedCount > 0 ? ` (${unenrichedCount})` : ""}
+                    </Button>
+                </div>
             </section>
 
             <div className="mb-2 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
@@ -326,14 +360,19 @@ export default function GamesAdminPage() {
     );
 }
 
-/** Accent name as a link, secondary names muted underneath. */
+/** Box art, accent name as a link, secondary names muted underneath. */
 function GameNames({ game }: { game: GameRow }) {
     return (
-        <div className="min-w-0">
-            <Link className="underline font-medium" href={`/games/view?id=${game.id}`}>{accentName(game)}</Link>
-            {secondaryNames(game).length > 0 && (
-                <div className="text-sm text-muted-foreground">{secondaryNames(game).join(" · ")}</div>
+        <div className="flex items-center gap-2 min-w-0">
+            {game.image_thumb_url && (
+                <GameImage src={game.image_thumb_url} alt="" className="size-8 shrink-0 rounded" />
             )}
+            <div className="min-w-0">
+                <Link className="underline font-medium" href={`/games/view?id=${game.id}`}>{accentName(game)}</Link>
+                {secondaryNames(game).length > 0 && (
+                    <div className="text-sm text-muted-foreground">{secondaryNames(game).join(" · ")}</div>
+                )}
+            </div>
         </div>
     );
 }

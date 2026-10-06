@@ -29,6 +29,8 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 			NameRu:          strPtrOrNil(g.NameRu),
 			BggRef:          intPtrOrNil(g.BggRef),
 			TeseraRef:       intPtrOrNil(g.TeseraRef),
+			ImageUrl:        strPtrOrNil(g.ImageURL),
+			ImageThumbUrl:   strPtrOrNil(g.ImageThumbURL),
 			LastPlayedOrder: i,
 			TotalMatches:    g.TotalMatches,
 			Tags:            tags,
@@ -51,14 +53,16 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 	return GetGame200JSONResponse{
 		Status: StatusSuccess,
 		Data: Game{
-			Id:           game.ID,
-			Name:         game.Name,
-			Alias:        strPtrOrNil(game.Alias),
-			NameEn:       strPtrOrNil(game.NameEn),
-			NameRu:       strPtrOrNil(game.NameRu),
-			BggRef:       intPtrOrNil(game.BggRef),
-			TeseraRef:    intPtrOrNil(game.TeseraRef),
-			TotalMatches: game.TotalMatches,
+			Id:            game.ID,
+			Name:          game.Name,
+			Alias:         strPtrOrNil(game.Alias),
+			NameEn:        strPtrOrNil(game.NameEn),
+			NameRu:        strPtrOrNil(game.NameRu),
+			BggRef:        intPtrOrNil(game.BggRef),
+			TeseraRef:     intPtrOrNil(game.TeseraRef),
+			ImageUrl:      strPtrOrNil(game.ImageURL),
+			ImageThumbUrl: strPtrOrNil(game.ImageThumbURL),
+			TotalMatches:  game.TotalMatches,
 		},
 	}, nil
 }
@@ -192,6 +196,26 @@ func (s *StrictServer) AutoMatchGames(ctx context.Context, _ AutoMatchGamesReque
 		})
 	}
 	return AutoMatchGames200JSONResponse{Status: StatusSuccess, Data: GameAutoMatchResults{Games: items}}, nil
+}
+
+// EnrichGameImages stores BGG box-art URLs for every game that has a BGG
+// reference but no image yet; per-game failures are reported, not fatal.
+func (s *StrictServer) EnrichGameImages(ctx context.Context, _ EnrichGameImagesRequestObject) (EnrichGameImagesResponseObject, error) {
+	results, err := s.api.GameService.EnrichGameImages(ctx, currentActorID(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]GamesGameEnrichResult, 0, len(results))
+	for _, r := range results {
+		items = append(items, GamesGameEnrichResult{
+			Id:       r.GameID,
+			Name:     r.Name,
+			Enriched: r.Enriched,
+			Reason:   strPtrOrNil(r.Reason),
+		})
+	}
+	return EnrichGameImages200JSONResponse{Status: StatusSuccess, Data: GamesGameEnrichResults{Games: items}}, nil
 }
 
 // gameNotFound reports whether err is the games table's no-rows error.

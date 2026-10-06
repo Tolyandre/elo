@@ -36,9 +36,10 @@ dev-seed:
 dev-migrate:
 	cd elo-web-service && CGO_ENABLED=0 go run . --migrate-db-dsn=postgres://elo:devpassword@localhost:5433/elo?sslmode=disable
 
-## Run the backend (loads secrets from .env.docker)
+## Run the backend (loads .env.docker, then local overrides from .env.local)
 backend-run:
-	cd elo-web-service && set -a && . ./.env.docker && set +a && \
+	cd elo-web-service && set -a && . ./.env.docker && \
+	  { [ -f ./.env.local ] && . ./.env.local || true; } && set +a && \
 	  go run . --config-path ./config/config.docker.yaml
 
 ## Run the frontend dev server

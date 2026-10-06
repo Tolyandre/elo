@@ -14,7 +14,10 @@
                 "--config-path",
                 "./config/config.dev.yaml"
             ],
-            "envFile": "${workspaceFolder}/elo-web-service/.env"
+            "envFile": [
+                "${workspaceFolder}/elo-web-service/.env",
+                "${workspaceFolder}/elo-web-service/.env.local"
+            ]
         },
         {
             "name": "Launch Elo web service (docker)",
@@ -26,7 +29,10 @@
                 "--config-path",
                 "./config/config.docker.yaml"
             ],
-            "envFile": "${workspaceFolder}/elo-web-service/.env.docker"
+            "envFile": [
+                "${workspaceFolder}/elo-web-service/.env.docker",
+                "${workspaceFolder}/elo-web-service/.env.local"
+            ]
         },
         {
             "name": "Run migrations",
@@ -39,7 +45,10 @@
                 "./config/config.dev.yaml",
                 "--migrate-db"
             ],
-            "envFile": "${workspaceFolder}/elo-web-service/.env"
+            "envFile": [
+                "${workspaceFolder}/elo-web-service/.env",
+                "${workspaceFolder}/elo-web-service/.env.local"
+            ]
         },
         {
             "name": "Run migrations (docker)",

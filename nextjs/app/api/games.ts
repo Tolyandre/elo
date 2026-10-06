@@ -1,6 +1,6 @@
 // Games, their catalogue metadata, tags, and the Tesera suggestion matching.
 import { client, unwrap, newId } from "./client";
-import type { Game, GameAutoMatchResult, GameList, GameSuggestion, Tag } from "./types";
+import type { Game, GameAutoMatchResult, GameEnrichResult, GameList, GameSuggestion, Tag } from "./types";
 import type { Base58ID } from "@/lib/id";
 
 export async function getGamesPromise(): Promise<GameList> {
@@ -40,6 +40,15 @@ export async function suggestGamesPromise(query: string): Promise<GameSuggestion
 /** Bulk exact-name matching against Tesera for games lacking a Tesera link. */
 export async function autoMatchGamesPromise(): Promise<GameAutoMatchResult[]> {
     return (await unwrap(client.POST("/games/auto-match"))).data.games;
+}
+
+/**
+ * BGG box-art backfill for games with a bgg_ref but no image yet. Requires a
+ * configured BGG API token server-side; per-game failures are reported in
+ * the results, request-level errors throw (toast via the API helper).
+ */
+export async function enrichGameImagesPromise(): Promise<GameEnrichResult[]> {
+    return (await unwrap(client.POST("/games/bgg-enrich"))).data.games;
 }
 
 export async function deleteGamePromise(id: Base58ID) {
