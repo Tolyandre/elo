@@ -166,7 +166,7 @@ export function TablePage() {
     // toasted and cleared the session.
     useEffect(() => {
         if (!closed || session?.isHost !== false) return;
-        router.push("/?tab=matches");
+        router.push("/?tab=feed");
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [closed]);
 
@@ -223,7 +223,7 @@ export function TablePage() {
         }
         resetTableSession();
         setSaveError("");
-        router.push("/?tab=matches");
+        router.push("/?tab=feed");
     }
 
     // Camp selection for the saved match (ADR-27): default-checked by

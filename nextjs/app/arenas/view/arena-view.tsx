@@ -22,15 +22,16 @@ import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useMe } from "@/app/meContext";
 import { ArenaMedalsTab } from "./arena-medals-tab";
-import { ArenaMatchesTab } from "./arena-matches-tab";
-import { useArenaMatches, type ArenaMatchFilters } from "./use-arena-matches";
+import { ArenaFeedTab } from "./arena-feed-tab";
+import { useArenaFeed, type ArenaMatchFilters } from "./use-arena-feed";
 import { Edit2, Tent } from "lucide-react";
 
 // Ids travel in the query (?id=<ARENA_ID>) on both routes that render this
 // component: a path segment per id cannot be statically exported. Without an
-// id the page renders the global arena — the main page of the app (ADR-25).
-const ARENA_TABS_PLAYERS_MATCHES = ["players", "matches", "medals", "leaders"] as const;
-const ARENA_TABS_NO_LEADERS = ["players", "matches", "medals"] as const;
+// id the page renders the global arena — the main page of the app (ADR-25) —
+// and its feed is the home feed (ADR-32), not the global arena's own.
+const ARENA_TABS_PLAYERS_MATCHES = ["players", "feed", "medals", "leaders"] as const;
+const ARENA_TABS_NO_LEADERS = ["players", "feed", "medals"] as const;
 
 const LEADER_TAB_LABEL = "Очки победителей";
 
@@ -40,11 +41,11 @@ function parseTab(value: string | null, hasLeaders: boolean): string {
 }
 
 /**
- * The arena view (players / matches / medals / leaders tabs), rendered by both
- * `/` (the main page — the global arena) and `/arenas/view?id=…`. All view
- * state — the arena id, the active tab, the match filters — lives in the query
- * string via useUrlQuery: shareable, refresh-stable, and restored by
- * Back/Forward (ADR-25).
+ * The arena view (players / feed / medals / leaders tabs), rendered by both
+ * `/` (the main page — the global arena, whose feed tab is the home feed) and
+ * `/arenas/view?id=…`. All view state — the arena id, the active tab, the
+ * match filters — lives in the query string via useUrlQuery: shareable,
+ * refresh-stable, and restored by Back/Forward (ADR-25).
  */
 export function ArenaView() {
   const params = useUrlQuery();
@@ -90,11 +91,12 @@ export function ArenaView() {
     [params],
   );
 
-  // Corrections settle only into the global arena (ADR-24), so its timeline —
-  // the arena whose filter admits every match — is the only one that merges
-  // them in.
-  const isGlobalArena = arena != null && isUnconditional(arena);
-  const timeline = useArenaMatches(effectiveId, filters, isGlobalArena);
+  // The feed tab. The main page (no explicit id) loads the home feed (ADR-32);
+  // an explicit arena — the global one included — loads that arena's own feed,
+  // which for every arena but the global one is matches only (corrections and
+  // market resolutions settle only into the global arena, ADR-24 — the server
+  // merges them in there and nowhere else).
+  const feed = useArenaFeed(explicitId == null, effectiveId, filters);
 
   // Players tab: period for the change indicators, club filter with
   // client-side rank recompute (same as the /players page had).
@@ -149,8 +151,8 @@ export function ArenaView() {
 
   function setTab(value: string) {
     setUrlQuery((params) => params.set("tab", value), "push");
-    if (value === "leaders" && timeline.hasMore) {
-      void timeline.loadAll();
+    if (value === "leaders" && feed.hasMore) {
+      void feed.loadAll();
     }
   }
 
@@ -215,14 +217,14 @@ export function ArenaView() {
             {hasLeaders ? (
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="players" className="px-1 text-xs">Игроки</TabsTrigger>
-                <TabsTrigger value="matches" className="px-1 text-xs">Партии</TabsTrigger>
+                <TabsTrigger value="feed" className="px-1 text-xs">Лента</TabsTrigger>
                 <TabsTrigger value="medals" className="px-1 text-xs">Медали</TabsTrigger>
                 <TabsTrigger value="leaders" className="px-1 text-xs">{LEADER_TAB_LABEL}</TabsTrigger>
               </TabsList>
             ) : (
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="players" className="px-1 text-xs">Игроки</TabsTrigger>
-                <TabsTrigger value="matches" className="px-1 text-xs">Партии</TabsTrigger>
+                <TabsTrigger value="feed" className="px-1 text-xs">Лента</TabsTrigger>
                 <TabsTrigger value="medals" className="px-1 text-xs">Медали</TabsTrigger>
               </TabsList>
             )}
@@ -253,17 +255,17 @@ export function ArenaView() {
               />
             </TabsContent>
 
-            <TabsContent value="matches" className="space-y-2">
-              <ArenaMatchesTab
+            <TabsContent value="feed" className="space-y-2">
+              <ArenaFeedTab
                 arena={arena}
-                items={timeline.items}
-                loading={timeline.loading}
-                loadingMore={timeline.loadingMore}
-                hasMore={timeline.hasMore}
+                events={feed.events}
+                loading={feed.loading}
+                loadingMore={feed.loadingMore}
+                hasMore={feed.hasMore}
                 filters={filters}
                 onFiltersChange={handleFiltersChange}
-                onLoadMore={timeline.loadMore}
-                isGlobal={isGlobalArena}
+                onLoadMore={feed.loadMore}
+                isGlobal={isGlobal}
                 pendingGameId={pendingGameId}
               />
             </TabsContent>
@@ -274,7 +276,7 @@ export function ArenaView() {
 
             {hasLeaders && (
               <TabsContent value="leaders" className="space-y-4">
-                <ArenaLeadersTab matches={timeline.allMatches} loading={timeline.loading} />
+                <ArenaLeadersTab matches={feed.allMatches} loading={feed.loading} />
               </TabsContent>
             )}
           </Tabs>
@@ -290,7 +292,10 @@ function parseArenaLeagues(arena: Arena): string[] {
 }
 
 function isUnconditional(arena: Arena): boolean {
-  // Camp arenas have no filter but are never the global arena (ADR-27).
+  // Only used for the main page's 404 self-heal below: when the global arena
+  // is absent from a not-yet-migrated database, fall back to the arena whose
+  // filter admits every match. Camp arenas have no filter but are never it
+  // (ADR-27).
   if (arena.camp) return false;
   const f = arena.filter;
   return (

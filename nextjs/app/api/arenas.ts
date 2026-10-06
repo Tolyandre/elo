@@ -1,12 +1,15 @@
-// Arenas (ADR-24): the rating surfaces (global, per-game, camps) and the
-// debug full-recalculation trigger.
+// Arenas (ADR-24) and their feeds (ADR-32): the rating surfaces (global,
+// per-game, camps), the debug full-recalculation trigger, and the cursor-
+// paginated event feeds.
 import { client, EloWebServiceBaseUrl, unwrap } from "./client";
+import type { components } from "../api-types.gen";
 import type {
     Arena,
     ArenaPlayer,
     ArenaSettings,
+    FeedEvent,
+    FeedPage,
     MatchFilter,
-    MatchesPage,
     UpdateArenasResult,
 } from "./types";
 import { mapMatch } from "./types";
@@ -47,16 +50,18 @@ export async function getArenaPlayersPromise(id: Base58ID): Promise<ArenaPlayer[
     return (await unwrap(client.GET("/arenas/{id}/players", { params: { path: { id } } }))).data;
 }
 
-export async function getArenaMatchesPagePromise(params: {
-    id: Base58ID;
+type FeedQuery = {
     player_id?: Base58ID;
     club_id?: Base58ID;
     game_id?: Base58ID;
     next?: string;
     limit?: number;
-}): Promise<MatchesPage> {
+};
+
+function feedQueryString(params: FeedQuery): Record<string, string | number> {
     const query: Record<string, string | number> = {};
     if (params.next) {
+        // Continuation mode: search params are encoded in the cursor.
         query.next = params.next;
     } else {
         if (params.player_id) query.player_id = params.player_id;
@@ -64,10 +69,62 @@ export async function getArenaMatchesPagePromise(params: {
         if (params.game_id) query.game_id = params.game_id;
     }
     if (params.limit) query.limit = params.limit;
-    const data = await unwrap(client.GET("/arenas/{id}/matches", {
-        params: { path: { id: params.id }, query },
+    return query;
+}
+
+function mapFeedEvent(e: components["schemas"]["FeedEvent"]): FeedEvent | null {
+    switch (e.type) {
+        case "match":
+            return { type: "match", data: mapMatch(e.data) };
+        case "correction": {
+            const c = e.data;
+            return {
+                type: "correction",
+                data: {
+                    id: c.id,
+                    player_id: c.player_id,
+                    player_name: c.player_name,
+                    diff: c.diff,
+                    date: c.date ? new Date(c.date) : null,
+                },
+            };
+        }
+        case "market":
+            return { type: "market", data: e.data };
+        default:
+            // A newer server added an event kind this build does not know —
+            // skip it instead of failing the whole feed.
+            return null;
+    }
+}
+
+function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: string | null): FeedPage {
+    return {
+        items: data.map(mapFeedEvent).filter((e): e is FeedEvent => e !== null),
+        next: next ?? null,
+    };
+}
+
+/**
+ * The arena's feed (ADR-32): merged match/correction/market-resolution events,
+ * newest first. Corrections and market resolutions appear only in the global
+ * arena's feed (they settle only there); filters apply to match events only.
+ */
+export async function getArenaFeedPagePromise(params: FeedQuery & { id: Base58ID }): Promise<FeedPage> {
+    const data = await unwrap(client.GET("/arenas/{id}/feed", {
+        params: { path: { id: params.id }, query: feedQueryString(params) },
     }));
-    return { items: data.data.map(mapMatch), next: data.next ?? null };
+    return mapFeedPage(data.data, data.next);
+}
+
+/**
+ * The main page's home feed (ADR-32): today the global arena's event set, and
+ * the surface where content that affects no rating (cooperative matches,
+ * posts) will appear — unlike the global arena's own feed.
+ */
+export async function getHomeFeedPagePromise(params: FeedQuery = {}): Promise<FeedPage> {
+    const data = await unwrap(client.GET("/feed", { params: { query: feedQueryString(params) } }));
+    return mapFeedPage(data.data, data.next);
 }
 
 export async function createArenaPromise(payload: {

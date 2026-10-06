@@ -140,14 +140,15 @@ func main() {
 	// page for it is /debug (unlinked).
 	router.POST("/admin/update-arenas", append(editorAuth(), strictWrapper.UpdateArenas)...)
 	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
-	router.GET("/corrections", strictWrapper.ListCorrections)
 
-	// Arenas (ADR-24) — public reads, editor-gated writes.
+	// Arenas (ADR-24) — public reads, editor-gated writes. /arenas/:id/feed is
+	// the arena feed, /feed the main page's home feed (ADR-32).
 	router.GET("/arenas", strictWrapper.ListArenas)
 	router.POST("/arenas", append(editorAuth(), strictWrapper.CreateArena)...)
 	router.GET("/arenas/:id", strictWrapper.GetArena)
 	router.GET("/arenas/:id/players", strictWrapper.GetArenaPlayers)
-	router.GET("/arenas/:id/matches", strictWrapper.ListArenaMatches)
+	router.GET("/arenas/:id/feed", strictWrapper.ListArenaFeed)
+	router.GET("/feed", strictWrapper.ListHomeFeed)
 	router.PATCH("/arenas/:id", append(editorAuth(), strictWrapper.UpdateArena)...)
 	router.DELETE("/arenas/:id", append(editorAuth(), strictWrapper.DeleteArena)...)
 

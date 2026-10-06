@@ -1,0 +1,168 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Base58ID } from "@/lib/id";
+import {
+    Match,
+    getArenaFeedPagePromise,
+    getHomeFeedPagePromise,
+    type FeedEvent,
+    type FeedPage,
+} from "@/app/api";
+import { subscribeDataChange } from "@/lib/live-data";
+
+export type ArenaMatchFilters = {
+    playerId?: Base58ID;
+    clubId?: Base58ID;
+    gameId?: Base58ID;
+};
+
+/**
+ * Drops items already present (defends against double-append on reload).
+ */
+function appendUnique<T>(prev: T[], next: T[], key: (item: T) => string): T[] {
+    if (next.length === 0) return prev;
+    const seen = new Set(prev.map(key));
+    const fresh = next.filter((item) => !seen.has(key(item)));
+    return fresh.length === 0 ? prev : [...prev, ...fresh];
+}
+
+function eventKey(e: FeedEvent): string {
+    return `${e.type}:${e.data.id}`;
+}
+
+/**
+ * Cursor-paginated feed loader (ADR-32). The server merges the event stream
+ * (matches, and for the global arena corrections and market resolutions), so
+ * the client keeps one cursor instead of merging two timelines.
+ *
+ * `isHome` selects the home feed (GET /feed) — the main page's surface, which
+ * will also carry content that affects no rating (cooperative matches, posts);
+ * an explicit arena page always renders that arena's own feed, even when it is
+ * the global one.
+ *
+ * `allMatches` is the match-only slice the leaders tab pulls once via loadAll
+ * (draining the feed's cursor); it stays separate so switching tabs never
+ * re-renders hundreds of cards.
+ */
+export function useArenaFeed(
+    isHome: boolean,
+    arenaId: Base58ID | null,
+    filters: ArenaMatchFilters,
+) {
+    const [events, setEvents] = useState<FeedEvent[]>([]);
+    const [allMatches, setAllMatches] = useState<Match[] | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
+    const cursorRef = useRef<string | null>(null);
+
+    // Live invalidation: the feed must reflect matches recorded elsewhere
+    // (SSE "matches-changed") and landed by this device's offline sync — the
+    // redirect to the arena races the background POST, so the mount-time
+    // fetch is routinely stale.
+    const [stamp, setStamp] = useState(0);
+    const invalidate = useCallback(() => setStamp((s) => s + 1), []);
+    useEffect(() => {
+        return subscribeDataChange((batch) => {
+            if (batch.matches) invalidate();
+        });
+    }, [invalidate]);
+
+    const { playerId, clubId, gameId } = filters;
+
+    const fetchPage = useCallback(
+        (params: { player_id?: Base58ID; club_id?: Base58ID; game_id?: Base58ID; next?: string; limit?: number }): Promise<FeedPage> =>
+            isHome ? getHomeFeedPagePromise(params) : getArenaFeedPagePromise({ id: arenaId!, ...params }),
+        [isHome, arenaId],
+    );
+
+    // (Re)load page 1 whenever the scope, the filters, or the invalidation
+    // stamp change.
+    useEffect(() => {
+        if (!isHome && !arenaId) return;
+        let cancelled = false;
+        /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before async fetch */
+        setLoading(true);
+        cursorRef.current = null;
+
+        fetchPage({ player_id: playerId, club_id: clubId, game_id: gameId })
+            .then((page) => {
+                if (cancelled) return;
+                cursorRef.current = page.next;
+                setEvents(page.items);
+                setAllMatches(null);
+                setHasMore(page.next !== null);
+            })
+            .catch(() => {
+                // toast shown by API helper
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isHome, arenaId, playerId, clubId, gameId, stamp, fetchPage]);
+
+    const loadMore = useCallback(() => {
+        if (loadingMore || (!isHome && !arenaId)) return;
+        const cursor = cursorRef.current;
+        if (!cursor) return;
+
+        setLoadingMore(true);
+        fetchPage({ next: cursor })
+            .then((page) => {
+                cursorRef.current = page.next;
+                setHasMore(page.next !== null);
+                setEvents((prev) => appendUnique(prev, page.items, eventKey));
+            })
+            .finally(() => setLoadingMore(false));
+    }, [loadingMore, isHome, arenaId, fetchPage]);
+
+    // The leaders tab needs the full match set. Drains the feed's cursor,
+    // keeping only match events, into allMatches (a separate state, seeded
+    // from the already loaded pages).
+    const matchEvents = useMemo(
+        () => events.filter((e): e is Extract<FeedEvent, { type: "match" }> => e.type === "match"),
+        [events],
+    );
+
+    const loadAll = useCallback(async () => {
+        if (!isHome && !arenaId) return;
+        setLoadingMore(true);
+        try {
+            let acc: Match[] = matchEvents.map((e) => e.data);
+            let cursor = cursorRef.current;
+            while (cursor) {
+                const page = await fetchPage({ next: cursor, limit: 100 });
+                cursorRef.current = page.next;
+                acc = appendUnique(
+                    acc,
+                    page.items
+                        .filter((e): e is Extract<FeedEvent, { type: "match" }> => e.type === "match")
+                        .map((e) => e.data),
+                    (m) => m.id,
+                );
+                setAllMatches(acc);
+                cursor = page.next;
+            }
+            setHasMore(false);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [isHome, arenaId, matchEvents, fetchPage]);
+
+    return {
+        events,
+        matches: matchEvents.map((e) => e.data),
+        allMatches: allMatches ?? matchEvents.map((e) => e.data),
+        loading,
+        loadingMore,
+        hasMore,
+        loadMore,
+        loadAll,
+        invalidate,
+    };
+}

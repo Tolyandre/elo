@@ -259,15 +259,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/arenas/{id}/matches": {
+    "/arenas/{id}/feed": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List the arena's matches with cursor-based pagination */
-        get: operations["ListArenaMatches"];
+        /**
+         * The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+         * @description Correction and market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match events only.
+         */
+        get: operations["ListArenaFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
+         * @description Today the home feed is the global arena's event set; unlike the global arena's own feed it is the extensible surface for content that affects no rating (future cooperative matches, posts). Parameters and cursor are the arena feed's.
+         */
+        get: operations["ListHomeFeed"];
         put?: never;
         post?: never;
         delete?: never;
@@ -736,7 +759,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List active and closed markets */
+        /** List active markets in full and one cursor-paginated page of closed markets */
         get: operations["ListMarkets"];
         put?: never;
         /** Create a new betting market */
@@ -893,23 +916,6 @@ export interface paths {
         head?: never;
         /** Update current user's linked player */
         patch: operations["PatchMe"];
-        trace?: never;
-    };
-    "/corrections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List corrections with cursor-based pagination */
-        get: operations["ListCorrections"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/audit": {
@@ -1701,11 +1707,41 @@ export interface components {
             /** Format: date-time */
             date: string;
         };
-        CorrectionsPage: {
+        /** @description One cursor-paginated page of the arena or home feed (ADR-32). */
+        FeedPage: {
             status: string;
-            data: components["schemas"]["Correction"][];
+            data: components["schemas"]["FeedEvent"][];
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
+        };
+        /** @description One feed event (ADR-32). New content kinds (cooperative matches, posts) extend the union with another event schema — the envelope never changes. */
+        FeedEvent: components["schemas"]["FeedMatchEvent"] | components["schemas"]["FeedCorrectionEvent"] | components["schemas"]["FeedMarketEvent"];
+        /** @description A match of the arena — the event that moved its ratings. */
+        FeedMatchEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "match";
+            data: components["schemas"]["Match"];
+        };
+        /** @description An admin rating correction (global arena only, ADR-24). */
+        FeedCorrectionEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "correction";
+            data: components["schemas"]["Correction"];
+        };
+        /** @description A resolved market (global arena only, ADR-24) — the resolution is the event. */
+        FeedMarketEvent: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "market";
+            data: components["schemas"]["Market"];
         };
         PlayerStateChange: {
             player_id: components["schemas"]["Base58ID"];
@@ -3151,18 +3187,18 @@ export interface operations {
             };
         };
     };
-    ListArenaMatches: {
+    ListArenaFeed: {
         parameters: {
             query?: {
-                /** @description Filter by player ID */
+                /** @description Filter match events by player ID */
                 player_id?: string;
-                /** @description Filter by club ID */
+                /** @description Filter match events by club ID */
                 club_id?: string;
-                /** @description Filter by game ID */
+                /** @description Filter match events by game ID */
                 game_id?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
-                /** @description Number of matches per page */
+                /** @description Number of events per page */
                 limit?: number;
             };
             header?: never;
@@ -3173,13 +3209,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated match list (same Match shape as /matches) */
+            /** @description Paginated feed event list */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MatchesPage"];
+                    "application/json": components["schemas"]["FeedPage"];
                 };
             };
             /** @description Bad request */
@@ -3193,6 +3229,46 @@ export interface operations {
             };
             /** @description Arena not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListHomeFeed: {
+        parameters: {
+            query?: {
+                /** @description Filter match events by player ID */
+                player_id?: string;
+                /** @description Filter match events by club ID */
+                club_id?: string;
+                /** @description Filter match events by game ID */
+                game_id?: string;
+                /** @description Cursor token from previous page's "next" field */
+                next?: string;
+                /** @description Number of events per page */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated feed event list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5182,14 +5258,19 @@ export interface operations {
     };
     ListMarkets: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Cursor token for the next closed-markets page, taken from the response's "next" field; continuation requests pass only the token. */
+                closed_next?: string;
+                /** @description Number of closed markets per page */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Markets grouped into active and closed */
+            /** @description Markets grouped into active (always full) and one closed page */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5198,10 +5279,23 @@ export interface operations {
                     "application/json": {
                         status: string;
                         data: {
+                            /** @description All open and betting-closed markets, newest created first */
                             active: components["schemas"]["Market"][];
+                            /** @description Resolved and cancelled markets, newest resolution first */
                             closed: components["schemas"]["Market"][];
+                            /** @description Cursor token for the next closed-markets page; null if no more pages */
+                            next?: string | null;
                         };
                     };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -5891,44 +5985,6 @@ export interface operations {
             };
             /** @description Player already linked to another user */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    ListCorrections: {
-        parameters: {
-            query?: {
-                /** @description Filter by player ID */
-                player_id?: string;
-                /** @description Filter by club ID; use "__no_club__" for players without a club */
-                club_id?: string;
-                /** @description Cursor token from previous page's "next" field */
-                next?: string;
-                /** @description Number of corrections per page */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated correction list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CorrectionsPage"];
-                };
-            };
-            /** @description Bad request */
-            400: {
                 headers: {
                     [name: string]: unknown;
                 };

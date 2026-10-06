@@ -35,3 +35,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [29](29-oauth-login-return-to-origin.md) | OAuth login: per-mirror callback, exchange via the API |
 | [30](30-slot-earn-points.md) | Slot points from the match margin; the minimal advance score |
 | [31](31-bgg-integration.md) | BGG integration: box-art enrichment via the XML API |
+| [32](32-general-feed.md) | The general feed: server-merged arena/home event streams; markets lobby pagination |

@@ -235,6 +235,10 @@ func leaguePtrEqual(a, b *string) bool {
 	return *a == *b
 }
 
-func (s *ArenaService) ListArenaMatchesPaginated(ctx context.Context, arg db.ListArenaMatchesPaginatedParams) ([]db.ListArenaMatchesPaginatedRow, error) {
-	return s.Queries.ListArenaMatchesPaginated(ctx, arg)
+func (s *ArenaService) ListArenaFeedEvents(ctx context.Context, arg db.ListArenaFeedEventsParams) ([]db.ListArenaFeedEventsRow, error) {
+	return s.Queries.ListArenaFeedEvents(ctx, arg)
+}
+
+func (s *ArenaService) ListFeedMatchesWithPlayers(ctx context.Context, arg db.ListFeedMatchesWithPlayersParams) ([]db.ListFeedMatchesWithPlayersRow, error) {
+	return s.Queries.ListFeedMatchesWithPlayers(ctx, arg)
 }

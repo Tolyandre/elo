@@ -550,25 +550,28 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 		t.Fatalf("arena must count all 8 players, got %d", len(arenaPlayers.Data))
 	}
 
-	// Arena match cards carry the tournament badge too (the match card's link
+	// Feed match cards carry the tournament badge too (the match card's link
 	// to the bracket slot).
-	w = doJSON(t, router, http.MethodGet, "/arenas/"+short(arenaID)+"/matches?limit=1", "", "")
+	w = doJSON(t, router, http.MethodGet, "/arenas/"+short(arenaID)+"/feed?limit=1", "", "")
 	if w.Code != http.StatusOK {
-		t.Fatalf("arena matches: %d %s", w.Code, w.Body.String())
+		t.Fatalf("arena feed: %d %s", w.Code, w.Body.String())
 	}
-	var arenaMatches struct {
+	var arenaFeed struct {
 		Data []struct {
-			Tournament *struct {
-				Id string `json:"id"`
-			} `json:"tournament"`
+			Type string `json:"type"`
+			Data struct {
+				Tournament *struct {
+					Id string `json:"id"`
+				} `json:"tournament"`
+			} `json:"data"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &arenaMatches); err != nil {
-		t.Fatalf("decode arena matches: %v", err)
+	if err := json.Unmarshal(w.Body.Bytes(), &arenaFeed); err != nil {
+		t.Fatalf("decode arena feed: %v", err)
 	}
-	if len(arenaMatches.Data) == 0 || arenaMatches.Data[0].Tournament == nil ||
-		arenaMatches.Data[0].Tournament.Id != short(tid) {
-		t.Fatalf("arena match must carry the tournament badge: %+v", arenaMatches.Data)
+	if len(arenaFeed.Data) == 0 || arenaFeed.Data[0].Type != "match" || arenaFeed.Data[0].Data.Tournament == nil ||
+		arenaFeed.Data[0].Data.Tournament.Id != short(tid) {
+		t.Fatalf("feed match must carry the tournament badge: %+v", arenaFeed.Data)
 	}
 
 	// Audit: six slot-link attaches + the state documents.

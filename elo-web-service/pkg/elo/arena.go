@@ -142,7 +142,12 @@ type IArenaService interface {
 	// GetArenaPlayersAt computes the arena standings as of a past moment
 	// (read-time over the settlement ledger) for the rank-change history.
 	GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at time.Time) ([]ArenaPlayer, error)
-	ListArenaMatchesPaginated(ctx context.Context, arg db.ListArenaMatchesPaginatedParams) ([]db.ListArenaMatchesPaginatedRow, error)
+	// ListArenaFeedEvents selects one page of the arena feed (ADR-32): the
+	// merged match/correction/market-resolution event keys in date order.
+	ListArenaFeedEvents(ctx context.Context, arg db.ListArenaFeedEventsParams) ([]db.ListArenaFeedEventsRow, error)
+	// ListFeedMatchesWithPlayers fetches the payload rows (per-player scores
+	// with this arena's settlement data) for the page's match-event ids.
+	ListFeedMatchesWithPlayers(ctx context.Context, arg db.ListFeedMatchesWithPlayersParams) ([]db.ListFeedMatchesWithPlayersRow, error)
 
 	// CRUD (editor-gated at the handler). Settings must be a document valid
 	// against the current arenasettings schema. Camp arenas take

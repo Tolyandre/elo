@@ -183,7 +183,8 @@ diff report for the global arena).
 - `GET /arenas/{id}/players` — latest settlement state joined with
   precalculated stats (rating, league, rank, matches count, places 1–4).
 - `GET /arenas/{id}/matches` — paginated, same envelope as `/matches` but
-  with the arena's settlement data.
+  with the arena's settlement data. (Removed by ADR-32: the arena feed
+  `GET /arenas/{id}/feed` superseded it.)
 - `POST /admin/update-arenas` — full recalculation of every arena with a
   per-arena report (replayed counts + changed-player diff).
 - `/players`, `/players/{id}/stats`, `/matches` keep their response shapes;

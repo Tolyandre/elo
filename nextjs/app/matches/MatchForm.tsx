@@ -300,7 +300,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             // away while online) invalidates the lists once it lands. The global
             // arena's match timeline shows the pending card, then the saved one
             // with the ratings.
-            router.push(`/?tab=matches`);
+            router.push(`/?tab=feed`);
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {

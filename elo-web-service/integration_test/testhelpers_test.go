@@ -216,7 +216,8 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.POST("/arenas", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateArena)
 	r.GET("/arenas/:id", strictWrapper.GetArena)
 	r.GET("/arenas/:id/players", strictWrapper.GetArenaPlayers)
-	r.GET("/arenas/:id/matches", strictWrapper.ListArenaMatches)
+	r.GET("/arenas/:id/feed", strictWrapper.ListArenaFeed)
+	r.GET("/feed", strictWrapper.ListHomeFeed)
 	r.PATCH("/arenas/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateArena)
 	r.DELETE("/arenas/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteArena)
 	// Admin update-arenas (ADR-24): the /debug page action.

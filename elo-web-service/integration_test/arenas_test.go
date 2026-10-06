@@ -371,9 +371,9 @@ func TestArena_EliteHintCountsRecentMatches(t *testing.T) {
 	}
 }
 
-// TestArena_MatchesFiltersAndCursor covers the player filter and the cursor
-// pagination of the arena match list (the filter travels inside the token).
-func TestArena_MatchesFiltersAndCursor(t *testing.T) {
+// TestArena_Feed_FiltersAndCursor covers the player filter and the cursor
+// pagination of the arena feed (ADR-32) — the filter travels inside the token.
+func TestArena_Feed_FiltersAndCursor(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -403,10 +403,10 @@ func TestArena_MatchesFiltersAndCursor(t *testing.T) {
 
 	var page struct {
 		Data []struct {
-			MatchId string `json:"id"`
-			Score   map[string]struct {
-				PlayerScore float64 `json:"score"`
-			} `json:"score"`
+			Type string `json:"type"`
+			Data struct {
+				MatchId string `json:"id"`
+			} `json:"data"`
 		} `json:"data"`
 		Next *string `json:"next"`
 	}
@@ -416,30 +416,33 @@ func TestArena_MatchesFiltersAndCursor(t *testing.T) {
 		// missing key is not mistaken for a cursor.
 		page.Next = nil
 		if w.Code != http.StatusOK {
-			t.Fatalf("list arena matches: %d %s", w.Code, w.Body.String())
+			t.Fatalf("list arena feed: %d %s", w.Code, w.Body.String())
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
 			t.Fatalf("decode page: %v", err)
 		}
 	}
 
-	// Unfiltered page 1 with limit=1: newest match, cursor for the rest.
-	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?limit=1", "", ""))
+	// Unfiltered page 1 with limit=1: newest event, cursor for the rest.
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/feed?limit=1", "", ""))
 	if len(page.Data) != 1 || page.Next == nil {
-		t.Fatalf("page1 must hold one match and a cursor: %+v", page)
+		t.Fatalf("page1 must hold one event and a cursor: %+v", page)
+	}
+	if page.Data[0].Type != "match" {
+		t.Fatalf("non-global arena feed must hold matches only, got %q", page.Data[0].Type)
 	}
 
 	// Follow the cursor: continuations use the default page size, so one more
-	// request returns the remaining matches. Every returned match must be new.
-	seen := map[string]bool{page.Data[0].MatchId: true}
+	// request returns the remaining events. Every returned event must be new.
+	seen := map[string]bool{page.Data[0].Data.MatchId: true}
 	next := *page.Next
 	for next != "" {
-		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?next="+next, "", ""))
-		for _, m := range page.Data {
-			if seen[m.MatchId] {
-				t.Fatalf("cursor repeated match %s", m.MatchId)
+		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/feed?next="+next, "", ""))
+		for _, e := range page.Data {
+			if seen[e.Data.MatchId] {
+				t.Fatalf("cursor repeated event %s", e.Data.MatchId)
 			}
-			seen[m.MatchId] = true
+			seen[e.Data.MatchId] = true
 		}
 		if page.Next == nil {
 			break
@@ -447,26 +450,26 @@ func TestArena_MatchesFiltersAndCursor(t *testing.T) {
 		next = *page.Next
 	}
 	if len(seen) != 3 {
-		t.Fatalf("expected 3 distinct matches over the cursor, got %d", len(seen))
+		t.Fatalf("expected 3 distinct events over the cursor, got %d", len(seen))
 	}
 
 	// Player filter: selects the matches p2 played (each still shows all
 	// its players, same as the /matches page).
-	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?player_id="+string(p2), "", ""))
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/feed?player_id="+string(p2), "", ""))
 	if len(page.Data) != 3 {
 		t.Fatalf("player p2 played 3 matches, got %d match groups", len(page.Data))
 	}
 
 	// The filter survives inside the cursor: start a filtered walk with
 	// limit=1, then follow the token (default page size) to the end.
-	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?player_id="+string(p2)+"&limit=1", "", ""))
+	decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/feed?player_id="+string(p2)+"&limit=1", "", ""))
 	if len(page.Data) != 1 || page.Next == nil {
 		t.Fatalf("filtered page1 shape: %+v", page)
 	}
 	filteredGroups := 1
 	next = *page.Next
 	for {
-		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/matches?next="+next, "", ""))
+		decode(doJSON(t, router, http.MethodGet, "/arenas/"+string(arenaID)+"/feed?next="+next, "", ""))
 		filteredGroups += len(page.Data)
 		if page.Next == nil {
 			break

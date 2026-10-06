@@ -4,10 +4,26 @@ MarketsCollection:
   get:
     operationId: ListMarkets
     tags: [markets]
-    summary: List active and closed markets
+    summary: List active markets in full and one cursor-paginated page of closed markets
+    parameters:
+      - name: closed_next
+        in: query
+        schema:
+          type: string
+        description: >-
+          Cursor token for the next closed-markets page, taken from the
+          response's "next" field; continuation requests pass only the token.
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of closed markets per page
     responses:
       "200":
-        description: Markets grouped into active and closed
+        description: Markets grouped into active (always full) and one closed page
         content:
           application/json:
             schema:
@@ -20,14 +36,26 @@ MarketsCollection:
                   properties:
                     active:
                       type: array
+                      description: All open and betting-closed markets, newest created first
                       items:
                         $ref: '#/Market'
                     closed:
                       type: array
+                      description: Resolved and cancelled markets, newest resolution first
                       items:
                         $ref: '#/Market'
+                    next:
+                      type: string
+                      nullable: true
+                      description: Cursor token for the next closed-markets page; null if no more pages
                   required: [active, closed]
               required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
   post:
     operationId: CreateMarket
     tags: [markets]

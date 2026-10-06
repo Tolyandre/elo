@@ -1,6 +1,6 @@
 "use client"
 import React from "react";
-import { Market, getMarketsPromise, deleteMarketPromise, closeMarketBettingPromise } from "@/app/api";
+import { Market, getMarketsPagePromise, deleteMarketPromise, closeMarketBettingPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -20,7 +20,7 @@ export default function AdminMarketsPage() {
     const me = useMe();
     const { players, playerDisplayName } = usePlayers();
     const { games } = useGames();
-    const { data: marketsData, loading, error, invalidate } = useAsyncResource(async () => (await getMarketsPromise()).active);
+    const { data: marketsData, loading, error, invalidate } = useAsyncResource(async () => (await getMarketsPagePromise()).active);
     const markets = marketsData ?? [];
 
     const closeBetting = useConfirmAction(async (m: Market) => {

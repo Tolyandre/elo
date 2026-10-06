@@ -228,11 +228,15 @@ ArenaPlayersPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
-ArenaMatchesPath:
+ArenaFeedPath:
   get:
-    operationId: ListArenaMatches
+    operationId: ListArenaFeed
     tags: [arenas]
-    summary: List the arena's matches with cursor-based pagination
+    summary: The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+    description: >-
+      Correction and market-resolution events settle only into the global arena
+      (ADR-24), so they appear only in the global arena's feed; every other
+      arena's feed is its matches. Filters apply to match events only.
     parameters:
       - name: id
         in: path
@@ -243,17 +247,17 @@ ArenaMatchesPath:
         in: query
         schema:
           type: string
-        description: Filter by player ID
+        description: Filter match events by player ID
       - name: club_id
         in: query
         schema:
           type: string
-        description: Filter by club ID
+        description: Filter match events by club ID
       - name: game_id
         in: query
         schema:
           type: string
-        description: Filter by game ID
+        description: Filter match events by game ID
       - name: next
         in: query
         schema:
@@ -266,14 +270,14 @@ ArenaMatchesPath:
           minimum: 1
           maximum: 100
           default: 30
-        description: Number of matches per page
+        description: Number of events per page
     responses:
       "200":
-        description: Paginated match list (same Match shape as /matches)
+        description: Paginated feed event list
         content:
           application/json:
             schema:
-              $ref: './matches.yaml#/MatchesPage'
+              $ref: '#/FeedPage'
       "400":
         description: Bad request
         content:
@@ -282,6 +286,59 @@ ArenaMatchesPath:
               $ref: './common.yaml#/ApiError'
       "404":
         description: Arena not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+HomeFeedPath:
+  get:
+    operationId: ListHomeFeed
+    tags: [arenas]
+    summary: The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
+    description: >-
+      Today the home feed is the global arena's event set; unlike the global
+      arena's own feed it is the extensible surface for content that affects no
+      rating (future cooperative matches, posts). Parameters and cursor are the
+      arena feed's.
+    parameters:
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter match events by player ID
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter match events by club ID
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter match events by game ID
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of events per page
+    responses:
+      "200":
+        description: Paginated feed event list
+        content:
+          application/json:
+            schema:
+              $ref: '#/FeedPage'
+      "400":
+        description: Bad request
         content:
           application/json:
             schema:
@@ -500,3 +557,67 @@ ArenaPlayersList:
       items:
         $ref: '#/ArenaPlayer'
   required: [status, data]
+
+FeedPage:
+  type: object
+  description: One cursor-paginated page of the arena or home feed (ADR-32).
+  properties:
+    status:
+      type: string
+    data:
+      type: array
+      items:
+        $ref: '#/FeedEvent'
+    next:
+      type: string
+      nullable: true
+      description: Cursor token for the next page; null if no more pages
+  required: [status, data]
+
+FeedEvent:
+  oneOf:
+    - $ref: '#/FeedMatchEvent'
+    - $ref: '#/FeedCorrectionEvent'
+    - $ref: '#/FeedMarketEvent'
+  discriminator:
+    propertyName: type
+    mapping:
+      match: '#/FeedMatchEvent'
+      correction: '#/FeedCorrectionEvent'
+      market: '#/FeedMarketEvent'
+  description: >-
+    One feed event (ADR-32). New content kinds (cooperative matches, posts)
+    extend the union with another event schema — the envelope never changes.
+
+FeedMatchEvent:
+  type: object
+  description: A match of the arena — the event that moved its ratings.
+  properties:
+    type:
+      type: string
+      enum: [match]
+    data:
+      $ref: './matches.yaml#/Match'
+  required: [type, data]
+
+FeedCorrectionEvent:
+  type: object
+  description: An admin rating correction (global arena only, ADR-24).
+  properties:
+    type:
+      type: string
+      enum: [correction]
+    data:
+      $ref: './admin.yaml#/Correction'
+  required: [type, data]
+
+FeedMarketEvent:
+  type: object
+  description: A resolved market (global arena only, ADR-24) — the resolution is the event.
+  properties:
+    type:
+      type: string
+      enum: [market]
+    data:
+      $ref: './markets.yaml#/Market'
+  required: [type, data]

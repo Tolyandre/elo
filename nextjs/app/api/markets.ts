@@ -4,8 +4,30 @@ import { client, unwrap, newId } from "./client";
 import type { Market, MarketDetail } from "./types";
 import type { Base58ID } from "@/lib/id";
 
-export async function getMarketsPromise(): Promise<{ active: Market[]; closed: Market[] }> {
-    return (await unwrap(client.GET("/markets"))).data;
+export type MarketsPageData = {
+    /** All open and betting-closed markets — small and bounded, always full. */
+    active: Market[];
+    /** One keyset page of resolved/cancelled markets, newest resolution first. */
+    closed: Market[];
+    next: string | null;
+};
+
+/**
+ * The markets lobby (ADR-32): active markets in full plus one cursor-paginated
+ * page of closed ones. On continuation pass only `closed_next` — the cursor
+ * carries the page state.
+ */
+export async function getMarketsPagePromise(params?: {
+    closed_next?: string;
+    limit?: number;
+}): Promise<MarketsPageData> {
+    const query: Record<string, string | number> = {};
+    if (params?.closed_next) {
+        query.closed_next = params.closed_next;
+    }
+    if (params?.limit) query.limit = params.limit;
+    const data = (await unwrap(client.GET("/markets", { params: { query } }))).data;
+    return { active: data.active, closed: data.closed, next: data.next ?? null };
 }
 
 export async function getMarketByIdPromise(id: Base58ID): Promise<MarketDetail> {

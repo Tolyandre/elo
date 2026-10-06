@@ -121,8 +121,19 @@ export type Correction = {
     date: Date | null;
 };
 
-export type CorrectionsPage = {
-    items: Correction[];
+/**
+ * One feed event (ADR-32). The wire shape is a discriminated union on `type`;
+ * new content kinds (cooperative matches, posts) extend it server-side — the
+ * envelope never changes. Match data is mapped through mapMatch (Date objects,
+ * camelCase scores); corrections get Date dates; markets pass through.
+ */
+export type FeedEvent =
+    | { type: "match"; data: Match }
+    | { type: "correction"; data: Correction }
+    | { type: "market"; data: Market };
+
+export type FeedPage = {
+    items: FeedEvent[];
     next: string | null;
 };
 

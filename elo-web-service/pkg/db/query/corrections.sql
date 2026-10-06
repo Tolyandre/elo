@@ -26,33 +26,13 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               rating_earned = EXCLUDED.rating_earned,
               league        = EXCLUDED.league;
 
--- name: ListCorrectionsPaginated :many
+-- name: ListCorrectionsByIDs :many
+-- Payload rows for the feed's correction events (ADR-32), for an explicit id
+-- set selected by ListArenaFeedEvents.
 SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
 FROM corrections c
 JOIN players p ON p.id = c.player_id
-WHERE
-  (sqlc.narg('player_id')::uuid IS NULL OR c.player_id = sqlc.narg('player_id')::uuid)
-  AND (
-    sqlc.narg('cursor_date')::timestamptz IS NULL
-    OR c.date < sqlc.narg('cursor_date')::timestamptz
-  )
-  AND (
-    sqlc.narg('club_id')::uuid IS NULL
-    OR EXISTS (
-      SELECT 1 FROM player_club_membership pcm
-      WHERE pcm.club_id = sqlc.narg('club_id')::uuid
-        AND pcm.player_id = c.player_id
-    )
-  )
-  AND (
-    sqlc.narg('no_club')::bool IS NOT TRUE
-    OR NOT EXISTS (
-      SELECT 1 FROM player_club_membership pcm2
-      WHERE pcm2.player_id = c.player_id
-    )
-  )
-ORDER BY c.date DESC, c.id DESC
-LIMIT sqlc.arg('limit')::int4;
+WHERE c.id = ANY(sqlc.arg('ids')::uuid[]);
 
 -- name: GetPlayerLatestArenaStateBeforeCorrection :one
 -- Picks the latest settlement before correction $4 for player $2 at date $3

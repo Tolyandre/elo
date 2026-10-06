@@ -326,18 +326,31 @@ func arenaRankPoint(p elo.ArenaPlayer, ok bool) ArenaRankPoint {
 	return ArenaRankPoint{Rating: p.Rating, League: p.League, Rank: p.Rank}
 }
 
-// arenaMatchCursor is the pagination token for the arena match list: the last
-// date plus the active filters, so continuation requests carry only the token.
-type arenaMatchCursor struct {
+// Feed event discriminators (ADR-32).
+const (
+	feedEventMatch      = "match"
+	feedEventCorrection = "correction"
+	feedEventMarket     = "market"
+)
+
+// arenaFeedCursor is the pagination token for the arena and home feeds: the
+// last event's (date, type, id) tuple plus the active match filters, so
+// continuation requests carry only the token. The full tuple closes the
+// date-only cursor's same-timestamp straddle.
+type arenaFeedCursor struct {
 	Date     string  `json:"date"`
+	Type     string  `json:"type"`
+	ID       string  `json:"id"`
 	PlayerID *string `json:"player_id,omitempty"`
 	ClubID   *string `json:"club_id,omitempty"`
 	GameID   *string `json:"game_id,omitempty"`
 }
 
-func encodeArenaMatchCursor(playerID, clubID, gameID *string, date time.Time) string {
-	token, _ := json.Marshal(arenaMatchCursor{
+func encodeArenaFeedCursor(playerID, clubID, gameID *string, date time.Time, eventType string, eventID id.ID) string {
+	token, _ := json.Marshal(arenaFeedCursor{
 		Date:     date.UTC().Format(time.RFC3339Nano),
+		Type:     eventType,
+		ID:       string(eventID),
 		PlayerID: playerID,
 		ClubID:   clubID,
 		GameID:   gameID,
@@ -345,68 +358,181 @@ func encodeArenaMatchCursor(playerID, clubID, gameID *string, date time.Time) st
 	return base64.StdEncoding.EncodeToString(token)
 }
 
-func decodeArenaMatchCursor(token string) (arenaMatchCursor, pgtype.Timestamptz, error) {
+func decodeArenaFeedCursor(token string) (arenaFeedCursor, pgtype.Timestamptz, error) {
 	raw, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
+		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
 	}
-	var c arenaMatchCursor
+	var c arenaFeedCursor
 	if err := json.Unmarshal(raw, &c); err != nil {
-		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
+		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
 	}
 	t, err := time.Parse(time.RFC3339Nano, c.Date)
 	if err != nil {
-		return arenaMatchCursor{}, pgtype.Timestamptz{}, err
+		return arenaFeedCursor{}, pgtype.Timestamptz{}, err
 	}
 	return c, pgtype.Timestamptz{Time: t, Valid: true}, nil
 }
 
-func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMatchesRequestObject) (ListArenaMatchesResponseObject, error) {
-	var playerID, clubID, gameID *string
-	var cursorDate pgtype.Timestamptz
-	if request.Params.Next != nil && *request.Params.Next != "" {
-		c, date, err := decodeArenaMatchCursor(*request.Params.Next)
+// feedRequest carries the parsed parameters shared by the arena feed
+// (GET /arenas/{id}/feed) and the home feed (GET /feed) endpoints (ADR-32).
+type feedRequest struct {
+	arenaID id.ID
+	// includeSettlements merges the correction and market-resolution events
+	// into the stream. They settle only into the global arena (ADR-24), so it
+	// is the only arena whose feed carries them.
+	includeSettlements       bool
+	playerID, clubID, gameID *string
+	cursorDate               pgtype.Timestamptz
+	cursorType               pgtype.Text
+	cursorID                 *id.ID
+	limit                    int32
+}
+
+// parseFeedRequest applies the cursor-or-query-params convention shared by the
+// paginated list endpoints: on continuation the cursor token carries the
+// filters (in canonical id form), on page 1 they come from the query (wire
+// form) and are parsed tolerantly.
+func parseFeedRequest(arenaID id.ID, includeSettlements bool, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
+	req := feedRequest{
+		arenaID:            arenaID,
+		includeSettlements: includeSettlements,
+		limit:              30,
+	}
+	if next != nil && *next != "" {
+		c, date, err := decodeArenaFeedCursor(*next)
 		if err != nil {
-			return ListArenaMatches400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+			return req, err
 		}
-		playerID, clubID, gameID = c.PlayerID, c.ClubID, c.GameID
-		cursorDate = date
+		req.playerID, req.clubID, req.gameID = c.PlayerID, c.ClubID, c.GameID
+		req.cursorDate = date
+		req.cursorType = pgtype.Text{String: c.Type, Valid: true}
+		cid := id.ID(c.ID)
+		req.cursorID = &cid
 	} else {
-		// Query params carry wire-form ids (Base58 or canonical); the cursor
-		// path above already holds canonical ones.
-		if request.Params.PlayerId != nil && *request.Params.PlayerId != "" {
-			p := string(parseIDParam(*request.Params.PlayerId))
-			playerID = &p
+		if playerId != nil && *playerId != "" {
+			p := string(parseIDParam(*playerId))
+			req.playerID = &p
 		}
-		if request.Params.ClubId != nil && *request.Params.ClubId != "" {
-			cl := string(parseIDParam(*request.Params.ClubId))
-			clubID = &cl
+		if clubId != nil && *clubId != "" {
+			cl := string(parseIDParam(*clubId))
+			req.clubID = &cl
 		}
-		if request.Params.GameId != nil && *request.Params.GameId != "" {
-			g := string(parseIDParam(*request.Params.GameId))
-			gameID = &g
+		if gameId != nil && *gameId != "" {
+			g := string(parseIDParam(*gameId))
+			req.gameID = &g
+		}
+	}
+	if limitParam != nil && *limitParam > 0 && *limitParam <= 100 {
+		req.limit = int32(*limitParam)
+	}
+	return req, nil
+}
+
+// serveFeedPage selects one page of feed event keys, fetches the payloads per
+// type in bulk and assembles the response in the keys' order.
+func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (FeedPage, error) {
+	keys, err := s.api.ArenaService.ListArenaFeedEvents(ctx, db.ListArenaFeedEventsParams{
+		ArenaID:            req.arenaID,
+		IncludeSettlements: req.includeSettlements,
+		CursorDate:         req.cursorDate,
+		CursorType:         req.cursorType,
+		CursorID:           req.cursorID,
+		PlayerID:           idPtr(req.playerID),
+		ClubID:             idPtr(req.clubID),
+		GameID:             idPtr(req.gameID),
+		Limit:              req.limit,
+	})
+	if err != nil {
+		return FeedPage{}, err
+	}
+
+	matchIDs := make([]id.ID, 0, len(keys))
+	correctionIDs := make([]id.ID, 0)
+	marketIDs := make([]id.ID, 0)
+	for _, k := range keys {
+		switch k.EventType {
+		case feedEventMatch:
+			matchIDs = append(matchIDs, k.ID)
+		case feedEventCorrection:
+			correctionIDs = append(correctionIDs, k.ID)
+		case feedEventMarket:
+			marketIDs = append(marketIDs, k.ID)
 		}
 	}
 
-	limit := int32(30)
-	if request.Params.Limit != nil && *request.Params.Limit > 0 && *request.Params.Limit <= 100 {
-		limit = int32(*request.Params.Limit)
+	matches, err := s.feedMatches(ctx, req.arenaID, matchIDs)
+	if err != nil {
+		return FeedPage{}, err
+	}
+	corrections, err := s.feedCorrections(ctx, correctionIDs)
+	if err != nil {
+		return FeedPage{}, err
+	}
+	markets, err := s.marketsByIDs(ctx, marketIDs)
+	if err != nil {
+		return FeedPage{}, err
 	}
 
-	rows, err := s.api.ArenaService.ListArenaMatchesPaginated(ctx, db.ListArenaMatchesPaginatedParams{
-		ArenaID:    parseIDParam(request.Id),
-		CursorDate: cursorDate,
-		PlayerID:   idPtr(playerID),
-		ClubID:     idPtr(clubID),
-		GameID:     idPtr(gameID),
-		Limit:      limit,
+	data := make([]FeedEvent, 0, len(keys))
+	for _, k := range keys {
+		var event FeedEvent
+		switch k.EventType {
+		case feedEventMatch:
+			m, ok := matches[k.ID]
+			if !ok {
+				continue
+			}
+			if err := event.FromFeedMatchEvent(FeedMatchEvent{Type: FeedMatchEventTypeMatch, Data: m}); err != nil {
+				return FeedPage{}, err
+			}
+		case feedEventCorrection:
+			c, ok := corrections[k.ID]
+			if !ok {
+				continue
+			}
+			if err := event.FromFeedCorrectionEvent(FeedCorrectionEvent{Type: FeedCorrectionEventTypeCorrection, Data: c}); err != nil {
+				return FeedPage{}, err
+			}
+		case feedEventMarket:
+			m, ok := markets[k.ID]
+			if !ok {
+				continue
+			}
+			if err := event.FromFeedMarketEvent(FeedMarketEvent{Type: FeedMarketEventTypeMarket, Data: m}); err != nil {
+				return FeedPage{}, err
+			}
+		}
+		data = append(data, event)
+	}
+
+	var next *string
+	if int32(len(keys)) == req.limit {
+		last := keys[len(keys)-1]
+		token := encodeArenaFeedCursor(req.playerID, req.clubID, req.gameID, last.SortDate.Time, last.EventType, last.ID)
+		next = &token
+	}
+	return FeedPage{Status: StatusSuccess, Data: data, Next: next}, nil
+}
+
+// feedMatches fetches the payload rows for the page's match events and
+// assembles them into the API Match shape (same per-player settlement data the
+// former arena match list produced).
+func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.ID) (map[id.ID]Match, error) {
+	out := make(map[id.ID]Match, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.api.ArenaService.ListFeedMatchesWithPlayers(ctx, db.ListFeedMatchesWithPlayersParams{
+		ArenaID: arenaID,
+		Ids:     ids,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	matchesMap := make(map[id.ID]*tempMatch)
-	order := make([]id.ID, 0)
+	matchesMap := make(map[id.ID]*tempMatch, len(ids))
+	order := make([]id.ID, 0, len(ids))
 	for _, r := range rows {
 		if _, ok := matchesMap[r.MatchID]; !ok {
 			matchesMap[r.MatchID] = &tempMatch{
@@ -441,7 +567,6 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 		return nil, err
 	}
 
-	data := make([]Match, 0, len(order))
 	for _, mid := range order {
 		m := matchesMap[mid]
 		score := make(IDMap[MatchPlayer], len(m.Players))
@@ -472,15 +597,65 @@ func (s *StrictServer) ListArenaMatches(ctx context.Context, request ListArenaMa
 			kind := m.CalculatorKind.String
 			match.CalculatorKind = &kind
 		}
-		data = append(data, match)
+		out[mid] = match
 	}
+	return out, nil
+}
 
-	var next *string
-	if int32(len(order)) == limit {
-		lastID := order[len(order)-1]
-		token := encodeArenaMatchCursor(playerID, clubID, gameID, matchesMap[lastID].Date)
-		next = &token
+// feedCorrections fetches the payload rows for the page's correction events.
+func (s *StrictServer) feedCorrections(ctx context.Context, ids []id.ID) (map[id.ID]Correction, error) {
+	out := make(map[id.ID]Correction, len(ids))
+	if len(ids) == 0 {
+		return out, nil
 	}
+	rows, err := s.api.CorrectionService.ListCorrectionsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out[r.ID] = Correction{
+			Id:         Base58ID(r.ID),
+			PlayerId:   Base58ID(r.PlayerID),
+			PlayerName: r.PlayerName,
+			Diff:       r.Diff,
+			Date:       r.Date.Time,
+		}
+	}
+	return out, nil
+}
 
-	return ListArenaMatches200JSONResponse{Status: StatusSuccess, Data: data, Next: next}, nil
+func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedRequestObject) (ListArenaFeedResponseObject, error) {
+	req, err := parseFeedRequest(
+		parseIDParam(request.Id),
+		parseIDParam(request.Id) == elo.GlobalArenaID,
+		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
+		request.Params.Next, request.Params.Limit,
+	)
+	if err != nil {
+		return ListArenaFeed400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+	}
+	page, err := s.serveFeedPage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return ListArenaFeed200JSONResponse(page), nil
+}
+
+func (s *StrictServer) ListHomeFeed(ctx context.Context, request ListHomeFeedRequestObject) (ListHomeFeedResponseObject, error) {
+	// The home feed (ADR-32) is the extensible main-page surface. Today it is
+	// the global arena's event set; content that affects no rating (cooperative
+	// matches, posts) will join here — never the global arena's own feed.
+	req, err := parseFeedRequest(
+		elo.GlobalArenaID, true,
+		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
+		request.Params.Next, request.Params.Limit,
+	)
+	if err != nil {
+		return ListHomeFeed400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+	}
+	page, err := s.serveFeedPage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return ListHomeFeed200JSONResponse(page), nil
 }

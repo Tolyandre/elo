@@ -320,12 +320,15 @@ LEFT JOIN LATERAL (
 WHERE st.arena_id = sqlc.arg('arena_id')
 ORDER BY p.name;
 
--- name: ListArenaMatchesPaginated :many
--- Cursor-paginated match list of one arena, same envelope as /matches.
--- Optional player/club/game filters mirror /matches; the cursor token carries
--- them, so continuation requests pass only the token.
-WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
+-- name: ListArenaFeedEvents :many
+-- One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
+-- correction and market-resolution events. Corrections and market resolutions
+-- settle only into the global arena (ADR-24), so their branches join the union
+-- only when the caller passes include_settlements. The cursor is the last
+-- returned (sort_date, event_type, id) tuple; the token carries the filters,
+-- so continuation requests pass only the token.
+WITH events AS (
+    SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM arenas a
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
     CROSS JOIN matches m
@@ -336,10 +339,6 @@ WITH paginated_matches AS (
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      AND (
-          sqlc.narg('cursor_date')::timestamptz IS NULL
-          OR m.date < sqlc.narg('cursor_date')::timestamptz
-      )
       AND (
           sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid
       )
@@ -354,15 +353,41 @@ WITH paginated_matches AS (
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
       )
-    ORDER BY m.date DESC, m.id DESC
-    LIMIT sqlc.arg('limit')::int4
+    UNION ALL
+    SELECT c.id, c.date, 'correction'::text
+    FROM corrections c
+    WHERE sqlc.arg('include_settlements')::bool
+    UNION ALL
+    SELECT om.id, om.resolved_at, 'market'::text
+    FROM markets om
+    WHERE sqlc.arg('include_settlements')::bool
+      AND om.status = 'resolved' AND om.resolved_at IS NOT NULL
 )
+SELECT id, sort_date, event_type
+FROM events
+WHERE
+    sqlc.narg('cursor_date')::timestamptz IS NULL
+    OR sort_date < sqlc.narg('cursor_date')::timestamptz
+    OR (
+        sort_date = sqlc.narg('cursor_date')::timestamptz
+        AND (
+            event_type < sqlc.narg('cursor_type')::text
+            OR (event_type = sqlc.narg('cursor_type')::text AND id < sqlc.narg('cursor_id')::uuid)
+        )
+    )
+ORDER BY sort_date DESC, event_type DESC, id DESC
+LIMIT sqlc.arg('limit')::int4;
+
+-- name: ListFeedMatchesWithPlayers :many
+-- Payload rows for the feed's match events (ADR-32): per-player scores with
+-- this arena's settlement data, for an explicit id set selected by
+-- ListArenaFeedEvents.
 SELECT
-    pm.id AS match_id,
-    pm.date,
+    m.id AS match_id,
+    m.date,
     g.id AS game_id,
     g.name AS game_name,
-    pm.calculator_kind AS calculator_kind,
+    m.calculator_kind AS calculator_kind,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -370,21 +395,22 @@ SELECT
     ars.rating_earned,
     CASE WHEN ars.rating_after IS NULL THEN NULL ELSE ars.rating_after END AS rating_after,
     CASE WHEN prev_rating.rating_after IS NULL THEN NULL ELSE prev_rating.rating_after END AS prev_rating,
-    EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = pm.id) AS has_markets
-FROM paginated_matches pm
-JOIN games g ON g.id = pm.game_id
-JOIN match_scores s ON s.match_id = pm.id
+    EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = m.id) AS has_markets
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
 LEFT JOIN arena_settlements ars ON ars.arena_id = sqlc.arg('arena_id')
     AND ars.match_id = s.match_id AND ars.player_id = s.player_id AND ars.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT ars2.rating_after
     FROM arena_settlements ars2
-    WHERE ars2.arena_id = sqlc.arg('arena_id') AND ars2.player_id = p.id AND ars2.date < pm.date
+    WHERE ars2.arena_id = sqlc.arg('arena_id') AND ars2.player_id = p.id AND ars2.date < m.date
     ORDER BY ars2.date DESC, ars2.id DESC
     LIMIT 1
 ) prev_rating ON true
-ORDER BY pm.date DESC, pm.id DESC, s.score DESC;
+WHERE m.id = ANY(sqlc.arg('ids')::uuid[])
+ORDER BY m.date DESC, m.id DESC, s.score DESC;
 
 -- name: CountPlayerMatchesInArenaInPeriod :one
 -- Matches of one player inside the arena (per the membership function) within

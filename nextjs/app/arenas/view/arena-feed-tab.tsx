@@ -1,34 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import type { Base58ID } from "@/lib/id";
 import { Arena } from "@/app/api";
-import { MatchWithMarkets } from "@/components/match-with-markets";
+import { MatchCard } from "@/components/match-card";
 import { CorrectionCard } from "@/components/correction-card";
+import { MarketCard } from "@/components/market-card";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
 import { ClubSelect } from "@/components/club-select";
 import { PendingMatchCard } from "@/components/pending-match-card";
+import { EmptyState } from "@/components/empty-state";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldLabel, FieldContent, FieldGroup } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useMe } from "@/app/meContext";
 import { useOffline } from "@/app/offline/OfflineContext";
-import type { ArenaMatchFilters, TimelineItem } from "./use-arena-matches";
+import type { ArenaMatchFilters } from "./use-arena-feed";
+import type { FeedEvent } from "@/app/api";
 
 /**
- * Arena match timeline (ADR-24): the same rendering as /matches — filter card,
- * matches with lazily loaded markets, correction cards (global arena only,
- * since corrections settle only there) — over the cursor-paginated arena
- * matches endpoint. The game filter is hidden when the arena's filter pins it
- * to exactly one game. The offline-sync queue rides on top of the global
- * arena's timeline, like /matches did. (Live tables moved to the main page,
- * above the tabs.)
+ * The arena feed tab (ADR-32): the server-merged event stream — matches, and
+ * for the global arena also corrections and market resolutions (they settle
+ * only there). Each event kind renders as its own card. The game filter is
+ * hidden when the arena's filter pins it to exactly one game. The
+ * offline-sync queue rides on top of the global feed, like /matches did.
+ * (Live tables moved to the main page, above the tabs.)
  */
-export function ArenaMatchesTab({
+export function ArenaFeedTab({
     arena,
-    items,
+    events,
     loading,
     loadingMore,
     hasMore,
@@ -39,7 +42,7 @@ export function ArenaMatchesTab({
     pendingGameId,
 }: {
     arena: Arena;
-    items: TimelineItem[];
+    events: FeedEvent[];
     loading: boolean;
     loadingMore: boolean;
     hasMore: boolean;
@@ -71,7 +74,7 @@ export function ArenaMatchesTab({
     // Hide the game select when the arena's match filter pins one game.
     const showGameFilter = (arena.filter?.game_ids.length ?? 0) !== 1;
 
-    // Unsynced matches go on top of the global timeline. A player filter hides
+    // Unsynced matches go on top of the global feed. A player filter hides
     // them (pending score keys may reference offline player ids).
     const visiblePending = useMemo(() => {
         if (!isGlobal || filters.playerId) return [];
@@ -130,20 +133,36 @@ export function ArenaMatchesTab({
                         <Skeleton key={i} className="h-28 w-full rounded-xl" />
                     ))}
                 </>
-            ) : items.length === 0 && visiblePending.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Нет партий</p>
+            ) : events.length === 0 && visiblePending.length === 0 ? (
+                <EmptyState title="Пока нет событий" />
             ) : (
-                items.map((item) =>
-                    item.type === "match" ? (
-                        <MatchWithMarkets
-                            key={`m-${item.data.id}`}
-                            match={item.data}
-                            roundToInteger={roundToInteger}
-                        />
-                    ) : (
-                        <CorrectionCard key={`c-${item.data.id}`} correction={item.data} />
-                    ),
-                )
+                events.map((event) => {
+                    switch (event.type) {
+                        case "match":
+                            return (
+                                <MatchCard
+                                    key={`m-${event.data.id}`}
+                                    match={event.data}
+                                    roundToInteger={roundToInteger}
+                                />
+                            );
+                        case "correction":
+                            return <CorrectionCard key={`c-${event.data.id}`} correction={event.data} />;
+                        case "market":
+                            return (
+                                <Link
+                                    key={`mk-${event.data.id}`}
+                                    href={`/markets/view?id=${event.data.id}`}
+                                    className="block"
+                                >
+                                    <MarketCard
+                                        market={event.data}
+                                        className="hover:bg-accent transition-colors cursor-pointer"
+                                    />
+                                </Link>
+                            );
+                    }
+                })
             )}
 
             <div ref={sentinelRef} className="flex justify-center py-4">

@@ -468,129 +468,103 @@ func (q *Queries) InsertArenaStats(ctx context.Context, arenaID id.ID) error {
 	return err
 }
 
-const listArenaMatchesPaginated = `-- name: ListArenaMatchesPaginated :many
-WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
+const listArenaFeedEvents = `-- name: ListArenaFeedEvents :many
+WITH events AS (
+    SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM arenas a
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
     CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
-    WHERE a.id = $1
+    WHERE a.id = $5
       AND arena_contains_match(
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
       AND (
-          $2::timestamptz IS NULL
-          OR m.date < $2::timestamptz
+          $6::uuid IS NULL OR ms.player_id = $6::uuid
       )
       AND (
-          $3::uuid IS NULL OR ms.player_id = $3::uuid
-      )
-      AND (
-          $4::uuid IS NULL
+          $7::uuid IS NULL
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
-              WHERE pcm.club_id = $4::uuid
+              WHERE pcm.club_id = $7::uuid
                 AND pcm.player_id = ms.player_id
           )
       )
       AND (
-          $5::uuid IS NULL OR m.game_id = $5::uuid
+          $8::uuid IS NULL OR m.game_id = $8::uuid
       )
-    ORDER BY m.date DESC, m.id DESC
-    LIMIT $6::int4
+    UNION ALL
+    SELECT c.id, c.date, 'correction'::text
+    FROM corrections c
+    WHERE $9::bool
+    UNION ALL
+    SELECT om.id, om.resolved_at, 'market'::text
+    FROM markets om
+    WHERE $9::bool
+      AND om.status = 'resolved' AND om.resolved_at IS NOT NULL
 )
-SELECT
-    pm.id AS match_id,
-    pm.date,
-    g.id AS game_id,
-    g.name AS game_name,
-    pm.calculator_kind AS calculator_kind,
-    p.id AS player_id,
-    p.name AS player_name,
-    s.score,
-    ars.rating_staked,
-    ars.rating_earned,
-    CASE WHEN ars.rating_after IS NULL THEN NULL ELSE ars.rating_after END AS rating_after,
-    CASE WHEN prev_rating.rating_after IS NULL THEN NULL ELSE prev_rating.rating_after END AS prev_rating,
-    EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = pm.id) AS has_markets
-FROM paginated_matches pm
-JOIN games g ON g.id = pm.game_id
-JOIN match_scores s ON s.match_id = pm.id
-JOIN players p ON p.id = s.player_id
-LEFT JOIN arena_settlements ars ON ars.arena_id = $1
-    AND ars.match_id = s.match_id AND ars.player_id = s.player_id AND ars.discriminator = 'match'
-LEFT JOIN LATERAL (
-    SELECT ars2.rating_after
-    FROM arena_settlements ars2
-    WHERE ars2.arena_id = $1 AND ars2.player_id = p.id AND ars2.date < pm.date
-    ORDER BY ars2.date DESC, ars2.id DESC
-    LIMIT 1
-) prev_rating ON true
-ORDER BY pm.date DESC, pm.id DESC, s.score DESC
+SELECT id, sort_date, event_type
+FROM events
+WHERE
+    $1::timestamptz IS NULL
+    OR sort_date < $1::timestamptz
+    OR (
+        sort_date = $1::timestamptz
+        AND (
+            event_type < $2::text
+            OR (event_type = $2::text AND id < $3::uuid)
+        )
+    )
+ORDER BY sort_date DESC, event_type DESC, id DESC
+LIMIT $4::int4
 `
 
-type ListArenaMatchesPaginatedParams struct {
-	ArenaID    id.ID              `json:"arena_id"`
-	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	PlayerID   *id.ID             `json:"player_id"`
-	ClubID     *id.ID             `json:"club_id"`
-	GameID     *id.ID             `json:"game_id"`
-	Limit      int32              `json:"limit"`
+type ListArenaFeedEventsParams struct {
+	CursorDate         pgtype.Timestamptz `json:"cursor_date"`
+	CursorType         pgtype.Text        `json:"cursor_type"`
+	CursorID           *id.ID             `json:"cursor_id"`
+	Limit              int32              `json:"limit"`
+	ArenaID            id.ID              `json:"arena_id"`
+	PlayerID           *id.ID             `json:"player_id"`
+	ClubID             *id.ID             `json:"club_id"`
+	GameID             *id.ID             `json:"game_id"`
+	IncludeSettlements bool               `json:"include_settlements"`
 }
 
-type ListArenaMatchesPaginatedRow struct {
-	MatchID        id.ID              `json:"match_id"`
-	Date           pgtype.Timestamptz `json:"date"`
-	GameID         id.ID              `json:"game_id"`
-	GameName       string             `json:"game_name"`
-	CalculatorKind pgtype.Text        `json:"calculator_kind"`
-	PlayerID       id.ID              `json:"player_id"`
-	PlayerName     string             `json:"player_name"`
-	Score          float64            `json:"score"`
-	RatingStaked   pgtype.Float8      `json:"rating_staked"`
-	RatingEarned   pgtype.Float8      `json:"rating_earned"`
-	RatingAfter    interface{}        `json:"rating_after"`
-	PrevRating     interface{}        `json:"prev_rating"`
-	HasMarkets     bool               `json:"has_markets"`
+type ListArenaFeedEventsRow struct {
+	ID        id.ID              `json:"id"`
+	SortDate  pgtype.Timestamptz `json:"sort_date"`
+	EventType string             `json:"event_type"`
 }
 
-// Cursor-paginated match list of one arena, same envelope as /matches.
-// Optional player/club/game filters mirror /matches; the cursor token carries
-// them, so continuation requests pass only the token.
-func (q *Queries) ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMatchesPaginatedParams) ([]ListArenaMatchesPaginatedRow, error) {
-	rows, err := q.db.Query(ctx, listArenaMatchesPaginated,
-		arg.ArenaID,
+// One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
+// correction and market-resolution events. Corrections and market resolutions
+// settle only into the global arena (ADR-24), so their branches join the union
+// only when the caller passes include_settlements. The cursor is the last
+// returned (sort_date, event_type, id) tuple; the token carries the filters,
+// so continuation requests pass only the token.
+func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error) {
+	rows, err := q.db.Query(ctx, listArenaFeedEvents,
 		arg.CursorDate,
+		arg.CursorType,
+		arg.CursorID,
+		arg.Limit,
+		arg.ArenaID,
 		arg.PlayerID,
 		arg.ClubID,
 		arg.GameID,
-		arg.Limit,
+		arg.IncludeSettlements,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListArenaMatchesPaginatedRow{}
+	items := []ListArenaFeedEventsRow{}
 	for rows.Next() {
-		var i ListArenaMatchesPaginatedRow
-		if err := rows.Scan(
-			&i.MatchID,
-			&i.Date,
-			&i.GameID,
-			&i.GameName,
-			&i.CalculatorKind,
-			&i.PlayerID,
-			&i.PlayerName,
-			&i.Score,
-			&i.RatingStaked,
-			&i.RatingEarned,
-			&i.RatingAfter,
-			&i.PrevRating,
-			&i.HasMarkets,
-		); err != nil {
+		var i ListArenaFeedEventsRow
+		if err := rows.Scan(&i.ID, &i.SortDate, &i.EventType); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1013,6 +987,96 @@ func (q *Queries) ListArenasMatchingMatch(ctx context.Context, matchID id.ID) ([
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFeedMatchesWithPlayers = `-- name: ListFeedMatchesWithPlayers :many
+SELECT
+    m.id AS match_id,
+    m.date,
+    g.id AS game_id,
+    g.name AS game_name,
+    m.calculator_kind AS calculator_kind,
+    p.id AS player_id,
+    p.name AS player_name,
+    s.score,
+    ars.rating_staked,
+    ars.rating_earned,
+    CASE WHEN ars.rating_after IS NULL THEN NULL ELSE ars.rating_after END AS rating_after,
+    CASE WHEN prev_rating.rating_after IS NULL THEN NULL ELSE prev_rating.rating_after END AS prev_rating,
+    EXISTS(SELECT 1 FROM markets WHERE resolution_match_id = m.id) AS has_markets
+FROM matches m
+JOIN games g ON g.id = m.game_id
+JOIN match_scores s ON s.match_id = m.id
+JOIN players p ON p.id = s.player_id
+LEFT JOIN arena_settlements ars ON ars.arena_id = $1
+    AND ars.match_id = s.match_id AND ars.player_id = s.player_id AND ars.discriminator = 'match'
+LEFT JOIN LATERAL (
+    SELECT ars2.rating_after
+    FROM arena_settlements ars2
+    WHERE ars2.arena_id = $1 AND ars2.player_id = p.id AND ars2.date < m.date
+    ORDER BY ars2.date DESC, ars2.id DESC
+    LIMIT 1
+) prev_rating ON true
+WHERE m.id = ANY($2::uuid[])
+ORDER BY m.date DESC, m.id DESC, s.score DESC
+`
+
+type ListFeedMatchesWithPlayersParams struct {
+	ArenaID id.ID   `json:"arena_id"`
+	Ids     []id.ID `json:"ids"`
+}
+
+type ListFeedMatchesWithPlayersRow struct {
+	MatchID        id.ID              `json:"match_id"`
+	Date           pgtype.Timestamptz `json:"date"`
+	GameID         id.ID              `json:"game_id"`
+	GameName       string             `json:"game_name"`
+	CalculatorKind pgtype.Text        `json:"calculator_kind"`
+	PlayerID       id.ID              `json:"player_id"`
+	PlayerName     string             `json:"player_name"`
+	Score          float64            `json:"score"`
+	RatingStaked   pgtype.Float8      `json:"rating_staked"`
+	RatingEarned   pgtype.Float8      `json:"rating_earned"`
+	RatingAfter    interface{}        `json:"rating_after"`
+	PrevRating     interface{}        `json:"prev_rating"`
+	HasMarkets     bool               `json:"has_markets"`
+}
+
+// Payload rows for the feed's match events (ADR-32): per-player scores with
+// this arena's settlement data, for an explicit id set selected by
+// ListArenaFeedEvents.
+func (q *Queries) ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMatchesWithPlayersParams) ([]ListFeedMatchesWithPlayersRow, error) {
+	rows, err := q.db.Query(ctx, listFeedMatchesWithPlayers, arg.ArenaID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFeedMatchesWithPlayersRow{}
+	for rows.Next() {
+		var i ListFeedMatchesWithPlayersRow
+		if err := rows.Scan(
+			&i.MatchID,
+			&i.Date,
+			&i.GameID,
+			&i.GameName,
+			&i.CalculatorKind,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Score,
+			&i.RatingStaked,
+			&i.RatingEarned,
+			&i.RatingAfter,
+			&i.PrevRating,
+			&i.HasMarkets,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

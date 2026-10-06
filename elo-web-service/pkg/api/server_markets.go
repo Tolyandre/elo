@@ -2,10 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -59,7 +60,7 @@ type marketRow struct {
 	TwTournamentName  pgtype.Text
 }
 
-func marketRowFromList(r db.ListMarketsRow) marketRow {
+func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 	return marketRow{
 		ID:                r.ID,
 		MarketType:        r.MarketType,
@@ -246,10 +247,10 @@ func buildOutcomes(rows []db.ListMarketOutcomesWithPoolsRow, liquidityB float64)
 	return outcomes
 }
 
-// buildAllOutcomes groups every market's outcome rows (see
-// ListAllMarketOutcomesWithPools) and computes their probabilities per market.
-// liquidity must contain each market's liquidity_b keyed by market id.
-func buildAllOutcomes(rows []db.ListAllMarketOutcomesWithPoolsRow, liquidity map[string]float64) map[string][]MarketsMarketOutcome {
+// buildAllOutcomes groups an explicit market id set's outcome rows (see
+// ListMarketOutcomesWithPoolsByIDs) and computes their probabilities per
+// market. liquidity must contain each market's liquidity_b keyed by market id.
+func buildAllOutcomes(rows []db.ListMarketOutcomesWithPoolsByIDsRow, liquidity map[string]float64) map[string][]MarketsMarketOutcome {
 	grouped := make(map[string][]db.ListMarketOutcomesWithPoolsRow, len(liquidity))
 	for _, r := range rows {
 		grouped[string(r.MarketID)] = append(grouped[string(r.MarketID)], db.ListMarketOutcomesWithPoolsRow{
@@ -322,12 +323,54 @@ func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	return m
 }
 
-func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObject) (ListMarketsResponseObject, error) {
-	rows, err := s.api.MarketQueries.ListMarkets(ctx)
+// marketCursor is the continuation token for the closed-markets page: the last
+// row's (resolved_at, id) keyset tuple. The list has no filters yet; the
+// struct leaves room for them so future filters ride in the token like
+// matchCursor's do.
+type marketCursor struct {
+	ResolvedAt string `json:"resolved_at"` // RFC3339Nano
+	ID         string `json:"id"`
+}
+
+func encodeMarketCursor(resolvedAt time.Time, marketID id.ID) string {
+	b, _ := json.Marshal(marketCursor{
+		ResolvedAt: resolvedAt.UTC().Format(time.RFC3339Nano),
+		ID:         string(marketID),
+	})
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+func decodeMarketCursor(token string) (pgtype.Timestamptz, *id.ID, error) {
+	raw, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return pgtype.Timestamptz{}, nil, err
+	}
+	var c marketCursor
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return pgtype.Timestamptz{}, nil, err
+	}
+	t, err := time.Parse(time.RFC3339Nano, c.ResolvedAt)
+	if err != nil {
+		return pgtype.Timestamptz{}, nil, err
+	}
+	mid := id.ID(c.ID)
+	return pgtype.Timestamptz{Time: t, Valid: true}, &mid, nil
+}
+
+// marketsByIDs assembles full Market objects (outcomes with pools; for
+// resolved markets also the settlement details and guarantor payouts) for an
+// explicit id set. Shared by the markets list and the feeds (ADR-32); page
+// bounds keep the per-resolved-market detail queries bounded.
+func (s *StrictServer) marketsByIDs(ctx context.Context, ids []id.ID) (map[id.ID]Market, error) {
+	out := make(map[id.ID]Market, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.api.MarketQueries.ListMarketsByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	outcomeRows, err := s.api.MarketQueries.ListAllMarketOutcomesWithPools(ctx)
+	outcomeRows, err := s.api.MarketQueries.ListMarketOutcomesWithPoolsByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -337,49 +380,88 @@ func (s *StrictServer) ListMarkets(ctx context.Context, _ ListMarketsRequestObje
 	}
 	outcomes := buildAllOutcomes(outcomeRows, liquidity)
 
-	active := make([]Market, 0)
-	closed := make([]Market, 0)
-
 	for _, r := range rows {
-		m := buildMarket(marketRowFromList(r), outcomes[string(r.ID)])
-
-		if r.Status == "open" || r.Status == "betting_closed" {
-			active = append(active, m)
-		} else {
-			if r.Status == "resolved" {
-				if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
-					m.Settlement = convertSettlement(details)
-				}
-				if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
-					m.GuarantorSettlement = convertGuarantorPayouts(gp)
-				}
+		m := buildMarket(marketRowFromIDs(r), outcomes[string(r.ID)])
+		if r.Status == "resolved" {
+			if details, err := s.api.MarketQueries.GetSettlementDetails(ctx, &r.ID); err == nil {
+				m.Settlement = convertSettlement(details)
 			}
+			if gp, err := s.api.MarketQueries.GetMarketGuarantorPayouts(ctx, r.ID); err == nil {
+				m.GuarantorSettlement = convertGuarantorPayouts(gp)
+			}
+		}
+		out[r.ID] = m
+	}
+	return out, nil
+}
+
+func (s *StrictServer) ListMarkets(ctx context.Context, request ListMarketsRequestObject) (ListMarketsResponseObject, error) {
+	limit := int32(30)
+	if request.Params.Limit != nil && *request.Params.Limit > 0 && *request.Params.Limit <= 100 {
+		limit = int32(*request.Params.Limit)
+	}
+
+	var cursorDate pgtype.Timestamptz
+	var cursorID *id.ID
+	if request.Params.ClosedNext != nil && *request.Params.ClosedNext != "" {
+		var err error
+		cursorDate, cursorID, err = decodeMarketCursor(*request.Params.ClosedNext)
+		if err != nil {
+			return ListMarkets400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+		}
+	}
+
+	// The active list is small and bounded — returned in full on every page;
+	// the closed bucket grows without bound and paginates by
+	// (resolved_at, id) keyset.
+	activeIDs, err := s.api.MarketQueries.ListActiveMarketIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	closedKeys, err := s.api.MarketQueries.ListClosedMarketKeys(ctx, db.ListClosedMarketKeysParams{
+		CursorDate: cursorDate,
+		CursorID:   cursorID,
+		Limit:      limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]id.ID, 0, len(activeIDs)+len(closedKeys))
+	ids = append(ids, activeIDs...)
+	for _, k := range closedKeys {
+		ids = append(ids, k.ID)
+	}
+	markets, err := s.marketsByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	active := make([]Market, 0, len(activeIDs))
+	for _, mid := range activeIDs {
+		if m, ok := markets[mid]; ok {
+			active = append(active, m)
+		}
+	}
+	closed := make([]Market, 0, len(closedKeys))
+	for _, k := range closedKeys {
+		if m, ok := markets[k.ID]; ok {
 			closed = append(closed, m)
 		}
 	}
 
-	sort.Slice(closed, func(i, j int) bool {
-		ti := closed[i].ResolvedAt
-		tj := closed[j].ResolvedAt
-		if ti == nil && tj == nil {
-			return false
-		}
-		if ti == nil {
-			return false
-		}
-		if tj == nil {
-			return true
-		}
-		return ti.After(*tj)
-	})
+	var next *string
+	if int32(len(closedKeys)) == limit {
+		last := closedKeys[len(closedKeys)-1]
+		token := encodeMarketCursor(last.ResolvedAt.Time, last.ID)
+		next = &token
+	}
 
-	return ListMarkets200JSONResponse{
-		Status: StatusSuccess,
-		Data: struct {
-			Active []Market `json:"active"`
-			Closed []Market `json:"closed"`
-		}{Active: active, Closed: closed},
-	}, nil
+	resp := ListMarkets200JSONResponse{Status: StatusSuccess}
+	resp.Data.Active = active
+	resp.Data.Closed = closed
+	resp.Data.Next = next
+	return resp, nil
 }
 
 func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestObject) (GetMarketResponseObject, error) {

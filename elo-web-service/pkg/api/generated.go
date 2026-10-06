@@ -231,6 +231,51 @@ func (e EloRankLeague) Valid() bool {
 	}
 }
 
+// Defines values for FeedCorrectionEventType.
+const (
+	FeedCorrectionEventTypeCorrection FeedCorrectionEventType = "correction"
+)
+
+// Valid indicates whether the value is a known member of the FeedCorrectionEventType enum.
+func (e FeedCorrectionEventType) Valid() bool {
+	switch e {
+	case FeedCorrectionEventTypeCorrection:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeedMarketEventType.
+const (
+	FeedMarketEventTypeMarket FeedMarketEventType = "market"
+)
+
+// Valid indicates whether the value is a known member of the FeedMarketEventType enum.
+func (e FeedMarketEventType) Valid() bool {
+	switch e {
+	case FeedMarketEventTypeMarket:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeedMatchEventType.
+const (
+	FeedMatchEventTypeMatch FeedMatchEventType = "match"
+)
+
+// Valid indicates whether the value is a known member of the FeedMatchEventType enum.
+func (e FeedMatchEventType) Valid() bool {
+	switch e {
+	case FeedMatchEventTypeMatch:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IawwGameStatePhase.
 const (
 	IawwGameStatePhaseScoring IawwGameStatePhase = "scoring"
@@ -1204,15 +1249,6 @@ type Correction struct {
 	PlayerName string   `json:"player_name"`
 }
 
-// CorrectionsPage defines model for CorrectionsPage.
-type CorrectionsPage struct {
-	Data []Correction `json:"data"`
-
-	// Next Cursor token for the next page; null if no more pages
-	Next   *string `json:"next,omitempty"`
-	Status string  `json:"status"`
-}
-
 // EloRank defines model for EloRank.
 type EloRank struct {
 	League EloRankLeague `json:"league"`
@@ -1240,6 +1276,47 @@ type EloSettingEntry struct {
 	EloConstK     float64 `json:"elo_const_k"`
 	StartingElo   float64 `json:"starting_elo"`
 	WinReward     float64 `json:"win_reward"`
+}
+
+// FeedCorrectionEvent An admin rating correction (global arena only, ADR-24).
+type FeedCorrectionEvent struct {
+	Data Correction              `json:"data"`
+	Type FeedCorrectionEventType `json:"type"`
+}
+
+// FeedCorrectionEventType defines model for FeedCorrectionEvent.Type.
+type FeedCorrectionEventType string
+
+// FeedEvent One feed event (ADR-32). New content kinds (cooperative matches, posts) extend the union with another event schema — the envelope never changes.
+type FeedEvent struct {
+	union json.RawMessage
+}
+
+// FeedMarketEvent A resolved market (global arena only, ADR-24) — the resolution is the event.
+type FeedMarketEvent struct {
+	Data Market              `json:"data"`
+	Type FeedMarketEventType `json:"type"`
+}
+
+// FeedMarketEventType defines model for FeedMarketEvent.Type.
+type FeedMarketEventType string
+
+// FeedMatchEvent A match of the arena — the event that moved its ratings.
+type FeedMatchEvent struct {
+	Data Match              `json:"data"`
+	Type FeedMatchEventType `json:"type"`
+}
+
+// FeedMatchEventType defines model for FeedMatchEvent.Type.
+type FeedMatchEventType string
+
+// FeedPage One cursor-paginated page of the arena or home feed (ADR-32).
+type FeedPage struct {
+	Data []FeedEvent `json:"data"`
+
+	// Next Cursor token for the next page; null if no more pages
+	Next   *string `json:"next,omitempty"`
+	Status string  `json:"status"`
 }
 
 // Game defines model for Game.
@@ -2212,21 +2289,21 @@ type ListArenasParams struct {
 // ListArenasParamsKind defines parameters for ListArenas.
 type ListArenasParamsKind string
 
-// ListArenaMatchesParams defines parameters for ListArenaMatches.
-type ListArenaMatchesParams struct {
-	// PlayerId Filter by player ID
+// ListArenaFeedParams defines parameters for ListArenaFeed.
+type ListArenaFeedParams struct {
+	// PlayerId Filter match events by player ID
 	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
 
-	// ClubId Filter by club ID
+	// ClubId Filter match events by club ID
 	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
 
-	// GameId Filter by game ID
+	// GameId Filter match events by game ID
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
 
-	// Limit Number of matches per page
+	// Limit Number of events per page
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
@@ -2278,18 +2355,21 @@ type AddClubMemberJSONBody struct {
 	PlayerId Base58ID `json:"player_id"`
 }
 
-// ListCorrectionsParams defines parameters for ListCorrections.
-type ListCorrectionsParams struct {
-	// PlayerId Filter by player ID
+// ListHomeFeedParams defines parameters for ListHomeFeed.
+type ListHomeFeedParams struct {
+	// PlayerId Filter match events by player ID
 	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
 
-	// ClubId Filter by club ID; use "__no_club__" for players without a club
+	// ClubId Filter match events by club ID
 	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
+
+	// GameId Filter match events by game ID
+	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
 
-	// Limit Number of corrections per page
+	// Limit Number of events per page
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
@@ -2332,6 +2412,15 @@ type PatchGameJSONBody struct {
 type AddGameTagJSONBody struct {
 	// TagId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	TagId Base58ID `json:"tag_id"`
+}
+
+// ListMarketsParams defines parameters for ListMarkets.
+type ListMarketsParams struct {
+	// ClosedNext Cursor token for the next closed-markets page, taken from the response's "next" field; continuation requests pass only the token.
+	ClosedNext *string `form:"closed_next,omitempty" json:"closed_next,omitempty"`
+
+	// Limit Number of closed markets per page
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // CreateMarketJSONBody defines parameters for CreateMarket.
@@ -2991,6 +3080,143 @@ func (t *AuditEntry_Details) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// AsFeedMatchEvent returns the union data inside the FeedEvent as a FeedMatchEvent
+func (t FeedEvent) AsFeedMatchEvent() (FeedMatchEvent, error) {
+	var body FeedMatchEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFeedMatchEvent overwrites any union data inside the FeedEvent as the provided FeedMatchEvent
+func (t *FeedEvent) FromFeedMatchEvent(v FeedMatchEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"match"}`))
+	t.union = b
+	return err
+}
+
+// MergeFeedMatchEvent performs a merge with any union data inside the FeedEvent, using the provided FeedMatchEvent
+func (t *FeedEvent) MergeFeedMatchEvent(v FeedMatchEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"match"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFeedCorrectionEvent returns the union data inside the FeedEvent as a FeedCorrectionEvent
+func (t FeedEvent) AsFeedCorrectionEvent() (FeedCorrectionEvent, error) {
+	var body FeedCorrectionEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFeedCorrectionEvent overwrites any union data inside the FeedEvent as the provided FeedCorrectionEvent
+func (t *FeedEvent) FromFeedCorrectionEvent(v FeedCorrectionEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"correction"}`))
+	t.union = b
+	return err
+}
+
+// MergeFeedCorrectionEvent performs a merge with any union data inside the FeedEvent, using the provided FeedCorrectionEvent
+func (t *FeedEvent) MergeFeedCorrectionEvent(v FeedCorrectionEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"correction"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFeedMarketEvent returns the union data inside the FeedEvent as a FeedMarketEvent
+func (t FeedEvent) AsFeedMarketEvent() (FeedMarketEvent, error) {
+	var body FeedMarketEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFeedMarketEvent overwrites any union data inside the FeedEvent as the provided FeedMarketEvent
+func (t *FeedEvent) FromFeedMarketEvent(v FeedMarketEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"market"}`))
+	t.union = b
+	return err
+}
+
+// MergeFeedMarketEvent performs a merge with any union data inside the FeedEvent, using the provided FeedMarketEvent
+func (t *FeedEvent) MergeFeedMarketEvent(v FeedMarketEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"market"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t FeedEvent) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t FeedEvent) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "correction":
+		return t.AsFeedCorrectionEvent()
+	case "market":
+		return t.AsFeedMarketEvent()
+	case "match":
+		return t.AsFeedMatchEvent()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t FeedEvent) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *FeedEvent) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // AsMatchWinnerParams returns the union data inside the Market_Params as a MatchWinnerParams
 func (t Market_Params) AsMatchWinnerParams() (MatchWinnerParams, error) {
 	var body MatchWinnerParams
@@ -3340,9 +3566,9 @@ type ServerInterface interface {
 	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(c *gin.Context, id string)
-	// ListArenaMatches List the arena's matches with cursor-based pagination
-	// (GET /arenas/{id}/matches)
-	ListArenaMatches(c *gin.Context, id string, params ListArenaMatchesParams)
+	// ListArenaFeed The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+	// (GET /arenas/{id}/feed)
+	ListArenaFeed(c *gin.Context, id string, params ListArenaFeedParams)
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
 	// (GET /arenas/{id}/players)
 	GetArenaPlayers(c *gin.Context, id string)
@@ -3385,9 +3611,9 @@ type ServerInterface interface {
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(c *gin.Context, id string, playerId string)
-	// ListCorrections List corrections with cursor-based pagination
-	// (GET /corrections)
-	ListCorrections(c *gin.Context, params ListCorrectionsParams)
+	// ListHomeFeed The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
+	// (GET /feed)
+	ListHomeFeed(c *gin.Context, params ListHomeFeedParams)
 	// ListGames List all games ordered by last played
 	// (GET /games)
 	ListGames(c *gin.Context)
@@ -3418,9 +3644,9 @@ type ServerInterface interface {
 	// RemoveGameTag Detach a tag from a game
 	// (DELETE /games/{id}/tags/{tagId})
 	RemoveGameTag(c *gin.Context, id string, tagId string)
-	// ListMarkets List active and closed markets
+	// ListMarkets List active markets in full and one cursor-paginated page of closed markets
 	// (GET /markets)
-	ListMarkets(c *gin.Context)
+	ListMarkets(c *gin.Context, params ListMarketsParams)
 	// CreateMarket Create a new betting market
 	// (POST /markets)
 	CreateMarket(c *gin.Context)
@@ -3751,8 +3977,8 @@ func (siw *ServerInterfaceWrapper) UpdateArena(c *gin.Context) {
 	siw.Handler.UpdateArena(c, id)
 }
 
-// ListArenaMatches operation middleware
-func (siw *ServerInterfaceWrapper) ListArenaMatches(c *gin.Context) {
+// ListArenaFeed operation middleware
+func (siw *ServerInterfaceWrapper) ListArenaFeed(c *gin.Context) {
 
 	var err error
 	_ = err
@@ -3767,7 +3993,7 @@ func (siw *ServerInterfaceWrapper) ListArenaMatches(c *gin.Context) {
 	}
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListArenaMatchesParams
+	var params ListArenaFeedParams
 
 	// ------------- Optional query parameter "player_id" -------------
 
@@ -3816,7 +4042,7 @@ func (siw *ServerInterfaceWrapper) ListArenaMatches(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListArenaMatches(c, id, params)
+	siw.Handler.ListArenaFeed(c, id, params)
 }
 
 // GetArenaPlayers operation middleware
@@ -4142,14 +4368,14 @@ func (siw *ServerInterfaceWrapper) RemoveClubMember(c *gin.Context) {
 	siw.Handler.RemoveClubMember(c, id, playerId)
 }
 
-// ListCorrections operation middleware
-func (siw *ServerInterfaceWrapper) ListCorrections(c *gin.Context) {
+// ListHomeFeed operation middleware
+func (siw *ServerInterfaceWrapper) ListHomeFeed(c *gin.Context) {
 
 	var err error
 	_ = err
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListCorrectionsParams
+	var params ListHomeFeedParams
 
 	// ------------- Optional query parameter "player_id" -------------
 
@@ -4164,6 +4390,14 @@ func (siw *ServerInterfaceWrapper) ListCorrections(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "club_id", c.Request.URL.Query(), &params.ClubId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter club_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "game_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -4190,7 +4424,7 @@ func (siw *ServerInterfaceWrapper) ListCorrections(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListCorrections(c, params)
+	siw.Handler.ListHomeFeed(c, params)
 }
 
 // ListGames operation middleware
@@ -4409,6 +4643,28 @@ func (siw *ServerInterfaceWrapper) RemoveGameTag(c *gin.Context) {
 // ListMarkets operation middleware
 func (siw *ServerInterfaceWrapper) ListMarkets(c *gin.Context) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMarketsParams
+
+	// ------------- Optional query parameter "closed_next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "closed_next", c.Request.URL.Query(), &params.ClosedNext, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter closed_next: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -4416,7 +4672,7 @@ func (siw *ServerInterfaceWrapper) ListMarkets(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListMarkets(c)
+	siw.Handler.ListMarkets(c, params)
 }
 
 // CreateMarket operation middleware
@@ -5660,7 +5916,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/arenas/:id", wrapper.DeleteArena)
 	router.GET(options.BaseURL+"/arenas/:id", wrapper.GetArena)
 	router.PATCH(options.BaseURL+"/arenas/:id", wrapper.UpdateArena)
-	router.GET(options.BaseURL+"/arenas/:id/matches", wrapper.ListArenaMatches)
+	router.GET(options.BaseURL+"/arenas/:id/feed", wrapper.ListArenaFeed)
 	router.GET(options.BaseURL+"/arenas/:id/players", wrapper.GetArenaPlayers)
 	router.GET(options.BaseURL+"/audit", wrapper.ListAuditEvents)
 	router.GET(options.BaseURL+"/auth/login", wrapper.AuthLogin)
@@ -5675,7 +5931,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/clubs/:id", wrapper.PatchClub)
 	router.POST(options.BaseURL+"/clubs/:id/members", wrapper.AddClubMember)
 	router.DELETE(options.BaseURL+"/clubs/:id/members/:playerId", wrapper.RemoveClubMember)
-	router.GET(options.BaseURL+"/corrections", wrapper.ListCorrections)
+	router.GET(options.BaseURL+"/feed", wrapper.ListHomeFeed)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
 	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
@@ -6132,18 +6388,18 @@ func (response UpdateArena409JSONResponse) VisitUpdateArenaResponse(w http.Respo
 	return err
 }
 
-type ListArenaMatchesRequestObject struct {
+type ListArenaFeedRequestObject struct {
 	Id     string `json:"id"`
-	Params ListArenaMatchesParams
+	Params ListArenaFeedParams
 }
 
-type ListArenaMatchesResponseObject interface {
-	VisitListArenaMatchesResponse(w http.ResponseWriter) error
+type ListArenaFeedResponseObject interface {
+	VisitListArenaFeedResponse(w http.ResponseWriter) error
 }
 
-type ListArenaMatches200JSONResponse MatchesPage
+type ListArenaFeed200JSONResponse FeedPage
 
-func (response ListArenaMatches200JSONResponse) VisitListArenaMatchesResponse(w http.ResponseWriter) error {
+func (response ListArenaFeed200JSONResponse) VisitListArenaFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6155,9 +6411,9 @@ func (response ListArenaMatches200JSONResponse) VisitListArenaMatchesResponse(w 
 	return err
 }
 
-type ListArenaMatches400JSONResponse ApiError
+type ListArenaFeed400JSONResponse ApiError
 
-func (response ListArenaMatches400JSONResponse) VisitListArenaMatchesResponse(w http.ResponseWriter) error {
+func (response ListArenaFeed400JSONResponse) VisitListArenaFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6169,9 +6425,9 @@ func (response ListArenaMatches400JSONResponse) VisitListArenaMatchesResponse(w 
 	return err
 }
 
-type ListArenaMatches404JSONResponse ApiError
+type ListArenaFeed404JSONResponse ApiError
 
-func (response ListArenaMatches404JSONResponse) VisitListArenaMatchesResponse(w http.ResponseWriter) error {
+func (response ListArenaFeed404JSONResponse) VisitListArenaFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6873,17 +7129,17 @@ func (response RemoveClubMember403JSONResponse) VisitRemoveClubMemberResponse(w 
 	return err
 }
 
-type ListCorrectionsRequestObject struct {
-	Params ListCorrectionsParams
+type ListHomeFeedRequestObject struct {
+	Params ListHomeFeedParams
 }
 
-type ListCorrectionsResponseObject interface {
-	VisitListCorrectionsResponse(w http.ResponseWriter) error
+type ListHomeFeedResponseObject interface {
+	VisitListHomeFeedResponse(w http.ResponseWriter) error
 }
 
-type ListCorrections200JSONResponse CorrectionsPage
+type ListHomeFeed200JSONResponse FeedPage
 
-func (response ListCorrections200JSONResponse) VisitListCorrectionsResponse(w http.ResponseWriter) error {
+func (response ListHomeFeed200JSONResponse) VisitListHomeFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6895,9 +7151,9 @@ func (response ListCorrections200JSONResponse) VisitListCorrectionsResponse(w ht
 	return err
 }
 
-type ListCorrections400JSONResponse ApiError
+type ListHomeFeed400JSONResponse ApiError
 
-func (response ListCorrections400JSONResponse) VisitListCorrectionsResponse(w http.ResponseWriter) error {
+func (response ListHomeFeed400JSONResponse) VisitListHomeFeedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -7557,6 +7813,7 @@ func (response RemoveGameTag403JSONResponse) VisitRemoveGameTagResponse(w http.R
 }
 
 type ListMarketsRequestObject struct {
+	Params ListMarketsParams
 }
 
 type ListMarketsResponseObject interface {
@@ -7565,8 +7822,14 @@ type ListMarketsResponseObject interface {
 
 type ListMarkets200JSONResponse struct {
 	Data struct {
+		// Active All open and betting-closed markets, newest created first
 		Active []Market `json:"active"`
+
+		// Closed Resolved and cancelled markets, newest resolution first
 		Closed []Market `json:"closed"`
+
+		// Next Cursor token for the next closed-markets page; null if no more pages
+		Next *string `json:"next,omitempty"`
 	} `json:"data"`
 	Status string `json:"status"`
 }
@@ -7579,6 +7842,20 @@ func (response ListMarkets200JSONResponse) VisitListMarketsResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMarkets400JSONResponse ApiError
+
+func (response ListMarkets400JSONResponse) VisitListMarketsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10979,9 +11256,9 @@ type StrictServerInterface interface {
 	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(ctx context.Context, request UpdateArenaRequestObject) (UpdateArenaResponseObject, error)
-	// ListArenaMatches List the arena's matches with cursor-based pagination
-	// (GET /arenas/{id}/matches)
-	ListArenaMatches(ctx context.Context, request ListArenaMatchesRequestObject) (ListArenaMatchesResponseObject, error)
+	// ListArenaFeed The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+	// (GET /arenas/{id}/feed)
+	ListArenaFeed(ctx context.Context, request ListArenaFeedRequestObject) (ListArenaFeedResponseObject, error)
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
 	// (GET /arenas/{id}/players)
 	GetArenaPlayers(ctx context.Context, request GetArenaPlayersRequestObject) (GetArenaPlayersResponseObject, error)
@@ -11024,9 +11301,9 @@ type StrictServerInterface interface {
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error)
-	// ListCorrections List corrections with cursor-based pagination
-	// (GET /corrections)
-	ListCorrections(ctx context.Context, request ListCorrectionsRequestObject) (ListCorrectionsResponseObject, error)
+	// ListHomeFeed The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
+	// (GET /feed)
+	ListHomeFeed(ctx context.Context, request ListHomeFeedRequestObject) (ListHomeFeedResponseObject, error)
 	// ListGames List all games ordered by last played
 	// (GET /games)
 	ListGames(ctx context.Context, request ListGamesRequestObject) (ListGamesResponseObject, error)
@@ -11057,7 +11334,7 @@ type StrictServerInterface interface {
 	// RemoveGameTag Detach a tag from a game
 	// (DELETE /games/{id}/tags/{tagId})
 	RemoveGameTag(ctx context.Context, request RemoveGameTagRequestObject) (RemoveGameTagResponseObject, error)
-	// ListMarkets List active and closed markets
+	// ListMarkets List active markets in full and one cursor-paginated page of closed markets
 	// (GET /markets)
 	ListMarkets(ctx context.Context, request ListMarketsRequestObject) (ListMarketsResponseObject, error)
 	// CreateMarket Create a new betting market
@@ -11468,26 +11745,26 @@ func (sh *strictHandler) UpdateArena(ctx *gin.Context, id string) {
 	}
 }
 
-// ListArenaMatches operation middleware
-func (sh *strictHandler) ListArenaMatches(ctx *gin.Context, id string, params ListArenaMatchesParams) {
-	var request ListArenaMatchesRequestObject
+// ListArenaFeed operation middleware
+func (sh *strictHandler) ListArenaFeed(ctx *gin.Context, id string, params ListArenaFeedParams) {
+	var request ListArenaFeedRequestObject
 
 	request.Id = id
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListArenaMatches(ctx, request.(ListArenaMatchesRequestObject))
+		return sh.ssi.ListArenaFeed(ctx, request.(ListArenaFeedRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListArenaMatches")
+		handler = middleware(handler, "ListArenaFeed")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListArenaMatchesResponseObject); ok {
-		if err := validResponse.VisitListArenaMatchesResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(ListArenaFeedResponseObject); ok {
+		if err := validResponse.VisitListArenaFeedResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -11876,25 +12153,25 @@ func (sh *strictHandler) RemoveClubMember(ctx *gin.Context, id string, playerId 
 	}
 }
 
-// ListCorrections operation middleware
-func (sh *strictHandler) ListCorrections(ctx *gin.Context, params ListCorrectionsParams) {
-	var request ListCorrectionsRequestObject
+// ListHomeFeed operation middleware
+func (sh *strictHandler) ListHomeFeed(ctx *gin.Context, params ListHomeFeedParams) {
+	var request ListHomeFeedRequestObject
 
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListCorrections(ctx, request.(ListCorrectionsRequestObject))
+		return sh.ssi.ListHomeFeed(ctx, request.(ListHomeFeedRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListCorrections")
+		handler = middleware(handler, "ListHomeFeed")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListCorrectionsResponseObject); ok {
-		if err := validResponse.VisitListCorrectionsResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(ListHomeFeedResponseObject); ok {
+		if err := validResponse.VisitListHomeFeedResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -12177,8 +12454,10 @@ func (sh *strictHandler) RemoveGameTag(ctx *gin.Context, id string, tagId string
 }
 
 // ListMarkets operation middleware
-func (sh *strictHandler) ListMarkets(ctx *gin.Context) {
+func (sh *strictHandler) ListMarkets(ctx *gin.Context, params ListMarketsParams) {
 	var request ListMarketsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListMarkets(ctx, request.(ListMarketsRequestObject))

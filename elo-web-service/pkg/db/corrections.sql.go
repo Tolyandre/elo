@@ -140,44 +140,14 @@ func (q *Queries) GetPlayerLatestArenaStateBeforeCorrection(ctx context.Context,
 	return i, err
 }
 
-const listCorrectionsPaginated = `-- name: ListCorrectionsPaginated :many
+const listCorrectionsByIDs = `-- name: ListCorrectionsByIDs :many
 SELECT c.id, c.player_id, c.diff, c.date, p.name AS player_name
 FROM corrections c
 JOIN players p ON p.id = c.player_id
-WHERE
-  ($1::uuid IS NULL OR c.player_id = $1::uuid)
-  AND (
-    $2::timestamptz IS NULL
-    OR c.date < $2::timestamptz
-  )
-  AND (
-    $3::uuid IS NULL
-    OR EXISTS (
-      SELECT 1 FROM player_club_membership pcm
-      WHERE pcm.club_id = $3::uuid
-        AND pcm.player_id = c.player_id
-    )
-  )
-  AND (
-    $4::bool IS NOT TRUE
-    OR NOT EXISTS (
-      SELECT 1 FROM player_club_membership pcm2
-      WHERE pcm2.player_id = c.player_id
-    )
-  )
-ORDER BY c.date DESC, c.id DESC
-LIMIT $5::int4
+WHERE c.id = ANY($1::uuid[])
 `
 
-type ListCorrectionsPaginatedParams struct {
-	PlayerID   *id.ID             `json:"player_id"`
-	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	ClubID     *id.ID             `json:"club_id"`
-	NoClub     pgtype.Bool        `json:"no_club"`
-	Limit      int32              `json:"limit"`
-}
-
-type ListCorrectionsPaginatedRow struct {
+type ListCorrectionsByIDsRow struct {
 	ID         id.ID              `json:"id"`
 	PlayerID   id.ID              `json:"player_id"`
 	Diff       float64            `json:"diff"`
@@ -185,21 +155,17 @@ type ListCorrectionsPaginatedRow struct {
 	PlayerName string             `json:"player_name"`
 }
 
-func (q *Queries) ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error) {
-	rows, err := q.db.Query(ctx, listCorrectionsPaginated,
-		arg.PlayerID,
-		arg.CursorDate,
-		arg.ClubID,
-		arg.NoClub,
-		arg.Limit,
-	)
+// Payload rows for the feed's correction events (ADR-32), for an explicit id
+// set selected by ListArenaFeedEvents.
+func (q *Queries) ListCorrectionsByIDs(ctx context.Context, ids []id.ID) ([]ListCorrectionsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listCorrectionsByIDs, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListCorrectionsPaginatedRow{}
+	items := []ListCorrectionsByIDsRow{}
 	for rows.Next() {
-		var i ListCorrectionsPaginatedRow
+		var i ListCorrectionsByIDsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.PlayerID,

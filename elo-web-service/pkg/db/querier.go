@@ -298,13 +298,16 @@ type Querier interface {
 	// deterministic acceptance order (track, round index, table position). The
 	// seated-set equality is checked by the caller (small candidate lists).
 	ListAcceptanceCandidates(ctx context.Context, gameID id.ID) ([]ListAcceptanceCandidatesRow, error)
-	// Same shape as ListMarketOutcomesWithPools for every market at once (used by
-	// the markets list endpoints), grouped client-side by market_id.
-	ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error)
-	// Cursor-paginated match list of one arena, same envelope as /matches.
-	// Optional player/club/game filters mirror /matches; the cursor token carries
-	// them, so continuation requests pass only the token.
-	ListArenaMatchesPaginated(ctx context.Context, arg ListArenaMatchesPaginatedParams) ([]ListArenaMatchesPaginatedRow, error)
+	// Ids of the active (open or betting-closed) markets, newest created first.
+	// The active list is small and bounded; payloads come from ListMarketsByIDs.
+	ListActiveMarketIDs(ctx context.Context) ([]id.ID, error)
+	// One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
+	// correction and market-resolution events. Corrections and market resolutions
+	// settle only into the global arena (ADR-24), so their branches join the union
+	// only when the caller passes include_settlements. The cursor is the last
+	// returned (sort_date, event_type, id) tuple; the token carries the filters,
+	// so continuation requests pass only the token.
+	ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error)
 	// ---------------------------------------------------------------------------
 	// Arena page reads
 	// ---------------------------------------------------------------------------
@@ -340,9 +343,20 @@ type Querier interface {
 	// The camps of a set of matches — the [{id, name}] payload of the match
 	// response (the old match.tournaments shape).
 	ListCampArenasByMatchIDs(ctx context.Context, matchIds []id.ID) ([]ListCampArenasByMatchIDsRow, error)
+	// One keyset page of closed (resolved or cancelled) markets, newest resolution
+	// first. resolved_at is stamped for both statuses (cancellation rides only on
+	// the status column), so (resolved_at, id) is a total order and the
+	// continuation cursor.
+	ListClosedMarketKeys(ctx context.Context, arg ListClosedMarketKeysParams) ([]ListClosedMarketKeysRow, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
-	ListCorrectionsPaginated(ctx context.Context, arg ListCorrectionsPaginatedParams) ([]ListCorrectionsPaginatedRow, error)
+	// Payload rows for the feed's correction events (ADR-32), for an explicit id
+	// set selected by ListArenaFeedEvents.
+	ListCorrectionsByIDs(ctx context.Context, ids []id.ID) ([]ListCorrectionsByIDsRow, error)
 	ListEloSettings(ctx context.Context) ([]ListEloSettingsRow, error)
+	// Payload rows for the feed's match events (ADR-32): per-player scores with
+	// this arena's settlement data, for an explicit id set selected by
+	// ListArenaFeedEvents.
+	ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMatchesWithPlayersParams) ([]ListFeedMatchesWithPlayersRow, error)
 	ListGameTables(ctx context.Context) ([]GameTable, error)
 	ListGameTags(ctx context.Context) ([]ListGameTagsRow, error)
 	// Games carrying a BGG reference whose box art has not been fetched yet.
@@ -365,7 +379,13 @@ type Querier interface {
 	// and the elo spent per outcome (cost + maker fee), in the canonical order
 	// (see ListMarketOutcomes).
 	ListMarketOutcomesWithPools(ctx context.Context, marketID id.ID) ([]ListMarketOutcomesWithPoolsRow, error)
-	ListMarkets(ctx context.Context) ([]ListMarketsRow, error)
+	// Same shape as ListMarketOutcomesWithPools for an explicit market id set
+	// (used by the markets list and the arena feed), grouped client-side by
+	// market_id.
+	ListMarketOutcomesWithPoolsByIDs(ctx context.Context, marketIds []id.ID) ([]ListMarketOutcomesWithPoolsByIDsRow, error)
+	// Full market rows for an explicit id set — payload fetch for the markets
+	// lobby page and the arena feed (ADR-32).
+	ListMarketsByIDs(ctx context.Context, ids []id.ID) ([]ListMarketsByIDsRow, error)
 	ListMarketsByResolutionMatch(ctx context.Context, resolutionMatchID *id.ID) ([]ListMarketsByResolutionMatchRow, error)
 	// Live markets whose AMM state vector diverged from the outstanding shares
 	// stored in bets — the signature of the removed price-preserving rescale

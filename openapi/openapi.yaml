@@ -159,8 +159,18 @@ components:
     # Corrections
     Correction:
       $ref: './admin.yaml#/Correction'
-    CorrectionsPage:
-      $ref: './admin.yaml#/CorrectionsPage'
+
+    # Feeds (ADR-32)
+    FeedPage:
+      $ref: './arenas.yaml#/FeedPage'
+    FeedEvent:
+      $ref: './arenas.yaml#/FeedEvent'
+    FeedMatchEvent:
+      $ref: './arenas.yaml#/FeedMatchEvent'
+    FeedCorrectionEvent:
+      $ref: './arenas.yaml#/FeedCorrectionEvent'
+    FeedMarketEvent:
+      $ref: './arenas.yaml#/FeedMarketEvent'
 
     # Admin / debug
     PlayerStateChange:
@@ -240,15 +250,20 @@ paths:
   /games/{id}/tags/{tagId}:
     $ref: './games.yaml#/GameTagItem'
 
-  # Arenas (ADR-24)
+  # Arenas (ADR-24); /arenas/{id}/feed is the arena feed, /feed the main
+  # page's home feed (ADR-32).
   /arenas:
     $ref: './arenas.yaml#/ArenasCollection'
   /arenas/{id}:
     $ref: './arenas.yaml#/ArenaItem'
   /arenas/{id}/players:
     $ref: './arenas.yaml#/ArenaPlayersPath'
-  /arenas/{id}/matches:
-    $ref: './arenas.yaml#/ArenaMatchesPath'
+  /arenas/{id}/feed:
+    $ref: './arenas.yaml#/ArenaFeedPath'
+
+  # Home feed (ADR-32)
+  /feed:
+    $ref: './arenas.yaml#/HomeFeedPath'
 
   # Tags
   /tags:
@@ -332,9 +347,8 @@ paths:
   /auth/me:
     $ref: './auth.yaml#/AuthMe'
 
-  # Corrections
-  /corrections:
-    $ref: './admin.yaml#/CorrectionsCollection'
+  # Corrections are created via POST /admin/players/{id}/corrections and read
+  # through the feeds (ADR-32 removed the standalone list endpoint).
 
   # Audit
   /audit:

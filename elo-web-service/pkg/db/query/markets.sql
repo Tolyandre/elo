@@ -69,16 +69,21 @@ LEFT JOIN (
 WHERE o.market_id = $1
 ORDER BY (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
 
--- name: ListAllMarketOutcomesWithPools :many
--- Same shape as ListMarketOutcomesWithPools for every market at once (used by
--- the markets list endpoints), grouped client-side by market_id.
+-- name: ListMarketOutcomesWithPoolsByIDs :many
+-- Same shape as ListMarketOutcomesWithPools for an explicit market id set
+-- (used by the markets list and the arena feed), grouped client-side by
+-- market_id.
 SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
        COALESCE(bp.pool, 0)::float8 AS pool
 FROM market_outcomes o
 LEFT JOIN players p ON p.id = o.player_id
 LEFT JOIN (
-    SELECT bets.market_id, bets.outcome, SUM(bets.cost + bets.fee) AS pool FROM bets GROUP BY bets.market_id, bets.outcome
+    SELECT bets.market_id, bets.outcome, SUM(bets.cost + bets.fee) AS pool
+    FROM bets
+    WHERE bets.market_id = ANY(sqlc.arg('market_ids')::uuid[])
+    GROUP BY bets.market_id, bets.outcome
 ) bp ON bp.market_id = o.market_id AND bp.outcome = o.id
+WHERE o.market_id = ANY(sqlc.arg('market_ids')::uuid[])
 ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id;
 
 -- name: InsertMarketGuarantee :one
@@ -137,7 +142,36 @@ LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
 LEFT JOIN tournaments t ON t.id = twp.tournament_id
 WHERE om.id = $1;
 
--- name: ListMarkets :many
+-- name: ListActiveMarketIDs :many
+-- Ids of the active (open or betting-closed) markets, newest created first.
+-- The active list is small and bounded; payloads come from ListMarketsByIDs.
+SELECT om.id
+FROM markets om
+WHERE om.status IN ('open', 'betting_closed')
+ORDER BY om.created_at DESC, om.id DESC;
+
+-- name: ListClosedMarketKeys :many
+-- One keyset page of closed (resolved or cancelled) markets, newest resolution
+-- first. resolved_at is stamped for both statuses (cancellation rides only on
+-- the status column), so (resolved_at, id) is a total order and the
+-- continuation cursor.
+SELECT om.id, om.resolved_at
+FROM markets om
+WHERE om.status IN ('resolved', 'cancelled')
+  AND (
+    sqlc.narg('cursor_date')::timestamptz IS NULL
+    OR om.resolved_at < sqlc.narg('cursor_date')::timestamptz
+    OR (
+        om.resolved_at = sqlc.narg('cursor_date')::timestamptz
+        AND om.id < sqlc.narg('cursor_id')::uuid
+    )
+  )
+ORDER BY om.resolved_at DESC, om.id DESC
+LIMIT sqlc.arg('limit')::int4;
+
+-- name: ListMarketsByIDs :many
+-- Full market rows for an explicit id set — payload fetch for the markets
+-- lobby page and the arena feed (ADR-32).
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
@@ -156,7 +190,7 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
 LEFT JOIN tournaments t ON t.id = twp.tournament_id
-ORDER BY om.created_at DESC;
+WHERE om.id = ANY(sqlc.arg('ids')::uuid[]);
 
 -- name: ListMarketsByResolutionMatch :many
 SELECT

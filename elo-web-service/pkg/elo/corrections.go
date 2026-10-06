@@ -12,7 +12,9 @@ import (
 
 type ICorrectionService interface {
 	CreateGlobalArenaRatingCorrection(ctx context.Context, correctionID, playerID id.ID, diff float64) error
-	ListCorrectionsPaginated(ctx context.Context, arg db.ListCorrectionsPaginatedParams) ([]db.ListCorrectionsPaginatedRow, error)
+	// ListCorrectionsByIDs fetches payload rows (player name included) for the
+	// feed's correction events (ADR-32).
+	ListCorrectionsByIDs(ctx context.Context, ids []id.ID) ([]db.ListCorrectionsByIDsRow, error)
 }
 
 type CorrectionService struct {
@@ -25,10 +27,10 @@ func NewCorrectionService(pool *pgxpool.Pool, arenas *ArenaService) ICorrectionS
 	return &CorrectionService{Queries: db.New(pool), Pool: pool, Arenas: arenas}
 }
 
-// ListCorrectionsPaginated exposes the paginated corrections read behind the
-// service boundary so handlers do not call *db.Queries directly.
-func (s *CorrectionService) ListCorrectionsPaginated(ctx context.Context, arg db.ListCorrectionsPaginatedParams) ([]db.ListCorrectionsPaginatedRow, error) {
-	return s.Queries.ListCorrectionsPaginated(ctx, arg)
+// ListCorrectionsByIDs exposes the by-ids corrections read behind the service
+// boundary so handlers do not call *db.Queries directly.
+func (s *CorrectionService) ListCorrectionsByIDs(ctx context.Context, ids []id.ID) ([]db.ListCorrectionsByIDsRow, error) {
+	return s.Queries.ListCorrectionsByIDs(ctx, ids)
 }
 
 func (s *CorrectionService) CreateGlobalArenaRatingCorrection(ctx context.Context, correctionID, playerID id.ID, diff float64) error {

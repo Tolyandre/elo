@@ -881,47 +881,76 @@ func (q *Queries) InsertMarketGuarantee(ctx context.Context, arg InsertMarketGua
 	return i, err
 }
 
-const listAllMarketOutcomesWithPools = `-- name: ListAllMarketOutcomesWithPools :many
-SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
-       COALESCE(bp.pool, 0)::float8 AS pool
-FROM market_outcomes o
-LEFT JOIN players p ON p.id = o.player_id
-LEFT JOIN (
-    SELECT bets.market_id, bets.outcome, SUM(bets.cost + bets.fee) AS pool FROM bets GROUP BY bets.market_id, bets.outcome
-) bp ON bp.market_id = o.market_id AND bp.outcome = o.id
-ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id
+const listActiveMarketIDs = `-- name: ListActiveMarketIDs :many
+SELECT om.id
+FROM markets om
+WHERE om.status IN ('open', 'betting_closed')
+ORDER BY om.created_at DESC, om.id DESC
 `
 
-type ListAllMarketOutcomesWithPoolsRow struct {
-	ID         id.ID       `json:"id"`
-	MarketID   id.ID       `json:"market_id"`
-	Kind       string      `json:"kind"`
-	PlayerID   *id.ID      `json:"player_id"`
-	PlayerName pgtype.Text `json:"player_name"`
-	Q          float64     `json:"q"`
-	Pool       float64     `json:"pool"`
-}
-
-// Same shape as ListMarketOutcomesWithPools for every market at once (used by
-// the markets list endpoints), grouped client-side by market_id.
-func (q *Queries) ListAllMarketOutcomesWithPools(ctx context.Context) ([]ListAllMarketOutcomesWithPoolsRow, error) {
-	rows, err := q.db.Query(ctx, listAllMarketOutcomesWithPools)
+// Ids of the active (open or betting-closed) markets, newest created first.
+// The active list is small and bounded; payloads come from ListMarketsByIDs.
+func (q *Queries) ListActiveMarketIDs(ctx context.Context) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listActiveMarketIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListAllMarketOutcomesWithPoolsRow{}
+	items := []id.ID{}
 	for rows.Next() {
-		var i ListAllMarketOutcomesWithPoolsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.MarketID,
-			&i.Kind,
-			&i.PlayerID,
-			&i.PlayerName,
-			&i.Q,
-			&i.Pool,
-		); err != nil {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClosedMarketKeys = `-- name: ListClosedMarketKeys :many
+SELECT om.id, om.resolved_at
+FROM markets om
+WHERE om.status IN ('resolved', 'cancelled')
+  AND (
+    $1::timestamptz IS NULL
+    OR om.resolved_at < $1::timestamptz
+    OR (
+        om.resolved_at = $1::timestamptz
+        AND om.id < $2::uuid
+    )
+  )
+ORDER BY om.resolved_at DESC, om.id DESC
+LIMIT $3::int4
+`
+
+type ListClosedMarketKeysParams struct {
+	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	CursorID   *id.ID             `json:"cursor_id"`
+	Limit      int32              `json:"limit"`
+}
+
+type ListClosedMarketKeysRow struct {
+	ID         id.ID              `json:"id"`
+	ResolvedAt pgtype.Timestamptz `json:"resolved_at"`
+}
+
+// One keyset page of closed (resolved or cancelled) markets, newest resolution
+// first. resolved_at is stamped for both statuses (cancellation rides only on
+// the status column), so (resolved_at, id) is a total order and the
+// continuation cursor.
+func (q *Queries) ListClosedMarketKeys(ctx context.Context, arg ListClosedMarketKeysParams) ([]ListClosedMarketKeysRow, error) {
+	rows, err := q.db.Query(ctx, listClosedMarketKeys, arg.CursorDate, arg.CursorID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListClosedMarketKeysRow{}
+	for rows.Next() {
+		var i ListClosedMarketKeysRow
+		if err := rows.Scan(&i.ID, &i.ResolvedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1109,7 +1138,63 @@ func (q *Queries) ListMarketOutcomesWithPools(ctx context.Context, marketID id.I
 	return items, nil
 }
 
-const listMarkets = `-- name: ListMarkets :many
+const listMarketOutcomesWithPoolsByIDs = `-- name: ListMarketOutcomesWithPoolsByIDs :many
+SELECT o.id, o.market_id, o.kind, o.player_id, p.name AS player_name, o.q,
+       COALESCE(bp.pool, 0)::float8 AS pool
+FROM market_outcomes o
+LEFT JOIN players p ON p.id = o.player_id
+LEFT JOIN (
+    SELECT bets.market_id, bets.outcome, SUM(bets.cost + bets.fee) AS pool
+    FROM bets
+    WHERE bets.market_id = ANY($1::uuid[])
+    GROUP BY bets.market_id, bets.outcome
+) bp ON bp.market_id = o.market_id AND bp.outcome = o.id
+WHERE o.market_id = ANY($1::uuid[])
+ORDER BY o.market_id, (CASE o.kind WHEN 'yes' THEN 1 WHEN 'no' THEN 2 WHEN 'player' THEN 3 ELSE 4 END), p.name NULLS LAST, o.id
+`
+
+type ListMarketOutcomesWithPoolsByIDsRow struct {
+	ID         id.ID       `json:"id"`
+	MarketID   id.ID       `json:"market_id"`
+	Kind       string      `json:"kind"`
+	PlayerID   *id.ID      `json:"player_id"`
+	PlayerName pgtype.Text `json:"player_name"`
+	Q          float64     `json:"q"`
+	Pool       float64     `json:"pool"`
+}
+
+// Same shape as ListMarketOutcomesWithPools for an explicit market id set
+// (used by the markets list and the arena feed), grouped client-side by
+// market_id.
+func (q *Queries) ListMarketOutcomesWithPoolsByIDs(ctx context.Context, marketIds []id.ID) ([]ListMarketOutcomesWithPoolsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listMarketOutcomesWithPoolsByIDs, marketIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMarketOutcomesWithPoolsByIDsRow{}
+	for rows.Next() {
+		var i ListMarketOutcomesWithPoolsByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.MarketID,
+			&i.Kind,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.Q,
+			&i.Pool,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMarketsByIDs = `-- name: ListMarketsByIDs :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
@@ -1128,10 +1213,10 @@ LEFT JOIN market_match_winner_params mwp ON mwp.market_id = om.id
 LEFT JOIN market_win_streak_params wsp ON wsp.market_id = om.id
 LEFT JOIN market_tournament_winner_params twp ON twp.market_id = om.id
 LEFT JOIN tournaments t ON t.id = twp.tournament_id
-ORDER BY om.created_at DESC
+WHERE om.id = ANY($1::uuid[])
 `
 
-type ListMarketsRow struct {
+type ListMarketsByIDsRow struct {
 	ID                id.ID              `json:"id"`
 	MarketType        string             `json:"market_type"`
 	Status            string             `json:"status"`
@@ -1156,15 +1241,17 @@ type ListMarketsRow struct {
 	TwTournamentName  pgtype.Text        `json:"tw_tournament_name"`
 }
 
-func (q *Queries) ListMarkets(ctx context.Context) ([]ListMarketsRow, error) {
-	rows, err := q.db.Query(ctx, listMarkets)
+// Full market rows for an explicit id set — payload fetch for the markets
+// lobby page and the arena feed (ADR-32).
+func (q *Queries) ListMarketsByIDs(ctx context.Context, ids []id.ID) ([]ListMarketsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listMarketsByIDs, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListMarketsRow{}
+	items := []ListMarketsByIDsRow{}
 	for rows.Next() {
-		var i ListMarketsRow
+		var i ListMarketsByIDsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.MarketType,
