@@ -304,9 +304,11 @@ type Querier interface {
 	// One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
 	// correction and market-resolution events. Corrections and market resolutions
 	// settle only into the global arena (ADR-24), so their branches join the union
-	// only when the caller passes include_settlements. The cursor is the last
-	// returned (sort_date, event_type, id) tuple; the token carries the filters,
-	// so continuation requests pass only the token.
+	// only when the caller passes include_settlements. The player/club/game
+	// filters apply to the match and market branches; corrections stay
+	// unfiltered. The cursor is the last returned (sort_date, event_type, id)
+	// tuple; the token carries the filters, so continuation requests pass only
+	// the token.
 	ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error)
 	// ---------------------------------------------------------------------------
 	// Arena page reads

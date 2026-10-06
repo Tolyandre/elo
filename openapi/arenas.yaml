@@ -236,7 +236,9 @@ ArenaFeedPath:
     description: >-
       Correction and market-resolution events settle only into the global arena
       (ADR-24), so they appear only in the global arena's feed; every other
-      arena's feed is its matches. Filters apply to match events only.
+      arena's feed is its matches. Filters apply to match and market events
+      (corrections stay unfiltered); for markets see the parameter
+      descriptions.
     parameters:
       - name: id
         in: path
@@ -247,17 +249,24 @@ ArenaFeedPath:
         in: query
         schema:
           type: string
-        description: Filter match events by player ID
+        description: >-
+          Filter match and market events by player ID: a market matches when
+          the player is its resolution condition, is referred to by any
+          outcome, guaranteed it, or took part in its settlement
       - name: club_id
         in: query
         schema:
           type: string
-        description: Filter match events by club ID
+        description: >-
+          Filter match and market events by club ID: through any club member,
+          per the player matching rule
       - name: game_id
         in: query
         schema:
           type: string
-        description: Filter match events by game ID
+        description: >-
+          Filter match and market events by game ID: a market matches when the
+          game is one of its condition games or its resolving match's game
       - name: next
         in: query
         schema:
@@ -306,17 +315,24 @@ HomeFeedPath:
         in: query
         schema:
           type: string
-        description: Filter match events by player ID
+        description: >-
+          Filter match and market events by player ID: a market matches when
+          the player is its resolution condition, is referred to by any
+          outcome, guaranteed it, or took part in its settlement
       - name: club_id
         in: query
         schema:
           type: string
-        description: Filter match events by club ID
+        description: >-
+          Filter match and market events by club ID: through any club member,
+          per the player matching rule
       - name: game_id
         in: query
         schema:
           type: string
-        description: Filter match events by game ID
+        description: >-
+          Filter match and market events by game ID: a market matches when the
+          game is one of its condition games or its resolving match's game
       - name: next
         in: query
         schema:

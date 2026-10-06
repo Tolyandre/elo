@@ -108,7 +108,8 @@ function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: string |
 /**
  * The arena's feed (ADR-32): merged match/correction/market-resolution events,
  * newest first. Corrections and market resolutions appear only in the global
- * arena's feed (they settle only there); filters apply to match events only.
+ * arena's feed (they settle only there); filters apply to match and market
+ * events (corrections stay unfiltered).
  */
 export async function getArenaFeedPagePromise(params: FeedQuery & { id: Base58ID }): Promise<FeedPage> {
     const data = await unwrap(client.GET("/arenas/{id}/feed", {

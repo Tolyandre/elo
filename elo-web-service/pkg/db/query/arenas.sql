@@ -329,9 +329,11 @@ ORDER BY p.name;
 -- One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
 -- correction and market-resolution events. Corrections and market resolutions
 -- settle only into the global arena (ADR-24), so their branches join the union
--- only when the caller passes include_settlements. The cursor is the last
--- returned (sort_date, event_type, id) tuple; the token carries the filters,
--- so continuation requests pass only the token.
+-- only when the caller passes include_settlements. The player/club/game
+-- filters apply to the match and market branches; corrections stay
+-- unfiltered. The cursor is the last returned (sort_date, event_type, id)
+-- tuple; the token carries the filters, so continuation requests pass only
+-- the token.
 WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM arenas a
@@ -373,6 +375,67 @@ WITH events AS (
     FROM markets om
     WHERE sqlc.arg('include_settlements')::bool
       AND om.status = 'resolved' AND om.resolved_at IS NOT NULL
+      -- A market matches a player when he is its resolution condition
+      -- (match-winner targets, win-streak target), is referred to by any
+      -- outcome (the only place tournament-winner names players), guaranteed
+      -- it, or took part in its settlement ('market'/'market_guarantor'
+      -- ledger rows). The club filter goes through any of its members; the
+      -- game filter matches a listed condition game or the resolving match's
+      -- game.
+      AND (
+          sqlc.narg('player_id')::uuid IS NULL
+          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                     WHERE mwp.market_id = om.id
+                       AND sqlc.narg('player_id')::uuid = ANY(mwp.target_player_ids))
+          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                     WHERE wsp.market_id = om.id
+                       AND wsp.target_player_id = sqlc.narg('player_id')::uuid)
+          OR EXISTS (SELECT 1 FROM market_outcomes mo
+                     WHERE mo.market_id = om.id
+                       AND mo.player_id = sqlc.narg('player_id')::uuid)
+          OR EXISTS (SELECT 1 FROM market_guarantees mg
+                     WHERE mg.market_id = om.id
+                       AND mg.player_id = sqlc.narg('player_id')::uuid)
+          OR EXISTS (SELECT 1 FROM arena_settlements ars
+                     WHERE ars.market_id = om.id
+                       AND ars.player_id = sqlc.narg('player_id')::uuid)
+      )
+      AND (
+          sqlc.narg('club_id')::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND (
+                    EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                            WHERE mwp.market_id = om.id
+                              AND pcm.player_id = ANY(mwp.target_player_ids))
+                    OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                               WHERE wsp.market_id = om.id
+                                 AND wsp.target_player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_outcomes mo
+                               WHERE mo.market_id = om.id
+                                 AND mo.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_guarantees mg
+                               WHERE mg.market_id = om.id
+                                 AND mg.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM arena_settlements ars
+                               WHERE ars.market_id = om.id
+                                 AND ars.player_id = pcm.player_id)
+                )
+          )
+      )
+      AND (
+          sqlc.narg('game_id')::uuid IS NULL
+          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                     WHERE mwp.market_id = om.id
+                       AND sqlc.narg('game_id')::uuid = ANY(mwp.game_ids))
+          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                     WHERE wsp.market_id = om.id
+                       AND sqlc.narg('game_id')::uuid = ANY(wsp.game_ids))
+          OR EXISTS (SELECT 1 FROM matches rm
+                     WHERE rm.id = om.resolution_match_id
+                       AND rm.game_id = sqlc.narg('game_id')::uuid)
+      )
 )
 SELECT id, sort_date, event_type
 FROM events

@@ -2372,13 +2372,13 @@ type ListArenasParamsKind string
 
 // ListArenaFeedParams defines parameters for ListArenaFeed.
 type ListArenaFeedParams struct {
-	// PlayerId Filter match events by player ID
+	// PlayerId Filter match and market events by player ID: a market matches when the player is its resolution condition, is referred to by any outcome, guaranteed it, or took part in its settlement
 	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
 
-	// ClubId Filter match events by club ID
+	// ClubId Filter match and market events by club ID: through any club member, per the player matching rule
 	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
 
-	// GameId Filter match events by game ID
+	// GameId Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// Next Cursor token from previous page's "next" field
@@ -2438,13 +2438,13 @@ type AddClubMemberJSONBody struct {
 
 // ListHomeFeedParams defines parameters for ListHomeFeed.
 type ListHomeFeedParams struct {
-	// PlayerId Filter match events by player ID
+	// PlayerId Filter match and market events by player ID: a market matches when the player is its resolution condition, is referred to by any outcome, guaranteed it, or took part in its settlement
 	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
 
-	// ClubId Filter match events by club ID
+	// ClubId Filter match and market events by club ID: through any club member, per the player matching rule
 	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
 
-	// GameId Filter match events by game ID
+	// GameId Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
 
 	// Next Cursor token from previous page's "next" field

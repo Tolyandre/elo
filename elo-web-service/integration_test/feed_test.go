@@ -243,6 +243,205 @@ func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
 	}
 }
 
+// placeBetOnPlayer places a minimal bet by bettorID on the given player's
+// outcome of the market, paying the current price (inside the tolerance) —
+// the bettor ends up in the market's settlement but in no condition or
+// outcome.
+func placeBetOnPlayer(t *testing.T, ctx context.Context, svc *elo.MarketService, marketID, bettorID, playerID idpkg.ID) {
+	t.Helper()
+	m, err := svc.Queries.GetMarket(ctx, marketID)
+	if err != nil {
+		t.Fatalf("GetMarket: %v", err)
+	}
+	outcomes, err := svc.Queries.ListMarketOutcomesWithPools(ctx, marketID)
+	if err != nil {
+		t.Fatalf("ListMarketOutcomesWithPools: %v", err)
+	}
+	q := make([]float64, len(outcomes))
+	var outcomeID idpkg.ID
+	idx := -1
+	for i, o := range outcomes {
+		q[i] = o.Q
+		if o.Kind == "player" && o.PlayerID != nil && *o.PlayerID == playerID {
+			outcomeID = o.ID
+			idx = i
+		}
+	}
+	if idx < 0 {
+		t.Fatalf("outcome for player %s not found on market %s", playerID, marketID)
+	}
+	price := elo.MarginalProbabilitiesN(q, m.LiquidityB)[idx]
+	if _, err := svc.PlaceBet(ctx, newID(t), marketID, bettorID, outcomeID, 1, price-elo.ProbabilityTolerance/2); err != nil {
+		t.Fatalf("PlaceBet: %v", err)
+	}
+}
+
+// TestArena_Feed_MarketFilters pins the feed filters' market semantics
+// (ADR-32): player_id matches a market when the player is its resolution
+// condition, is referred to by an outcome, guaranteed it, or took part in its
+// settlement; club_id matches through any club member; game_id matches a
+// condition game or the resolving match's game.
+func TestArena_Feed_MarketFilters(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	router := setupRouter(pool)
+
+	targetA := createTestPlayer(t, pool, "ФильтрА")
+	targetB := createTestPlayer(t, pool, "ФильтрБ")
+	targetC := createTestPlayer(t, pool, "ФильтрВ")
+	targetD := createTestPlayer(t, pool, "ФильтрГ")
+	wsTarget := createTestPlayer(t, pool, "ФильтрСерия")
+	guarantor := createTestPlayer(t, pool, "ФильтрПоручитель")
+	bettor := createTestPlayer(t, pool, "ФильтрСтавочник")
+	outsider := createTestPlayer(t, pool, "ФильтрСторонний")
+	adminID := createTestAdmin(t, pool)
+
+	game1 := createTestGame(t, pool, "ФильтрИгра1")
+	game2 := createTestGame(t, pool, "ФильтрИгра2")
+	game3 := createTestGame(t, pool, "ФильтрИгра3")
+
+	matchSvc := newMatchService(pool)
+	marketSvc := elo.NewMarketService(pool)
+
+	// MW1: targets A/B pinned to game1, guaranteed by a club member, with a
+	// plain bettor on A's outcome. Resolved by a game1 match (A wins).
+	mw1, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{targetA, targetB},
+			AllowOtherPlayers: true,
+			GameIDs:           []idpkg.ID{game1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket mw1: %v", err)
+	}
+	setBetLimit(t, pool, guarantor, 16)
+	joinGuarantee(ctx, t, marketSvc, mw1.ID, guarantor)
+	setBetLimit(t, pool, bettor, 16)
+	placeBetOnPlayer(t, ctx, marketSvc, mw1.ID, bettor, targetA)
+
+	// MW2: no condition games ("any game"), targets C/D only — resolved by a
+	// game2 match, so its only game tie is the resolving match.
+	mw2, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs: []idpkg.ID{targetC, targetD},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket mw2: %v", err)
+	}
+
+	// WS: a first win of wsTarget over game2 resolves it to "Да".
+	ws, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		MarketType: "win_streak",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
+		WinStreak: &elo.WinStreakCreateParams{
+			TargetPlayerID: wsTarget,
+			GameIDs:        []idpkg.ID{game2},
+			WinsRequired:   1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket ws: %v", err)
+	}
+
+	// The resolving matches, all after the markets started: game1 settles
+	// MW1, the first game2 match (exactly C/D) settles MW2, the second —
+	// wsTarget's first win — settles WS.
+	if _, err := matchSvc.AddMatch(ctx, game1, map[idpkg.ID]float64{targetA: 10, targetB: 2}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("mw1 trigger match: %v", err)
+	}
+	if _, err := matchSvc.AddMatch(ctx, game2, map[idpkg.ID]float64{targetC: 8, targetD: 3}, time.Now().Add(time.Minute), newMatchOpts(t)); err != nil {
+		t.Fatalf("mw2 trigger match: %v", err)
+	}
+	if _, err := matchSvc.AddMatch(ctx, game2, map[idpkg.ID]float64{wsTarget: 8, targetB: 3}, time.Now().Add(2*time.Minute), newMatchOpts(t)); err != nil {
+		t.Fatalf("ws trigger match: %v", err)
+	}
+
+	// Clubs: the guarantor's club must reach MW1 through him; the outsider's
+	// club must reach nothing — membership alone matches no market.
+	clubOfGuarantor := idpkg.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO clubs (id, name) VALUES ($1, 'Клуб поручителя')`, clubOfGuarantor); err != nil {
+		t.Fatalf("insert club: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO player_club_membership (club_id, player_id) VALUES ($1, $2)`, clubOfGuarantor, guarantor); err != nil {
+		t.Fatalf("insert membership: %v", err)
+	}
+	clubOfOutsider := idpkg.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO clubs (id, name) VALUES ($1, 'Клуб стороннего')`, clubOfOutsider); err != nil {
+		t.Fatalf("insert outsider club: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO player_club_membership (club_id, player_id) VALUES ($1, $2)`, clubOfOutsider, outsider); err != nil {
+		t.Fatalf("insert outsider membership: %v", err)
+	}
+
+	// marketIDs feeds the query to the home feed and collects the market
+	// events' ids; check compares them with the expected set.
+	marketIDs := func(query string) map[string]bool {
+		t.Helper()
+		page := decodeFeedPage(t, router, "/feed"+query)
+		ids := map[string]bool{}
+		for _, e := range page.Data {
+			if e.Type == "market" {
+				ids[e.Data.Id] = true
+			}
+		}
+		return ids
+	}
+	want := func(ids ...idpkg.ID) map[string]bool {
+		m := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			m[short(id)] = true
+		}
+		return m
+	}
+	check := func(query string, wantIDs map[string]bool) {
+		t.Helper()
+		got := marketIDs(query)
+		if len(got) != len(wantIDs) {
+			t.Fatalf("feed%s market events = %v, want %v", query, got, wantIDs)
+		}
+		for id := range wantIDs {
+			if !got[id] {
+				t.Fatalf("feed%s market events = %v, want %v", query, got, wantIDs)
+			}
+		}
+	}
+
+	check("", want(mw1.ID, mw2.ID, ws.ID))
+	// Player: resolution condition targets, a guarantor, a settlement-only
+	// bettor, and an unrelated outsider.
+	check("?player_id="+short(targetA), want(mw1.ID))
+	check("?player_id="+short(wsTarget), want(ws.ID))
+	check("?player_id="+short(targetC), want(mw2.ID))
+	check("?player_id="+short(guarantor), want(mw1.ID))
+	check("?player_id="+short(bettor), want(mw1.ID))
+	check("?player_id="+short(outsider), nil)
+	// Club: through the guarantor member; the outsider's club through nobody.
+	check("?club_id="+short(clubOfGuarantor), want(mw1.ID))
+	check("?club_id="+short(clubOfOutsider), nil)
+	// Game: mw1 names game1 as a condition; mw2 has no condition games and
+	// matches game2 only via its resolving match.
+	check("?game_id="+short(game1), want(mw1.ID))
+	check("?game_id="+short(game2), want(mw2.ID, ws.ID))
+	check("?game_id="+short(game3), nil)
+}
+
 // TestMarkets_ListClosedCursorPagination covers the markets lobby pagination
 // (ADR-32): the active bucket rides along in full on every page, the closed
 // bucket walks the (resolved_at, id) keyset without repeats in resolution

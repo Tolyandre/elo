@@ -268,7 +268,7 @@ export interface paths {
         };
         /**
          * The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
-         * @description Correction and market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match events only.
+         * @description Correction and market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match and market events (corrections stay unfiltered); for markets see the parameter descriptions.
          */
         get: operations["ListArenaFeed"];
         put?: never;
@@ -3216,11 +3216,11 @@ export interface operations {
     ListArenaFeed: {
         parameters: {
             query?: {
-                /** @description Filter match events by player ID */
+                /** @description Filter match and market events by player ID: a market matches when the player is its resolution condition, is referred to by any outcome, guaranteed it, or took part in its settlement */
                 player_id?: string;
-                /** @description Filter match events by club ID */
+                /** @description Filter match and market events by club ID: through any club member, per the player matching rule */
                 club_id?: string;
-                /** @description Filter match events by game ID */
+                /** @description Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game */
                 game_id?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
@@ -3267,11 +3267,11 @@ export interface operations {
     ListHomeFeed: {
         parameters: {
             query?: {
-                /** @description Filter match events by player ID */
+                /** @description Filter match and market events by player ID: a market matches when the player is its resolution condition, is referred to by any outcome, guaranteed it, or took part in its settlement */
                 player_id?: string;
-                /** @description Filter match events by club ID */
+                /** @description Filter match and market events by club ID: through any club member, per the player matching rule */
                 club_id?: string;
-                /** @description Filter match events by game ID */
+                /** @description Filter match and market events by game ID: a market matches when the game is one of its condition games or its resolving match's game */
                 game_id?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;

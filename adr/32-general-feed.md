@@ -49,9 +49,15 @@ the union and another branch to the server's event selection; the envelope,
 the cursor and the renderers' dispatch never change. Clients skip event types
 they do not know instead of failing the whole feed.
 
-Filters (`player_id`, `club_id`, `game_id`) apply to **match events only** —
-the behavior the old client merge had (corrections were fetched unfiltered).
-They travel inside the cursor token, as with `/matches`.
+Filters (`player_id`, `club_id`, `game_id`) apply to **match and market
+events** (corrections stay unfiltered — they are a settled-history view, not
+content a filter should hide). For markets, a player matches when he is a
+resolution condition (match-winner targets, win-streak target), is referred
+to by any outcome (tournament-winner rosters), guaranteed the market, or took
+part in its settlement (`'market'`/`'market_guarantor'` ledger rows); a club
+matches through any of its members; a game matches as a listed condition game
+or via the resolving match's game. They travel inside the cursor token, as
+with `/matches`.
 
 ### Ordering and cursor
 
