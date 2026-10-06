@@ -33,6 +33,9 @@ function makeMatch(id: string, date: string, scores: Record<string, number>): Ma
         date: new Date(date),
         dateISO: date,
         has_markets: false,
+        mode: "competitive",
+        game_score: null,
+        game_won: null,
         camps: [],
     }
 }
@@ -241,5 +244,28 @@ describe('fetchStreakMatches', () => {
         expect(matches.map((m) => m.id)).toEqual(['m1'])
         expect(mockedGet).toHaveBeenCalledTimes(1)
         expect(mockedGet.mock.calls[0][0]?.game_id).toBeUndefined()
+    })
+
+    it('excludes coop matches from the streak (ADR-33)', async () => {
+        const coop = {
+            ...makeMatch('mc', '2026-09-05T00:00:00Z', { [TARGET]: 0 }),
+            mode: 'coop' as const,
+            game_score: 50,
+            game_won: true,
+        }
+        mockedGet.mockResolvedValue({
+            items: [
+                coop,
+                makeMatch('m1', '2026-09-04T00:00:00Z', { [TARGET]: 50, [RIVAL]: 30 }),
+            ],
+            next: null,
+        })
+        const matches = await fetchStreakMatches(
+            streakParams(),
+            new Date('2026-09-01T00:00:00Z'),
+            null,
+        )
+        // The coop match does not count as a win (or anything else) for the market.
+        expect(matches.map((m) => m.id)).toEqual(['m1'])
     })
 })

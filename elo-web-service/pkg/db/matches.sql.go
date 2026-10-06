@@ -27,10 +27,10 @@ func (q *Queries) CountMatchesFromDate(ctx context.Context, date pgtype.Timestam
 }
 
 const createMatch = `-- name: CreateMatch :one
-INSERT INTO matches (id, date, game_id, calculator_kind, calculator_schema_version, calculator_data)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO matches (id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
-RETURNING id, date, game_id, calculator_kind, calculator_schema_version, calculator_data
+RETURNING id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won
 `
 
 type CreateMatchParams struct {
@@ -40,6 +40,9 @@ type CreateMatchParams struct {
 	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
 	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
 	CalculatorData          json.RawMessage    `json:"calculator_data"`
+	Mode                    string             `json:"mode"`
+	GameScore               pgtype.Float8      `json:"game_score"`
+	GameWon                 pgtype.Bool        `json:"game_won"`
 }
 
 func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error) {
@@ -50,6 +53,9 @@ func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match
 		arg.CalculatorKind,
 		arg.CalculatorSchemaVersion,
 		arg.CalculatorData,
+		arg.Mode,
+		arg.GameScore,
+		arg.GameWon,
 	)
 	var i Match
 	err := row.Scan(
@@ -59,6 +65,9 @@ func (q *Queries) CreateMatch(ctx context.Context, arg CreateMatchParams) (Match
 		&i.CalculatorKind,
 		&i.CalculatorSchemaVersion,
 		&i.CalculatorData,
+		&i.Mode,
+		&i.GameScore,
+		&i.GameWon,
 	)
 	return i, err
 }
@@ -105,7 +114,7 @@ func (q *Queries) GetCountMatchesByGame(ctx context.Context, gameID id.ID) (int6
 }
 
 const getMatch = `-- name: GetMatch :one
-SELECT id, date, game_id, calculator_kind, calculator_schema_version, calculator_data FROM matches
+SELECT id, date, game_id, calculator_kind, calculator_schema_version, calculator_data, mode, game_score, game_won FROM matches
 WHERE id = $1
 FOR UPDATE
 `
@@ -120,6 +129,9 @@ func (q *Queries) GetMatch(ctx context.Context, argID id.ID) (Match, error) {
 		&i.CalculatorKind,
 		&i.CalculatorSchemaVersion,
 		&i.CalculatorData,
+		&i.Mode,
+		&i.GameScore,
+		&i.GameWon,
 	)
 	return i, err
 }
@@ -194,6 +206,9 @@ SELECT
     g.name AS game_name,
     m.calculator_kind AS calculator_kind,
     m.calculator_data AS calculator_data,
+    m.mode AS mode,
+    m.game_score AS game_score,
+    m.game_won AS game_won,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -228,6 +243,9 @@ type GetMatchWithPlayersRow struct {
 	GameName       string             `json:"game_name"`
 	CalculatorKind pgtype.Text        `json:"calculator_kind"`
 	CalculatorData json.RawMessage    `json:"calculator_data"`
+	Mode           string             `json:"mode"`
+	GameScore      pgtype.Float8      `json:"game_score"`
+	GameWon        pgtype.Bool        `json:"game_won"`
 	PlayerID       id.ID              `json:"player_id"`
 	PlayerName     string             `json:"player_name"`
 	Score          float64            `json:"score"`
@@ -253,6 +271,9 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMa
 			&i.GameName,
 			&i.CalculatorKind,
 			&i.CalculatorData,
+			&i.Mode,
+			&i.GameScore,
+			&i.GameWon,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
@@ -272,7 +293,7 @@ func (q *Queries) GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMa
 }
 
 const getMatchesFromDate = `-- name: GetMatchesFromDate :many
-SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data
+SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won
 FROM matches m
 WHERE m.date >= $1
 ORDER BY m.date ASC, m.id ASC
@@ -294,6 +315,9 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 			&i.CalculatorKind,
 			&i.CalculatorSchemaVersion,
 			&i.CalculatorData,
+			&i.Mode,
+			&i.GameScore,
+			&i.GameWon,
 		); err != nil {
 			return nil, err
 		}
@@ -307,7 +331,7 @@ func (q *Queries) GetMatchesFromDate(ctx context.Context, date pgtype.Timestampt
 
 const listMatchesWithPlayersPaginated = `-- name: ListMatchesWithPlayersPaginated :many
 WITH paginated_matches AS (
-    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind
+    SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
@@ -352,6 +376,9 @@ SELECT
     g.id AS game_id,
     g.name AS game_name,
     pm.calculator_kind AS calculator_kind,
+    pm.mode AS mode,
+    pm.game_score AS game_score,
+    pm.game_won AS game_won,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -395,6 +422,9 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	GameID         id.ID              `json:"game_id"`
 	GameName       string             `json:"game_name"`
 	CalculatorKind pgtype.Text        `json:"calculator_kind"`
+	Mode           string             `json:"mode"`
+	GameScore      pgtype.Float8      `json:"game_score"`
+	GameWon        pgtype.Bool        `json:"game_won"`
 	PlayerID       id.ID              `json:"player_id"`
 	PlayerName     string             `json:"player_name"`
 	Score          float64            `json:"score"`
@@ -428,6 +458,9 @@ func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListM
 			&i.GameID,
 			&i.GameName,
 			&i.CalculatorKind,
+			&i.Mode,
+			&i.GameScore,
+			&i.GameWon,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
@@ -453,7 +486,10 @@ SET date = $2,
     game_id = $3,
     calculator_kind = $4,
     calculator_schema_version = $5,
-    calculator_data = $6
+    calculator_data = $6,
+    mode = $7,
+    game_score = $8,
+    game_won = $9
 WHERE id = $1
 `
 
@@ -464,6 +500,9 @@ type UpdateMatchParams struct {
 	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
 	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
 	CalculatorData          json.RawMessage    `json:"calculator_data"`
+	Mode                    string             `json:"mode"`
+	GameScore               pgtype.Float8      `json:"game_score"`
+	GameWon                 pgtype.Bool        `json:"game_won"`
 }
 
 func (q *Queries) UpdateMatch(ctx context.Context, arg UpdateMatchParams) error {
@@ -474,6 +513,9 @@ func (q *Queries) UpdateMatch(ctx context.Context, arg UpdateMatchParams) error 
 		arg.CalculatorKind,
 		arg.CalculatorSchemaVersion,
 		arg.CalculatorData,
+		arg.Mode,
+		arg.GameScore,
+		arg.GameWon,
 	)
 	return err
 }

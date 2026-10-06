@@ -8,21 +8,30 @@ import { useMemo } from "react"
 import { MultiSelect, MultiSelectGroup } from "./vendor/multi-select"
 import { buildGameGroups } from "@/lib/game-groups"
 import { allNames } from "@/lib/game-names"
+import type { GameListItem } from "@/app/api"
 
 export function GameMultiSelect({
   value,
   onChange,
+  filter,
 }: {
   value: Base58ID[]
   onChange?: (ids: Base58ID[]) => void
+  /** Optional game filter — e.g. hiding coop-only games from market pickers (ADR-33). */
+  filter?: (game: GameListItem) => boolean
 }) {
   const { games } = useGames()
   const { matches } = useMatches()
   const { playerId } = useMe()
 
+  const visibleGames = useMemo(
+    () => (filter ? games.filter(filter) : games),
+    [games, filter],
+  )
+
   const options: MultiSelectGroup[] = useMemo(
     () =>
-      buildGameGroups(games, matches, playerId).map((group) => ({
+      buildGameGroups(visibleGames, matches, playerId).map((group) => ({
         heading: group.heading,
         options: group.options.map((o) => ({
           label: o.label,
@@ -31,7 +40,7 @@ export function GameMultiSelect({
           keywords: o.game ? allNames(o.game) : undefined,
         })),
       })),
-    [games, matches, playerId]
+    [visibleGames, matches, playerId]
   )
 
   return (

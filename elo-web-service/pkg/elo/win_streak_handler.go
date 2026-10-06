@@ -23,6 +23,11 @@ func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, mark
 	if gameIDs == nil {
 		gameIDs = []id.ID{}
 	}
+	// Coop-only games never produce rating matches (ADR-33) — no market can
+	// be built on them.
+	if err := RejectCoopGames(ctx, q, gameIDs); err != nil {
+		return err
+	}
 	if err := q.CreateWinStreakParams(ctx, db.CreateWinStreakParamsParams{
 		MarketID:       marketID,
 		TargetPlayerID: p.TargetPlayerID,

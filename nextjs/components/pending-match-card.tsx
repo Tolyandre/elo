@@ -30,7 +30,10 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
     }, [match.gameId, games, pendingGames]);
 
     const players = useMemo(() => {
-        return Object.entries(match.score)
+        const entries: [string, number][] = match.mode === "coop"
+            ? (match.playerIds ?? Object.keys(match.score)).map((id) => [id, 0])
+            : Object.entries(match.score);
+        return entries
             .map(([playerId, score]) => {
                 const pending = pendingPlayers.find((p) => p.clientId === playerId);
                 const ctxPlayer = playerMap.get(playerId);
@@ -42,10 +45,69 @@ export function PendingMatchCard({ match, clickable = false }: { match: PendingM
                 return { playerId, name, score };
             })
             .sort((a, b) => b.score - a.score);
-    }, [match.score, pendingPlayers, playerMap, playerDisplayName]);
+    }, [match.score, match.mode, match.playerIds, pendingPlayers, playerMap, playerDisplayName]);
+
+    const createdAt = new Date(match.createdAt);
+
+    // A coop match (ADR-33) has one shared result: a badge + the game score
+    // instead of ranked per-player scores.
+    if (match.mode === "coop") {
+        const won = match.gameWon === true;
+        return (
+            <Card
+                className={clickable ? "border-dashed cursor-pointer hover:bg-accent/50 transition-colors" : "border-dashed"}
+                onClick={clickable ? () => router.push(`/matches/view?id=${encodeURIComponent(match.clientId)}`) : undefined}
+            >
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
+                        <span>{gameName}</span>
+                        <span className="text-muted-foreground text-sm font-normal">
+                            {formatDateTime(createdAt)}
+                        </span>
+                    </CardTitle>
+                    <div className="flex items-center flex-wrap gap-2">
+                        {match.status === "error" ? (
+                            <Badge variant="destructive">
+                                <CloudOff />
+                                ошибка: {match.error}
+                            </Badge>
+                        ) : (
+                            <Badge variant="secondary">
+                                <CloudOff />
+                                не сохранено
+                            </Badge>
+                        )}
+                        <Badge variant="outline">кооператив</Badge>
+                        <Badge variant={won ? "default" : "secondary"} className={won ? "bg-success" : ""}>
+                            {won ? "Победа" : "Поражение"}
+                        </Badge>
+                        {match.gameScore != null && (
+                            <span className="text-2xl font-semibold">
+                                <span className="text-sm font-normal text-muted-foreground">очки: </span>
+                                {match.gameScore}
+                            </span>
+                        )}
+                    </div>
+                </CardHeader>
+
+                <CardContent>
+                    <div className="flex flex-wrap gap-1">
+                        {players.map((p) => (
+                            <span
+                                key={p.playerId}
+                                className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                            >
+                                <ClubIcons playerId={p.playerId} className="mr-1" />
+                                {p.name}
+                            </span>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
 
     const ranks = players.map((v) => players.findIndex((p) => p.score === v.score) + 1);
-    const createdAt = new Date(match.createdAt);
 
     return (
         <Card

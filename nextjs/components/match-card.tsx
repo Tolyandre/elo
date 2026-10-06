@@ -65,6 +65,72 @@ export const MatchCard = React.memo(function MatchCard({ match, roundToInteger =
     }
   }, [clickable, match.id, router]);
 
+  // A coop match (ADR-33) has one shared result: no ranks, no per-player
+  // scores worth showing (all zeros), no rating deltas.
+  if (match.mode === "coop") {
+    const won = match.game_won === true;
+    return (
+      <Card
+        className={clickable ? "cursor-pointer hover:bg-accent/50 transition-colors" : ""}
+        onClick={handleClick}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between w-full flex-wrap gap-2">
+            <span className="flex items-center gap-2 min-w-0">
+              {gameImage && <GameImage src={gameImage} alt="" className="size-7 shrink-0 rounded" />}
+              <Link
+                href={`/games/view?id=${match.game_id}`}
+                className="underline"
+                onClick={(e) => clickable && e.stopPropagation()}
+              >
+                {match.game_name}
+              </Link>
+            </span>
+            {match.date && (
+              <span className="text-muted-foreground text-sm">
+                {formatDateTime(match.date)}
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge variant={won ? "default" : "secondary"} className={won ? "bg-success" : ""}>
+              {won ? "Победа" : "Поражение"}
+            </Badge>
+            {match.game_score != null && (
+              <span className="text-2xl font-semibold">
+                <span className="text-sm font-normal text-muted-foreground">очки: </span>
+                {match.game_score}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-1">
+            {Object.entries(match.score).map(([playerId]) => {
+              const ctxPlayer = playerMap.get(playerId);
+              const name = ctxPlayer ? playerDisplayName(ctxPlayer) : "Unknown";
+              return (
+                <span
+                  key={playerId}
+                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  <ClubIcons playerId={playerId} className="mr-1" />
+                  {playerId === myPlayerId ? (
+                    <span className="bg-info/15 rounded px-1">{name}</span>
+                  ) : (
+                    name
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card
       className={clickable ? "cursor-pointer hover:bg-accent/50 transition-colors" : ""}

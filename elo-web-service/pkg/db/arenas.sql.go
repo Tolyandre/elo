@@ -65,6 +65,7 @@ WHERE ms.player_id = $2
   AND m.date >= $3::timestamptz
   AND m.date <= $4::timestamptz
   AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -451,6 +452,7 @@ FROM (
         CROSS JOIN matches m
         WHERE a.id = $1
           AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -476,33 +478,39 @@ WITH events AS (
     CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = $5
-      AND arena_contains_match(
+      AND (
+          arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
-      AND (
-          $6::uuid IS NULL OR ms.player_id = $6::uuid
+          -- Home feed only (ADR-32/33): coop matches affect no arena, but they
+          -- belong to the general feed. Arena feeds keep them out.
+          OR ($6::bool AND m.mode = 'coop')
       )
       AND (
-          $7::uuid IS NULL
+          $7::uuid IS NULL OR ms.player_id = $7::uuid
+      )
+      AND (
+          $8::uuid IS NULL
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
-              WHERE pcm.club_id = $7::uuid
+              WHERE pcm.club_id = $8::uuid
                 AND pcm.player_id = ms.player_id
           )
       )
       AND (
-          $8::uuid IS NULL OR m.game_id = $8::uuid
+          $9::uuid IS NULL OR m.game_id = $9::uuid
       )
     UNION ALL
     SELECT c.id, c.date, 'correction'::text
     FROM corrections c
-    WHERE $9::bool
+    WHERE $10::bool
     UNION ALL
     SELECT om.id, om.resolved_at, 'market'::text
     FROM markets om
-    WHERE $9::bool
+    WHERE $10::bool
       AND om.status = 'resolved' AND om.resolved_at IS NOT NULL
 )
 SELECT id, sort_date, event_type
@@ -527,6 +535,7 @@ type ListArenaFeedEventsParams struct {
 	CursorID           *id.ID             `json:"cursor_id"`
 	Limit              int32              `json:"limit"`
 	ArenaID            id.ID              `json:"arena_id"`
+	IncludeCoop        bool               `json:"include_coop"`
 	PlayerID           *id.ID             `json:"player_id"`
 	ClubID             *id.ID             `json:"club_id"`
 	GameID             *id.ID             `json:"game_id"`
@@ -552,6 +561,7 @@ func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEven
 		arg.CursorID,
 		arg.Limit,
 		arg.ArenaID,
+		arg.IncludeCoop,
 		arg.PlayerID,
 		arg.ClubID,
 		arg.GameID,
@@ -603,6 +613,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '60 days') AND m.date <= now()
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -617,6 +628,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '180 days') AND m.date <= now()
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -709,6 +721,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -723,6 +736,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -792,6 +806,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        (
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -965,6 +980,7 @@ FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = $1
 WHERE arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -1001,6 +1017,9 @@ SELECT
     g.id AS game_id,
     g.name AS game_name,
     m.calculator_kind AS calculator_kind,
+    m.mode AS mode,
+    m.game_score AS game_score,
+    m.game_won AS game_won,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -1037,6 +1056,9 @@ type ListFeedMatchesWithPlayersRow struct {
 	GameID         id.ID              `json:"game_id"`
 	GameName       string             `json:"game_name"`
 	CalculatorKind pgtype.Text        `json:"calculator_kind"`
+	Mode           string             `json:"mode"`
+	GameScore      pgtype.Float8      `json:"game_score"`
+	GameWon        pgtype.Bool        `json:"game_won"`
 	PlayerID       id.ID              `json:"player_id"`
 	PlayerName     string             `json:"player_name"`
 	Score          float64            `json:"score"`
@@ -1065,6 +1087,9 @@ func (q *Queries) ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMa
 			&i.GameID,
 			&i.GameName,
 			&i.CalculatorKind,
+			&i.Mode,
+			&i.GameScore,
+			&i.GameWon,
 			&i.PlayerID,
 			&i.PlayerName,
 			&i.Score,
@@ -1085,13 +1110,14 @@ func (q *Queries) ListFeedMatchesWithPlayers(ctx context.Context, arg ListFeedMa
 }
 
 const listMatchesForArenaReplay = `-- name: ListMatchesForArenaReplay :many
-SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data
+SELECT m.id, m.date, m.game_id, m.calculator_kind, m.calculator_schema_version, m.calculator_data, m.mode, m.game_score, m.game_won
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 CROSS JOIN matches m
 WHERE a.id = $1::uuid
   AND m.date >= $2::timestamptz
   AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -1123,6 +1149,9 @@ func (q *Queries) ListMatchesForArenaReplay(ctx context.Context, arg ListMatches
 			&i.CalculatorKind,
 			&i.CalculatorSchemaVersion,
 			&i.CalculatorData,
+			&i.Mode,
+			&i.GameScore,
+			&i.GameWon,
 		); err != nil {
 			return nil, err
 		}

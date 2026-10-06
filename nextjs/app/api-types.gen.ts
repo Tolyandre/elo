@@ -1178,6 +1178,7 @@ export interface components {
             image_url?: string | null;
             /** @description Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
             image_thumb_url?: string | null;
+            game_mode: components["schemas"]["GameMode"];
             last_played_order: number;
             total_matches: number;
             /** @description Tags attached to the game, ordered by tag name */
@@ -1201,6 +1202,7 @@ export interface components {
             image_url?: string | null;
             /** @description Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31) */
             image_thumb_url?: string | null;
+            game_mode: components["schemas"]["GameMode"];
             total_matches: number;
         };
         GameTag: {
@@ -1364,11 +1366,19 @@ export interface components {
             game_name: string;
             /** Format: date-time */
             date: string;
-            /** @description Map of player_id (string) to player score data */
+            /** @description Map of player_id (string) to player score data. Competitive matches only: a coop match (mode coop) lists its participants here with zero scores — the shared result lives in game_score/game_won. */
             score: {
                 [key: string]: components["schemas"]["MatchPlayer"];
             };
             has_markets: boolean;
+            mode: components["schemas"]["MatchMode"];
+            /**
+             * Format: double
+             * @description The shared game result of a coop match (ADR-33); null for competitive matches.
+             */
+            game_score?: number | null;
+            /** @description Whether the coop match (solo or team) beat the game; null for competitive matches. */
+            game_won?: boolean | null;
             /** @description Camp arenas (ADR-27) this match belongs to */
             camps?: components["schemas"]["MatchCamp"][];
             /** @description The bracket slot the match counts for (ADR-26); null when unlinked. */
@@ -1714,9 +1724,9 @@ export interface components {
             /** @description Cursor token for the next page; null if no more pages */
             next?: string | null;
         };
-        /** @description One feed event (ADR-32). New content kinds (cooperative matches, posts) extend the union with another event schema — the envelope never changes. */
+        /** @description One feed event (ADR-32). New content kinds (posts) extend the union with another event schema — the envelope never changes. */
         FeedEvent: components["schemas"]["FeedMatchEvent"] | components["schemas"]["FeedCorrectionEvent"] | components["schemas"]["FeedMarketEvent"];
-        /** @description A match of the arena — the event that moved its ratings. */
+        /** @description A match of the arena — the event that moved its ratings. The home feed (ADR-32) also carries coop matches (data.mode = "coop", ADR-33), which affect no rating: their Match lacks rating data and carries the shared game_score/game_won instead of meaningful per-player scores. */
         FeedMatchEvent: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1890,6 +1900,11 @@ export interface components {
             /** @description The player has submitted their final scoring */
             done: boolean;
         };
+        /**
+         * @description What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
+         * @enum {string}
+         */
+        GameMode: "competitive" | "coop" | "mixed";
         GameEnrichResult: {
             id: components["schemas"]["Base58ID"];
             /** @description The game's display name at the time of enrichment */
@@ -1901,6 +1916,11 @@ export interface components {
         GameEnrichResults: {
             games: components["schemas"]["GameEnrichResult"][];
         };
+        /**
+         * @description The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+         * @enum {string}
+         */
+        MatchMode: "competitive" | "coop";
         /** @description One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»). */
         MarketOutcome: {
             id: components["schemas"]["Base58ID"];
@@ -2422,6 +2442,7 @@ export interface operations {
                     name_ru?: string | null;
                     bgg_ref?: number | null;
                     tesera_ref?: number | null;
+                    game_mode?: components["schemas"]["GameMode"];
                 };
             };
         };
@@ -2733,6 +2754,11 @@ export interface operations {
                     name_ru?: string | null;
                     bgg_ref?: number | null;
                     tesera_ref?: number | null;
+                    /**
+                     * @description Full-state semantics — null resets to competitive (ADR-33)
+                     * @enum {string|null}
+                     */
+                    game_mode?: "competitive" | "coop" | "mixed" | null;
                 };
             };
         };
@@ -3555,10 +3581,21 @@ export interface operations {
                 "application/json": {
                     id: components["schemas"]["Base58ID"];
                     game_id: components["schemas"]["Base58ID"];
-                    /** @description Map of player_id (string) to numeric score */
-                    score: {
+                    /** @description Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33). */
+                    score?: {
                         [key: string]: number;
                     };
+                    /** @description Only meaningful for mixed games (ADR-33): which mode this match was played in, default competitive. Coop-only and competitive-only games decide the mode themselves; a request contradicting the game's mode is a 400. */
+                    mode?: components["schemas"]["MatchMode"];
+                    /**
+                     * Format: double
+                     * @description The shared game result — required for coop matches, rejected for competitive ones.
+                     */
+                    game_score?: number;
+                    /** @description Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones. */
+                    game_won?: boolean;
+                    /** @description Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players. */
+                    player_ids?: components["schemas"]["Base58ID"][];
                     /**
                      * Format: date-time
                      * @description Optional match time for offline-created matches. Must not be in the future and not older than 30 days; Elo is recalculated from this date. When omitted the server uses the current time.
@@ -3684,10 +3721,21 @@ export interface operations {
             content: {
                 "application/json": {
                     game_id: components["schemas"]["Base58ID"];
-                    /** @description Map of player_id (string) to numeric score */
-                    score: {
+                    /** @description Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33) — send game_score/game_won instead. */
+                    score?: {
                         [key: string]: number;
                     };
+                    /** @description The desired mode (ADR-33). Only meaningful for mixed games; for coop-only or competitive-only games a contradicting request is a 400. Default competitive when omitted. */
+                    mode?: components["schemas"]["MatchMode"];
+                    /**
+                     * Format: double
+                     * @description The shared game result — required when the resulting mode is coop, rejected otherwise.
+                     */
+                    game_score?: number;
+                    /** @description Whether the team/solo player beat the game — required when the resulting mode is coop, rejected otherwise. */
+                    game_won?: boolean;
+                    /** @description The desired participant set of a coop match (ADR-33) — used instead of score. Rejected for competitive matches, where score carries the players. */
+                    player_ids?: components["schemas"]["Base58ID"][];
                     /** Format: date-time */
                     date: string;
                     /** @description The desired camp arena set (ADR-27). The server diffs it against the stored links — attaching and detaching as needed, each change audited and both camps recalculated. Every requested arena must exist, be a camp, and its window must contain the new match date. Omit to keep the stored links untouched; a date moved outside a linked camp without detaching it is a 409. */

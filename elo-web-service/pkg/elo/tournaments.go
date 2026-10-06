@@ -392,6 +392,11 @@ func writeTournamentPool(ctx context.Context, q *db.Queries, tid id.ID, games []
 		if g.Min < 2 || g.Max < g.Min {
 			return ErrTournamentPoolEntryInvalid
 		}
+		// Coop-only games never produce rating matches (ADR-33) — no bracket
+		// slot can be built on them. Unknown ids keep the FK behavior.
+		if err := RejectCoopGames(ctx, q, []id.ID{g.GameID}); err != nil {
+			return err
+		}
 		if err := q.AddTournamentGame(ctx, db.AddTournamentGameParams{
 			TournamentID: tid, GameID: g.GameID, MinPlayers: int32(g.Min), MaxPlayers: int32(g.Max),
 		}); err != nil {

@@ -2,6 +2,7 @@
 import { client, unwrap, newId } from "./client";
 import type { Game, GameAutoMatchResult, GameEnrichResult, GameList, GameSuggestion, Tag } from "./types";
 import type { Base58ID } from "@/lib/id";
+import type { GameMode } from "@/lib/game-modes";
 
 export async function getGamesPromise(): Promise<GameList> {
     return (await unwrap(client.GET("/games"))).data;
@@ -17,6 +18,8 @@ export type GameMetadata = {
     name_ru?: string | null;
     bgg_ref?: number | null;
     tesera_ref?: number | null;
+    /** Full-state mode (ADR-33): null resets to competitive. */
+    game_mode?: GameMode | null;
 };
 
 /** Full-state metadata update: every field is set to the given value, null clears it. */

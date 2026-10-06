@@ -52,6 +52,7 @@ func TestTournament_ArenaMembershipFunction(t *testing.T) {
 		{
 			what: "tournament arena contains a linked match",
 			query: `SELECT arena_contains_match(
+				'competitive',
 				true,
 				EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = $1 AND am.match_id = $2),
 				false, NOW(), $3, NULL, NULL, NULL, NULL)`,
@@ -59,8 +60,19 @@ func TestTournament_ArenaMembershipFunction(t *testing.T) {
 			want: true,
 		},
 		{
+			what: "coop match belongs to no arena, even when linked (ADR-33)",
+			query: `SELECT arena_contains_match(
+				'coop',
+				true,
+				true,
+				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
+			args: []any{gameID},
+			want: false,
+		},
+		{
 			what: "tournament arena ignores the filter (NULL filter matches nothing)",
 			query: `SELECT arena_contains_match(
+				'competitive',
 				true,
 				false,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
@@ -70,6 +82,7 @@ func TestTournament_ArenaMembershipFunction(t *testing.T) {
 		{
 			what: "camp arena still link-only",
 			query: `SELECT arena_contains_match(
+				'competitive',
 				true,
 				true,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,
@@ -79,6 +92,7 @@ func TestTournament_ArenaMembershipFunction(t *testing.T) {
 		{
 			what: "filter arena with an empty filter contains every match",
 			query: `SELECT arena_contains_match(
+				'competitive',
 				false,
 				false,
 				false, NOW(), $1, NULL, NULL, NULL, NULL)`,

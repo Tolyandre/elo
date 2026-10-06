@@ -488,4 +488,8 @@ JOIN (
 WHERE ms.player_id = $1
     AND (cardinality($2::uuid[]) = 0 OR m.game_id = ANY($2::uuid[]))
     AND m.date >= $3
-    AND m.date <= $4;
+    AND m.date <= $4
+    -- Coop matches never count toward any market progress (ADR-33); the
+    -- settlement trigger already skips them, this keeps the query honest on
+    -- its own.
+    AND m.mode = 'competitive';

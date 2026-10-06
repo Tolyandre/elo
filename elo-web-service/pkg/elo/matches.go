@@ -53,8 +53,20 @@ type AddMatchOpts struct {
 	SkipTournamentLink bool
 	// Calculator optionally attaches the intermediate state of the calculator
 	// that produced this match. Already validated by the caller (handler);
-	// stored verbatim alongside the match.
+	// stored verbatim alongside the match. A calculator match is always
+	// competitive (ADR-33).
 	Calculator *CalculatorInput
+	// Mode is the per-match mode request (ADR-33) for mixed games; "" means
+	// competitive. Coop-only and competitive-only games decide the mode
+	// themselves and reject a contradicting request.
+	Mode string
+	// PlayerIDs is the participant list of a coop match (no per-player
+	// scores); required when the resolved mode is coop, rejected otherwise.
+	PlayerIDs []id.ID
+	// GameScore/GameWon are the shared coop result (ADR-33): required when the
+	// resolved mode is coop, rejected otherwise.
+	GameScore *float64
+	GameWon   *bool
 	// ActorUserID is the author recorded in the audit log. Zero skips the
 	// audit row (see pkg/elo/audit.go).
 	ActorUserID id.ID
@@ -89,6 +101,17 @@ type UpdateMatchOpts struct {
 	// false — the match must be counted (attached to the unique fitting
 	// playing slot); nil — leave the association untouched.
 	SkipTournamentLink *bool
+	// Mode is the desired mode (ADR-33): meaningful only for mixed games; a
+	// value contradicting the game's own mode is rejected.
+	Mode string
+	// PlayerIDs is the desired participant list of a coop match (no
+	// per-player scores); required when the resulting mode is coop, rejected
+	// otherwise.
+	PlayerIDs []id.ID
+	// GameScore/GameWon are the shared coop result (ADR-33): required when the
+	// resulting mode is coop, rejected otherwise.
+	GameScore *float64
+	GameWon   *bool
 	// ActorUserID is the editor recorded in the audit log. Zero skips the
 	// audit row (see pkg/elo/audit.go).
 	ActorUserID id.ID
@@ -145,13 +168,81 @@ func calculatorColumnsFromUpdate(u *CalculatorUpdate) (pgtype.Text, pgtype.Int4,
 		u.Data
 }
 
+// resolveMatchMode derives the stored match mode (ADR-33) from the game's
+// mode and the request value; a match with calculator columns is always
+// competitive, and asking for a calculator coop match is a client bug.
+func resolveMatchMode(gameMode, requestMode string, hasCalculator bool) (string, error) {
+	mode, err := MatchModeForGame(gameMode, requestMode)
+	if err != nil {
+		return "", err
+	}
+	if !hasCalculator {
+		return mode, nil
+	}
+	if requestMode == MatchModeCoop {
+		return "", ErrModeContradictsGame
+	}
+	return MatchModeCompetitive, nil
+}
+
+// normalizeMatchParticipants builds the participant→score map: competitive
+// matches take it from the per-player scores, coop matches from the plain id
+// list (zero scores — the shared result lives on the match row, ADR-33).
+func normalizeMatchParticipants(mode string, playerScores map[id.ID]float64, playerIDs []id.ID) (map[id.ID]float64, error) {
+	if mode == MatchModeCoop {
+		if len(playerScores) > 0 {
+			return nil, ErrCoopScoresRejected
+		}
+		if len(playerIDs) == 0 {
+			return nil, ErrCoopNoParticipants
+		}
+		out := make(map[id.ID]float64, len(playerIDs))
+		for _, pid := range playerIDs {
+			out[pid] = 0
+		}
+		return out, nil
+	}
+	if len(playerIDs) > 0 {
+		return nil, ErrCompetitiveMismatch
+	}
+	if len(playerScores) < 2 {
+		return nil, ErrTooFewPlayers
+	}
+	return playerScores, nil
+}
+
+// validateMatchResult checks the shared game result against the resolved
+// mode: required for coop, rejected for competitive.
+func validateMatchResult(mode string, gameScore *float64, gameWon *bool) error {
+	if mode == MatchModeCoop {
+		if gameScore == nil || gameWon == nil {
+			return ErrCoopResultRequired
+		}
+		return nil
+	}
+	if gameScore != nil || gameWon != nil {
+		return ErrCompetitiveMismatch
+	}
+	return nil
+}
+
+func pgFloat8(f *float64) pgtype.Float8 {
+	if f == nil {
+		return pgtype.Float8{}
+	}
+	return pgtype.Float8{Float64: *f, Valid: true}
+}
+
+func pgBool(b *bool) pgtype.Bool {
+	if b == nil {
+		return pgtype.Bool{}
+	}
+	return pgtype.Bool{Bool: *b, Valid: true}
+}
+
 // AddMatch adds a single match with Elo calculations
 // Validates that game_id and all player_ids exist via foreign key constraints
 func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores map[id.ID]float64, date time.Time, opts AddMatchOpts) (db.Match, error) {
-	if len(playerScores) < 2 {
-		return db.Match{}, ErrTooFewPlayers
-	}
-
 	if opts.ClientDate {
 		if err := validateNewMatchDate(time.Now(), date); err != nil {
 			return db.Match{}, err
@@ -167,6 +258,27 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	}()
 
 	q := s.Queries.WithTx(tx)
+
+	// The game's mode decides (with the request, for mixed games) whether this
+	// is a rating match or a coop one (ADR-33).
+	game, err := q.GetGameByID(ctx, gameID)
+	if err != nil {
+		return db.Match{}, fmt.Errorf("unable to get game: %w", err)
+	}
+	mode, err := resolveMatchMode(game.GameMode, opts.Mode, opts.Calculator != nil)
+	if err != nil {
+		return db.Match{}, err
+	}
+	playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
+	if err != nil {
+		return db.Match{}, err
+	}
+	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
+		return db.Match{}, err
+	}
+	if mode == MatchModeCoop && len(opts.CampArenaIDs) > 0 {
+		return db.Match{}, ErrCoopLinksRejected
+	}
 
 	dt := pgtype.Timestamptz{Time: date, Valid: true}
 
@@ -194,6 +306,9 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		CalculatorKind:          calcKind,
 		CalculatorSchemaVersion: calcVer,
 		CalculatorData:          calcData,
+		Mode:                    mode,
+		GameScore:               pgFloat8(opts.GameScore),
+		GameWon:                 pgBool(opts.GameWon),
 	})
 	if err != nil {
 		return db.Match{}, fmt.Errorf("unable to create match: %w", err)
@@ -222,33 +337,51 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 			return db.Match{}, fmt.Errorf("unable to recalculate Elo: %w", err)
 		}
 	} else {
-		// Lock players and collect all prior state needed for dual-track settlement
-		state, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
-		if err != nil {
-			return db.Match{}, err
-		}
+		if mode == MatchModeCompetitive {
+			// Lock players and collect all prior state needed for dual-track settlement
+			state, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
+			if err != nil {
+				return db.Match{}, err
+			}
 
-		playerIDs := make([]id.ID, 0, len(playerScores))
-		for playerID := range playerScores {
-			playerIDs = append(playerIDs, playerID)
-		}
+			if err := s.EventProcessor.processMatchSettlements(
+				ctx, q, createdMatch.ID, playerScores,
+				state, date,
+				mode,
+				s.calculateAndStoreEloWithScores,
+			); err != nil {
+				return db.Match{}, err
+			}
 
-		if err := s.EventProcessor.processMatchSettlements(
-			ctx, q, createdMatch.ID, playerScores,
-			state, date,
-			s.calculateAndStoreEloWithScores,
-		); err != nil {
-			return db.Match{}, err
-		}
-
-		if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
-			return db.Match{}, fmt.Errorf("recalculate bet limits: %w", err)
+			playerIDs := playerIDsOf(playerScores)
+			if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
+				return db.Match{}, fmt.Errorf("recalculate bet limits: %w", err)
+			}
+		} else {
+			// A coop match settles nothing (ADR-33): no Elo, no market
+			// resolution. Its zero-score participant rows are still written —
+			// they are the participant list — and time-based market expiry
+			// still advances: the match is a point on the replay timeline
+			// regardless of its mode.
+			for playerID := range playerScores {
+				if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+					MatchID:  createdMatch.ID,
+					PlayerID: playerID,
+					Score:    0,
+				}); err != nil {
+					return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+				}
+			}
+			if err := s.MarketService.ExpireMarketsAtDate(ctx, q, date); err != nil {
+				return db.Match{}, fmt.Errorf("expire markets at date %v: %w", date, err)
+			}
 		}
 	}
 
 	// ADR-27: link the match to the requested camp arenas. Each id is
 	// validated (exists, is a camp, window contains the date); the links are
-	// written once and never altered afterwards.
+	// written once and never altered afterwards. Coop matches join no camps
+	// (ADR-33) — rejected above with the rest of the link requests.
 	campArenas, err := resolveCampArenas(ctx, q, opts.CampArenaIDs, date)
 	if err != nil {
 		return db.Match{}, err
@@ -269,8 +402,9 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	// fitting playing slot when the checkbox is on (the default); the link,
 	// the placement points, and any completion cascade happen in this
 	// transaction. Must run before the arena drain below: the tournament
-	// arena's membership is the arena_matches link written here.
-	if !opts.SkipTournamentLink && s.Tournaments != nil {
+	// arena's membership is the arena_matches link written here. Coop matches
+	// never enter a bracket (ADR-33).
+	if mode == MatchModeCompetitive && !opts.SkipTournamentLink && s.Tournaments != nil {
 		if err := s.Tournaments.AcceptMatch(ctx, q, createdMatch.ID, gameID, playerIDsOf(playerScores), opts.ActorUserID); err != nil {
 			return db.Match{}, err
 		}
@@ -279,13 +413,17 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	// ADR-24: the match write touches every arena containing it — the
 	// membership function covers camps via their arena_matches links (written
 	// above) — update them synchronously in this transaction (the global
-	// arena was already replayed above; the drain skips it).
-	affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
-	if err != nil {
-		return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
-	}
-	if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date); err != nil {
-		return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
+	// arena was already replayed above; the drain skips it). A coop match
+	// belongs to no arena (the membership function rejects its mode), so the
+	// drain is skipped for it.
+	if mode == MatchModeCompetitive {
+		affected, err := q.ListArenasMatchingMatch(ctx, createdMatch.ID)
+		if err != nil {
+			return db.Match{}, fmt.Errorf("list arenas matching match: %w", err)
+		}
+		if err := s.Arenas.MarkAndDrainAfterMatchWrite(ctx, q, affected, date); err != nil {
+			return db.Match{}, fmt.Errorf("update arenas after match write: %w", err)
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -322,6 +460,27 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		return db.Match{}, err
 	}
 
+	// The game's mode decides (with the request, for mixed games) whether
+	// this stays a rating match or becomes a coop one (ADR-33); calculator
+	// columns keep the match competitive.
+	game, err := q.GetGameByID(ctx, gameID)
+	if err != nil {
+		return db.Match{}, fmt.Errorf("unable to get game: %w", err)
+	}
+	hasCalculator := existingMatch.CalculatorKind.Valid ||
+		(opts.Calculator != nil && opts.Calculator.Kind != nil)
+	mode, err := resolveMatchMode(game.GameMode, opts.Mode, hasCalculator)
+	if err != nil {
+		return db.Match{}, err
+	}
+	playerScores, err = normalizeMatchParticipants(mode, playerScores, opts.PlayerIDs)
+	if err != nil {
+		return db.Match{}, err
+	}
+	if err := validateMatchResult(mode, opts.GameScore, opts.GameWon); err != nil {
+		return db.Match{}, err
+	}
+
 	// ADR-27 (revised): camp links are editable — editing a match exists to
 	// fix mistakes, and the recalculation machinery rewrites the camps'
 	// settlements and medal stats accordingly. The optional body set is the
@@ -344,6 +503,11 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 				return db.Match{}, ErrMatchOutsideCampWindows
 			}
 		}
+	}
+	// A coop match belongs to no camp (ADR-33): converting one requires
+	// detaching it from every camp in the same edit.
+	if mode == MatchModeCoop && len(desiredCamps) > 0 {
+		return db.Match{}, ErrCoopLinksRejected
 	}
 
 	// ADR-26: a tournament-linked match keeps its exact player set and game —
@@ -376,6 +540,9 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 		CalculatorKind:          existingMatch.CalculatorKind,
 		CalculatorSchemaVersion: existingMatch.CalculatorSchemaVersion,
 		CalculatorData:          existingMatch.CalculatorData,
+		Mode:                    mode,
+		GameScore:               pgFloat8(opts.GameScore),
+		GameWon:                 pgBool(opts.GameWon),
 	}
 	if opts.Calculator != nil {
 		k, v, d := calculatorColumnsFromUpdate(opts.Calculator)
@@ -439,11 +606,20 @@ func (s *MatchService) UpdateMatch(ctx context.Context, matchID id.ID, gameID id
 			return db.Match{}, err
 		}
 	}
+	// A coop match must be out of the bracket (ADR-33): converting one
+	// detaches it (the same guarded detach; an unsafe detach refuses the
+	// whole edit). A no-op when already unlinked.
+	if mode == MatchModeCoop && s.Tournaments != nil {
+		if err := s.Tournaments.SetMatchLinkState(ctx, q, matchID, true, opts.ActorUserID); err != nil {
+			return db.Match{}, err
+		}
+	}
 
 	// ADR-26: scores changed → points recompute → completion re-evaluates →
 	// possibly a different advancement set (with the cascade invalidation) —
-	// still inside the match-write transaction, before the arena drain.
-	if s.Tournaments != nil {
+	// still inside the match-write transaction, before the arena drain. A
+	// coop match has no slot to re-evaluate (ADR-33).
+	if s.Tournaments != nil && mode == MatchModeCompetitive {
 		if err := s.Tournaments.OnMatchChanged(ctx, q, matchID, opts.ActorUserID); err != nil {
 			return db.Match{}, err
 		}

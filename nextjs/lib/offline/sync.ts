@@ -1,4 +1,5 @@
 import { Base58ID } from "../id";
+import type { GameMode, MatchMode } from "../game-modes";
 import {
     OfflineStore,
     PendingGame,
@@ -19,6 +20,7 @@ export type SyncApi = {
         name_ru?: string | null;
         bgg_ref?: number | null;
         tesera_ref?: number | null;
+        game_mode?: GameMode;
     }): Promise<SyncCallResult<{ id: Base58ID }>>;
     addGameTag(body: { game_id: Base58ID; tag_id: Base58ID }): Promise<SyncCallResult<null>>;
     createPlayer(body: { id: Base58ID; name: string }): Promise<SyncCallResult<{ id: Base58ID }>>;
@@ -30,6 +32,11 @@ export type SyncApi = {
         date: string;
         camp_arena_ids: Base58ID[];
         skip_tournament_link?: boolean;
+        // Coop match fields (ADR-33).
+        mode?: MatchMode;
+        player_ids?: Base58ID[];
+        game_score?: number;
+        game_won?: boolean;
         calculator_kind?: string | null;
         calculator_data?: Record<string, unknown> | null;
     }): Promise<SyncCallResult<{ id: Base58ID }>>;
@@ -110,6 +117,7 @@ export async function syncOffline(
                 name_ru: meta?.nameRu ?? undefined,
                 bgg_ref: meta?.bggRef ?? undefined,
                 tesera_ref: meta?.teseraRef ?? undefined,
+                game_mode: meta?.gameMode ?? undefined,
             });
         } catch {
             return finish(false, true);
@@ -207,6 +215,13 @@ export async function syncOffline(
                 // The explicit opt-out only travels when asked for; without it
                 // the server decides bracket acceptance at this write (ADR-26).
                 ...(match.skipTournamentLink ? { skip_tournament_link: true } : {}),
+                // Coop match fields (ADR-33): mode plus the shared result and
+                // the participant list — only when present, so competitive
+                // pending matches keep the exact legacy payload.
+                ...(match.mode ? { mode: match.mode } : {}),
+                ...(match.playerIds?.length ? { player_ids: match.playerIds } : {}),
+                ...(match.gameScore !== undefined ? { game_score: match.gameScore } : {}),
+                ...(match.gameWon !== undefined ? { game_won: match.gameWon } : {}),
                 calculator_kind: match.calculatorKind ?? null,
                 calculator_data: match.calculatorData ?? null,
             });

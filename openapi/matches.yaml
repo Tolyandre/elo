@@ -75,7 +75,32 @@ MatchesCollection:
                   type: number
                   format: double
                 x-go-type: IDMap[float64]
-                description: Map of player_id (string) to numeric score
+                description: >-
+                  Map of player_id (string) to numeric score. Required for
+                  competitive matches (at least 2 players); must be omitted for
+                  coop matches (ADR-33).
+              mode:
+                $ref: '#/MatchMode'
+                description: >-
+                  Only meaningful for mixed games (ADR-33): which mode this
+                  match was played in, default competitive. Coop-only and
+                  competitive-only games decide the mode themselves; a request
+                  contradicting the game's mode is a 400.
+              game_score:
+                type: number
+                format: double
+                description: The shared game result — required for coop matches, rejected for competitive ones.
+              game_won:
+                type: boolean
+                description: Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones.
+              player_ids:
+                type: array
+                items:
+                    $ref: './common.yaml#/Base58ID'
+                description: >-
+                  Participants without per-player scores — the player list of a
+                  coop match (at least one, ADR-33), instead of score. Rejected
+                  for competitive matches, where score carries the players.
               date:
                 type: string
                 format: date-time
@@ -118,7 +143,7 @@ MatchesCollection:
                   normalized shape where every player reference lives under a
                   key named "player_id", which the schema marks as an entity id
                   so the Go handler canonicalizes it at the boundary.
-            required: [id, game_id, score]
+            required: [id, game_id]
     responses:
       "200":
         description: Match added
@@ -224,7 +249,31 @@ MatchItem:
                   type: number
                   format: double
                 x-go-type: IDMap[float64]
-                description: Map of player_id (string) to numeric score
+                description: >-
+                  Map of player_id (string) to numeric score. Required for
+                  competitive matches (at least 2 players); must be omitted for
+                  coop matches (ADR-33) — send game_score/game_won instead.
+              mode:
+                $ref: '#/MatchMode'
+                description: >-
+                  The desired mode (ADR-33). Only meaningful for mixed games;
+                  for coop-only or competitive-only games a contradicting
+                  request is a 400. Default competitive when omitted.
+              game_score:
+                type: number
+                format: double
+                description: The shared game result — required when the resulting mode is coop, rejected otherwise.
+              game_won:
+                type: boolean
+                description: Whether the team/solo player beat the game — required when the resulting mode is coop, rejected otherwise.
+              player_ids:
+                type: array
+                items:
+                    $ref: './common.yaml#/Base58ID'
+                description: >-
+                  The desired participant set of a coop match (ADR-33) — used
+                  instead of score. Rejected for competitive matches, where
+                  score carries the players.
               date:
                 type: string
                 format: date-time
@@ -267,7 +316,7 @@ MatchItem:
                   Intermediate calculator state. Opaque at the OpenAPI layer;
                   validated against a per-calculator-kind JSON Schema in the Go
                   handler. Required when calculator_kind is non-null.
-            required: [game_id, score, date]
+            required: [game_id, date]
     responses:
       "200":
         description: Match updated
@@ -411,9 +460,23 @@ Match:
       additionalProperties:
         $ref: '#/MatchPlayer'
       x-go-type: IDMap[MatchPlayer]
-      description: Map of player_id (string) to player score data
+      description: >-
+        Map of player_id (string) to player score data. Competitive matches
+        only: a coop match (mode coop) lists its participants here with zero
+        scores — the shared result lives in game_score/game_won.
     has_markets:
       type: boolean
+    mode:
+      $ref: '#/MatchMode'
+    game_score:
+      type: number
+      format: double
+      nullable: true
+      description: The shared game result of a coop match (ADR-33); null for competitive matches.
+    game_won:
+      type: boolean
+      nullable: true
+      description: Whether the coop match (solo or team) beat the game; null for competitive matches.
     camps:
       type: array
       items:
@@ -438,7 +501,16 @@ Match:
         Intermediate calculator state. Present only when calculator_kind is
         non-null. Opaque at the OpenAPI layer; see pkg/calculator for the
         per-kind JSON Schemas.
-  required: [id, game_id, game_name, date, score, has_markets]
+  required: [id, game_id, game_name, date, score, has_markets, mode]
+
+MatchMode:
+  type: string
+  description: >-
+    The resolved mode of a match (ADR-33). competitive — normal per-player
+    scores feeding arenas and markets; coop — a single shared game result
+    (game_score + game_won), never rated, excluded from arenas, markets,
+    tournaments and profile stats.
+  enum: [competitive, coop]
 
 MatchesPage:
   type: object

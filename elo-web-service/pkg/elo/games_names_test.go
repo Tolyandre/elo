@@ -50,21 +50,27 @@ func TestDisplayName(t *testing.T) {
 }
 
 func TestGameMetaChanged(t *testing.T) {
-	old := db.Game{Name: "X", NameEn: pgText("X")}
+	old := db.Game{Name: "X", NameEn: pgText("X"), GameMode: GameModeCompetitive}
 	same := GameMetaPatch{
 		Alias:     nil,
 		NameEn:    strPtr("X"),
 		NameRu:    nil,
 		BggRef:    nil,
 		TeseraRef: nil,
+		GameMode:  strPtr(GameModeCompetitive),
 	}
-	if gameMetaChanged(old, "", "X", "", same) {
+	if gameMetaChanged(old, "", "X", "", GameModeCompetitive, same) {
 		t.Error("identical metadata must not report a change")
 	}
 	changed := same
 	changed.BggRef = int64Ptr(822)
-	if !gameMetaChanged(old, "", "X", "", changed) {
+	if !gameMetaChanged(old, "", "X", "", GameModeCompetitive, changed) {
 		t.Error("bgg ref change must be detected")
+	}
+	modeChanged := same
+	modeChanged.GameMode = strPtr(GameModeCoop)
+	if !gameMetaChanged(old, "", "X", "", GameModeCoop, modeChanged) {
+		t.Error("game mode change must be detected")
 	}
 }
 

@@ -83,6 +83,9 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 				Date:           r.Date.Time,
 				Players:        make(map[id.ID]matchPlayerJson),
 				HasMarkets:     r.HasMarkets,
+				Mode:           r.Mode,
+				GameScore:      r.GameScore,
+				GameWon:        r.GameWon,
 				CalculatorKind: r.CalculatorKind,
 			}
 			order = append(order, r.MatchID)
@@ -127,6 +130,9 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 			Date:       m.Date,
 			Score:      score,
 			HasMarkets: m.HasMarkets,
+			Mode:       MatchesMatchMode(m.Mode),
+			GameScore:  float8Ptr(m.GameScore),
+			GameWon:    boolPtr(m.GameWon),
 		}
 		if cs := campsByMatch[m.Id]; len(cs) > 0 {
 			match.Camps = &cs
@@ -168,6 +174,14 @@ func (s *StrictServer) AddMatch(ctx context.Context, request AddMatchRequestObje
 		CampArenaIDs: derefIDs(request.Body.CampArenaIds),
 		ActorUserID:  currentActorID(ctx),
 	}
+	// Mode/participants/shared result of a coop match (ADR-33); the service
+	// validates the combination against the game's own mode.
+	if request.Body.Mode != nil {
+		opts.Mode = string(*request.Body.Mode)
+	}
+	opts.PlayerIDs = derefIDs(request.Body.PlayerIds)
+	opts.GameScore = request.Body.GameScore
+	opts.GameWon = request.Body.GameWon
 	if request.Body.SkipTournamentLink != nil {
 		opts.SkipTournamentLink = *request.Body.SkipTournamentLink
 	}
@@ -291,6 +305,9 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 				GameName:       r.GameName,
 				Date:           r.Date.Time,
 				Players:        make(map[id.ID]matchPlayerJson),
+				Mode:           r.Mode,
+				GameScore:      r.GameScore,
+				GameWon:        r.GameWon,
 				CalculatorKind: r.CalculatorKind,
 				CalculatorData: r.CalculatorData,
 			}
@@ -336,6 +353,9 @@ func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdReq
 		Date:       m.Date,
 		Score:      score,
 		HasMarkets: m.HasMarkets,
+		Mode:       MatchesMatchMode(m.Mode),
+		GameScore:  float8Ptr(m.GameScore),
+		GameWon:    boolPtr(m.GameWon),
 	}
 	if cs := campsByMatch[m.Id]; len(cs) > 0 {
 		match.Camps = &cs
@@ -372,6 +392,14 @@ func (s *StrictServer) UpdateMatch(ctx context.Context, request UpdateMatchReque
 	opts := elo.UpdateMatchOpts{
 		ActorUserID: currentActorID(ctx),
 	}
+	// Mode/participants/shared result of a coop match (ADR-33); the service
+	// validates the combination against the game's own mode.
+	if request.Body.Mode != nil {
+		opts.Mode = string(*request.Body.Mode)
+	}
+	opts.PlayerIDs = derefIDs(request.Body.PlayerIds)
+	opts.GameScore = request.Body.GameScore
+	opts.GameWon = request.Body.GameWon
 	// Camp links are frozen (ADR-27): the optional array must equal the stored
 	// set when present; a body without the key leaves the links untouched.
 	if request.Body.CampArenaIds != nil {

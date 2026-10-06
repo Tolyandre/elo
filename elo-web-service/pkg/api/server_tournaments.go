@@ -26,6 +26,12 @@ func (s *StrictServer) CreateTournament(ctx context.Context, request CreateTourn
 	}
 	t, err := s.api.TournamentService.CreateTournament(ctx, tid, tournamentWriteOpts(request.Body, currentActorID(ctx)))
 	if err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusBadRequest:
+			return CreateTournament400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		case http.StatusConflict:
+			return CreateTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
 		return nil, err
 	}
 	detail, err := s.api.TournamentService.GetTournamentDetail(ctx, t.ID)

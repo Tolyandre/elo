@@ -433,7 +433,7 @@ func createTestGame(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
-	g, err := q.AddGame(context.Background(), db.AddGameParams{ID: id, NameEn: pgText(name)})
+	g, err := q.AddGame(context.Background(), db.AddGameParams{ID: id, NameEn: pgText(name), GameMode: elo.GameModeCompetitive})
 	if err != nil {
 		t.Fatalf("create game %q: %v", name, err)
 	}

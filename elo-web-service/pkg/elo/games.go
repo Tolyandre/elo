@@ -28,8 +28,82 @@ type GameTitles struct {
 	TeseraRef     int64
 	ImageURL      string
 	ImageThumbURL string
+	GameMode      string
 	TotalMatches  int
 	Tags          []TagRef
+}
+
+// Game modes of a game (ADR-33). A match's mode is resolved from these plus
+// the per-match request; the resolution is snapshotted onto matches.mode.
+const (
+	GameModeCompetitive = "competitive"
+	GameModeCoop        = "coop"
+	GameModeMixed       = "mixed"
+)
+
+// Match modes (ADR-33): the two ways a match can be recorded.
+const (
+	MatchModeCompetitive = "competitive"
+	MatchModeCoop        = "coop"
+)
+
+// ErrInvalidGameMode: a game_mode value outside the known set.
+var ErrInvalidGameMode = errors.New("unknown game mode")
+
+// NormalizeGameMode validates a game_mode value; empty defaults to
+// competitive (the mode of every game created before ADR-33).
+func NormalizeGameMode(mode *string) (string, error) {
+	if mode == nil || *mode == "" {
+		return GameModeCompetitive, nil
+	}
+	switch *mode {
+	case GameModeCompetitive, GameModeCoop, GameModeMixed:
+		return strings.TrimSpace(*mode), nil
+	}
+	return "", ErrInvalidGameMode
+}
+
+// MatchModeForGame resolves a match's mode from its game's mode and the
+// optional per-match request value (ADR-33). requestMode is "" when the
+// request omitted it.
+func MatchModeForGame(gameMode, requestMode string) (string, error) {
+	switch gameMode {
+	case GameModeCoop:
+		return MatchModeCoop, nil
+	case GameModeMixed:
+		switch requestMode {
+		case "", MatchModeCompetitive:
+			return MatchModeCompetitive, nil
+		case MatchModeCoop:
+			return MatchModeCoop, nil
+		}
+		return "", ErrInvalidGameMode
+	default:
+		if requestMode == "" || requestMode == MatchModeCompetitive {
+			return MatchModeCompetitive, nil
+		}
+		return "", ErrInvalidGameMode
+	}
+}
+
+// RejectCoopGames validates that none of the referenced games is coop-only
+// (ADR-33): coop games never produce rating matches, so markets and
+// tournaments cannot be built on them. Unknown ids pass through — the
+// foreign keys surface them.
+func RejectCoopGames(ctx context.Context, q *db.Queries, gameIDs []id.ID) error {
+	for _, gid := range gameIDs {
+		game, err := q.GetGameByID(ctx, gid)
+		if err != nil {
+			if db.IsNoRows(err) {
+				continue
+			}
+			return err
+		}
+		if game.GameMode == GameModeCoop {
+			return ErrCoopGameNotAllowed
+		}
+	}
+	return nil
 }
 
 // GameInfo is the slim single-game read (the game's arena data lives under
@@ -44,6 +118,7 @@ type GameInfo struct {
 	TeseraRef     int64
 	ImageURL      string
 	ImageThumbURL string
+	GameMode      string
 	TotalMatches  int
 }
 
@@ -56,6 +131,7 @@ type GameMetaPatch struct {
 	NameRu    *string
 	BggRef    *int64
 	TeseraRef *int64
+	GameMode  *string
 }
 
 // GameSuggestion is one Tesera match candidate for a name being typed.
@@ -176,6 +252,7 @@ func (s *GameService) GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]G
 			TeseraRef:     int64Of(r.TeseraID),
 			ImageURL:      textOf(r.ImageUrl),
 			ImageThumbURL: textOf(r.ImageThumbUrl),
+			GameMode:      r.GameMode,
 			TotalMatches:  int(r.TotalMatches),
 			Tags:          tags,
 		})
@@ -206,6 +283,7 @@ func (s *GameService) GetGameInfo(ctx context.Context, gameID id.ID) (*GameInfo,
 		TeseraRef:     int64Of(game.TeseraID),
 		ImageURL:      textOf(game.ImageUrl),
 		ImageThumbURL: textOf(game.ImageThumbUrl),
+		GameMode:      game.GameMode,
 		TotalMatches:  int(total),
 	}, nil
 }
@@ -243,6 +321,10 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		if name == "" {
 			return ErrGameNameRequired
 		}
+		gameMode, err := NormalizeGameMode(meta.GameMode)
+		if err != nil {
+			return err
+		}
 		// games.name is a generated column (migration 063) — it follows the
 		// three source names written here.
 		g, err := q.UpdateGame(ctx, db.UpdateGameParams{
@@ -252,6 +334,7 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 			Alias:    pgText(alias),
 			BggID:    pgInt4(meta.BggRef),
 			TeseraID: pgInt4(meta.TeseraRef),
+			GameMode: gameMode,
 		})
 		if err != nil {
 			return err
@@ -272,7 +355,7 @@ func (s *GameService) UpdateGame(ctx context.Context, gameID id.ID, meta GameMet
 		switch {
 		case old.Name != name:
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionRenamed, gameID, audit.KindRename, audit.NewRenameDetails(old.Name, name))
-		case gameMetaChanged(old, alias, nameEn, nameRu, meta):
+		case gameMetaChanged(old, alias, nameEn, nameRu, gameMode, meta):
 			return recordAuditEvent(ctx, q, actor, audit.EntityGame, audit.ActionUpdated, gameID, audit.KindEntity, audit.NewEntityDetails(name))
 		}
 		return nil
@@ -290,11 +373,16 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 	nameRu, nameEn := "", ""
 	alias := ""
 	var bgg, teseraRef *int64
+	gameMode := GameModeCompetitive
 	if len(meta) > 0 {
 		m := meta[0]
 		nameEn = trimmed(m.NameEn)
 		nameRu = trimmed(m.NameRu)
 		bgg, teseraRef = m.BggRef, m.TeseraRef
+		var gerr error
+		if gameMode, gerr = NormalizeGameMode(m.GameMode); gerr != nil {
+			return nil, gerr
+		}
 		if nameEn == "" && nameRu == "" {
 			nameEn = strings.TrimSpace(name)
 		} else {
@@ -326,6 +414,7 @@ func (s *GameService) AddGame(ctx context.Context, gameID id.ID, name string, ac
 			Alias:    pgText(alias),
 			BggID:    pgInt4(bgg),
 			TeseraID: pgInt4(teseraRef),
+			GameMode: gameMode,
 		})
 		if err != nil {
 			return err
@@ -449,12 +538,16 @@ func (s *GameService) AutoMatchGames(ctx context.Context, actor id.ID) ([]AutoMa
 			_, alias := canonicalizeNames(g.Name, cand.NameRu, cand.NameEn)
 			nameRu, nameEn := cand.NameRu, cand.NameEn
 			bgg, teseraRef := cand.BggRef, cand.TeseraRef
+			// The patch is full-state: carry the game's own mode through so
+			// an auto-match never resets it (ADR-33).
+			mode := g.GameMode
 			patch := GameMetaPatch{
 				Alias:     strPtr(alias),
 				NameEn:    strPtr(nameEn),
 				NameRu:    strPtr(nameRu),
 				BggRef:    &bgg,
 				TeseraRef: &teseraRef,
+				GameMode:  &mode,
 			}
 			if _, uerr := s.UpdateGame(ctx, g.ID, patch, actor); uerr != nil {
 				res.Reason = "name conflict"
@@ -646,12 +739,13 @@ func canonicalizeNames(typed, nameRu, nameEn string) (display, alias string) {
 
 // gameMetaChanged reports whether the metadata update touches anything
 // besides the (unchanged) display name.
-func gameMetaChanged(old db.Game, alias, nameEn, nameRu string, meta GameMetaPatch) bool {
+func gameMetaChanged(old db.Game, alias, nameEn, nameRu, gameMode string, meta GameMetaPatch) bool {
 	return textOf(old.Alias) != alias ||
 		textOf(old.NameEn) != nameEn ||
 		textOf(old.NameRu) != nameRu ||
 		int64Of(old.BggID) != derefInt64(meta.BggRef) ||
-		int64Of(old.TeseraID) != derefInt64(meta.TeseraRef)
+		int64Of(old.TeseraID) != derefInt64(meta.TeseraRef) ||
+		old.GameMode != gameMode
 }
 
 func trimmed(s *string) string {

@@ -18,6 +18,7 @@ import { useMe } from "../meContext";
 import { usePlayers } from "../players/PlayersContext";
 import { useClubs } from "../clubsContext";
 import { SyncApi, SyncCallResult, syncOffline } from "@/lib/offline/sync";
+import type { MatchMode } from "@/lib/game-modes";
 import {
     OfflineStore,
     PendingGame,
@@ -373,7 +374,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     }, [loaded, pathname, pendingCount, canEdit, syncNow]);
 
     const addPendingMatch = useCallback(
-        ({ gameId, score, campArenaIds, skipTournamentLink, clientId, calculatorKind, calculatorData }: { gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        ({ gameId, score, campArenaIds, skipTournamentLink, clientId, calculatorKind, calculatorData, mode, playerIds, gameScore, gameWon }: { gameId: Base58ID; score: Record<string, number>; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; clientId?: Base58ID; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null; mode?: MatchMode; playerIds?: Base58ID[]; gameScore?: number; gameWon?: boolean }) => {
             const match: PendingMatch = {
                 clientId: clientId ?? newOfflineId(),
                 createdAt: new Date().toISOString(),
@@ -384,6 +385,10 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 skipTournamentLink,
                 calculatorKind: calculatorKind ?? null,
                 calculatorData: calculatorData ?? null,
+                mode,
+                playerIds,
+                gameScore,
+                gameWon,
             };
             mutateStore((s) => ({ ...s, matches: [...s.matches, match] }));
             return match;
@@ -392,7 +397,7 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
     );
 
     const updatePendingMatch = useCallback(
-        (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null }) => {
+        (clientId: Base58ID, patch: { gameId: Base58ID; score: Record<string, number>; createdAt?: string; campArenaIds?: Base58ID[]; skipTournamentLink?: boolean; calculatorKind?: string | null; calculatorData?: Record<string, unknown> | null; mode?: MatchMode; playerIds?: Base58ID[]; gameScore?: number; gameWon?: boolean }) => {
             mutateStore((s) => ({
                 ...s,
                 matches: s.matches.map((m) =>
@@ -406,6 +411,10 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                               skipTournamentLink: patch.skipTournamentLink !== undefined ? patch.skipTournamentLink : m.skipTournamentLink,
                               calculatorKind: patch.calculatorKind !== undefined ? patch.calculatorKind : m.calculatorKind,
                               calculatorData: patch.calculatorData !== undefined ? patch.calculatorData : m.calculatorData,
+                              mode: patch.mode,
+                              playerIds: patch.playerIds,
+                              gameScore: patch.gameScore,
+                              gameWon: patch.gameWon,
                               status: "pending",
                               error: undefined,
                           }
@@ -500,6 +509,12 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
             // The unchecked tournament checkbox (ADR-26); only the explicit
             // opt-out travels — acceptance itself is decided at the sync write.
             skip_tournament_link?: boolean;
+            // Coop match fields (ADR-33): the shared result and participant
+            // list instead of per-player scores.
+            mode?: MatchMode;
+            player_ids?: Base58ID[];
+            game_score?: number;
+            game_won?: boolean;
             // Optional calculator state (e.g. Skull King round breakdown), stored
             // with the pending match so the calculator detail survives until the
             // sync pushes it to the server.
@@ -519,6 +534,10 @@ export const OfflineProvider = ({ children }: { children: ReactNode }) => {
                 skipTournamentLink: payload.skip_tournament_link,
                 calculatorKind: payload.calculator_kind,
                 calculatorData: payload.calculator_data,
+                mode: payload.mode,
+                playerIds: payload.player_ids,
+                gameScore: payload.game_score,
+                gameWon: payload.game_won,
             });
             return { id: match.clientId };
         },

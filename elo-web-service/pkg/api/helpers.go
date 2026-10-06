@@ -179,6 +179,9 @@ type matchJson struct {
 	Date           time.Time                 `json:"date"`
 	Players        map[id.ID]matchPlayerJson `json:"score"`
 	HasMarkets     bool                      `json:"has_markets"`
+	Mode           string                    `json:"mode"`
+	GameScore      pgtype.Float8             `json:"game_score"`
+	GameWon        pgtype.Bool               `json:"game_won"`
 	CalculatorKind pgtype.Text               `json:"-"`
 	// CalculatorData is omitted on the list path (the paginated query does not
 	// select it to avoid pulling large JSONB for every list row).
@@ -186,17 +189,20 @@ type matchJson struct {
 }
 
 // parseMatchScores validates that the game_id and player_ids are present.
-// Inbound body ids are already canonical (IDMap.UnmarshalJSON).
-func parseMatchScores(gameID id.ID, scores IDMap[float64]) (id.ID, map[id.ID]float64, error) {
+// Inbound body ids are already canonical (IDMap.UnmarshalJSON). The score map
+// is optional: coop matches (ADR-33) carry player_ids instead.
+func parseMatchScores(gameID id.ID, scores *IDMap[float64]) (id.ID, map[id.ID]float64, error) {
 	if gameID.IsZero() {
 		return "", nil, fmt.Errorf("invalid game_id: %s", gameID)
 	}
-	playerScores := make(map[id.ID]float64, len(scores))
-	for k, v := range scores {
-		if k.IsZero() {
-			return "", nil, fmt.Errorf("invalid player_id: %s", k)
+	playerScores := make(map[id.ID]float64)
+	if scores != nil {
+		for k, v := range *scores {
+			if k.IsZero() {
+				return "", nil, fmt.Errorf("invalid player_id: %s", k)
+			}
+			playerScores[k] = v
 		}
-		playerScores[k] = v
 	}
 	return gameID, playerScores, nil
 }
@@ -249,6 +255,9 @@ type tempMatch struct {
 	Date           time.Time
 	Players        map[id.ID]matchPlayerJson
 	HasMarkets     bool
+	Mode           string
+	GameScore      pgtype.Float8
+	GameWon        pgtype.Bool
 	CalculatorKind pgtype.Text
 	// CalculatorData is only populated on the GetMatchById path; the paginated
 	// list query deliberately omits the (potentially large) JSONB column.
@@ -266,6 +275,9 @@ func buildMatchesResponse(matchesMap map[id.ID]*tempMatch, order []id.ID) []matc
 			Date:           tm.Date,
 			Players:        make(map[id.ID]matchPlayerJson, len(tm.Players)),
 			HasMarkets:     tm.HasMarkets,
+			Mode:           tm.Mode,
+			GameScore:      tm.GameScore,
+			GameWon:        tm.GameWon,
 			CalculatorKind: tm.CalculatorKind,
 			CalculatorData: tm.CalculatorData,
 		}
@@ -362,4 +374,20 @@ func derefIDs(s *[]id.ID) []id.ID {
 		return nil
 	}
 	return *s
+}
+
+func float8Ptr(v pgtype.Float8) *float64 {
+	if !v.Valid {
+		return nil
+	}
+	f := v.Float64
+	return &f
+}
+
+func boolPtr(v pgtype.Bool) *bool {
+	if !v.Valid {
+		return nil
+	}
+	b := v.Bool
+	return &b
 }

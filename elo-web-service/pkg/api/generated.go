@@ -693,6 +693,27 @@ func (e AuditAuditTournamentStateDetailsTo) Valid() bool {
 	}
 }
 
+// Defines values for GamesGameMode.
+const (
+	GamesGameModeCompetitive GamesGameMode = "competitive"
+	GamesGameModeCoop        GamesGameMode = "coop"
+	GamesGameModeMixed       GamesGameMode = "mixed"
+)
+
+// Valid indicates whether the value is a known member of the GamesGameMode enum.
+func (e GamesGameMode) Valid() bool {
+	switch e {
+	case GamesGameModeCompetitive:
+		return true
+	case GamesGameModeCoop:
+		return true
+	case GamesGameModeMixed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MarketsMarketOutcomeKind.
 const (
 	MarketsMarketOutcomeKindNo     MarketsMarketOutcomeKind = "no"
@@ -711,6 +732,24 @@ func (e MarketsMarketOutcomeKind) Valid() bool {
 	case MarketsMarketOutcomeKindPlayer:
 		return true
 	case MarketsMarketOutcomeKindYes:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MatchesMatchMode.
+const (
+	MatchesMatchModeCompetitive MatchesMatchMode = "competitive"
+	MatchesMatchModeCoop        MatchesMatchMode = "coop"
+)
+
+// Valid indicates whether the value is a known member of the MatchesMatchMode enum.
+func (e MatchesMatchMode) Valid() bool {
+	switch e {
+	case MatchesMatchModeCompetitive:
+		return true
+	case MatchesMatchModeCoop:
 		return true
 	default:
 		return false
@@ -798,6 +837,27 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 	case ListAuditEventsParamsEntityTypeTag:
 		return true
 	case ListAuditEventsParamsEntityTypeTournament:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchGameJSONBodyGameMode.
+const (
+	PatchGameJSONBodyGameModeCompetitive PatchGameJSONBodyGameMode = "competitive"
+	PatchGameJSONBodyGameModeCoop        PatchGameJSONBodyGameMode = "coop"
+	PatchGameJSONBodyGameModeMixed       PatchGameJSONBodyGameMode = "mixed"
+)
+
+// Valid indicates whether the value is a known member of the PatchGameJSONBodyGameMode enum.
+func (e PatchGameJSONBodyGameMode) Valid() bool {
+	switch e {
+	case PatchGameJSONBodyGameModeCompetitive:
+		return true
+	case PatchGameJSONBodyGameModeCoop:
+		return true
+	case PatchGameJSONBodyGameModeMixed:
 		return true
 	default:
 		return false
@@ -1287,7 +1347,7 @@ type FeedCorrectionEvent struct {
 // FeedCorrectionEventType defines model for FeedCorrectionEvent.Type.
 type FeedCorrectionEventType string
 
-// FeedEvent One feed event (ADR-32). New content kinds (cooperative matches, posts) extend the union with another event schema — the envelope never changes.
+// FeedEvent One feed event (ADR-32). New content kinds (posts) extend the union with another event schema — the envelope never changes.
 type FeedEvent struct {
 	union json.RawMessage
 }
@@ -1301,7 +1361,7 @@ type FeedMarketEvent struct {
 // FeedMarketEventType defines model for FeedMarketEvent.Type.
 type FeedMarketEventType string
 
-// FeedMatchEvent A match of the arena — the event that moved its ratings.
+// FeedMatchEvent A match of the arena — the event that moved its ratings. The home feed (ADR-32) also carries coop matches (data.mode = "coop", ADR-33), which affect no rating: their Match lacks rating data and carries the shared game_score/game_won instead of meaningful per-player scores.
 type FeedMatchEvent struct {
 	Data Match              `json:"data"`
 	Type FeedMatchEventType `json:"type"`
@@ -1325,6 +1385,9 @@ type Game struct {
 
 	// BggRef BoardGameGeek thing id
 	BggRef *int `json:"bgg_ref,omitempty"`
+
+	// GameMode What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
+	GameMode GamesGameMode `json:"game_mode"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
@@ -1384,6 +1447,9 @@ type GameListItem struct {
 
 	// BggRef BoardGameGeek thing id (boardgamegeek.com/boardgame/{bgg_ref})
 	BggRef *int `json:"bgg_ref,omitempty"`
+
+	// GameMode What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
+	GameMode GamesGameMode `json:"game_mode"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
@@ -1664,14 +1730,23 @@ type Match struct {
 	Date  time.Time    `json:"date"`
 
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	GameId     Base58ID `json:"game_id"`
-	GameName   string   `json:"game_name"`
-	HasMarkets bool     `json:"has_markets"`
+	GameId   Base58ID `json:"game_id"`
+	GameName string   `json:"game_name"`
+
+	// GameScore The shared game result of a coop match (ADR-33); null for competitive matches.
+	GameScore *float64 `json:"game_score,omitempty"`
+
+	// GameWon Whether the coop match (solo or team) beat the game; null for competitive matches.
+	GameWon    *bool `json:"game_won,omitempty"`
+	HasMarkets bool  `json:"has_markets"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// Score Map of player_id (string) to player score data
+	// Mode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+	Mode MatchesMatchMode `json:"mode"`
+
+	// Score Map of player_id (string) to player score data. Competitive matches only: a coop match (mode coop) lists its participants here with zero scores — the shared result lives in game_score/game_won.
 	Score IDMap[MatchPlayer] `json:"score"`
 
 	// Tournament The tournament slot a match is counted for (ADR-26). Server-assigned at the match write when the match exactly fits a playing slot, by the organizer's attach, or by an explicit edit-time link change (skip_tournament_link on PUT); association-breaking edits (game/roster) are still rejected. The link survives detach — only the bracket forgets voided results, the tournament arena keeps counting the match.
@@ -2149,6 +2224,9 @@ type GamesGameEnrichResults struct {
 	Games []GamesGameEnrichResult `json:"games"`
 }
 
+// GamesGameMode What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
+type GamesGameMode string
+
 // MarketsMarketOutcome One mutually-exclusive outcome of a market. The id is the business-logic identifier (bets and resolution reference it); the name is derived on the fly for display only (player outcome → player name, other → «Ничья», yes/no → «Да»/«Нет»).
 type MarketsMarketOutcome struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -2182,6 +2260,9 @@ type MarketsTournamentWinnerParams struct {
 	// TournamentName The tournament's name, denormalized for display.
 	TournamentName string `json:"tournament_name"`
 }
+
+// MatchesMatchMode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+type MatchesMatchMode string
 
 // TablesCreateTableRequest defines model for tables_CreateTableRequest.
 type TablesCreateTableRequest struct {
@@ -2377,6 +2458,9 @@ type ListHomeFeedParams struct {
 type CreateGameJSONBody struct {
 	BggRef *int `json:"bgg_ref,omitempty"`
 
+	// GameMode What the game is played as (ADR-33). competitive — rating events only; coop — cooperative or solo only (never rated, excluded from arenas, markets, tournaments and profile stats); mixed — each match picks one of the two.
+	GameMode *GamesGameMode `json:"game_mode,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
@@ -2401,12 +2485,18 @@ type PatchGameJSONBody struct {
 	// Alias User-given custom display name; null removes it
 	Alias  *string `json:"alias,omitempty"`
 	BggRef *int    `json:"bgg_ref,omitempty"`
-	NameEn *string `json:"name_en,omitempty"`
+
+	// GameMode Full-state semantics — null resets to competitive (ADR-33)
+	GameMode *PatchGameJSONBodyGameMode `json:"game_mode,omitempty"`
+	NameEn   *string                    `json:"name_en,omitempty"`
 
 	// NameRu Localized Russian title; null when not published in Russian
 	NameRu    *string `json:"name_ru,omitempty"`
 	TeseraRef *int    `json:"tesera_ref,omitempty"`
 }
+
+// PatchGameJSONBodyGameMode defines parameters for PatchGame.
+type PatchGameJSONBodyGameMode string
 
 // AddGameTagJSONBody defines parameters for AddGameTag.
 type AddGameTagJSONBody struct {
@@ -2535,11 +2625,23 @@ type AddMatchJSONBody struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId Base58ID `json:"game_id"`
 
+	// GameScore The shared game result — required for coop matches, rejected for competitive ones.
+	GameScore *float64 `json:"game_score,omitempty"`
+
+	// GameWon Whether the team/solo player beat the game — required for coop matches, rejected for competitive ones.
+	GameWon *bool `json:"game_won,omitempty"`
+
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// Score Map of player_id (string) to numeric score
-	Score IDMap[float64] `json:"score"`
+	// Mode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+	Mode *MatchesMatchMode `json:"mode,omitempty"`
+
+	// PlayerIds Participants without per-player scores — the player list of a coop match (at least one, ADR-33), instead of score. Rejected for competitive matches, where score carries the players.
+	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
+
+	// Score Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33).
+	Score *IDMap[float64] `json:"score,omitempty"`
 
 	// SkipTournamentLink Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side.
 	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
@@ -2560,8 +2662,20 @@ type UpdateMatchJSONBody struct {
 	// GameId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	GameId Base58ID `json:"game_id"`
 
-	// Score Map of player_id (string) to numeric score
-	Score IDMap[float64] `json:"score"`
+	// GameScore The shared game result — required when the resulting mode is coop, rejected otherwise.
+	GameScore *float64 `json:"game_score,omitempty"`
+
+	// GameWon Whether the team/solo player beat the game — required when the resulting mode is coop, rejected otherwise.
+	GameWon *bool `json:"game_won,omitempty"`
+
+	// Mode The resolved mode of a match (ADR-33). competitive — normal per-player scores feeding arenas and markets; coop — a single shared game result (game_score + game_won), never rated, excluded from arenas, markets, tournaments and profile stats.
+	Mode *MatchesMatchMode `json:"mode,omitempty"`
+
+	// PlayerIds The desired participant set of a coop match (ADR-33) — used instead of score. Rejected for competitive matches, where score carries the players.
+	PlayerIds *[]Base58ID `json:"player_ids,omitempty"`
+
+	// Score Map of player_id (string) to numeric score. Required for competitive matches (at least 2 players); must be omitted for coop matches (ADR-33) — send game_score/game_won instead.
+	Score *IDMap[float64] `json:"score,omitempty"`
 
 	// SkipTournamentLink The desired tournament-link state (ADR-26). true — the match must be out of the bracket: a stored slot link is detached (the same re-evaluation and audit as the organizer detach). false — the match must be counted: it is attached to the unique fitting playing slot (same game, exactly the seated players); when nothing fits it is a 409 — a playing slot has no recorded promotions, so attaching can never invalidate played history. Omitted — the association is left untouched. A request whose desired state already holds is a no-op.
 	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`

@@ -10,6 +10,7 @@ import { GameCombobox } from "@/components/game-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toDatetimeLocal } from "@/lib/datetime";
+import { isRatingGame } from "@/lib/game-modes";
 
 type FormState = {
     name: string;
@@ -165,7 +166,7 @@ export function RegistrationEditor({
                     ))}
                 </div>
                 <div className="mt-2">
-                    <GameCombobox value={undefined} onChange={addGame} />
+                    <GameCombobox value={undefined} onChange={addGame} filterGame={isRatingGame} />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                     От 2 игроков за стол.

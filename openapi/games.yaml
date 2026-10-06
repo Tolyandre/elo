@@ -50,6 +50,8 @@ GamesCollection:
               tesera_ref:
                 type: integer
                 nullable: true
+              game_mode:
+                $ref: '#/GameMode'
             required: [id, name]
     responses:
       "200":
@@ -172,6 +174,11 @@ GameItem:
               tesera_ref:
                 type: integer
                 nullable: true
+              game_mode:
+                type: string
+                nullable: true
+                enum: [competitive, coop, mixed]
+                description: Full-state semantics — null resets to competitive (ADR-33)
     responses:
       "200":
         description: Updated game
@@ -539,6 +546,8 @@ GameListItem:
       type: string
       nullable: true
       description: Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+    game_mode:
+      $ref: '#/GameMode'
     last_played_order:
       type: integer
     total_matches:
@@ -548,7 +557,7 @@ GameListItem:
       items:
         $ref: '#/GameTag'
       description: Tags attached to the game, ordered by tag name
-  required: [id, name, last_played_order, total_matches, tags]
+  required: [id, name, game_mode, last_played_order, total_matches, tags]
 
 GameTag:
   type: object
@@ -601,9 +610,20 @@ Game:
       type: string
       nullable: true
       description: Small box art URL hosted by BoardGameGeek (hotlinked, ADR-31)
+    game_mode:
+      $ref: '#/GameMode'
     total_matches:
       type: integer
-  required: [id, name, total_matches]
+  required: [id, name, game_mode, total_matches]
+
+GameMode:
+  type: string
+  description: >-
+    What the game is played as (ADR-33). competitive — rating events only;
+    coop — cooperative or solo only (never rated, excluded from arenas,
+    markets, tournaments and profile stats); mixed — each match picks one of
+    the two.
+  enum: [competitive, coop, mixed]
 
 GameSuggestion:
   type: object

@@ -112,6 +112,51 @@ describe('syncOffline', () => {
         expect(api.addMatch).toHaveBeenCalledWith(expect.objectContaining({ camp_arena_ids: ['7', '9'] }));
     });
 
+    it('forwards the game_mode of a pending game on create (ADR-33)', async () => {
+        const api = okApi();
+        const gameId = uuidv7() as Base58ID;
+        const store = makeStore({
+            games: [{
+                clientId: gameId,
+                name: 'Кооператив',
+                createdAt: '2026-06-01T10:00:00Z',
+                status: 'pending',
+                meta: { gameMode: 'coop' },
+            }],
+        });
+
+        await syncOffline(store, api, noopPersist);
+
+        expect(api.createGame).toHaveBeenCalledWith(expect.objectContaining({ game_mode: 'coop' }));
+    });
+
+    it('pushes a coop match with the shared result and participants, no score map (ADR-33)', async () => {
+        const api = okApi();
+        const matchId = uuidv7() as Base58ID;
+        const store = makeStore({
+            matches: [{
+                clientId: matchId,
+                createdAt: '2026-06-01T11:00:00Z',
+                status: 'pending',
+                gameId: SERVER_GAME_ID,
+                score: {},
+                mode: 'coop',
+                playerIds: ['1' as Base58ID, '2' as Base58ID],
+                gameScore: 45,
+                gameWon: true,
+            }],
+        });
+
+        await syncOffline(store, api, noopPersist);
+
+        const call = vi.mocked(api.addMatch).mock.calls[0][0];
+        expect(call.mode).toBe('coop');
+        expect(call.player_ids).toEqual(['1', '2']);
+        expect(call.game_score).toBe(45);
+        expect(call.game_won).toBe(true);
+        expect(call).not.toHaveProperty('skip_tournament_link');
+    });
+
     it('forwards skip_tournament_link only when the match asked to stay out', async () => {
         const api = okApi();
         const store = makeStore({

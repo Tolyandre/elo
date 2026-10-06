@@ -50,6 +50,15 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTournamentMatchFitsNoSlot),
 		errors.Is(err, elo.ErrGrandFinalDeadlinePassed),
 		errors.Is(err, elo.ErrGameNameRequired),
+		// Game modes (ADR-33).
+		errors.Is(err, elo.ErrInvalidGameMode),
+		errors.Is(err, elo.ErrCoopScoresRejected),
+		errors.Is(err, elo.ErrCoopResultRequired),
+		errors.Is(err, elo.ErrCoopNoParticipants),
+		errors.Is(err, elo.ErrCoopLinksRejected),
+		errors.Is(err, elo.ErrCompetitiveMismatch),
+		errors.Is(err, elo.ErrModeContradictsGame),
+		errors.Is(err, elo.ErrCoopGameNotAllowed),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 

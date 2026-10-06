@@ -29,6 +29,9 @@ function matchEvent(id: string): FeedEvent {
             dateISO: "2026-01-01T00:00:00Z",
             score: {},
             has_markets: false,
+            mode: "competitive",
+            game_score: null,
+            game_won: null,
             camps: [],
         },
     };

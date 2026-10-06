@@ -381,7 +381,11 @@ type feedRequest struct {
 	// includeSettlements merges the correction and market-resolution events
 	// into the stream. They settle only into the global arena (ADR-24), so it
 	// is the only arena whose feed carries them.
-	includeSettlements       bool
+	includeSettlements bool
+	// includeCoop merges coop matches (ADR-33) into the stream. They belong to
+	// no arena (the membership function rejects their mode), so only the home
+	// feed carries them.
+	includeCoop              bool
 	playerID, clubID, gameID *string
 	cursorDate               pgtype.Timestamptz
 	cursorType               pgtype.Text
@@ -393,10 +397,11 @@ type feedRequest struct {
 // paginated list endpoints: on continuation the cursor token carries the
 // filters (in canonical id form), on page 1 they come from the query (wire
 // form) and are parsed tolerantly.
-func parseFeedRequest(arenaID id.ID, includeSettlements bool, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
+func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
 	req := feedRequest{
 		arenaID:            arenaID,
 		includeSettlements: includeSettlements,
+		includeCoop:        includeCoop,
 		limit:              30,
 	}
 	if next != nil && *next != "" {
@@ -435,6 +440,7 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 	keys, err := s.api.ArenaService.ListArenaFeedEvents(ctx, db.ListArenaFeedEventsParams{
 		ArenaID:            req.arenaID,
 		IncludeSettlements: req.includeSettlements,
+		IncludeCoop:        req.includeCoop,
 		CursorDate:         req.cursorDate,
 		CursorType:         req.cursorType,
 		CursorID:           req.cursorID,
@@ -542,6 +548,9 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 				Date:           r.Date.Time,
 				Players:        make(map[id.ID]matchPlayerJson),
 				HasMarkets:     r.HasMarkets,
+				Mode:           r.Mode,
+				GameScore:      r.GameScore,
+				GameWon:        r.GameWon,
 				CalculatorKind: r.CalculatorKind,
 			}
 			order = append(order, r.MatchID)
@@ -585,6 +594,9 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 			Date:       m.Date,
 			Score:      score,
 			HasMarkets: m.HasMarkets,
+			Mode:       MatchesMatchMode(m.Mode),
+			GameScore:  float8Ptr(m.GameScore),
+			GameWon:    boolPtr(m.GameWon),
 		}
 		if cs := campsByMatch[m.Id]; len(cs) > 0 {
 			match.Camps = &cs
@@ -628,6 +640,7 @@ func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedR
 	req, err := parseFeedRequest(
 		parseIDParam(request.Id),
 		parseIDParam(request.Id) == elo.GlobalArenaID,
+		false,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
 		request.Params.Next, request.Params.Limit,
 	)
@@ -643,10 +656,10 @@ func (s *StrictServer) ListArenaFeed(ctx context.Context, request ListArenaFeedR
 
 func (s *StrictServer) ListHomeFeed(ctx context.Context, request ListHomeFeedRequestObject) (ListHomeFeedResponseObject, error) {
 	// The home feed (ADR-32) is the extensible main-page surface. Today it is
-	// the global arena's event set; content that affects no rating (cooperative
-	// matches, posts) will join here — never the global arena's own feed.
+	// the global arena's event set plus the coop matches (ADR-33) — content
+	// that affects no rating joins here, never the global arena's own feed.
 	req, err := parseFeedRequest(
-		elo.GlobalArenaID, true,
+		elo.GlobalArenaID, true, true,
 		request.Params.PlayerId, request.Params.ClubId, request.Params.GameId,
 		request.Params.Next, request.Params.Limit,
 	)

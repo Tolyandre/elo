@@ -38,6 +38,15 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes";
 import { PageContainer } from "@/components/page-container";
 import { EmptyState } from "@/components/empty-state";
 import { GameImage } from "@/components/game-image";
@@ -428,6 +437,7 @@ function GameEditDialog({
     const [nameRu, setNameRu] = useState(game.name_ru ?? "");
     const [bggRef, setBggRef] = useState(game.bgg_ref != null ? String(game.bgg_ref) : "");
     const [teseraRef, setTeseraRef] = useState(game.tesera_ref != null ? String(game.tesera_ref) : "");
+    const [gameMode, setGameMode] = useState<GameMode>(game.game_mode);
     const [saving, setSaving] = useState(false);
     const [pickerQuery, setPickerQuery] = useState("");
 
@@ -447,6 +457,7 @@ function GameEditDialog({
                 name_ru: nameRu.trim() || null,
                 bgg_ref: bgg,
                 tesera_ref: tesera,
+                game_mode: gameMode,
             });
             onSaved();
         } catch {
@@ -528,6 +539,28 @@ function GameEditDialog({
                                 onChange={(e) => setTeseraRef(e.target.value.replace(/[^\d]/g, ""))}
                             />
                         </label>
+                    </div>
+                    <div className="flex flex-col gap-1 text-sm">
+                        <Label htmlFor="game-mode">Режим игры</Label>
+                        <Select value={gameMode} onValueChange={(v) => setGameMode(v as GameMode)}>
+                            <SelectTrigger id="game-mode" className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {GAME_MODES.map((m) => (
+                                    <SelectItem key={m} value={m}>
+                                        {GAME_MODE_LABELS[m]}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                            {gameMode === "coop"
+                                ? "Кооперативные и сольные партии не влияют на рейтинг, арены, рынки и турниры."
+                                : gameMode === "mixed"
+                                    ? "Режим выбирается при записи каждой партии."
+                                    : "Обычные партии с очками за каждого игрока."}
+                        </p>
                     </div>
                     {preview && (
                         <p className="text-xs text-muted-foreground">

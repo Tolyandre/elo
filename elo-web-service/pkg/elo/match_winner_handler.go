@@ -22,6 +22,11 @@ func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, ma
 	if gameIDs == nil {
 		gameIDs = []id.ID{}
 	}
+	// Coop-only games never produce rating matches (ADR-33) — no market can
+	// be built on them.
+	if err := RejectCoopGames(ctx, q, gameIDs); err != nil {
+		return err
+	}
 	if err := q.CreateMatchWinnerParams(ctx, db.CreateMatchWinnerParamsParams{
 		MarketID:          marketID,
 		TargetPlayerIds:   targets,

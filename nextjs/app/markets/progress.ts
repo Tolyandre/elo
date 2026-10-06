@@ -42,7 +42,8 @@ export async function fetchStreakMatches(params: WinStreakParams, start: Date, e
                 next,
                 limit: PAGE_LIMIT,
             });
-            for (const m of res.items) byId.set(m.id, m);
+            // Coop matches never count toward market progress (ADR-33).
+            for (const m of res.items) if (m.mode !== "coop") byId.set(m.id, m);
             // The feed is newest-first; once a whole page predates the window
             // (or is undated) everything after it does too.
             const beforeWindow = res.items.length > 0 && res.items.every((m) => !m.date || m.date < start);

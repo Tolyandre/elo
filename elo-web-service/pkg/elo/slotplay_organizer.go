@@ -251,6 +251,13 @@ func (s *TournamentService) AdjustSlot(ctx context.Context, tid, slotID, actorUs
 		if minScore != nil {
 			ms = pgtype.Float8{Float64: *minScore, Valid: true}
 		}
+		// Coop-only games never produce rating matches (ADR-33) — no slot can
+		// be reassigned to one.
+		if gameID != nil {
+			if err := RejectCoopGames(ctx, q, []id.ID{*gameID}); err != nil {
+				return err
+			}
+		}
 		if err := q.SetSlotAdjustment(ctx, db.SetSlotAdjustmentParams{SlotID: slotID, GameID: gameID, MinScore: ms}); err != nil {
 			return fmt.Errorf("adjust slot: %w", err)
 		}

@@ -31,6 +31,7 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 			TeseraRef:       intPtrOrNil(g.TeseraRef),
 			ImageUrl:        strPtrOrNil(g.ImageURL),
 			ImageThumbUrl:   strPtrOrNil(g.ImageThumbURL),
+			GameMode:        GamesGameMode(g.GameMode),
 			LastPlayedOrder: i,
 			TotalMatches:    g.TotalMatches,
 			Tags:            tags,
@@ -62,6 +63,7 @@ func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject
 			TeseraRef:     intPtrOrNil(game.TeseraRef),
 			ImageUrl:      strPtrOrNil(game.ImageURL),
 			ImageThumbUrl: strPtrOrNil(game.ImageThumbURL),
+			GameMode:      GamesGameMode(game.GameMode),
 			TotalMatches:  game.TotalMatches,
 		},
 	}, nil
@@ -79,8 +81,11 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 	}
 	game, err := s.api.GameService.AddGame(ctx, request.Body.Id, name, currentActorID(ctx), meta...)
 	if err != nil {
-		if domainStatusCode(err) == http.StatusConflict {
+		switch domainStatusCode(err) {
+		case http.StatusConflict:
 			return CreateGame409JSONResponse{Status: StatusFail, Message: "game with this name already exists"}, nil
+		case http.StatusBadRequest:
+			return CreateGame400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		}
 		return nil, err
 	}
@@ -91,18 +96,26 @@ func (s *StrictServer) CreateGame(ctx context.Context, request CreateGameRequest
 	return resp, nil
 }
 
-// createMeta carries the accepted catalogue suggestion (canonical names and
-// external refs) into AddGame; the alias is derived there, not sent.
+// createMeta carries the accepted catalogue suggestion (canonical names,
+// external refs) and the chosen game mode into AddGame; the alias is derived
+// there, not sent.
 func createMeta(body *CreateGameJSONRequestBody) (elo.GameMetaPatch, bool) {
-	if body == nil || (body.NameEn == nil && body.NameRu == nil && body.BggRef == nil && body.TeseraRef == nil) {
+	if body == nil {
 		return elo.GameMetaPatch{}, false
 	}
-	return elo.GameMetaPatch{
+	meta := elo.GameMetaPatch{
 		NameEn:    body.NameEn,
 		NameRu:    body.NameRu,
 		BggRef:    int64PtrOf(body.BggRef),
 		TeseraRef: int64PtrOf(body.TeseraRef),
-	}, true
+	}
+	if body.GameMode != nil {
+		mode := string(*body.GameMode)
+		meta.GameMode = &mode
+	}
+	hasAny := body.NameEn != nil || body.NameRu != nil ||
+		body.BggRef != nil || body.TeseraRef != nil || body.GameMode != nil
+	return meta, hasAny
 }
 
 func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestObject) (PatchGameResponseObject, error) {
@@ -113,6 +126,10 @@ func (s *StrictServer) PatchGame(ctx context.Context, request PatchGameRequestOb
 		NameRu:    body.NameRu,
 		BggRef:    int64PtrOf(body.BggRef),
 		TeseraRef: int64PtrOf(body.TeseraRef),
+	}
+	if body.GameMode != nil {
+		mode := string(*body.GameMode)
+		meta.GameMode = &mode
 	}
 	game, err := s.api.GameService.UpdateGame(ctx, parseIDParam(request.Id), meta, currentActorID(ctx))
 	if err != nil {

@@ -9,10 +9,11 @@ SELECT
 	g.tesera_id AS tesera_id,
 	g.image_url AS image_url,
 	g.image_thumb_url AS image_thumb_url,
+	g.game_mode AS game_mode,
 	COUNT(m.id) AS total_matches
 FROM games g
 LEFT JOIN matches m ON m.game_id = g.id
-GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url
+GROUP BY g.id, g.name, g.name_en, g.name_ru, g.alias, g.bgg_id, g.tesera_id, g.image_url, g.image_thumb_url, g.game_mode
 ORDER BY MAX(m.date) DESC;
 
 -- name: DeleteGame :one
@@ -27,13 +28,14 @@ SET	name_en = $2,
 	name_ru = $3,
 	alias = $4,
 	bgg_id = $5,
-	tesera_id = $6
+	tesera_id = $6,
+	game_mode = $7
 WHERE id = $1
 RETURNING *;
 
 -- name: AddGame :one
-INSERT INTO games (id, name_en, name_ru, alias, bgg_id, tesera_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO games (id, name_en, name_ru, alias, bgg_id, tesera_id, game_mode)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id
 RETURNING *;
 

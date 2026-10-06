@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/db"
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -67,7 +68,7 @@ func TestBggEnrichEndpoint(t *testing.T) {
 	addGame := func(nameEn string, bggID int64) idpkg.ID {
 		t.Helper()
 		gid := newID(t)
-		params := db.AddGameParams{ID: gid, NameEn: pgtype.Text{String: nameEn, Valid: true}}
+		params := db.AddGameParams{ID: gid, NameEn: pgtype.Text{String: nameEn, Valid: true}, GameMode: elo.GameModeCompetitive}
 		if bggID != 0 {
 			params.BggID = pgtype.Int4{Int32: int32(bggID), Valid: true}
 		}

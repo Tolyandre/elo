@@ -40,6 +40,9 @@ type EventProcessor struct {
 }
 
 // processMatchSettlements applies all settlements for a single match event.
+// A coop match (ADR-33) settles nothing: the Elo step and match-triggered
+// market resolution are skipped, but time-based market expiry still advances
+// — the match is a point on the replay timeline regardless of its mode.
 func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
@@ -47,16 +50,19 @@ func (p *EventProcessor) processMatchSettlements(
 	playerScores map[id.ID]float64,
 	state MatchPrevState,
 	matchDate time.Time,
+	matchMode string,
 	eloCalcFn EloCalcFunc,
 ) error {
 	// Steps 1 & 2: Calculate and store/update the global arena settlement
-	if err := eloCalcFn(ctx, q, matchID, playerScores, state); err != nil {
-		return fmt.Errorf("elo calc for match %s: %w", matchID, err)
-	}
+	if matchMode != MatchModeCoop {
+		if err := eloCalcFn(ctx, q, matchID, playerScores, state); err != nil {
+			return fmt.Errorf("elo calc for match %s: %w", matchID, err)
+		}
 
-	// Steps 3 & 4: Match-triggered market resolution (SettleMarket applies rating inside)
-	if err := p.MarketService.TriggerResolutionForMatch(ctx, q, matchID); err != nil {
-		return fmt.Errorf("market resolution for match %s: %w", matchID, err)
+		// Steps 3 & 4: Match-triggered market resolution (SettleMarket applies rating inside)
+		if err := p.MarketService.TriggerResolutionForMatch(ctx, q, matchID); err != nil {
+			return fmt.Errorf("market resolution for match %s: %w", matchID, err)
+		}
 	}
 
 	// Steps 5 & 6: Time-based market expiry up to this match's date
@@ -133,7 +139,7 @@ func (p *EventProcessor) RecalculateFrom(
 			}
 
 			if err := p.processMatchSettlements(ctx, q, match.ID, playerScores,
-				state, match.Date.Time, calcAndUpdateElo); err != nil {
+				state, match.Date.Time, match.Mode, calcAndUpdateElo); err != nil {
 				return err
 			}
 		} else {

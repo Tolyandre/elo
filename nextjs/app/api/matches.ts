@@ -3,6 +3,7 @@
 import { client, unwrap } from "./client";
 import { mapMatch, type Match, type MatchesPage } from "./types";
 import type { Base58ID } from "@/lib/id";
+import type { MatchMode } from "@/lib/game-modes";
 
 export async function getMatchesPagePromise(params?: {
     player_id?: string;
@@ -40,6 +41,11 @@ export async function addMatchPromise(payload: {
     date?: string;
     camp_arena_ids?: Base58ID[];
     skip_tournament_link?: boolean;
+    /** Coop match fields (ADR-33): mode plus the shared result and participants. */
+    mode?: MatchMode;
+    player_ids?: Base58ID[];
+    game_score?: number;
+    game_won?: boolean;
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {
@@ -48,11 +54,17 @@ export async function addMatchPromise(payload: {
 
 export async function updateMatchPromise(matchId: Base58ID, payload: {
     game_id: Base58ID;
-    score: Record<string, number>;
+    /** Per-player scores — competitive matches only; coop matches send game_score/game_won + player_ids instead. */
+    score?: Record<string, number>;
     date: string;
     camp_arena_ids?: Base58ID[];
     /** The desired tournament-link state (ADR-26): true — out of the bracket, false — counted. Omitted — unchanged. */
     skip_tournament_link?: boolean;
+    /** Coop match fields (ADR-33): the desired mode, shared result and participants. */
+    mode?: MatchMode;
+    player_ids?: Base58ID[];
+    game_score?: number;
+    game_won?: boolean;
     calculator_kind?: string | null;
     calculator_data?: Record<string, never> | null;
 }) {

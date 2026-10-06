@@ -125,6 +125,7 @@ type Game struct {
 	Name          string      `json:"name"`
 	ImageUrl      pgtype.Text `json:"image_url"`
 	ImageThumbUrl pgtype.Text `json:"image_thumb_url"`
+	GameMode      string      `json:"game_mode"`
 }
 
 type GameTable struct {
@@ -204,6 +205,9 @@ type Match struct {
 	CalculatorKind          pgtype.Text        `json:"calculator_kind"`
 	CalculatorSchemaVersion pgtype.Int4        `json:"calculator_schema_version"`
 	CalculatorData          json.RawMessage    `json:"calculator_data"`
+	Mode                    string             `json:"mode"`
+	GameScore               pgtype.Float8      `json:"game_score"`
+	GameWon                 pgtype.Bool        `json:"game_won"`
 }
 
 type MatchFilter struct {

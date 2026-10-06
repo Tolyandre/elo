@@ -586,12 +586,16 @@ FeedEvent:
       correction: '#/FeedCorrectionEvent'
       market: '#/FeedMarketEvent'
   description: >-
-    One feed event (ADR-32). New content kinds (cooperative matches, posts)
-    extend the union with another event schema — the envelope never changes.
+    One feed event (ADR-32). New content kinds (posts) extend the union with
+    another event schema — the envelope never changes.
 
 FeedMatchEvent:
   type: object
-  description: A match of the arena — the event that moved its ratings.
+  description: >-
+    A match of the arena — the event that moved its ratings. The home feed
+    (ADR-32) also carries coop matches (data.mode = "coop", ADR-33), which
+    affect no rating: their Match lacks rating data and carries the shared
+    game_score/game_won instead of meaningful per-player scores.
   properties:
     type:
       type: string

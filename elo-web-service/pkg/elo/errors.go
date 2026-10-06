@@ -57,4 +57,13 @@ var (
 	ErrGlobalArenaIsPermanent = errors.New("глобальную арену нельзя изменить или удалить")
 	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
 	ErrArenaNameTaken         = errors.New("арена с таким названием уже существует")
+
+	// Game modes (ADR-33).
+	ErrCoopScoresRejected  = errors.New("кооперативная партия не принимает очки игроков — отправьте общий игровой результат")
+	ErrCoopResultRequired  = errors.New("кооперативной партии нужен общий результат: игровой счёт и победа или поражение")
+	ErrCoopNoParticipants  = errors.New("кооперативная партия требует минимум 1 участника")
+	ErrCoopLinksRejected   = errors.New("кооперативная партия не учитывается в кэмпах и турнирах")
+	ErrCompetitiveMismatch = errors.New("соревновательная партия принимает очки игроков и не принимает общий игровой результат")
+	ErrModeContradictsGame = errors.New("режим партии противоречит режиму игры")
+	ErrCoopGameNotAllowed  = errors.New("кооперативные игры не участвуют в турнирах и рынках")
 )

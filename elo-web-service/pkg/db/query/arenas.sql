@@ -58,6 +58,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        (
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -173,6 +174,7 @@ FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = sqlc.arg('match_id')
 WHERE arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -255,6 +257,7 @@ FROM (
         CROSS JOIN matches m
         WHERE a.id = sqlc.arg('arena_id')
           AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -298,6 +301,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '60 days') AND m.date <= now()
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -312,6 +316,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '180 days') AND m.date <= now()
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -334,11 +339,17 @@ WITH events AS (
     CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = sqlc.arg('arena_id')
-      AND arena_contains_match(
+      AND (
+          arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
+          -- Home feed only (ADR-32/33): coop matches affect no arena, but they
+          -- belong to the general feed. Arena feeds keep them out.
+          OR (sqlc.arg('include_coop')::bool AND m.mode = 'coop')
+      )
       AND (
           sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid
       )
@@ -388,6 +399,9 @@ SELECT
     g.id AS game_id,
     g.name AS game_name,
     m.calculator_kind AS calculator_kind,
+    m.mode AS mode,
+    m.game_score AS game_score,
+    m.game_won AS game_won,
     p.id AS player_id,
     p.name AS player_name,
     s.score,
@@ -425,6 +439,7 @@ WHERE ms.player_id = sqlc.arg('player_id')
   AND m.date >= sqlc.arg('date_from')::timestamptz
   AND m.date <= sqlc.arg('date_to')::timestamptz
   AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -441,6 +456,7 @@ CROSS JOIN matches m
 WHERE a.id = sqlc.arg('arena_id')::uuid
   AND m.date >= sqlc.arg('from_date')::timestamptz
   AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -478,6 +494,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
@@ -492,6 +509,7 @@ LEFT JOIN LATERAL (
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
+    m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),

@@ -47,7 +47,7 @@ export function AttachMatchDialog({
                 if (cancelled) return;
                 const seatSet = new Set<string>(seatIds);
                 const fitting = page.items
-                    .filter((m) => !m.tournament && m.score && setEquals(Object.keys(m.score), seatSet))
+                    .filter((m) => m.mode !== "coop" && !m.tournament && m.score && setEquals(Object.keys(m.score), seatSet))
                     .map((m) => ({
                         id: m.id,
                         label: `${m.date ? formatDateTime(m.date) : "без даты"} · ${[...seatSet].map(playerName).join(", ")}`,

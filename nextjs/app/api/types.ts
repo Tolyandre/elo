@@ -90,6 +90,15 @@ export type Match = {
     dateISO: string | null;
     score: Record<string, PlayerScore>;
     has_markets: boolean;
+    /**
+     * The match's mode (ADR-33): competitive matches carry per-player scores
+     * feeding arenas/markets; coop matches carry the shared game result below
+     * and never affect ratings or stats.
+     */
+    mode: "competitive" | "coop";
+    /** The shared game result of a coop match; null for competitive ones. */
+    game_score: number | null;
+    game_won: boolean | null;
     /** Camp arenas (ADR-27) the match belongs to — frozen at creation. */
     camps: MatchCamp[];
     /** The bracket slot the match counts for (ADR-26); null when unlinked. */
@@ -151,6 +160,9 @@ export function mapMatch(m: components["schemas"]["Match"]): Match {
         date: m.date ? new Date(m.date) : null,
         dateISO: m.date ?? null,
         has_markets: m.has_markets,
+        mode: m.mode,
+        game_score: m.game_score ?? null,
+        game_won: m.game_won ?? null,
         camps: m.camps ?? [],
         tournament: m.tournament ?? null,
         // idcodec middleware already rewrote player ids inside calculator_data to

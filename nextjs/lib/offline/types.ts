@@ -2,6 +2,7 @@
 
 import { uuidv7 } from "uuidv7";
 import { Base58ID, encodeId } from "../id";
+import type { GameMode, MatchMode } from "../game-modes";
 
 export type SyncStatus = "pending" | "syncing" | "error";
 
@@ -44,14 +45,28 @@ export type PendingGame = PendingBase & {
         nameRu?: string | null;
         bggRef?: number | null;
         teseraRef?: number | null;
+        /** The game mode picked at creation (ADR-33); competitive when omitted. */
+        gameMode?: GameMode;
     };
 };
 
 export type PendingMatch = PendingBase & {
     /** Server game id, or clientId of a pending game. */
     gameId: Base58ID;
-    /** Keys are server player ids or clientIds of pending players. */
+    /**
+     * Keys are server player ids or clientIds of pending players. Competitive
+     * matches carry the per-player scores; coop matches list their participants
+     * here (or in playerIds) with zero scores — the shared result lives in
+     * gameScore/gameWon.
+     */
     score: Record<string, number>;
+    /** Coop match mode (ADR-33); competitive (per-player scores) when omitted. */
+    mode?: MatchMode;
+    /** Participant list of a coop match, instead of per-player scores. */
+    playerIds?: Base58ID[];
+    /** The shared game result of a coop match. */
+    gameScore?: number;
+    gameWon?: boolean;
     /** Server camp arena ids (ADR-27) this match belongs to (camps are never created offline). */
     campArenaIds: Base58ID[];
     /**

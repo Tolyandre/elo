@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { isRatingGame } from "@/lib/game-modes";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
     Select,
@@ -323,7 +324,7 @@ export default function NewMarketPage() {
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
-                            <GameMultiSelect value={gameIDs} onChange={setGameIDs} />
+                            <GameMultiSelect value={gameIDs} onChange={setGameIDs} filter={isRatingGame} />
                         </div>
                     </>
                 )}
@@ -336,7 +337,7 @@ export default function NewMarketPage() {
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
-                            <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} />
+                            <GameMultiSelect value={streakGameIDs} onChange={setStreakGameIDs} filter={isRatingGame} />
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="wins_required">Побед требуется</Label>

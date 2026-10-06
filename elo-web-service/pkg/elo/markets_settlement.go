@@ -19,6 +19,12 @@ func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Que
 		return fmt.Errorf("get match %s: %w", matchID, err)
 	}
 
+	// Coop matches never resolve markets (ADR-33); the settlement processor
+	// already skips them, this keeps the trigger honest on its own.
+	if match.Mode == MatchModeCoop {
+		return nil
+	}
+
 	scores, err := q.GetMatchScoresForMatch(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("get scores for match %s: %w", matchID, err)

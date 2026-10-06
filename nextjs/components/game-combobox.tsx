@@ -8,6 +8,14 @@ import { cn } from "@/lib/utils"
 import { allNames, secondaryNames } from "@/lib/game-names"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Command,
   CommandEmpty,
@@ -42,13 +50,18 @@ import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { buildGameGroups } from "@/lib/game-groups"
+import { GAME_MODES, GAME_MODE_LABELS, type GameMode } from "@/lib/game-modes"
+import type { GameListItem } from "@/app/api"
 
 export function GameCombobox({
   value: controlledValue,
   onChange,
+  filterGame,
 }: {
   value?: Base58ID
   onChange?: (id?: Base58ID) => void
+  /** Optional game filter — e.g. hiding coop-only games from the tournament pool picker (ADR-33). */
+  filterGame?: (game: GameListItem) => boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
@@ -64,16 +77,22 @@ export function GameCombobox({
   const { pendingGames } = useOffline();
 
   const groups = React.useMemo(() => {
-    const base = buildGameGroups(games, matches, playerId);
+    const visibleGames = filterGame ? games.filter(filterGame) : games;
+    const base = buildGameGroups(visibleGames, matches, playerId);
     if (pendingGames.length === 0) return base;
+    // A pending coop game is equally unusable in a rating picker (ADR-33).
+    const visiblePending = filterGame
+      ? pendingGames.filter((g) => g.meta?.gameMode !== "coop")
+      : pendingGames;
+    if (visiblePending.length === 0) return base;
     return [
       {
         heading: "Офлайн (не сохранено)",
-        options: pendingGames.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)`, game: undefined })),
+        options: visiblePending.map((g) => ({ value: g.clientId, label: `${g.name} (офлайн)`, game: undefined })),
       },
       ...base,
     ];
-  }, [games, matches, playerId, pendingGames]);
+  }, [games, matches, playerId, pendingGames, filterGame]);
 
   const displayName = (id: string) =>
     games.find((game) => game.id === id)?.name
@@ -243,7 +262,7 @@ function GameCreateDialog({
         <DialogHeader>
           <DialogTitle>Новая игра</DialogTitle>
           <DialogDescription>
-            Проверьте название и при необходимости выберите теги.
+            Проверьте название, выберите режим и при необходимости теги.
           </DialogDescription>
         </DialogHeader>
         {/* Inside the (unmounted-when-closed) dialog content, so the draft
@@ -273,6 +292,7 @@ function GameCreateForm({
 
   const [name, setName] = React.useState(initialName)
   const [selectedTagIds, setSelectedTagIds] = React.useState<Set<Base58ID>>(new Set())
+  const [gameMode, setGameMode] = React.useState<GameMode>("competitive")
   const [creating, setCreating] = React.useState(false)
   const [accepted, setAccepted] = React.useState<AcceptedGameSuggestion | null>(null)
 
@@ -299,12 +319,13 @@ function GameCreateForm({
     if (!trimmed || creating) return
     setCreating(true)
     try {
-      const game = addPendingGame(trimmed, [...selectedTagIds], accepted ? {
-        nameEn: accepted.nameEn,
-        nameRu: accepted.nameRu,
-        bggRef: accepted.bggRef,
-        teseraRef: accepted.teseraRef,
-      } : undefined)
+      const game = addPendingGame(trimmed, [...selectedTagIds], {
+        nameEn: accepted?.nameEn,
+        nameRu: accepted?.nameRu,
+        bggRef: accepted?.bggRef,
+        teseraRef: accepted?.teseraRef,
+        gameMode,
+      })
       onClose()
       onCreated(game.clientId)
     } finally {
@@ -322,6 +343,21 @@ function GameCreateForm({
         autoFocus
         aria-label="Название новой игры"
       />
+      <div className="space-y-1.5">
+        <Label htmlFor="new-game-mode">Режим игры</Label>
+        <Select value={gameMode} onValueChange={(v) => setGameMode(v as GameMode)}>
+          <SelectTrigger id="new-game-mode" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GAME_MODES.map((m) => (
+              <SelectItem key={m} value={m}>
+                {GAME_MODE_LABELS[m]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <GameSuggestionChips
         suggestions={suggestions}
         accepted={accepted}
