@@ -19,8 +19,11 @@ const PLAYER_PALETTE = [
 ] as const;
 
 const FIXED_KIND_COLORS: Partial<Record<MarketOutcome["kind"], string>> = {
-    yes: "var(--chart-7)", // green
-    no: "var(--chart-1)", // red
+    // The Да/Нет pair is win_streak-only and stays red-green in both themes
+    // (--chart-yes/--chart-no; the categorical wheel would turn blue/cyan in
+    // dark). "yes" means the streak was reached, "no" that it failed.
+    yes: "var(--chart-yes)", // green
+    no: "var(--chart-no)", // red
     other: "var(--muted-foreground)", // slate
 };
 

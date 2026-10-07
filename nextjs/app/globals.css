@@ -84,6 +84,10 @@
   --chart-8: oklch(0.55 0.2 256);
   --chart-9: oklch(0.62 0.21 347);
   --chart-10: oklch(0.47 0.1 50);
+  /* Semantic outcome colors for the win_streak Да/Нет charts — red-green in
+     both themes (the categorical chart-1..10 wheel turns blue/cyan in dark). */
+  --chart-yes: oklch(0.62 0.16 150);
+  --chart-no: oklch(0.646 0.222 41.116);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -126,6 +130,8 @@
   --chart-8: oklch(0.7 0.21 340);
   --chart-9: oklch(0.8 0.19 127);
   --chart-10: oklch(0.68 0.14 240);
+  --chart-yes: oklch(0.696 0.17 162.48);
+  --chart-no: oklch(0.704 0.191 22.216);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
