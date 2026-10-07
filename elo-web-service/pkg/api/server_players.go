@@ -228,15 +228,12 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 	// The display arena for the rating history and the Elo-per-game tables:
 	// the ?tenant='s main arena (ADR-36 phase 4), the global arena otherwise.
 	// "Частые игры" is tenant-independent and reads no arena at all.
-	arenaID := elo.GlobalArenaID
-	if request.Params.Tenant != nil && *request.Params.Tenant != "" {
-		arenaID, err = s.api.TenantService.FeedArena(ctx, parseIDParam(*request.Params.Tenant))
-		if err != nil {
-			if db.IsNoRows(err) {
-				return GetPlayerStats404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
-			}
-			return nil, err
+	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return GetPlayerStats404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 		}
+		return nil, err
 	}
 
 	ratingRows, err := s.api.PlayerService.RatingHistory(ctx, playerID, arenaID)

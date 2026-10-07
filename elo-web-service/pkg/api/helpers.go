@@ -378,6 +378,17 @@ func parseIDParam(s string) id.ID {
 	return parsed
 }
 
+// resolveDisplayArena resolves the display arena behind a request's ?tenant=
+// query parameter (ADR-36): the tenant's main arena, or the global arena when
+// the parameter is absent. A named but missing tenant yields no rows
+// (db.ErrNoRows) — the caller maps that to its 404 response.
+func (s *StrictServer) resolveDisplayArena(ctx context.Context, tenant *string) (id.ID, error) {
+	if tenant == nil || *tenant == "" {
+		return elo.GlobalArenaID, nil
+	}
+	return s.api.TenantService.FeedArena(ctx, parseIDParam(*tenant))
+}
+
 // derefIDs returns the pointed-to id slice, or nil if the pointer is nil.
 func derefIDs(s *[]id.ID) []id.ID {
 	if s == nil {

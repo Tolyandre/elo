@@ -1043,6 +1043,125 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 	}
 }
 
+// TestTenants_MatchDisplayArena pins the display arena of the match reads
+// (ADR-36 phase 4): ?tenant= scopes the per-player settlement columns
+// (rating staked/earned/after) to the tenant's main arena on both
+// GET /matches/{id} and GET /matches; without the parameter the global arena
+// is used, so a fresh tenant's match (settling nowhere globally) shows no
+// rating there. A missing tenant is a 404.
+func TestTenants_MatchDisplayArena(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	tenantID, clubA, _ := createTenant(t, router, token, "Матчевое", "any_member", "open")
+
+	// Bare players with no «Синие люди» stint: the match settles ONLY into
+	// the fresh tenant's main arena.
+	member := createBareTestPlayer(t, pool, "Матч-член")
+	opponent := createBareTestPlayer(t, pool, "Матч-соперник")
+	addClubMember(t, router, token, clubA.String(), member)
+
+	game := createTestGame(t, pool, "Игра матча")
+	if _, err := newMatchService(pool).AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, opponent: 20}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch: %v", err)
+	}
+
+	// A match id for the reads: the fresh tenant's only match, taken from the
+	// tenant-scoped list.
+	tenantQuery := "?tenant=" + tenantID.String()
+	listPage := decodeMatchesPage(t, router, "/matches"+tenantQuery+"&player_id="+short(member))
+	if len(listPage.Data) != 1 {
+		t.Fatalf("tenant match list holds %d matches, want 1", len(listPage.Data))
+	}
+	matchID := listPage.Data[0].Id
+
+	decodeMatch := func(path string) matchJSON {
+		t.Helper()
+		w := doJSON(t, router, http.MethodGet, path, "", "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %s", path, w.Code, w.Body.String())
+		}
+		var resp struct {
+			Data matchJSON `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode match: %v", err)
+		}
+		return resp.Data
+	}
+
+	// Tenant-scoped detail: both players carry main-arena settlements.
+	tenantMatch := decodeMatch("/matches/" + url.PathEscape(matchID) + tenantQuery)
+	if len(tenantMatch.Score) != 2 {
+		t.Fatalf("tenant match score holds %d players, want 2", len(tenantMatch.Score))
+	}
+	earned := 0.0
+	for pid, p := range tenantMatch.Score {
+		if p.RatingAfter == 0 {
+			t.Fatalf("player %s has zero rating_after in the tenant scope", pid)
+		}
+		earned += p.RatingEarned
+	}
+	if earned == 0 {
+		t.Fatalf("tenant match shows no rating changes: %+v", tenantMatch.Score)
+	}
+
+	// The same match unscoped: the global arena never settled it — zeroed
+	// columns, same match payload otherwise.
+	globalMatch := decodeMatch("/matches/" + url.PathEscape(matchID))
+	if len(globalMatch.Score) != 2 {
+		t.Fatalf("global match score holds %d players, want 2", len(globalMatch.Score))
+	}
+	for pid, p := range globalMatch.Score {
+		if p.RatingEarned != 0 || p.RatingAfter != 0 {
+			t.Fatalf("player %s leaks global columns (%+v), want zeros", pid, p)
+		}
+	}
+
+	// A missing tenant is a 404 on both reads.
+	if code := decodeFeedStatus(t, router, "/matches/"+url.PathEscape(matchID)+"?tenant="+newID(t).String()); code != http.StatusNotFound {
+		t.Fatalf("match with unknown tenant gave %d, want 404", code)
+	}
+	if code := decodeFeedStatus(t, router, "/matches?tenant="+newID(t).String()); code != http.StatusNotFound {
+		t.Fatalf("match list with unknown tenant gave %d, want 404", code)
+	}
+}
+
+// matchJSON is the wire shape the display-arena assertions touch.
+type matchJSON struct {
+	Id    string `json:"id"`
+	Score map[string]struct {
+		Score        float64 `json:"score"`
+		RatingStaked float64 `json:"rating_staked"`
+		RatingEarned float64 `json:"rating_earned"`
+		RatingAfter  float64 `json:"rating_after"`
+	} `json:"score"`
+}
+
+// decodeMatchesPage fetches one paginated match-list page.
+func decodeMatchesPage(t *testing.T, router http.Handler, path string) struct {
+	Data []matchJSON `json:"data"`
+	Next *string     `json:"next"`
+} {
+	t.Helper()
+	w := doJSON(t, router, http.MethodGet, path, "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", path, w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []matchJSON `json:"data"`
+		Next *string     `json:"next"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode matches page: %v", err)
+	}
+	return resp
+}
+
 // TestTenants_MarketSettlesIntoTenantArena pins the settlement arena: a market
 // resolves into its owning tenant's main arena — buyer and guarantor rows
 // included — and the recalculation re-settles it there after a match edit.

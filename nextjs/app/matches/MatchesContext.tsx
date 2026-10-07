@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from "react";
 import { getMatchesPagePromise, Match } from "../api";
+import { useTenantScope } from "../tenantScopeContext";
 import type { Base58ID } from "@/lib/id";
 
 type Filters = {
@@ -32,13 +33,20 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   const [matchHasMore, setMatchHasMore] = useState(false);
   const [filters, setFiltersState] = useState<Filters>({});
 
+  // The settlement columns (rating staked/earned/after) are scoped to the
+  // current tenant's main arena (ADR-36) — the match set itself is global.
+  // The fetch waits for the tenant scope to settle so the cache never mixes
+  // arenas; pickers and lists that ignore the columns only see a refetch.
+  const { tenantId, ready: tenantScopeReady } = useTenantScope();
+
   const matchCursorRef = useRef<string | null>(null);
   const [stamp, setStamp] = useState(0);
 
   const hasMore = matchHasMore;
 
-  // Load page 1 whenever filters or stamp change
+  // Load page 1 whenever filters, the tenant scope, or the stamp change
   useEffect(() => {
+    if (!tenantScopeReady) return; // hold loading until the arena is known
     let cancelled = false;
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before async fetch */
     setLoading(true);
@@ -49,6 +57,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
       player_id: filters.playerId,
       game_id: filters.gameId,
       club_id: filters.clubId ?? undefined,
+      tenant: tenantId ?? undefined,
     })
       .then((matchPage) => {
         if (cancelled) return;
@@ -66,16 +75,16 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
 
     return () => { cancelled = true; };
 
-  }, [filters, stamp]);
+  }, [filters, stamp, tenantScopeReady, tenantId]);
 
   const loadMore = useCallback(() => {
-    if (loadingMore) return;
+    if (loadingMore || !tenantScopeReady) return;
     const matchCursor = matchCursorRef.current;
     if (!matchCursor) return;
 
     setLoadingMore(true);
 
-    getMatchesPagePromise({ next: matchCursor })
+    getMatchesPagePromise({ next: matchCursor, tenant: tenantId ?? undefined })
       .then((matchPage) => {
         matchCursorRef.current = matchPage.next;
         setMatchHasMore(matchPage.next !== null);
@@ -88,7 +97,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
         setLoadingMore(false);
       });
 
-  }, [loadingMore]);
+  }, [loadingMore, tenantScopeReady, tenantId]);
 
   const setFilters = useCallback((f: Filters) => {
     setFiltersState(prev =>

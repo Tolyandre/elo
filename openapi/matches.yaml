@@ -26,6 +26,15 @@ MatchesCollection:
         schema:
           type: string
         description: Filter to matches counted for the tournament's bracket
+      - name: tenant
+        in: query
+        schema:
+          type: string
+        description: >-
+          Scope the per-player settlement columns (rating staked/earned/after)
+          to the tenant's main arena (ADR-36). Without the parameter the
+          global arena is used. Continuation requests must pass the same
+          tenant — the cursor token does not carry it.
       - name: next
         in: query
         schema:
@@ -48,6 +57,12 @@ MatchesCollection:
               $ref: '#/MatchesPage'
       "400":
         description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found (the ?tenant= parameter names no existing tenant)
         content:
           application/json:
             schema:
@@ -197,6 +212,14 @@ MatchItem:
         required: true
         schema:
           type: string
+      - name: tenant
+        in: query
+        schema:
+          type: string
+        description: >-
+          Scope the per-player settlement columns (rating staked/earned/after)
+          to the tenant's main arena (ADR-36). Without the parameter the
+          global arena is used.
     responses:
       "200":
         description: Match details

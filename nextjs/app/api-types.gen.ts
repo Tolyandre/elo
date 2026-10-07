@@ -3812,6 +3812,8 @@ export interface operations {
                 club_id?: string;
                 /** @description Filter to matches counted for the tournament's bracket */
                 tournament_id?: string;
+                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. Continuation requests must pass the same tenant — the cursor token does not carry it. */
+                tenant?: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of matches per page */
@@ -3834,6 +3836,15 @@ export interface operations {
             };
             /** @description Bad request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found (the ?tenant= parameter names no existing tenant) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3941,7 +3952,10 @@ export interface operations {
     };
     GetMatchById: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. */
+                tenant?: string;
+            };
             header?: never;
             path: {
                 id: string;

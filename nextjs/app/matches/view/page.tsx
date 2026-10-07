@@ -7,6 +7,7 @@ import type { Base58ID } from "@/lib/id";
 import { toast } from "sonner";
 import { useMatches } from "../MatchesContext";
 import { useMe } from "../../meContext";
+import { useTenantScope } from "../../tenantScopeContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { Match, Market, getMatchByIdPromise, getMarketsByMatchIdPromise } from "../../api";
 import { MarketCard } from "@/components/market-card";
@@ -98,6 +99,9 @@ function EditAction({ id, disabled = false, viaCalculator = false }: { id: strin
 function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const { matches, loading: contextLoading } = useMatches();
   const { roundToInteger, setRoundToInteger } = useMe();
+  // The rating columns come from the current tenant's main arena (ADR-36);
+  // the matches context is tenant-scoped the same way, so both sources agree.
+  const { tenantId } = useTenantScope();
   const [matchFromApi, setMatchFromApi] = useState<Match | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,16 +110,17 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
 
   const matchFromContext = matches.find((m) => m.id === matchId) ?? null;
 
-  // Fetch from API only once context is done loading and match still not found
+  // Fetch from API only once the context is done loading (it waits for the
+  // tenant scope) and the match is still not found in it
   useEffect(() => {
     if (matchFromContext || fetchedRef.current || contextLoading) return;
     fetchedRef.current = true;
     setFetchLoading(true);
-    getMatchByIdPromise(matchId)
+    getMatchByIdPromise(matchId, tenantId ? { tenant: tenantId } : undefined)
       .then(setMatchFromApi)
       .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
       .finally(() => setFetchLoading(false));
-  }, [matchId, matchFromContext, contextLoading]);
+  }, [matchId, matchFromContext, contextLoading, tenantId]);
 
   const match = matchFromApi ?? matchFromContext;
   const loading = (contextLoading && !matchFromContext) || fetchLoading;

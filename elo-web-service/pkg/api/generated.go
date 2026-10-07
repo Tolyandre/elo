@@ -2741,6 +2741,9 @@ type ListMatchesParams struct {
 	// TournamentId Filter to matches counted for the tournament's bracket
 	TournamentId *string `form:"tournament_id,omitempty" json:"tournament_id,omitempty"`
 
+	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. Continuation requests must pass the same tenant — the cursor token does not carry it.
+	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
+
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
 
@@ -2785,6 +2788,12 @@ type AddMatchJSONBody struct {
 
 	// SkipTournamentLink Explicit opt-out from tournament bracket acceptance (ADR-26). When the match exactly fits a playing slot (same game, exactly the seated players) the server links it by default — the form checkbox is default-checked. Send true to keep the match out of the bracket; fitting is always verified server-side.
 	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
+}
+
+// GetMatchByIdParams defines parameters for GetMatchById.
+type GetMatchByIdParams struct {
+	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used.
+	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -4036,7 +4045,7 @@ type ServerInterface interface {
 	AddMatch(c *gin.Context)
 	// GetMatchById Get a match by ID
 	// (GET /matches/{id})
-	GetMatchById(c *gin.Context, id string)
+	GetMatchById(c *gin.Context, id string, params GetMatchByIdParams)
 	// UpdateMatch Update a match (scores and date)
 	// (PUT /matches/{id})
 	UpdateMatch(c *gin.Context, id string)
@@ -5263,6 +5272,14 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 		return
 	}
 
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	// ------------- Optional query parameter "next" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -5317,6 +5334,17 @@ func (siw *ServerInterfaceWrapper) GetMatchById(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMatchByIdParams
+
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5324,7 +5352,7 @@ func (siw *ServerInterfaceWrapper) GetMatchById(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetMatchById(c, id)
+	siw.Handler.GetMatchById(c, id, params)
 }
 
 // UpdateMatch operation middleware
@@ -9057,6 +9085,20 @@ func (response ListMatches400JSONResponse) VisitListMatchesResponse(w http.Respo
 	return err
 }
 
+type ListMatches404JSONResponse ApiError
+
+func (response ListMatches404JSONResponse) VisitListMatchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddMatchRequestObject struct {
 	Body *AddMatchJSONRequestBody
 }
@@ -9142,7 +9184,8 @@ func (response AddMatch409JSONResponse) VisitAddMatchResponse(w http.ResponseWri
 }
 
 type GetMatchByIdRequestObject struct {
-	Id string `json:"id"`
+	Id     string `json:"id"`
+	Params GetMatchByIdParams
 }
 
 type GetMatchByIdResponseObject interface {
@@ -13863,10 +13906,11 @@ func (sh *strictHandler) AddMatch(ctx *gin.Context) {
 }
 
 // GetMatchById operation middleware
-func (sh *strictHandler) GetMatchById(ctx *gin.Context, id string) {
+func (sh *strictHandler) GetMatchById(ctx *gin.Context, id string, params GetMatchByIdParams) {
 	var request GetMatchByIdRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMatchById(ctx, request.(GetMatchByIdRequestObject))

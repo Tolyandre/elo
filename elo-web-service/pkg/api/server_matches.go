@@ -58,10 +58,21 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 		limit = int32(*params.Limit)
 	}
 
+	// The display arena behind the per-player settlement columns: the
+	// ?tenant='s main arena (ADR-36), the global arena otherwise. The
+	// parameter scopes the columns only — the match set itself is not
+	// arena-filtered; continuation requests pass the same ?tenant= (the
+	// cursor token does not carry it).
+	arenaID, err := s.resolveDisplayArena(ctx, params.Tenant)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return ListMatches404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+		}
+		return nil, err
+	}
+
 	rows, err := s.api.MatchService.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
-		// The display arena: the global arena (== «Синие люди»'s main arena)
-		// until the frontend carries ?club= (ADR-36 phase 4).
-		ArenaID:      elo.GlobalArenaID,
+		ArenaID:      arenaID,
 		GameID:       idPtr(gameID),
 		PlayerID:     idPtr(playerID),
 		ClubID:       idPtr(clubID),
@@ -290,7 +301,16 @@ func (s *StrictServer) tournamentByMatch(ctx context.Context, matchIDs []id.ID) 
 }
 
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
-	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id), elo.GlobalArenaID)
+	// The display arena behind the per-player settlement columns: the
+	// ?tenant='s main arena (ADR-36), the global arena otherwise.
+	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return GetMatchById404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+		}
+		return nil, err
+	}
+	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id), arenaID)
 	if err != nil {
 		return nil, err
 	}
