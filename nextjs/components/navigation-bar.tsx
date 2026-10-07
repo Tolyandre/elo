@@ -131,8 +131,11 @@ export function NavigationBar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem className="flex items-center">
-          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2 min-w-0")}>
-            <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="flex items-center gap-1 min-w-0">
+          {/* NavigationMenuLink's own base classes carry flex-col gap-1 p-2 —
+              fine for the former text-only «Главная», stacking for an
+              icon+name pair: flex-row here lets tailwind-merge win over it. */}
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "min-w-0 flex-row gap-1 px-1.5 sm:px-2")}>
+            <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="min-w-0">
               <Users className="h-4 w-4 shrink-0" />
               <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
             </Link>
