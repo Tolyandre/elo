@@ -78,7 +78,8 @@ describe("buildArenaGroups", () => {
     expect(groups[0].arenas.map((a) => a.name)).toEqual(["Кланк!", "Серия"]);
     // Recent games in combobox order; arenas of one game adjacent, most matches first.
     expect(groups[1].arenas.map((a) => a.name)).toEqual(["Дельта кубок", "Дельта вечер", "Эпсилон арена"]);
-    expect(groups[2].arenas.map((a) => a.name)).toEqual(["Альфа арена", "Бета арена"]);
+    // Popular games keep their play-count order (most played first).
+    expect(groups[2].arenas.map((a) => a.name)).toEqual(["Бета арена", "Альфа арена"]);
     // Arenas of a game beyond the popular cut, then the arenas with no single game.
     expect(groups[3].arenas.map((a) => a.name)).toEqual(["Лямбда арена", "Сезон 2025"]);
   });

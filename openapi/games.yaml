@@ -430,6 +430,42 @@ GameSuggestionsPath:
             schema:
               $ref: './common.yaml#/ApiError'
 
+GamesFavoritesPath:
+  get:
+    operationId: ListFavoriteGames
+    tags: [games]
+    summary: Favorite games for the current user's game picker
+    description: >
+      The two sections of the picker's «Избранные» tab, computed for the
+      authenticated user. «Недавние» lists games recently played by the user's
+      player or by a member of any of their clubs, most recent match first.
+      «Популярные» lists games most played by members of their clubs; users
+      whose player belongs to no club fall back to the globally most played
+      games. Popular excludes games already listed as recent. The entries are
+      ids plus their ranking keys — the client resolves names against the
+      /games list.
+    security:
+      - cookieAuth: []
+    responses:
+      "200":
+        description: Favorite games, each section at most 7 entries
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/FavoriteGames'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 GameAutoMatchPath:
   post:
     operationId: AutoMatchGames
@@ -509,6 +545,42 @@ GameBggEnrichPath:
               $ref: './common.yaml#/ApiError'
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
+
+FavoriteGames:
+  type: object
+  properties:
+    recent:
+      type: array
+      items:
+        $ref: '#/RecentGame'
+      description: «Недавние» — most recently played first
+    popular:
+      type: array
+      items:
+        $ref: '#/PopularGame'
+      description: «Популярные» — most played first
+  required: [recent, popular]
+
+RecentGame:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    recent_at:
+      type: string
+      format: date-time
+      description: The recency key the entry was ranked by — the date of the most recent relevant match.
+  required: [id, recent_at]
+
+PopularGame:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    match_count:
+      type: integer
+      description: The popularity key the entry was ranked by — the number of relevant matches.
+  required: [id, match_count]
 
 GameListItem:
   type: object

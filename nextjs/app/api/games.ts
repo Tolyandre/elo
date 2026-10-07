@@ -1,11 +1,16 @@
 // Games, their catalogue metadata, tags, and the Tesera suggestion matching.
 import { client, unwrap, newId } from "./client";
-import type { Game, GameAutoMatchResult, GameEnrichResult, GameList, GameSuggestion, Tag } from "./types";
+import type { Game, GameAutoMatchResult, GameEnrichResult, GameList, GameSuggestion, FavoriteGames, Tag } from "./types";
 import type { Base58ID } from "@/lib/id";
 import type { GameMode } from "@/lib/game-modes";
 
 export async function getGamesPromise(): Promise<GameList> {
     return (await unwrap(client.GET("/games"))).data;
+}
+
+/** The game picker's «Избранные» sections for the signed-in user. */
+export async function getFavoriteGamesPromise(): Promise<FavoriteGames> {
+    return (await unwrap(client.GET("/games/favorites"))).data;
 }
 
 export async function getGamePromise(id: Base58ID): Promise<Game> {

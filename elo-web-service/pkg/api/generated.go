@@ -1335,6 +1335,15 @@ type EloSettingEntry struct {
 	WinReward     float64 `json:"win_reward"`
 }
 
+// FavoriteGames defines model for FavoriteGames.
+type FavoriteGames struct {
+	// Popular «Популярные» — most played first
+	Popular []PopularGame `json:"popular"`
+
+	// Recent «Недавние» — most recently played first
+	Recent []RecentGame `json:"recent"`
+}
+
 // FeedCorrectionEvent An admin rating correction (global arena only, ADR-24).
 type FeedCorrectionEvent struct {
 	Data Correction              `json:"data"`
@@ -1864,11 +1873,29 @@ type PlayerStats struct {
 	WorstGamesByEloEarned []GameEloStat   `json:"worst_games_by_elo_earned"`
 }
 
+// PopularGame defines model for PopularGame.
+type PopularGame struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// MatchCount The popularity key the entry was ranked by — the number of relevant matches.
+	MatchCount int `json:"match_count"`
+}
+
 // RatingPoint defines model for RatingPoint.
 type RatingPoint struct {
 	Date   time.Time `json:"date"`
 	Elo    float64   `json:"elo"`
 	Rating float64   `json:"rating"`
+}
+
+// RecentGame defines model for RecentGame.
+type RecentGame struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// RecentAt The recency key the entry was ranked by — the date of the most recent relevant match.
+	RecentAt time.Time `json:"recent_at"`
 }
 
 // RecentPlayer defines model for RecentPlayer.
@@ -3737,6 +3764,9 @@ type ServerInterface interface {
 	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
 	// (POST /games/bgg-enrich)
 	EnrichGameImages(c *gin.Context)
+	// ListFavoriteGames Favorite games for the current user's game picker
+	// (GET /games/favorites)
+	ListFavoriteGames(c *gin.Context)
 	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(c *gin.Context, params SuggestGamesParams)
@@ -4591,6 +4621,19 @@ func (siw *ServerInterfaceWrapper) EnrichGameImages(c *gin.Context) {
 	}
 
 	siw.Handler.EnrichGameImages(c)
+}
+
+// ListFavoriteGames operation middleware
+func (siw *ServerInterfaceWrapper) ListFavoriteGames(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListFavoriteGames(c)
 }
 
 // SuggestGames operation middleware
@@ -6063,6 +6106,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
 	router.POST(options.BaseURL+"/games/auto-match", wrapper.AutoMatchGames)
 	router.POST(options.BaseURL+"/games/bgg-enrich", wrapper.EnrichGameImages)
+	router.GET(options.BaseURL+"/games/favorites", wrapper.ListFavoriteGames)
 	router.GET(options.BaseURL+"/games/suggestions", wrapper.SuggestGames)
 	router.DELETE(options.BaseURL+"/games/:id", wrapper.DeleteGame)
 	router.GET(options.BaseURL+"/games/:id", wrapper.GetGame)
@@ -7502,6 +7546,44 @@ func (response EnrichGameImages403JSONResponse) VisitEnrichGameImagesResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFavoriteGamesRequestObject struct {
+}
+
+type ListFavoriteGamesResponseObject interface {
+	VisitListFavoriteGamesResponse(w http.ResponseWriter) error
+}
+
+type ListFavoriteGames200JSONResponse struct {
+	Data   FavoriteGames `json:"data"`
+	Status string        `json:"status"`
+}
+
+func (response ListFavoriteGames200JSONResponse) VisitListFavoriteGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFavoriteGames401JSONResponse ApiError
+
+func (response ListFavoriteGames401JSONResponse) VisitListFavoriteGamesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11453,6 +11535,9 @@ type StrictServerInterface interface {
 	// EnrichGameImages Fetch box art from the BoardGameGeek XML API for games that have a BGG reference but no image yet
 	// (POST /games/bgg-enrich)
 	EnrichGameImages(ctx context.Context, request EnrichGameImagesRequestObject) (EnrichGameImagesResponseObject, error)
+	// ListFavoriteGames Favorite games for the current user's game picker
+	// (GET /games/favorites)
+	ListFavoriteGames(ctx context.Context, request ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error)
 	// SuggestGames Suggest base-game matches from the Tesera catalogue for a name being typed
 	// (GET /games/suggestions)
 	SuggestGames(ctx context.Context, request SuggestGamesRequestObject) (SuggestGamesResponseObject, error)
@@ -12415,6 +12500,30 @@ func (sh *strictHandler) EnrichGameImages(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(EnrichGameImagesResponseObject); ok {
 		if err := validResponse.VisitEnrichGameImagesResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFavoriteGames operation middleware
+func (sh *strictHandler) ListFavoriteGames(ctx *gin.Context) {
+	var request ListFavoriteGamesRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFavoriteGames(ctx, request.(ListFavoriteGamesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFavoriteGames")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListFavoriteGamesResponseObject); ok {
+		if err := validResponse.VisitListFavoriteGamesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

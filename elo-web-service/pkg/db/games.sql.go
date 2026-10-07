@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -257,6 +258,147 @@ func (q *Queries) ListGamesWithoutTeseraRef(ctx context.Context) ([]Game, error)
 			&i.ImageThumbUrl,
 			&i.GameMode,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPopularClubGames = `-- name: ListPopularClubGames :many
+SELECT m.game_id AS game_id, COUNT(*) AS match_count, MAX(m.date)::timestamptz AS last_match_at
+FROM matches m
+WHERE EXISTS (
+        SELECT 1
+        FROM match_scores ms
+        JOIN player_club_membership pcm ON pcm.player_id = ms.player_id
+        WHERE ms.match_id = m.id
+          AND pcm.club_id = ANY($1::uuid[])
+      )
+GROUP BY m.game_id
+ORDER BY match_count DESC, last_match_at DESC
+LIMIT $2::int4
+`
+
+type ListPopularClubGamesParams struct {
+	ClubIds []id.ID `json:"club_ids"`
+	Limit   int32   `json:"limit"`
+}
+
+type ListPopularClubGamesRow struct {
+	GameID      id.ID     `json:"game_id"`
+	MatchCount  int64     `json:"match_count"`
+	LastMatchAt time.Time `json:"last_match_at"`
+}
+
+// Games most played by members of the given clubs — the recency/popularity
+// pair of the game picker's «Популярные» section. A match counts once when at
+// least one club member took part in it; last_match_at breaks count ties.
+func (q *Queries) ListPopularClubGames(ctx context.Context, arg ListPopularClubGamesParams) ([]ListPopularClubGamesRow, error) {
+	rows, err := q.db.Query(ctx, listPopularClubGames, arg.ClubIds, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPopularClubGamesRow{}
+	for rows.Next() {
+		var i ListPopularClubGamesRow
+		if err := rows.Scan(&i.GameID, &i.MatchCount, &i.LastMatchAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPopularGamesGlobal = `-- name: ListPopularGamesGlobal :many
+SELECT m.game_id AS game_id, COUNT(*) AS match_count, MAX(m.date)::timestamptz AS last_match_at
+FROM matches m
+GROUP BY m.game_id
+ORDER BY match_count DESC, last_match_at DESC
+LIMIT $1::int4
+`
+
+type ListPopularGamesGlobalRow struct {
+	GameID      id.ID     `json:"game_id"`
+	MatchCount  int64     `json:"match_count"`
+	LastMatchAt time.Time `json:"last_match_at"`
+}
+
+// Globally most played games — the «Популярные» fallback for users whose
+// player belongs to no club.
+func (q *Queries) ListPopularGamesGlobal(ctx context.Context, limit int32) ([]ListPopularGamesGlobalRow, error) {
+	rows, err := q.db.Query(ctx, listPopularGamesGlobal, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPopularGamesGlobalRow{}
+	for rows.Next() {
+		var i ListPopularGamesGlobalRow
+		if err := rows.Scan(&i.GameID, &i.MatchCount, &i.LastMatchAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentGames = `-- name: ListRecentGames :many
+SELECT g.id AS game_id, MAX(m.date)::timestamptz AS last_match_at
+FROM matches m
+JOIN games g ON g.id = m.game_id
+WHERE EXISTS (
+        SELECT 1 FROM match_scores mine
+        WHERE mine.match_id = m.id
+          AND mine.player_id = $1
+      )
+   OR EXISTS (
+        SELECT 1
+        FROM match_scores partner
+        JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
+        WHERE partner.match_id = m.id
+          AND pcm.club_id = ANY($2::uuid[])
+      )
+GROUP BY g.id
+ORDER BY last_match_at DESC
+LIMIT $3::int4
+`
+
+type ListRecentGamesParams struct {
+	MyPlayerID *id.ID  `json:"my_player_id"`
+	ClubIds    []id.ID `json:"club_ids"`
+	Limit      int32   `json:"limit"`
+}
+
+type ListRecentGamesRow struct {
+	GameID      id.ID     `json:"game_id"`
+	LastMatchAt time.Time `json:"last_match_at"`
+}
+
+// Games played recently by the current user's player or by a member of any of
+// their clubs, with the date of the most recent such match — the recency key
+// of the game picker's «Недавние» section. my_player_id is NULL when the user
+// has no linked player.
+func (q *Queries) ListRecentGames(ctx context.Context, arg ListRecentGamesParams) ([]ListRecentGamesRow, error) {
+	rows, err := q.db.Query(ctx, listRecentGames, arg.MyPlayerID, arg.ClubIds, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentGamesRow{}
+	for rows.Next() {
+		var i ListRecentGamesRow
+		if err := rows.Scan(&i.GameID, &i.LastMatchAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -109,6 +109,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/games/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Favorite games for the current user's game picker
+         * @description The two sections of the picker's «Избранные» tab, computed for the authenticated user. «Недавние» lists games recently played by the user's player or by a member of any of their clubs, most recent match first. «Популярные» lists games most played by members of their clubs; users whose player belongs to no club fall back to the globally most played games. Popular excludes games already listed as recent. The entries are ids plus their ranking keys — the client resolves names against the /games list.
+         */
+        get: operations["ListFavoriteGames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/games/suggestions": {
         parameters: {
             query?: never;
@@ -1266,6 +1286,25 @@ export interface components {
         };
         GameAutoMatchResults: {
             games: components["schemas"]["GameAutoMatchResult"][];
+        };
+        FavoriteGames: {
+            /** @description «Недавние» — most recently played first */
+            recent: components["schemas"]["RecentGame"][];
+            /** @description «Популярные» — most played first */
+            popular: components["schemas"]["PopularGame"][];
+        };
+        RecentGame: {
+            id: components["schemas"]["Base58ID"];
+            /**
+             * Format: date-time
+             * @description The recency key the entry was ranked by — the date of the most recent relevant match.
+             */
+            recent_at: string;
+        };
+        PopularGame: {
+            id: components["schemas"]["Base58ID"];
+            /** @description The popularity key the entry was ranked by — the number of relevant matches. */
+            match_count: number;
         };
         /** @description The arena's match filter (ADR-24): a match meets the filter iff it satisfies every present condition; null conditions are absent. game_ids and tag_ids are OR'd; both empty mean any game. Camp arenas have no filter. */
         MatchFilter: {
@@ -2547,6 +2586,38 @@ export interface operations {
             };
             /** @description Game with this name already exists */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListFavoriteGames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Favorite games, each section at most 7 entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["FavoriteGames"];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -61,6 +61,12 @@ components:
       $ref: './games.yaml#/GameAutoMatchResult'
     GameAutoMatchResults:
       $ref: './games.yaml#/GameAutoMatchResults'
+    FavoriteGames:
+      $ref: './games.yaml#/FavoriteGames'
+    RecentGame:
+      $ref: './games.yaml#/RecentGame'
+    PopularGame:
+      $ref: './games.yaml#/PopularGame'
 
     # Arenas (ADR-24)
     MatchFilter:
@@ -241,6 +247,8 @@ paths:
   # Games
   /games:
     $ref: './games.yaml#/GamesCollection'
+  /games/favorites:
+    $ref: './games.yaml#/GamesFavoritesPath'
   /games/suggestions:
     $ref: './games.yaml#/GameSuggestionsPath'
   /games/auto-match:

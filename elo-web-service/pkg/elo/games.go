@@ -176,6 +176,10 @@ var (
 type IGameService interface {
 	GetGameTitlesOrderedByLastPlayed(ctx context.Context) ([]GameTitles, error)
 	GetGameInfo(ctx context.Context, gameID id.ID) (*GameInfo, error)
+	// ListFavoriteGames computes the game picker's «Избранные» tab for the
+	// user: recently played games (their player or a club member) and the
+	// most played games among their clubs.
+	ListFavoriteGames(ctx context.Context, userID id.ID, limit int) (FavoriteGames, error)
 	// DeleteGame/UpdateGame/AddGame record audit events for the actor
 	// (ADR-14); a zero actor skips the audit row.
 	DeleteGame(ctx context.Context, gameID id.ID, actor id.ID) (*db.Game, error)

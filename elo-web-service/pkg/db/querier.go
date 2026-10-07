@@ -430,10 +430,22 @@ type Querier interface {
 	// Joined to players so deleted ones drop out.
 	ListPlayersCreatedByUsers(ctx context.Context, arg ListPlayersCreatedByUsersParams) ([]ListPlayersCreatedByUsersRow, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	// Games most played by members of the given clubs — the recency/popularity
+	// pair of the game picker's «Популярные» section. A match counts once when at
+	// least one club member took part in it; last_match_at breaks count ties.
+	ListPopularClubGames(ctx context.Context, arg ListPopularClubGamesParams) ([]ListPopularClubGamesRow, error)
+	// Globally most played games — the «Популярные» fallback for users whose
+	// player belongs to no club.
+	ListPopularGamesGlobal(ctx context.Context, limit int32) ([]ListPopularGamesGlobalRow, error)
 	// Players who shared a match with the current user's player or with a member
 	// of any of the user's clubs, with the date of their most recent such match.
 	// my_player_id is NULL when the user has no linked player.
 	ListRecentCoPlayers(ctx context.Context, arg ListRecentCoPlayersParams) ([]ListRecentCoPlayersRow, error)
+	// Games played recently by the current user's player or by a member of any of
+	// their clubs, with the date of the most recent such match — the recency key
+	// of the game picker's «Недавние» section. my_player_id is NULL when the user
+	// has no linked player.
+	ListRecentGames(ctx context.Context, arg ListRecentGamesParams) ([]ListRecentGamesRow, error)
 	// Resolved tournament_winner markets of one tournament — the revert hook's
 	// input (a completed tournament whose bracket changed reopens them).
 	ListResolvedTournamentWinnerMarketsByTournament(ctx context.Context, tournamentID id.ID) ([]id.ID, error)

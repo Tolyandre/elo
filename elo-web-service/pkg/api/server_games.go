@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -39,6 +40,33 @@ func (s *StrictServer) ListGames(ctx context.Context, _ ListGamesRequestObject) 
 	}
 
 	return ListGames200JSONResponse{Status: StatusSuccess, Data: GameList{Games: gameList}}, nil
+}
+
+func (s *StrictServer) ListFavoriteGames(ctx context.Context, _ ListFavoriteGamesRequestObject) (ListFavoriteGamesResponseObject, error) {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return nil, fmt.Errorf("no gin context in request")
+	}
+	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	if err != nil {
+		return nil, err
+	}
+
+	favorites, err := s.api.GameService.ListFavoriteGames(ctx, user.ID, elo.FavoriteGamesLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	recent := make([]RecentGame, 0, len(favorites.Recent))
+	for _, r := range favorites.Recent {
+		recent = append(recent, RecentGame{Id: r.GameID, RecentAt: r.RecentAt.UTC()})
+	}
+	popular := make([]PopularGame, 0, len(favorites.Popular))
+	for _, p := range favorites.Popular {
+		popular = append(popular, PopularGame{Id: p.GameID, MatchCount: int(p.MatchCount)})
+	}
+
+	return ListFavoriteGames200JSONResponse{Status: StatusSuccess, Data: FavoriteGames{Recent: recent, Popular: popular}}, nil
 }
 
 func (s *StrictServer) GetGame(ctx context.Context, request GetGameRequestObject) (GetGameResponseObject, error) {

@@ -205,6 +205,7 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.PUT("/matches/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateMatch)
 	// Games and clubs: needed by the audit-log integration test (ADR-14).
 	r.GET("/games", strictWrapper.ListGames)
+	r.GET("/games/favorites", o.DeserializeUser(), strictWrapper.ListFavoriteGames)
 	r.GET("/games/suggestions", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SuggestGames)
 	r.POST("/games/auto-match", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AutoMatchGames)
 	r.POST("/games/bgg-enrich", o.DeserializeUser(), a.RequireEditor(), strictWrapper.EnrichGameImages)

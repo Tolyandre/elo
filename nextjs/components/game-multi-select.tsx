@@ -4,11 +4,24 @@ import type { Base58ID } from "@/lib/id";
 import { useGames } from "@/app/gamesContext"
 import { useMatches } from "@/app/matches/MatchesContext"
 import { useMe } from "@/app/meContext"
+import { useFavoriteGames } from "@/app/useFavoriteGames"
 import { useMemo } from "react"
-import { MultiSelect, MultiSelectGroup } from "./vendor/multi-select"
-import { buildGameGroups } from "@/lib/game-groups"
+import { MultiSelect, MultiSelectGroup, MultiSelectTab } from "./vendor/multi-select"
+import { buildGameGroups, buildGameTabs, type GameGroup } from "@/lib/game-groups"
 import { allNames } from "@/lib/game-names"
 import type { GameListItem } from "@/app/api"
+
+/** Search matches every name, not just the accent one. */
+function toGroups(sections: GameGroup[]): MultiSelectGroup[] {
+  return sections.map((section) => ({
+    heading: section.heading,
+    options: section.options.map((o) => ({
+      label: o.label,
+      value: o.value,
+      keywords: o.game ? allNames(o.game) : undefined,
+    })),
+  }))
+}
 
 export function GameMultiSelect({
   value,
@@ -23,29 +36,34 @@ export function GameMultiSelect({
   const { games } = useGames()
   const { matches } = useMatches()
   const { playerId } = useMe()
+  const favorites = useFavoriteGames()
 
   const visibleGames = useMemo(
     () => (filter ? games.filter(filter) : games),
     [games, filter],
   )
 
-  const options: MultiSelectGroup[] = useMemo(
+  // Browsing view: the «Избранные» / «Остальные» tabs.
+  const tabs = useMemo<MultiSelectTab[]>(
     () =>
-      buildGameGroups(visibleGames, matches, playerId).map((group) => ({
-        heading: group.heading,
-        options: group.options.map((o) => ({
-          label: o.label,
-          value: o.value,
-          // Search matches every name, not just the accent one.
-          keywords: o.game ? allNames(o.game) : undefined,
-        })),
+      buildGameTabs(visibleGames, matches, playerId, favorites).map((tab) => ({
+        key: tab.key,
+        label: tab.label,
+        groups: toGroups(tab.sections),
       })),
-    [visibleGames, matches, playerId]
+    [visibleGames, matches, playerId, favorites]
+  )
+
+  // Search view: a flat grouped list spanning every game.
+  const searchGroups = useMemo<MultiSelectGroup[]>(
+    () => toGroups(buildGameGroups(visibleGames, matches, playerId, favorites)),
+    [visibleGames, matches, playerId, favorites]
   )
 
   return (
     <MultiSelect
-      options={options}
+      options={searchGroups}
+      tabs={tabs}
       placeholder="Выберите игры"
       searchPlaceholder="Искать игру..."
       hideSelectAll={true}
