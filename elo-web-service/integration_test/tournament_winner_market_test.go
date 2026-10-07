@@ -626,47 +626,76 @@ func TestTournamentWinnerMarket_RecalcKeepsFinalResolution(t *testing.T) {
 	}
 }
 
-// TestTournamentWinnerMarket_CreateValidation drives the HTTP create contract:
-// the tournament must exist and be running; the market reads back with the
-// tournament params and a null closes_at.
+// TestTournamentWinnerMarket_CreateValidation drives the ADR-35 contract:
+// manual creation of a tournament_winner market is rejected, and starting the
+// tournament auto-creates exactly one — born with the start actor, carrying
+// the tournament params, a null closes_at, and one outcome per participant.
 func TestTournamentWinnerMarket_CreateValidation(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	router := setupRouter(pool)
 
-	adminToken, _ := createTestUserWithID(t, pool, true)
-	adminID := createTestAdmin(t, pool)
-	gameID, runningID, players := startFinalOnlyTournament(t, pool, adminToken, "Валидный кубок")
-	_ = gameID
-	_ = adminID
+	adminToken, adminUserID := createTestUserWithID(t, pool, true)
+	_, runningID, players := startFinalOnlyTournament(t, pool, adminToken, "Валидный кубок")
 
-	// A tournament still in registration cannot back a market (the client-
-	// supplied id is the idempotency key, so the created row carries it).
-	registrationTID := newID(t)
-	registrationBody := fmt.Sprintf(`{"id": %q, "name": "Регистрационный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%q, %q, %q, %q]}`,
-		short(registrationTID), short(gameID), short(players[0]), short(players[1]), short(players[2]), short(players[3]))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", adminToken, registrationBody); w.Code != http.StatusOK {
-		t.Fatalf("create registration tournament: %d %s", w.Code, w.Body.String())
-	}
-	onRegistration := fmt.Sprintf(`{"id": %q, "market_type": "tournament_winner", "tournament_id": %q}`, short(newID(t)), short(registrationTID))
-	if w := doJSON(t, router, http.MethodPost, "/markets", adminToken, onRegistration); w.Code != http.StatusConflict {
-		t.Fatalf("market on registration tournament must 409, got %d %s", w.Code, w.Body.String())
+	// Manual creation is gone whole (ADR-35): the type itself is not accepted
+	// — a running tournament and an unknown one are rejected the same way.
+	for _, tid := range []idpkg.ID{runningID, newID(t)} {
+		body := fmt.Sprintf(`{"id": %q, "market_type": "tournament_winner", "tournament_id": %q}`, short(newID(t)), short(tid))
+		if w := doJSON(t, router, http.MethodPost, "/markets", adminToken, body); w.Code != http.StatusBadRequest {
+			t.Fatalf("manual tournament_winner market must 400, got %d %s", w.Code, w.Body.String())
+		}
 	}
 
-	body := fmt.Sprintf(`{"id": %q, "market_type": "tournament_winner", "tournament_id": %q}`, short(newID(t)), short(runningID))
-	w := doJSON(t, router, http.MethodPost, "/markets", adminToken, body)
-	if w.Code != http.StatusCreated && w.Code != http.StatusOK {
-		t.Fatalf("create on running tournament: %d %s", w.Code, w.Body.String())
+	// Exactly one market was born with the start, attributed to the acting
+	// organizer.
+	ctx := context.Background()
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM market_tournament_winner_params WHERE tournament_id = $1`, runningID).Scan(&n); err != nil {
+		t.Fatalf("count tournament_winner markets: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("tournament_winner markets = %d, want exactly the auto-created one", n)
+	}
+	var marketID idpkg.ID
+	if err := pool.QueryRow(ctx, `SELECT market_id FROM market_tournament_winner_params WHERE tournament_id = $1`, runningID).Scan(&marketID); err != nil {
+		t.Fatalf("auto-created tournament_winner market: %v", err)
+	}
+	m, err := db.New(pool).GetMarket(ctx, marketID)
+	if err != nil {
+		t.Fatalf("GetMarket: %v", err)
+	}
+	if m.Status != "open" {
+		t.Errorf("auto market status = %q, want open", m.Status)
+	}
+	if m.CreatedBy != idpkg.ID(adminUserID) {
+		t.Errorf("auto market created_by = %s, want the starting organizer %s", m.CreatedBy, adminUserID)
 	}
 
-	// Unknown tournament → 404.
-	unknown := fmt.Sprintf(`{"id": %q, "market_type": "tournament_winner", "tournament_id": %q}`, short(newID(t)), short(newID(t)))
-	if w := doJSON(t, router, http.MethodPost, "/markets", adminToken, unknown); w.Code != http.StatusNotFound {
-		t.Fatalf("unknown tournament must 404, got %d %s", w.Code, w.Body.String())
+	// The outcomes are exactly the tournament's participants — one "player"
+	// outcome each, no "other".
+	marketSvc := elo.NewMarketService(pool)
+	outcomes, err := marketSvc.Queries.ListMarketOutcomes(ctx, marketID)
+	if err != nil {
+		t.Fatalf("ListMarketOutcomes: %v", err)
+	}
+	if len(outcomes) != len(players) {
+		t.Fatalf("outcomes = %d, want %d (one per participant)", len(outcomes), len(players))
+	}
+	seen := make(map[idpkg.ID]bool, len(players))
+	for _, o := range outcomes {
+		if o.Kind != "player" || o.PlayerID == nil || !containsID(players, *o.PlayerID) {
+			t.Fatalf("unexpected outcome %+v", o)
+		}
+		seen[*o.PlayerID] = true
+	}
+	if len(seen) != len(players) {
+		t.Fatalf("outcome players = %d, want %d distinct", len(seen), len(players))
 	}
 
-	// Read back: params carry the tournament, closes_at is null.
-	w = doJSON(t, router, http.MethodGet, "/markets", "", "")
+	// Read back over the API: the market is active, params carry the
+	// tournament, closes_at is null.
+	w := doJSON(t, router, http.MethodGet, "/markets", "", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list markets: %d %s", w.Code, w.Body.String())
 	}
@@ -685,23 +714,20 @@ func TestTournamentWinnerMarket_CreateValidation(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
 		t.Fatalf("decode markets: %v", err)
 	}
-	var found bool
+	found := false
 	for _, m := range list.Data.Active {
-		if m.MarketType != "tournament_winner" {
-			if m.ClosesAt == nil {
-				t.Errorf("non-tournament market must keep closes_at")
-			}
+		if m.MarketType != "tournament_winner" || m.Params == nil || m.Params.TournamentID != short(runningID) {
 			continue
 		}
 		found = true
 		if m.ClosesAt != nil {
 			t.Errorf("tournament_winner closes_at = %v, want null", *m.ClosesAt)
 		}
-		if m.Params == nil || m.Params.TournamentID != short(runningID) || m.Params.TournamentName != "Валидный кубок" {
+		if m.Params.TournamentName != "Валидный кубок" {
 			t.Errorf("tournament_winner params: %+v", m.Params)
 		}
 	}
 	if !found {
-		t.Fatalf("no tournament_winner market in the active list")
+		t.Fatalf("auto-created tournament_winner market not in the active list")
 	}
 }

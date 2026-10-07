@@ -665,11 +665,11 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		CreatedBy:  user.ID,
 	}
 
-	// tournament_winner markets take no deadline (their fate is the
-	// tournament's); the other two types require one now that the spec marks
-	// closes_at optional.
+	// match_winner and win_streak markets take a deadline; tournament_winner
+	// markets are born automatically with their tournament (ADR-35) and can
+	// not be created by hand — an unknown type falls through to the default
+	// case below.
 	switch string(body.MarketType) {
-	case "tournament_winner":
 	case "match_winner", "win_streak":
 		if body.ClosesAt == nil {
 			return CreateMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
@@ -735,25 +735,6 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 			WinsRequired:   int32(*body.WinsRequired),
 			MaxLosses:      maxLosses,
 		}
-
-	case "tournament_winner":
-		if body.TournamentId == nil || *body.TournamentId == "" {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "tournament_winner requires tournament_id"}, nil
-		}
-		tournamentID := id.ID(*body.TournamentId)
-		if err := s.api.TournamentService.ValidateTournamentWinnerTarget(ctx, tournamentID); err != nil {
-			switch domainStatusCode(err) {
-			case http.StatusNotFound:
-				return CreateMarket404JSONResponse{Status: StatusFail, Message: "Турнир не найден"}, nil
-			case http.StatusConflict:
-				return CreateMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
-			case http.StatusBadRequest:
-				return CreateMarket400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
-			default:
-				return nil, err
-			}
-		}
-		params.TournamentWinner = &elo.TournamentWinnerCreateParams{TournamentID: tournamentID}
 
 	default:
 		return CreateMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil

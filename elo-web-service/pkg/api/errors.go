@@ -86,7 +86,6 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),
 		errors.Is(err, elo.ErrTournamentNotEditable),
 		errors.Is(err, elo.ErrTournamentNotOpenForRegistration),
-		errors.Is(err, elo.ErrTournamentNotRunning),
 		errors.Is(err, elo.ErrTournamentAlreadyStarted),
 		errors.Is(err, elo.ErrTournamentNotStarted),
 		errors.Is(err, elo.ErrSlotAssociationLocked),

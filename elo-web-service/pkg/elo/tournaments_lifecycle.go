@@ -174,6 +174,16 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 		}); err != nil {
 			return fmt.Errorf("set running: %w", err)
 		}
+
+		// The tournament_winner market is born with the tournament (ADR-35):
+		// same transaction, so a running tournament always carries exactly one,
+		// with the roster frozen by the status write above.
+		if s.Markets != nil {
+			if err := s.Markets.CreateTournamentWinnerMarket(ctx, q, tid, actorUserID); err != nil {
+				return fmt.Errorf("create tournament winner market: %w", err)
+			}
+		}
+
 		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 			audit.KindTournamentStart, audit.NewTournamentStartDetails([]byte(canonical), seed, idStrings(participants)))
 	})
@@ -205,27 +215,6 @@ func (s *TournamentService) CancelTournament(ctx context.Context, tid, actorUser
 		return recordAuditEvent(ctx, q, actorUserID, audit.EntityTournament, audit.ActionUpdated, tid,
 			audit.KindTournamentState, audit.NewTournamentStateDetails(t.Status, TournamentCancelled, audit.StateReasonOrganizer))
 	})
-}
-
-// ValidateTournamentWinnerTarget checks that a tournament can back a
-// tournament_winner market: it must exist, be running (its roster is frozen),
-// and have at least two participants.
-func (s *TournamentService) ValidateTournamentWinnerTarget(ctx context.Context, tid id.ID) error {
-	t, err := s.Queries.GetTournament(ctx, tid)
-	if err != nil {
-		return fmt.Errorf("get tournament: %w", err)
-	}
-	if t.Status != TournamentRunning {
-		return ErrTournamentNotRunning
-	}
-	count, err := s.Queries.CountTournamentParticipants(ctx, tid)
-	if err != nil {
-		return fmt.Errorf("count participants: %w", err)
-	}
-	if count < 2 {
-		return ErrTournamentTooFewParticipants
-	}
-	return nil
 }
 
 // BracketSeat is one seat of the bracket DTO.

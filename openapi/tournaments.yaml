@@ -381,7 +381,10 @@ TournamentStart:
       plan is stored verbatim, all rounds/slots/seats are generated, first-
       round seats (and byes) are drawn at random from the stored seed, a
       pool-fitting game is assigned to every slot, and the tournament's arena
-      is created. Registration closes.
+      is created. Registration closes. The tournament's tournament_winner
+      betting market is born in the same transaction (ADR-35): one "player
+      wins" outcome per participant; it is refunded if the tournament is
+      cancelled and settles when it completes.
     security:
       - cookieAuth: []
     parameters:

@@ -479,7 +479,7 @@ export interface paths {
         put?: never;
         /**
          * Start the tournament with the chosen bracket shape
-         * @description Editor only, while in registration. The submitted plan must be one the server would have offered (validated against a fresh enumeration). The plan is stored verbatim, all rounds/slots/seats are generated, first- round seats (and byes) are drawn at random from the stored seed, a pool-fitting game is assigned to every slot, and the tournament's arena is created. Registration closes.
+         * @description Editor only, while in registration. The submitted plan must be one the server would have offered (validated against a fresh enumeration). The plan is stored verbatim, all rounds/slots/seats are generated, first- round seats (and byes) are drawn at random from the stored seed, a pool-fitting game is assigned to every slot, and the tournament's arena is created. Registration closes. The tournament's tournament_winner betting market is born in the same transaction (ADR-35): one "player wins" outcome per participant; it is refunded if the tournament is cancelled and settles when it completes.
          */
         post: operations["StartTournament"];
         delete?: never;
@@ -5354,8 +5354,11 @@ export interface operations {
             content: {
                 "application/json": {
                     id: components["schemas"]["Base58ID"];
-                    /** @enum {string} */
-                    market_type: "match_winner" | "win_streak" | "tournament_winner";
+                    /**
+                     * @description tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
+                     * @enum {string}
+                     */
+                    market_type: "match_winner" | "win_streak";
                     /**
                      * Format: date-time
                      * @description Defaults to now if omitted; must not be in the past if provided
@@ -5363,7 +5366,7 @@ export interface operations {
                     starts_at?: string;
                     /**
                      * Format: date-time
-                     * @description Required for match_winner and win_streak. tournament_winner markets take no deadline: they resolve when the tournament completes and are refunded when it is cancelled (including the grand-final-deadline auto-cancel).
+                     * @description Required for both market types
                      */
                     closes_at?: string;
                     /** @description Target players — one "player wins" outcome is created per player. */
@@ -5377,8 +5380,6 @@ export interface operations {
                     streak_game_ids?: components["schemas"]["Base58ID"][];
                     wins_required?: number;
                     max_losses?: number | null;
-                    /** @description The tournament the market resolves on. Must be running; one "player wins" outcome is created per tournament participant. */
-                    tournament_id?: components["schemas"]["Base58ID"];
                 };
             };
         };
@@ -5417,24 +5418,6 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament not found (tournament_winner) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament cannot back the market (not running / too few participants) */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };

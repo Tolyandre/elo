@@ -15,6 +15,33 @@ import (
 // active transaction — they settle through SettleMarket (or rewrite market
 // rows directly) against the caller's transactional queries.
 
+// CreateTournamentWinnerMarket creates the tournament_winner market born with
+// a tournament that just started (ADR-35): the market's fate is the
+// tournament's, so it is never created by hand. The roster is read
+// server-side — the caller's transaction froze it by flipping the tournament
+// to running. Must be called within the start transaction, after the status
+// write.
+func (s *MarketService) CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, createdBy id.ID) error {
+	_, err := createMarketTx(ctx, q, CreateMarketParams{
+		ID:         id.New(),
+		MarketType: "tournament_winner",
+		StartsAt:   time.Now(),
+		CreatedBy:  createdBy,
+		TournamentWinner: &TournamentWinnerCreateParams{
+			TournamentID: tid,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("create tournament_winner market: %w", err)
+	}
+	// The feed shows the new market immediately; the settlement hooks publish
+	// from within a caller's transaction the same way.
+	if s.Hub != nil {
+		s.Hub.PublishSignal(TopicLobbyMarkets, "markets-changed")
+	}
+	return nil
+}
+
 // SettleTournamentWinnerMarketsOnComplete resolves a just-completed
 // tournament's open markets. Called from the tournament completion flow, which
 // runs after the settlement replay in every match-write path, so the

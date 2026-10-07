@@ -33,7 +33,6 @@ var (
 	ErrTournamentDeadlineInvalid        = errors.New("дедлайн гранд-финала должен быть в будущем")
 	ErrTournamentNotEditable            = errors.New("турнир больше не в регистрации — конфигурацию изменить нельзя")
 	ErrTournamentNotOpenForRegistration = errors.New("регистрация на этот турнир закрыта")
-	ErrTournamentNotRunning             = errors.New("турнир не идёт")
 	ErrTournamentTooFewParticipants     = errors.New("для сетки нужно минимум 2 участника")
 	ErrTournamentPoolEmpty              = errors.New("добавьте в пул хотя бы одну игру")
 	ErrTournamentPlanInvalid            = errors.New("этот план сетки не входит в допустимые для текущего состава участников и пула")

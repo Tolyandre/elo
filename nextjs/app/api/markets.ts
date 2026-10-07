@@ -47,10 +47,10 @@ export async function getMarketProbabilityHistoryPromise(id: Base58ID): Promise<
 }
 
 export async function createMarketPromise(payload: {
-    market_type: "match_winner" | "win_streak" | "tournament_winner";
+    market_type: "match_winner" | "win_streak";
     starts_at: string | null;
-    // Required for match_winner/win_streak; tournament_winner markets take no
-    // deadline — their fate is the tournament's.
+    // Required for both types; tournament_winner markets are not creatable by
+    // hand — one is born automatically when its tournament starts (ADR-35).
     closes_at?: string;
     target_player_ids?: Base58ID[];
     allow_other_players?: boolean;
@@ -59,7 +59,6 @@ export async function createMarketPromise(payload: {
     streak_game_ids?: Base58ID[];
     wins_required?: number | null;
     max_losses?: number | null;
-    tournament_id?: Base58ID;
 }): Promise<{ id: Base58ID }> {
     return (await unwrap(client.POST("/markets", {
         body: {

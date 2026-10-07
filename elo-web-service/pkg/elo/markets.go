@@ -63,6 +63,12 @@ type IMarketService interface {
 	// the settlement order. Must be called within an active transaction.
 	ExpireMarketsAtDate(ctx context.Context, q *db.Queries, date time.Time) error
 
+	// CreateTournamentWinnerMarket creates the tournament_winner market born
+	// with a tournament that just started (ADR-35) — one "player wins" outcome
+	// per participant, closes_at = infinity. Must be called within the start
+	// transaction, after the tournament's status write froze the roster.
+	CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, createdBy id.ID) error
+
 	// SettleTournamentWinnerMarketsOnComplete resolves every open
 	// tournament_winner market on a tournament that just completed. A
 	// standings-decided final slot attaches its determining match (latest by

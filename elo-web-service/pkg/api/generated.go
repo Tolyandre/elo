@@ -866,17 +866,14 @@ func (e PatchGameJSONBodyGameMode) Valid() bool {
 
 // Defines values for CreateMarketJSONBodyMarketType.
 const (
-	CreateMarketJSONBodyMarketTypeMatchWinner      CreateMarketJSONBodyMarketType = "match_winner"
-	CreateMarketJSONBodyMarketTypeTournamentWinner CreateMarketJSONBodyMarketType = "tournament_winner"
-	CreateMarketJSONBodyMarketTypeWinStreak        CreateMarketJSONBodyMarketType = "win_streak"
+	CreateMarketJSONBodyMarketTypeMatchWinner CreateMarketJSONBodyMarketType = "match_winner"
+	CreateMarketJSONBodyMarketTypeWinStreak   CreateMarketJSONBodyMarketType = "win_streak"
 )
 
 // Valid indicates whether the value is a known member of the CreateMarketJSONBodyMarketType enum.
 func (e CreateMarketJSONBodyMarketType) Valid() bool {
 	switch e {
 	case CreateMarketJSONBodyMarketTypeMatchWinner:
-		return true
-	case CreateMarketJSONBodyMarketTypeTournamentWinner:
 		return true
 	case CreateMarketJSONBodyMarketTypeWinStreak:
 		return true
@@ -2512,14 +2509,16 @@ type CreateMarketJSONBody struct {
 	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
 	AllowOtherPlayers *bool `json:"allow_other_players,omitempty"`
 
-	// ClosesAt Required for match_winner and win_streak. tournament_winner markets take no deadline: they resolve when the tournament completes and are refunded when it is cancelled (including the grand-final-deadline auto-cancel).
+	// ClosesAt Required for both market types
 	ClosesAt *time.Time `json:"closes_at,omitempty"`
 
 	// GameIds Games the match must belong to; empty means any game.
 	GameIds *[]Base58ID `json:"game_ids,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id         Base58ID                       `json:"id"`
+	Id Base58ID `json:"id"`
+
+	// MarketType tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
 	MarketType CreateMarketJSONBodyMarketType `json:"market_type"`
 	MaxLosses  *int                           `json:"max_losses,omitempty"`
 
@@ -2534,10 +2533,7 @@ type CreateMarketJSONBody struct {
 
 	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
 	TargetPlayerIds *[]Base58ID `json:"target_player_ids,omitempty"`
-
-	// TournamentId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	TournamentId *Base58ID `json:"tournament_id,omitempty"`
-	WinsRequired *int      `json:"wins_required,omitempty"`
+	WinsRequired    *int        `json:"wins_required,omitempty"`
 }
 
 // CreateMarketJSONBodyMarketType defines parameters for CreateMarket.
@@ -8031,34 +8027,6 @@ func (response CreateMarket403JSONResponse) VisitCreateMarketResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateMarket404JSONResponse ApiError
-
-func (response CreateMarket404JSONResponse) VisitCreateMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateMarket409JSONResponse ApiError
-
-func (response CreateMarket409JSONResponse) VisitCreateMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

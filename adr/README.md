@@ -38,3 +38,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [32](32-general-feed.md) | The general feed: server-merged arena/home event streams; markets lobby pagination |
 | [33](33-game-modes.md) | Game modes: competitive, coop/solo, mixed — coop matches feed the home feed only |
 | [34](34-guarantor-risk-to-depth.md) | Guarantor risk fully converts to liquidity (the L cap removal) |
+| [35](35-tournament-market-born-on-start.md) | A tournament's betting market is born with the tournament — never created by hand |
