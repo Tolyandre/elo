@@ -203,7 +203,13 @@ Staged forward, each phase shippable:
    player profile (`GET /players/{id}/stats?tenant=`; «Частые игры» becomes
    tenant-independent), the club filter on `GET /tenants/{id}/feed`.
 5. **Admin UI**: tenant settings page (openness, member stints across its
-   clubs, composition), main-arena settings editor.
+   clubs, composition), main-arena settings editor. Plus the global-arena
+   retirement: **corrections removed entirely** (feed loses the correction
+   event kind; the rating is recalculated by history replay), **bet limits
+   counted against the tenant's main arena**, and **`GlobalArenaID`
+   dropped as a read default** — every read is tenant-scoped, and the
+   frontend prompts for a tenant when none resolves (rare: links carry
+   `?tenant=`).
 
 ## Consequences
 
@@ -216,13 +222,24 @@ Staged forward, each phase shippable:
   function — the ADR-28 performance rule now has an explicit exception to
   point at.
 - Markets settle into the owning tenant's main arena (their rows survive
-  arena match-replays, which delete matches only); **corrections stay on
-  the global arena** — they have no tenant of their own, and that arena is
-  «Синие люди»'s main arena since 068. Bet limits stay a single global
-  column derived from the global arena (fresh-tenant members fall back to
-  the starting Elo until they play there); revisitable if a per-tenant
-  basis is ever needed. A main-arena mode or composition change replays the
-  arena's match rows and then re-chains every market settlement via the
-  epoch sweep, so the whole ledger is consistent with the new history.
+  arena match-replays, which delete matches only). A main-arena mode or
+  composition change replays the arena's match rows and then re-chains every
+  market settlement via the epoch sweep, so the whole ledger is consistent
+  with the new history.
+- **Corrections are scheduled for removal (phase 5).** They were a one-off
+  proof of concept — tracing a new player's path up the rating ladder — and
+  are no longer needed; the same insight is recoverable from a rating
+  replay, and deleting them leaves a recalculation by history replay as the
+  only settlement source. Until removal they keep settling into «Синие
+  люди»'s main arena (they have no tenant of their own).
+- **Bet limits will count against the tenant's main arena (phase 5)**,
+  replacing the single global-derived column (fresh-tenant members fall
+  back to the starting Elo until they play there — the per-tenant basis
+  removes that quirk).
+- **The `GlobalArenaID` fallback is retired (phase 5).** Reads stop
+  defaulting to the global arena when no tenant is given; when the frontend
+  cannot resolve the current tenant (no localStorage history — rare, since
+  every link carries `?tenant=`, including a URL copied from the browser),
+  it prompts for a tenant instead of silently showing the global arena.
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
   seeds the tenant itself.

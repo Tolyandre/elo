@@ -23,7 +23,7 @@ import { useTenantScope } from "@/app/tenantScopeContext"
 import { useTenants } from "@/app/tenantsContext"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { Check, ChevronDown, LogOut, LayoutGrid, Settings, SlidersHorizontal, Trophy, Users } from "lucide-react"
+import { Check, ChevronDown, CircleHelp, LogOut, LayoutGrid, Menu, Settings, SlidersHorizontal, Trophy, Users } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
@@ -56,8 +56,49 @@ export function NavigationBar() {
   return (
     <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
       <NavigationMenuList className="flex-nowrap gap-0">
+        <NavigationMenuItem className="flex items-center">
+          {/* NavigationMenuLink's own base classes carry flex-col gap-1 p-2 —
+              fine for the former text-only «Главная», stacking for an
+              icon+name pair: flex-row here lets tailwind-merge win over it. */}
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "min-w-0 flex-row gap-1 px-1.5 sm:px-2")}>
+            <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="min-w-0">
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
+            </Link>
+          </NavigationMenuLink>
+          {tenants.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-1" aria-label="Выбрать сообщество">
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {tenants.map((t) => (
+                  <DropdownMenuItem key={t.id} onClick={() => setTenant(t.id)}>
+                    <Check className={`mr-1 h-4 w-4 shrink-0 ${t.id === tenant?.id ? "opacity-100" : "opacity-0"}`} />
+                    <span className="truncate">{t.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </NavigationMenuItem>
+
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="px-1.5 sm:px-2">Меню</NavigationMenuTrigger>
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2")}>
+            <Link href="/help">
+              <CircleHelp className="h-4 w-4 mr-1" />
+              Справка
+            </Link>
+          </NavigationMenuLink>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
+          <NavigationMenuTrigger className="px-1.5 sm:px-2">
+            <Menu className="h-4 w-4 mr-1" />
+            Меню
+          </NavigationMenuTrigger>
           <NavigationMenuContent>
             <ul className="grid gap-2 md:w-[400px] lg:w-[500px] lg:grid-cols-[.75fr_1fr]">
 
@@ -128,41 +169,6 @@ export function NavigationBar() {
             </ul>
 
           </NavigationMenuContent>
-        </NavigationMenuItem>
-
-        <NavigationMenuItem className="flex items-center">
-          {/* NavigationMenuLink's own base classes carry flex-col gap-1 p-2 —
-              fine for the former text-only «Главная», stacking for an
-              icon+name pair: flex-row here lets tailwind-merge win over it. */}
-          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "min-w-0 flex-row gap-1 px-1.5 sm:px-2")}>
-            <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="min-w-0">
-              <Users className="h-4 w-4 shrink-0" />
-              <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
-            </Link>
-          </NavigationMenuLink>
-          {tenants.length > 1 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 px-1" aria-label="Выбрать сообщество">
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {tenants.map((t) => (
-                  <DropdownMenuItem key={t.id} onClick={() => setTenant(t.id)}>
-                    <Check className={`mr-1 h-4 w-4 shrink-0 ${t.id === tenant?.id ? "opacity-100" : "opacity-0"}`} />
-                    <span className="truncate">{t.name}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </NavigationMenuItem>
-
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2")}>
-            <Link href="/help">Справка</Link>
-          </NavigationMenuLink>
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
