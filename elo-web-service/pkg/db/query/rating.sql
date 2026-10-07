@@ -23,9 +23,14 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
               league        = EXCLUDED.league;
 
 -- name: DeleteArenaSettlementsFromDate :exec
--- Replay support: removes every settlement row (match, market, correction) of
--- the arena from the date on. For non-global arenas only 'match' rows exist.
-DELETE FROM arena_settlements WHERE arena_id = $1 AND date >= $2;
+-- Replay support for the arena updater: removes the arena's MATCH settlement
+-- rows from the date on — the replay re-settles matches only. Market and
+-- correction rows belong to their own lifecycles (markets re-settle via the
+-- unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
+-- club's arena; corrections live only in the global arena) and must survive
+-- an arena replay.
+DELETE FROM arena_settlements
+WHERE arena_id = $1 AND date >= $2 AND discriminator = 'match';
 
 -- name: GetPlayerLatestArenaElo :one
 -- Returns the true Elo value (elo_after) for Elo calculations.

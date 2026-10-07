@@ -273,7 +273,7 @@ func TestArena_GameListExcludesLinkOnlyArenas(t *testing.T) {
 	// filter, tournament anchor) and probe camp arena.
 	tournID := idpkg.New()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournaments (id, name, status, elimination) VALUES ($1, 'Арена-лист турнир', 'running', 'single')`,
+		`INSERT INTO tournaments (id, club_id, name, status, elimination) VALUES ($1, '00000000-0000-0000-0000-000000000001', 'Арена-лист турнир', 'running', 'single')`,
 		tournID); err != nil {
 		t.Fatalf("insert probe tournament: %v", err)
 	}

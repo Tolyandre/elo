@@ -62,19 +62,25 @@ func (s *MarketService) TriggerResolutionForMatch(ctx context.Context, q *db.Que
 // UnsettleMarketsFromDate resets markets resolved by matches on/after fromDate.
 // Must be called within an active transaction.
 func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queries, fromDate time.Time) error {
-	marketIDs, err := q.GetMarketsForUnsettle(ctx, pgtype.Timestamptz{Time: fromDate, Valid: true})
+	rows, err := q.GetMarketsForUnsettle(ctx, pgtype.Timestamptz{Time: fromDate, Valid: true})
 	if err != nil {
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
-	for _, marketID := range marketIDs {
-		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
-			ArenaID:  GlobalArenaID,
-			MarketID: &marketID,
-		}); err != nil {
-			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
+	for _, row := range rows {
+		// Each market's rows live in its club's main arena (ADR-36) — the
+		// global-arena bulk wipe in RecalculateFrom does not cover them.
+		arena, err := marketArena(ctx, q, row.ClubID)
+		if err != nil {
+			return err
 		}
-		if err := q.UnsettleMarket(ctx, marketID); err != nil {
-			return fmt.Errorf("unsettle market %s: %w", marketID, err)
+		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
+			ArenaID:  arena.ID,
+			MarketID: &row.ID,
+		}); err != nil {
+			return fmt.Errorf("delete settlements of market %s: %w", row.ID, err)
+		}
+		if err := q.UnsettleMarket(ctx, row.ID); err != nil {
+			return fmt.Errorf("unsettle market %s: %w", row.ID, err)
 		}
 	}
 	return nil
@@ -172,9 +178,13 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 
 	resolvedAtTz := pgtype.Timestamptz{Time: resolvedAt, Valid: true}
 
-	// Markets settle only into the global arena (ADR-24); its settings carry
-	// the league parameters the settlement league is determined from.
-	arena, err := globalArena(ctx, q)
+	// Markets settle into the owning club's main arena (ADR-36); its settings
+	// carry the league parameters the settlement league is determined from.
+	market, err := q.GetMarket(ctx, marketID)
+	if err != nil {
+		return fmt.Errorf("get market %s: %w", marketID, err)
+	}
+	arena, err := marketArena(ctx, q, market.ClubID)
 	if err != nil {
 		return err
 	}
@@ -228,7 +238,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		if buyerStaked != 0 || buyerEarned != 0 {
 			afterElo += buyerStaked + buyerEarned
 			afterRating += buyerStaked + buyerEarned
-			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market",
+			if err := s.upsertMarketSettlement(ctx, q, arena.ID, pid, marketID, "market",
 				buyerStaked, buyerEarned, afterElo, afterRating, newLeague, resolvedAtTz); err != nil {
 				return fmt.Errorf("upsert settlement for %s: %w", pid, err)
 			}
@@ -236,7 +246,7 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		if guarantorStaked != 0 || guarantorEarned != 0 {
 			afterElo += guarantorStaked + guarantorEarned
 			afterRating += guarantorStaked + guarantorEarned
-			if err := s.upsertMarketSettlement(ctx, q, pid, marketID, "market_guarantor",
+			if err := s.upsertMarketSettlement(ctx, q, arena.ID, pid, marketID, "market_guarantor",
 				guarantorStaked, guarantorEarned, afterElo, afterRating, newLeague, resolvedAtTz); err != nil {
 				return fmt.Errorf("upsert guarantor settlement for %s: %w", pid, err)
 			}
@@ -277,16 +287,16 @@ type marketSettlementBalances struct {
 }
 
 // readMarketSettlementBalances reads the player's pre-market elo/rating/league
-// state in the global arena. Called once per player before any of their rows
-// are written, so the second role row cannot observe the first one (they share
-// the settlement date).
+// state in the market's arena (its club's main arena, ADR-36). Called once per
+// player before any of their rows are written, so the second role row cannot
+// observe the first one (they share the settlement date).
 func (s *MarketService) readMarketSettlementBalances(
 	ctx context.Context, q *db.Queries, arena Arena, playerID id.ID,
 	resolvedAtTz pgtype.Timestamptz, settings EloSettings, date6MAgo, date2MAgo pgtype.Timestamptz,
 ) (marketSettlementBalances, error) {
 	var b marketSettlementBalances
 	latestElo, err := q.GetPlayerLatestArenaEloAtDate(ctx, db.GetPlayerLatestArenaEloAtDateParams{
-		ArenaID:  GlobalArenaID,
+		ArenaID:  arena.ID,
 		PlayerID: playerID,
 		Date:     resolvedAtTz,
 	})
@@ -298,7 +308,7 @@ func (s *MarketService) readMarketSettlementBalances(
 
 	var storedLeague *string
 	latestRating, err := q.GetPlayerLatestArenaRatingAtDate(ctx, db.GetPlayerLatestArenaRatingAtDateParams{
-		ArenaID:  GlobalArenaID,
+		ArenaID:  arena.ID,
 		PlayerID: playerID,
 		Date:     resolvedAtTz,
 	})
@@ -311,13 +321,13 @@ func (s *MarketService) readMarketSettlementBalances(
 	}
 
 	count6M, _ := q.CountPlayerMatchesInArenaInPeriod(ctx, db.CountPlayerMatchesInArenaInPeriodParams{
-		ArenaID:  GlobalArenaID,
+		ArenaID:  arena.ID,
 		PlayerID: playerID,
 		DateFrom: date6MAgo.Time,
 		DateTo:   resolvedAtTz.Time,
 	})
 	count2M, _ := q.CountPlayerMatchesInArenaInPeriod(ctx, db.CountPlayerMatchesInArenaInPeriodParams{
-		ArenaID:  GlobalArenaID,
+		ArenaID:  arena.ID,
 		PlayerID: playerID,
 		DateFrom: date2MAgo.Time,
 		DateTo:   resolvedAtTz.Time,
@@ -328,22 +338,22 @@ func (s *MarketService) readMarketSettlementBalances(
 	return b, nil
 }
 
-// upsertMarketSettlement persists one role's settlement row. eloStaked (≤ 0) and
-// eloEarned (≥ 0) are that role's delta (buyer P&L or guarantor residual share)
-// and feed the display + zero-sum invariant; eloAfter/ratingAfter are the
-// per-row checkpoint balances after this row's deltas — the caller accumulates
-// them across the role rows, so the last-written row carries the post-market
-// balance — and league is the post-event league (identical on both rows of a
-// buyer∩guarantor player). The rating track mirrors the elo track (markets
-// apply no newbie scaling).
+// upsertMarketSettlement persists one role's settlement row into the market's
+// arena. eloStaked (≤ 0) and eloEarned (≥ 0) are that role's delta (buyer P&L
+// or guarantor residual share) and feed the display + zero-sum invariant;
+// eloAfter/ratingAfter are the per-row checkpoint balances after this row's
+// deltas — the caller accumulates them across the role rows, so the
+// last-written row carries the post-market balance — and league is the
+// post-event league (identical on both rows of a buyer∩guarantor player). The
+// rating track mirrors the elo track (markets apply no newbie scaling).
 func (s *MarketService) upsertMarketSettlement(
-	ctx context.Context, q *db.Queries, playerID, marketID id.ID, discriminator string,
+	ctx context.Context, q *db.Queries, arenaID, playerID, marketID id.ID, discriminator string,
 	eloStaked, eloEarned, eloAfter, ratingAfter float64, league *string,
 	resolvedAtTz pgtype.Timestamptz,
 ) error {
 	return q.UpsertArenaSettlementByMarket(ctx, db.UpsertArenaSettlementByMarketParams{
 		ID:            newSettlementID(),
-		ArenaID:       GlobalArenaID,
+		ArenaID:       arenaID,
 		PlayerID:      playerID,
 		Date:          resolvedAtTz,
 		RatingAfter:   ratingAfter,
@@ -356,6 +366,37 @@ func (s *MarketService) upsertMarketSettlement(
 		RatingEarned:  eloEarned,
 		League:        ptrText(league),
 	})
+}
+
+// marketArena resolves the arena a market settles into: its owning club's main
+// arena (ADR-36).
+func marketArena(ctx context.Context, q *db.Queries, clubID id.ID) (Arena, error) {
+	row, err := q.GetArenaByClub(ctx, &clubID)
+	if err != nil {
+		return Arena{}, fmt.Errorf("get main arena of club %s: %w", clubID, err)
+	}
+	return arenaFromGetArenaByClubRow(row)
+}
+
+// deleteMarketSettlements removes a market's settlement rows from its club's
+// main arena (ADR-36) — the unsettle primitive shared by the recalculation
+// paths. Must be called while the market row still exists.
+func (s *MarketService) deleteMarketSettlements(ctx context.Context, q *db.Queries, marketID id.ID) error {
+	market, err := q.GetMarket(ctx, marketID)
+	if err != nil {
+		return fmt.Errorf("get market %s: %w", marketID, err)
+	}
+	arena, err := marketArena(ctx, q, market.ClubID)
+	if err != nil {
+		return err
+	}
+	if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
+		ArenaID:  arena.ID,
+		MarketID: &marketID,
+	}); err != nil {
+		return fmt.Errorf("delete settlements of market %s: %w", marketID, err)
+	}
+	return nil
 }
 
 // LockMarketBetting stops accepting new bets on an open market (user event).

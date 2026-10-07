@@ -46,21 +46,28 @@ export async function getMarketProbabilityHistoryPromise(id: Base58ID): Promise<
     return (await unwrap(client.GET("/markets/{id}/probability-history", { params: { path: { id } } }))).data.points;
 }
 
-export async function createMarketPromise(payload: {
-    market_type: "match_winner" | "win_streak";
-    starts_at: string | null;
-    // Required for both types; tournament_winner markets are not creatable by
-    // hand — one is born automatically when its tournament starts (ADR-35).
-    closes_at?: string;
-    target_player_ids?: Base58ID[];
-    allow_other_players?: boolean;
-    game_ids?: Base58ID[];
-    target_player_id?: Base58ID;
-    streak_game_ids?: Base58ID[];
-    wins_required?: number | null;
-    max_losses?: number | null;
-}): Promise<{ id: Base58ID }> {
-    return (await unwrap(client.POST("/markets", {
+// Markets are created under their owning tenant club (ADR-36): settlements
+// land in the club's main arena, and a members_only club restricts bets and
+// guarantees to its members.
+export async function createMarketPromise(
+    clubId: Base58ID,
+    payload: {
+        market_type: "match_winner" | "win_streak";
+        starts_at: string | null;
+        // Required for both types; tournament_winner markets are not creatable by
+        // hand — one is born automatically when its tournament starts (ADR-35).
+        closes_at?: string;
+        target_player_ids?: Base58ID[];
+        allow_other_players?: boolean;
+        game_ids?: Base58ID[];
+        target_player_id?: Base58ID;
+        streak_game_ids?: Base58ID[];
+        wins_required?: number | null;
+        max_losses?: number | null;
+    },
+): Promise<{ id: Base58ID }> {
+    return (await unwrap(client.POST("/clubs/{id}/markets", {
+        params: { path: { id: clubId } },
         body: {
             id: newId(),
             ...payload,

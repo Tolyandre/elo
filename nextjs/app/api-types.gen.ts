@@ -438,8 +438,7 @@ export interface paths {
         /** List tournaments (running/registration first, then finished) */
         get: operations["ListTournaments"];
         put?: never;
-        /** Create a tournament (status = registration) */
-        post: operations["CreateTournament"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -742,6 +741,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/clubs/{id}/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The club's feed (ADR-36) — the community's activity, membership-scoped
+         * @description A merged, date-ordered stream of match, correction and market events. Match events go to any current member's matches (coop included); correction events to corrections of current members; market events to the markets the club OWNS. Membership-scoped by design — a tournament match appears even when it does not count into the club's main arena rating. Match payloads carry settlement columns from the club's main arena. Parameters and cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the club itself is the feed's identity.
+         */
+        get: operations["ListClubFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clubs/{id}/tournaments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a tournament owned by the club (status = registration)
+         * @description Every tournament belongs to a club (ADR-36). The path club must be an existing tenant — creating under a group is a 409, under a missing club a 404. The club cannot be changed later.
+         */
+        post: operations["CreateClubTournament"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/clubs/{id}/markets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new betting market owned by the club
+         * @description Every market belongs to a club (ADR-36). The path club must be an existing tenant — creating under a group is a 409, under a missing club a 404. tournament_winner markets are not creatable by hand.
+         */
+        post: operations["CreateClubMarket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings": {
         parameters: {
             query?: never;
@@ -822,8 +881,7 @@ export interface paths {
         /** List active markets in full and one cursor-paginated page of closed markets */
         get: operations["ListMarkets"];
         put?: never;
-        /** Create a new betting market */
-        post: operations["CreateMarket"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1490,6 +1548,8 @@ export interface components {
         };
         Tournament: {
             id: components["schemas"]["Base58ID"];
+            /** @description The owning tenant club (ADR-36); immutable after create. */
+            club_id: components["schemas"]["Base58ID"];
             name: string;
             /** @enum {string} */
             status: "registration" | "running" | "completed" | "cancelled";
@@ -1723,6 +1783,8 @@ export interface components {
         };
         Market: {
             id: components["schemas"]["Base58ID"];
+            /** @description The owning tenant club (ADR-36); settlements land in its main arena. */
+            club_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             market_type: "match_winner" | "win_streak" | "tournament_winner";
             /** @enum {string} */
@@ -4033,66 +4095,6 @@ export interface operations {
             };
         };
     };
-    CreateTournament: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TournamentInput"];
-            };
-        };
-        responses: {
-            /** @description Tournament created (or the already-created row for an id replay) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TournamentResponse"];
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Editor permission required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tournament name already taken */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     GetTournament: {
         parameters: {
             query?: never;
@@ -4233,7 +4235,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description No player linked to the user */
+            /** @description No player linked to the user, or the owning club restricts registration to its members (tournaments_openness = members_only, ADR-36) and the player is not a current member */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5305,6 +5307,230 @@ export interface operations {
             };
         };
     };
+    ListClubFeed: {
+        parameters: {
+            query?: {
+                /** @description Filter match and market events by player ID (the arena feed's matching rule) */
+                player_id?: string;
+                /** @description Filter match and market events by game ID (the arena feed's matching rule) */
+                game_id?: string;
+                /** @description Cursor token from previous page's "next" field */
+                next?: string;
+                /** @description Number of events per page */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated feed event list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedPage"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Club not found, or a group club (no main arena to read settlements from) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateClubTournament: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TournamentInput"];
+            };
+        };
+        responses: {
+            /** @description Tournament created (or the already-created row for an id replay) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TournamentResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Editor permission required, or the club restricts tournaments to its members (tournaments_openness = members_only, ADR-36) and the submitted participant list contains a non-member */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Club not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tournament name already taken, or the path club is not a tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    CreateClubMarket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id: components["schemas"]["Base58ID"];
+                    /**
+                     * @description tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
+                     * @enum {string}
+                     */
+                    market_type: "match_winner" | "win_streak";
+                    /**
+                     * Format: date-time
+                     * @description Defaults to now if omitted; must not be in the past if provided
+                     */
+                    starts_at?: string;
+                    /**
+                     * Format: date-time
+                     * @description Required for both market types
+                     */
+                    closes_at?: string;
+                    /** @description Target players — one "player wins" outcome is created per player. */
+                    target_player_ids?: components["schemas"]["Base58ID"][];
+                    /** @description When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome. */
+                    allow_other_players?: boolean;
+                    /** @description Games the match must belong to; empty means any game. */
+                    game_ids?: components["schemas"]["Base58ID"][];
+                    target_player_id?: components["schemas"]["Base58ID"];
+                    /** @description Games the matches must belong to; empty means any game. */
+                    streak_game_ids?: components["schemas"]["Base58ID"][];
+                    wins_required?: number;
+                    max_losses?: number | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Market created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: {
+                            id: components["schemas"]["Base58ID"];
+                        };
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Club not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The path club is not a tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     GetSettings: {
         parameters: {
             query?: never;
@@ -5604,90 +5830,6 @@ export interface operations {
             };
         };
     };
-    CreateMarket: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    id: components["schemas"]["Base58ID"];
-                    /**
-                     * @description tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
-                     * @enum {string}
-                     */
-                    market_type: "match_winner" | "win_streak";
-                    /**
-                     * Format: date-time
-                     * @description Defaults to now if omitted; must not be in the past if provided
-                     */
-                    starts_at?: string;
-                    /**
-                     * Format: date-time
-                     * @description Required for both market types
-                     */
-                    closes_at?: string;
-                    /** @description Target players — one "player wins" outcome is created per player. */
-                    target_player_ids?: components["schemas"]["Base58ID"][];
-                    /** @description When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome. */
-                    allow_other_players?: boolean;
-                    /** @description Games the match must belong to; empty means any game. */
-                    game_ids?: components["schemas"]["Base58ID"][];
-                    target_player_id?: components["schemas"]["Base58ID"];
-                    /** @description Games the matches must belong to; empty means any game. */
-                    streak_game_ids?: components["schemas"]["Base58ID"][];
-                    wins_required?: number;
-                    max_losses?: number | null;
-                };
-            };
-        };
-        responses: {
-            /** @description Market created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: {
-                            id: components["schemas"]["Base58ID"];
-                        };
-                    };
-                };
-            };
-            /** @description Bad request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
     GetMarket: {
         parameters: {
             query?: never;
@@ -5929,7 +6071,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden (no linked player) */
+            /** @description No player linked to the user, or the market's club restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6030,7 +6172,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Forbidden (no linked player) */
+            /** @description No player linked to the user, or the market's club restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
             403: {
                 headers: {
                     [name: string]: unknown;

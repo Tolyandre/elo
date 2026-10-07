@@ -1,9 +1,10 @@
 "use client"
 import type { Base58ID } from "@/lib/id";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
+import { useClubs } from "@/app/clubsContext";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -79,12 +80,24 @@ export function CreateMarketForm() {
 
     const canEdit = me.canEdit;
 
+    // The owning tenant club (ADR-36): settlements land in its main arena and
+    // a members_only club restricts bets to its members. A single tenant
+    // community (today's production shape) preselects itself.
+    const { clubs, clubDisplayName } = useClubs();
+    const tenantClubs = useMemo(() => clubs.filter((c) => c.kind === "tenant"), [clubs]);
+    const [clubId, setClubId] = useState<Base58ID | "">("");
+    const effectiveClubId = clubId || (tenantClubs.length === 1 ? tenantClubs[0].id : "");
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
+        if (!effectiveClubId) {
+            setError("Укажите клуб сообщества");
+            return;
+        }
         setError("");
         setSubmitting(true);
         try {
-            const payload: Parameters<typeof createMarketPromise>[0] = {
+            const payload: Parameters<typeof createMarketPromise>[1] = {
                 market_type: marketType,
                 starts_at: startsAtMode === "now" ? null : new Date(startsAt).toISOString(),
             };
@@ -100,7 +113,7 @@ export function CreateMarketForm() {
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
-            await createMarketPromise(payload);
+            await createMarketPromise(effectiveClubId, payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/?tab=feed");
         } catch (err) {
@@ -122,6 +135,7 @@ export function CreateMarketForm() {
             const probability = 1 / n;
             return {
                 id: "" as Base58ID, market_type: marketType, status: "open",
+                club_id: (effectiveClubId || "") as Base58ID,
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
                 liquidity_b: 0,
@@ -137,6 +151,7 @@ export function CreateMarketForm() {
         }
         return {
             id: "" as Base58ID, market_type: marketType, status: "open",
+            club_id: (effectiveClubId || "") as Base58ID,
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
             liquidity_b: 0,
@@ -163,6 +178,20 @@ export function CreateMarketForm() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1.5">
+                    <Label>Клуб сообщества</Label>
+                    <Select value={effectiveClubId || undefined} onValueChange={(v) => setClubId(v as Base58ID)}>
+                        <SelectTrigger className="w-full" aria-label="Клуб сообщества">
+                            <SelectValue placeholder="Выберите клуб" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {tenantClubs.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>{clubDisplayName(c)}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
                 <div className="space-y-1.5">
                     <Label>Тип рынка</Label>
                     <Select value={marketType} onValueChange={(v) => setMarketType(v as typeof marketType)}>

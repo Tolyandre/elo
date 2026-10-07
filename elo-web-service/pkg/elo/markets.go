@@ -13,6 +13,7 @@ import (
 
 type CreateMarketParams struct {
 	ID         id.ID
+	ClubID     id.ID // the owning tenant club (ADR-36): settlements land in its main arena
 	MarketType string
 	StartsAt   time.Time
 	ClosesAt   time.Time
@@ -67,7 +68,7 @@ type IMarketService interface {
 	// with a tournament that just started (ADR-35) — one "player wins" outcome
 	// per participant, closes_at = infinity. Must be called within the start
 	// transaction, after the tournament's status write froze the roster.
-	CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, createdBy id.ID) error
+	CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, clubID, createdBy id.ID) error
 
 	// SettleTournamentWinnerMarketsOnComplete resolves every open
 	// tournament_winner market on a tournament that just completed. A

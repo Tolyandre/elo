@@ -177,9 +177,10 @@ func (s *TournamentService) StartTournament(ctx context.Context, tid id.ID, plan
 
 		// The tournament_winner market is born with the tournament (ADR-35):
 		// same transaction, so a running tournament always carries exactly one,
-		// with the roster frozen by the status write above.
+		// with the roster frozen by the status write above. It inherits the
+		// tournament's club (ADR-36) — settlements land in that club's arena.
 		if s.Markets != nil {
-			if err := s.Markets.CreateTournamentWinnerMarket(ctx, q, tid, actorUserID); err != nil {
+			if err := s.Markets.CreateTournamentWinnerMarket(ctx, q, tid, t.ClubID, actorUserID); err != nil {
 				return fmt.Errorf("create tournament winner market: %w", err)
 			}
 		}

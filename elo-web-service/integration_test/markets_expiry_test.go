@@ -42,6 +42,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 
 	// Create a win_streak market that expires before the trigger match.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "win_streak",
 		StartsAt:   now.Add(-time.Minute),

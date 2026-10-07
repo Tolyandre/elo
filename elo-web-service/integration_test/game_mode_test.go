@@ -376,6 +376,7 @@ func TestGameMode_MarketAndTournamentExclusion(t *testing.T) {
 	// A match_winner market: the target wins on the mixed game.
 	marketSvc := elo.NewMarketService(pool)
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Hour),
@@ -430,14 +431,14 @@ func TestGameMode_MarketAndTournamentExclusion(t *testing.T) {
 		"target_player_ids":[%q],"allow_other_players":true,"game_ids":[%q]}`,
 		newID(t).String(), time.Now().Format(time.RFC3339), time.Now().Add(24*time.Hour).Format(time.RFC3339),
 		target.String(), coopGame.String())
-	if w := doJSON(t, router, http.MethodPost, "/markets", editorToken, createMarketBody); w.Code != http.StatusBadRequest {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/markets", editorToken, createMarketBody); w.Code != http.StatusBadRequest {
 		t.Fatalf("market on coop game: %d %s", w.Code, w.Body.String())
 	}
 
 	// …and from a tournament pool.
 	tournamentBody := fmt.Sprintf(`{"id":%q,"name":"КоопТурнир","games":[{"game_id":%q,"min_players":2,"max_players":4}]}`,
 		newID(t).String(), coopGame.String())
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", editorToken, tournamentBody); w.Code != http.StatusBadRequest {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", editorToken, tournamentBody); w.Code != http.StatusBadRequest {
 		t.Fatalf("tournament with coop game: %d %s", w.Code, w.Body.String())
 	}
 }

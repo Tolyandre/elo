@@ -67,7 +67,10 @@ type TournamentGameInput struct {
 // TournamentWriteOpts carries the registration-time configuration.
 // On update, nil Games / nil ParticipantIDs keep the stored set (the PUT body
 // marks them "when present"); a nil GrandFinalDeadline clears it.
+// ClubID is create-only (the create path is POST /clubs/{id}/tournaments,
+// ADR-36): the owning club is immutable afterwards, updates ignore it.
 type TournamentWriteOpts struct {
+	ClubID             id.ID
 	Name               string
 	GrandFinalDeadline *time.Time
 	Games              []TournamentGameInput
@@ -82,6 +85,16 @@ type TournamentWriteOpts struct {
 func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opts TournamentWriteOpts) (db.Tournament, error) {
 	if err := validateTournamentInput(opts); err != nil {
 		return db.Tournament{}, err
+	}
+	// The owning club must be a tenant (ADR-36): a group has no main arena
+	// for the tournament-winner market to settle into. A missing club maps to
+	// the handler's 404.
+	club, err := s.Queries.GetClubByID(ctx, opts.ClubID)
+	if err != nil {
+		return db.Tournament{}, fmt.Errorf("get club: %w", err)
+	}
+	if club.Kind != ClubKindTenant {
+		return db.Tournament{}, ErrClubNotTenant
 	}
 	if !tid.IsZero() {
 		// Idempotent create: an id replay returns the already-created row.
@@ -99,6 +112,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 	if _, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Tournament, error) {
 		row, err := q.CreateTournament(ctx, db.CreateTournamentParams{
 			ID:                 tid,
+			ClubID:             opts.ClubID,
 			Name:               opts.Name,
 			GrandFinalDeadline: timePtrTz(opts.GrandFinalDeadline),
 		})
@@ -112,7 +126,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 		if err := writeTournamentPool(ctx, q, tid, opts.Games); err != nil {
 			return db.Tournament{}, err
 		}
-		if err := writeTournamentParticipants(ctx, q, tid, opts.ParticipantIDs); err != nil {
+		if err := writeTournamentParticipants(ctx, q, opts.ClubID, tid, opts.ParticipantIDs); err != nil {
 			return db.Tournament{}, err
 		}
 		deadline := (*time.Time)(nil)
@@ -170,7 +184,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tid id.ID, opt
 			}
 		}
 		if opts.ParticipantIDs != nil {
-			if err := writeTournamentParticipants(ctx, q, tid, opts.ParticipantIDs); err != nil {
+			if err := writeTournamentParticipants(ctx, q, t.ClubID, tid, opts.ParticipantIDs); err != nil {
 				return struct{}{}, err
 			}
 		}
@@ -244,6 +258,11 @@ func (s *TournamentService) ChangeRegistration(ctx context.Context, tid, playerI
 			return err
 		}
 		if join {
+			// A members_only club's tournaments are restricted to current
+			// members (ADR-36); withdrawal stays open for lapsed members.
+			if err := ensureTournamentOpenToPlayers(ctx, q, t.ClubID, []id.ID{playerID}); err != nil {
+				return err
+			}
 			if err := q.AddTournamentParticipant(ctx, db.AddTournamentParticipantParams{
 				TournamentID: tid, PlayerID: playerID,
 			}); err != nil {
@@ -406,8 +425,13 @@ func writeTournamentPool(ctx context.Context, q *db.Queries, tid id.ID, games []
 	return nil
 }
 
-// writeTournamentParticipants applies the desired participant set.
-func writeTournamentParticipants(ctx context.Context, q *db.Queries, tid id.ID, wanted []id.ID) error {
+// writeTournamentParticipants applies the desired participant set. The
+// owning club's tournaments_openness gates the set (ADR-36): a members_only
+// club's roster admits current members only.
+func writeTournamentParticipants(ctx context.Context, q *db.Queries, clubID, tid id.ID, wanted []id.ID) error {
+	if err := ensureTournamentOpenToPlayers(ctx, q, clubID, wanted); err != nil {
+		return err
+	}
 	if err := q.DeleteTournamentParticipantsNotIn(ctx, db.DeleteTournamentParticipantsNotInParams{
 		TournamentID: tid,
 		PlayerIds:    wanted,
@@ -419,6 +443,29 @@ func writeTournamentParticipants(ctx context.Context, q *db.Queries, tid id.ID, 
 			TournamentID: tid, PlayerID: pid,
 		}); err != nil {
 			return fmt.Errorf("add participant: %w", err)
+		}
+	}
+	return nil
+}
+
+// ensureTournamentOpenToPlayers enforces the owning club's tournaments
+// openness (ADR-36): a members_only club admits current members only; an
+// open club (and «Синие люди», which converts with open) admits everyone.
+func ensureTournamentOpenToPlayers(ctx context.Context, q *db.Queries, clubID id.ID, players []id.ID) error {
+	club, err := q.GetClubByID(ctx, clubID)
+	if err != nil {
+		return fmt.Errorf("get club: %w", err)
+	}
+	if club.TournamentsOpenness.String != TournamentOpennessMembersOnly {
+		return nil
+	}
+	for _, pid := range players {
+		member, err := q.PlayerIsClubMember(ctx, db.PlayerIsClubMemberParams{ClubID: clubID, PlayerID: pid})
+		if err != nil {
+			return fmt.Errorf("check club membership: %w", err)
+		}
+		if !member {
+			return ErrTournamentMembersOnly
 		}
 	}
 	return nil

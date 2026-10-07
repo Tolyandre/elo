@@ -28,7 +28,7 @@ func TestTournament_ArenaMembershipFunction(t *testing.T) {
 	}
 	tournID := idpkg.New()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournaments (id, name, status, elimination) VALUES ($1, 'Миграционный турнир', 'running', 'single')`,
+		`INSERT INTO tournaments (id, club_id, name, status, elimination) VALUES ($1, '00000000-0000-0000-0000-000000000001', 'Миграционный турнир', 'running', 'single')`,
 		tournID); err != nil {
 		t.Fatalf("insert probe tournament: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestTournament_CRUDAndRegistration(t *testing.T) {
 		"participant_ids": [%q, %q]
 	}`, short(tid), short(gameID), short(p1), short(p2))
 
-	w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody)
+	w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody)
 	if w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
@@ -204,7 +204,7 @@ func TestTournament_CRUDAndRegistration(t *testing.T) {
 	}
 
 	// Id replay returns the same row.
-	w = doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody)
+	w = doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody)
 	if w.Code != http.StatusOK {
 		t.Fatalf("id replay: %d %s", w.Code, w.Body.String())
 	}
@@ -279,7 +279,7 @@ func TestTournament_SelfRegistration(t *testing.T) {
 	tid := newID(t)
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Открытый кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}]}`,
 		short(tid), short(gameID))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
 

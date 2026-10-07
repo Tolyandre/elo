@@ -38,6 +38,7 @@ type paramsFiller[T any] interface {
 // buildMarket is written once.
 type marketRow struct {
 	ID                id.ID
+	ClubID            id.ID
 	MarketType        string
 	Status            string
 	ResolutionOutcome *id.ID
@@ -62,6 +63,7 @@ type marketRow struct {
 func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 	return marketRow{
 		ID:                r.ID,
+		ClubID:            r.ClubID,
 		MarketType:        r.MarketType,
 		Status:            r.Status,
 		ResolutionOutcome: r.ResolutionOutcome,
@@ -87,6 +89,7 @@ func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 	return marketRow{
 		ID:                r.ID,
+		ClubID:            r.ClubID,
 		MarketType:        r.MarketType,
 		Status:            r.Status,
 		ResolutionOutcome: r.ResolutionOutcome,
@@ -283,6 +286,7 @@ func apiClosesAt(marketType string, closesAt pgtype.Timestamptz) *time.Time {
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	m := Market{
 		Id:         r.ID,
+		ClubId:     Base58ID(r.ClubID),
 		MarketType: MarketMarketType(r.MarketType),
 		Status:     MarketStatus(r.Status),
 		LiquidityB: r.LiquidityB,
@@ -483,6 +487,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 
 	detail := MarketDetail{
 		Id:         row.ID,
+		ClubId:     Base58ID(row.ClubID),
 		MarketType: MarketDetailMarketType(row.MarketType),
 		Status:     MarketDetailStatus(row.Status),
 		LiquidityB: row.LiquidityB,
@@ -634,7 +639,7 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 // donut segment, so the cardinality stays displayable.
 const maxMatchWinnerTargets = 12
 
-func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketRequestObject) (CreateMarketResponseObject, error) {
+func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubMarketRequestObject) (CreateClubMarketResponseObject, error) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
 		return nil, fmt.Errorf("gin context not available")
@@ -643,7 +648,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return CreateMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
+			return CreateClubMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
 	}
@@ -653,13 +658,14 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	startsAt := time.Now()
 	if body.StartsAt != nil {
 		if body.StartsAt.Before(time.Now()) {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "starts_at не может быть в прошлом"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "starts_at не может быть в прошлом"}, nil
 		}
 		startsAt = *body.StartsAt
 	}
 
 	params := elo.CreateMarketParams{
 		ID:         id.ID(body.Id),
+		ClubID:     parseIDParam(request.Id),
 		MarketType: string(body.MarketType),
 		StartsAt:   startsAt,
 		CreatedBy:  user.ID,
@@ -672,7 +678,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	switch string(body.MarketType) {
 	case "match_winner", "win_streak":
 		if body.ClosesAt == nil {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
 		}
 		params.ClosesAt = *body.ClosesAt
 	}
@@ -680,13 +686,13 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 	switch string(body.MarketType) {
 	case "match_winner":
 		if body.TargetPlayerIds == nil || len(*body.TargetPlayerIds) == 0 {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires target_player_ids"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires target_player_ids"}, nil
 		}
 		if len(*body.TargetPlayerIds) > maxMatchWinnerTargets {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "слишком много целевых игроков"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "слишком много целевых игроков"}, nil
 		}
 		if body.AllowOtherPlayers == nil {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires allow_other_players"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires allow_other_players"}, nil
 		}
 		// Deduplicate while preserving order.
 		seen := make(map[id.ID]bool, len(*body.TargetPlayerIds))
@@ -701,7 +707,7 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		// A single named player without the shared "other" winner leaves a
 		// degenerate market: any other player's win would resolve nothing.
 		if len(targets) == 1 && !*body.AllowOtherPlayers {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
 		}
 		var gameIDs []id.ID
 		if body.GameIds != nil {
@@ -715,10 +721,10 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 
 	case "win_streak":
 		if body.TargetPlayerId == nil || *body.TargetPlayerId == "" {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "invalid target_player_id"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "invalid target_player_id"}, nil
 		}
 		if body.WinsRequired == nil {
-			return CreateMarket400JSONResponse{Status: StatusFail, Message: "win_streak requires wins_required"}, nil
+			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "win_streak requires wins_required"}, nil
 		}
 		var streakGameIDs []id.ID
 		if body.StreakGameIds != nil {
@@ -737,15 +743,22 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		}
 
 	default:
-		return CreateMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil
+		return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil
 	}
 
 	market, err := s.api.MarketService.CreateMarket(ctx, params)
 	if err != nil {
+		// The service validates the path club: missing → 404, group → 409.
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return CreateClubMarket404JSONResponse{Status: StatusFail, Message: "Club not found"}, nil
+		case http.StatusConflict:
+			return CreateClubMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
 		return nil, err
 	}
 
-	resp := CreateMarket201JSONResponse{Status: StatusSuccess}
+	resp := CreateClubMarket201JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = market.ID
 	return resp, nil
 }
@@ -817,6 +830,9 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 			return PlaceBet422JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketOutcomeNotFound):
 			return PlaceBet400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		case errors.Is(err, elo.ErrMarketMembersOnly):
+			// A members_only club's market admits current members only (ADR-36).
+			return PlaceBet403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrMarketNotOpen), errors.Is(err, elo.ErrProbabilityChanged), errors.Is(err, elo.ErrMarketNeedsGuarantor):
 			return PlaceBet409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		default:
@@ -866,6 +882,9 @@ func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request Create
 		switch {
 		case errors.Is(err, elo.ErrMarketNotOpen):
 			return CreateMarketGuarantee409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		case errors.Is(err, elo.ErrMarketMembersOnly):
+			// A members_only club's market admits current members only (ADR-36).
+			return CreateMarketGuarantee403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case errors.Is(err, elo.ErrBetLimitExceeded),
 			errors.Is(err, elo.ErrGuaranteeRiskNotPositive),
 			errors.Is(err, elo.ErrGuaranteeFeeOutOfRange):

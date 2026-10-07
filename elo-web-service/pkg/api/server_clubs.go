@@ -310,3 +310,33 @@ func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubM
 
 	return RemoveClubMember200JSONResponse{Status: StatusSuccess, Message: "Member removed"}, nil
 }
+
+// ListClubFeed serves GET /clubs/{id}/feed (ADR-36): the community's activity,
+// membership-scoped (ListClubFeedEvents) with match settlement columns read
+// from the club's main arena. The feed is a tenant surface: a missing club or
+// a group (no main arena) is a 404.
+func (s *StrictServer) ListClubFeed(ctx context.Context, request ListClubFeedRequestObject) (ListClubFeedResponseObject, error) {
+	clubID := parseIDParam(request.Id)
+	// A cursor from another club's feed is a bad request regardless of the club.
+	if request.Params.Next != nil && *request.Params.Next != "" {
+		if c, _, derr := decodeArenaFeedCursor(*request.Params.Next); derr == nil && c.ClubID != nil && *c.ClubID != string(clubID) {
+			return ListClubFeed400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+		}
+	}
+	arenaID, err := s.api.ClubService.FeedArena(ctx, clubID)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return ListClubFeed404JSONResponse{Status: StatusFail, Message: "Club not found"}, nil
+		}
+		return nil, err
+	}
+	req, err := parseClubFeedRequest(arenaID, clubID, request.Params.PlayerId, request.Params.GameId, request.Params.Next, request.Params.Limit)
+	if err != nil {
+		return ListClubFeed400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
+	}
+	page, err := s.serveFeedPage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return ListClubFeed200JSONResponse(page), nil
+}

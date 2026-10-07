@@ -19,13 +19,21 @@ export async function getTournamentPromise(id: Base58ID): Promise<Tournament> {
     return (await unwrap(client.GET("/tournaments/{id}", { params: { path: { id } } }))).data;
 }
 
-export async function createTournamentPromise(payload: {
-    name: string;
-    grand_final_deadline?: string | null;
-    games?: TournamentGame[];
-    participant_ids?: Base58ID[];
-}): Promise<Tournament> {
-    return (await unwrap(client.POST("/tournaments", { body: { id: newId(), ...payload } }))).data;
+// Tournaments are created under their owning tenant club (ADR-36): the club
+// is part of the URL and immutable afterwards.
+export async function createTournamentPromise(
+    clubId: Base58ID,
+    payload: {
+        name: string;
+        grand_final_deadline?: string | null;
+        games?: TournamentGame[];
+        participant_ids?: Base58ID[];
+    },
+): Promise<Tournament> {
+    return (await unwrap(client.POST("/clubs/{id}/tournaments", {
+        params: { path: { id: clubId } },
+        body: { id: newId(), ...payload },
+    }))).data;
 }
 
 export async function updateTournamentPromise(id: Base58ID, payload: TournamentInput): Promise<Tournament> {

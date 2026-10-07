@@ -178,12 +178,17 @@ func main() {
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)
+	router.GET("/clubs/:id/feed", strictWrapper.ListClubFeed)
 	router.POST("/clubs", append(editorAuth(), strictWrapper.CreateClub)...)
 	router.PATCH("/clubs/:id", append(editorAuth(), strictWrapper.PatchClub)...)
 	router.POST("/clubs/:id/convert", append(editorAuth(), strictWrapper.ConvertClub)...)
 	router.DELETE("/clubs/:id", append(editorAuth(), strictWrapper.DeleteClub)...)
 	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
 	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)
+	// Club-owned tournaments and markets (ADR-36): the path club must be an
+	// existing tenant; the services validate it.
+	router.POST("/clubs/:id/tournaments", append(editorAuth(), strictWrapper.CreateClubTournament)...)
+	router.POST("/clubs/:id/markets", append(editorAuth(), strictWrapper.CreateClubMarket)...)
 
 	// Tags — shared game-tag vocabulary (many-to-many via /games/:id/tags).
 	router.GET("/tags", strictWrapper.ListTags)
@@ -195,7 +200,6 @@ func main() {
 
 	// Markets
 	router.GET("/markets", oauth2Handler.OptionalDeserializeUser(), strictWrapper.ListMarkets)
-	router.POST("/markets", append(editorAuth(), strictWrapper.CreateMarket)...)
 	router.GET("/markets/:id", oauth2Handler.OptionalDeserializeUser(), strictWrapper.GetMarket)
 	router.PATCH("/markets/:id", append(editorAuth(), strictWrapper.PatchMarket)...)
 	router.DELETE("/markets/:id", append(editorAuth(), strictWrapper.DeleteMarket)...)
@@ -209,9 +213,9 @@ func main() {
 	router.GET("/audit", strictWrapper.ListAuditEvents)
 
 	// Tournaments (ADR-26) — public reads, editor-gated organization, the
-	// self-registration behind the linked-player gate.
+	// self-registration behind the linked-player gate. Creation is
+	// club-scoped: POST /clubs/:id/tournaments (ADR-36).
 	router.GET("/tournaments", strictWrapper.ListTournaments)
-	router.POST("/tournaments", append(editorAuth(), strictWrapper.CreateTournament)...)
 	router.GET("/tournaments/:id", strictWrapper.GetTournament)
 	router.PUT("/tournaments/:id", append(editorAuth(), strictWrapper.UpdateTournament)...)
 	router.GET("/tournaments/:id/bracket-plans", append(editorAuth(), strictWrapper.ListTournamentBracketPlans)...)

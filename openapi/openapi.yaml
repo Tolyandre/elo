@@ -326,6 +326,15 @@ paths:
     $ref: './clubs.yaml#/ClubMembers'
   /clubs/{id}/members/{playerId}:
     $ref: './clubs.yaml#/ClubMemberItem'
+  /clubs/{id}/feed:
+    $ref: './clubs.yaml#/ClubFeedPath'
+
+  # Club-owned tournaments and markets (ADR-36): every tournament/market is
+  # created under its owning tenant club.
+  /clubs/{id}/tournaments:
+    $ref: './tournaments.yaml#/ClubTournamentsCollection'
+  /clubs/{id}/markets:
+    $ref: './markets.yaml#/ClubMarketsCollection'
 
   # Settings
   /settings:

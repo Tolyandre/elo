@@ -234,9 +234,12 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.DELETE("/clubs/:id/members/:playerId", o.DeserializeUser(), a.RequireEditor(), strictWrapper.RemoveClubMember)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
 	// Tournaments (ADR-26): public reads, editor-gated organization, the
-	// self-registration behind the linked-player gate.
+	// self-registration behind the linked-player gate. Creation is
+	// club-scoped (ADR-36).
 	r.GET("/tournaments", strictWrapper.ListTournaments)
-	r.POST("/tournaments", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTournament)
+	r.POST("/clubs/:id/tournaments", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClubTournament)
+	r.POST("/clubs/:id/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClubMarket)
+	r.GET("/clubs/:id/feed", strictWrapper.ListClubFeed)
 	r.GET("/tournaments/:id", strictWrapper.GetTournament)
 	r.PUT("/tournaments/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateTournament)
 	r.GET("/tournaments/:id/bracket-plans", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ListTournamentBracketPlans)
@@ -255,7 +258,6 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	// Markets: needed by the outcome-id idcodec roundtrip test (bet placement
 	// and the resolved-market outcome id).
 	r.GET("/markets", strictWrapper.ListMarkets)
-	r.POST("/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateMarket)
 	r.GET("/markets/:id", strictWrapper.GetMarket)
 	r.GET("/markets/:id/probability-history", strictWrapper.GetMarketProbabilityHistory)
 	r.POST("/markets/:id/bets", o.DeserializeUser(), strictWrapper.PlaceBet)
@@ -717,4 +719,36 @@ func doJSON(t *testing.T, router interface {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	return w
+}
+
+// blueMenClubID is the «Синие люди» tenant club id — the owner every
+// fixture tournament/market gets, whose main arena is the global arena.
+var blueMenClubID = idpkg.ID(blueMenClubUUID)
+
+func newTournamentService(pool *pgxpool.Pool) *elo.TournamentService {
+	arenaSvc := newArenaService(pool)
+	marketSvc := elo.NewMarketService(pool)
+	return elo.NewTournamentService(pool, arenaSvc, marketSvc)
+}
+
+// mustID parses a wire-form id, failing the test on garbage.
+func mustID(t *testing.T, raw string) idpkg.ID {
+	t.Helper()
+	v, err := idpkg.ParseTolerant(raw)
+	if err != nil {
+		t.Fatalf("parse id %q: %v", raw, err)
+	}
+	return v
+}
+
+// arenaMarketRows counts a market's settlement rows (both roles) in one arena.
+func arenaMarketRows(t *testing.T, pool *pgxpool.Pool, arena, market idpkg.ID) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM arena_settlements WHERE arena_id = $1 AND market_id = $2`,
+		arena, market).Scan(&n); err != nil {
+		t.Fatalf("count market rows: %v", err)
+	}
+	return n
 }

@@ -114,6 +114,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 
 	// 2. Market covering the upcoming game (starts in past, covers tFuture).
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   now.Add(-time.Hour),

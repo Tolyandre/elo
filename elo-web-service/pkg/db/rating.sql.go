@@ -52,7 +52,8 @@ func (q *Queries) ArenaRatingHistory(ctx context.Context, arg ArenaRatingHistory
 }
 
 const deleteArenaSettlementsFromDate = `-- name: DeleteArenaSettlementsFromDate :exec
-DELETE FROM arena_settlements WHERE arena_id = $1 AND date >= $2
+DELETE FROM arena_settlements
+WHERE arena_id = $1 AND date >= $2 AND discriminator = 'match'
 `
 
 type DeleteArenaSettlementsFromDateParams struct {
@@ -60,8 +61,12 @@ type DeleteArenaSettlementsFromDateParams struct {
 	Date    pgtype.Timestamptz `json:"date"`
 }
 
-// Replay support: removes every settlement row (match, market, correction) of
-// the arena from the date on. For non-global arenas only 'match' rows exist.
+// Replay support for the arena updater: removes the arena's MATCH settlement
+// rows from the date on — the replay re-settles matches only. Market and
+// correction rows belong to their own lifecycles (markets re-settle via the
+// unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
+// club's arena; corrections live only in the global arena) and must survive
+// an arena replay.
 func (q *Queries) DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error {
 	_, err := q.db.Exec(ctx, deleteArenaSettlementsFromDate, arg.ArenaID, arg.Date)
 	return err

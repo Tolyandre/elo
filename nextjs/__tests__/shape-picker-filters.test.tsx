@@ -69,6 +69,7 @@ const plan: TournamentPlan = {
 
 const tournament: Tournament = {
     id: "t-1" as Base58ID,
+    club_id: "c-blue" as Base58ID,
     name: "Кубок",
     status: "registration",
     elimination: null,

@@ -61,9 +61,11 @@ WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1
 `
 
 // Single delete covering match, market, AND correction settlements of the
-// global arena (the only arena markets and corrections touch).
-// Called at the start of RecalculateFrom so per-market deletes in
-// UnsettleMarketsFromDate become harmless no-ops.
+// global arena (corrections touch only the global arena; «Синие люди»'s
+// markets settle there too since it is their club's main arena — ADR-36).
+// Other clubs' market rows are removed by the per-market deletes in
+// UnsettleMarketsFromDate, in each market's own arena.
+// Called at the start of RecalculateFrom.
 func (q *Queries) DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
 	_, err := q.db.Exec(ctx, deleteGlobalSettlementsFromDate, date)
 	return err

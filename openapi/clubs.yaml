@@ -451,3 +451,68 @@ Club:
         The tenant club's main arena. Present for tenants only (the original
         club's main arena is the global arena).
   required: [id, name, player_ids, kind]
+
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+ClubFeedPath:
+  get:
+    operationId: ListClubFeed
+    tags: [clubs]
+    summary: The club's feed (ADR-36) — the community's activity, membership-scoped
+    description: >-
+      A merged, date-ordered stream of match, correction and market events.
+      Match events go to any current member's matches (coop included);
+      correction events to corrections of current members; market events to
+      the markets the club OWNS. Membership-scoped by design — a tournament
+      match appears even when it does not count into the club's main arena
+      rating. Match payloads carry settlement columns from the club's main
+      arena. Parameters and cursor are the arena feed's minus the arena
+      (arenas.yaml ADR-32); the club itself is the feed's identity.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter match and market events by player ID (the arena feed's matching rule)
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter match and market events by game ID (the arena feed's matching rule)
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of events per page
+    responses:
+      "200":
+        description: Paginated feed event list
+        content:
+          application/json:
+            schema:
+              $ref: './arenas.yaml#/FeedPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Club not found, or a group club (no main arena to read settlements from)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'

@@ -161,7 +161,7 @@ type Market struct {
 	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	ClubID            *id.ID             `json:"club_id"`
+	ClubID            id.ID              `json:"club_id"`
 }
 
 type MarketGuarantee struct {
@@ -257,7 +257,7 @@ type Tournament struct {
 	Plan               json.RawMessage    `json:"plan"`
 	PlanSchemaVersion  int32              `json:"plan_schema_version"`
 	CreatedAt          time.Time          `json:"created_at"`
-	ClubID             *id.ID             `json:"club_id"`
+	ClubID             id.ID              `json:"club_id"`
 }
 
 type TournamentGame struct {

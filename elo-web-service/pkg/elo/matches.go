@@ -706,11 +706,17 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 
 		createdAt := market.CreatedAt.Time
 
+		// The market's settlements live in its club's main arena (ADR-36);
+		// delete them there before the market row itself is hard-deleted.
+		arena, err := marketArena(ctx, q, market.ClubID)
+		if err != nil {
+			return err
+		}
 		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
-			ArenaID:  GlobalArenaID,
+			ArenaID:  arena.ID,
 			MarketID: &marketID,
 		}); err != nil {
-			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
+			return fmt.Errorf("delete settlements of market %s: %w", marketID, err)
 		}
 
 		if err := q.DeleteMarket(ctx, marketID); err != nil {

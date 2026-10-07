@@ -94,14 +94,35 @@ its score rows — it just settles no rating).
 
 ### Tournaments and markets
 
-Every tournament and market relates to a club (`tournaments.club_id`,
-`markets.club_id`, nullable in the data-model phase, NOT NULL once the create
-paths require it; pre-tenancy rows backfilled to «Синие люди»). Settlements
-go to the owning club's main arena; bets and guarantees are restricted to
-current members iff that arena is `members_only`. A tournament's own arena
-keeps counting all tournament matches regardless of openness; with a
-`members_only` main arena and an `open` tournament, tournament matches appear
-in the club feed but do not count into the main arena rating.
+Every tournament and market belongs to a club (`tournaments.club_id`,
+`markets.club_id`, NOT NULL since 070; pre-tenancy rows backfilled to
+«Синие люди»). Creates are club-scoped resources — `POST
+/clubs/{id}/tournaments` and `POST /clubs/{id}/markets` (the flat
+`POST /tournaments` / `POST /markets` are gone); the path club must be an
+existing tenant, and the club is immutable after create. The auto-created
+tournament_winner market inherits the tournament's club.
+
+Settlements go to the owning club's main arena: `SettleMarket` resolves
+`markets.club_id` → main arena for the balance reads and the settlement rows,
+and every unsettle path deletes per market in the same arena (the epoch sweep
+in `RecalculateFrom` re-settles all clubs' markets; the global-arena bulk
+delete covers «Синие люди»'s own). Arena replays delete only
+`discriminator = 'match'` rows, so a main arena's market rows survive them —
+their lifecycle is the market machinery's alone. Bets and guarantees are
+restricted to current members iff the owning club's main arena is
+`members_only` (403). Tournament registration is restricted to current
+members iff `tournaments_openness` is `members_only` — on the organizer's
+participant list and at self-registration (withdrawal stays open), 403.
+
+`GET /clubs/{id}/feed` is the community's feed, **membership-scoped by
+design, not arena-attribution-scoped**: match events go to any current
+member's matches (coop included), correction events to corrections of current
+members, market events to the markets the club OWNS (a member's bet on
+another club's market is that club's news). A tournament match therefore
+appears in the club feed even when it does not count into the main arena
+rating; a tournament's own arena keeps counting all tournament matches
+regardless of openness. Match payloads carry settlement columns from the
+club's main arena; a group club has no feed (404 — no arena to read from).
 
 ### Shared across tenants
 
@@ -127,12 +148,13 @@ Staged forward, each phase shippable:
    club flavor, and converts «Синие люди»; clubs/arenas API grows the new
    fields and `POST /clubs/{id}/convert`. Zero behavior change
    otherwise.
-2. **Attribution & ranking** (this phase): the club-arena membership
-   predicate (069), the display reads (matches, players, player ranks)
-   parameterized by arena, mode-change → full recalculation, members-only
-   listing.
-3. **Tournaments & markets**: explicit `club_id` + NOT NULL on creates,
-   registration/settlement/guarantee rules, `GET /clubs/{id}/feed`.
+2. **Attribution & ranking**: the club-arena membership predicate (069), the
+   display reads (matches, players, player ranks) parameterized by arena,
+   mode-change → full recalculation, members-only listing.
+3. **Tournaments & markets** (this phase): club-scoped creates (`POST
+   /clubs/{id}/tournaments`, `POST /clubs/{id}/markets`; flat creates
+   removed), `club_id` NOT NULL (070), per-club settlement arenas,
+   registration/bet/guarantee members-only gates, `GET /clubs/{id}/feed`.
 4. **Frontend shell**: `?club=`, switcher, defaults, player-page club tabs,
    `GET /players/{id}/stats?club=`.
 5. **Admin UI**: club settings page (kind, openness, member stints, convert),
@@ -147,7 +169,13 @@ Staged forward, each phase shippable:
 - The membership predicate lives in SQL fragments, not in the inlined
   function — the ADR-28 performance rule now has an explicit exception to
   point at.
-- Markets and corrections that today hard-code the global arena will, in the
-  tournaments/markets phase, settle into the owning club's main arena; for
-  «Синие люди» these are the same row, so production data is unaffected.
+- Markets settle into the owning club's main arena (their rows survive arena
+  match-replays, which delete matches only); **corrections stay on the
+  global arena** — they have no club of their own, and that arena is «Синие
+  люди»'s main arena since 068. Bet limits stay a single global column
+  derived from the global arena (fresh-tenant members fall back to the
+  starting Elo until they play there); revisitable if a per-tenant basis is
+  ever needed. A main-arena mode change replays the arena's match rows and
+  then re-chains every market settlement via the epoch sweep, so the whole
+  ledger is consistent with the new history.
 - The dev seed keeps its default club as the converted «Синие люди» tenant.

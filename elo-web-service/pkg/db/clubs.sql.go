@@ -237,6 +237,148 @@ func (q *Queries) GetClubByID(ctx context.Context, argID id.ID) (Club, error) {
 	return i, err
 }
 
+const listClubFeedEvents = `-- name: ListClubFeedEvents :many
+WITH events AS (
+    SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
+    FROM matches m
+    JOIN match_scores ms ON ms.match_id = m.id
+    WHERE EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = $5::uuid
+                AND pcm.left_at IS NULL
+                AND pcm.player_id = ms.player_id
+          )
+      AND (
+          $6::uuid IS NULL OR ms.player_id = $6::uuid
+      )
+      AND (
+          $7::uuid IS NULL OR m.game_id = $7::uuid
+      )
+    UNION ALL
+    SELECT c.id, c.date, 'correction'::text
+    FROM corrections c
+    WHERE EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = $5::uuid
+                AND pcm.left_at IS NULL
+                AND pcm.player_id = c.player_id
+          )
+    UNION ALL
+    -- The club's markets: an active market (open or betting-locked) sorts at
+    -- its creation moment, a settled one (resolved or cancelled) at its
+    -- resolution moment — the arena feed's ordering, with the owning club as
+    -- the membership condition.
+    SELECT om.id,
+           CASE WHEN om.status IN ('open', 'betting_closed') THEN om.created_at
+                ELSE om.resolved_at
+           END AS sort_date,
+           'market'::text
+    FROM markets om
+    WHERE om.club_id = $5::uuid
+      AND (
+          (om.status IN ('open', 'betting_closed') AND om.created_at IS NOT NULL)
+          OR (om.status IN ('resolved', 'cancelled') AND om.resolved_at IS NOT NULL)
+      )
+      AND (
+          $6::uuid IS NULL
+          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                     WHERE mwp.market_id = om.id
+                       AND $6::uuid = ANY(mwp.target_player_ids))
+          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                     WHERE wsp.market_id = om.id
+                       AND wsp.target_player_id = $6::uuid)
+          OR EXISTS (SELECT 1 FROM market_outcomes mo
+                     WHERE mo.market_id = om.id
+                       AND mo.player_id = $6::uuid)
+          OR EXISTS (SELECT 1 FROM market_guarantees mg
+                     WHERE mg.market_id = om.id
+                       AND mg.player_id = $6::uuid)
+          OR EXISTS (SELECT 1 FROM arena_settlements ars
+                     WHERE ars.market_id = om.id
+                       AND ars.player_id = $6::uuid)
+      )
+      AND (
+          $7::uuid IS NULL
+          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                     WHERE mwp.market_id = om.id
+                       AND $7::uuid = ANY(mwp.game_ids))
+          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                     WHERE wsp.market_id = om.id
+                       AND $7::uuid = ANY(wsp.game_ids))
+          OR EXISTS (SELECT 1 FROM matches rm
+                     WHERE rm.id = om.resolution_match_id
+                       AND rm.game_id = $7::uuid)
+      )
+)
+SELECT id, sort_date, event_type
+FROM events
+WHERE
+    $1::timestamptz IS NULL
+    OR sort_date < $1::timestamptz
+    OR (
+        sort_date = $1::timestamptz
+        AND (
+            event_type < $2::text
+            OR (event_type = $2::text AND id < $3::uuid)
+        )
+    )
+ORDER BY sort_date DESC, event_type DESC, id DESC
+LIMIT $4::int4
+`
+
+type ListClubFeedEventsParams struct {
+	CursorDate pgtype.Timestamptz `json:"cursor_date"`
+	CursorType pgtype.Text        `json:"cursor_type"`
+	CursorID   *id.ID             `json:"cursor_id"`
+	Limit      int32              `json:"limit"`
+	ClubID     id.ID              `json:"club_id"`
+	PlayerID   *id.ID             `json:"player_id"`
+	GameID     *id.ID             `json:"game_id"`
+}
+
+type ListClubFeedEventsRow struct {
+	ID        id.ID              `json:"id"`
+	SortDate  pgtype.Timestamptz `json:"sort_date"`
+	EventType string             `json:"event_type"`
+}
+
+// One page of the club feed (GET /clubs/{id}/feed, ADR-36): the community's
+// activity, membership-scoped — deliberately NOT arena-attribution-scoped, so
+// a tournament match appears even when it does not count into the club's main
+// arena rating. Match events go to any current member's matches (coop
+// included: community life, not just rating); correction events to
+// corrections of current members; market events to the markets the club
+// OWNS (a member's bet on another club's market is that club's news).
+// Parameters and cursor are the arena feed's minus the arena and the
+// include flags; the club itself is the feed's identity.
+func (q *Queries) ListClubFeedEvents(ctx context.Context, arg ListClubFeedEventsParams) ([]ListClubFeedEventsRow, error) {
+	rows, err := q.db.Query(ctx, listClubFeedEvents,
+		arg.CursorDate,
+		arg.CursorType,
+		arg.CursorID,
+		arg.Limit,
+		arg.ClubID,
+		arg.PlayerID,
+		arg.GameID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListClubFeedEventsRow{}
+	for rows.Next() {
+		var i ListClubFeedEventsRow
+		if err := rows.Scan(&i.ID, &i.SortDate, &i.EventType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listClubs = `-- name: ListClubs :many
 
 SELECT
@@ -298,6 +440,29 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const playerIsClubMember = `-- name: PlayerIsClubMember :one
+SELECT EXISTS (
+    SELECT 1 FROM player_club_membership
+    WHERE club_id = $1
+      AND player_id = $2
+      AND left_at IS NULL
+) AS is_member
+`
+
+type PlayerIsClubMemberParams struct {
+	ClubID   id.ID `json:"club_id"`
+	PlayerID id.ID `json:"player_id"`
+}
+
+// Current-member check (active stint, ADR-36) — the members_only gates:
+// tournament registration and bets/guarantees on a members_only club's market.
+func (q *Queries) PlayerIsClubMember(ctx context.Context, arg PlayerIsClubMemberParams) (bool, error) {
+	row := q.db.QueryRow(ctx, playerIsClubMember, arg.ClubID, arg.PlayerID)
+	var is_member bool
+	err := row.Scan(&is_member)
+	return is_member, err
 }
 
 const removeClubMember = `-- name: RemoveClubMember :exec

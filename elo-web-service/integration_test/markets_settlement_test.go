@@ -34,6 +34,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	// Markets are created without guarantors (ADR-20): back it with a voluntary
 	// zero-fee wager so the market becomes tradable.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -150,7 +151,8 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 
 	// 2. Create market and place bets
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID: newID(t),
+		ClubID: blueMenClubID,
+		ID:     newID(t),
 		// StartsAt must be AFTER t1 so that M1 (at t1) cannot trigger this market
 		// during recalculation (the market didn't exist yet when M1 first ran).
 		MarketType: "match_winner",
@@ -238,6 +240,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	// 1. A guarantor-less market is created fine but rejects bets until a
 	// guarantor backs it.
 	bare, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -258,6 +261,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 
 	// 2. Create a market backed by a sole guarantor.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -376,6 +380,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),

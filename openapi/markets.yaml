@@ -56,12 +56,27 @@ MarketsCollection:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
+
+# Markets are created under their owning club (ADR-36): the path club must be
+# a tenant. The club determines the settlement arena (its main arena) and the
+# members-only bet/guarantee restriction.
+ClubMarketsCollection:
   post:
-    operationId: CreateMarket
+    operationId: CreateClubMarket
     tags: [markets]
-    summary: Create a new betting market
+    summary: Create a new betting market owned by the club
+    description: >-
+      Every market belongs to a club (ADR-36). The path club must be an
+      existing tenant — creating under a group is a 409, under a missing club
+      a 404. tournament_winner markets are not creatable by hand.
     security:
       - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
     requestBody:
       required: true
       content:
@@ -150,6 +165,18 @@ MarketsCollection:
               $ref: './common.yaml#/ApiError'
       "403":
         description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Club not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: The path club is not a tenant
         content:
           application/json:
             schema:
@@ -372,7 +399,10 @@ MarketBets:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: Forbidden (no linked player)
+        description: >-
+          No player linked to the user, or the market's club restricts bets and
+          guarantees to its members (arena_membership_mode = members_only,
+          ADR-36) and the player is not a current member
         content:
           application/json:
             schema:
@@ -476,7 +506,10 @@ MarketGuarantees:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: Forbidden (no linked player)
+        description: >-
+          No player linked to the user, or the market's club restricts bets and
+          guarantees to its members (arena_membership_mode = members_only,
+          ADR-36) and the player is not a current member
         content:
           application/json:
             schema:
@@ -715,6 +748,9 @@ Market:
   properties:
     id:
       $ref: './common.yaml#/Base58ID'
+    club_id:
+      $ref: './common.yaml#/Base58ID'
+      description: The owning tenant club (ADR-36); settlements land in its main arena.
     market_type:
       type: string
       enum: [match_winner, win_streak, tournament_winner]
@@ -806,7 +842,7 @@ Market:
         who also bought on the market has a separate buyer row (shown in
         `settlement`), so their entry here carries only the house result
         (payout/surcharge).
-  required: [id, market_type, status, outcomes, liquidity_b]
+  required: [id, club_id, market_type, status, outcomes, liquidity_b]
 
 MarketDetail:
   allOf:

@@ -45,6 +45,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ClubID:     blueMenClubID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),

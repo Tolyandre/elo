@@ -84,6 +84,9 @@ type Querier interface {
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateGameTable(ctx context.Context, arg CreateGameTableParams) (GameTable, error)
+	// Every market belongs to a club (ADR-36): the create path is
+	// POST /clubs/{id}/markets and the auto-created tournament_winner market
+	// inherits the tournament's club.
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateMatchFilter(ctx context.Context, arg CreateMatchFilterParams) (id.ID, error)
@@ -101,6 +104,8 @@ type Querier interface {
 	// Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 	// with the same id inserts nothing and the service fetches the stored row.
 	// elimination stays NULL until start stamps the chosen plan's family.
+	// Every tournament belongs to a club (ADR-36): the create path is
+	// POST /clubs/{id}/tournaments and the club is a tenant.
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateTournamentRound(ctx context.Context, arg CreateTournamentRoundParams) (TournamentRound, error)
 	CreateTournamentSeat(ctx context.Context, arg CreateTournamentSeatParams) error
@@ -121,8 +126,12 @@ type Querier interface {
 	// Removes both buyer ('market') and guarantor ('market_guarantor') settlement
 	// rows for a market (used by unsettle/recalculation).
 	DeleteArenaSettlementByMarket(ctx context.Context, arg DeleteArenaSettlementByMarketParams) error
-	// Replay support: removes every settlement row (match, market, correction) of
-	// the arena from the date on. For non-global arenas only 'match' rows exist.
+	// Replay support for the arena updater: removes the arena's MATCH settlement
+	// rows from the date on — the replay re-settles matches only. Market and
+	// correction rows belong to their own lifecycles (markets re-settle via the
+	// unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
+	// club's arena; corrections live only in the global arena) and must survive
+	// an arena replay.
 	DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error
 	// ---------------------------------------------------------------------------
 	// Precalculated stats
@@ -134,9 +143,11 @@ type Querier interface {
 	DeleteGame(ctx context.Context, argID id.ID) (Game, error)
 	DeleteGameTable(ctx context.Context, argID id.ID) error
 	// Single delete covering match, market, AND correction settlements of the
-	// global arena (the only arena markets and corrections touch).
-	// Called at the start of RecalculateFrom so per-market deletes in
-	// UnsettleMarketsFromDate become harmless no-ops.
+	// global arena (corrections touch only the global arena; «Синие люди»'s
+	// markets settle there too since it is their club's main arena — ADR-36).
+	// Other clubs' market rows are removed by the per-market deletes in
+	// UnsettleMarketsFromDate, in each market's own arena.
+	// Called at the start of RecalculateFrom.
 	DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error
 	DeleteMarket(ctx context.Context, argID id.ID) error
 	DeleteMatchScores(ctx context.Context, matchID id.ID) error
@@ -223,11 +234,11 @@ type Querier interface {
 	// separate buyer row (discriminator 'market'), so their entry here carries only
 	// the house result (ADR-10). DISTINCT because a player may hold several
 	// guarantee wagers but settles as one guarantor row; the sort key is selected
-	// so DISTINCT accepts the ORDER BY. Markets settle only into the global arena,
-	// hence the fixed arena id.
+	// so DISTINCT accepts the ORDER BY. A market's rows live in exactly one arena
+	// (its club's main arena, ADR-36), so market_id alone identifies them.
 	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
 	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
-	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]id.ID, error)
+	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleRow, error)
 	// Returns resolved_at and betting_closed_at for the history conflict validation.
 	// betting_closed_at is a user event timestamp — preserved even after unsettling.
 	GetMarketsForUnsettleWithResolvedAt(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleWithResolvedAtRow, error)
@@ -278,7 +289,8 @@ type Querier interface {
 	// An empty game-id list counts matches from every game (the market's "any
 	// game" setting, same convention as match_winner's game_ids).
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
-	// Markets settle only into the global arena, hence the fixed arena id.
+	// A market settles exactly once into its owning club's main arena (ADR-36),
+	// so market_id alone identifies its rows (index arena_settlements_market_id_idx).
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
@@ -381,6 +393,16 @@ type Querier interface {
 	// the status column), so (resolved_at, id) is a total order and the
 	// continuation cursor.
 	ListClosedMarketKeys(ctx context.Context, arg ListClosedMarketKeysParams) ([]ListClosedMarketKeysRow, error)
+	// One page of the club feed (GET /clubs/{id}/feed, ADR-36): the community's
+	// activity, membership-scoped — deliberately NOT arena-attribution-scoped, so
+	// a tournament match appears even when it does not count into the club's main
+	// arena rating. Match events go to any current member's matches (coop
+	// included: community life, not just rating); correction events to
+	// corrections of current members; market events to the markets the club
+	// OWNS (a member's bet on another club's market is that club's news).
+	// Parameters and cursor are the arena feed's minus the arena and the
+	// include flags; the club itself is the feed's identity.
+	ListClubFeedEvents(ctx context.Context, arg ListClubFeedEventsParams) ([]ListClubFeedEventsRow, error)
 	// ---------------------------------------------------------------------------
 	// "Недавние" player-picker candidates (GET /players/recent)
 	// ---------------------------------------------------------------------------
@@ -538,6 +560,9 @@ type Querier interface {
 	// Dirty queue
 	// ---------------------------------------------------------------------------
 	MarkArenasStaleFull(ctx context.Context, arenaIds []id.ID) error
+	// Current-member check (active stint, ADR-36) — the members_only gates:
+	// tournament registration and bets/guarantees on a members_only club's market.
+	PlayerIsClubMember(ctx context.Context, arg PlayerIsClubMemberParams) (bool, error)
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
 	// Closes the active stint; closed stints stay as history (ADR-36).
@@ -602,7 +627,8 @@ type Querier interface {
 	UpsertArenaSettlementByCorrection(ctx context.Context, arg UpsertArenaSettlementByCorrectionParams) error
 	// One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 	// a player who is both gets two rows, hence the discriminator in the conflict
-	// target. Markets settle only into the global arena (ADR-24); callers pass it.
+	// target. Markets settle into the owning club's main arena (ADR-36); the
+	// caller resolves it from markets.club_id.
 	UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error
 	// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
 	// working with the global arena pass elo.GlobalArenaID. The global arena is

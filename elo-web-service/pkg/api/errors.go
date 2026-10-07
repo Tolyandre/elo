@@ -64,8 +64,12 @@ func domainStatusCode(err error) int {
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
-	// --- 403 Forbidden: authenticated but lacking a linked player -----------
-	case errors.Is(err, elo.ErrPlayerHasNoLinkedPlayer):
+	// --- 403 Forbidden: authenticated but not allowed -----------------------
+	// A members_only club's tournament/market refuses non-members (ADR-36);
+	// ErrPlayerHasNoLinkedPlayer covers the unlinked-user gates.
+	case errors.Is(err, elo.ErrPlayerHasNoLinkedPlayer),
+		errors.Is(err, elo.ErrTournamentMembersOnly),
+		errors.Is(err, elo.ErrMarketMembersOnly):
 		return http.StatusForbidden
 
 	// --- 404 Not Found ------------------------------------------------------

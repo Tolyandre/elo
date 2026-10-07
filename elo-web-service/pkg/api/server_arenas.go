@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -375,7 +376,8 @@ func decodeArenaFeedCursor(token string) (arenaFeedCursor, pgtype.Timestamptz, e
 }
 
 // feedRequest carries the parsed parameters shared by the arena feed
-// (GET /arenas/{id}/feed) and the home feed (GET /feed) endpoints (ADR-32).
+// (GET /arenas/{id}/feed), the home feed (GET /feed) and the club feed
+// (GET /clubs/{id}/feed, ADR-36) endpoints (ADR-32).
 type feedRequest struct {
 	arenaID id.ID
 	// includeSettlements merges the correction and market-resolution events
@@ -385,7 +387,12 @@ type feedRequest struct {
 	// includeCoop merges coop matches (ADR-33) into the stream. They belong to
 	// no arena (the membership function rejects their mode), so only the home
 	// feed carries them.
-	includeCoop              bool
+	includeCoop bool
+	// clubFeed marks the club feed's scope: events select via
+	// ListClubFeedEvents (membership-scoped) instead of the arena membership,
+	// and feedClubID is the feed's owning club.
+	clubFeed                 bool
+	feedClubID               id.ID
 	playerID, clubID, gameID *string
 	cursorDate               pgtype.Timestamptz
 	cursorType               pgtype.Text
@@ -434,23 +441,73 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 	return req, nil
 }
 
+// parseClubFeedRequest parses GET /clubs/{id}/feed (ADR-36): the event query
+// is the club's own (membership-scoped), the payload settlements come from the
+// club's main arena, and the cursor token bakes the club identity so a token
+// from another club's feed is a bad request.
+func parseClubFeedRequest(arenaID, clubID id.ID, playerId, gameId, next *string, limitParam *int) (feedRequest, error) {
+	club := string(clubID)
+	req, err := parseFeedRequest(arenaID, true, true, playerId, nil, gameId, next, limitParam)
+	if err != nil {
+		return req, err
+	}
+	req.clubFeed = true
+	req.feedClubID = clubID
+	req.clubID = &club
+	if next != nil && *next != "" {
+		if c, _, derr := decodeArenaFeedCursor(*next); derr == nil && c.ClubID != nil && *c.ClubID != club {
+			return req, fmt.Errorf("cursor belongs to another club's feed")
+		}
+	}
+	return req, nil
+}
+
 // serveFeedPage selects one page of feed event keys, fetches the payloads per
 // type in bulk and assembles the response in the keys' order.
 func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (FeedPage, error) {
-	keys, err := s.api.ArenaService.ListArenaFeedEvents(ctx, db.ListArenaFeedEventsParams{
-		ArenaID:            req.arenaID,
-		IncludeSettlements: req.includeSettlements,
-		IncludeCoop:        req.includeCoop,
-		CursorDate:         req.cursorDate,
-		CursorType:         req.cursorType,
-		CursorID:           req.cursorID,
-		PlayerID:           idPtr(req.playerID),
-		ClubID:             idPtr(req.clubID),
-		GameID:             idPtr(req.gameID),
-		Limit:              req.limit,
-	})
-	if err != nil {
-		return FeedPage{}, err
+	// The two event queries return the same (id, sort_date, event_type) shape
+	// with distinct generated row types; normalize for the assembly below.
+	type feedEventKey struct {
+		ID        id.ID
+		SortDate  pgtype.Timestamptz
+		EventType string
+	}
+	var keys []feedEventKey
+	if req.clubFeed {
+		rows, err := s.api.ClubService.ListClubFeedEvents(ctx, db.ListClubFeedEventsParams{
+			ClubID:     req.feedClubID,
+			CursorDate: req.cursorDate,
+			CursorType: req.cursorType,
+			CursorID:   req.cursorID,
+			PlayerID:   idPtr(req.playerID),
+			GameID:     idPtr(req.gameID),
+			Limit:      req.limit,
+		})
+		if err != nil {
+			return FeedPage{}, err
+		}
+		for _, r := range rows {
+			keys = append(keys, feedEventKey{ID: r.ID, SortDate: r.SortDate, EventType: r.EventType})
+		}
+	} else {
+		rows, err := s.api.ArenaService.ListArenaFeedEvents(ctx, db.ListArenaFeedEventsParams{
+			ArenaID:            req.arenaID,
+			IncludeSettlements: req.includeSettlements,
+			IncludeCoop:        req.includeCoop,
+			CursorDate:         req.cursorDate,
+			CursorType:         req.cursorType,
+			CursorID:           req.cursorID,
+			PlayerID:           idPtr(req.playerID),
+			ClubID:             idPtr(req.clubID),
+			GameID:             idPtr(req.gameID),
+			Limit:              req.limit,
+		})
+		if err != nil {
+			return FeedPage{}, err
+		}
+		for _, r := range rows {
+			keys = append(keys, feedEventKey{ID: r.ID, SortDate: r.SortDate, EventType: r.EventType})
+		}
 	}
 
 	matchIDs := make([]id.ID, 0, len(keys))

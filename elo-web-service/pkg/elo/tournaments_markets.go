@@ -19,11 +19,13 @@ import (
 // a tournament that just started (ADR-35): the market's fate is the
 // tournament's, so it is never created by hand. The roster is read
 // server-side — the caller's transaction froze it by flipping the tournament
-// to running. Must be called within the start transaction, after the status
-// write.
-func (s *MarketService) CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, createdBy id.ID) error {
+// to running. The market inherits the tournament's club (ADR-36): its
+// settlements land in that club's main arena. Must be called within the
+// start transaction, after the status write.
+func (s *MarketService) CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, clubID, createdBy id.ID) error {
 	_, err := createMarketTx(ctx, q, CreateMarketParams{
 		ID:         id.New(),
+		ClubID:     clubID,
 		MarketType: "tournament_winner",
 		StartsAt:   time.Now(),
 		CreatedBy:  createdBy,
@@ -59,11 +61,8 @@ func (s *MarketService) ReopenTournamentWinnerMarkets(ctx context.Context, q *db
 		return fmt.Errorf("list resolved tournament_winner markets: %w", err)
 	}
 	for _, marketID := range marketIDs {
-		if err := q.DeleteArenaSettlementByMarket(ctx, db.DeleteArenaSettlementByMarketParams{
-			ArenaID:  GlobalArenaID,
-			MarketID: &marketID,
-		}); err != nil {
-			return fmt.Errorf("delete global arena settlement for market %s: %w", marketID, err)
+		if err := s.deleteMarketSettlements(ctx, q, marketID); err != nil {
+			return err
 		}
 		if err := q.UnsettleMarket(ctx, marketID); err != nil {
 			return fmt.Errorf("unsettle market %s: %w", marketID, err)

@@ -22,12 +22,26 @@ TournamentsCollection:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
+
+# Tournaments are created under their owning club (ADR-36): the path club
+# must be a tenant. The club is immutable afterwards.
+ClubTournamentsCollection:
   post:
-    operationId: CreateTournament
+    operationId: CreateClubTournament
     tags: [tournaments]
-    summary: Create a tournament (status = registration)
+    summary: Create a tournament owned by the club (status = registration)
+    description: >-
+      Every tournament belongs to a club (ADR-36). The path club must be an
+      existing tenant — creating under a group is a 409, under a missing club
+      a 404. The club cannot be changed later.
     security:
       - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
     requestBody:
       required: true
       content:
@@ -54,13 +68,22 @@ TournamentsCollection:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: Editor permission required
+        description: >-
+          Editor permission required, or the club restricts tournaments to its
+          members (tournaments_openness = members_only, ADR-36) and the
+          submitted participant list contains a non-member
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Club not found
         content:
           application/json:
             schema:
               $ref: './common.yaml#/ApiError'
       "409":
-        description: Tournament name already taken
+        description: Tournament name already taken, or the path club is not a tenant
         content:
           application/json:
             schema:
@@ -187,7 +210,10 @@ TournamentRegistration:
             schema:
               $ref: './common.yaml#/ApiError'
       "403":
-        description: No player linked to the user
+        description: >-
+          No player linked to the user, or the owning club restricts
+          registration to its members (tournaments_openness = members_only,
+          ADR-36) and the player is not a current member
         content:
           application/json:
             schema:
@@ -545,6 +571,9 @@ Tournament:
   properties:
     id:
       $ref: './common.yaml#/Base58ID'
+    club_id:
+      $ref: './common.yaml#/Base58ID'
+      description: The owning tenant club (ADR-36); immutable after create.
     name:
       type: string
     status:
@@ -573,7 +602,7 @@ Tournament:
     created_at:
       type: string
       format: date-time
-  required: [id, name, status, elimination, games]
+  required: [id, club_id, name, status, elimination, games]
 
 TournamentInput:
   type: object

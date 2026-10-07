@@ -11,14 +11,17 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	idpkg "github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -651,9 +654,9 @@ func TestClubs_GlobalArenaOpennessGate(t *testing.T) {
 }
 
 // TestClubs_FreshArenaModeChangeRecalc pins the fresh-arena side of a mode
-// change: the main arena is marked for a full recalculation (the background
-// worker drains it; here the admin recalculation stands in) and the replay
-// re-settles the history under the new mode.
+// change: the main arena's match rows replay synchronously in the settings
+// transaction (no stale mark — the worker never has to catch up) and the
+// replay re-settles the history under the new mode.
 func TestClubs_FreshArenaModeChangeRecalc(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -687,28 +690,472 @@ func TestClubs_FreshArenaModeChangeRecalc(t *testing.T) {
 		t.Fatalf("any_member arena settled %d rows, want 2", got)
 	}
 
-	// The mode change marks the fresh arena for a full recalculation.
+	// The mode change replays synchronously: the mixed match leaves the
+	// members_only arena and no stale mark is left behind.
 	w = doJSON(t, router, http.MethodPatch, "/clubs/"+clubID.String(), token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "open"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH mode: %d %s", w.Code, w.Body.String())
+	}
+	if got := settlementCount(t, pool, clubArenaID, nil); got != 0 {
+		t.Fatalf("members_only replay kept %d rows of the mixed match, want 0", got)
 	}
 	var staleAt *time.Time
 	if err := pool.QueryRow(ctx,
 		`SELECT stale_at FROM arenas WHERE id = $1`, clubArenaID).Scan(&staleAt); err != nil {
 		t.Fatalf("read arena staleness: %v", err)
 	}
-	if staleAt == nil {
-		t.Fatalf("mode change did not mark the fresh main arena stale")
+	if staleAt != nil {
+		t.Fatalf("mode change left the fresh main arena stale-marked")
+	}
+}
+
+// TestClubs_TournamentOpenness pins the tournaments_openness rule: a
+// members_only club's tournament refuses non-members on the organizer's
+// participant list and at self-registration; current members register freely.
+func TestClubs_TournamentOpenness(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	q := db.New(pool)
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Закрытый клуб"}`, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	convertClub(t, router, admin, clubID.String(), "members_only", "members_only")
+
+	member := createTestPlayer(t, pool, "Свой игрок")
+	guest := createBareTestPlayer(t, pool, "Посторонний")
+	addClubMember(t, router, admin, clubID.String(), member)
+
+	// Organizer list gate: a members_only club's roster with a non-member is
+	// a 403; members-only roster passes.
+	game := createTestGame(t, pool, "Игра закрытого клуба")
+	createBody := func(participants string) string {
+		return fmt.Sprintf(`{"id": %q, "name": %q, "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": %s}`,
+			newID(t), "Закрытый турнир", game, participants)
+	}
+	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
+		createBody(fmt.Sprintf(`[%q]`, guest)))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("create with guest participant: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
+		createBody(fmt.Sprintf(`[%q]`, member)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("create with member participant: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Id string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	tid := mustID(t, created.Data.Id)
+
+	// Self-registration gate: the member registers; the non-member gets
+	// ErrTournamentMembersOnly (service level — the HTTP path adds only the
+	// linked-player plumbing covered by TestTournament_SelfRegistration).
+	svc := newTournamentService(pool)
+	if err := svc.ChangeRegistration(ctx, tid, member, "", true); err != nil {
+		t.Fatalf("member register: %v", err)
+	}
+	if err := svc.ChangeRegistration(ctx, tid, guest, "", true); !errors.Is(err, elo.ErrTournamentMembersOnly) {
+		t.Fatalf("guest register: %v, want ErrTournamentMembersOnly", err)
+	}
+	// Withdrawal stays open for everyone (a lapsed member may still leave).
+	if err := q.AddTournamentParticipant(ctx, db.AddTournamentParticipantParams{TournamentID: tid, PlayerID: guest}); err != nil {
+		t.Fatalf("seed guest participant: %v", err)
+	}
+	if err := svc.ChangeRegistration(ctx, tid, guest, "", false); err != nil {
+		t.Fatalf("guest withdraw: %v", err)
+	}
+}
+
+// TestClubs_MarketMembersOnly pins the bet/guarantee restriction: on a
+// members_only club's market, current members bet and guarantee; non-members
+// get ErrMarketMembersOnly.
+func TestClubs_MarketMembersOnly(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Свой круг"}`, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	convertClub(t, router, admin, clubID.String(), "members_only", "open")
+
+	member := createTestPlayer(t, pool, "Свои ставки")
+	outsider := createBareTestPlayer(t, pool, "Чужие ставки")
+	addClubMember(t, router, admin, clubID.String(), member)
+
+	game := createTestGame(t, pool, "Игра ставок")
+	marketSvc := elo.NewMarketService(pool)
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		ClubID:     clubID,
+		MarketType: "match_winner",
+		StartsAt:   time.Now(),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  createTestAdmin(t, pool),
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{member, outsider},
+			AllowOtherPlayers: true,
+			GameIDs:           []idpkg.ID{game},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
 	}
 
-	// The recalculation (the background worker's job, driven directly here)
-	// drops the mixed match from the members_only arena.
-	if _, err := newArenaService(pool).RecalculateArenas(ctx); err != nil {
-		t.Fatalf("RecalculateArenas: %v", err)
+	// The member stands as guarantor (allowed) and gives the market liquidity.
+	setBetLimit(t, pool, member, 100)
+	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, member, 10, 0); err != nil {
+		t.Fatalf("member guarantee: %v", err)
+	}
+	// The outsider is refused both roles.
+	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, outsider, 10, 0); !errors.Is(err, elo.ErrMarketMembersOnly) {
+		t.Fatalf("outsider guarantee: %v, want ErrMarketMembersOnly", err)
+	}
+	outcome := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", member)
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, outsider, outcome, 1, liveProbability(t, ctx, marketSvc, market.ID, outcome)); !errors.Is(err, elo.ErrMarketMembersOnly) {
+		t.Fatalf("outsider bet: %v, want ErrMarketMembersOnly", err)
+	}
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, member, outcome, 1, liveProbability(t, ctx, marketSvc, market.ID, outcome)); err != nil {
+		t.Fatalf("member bet: %v", err)
+	}
+}
+
+// TestClubs_MarketSettlesIntoClubArena pins the settlement arena: a market
+// resolves into its owning club's main arena — buyer and guarantor rows
+// included — and the recalculation re-settles it there after a match edit.
+func TestClubs_MarketSettlesIntoClubArena(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Арена рынка"}`, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	clubArena := convertClub(t, router, admin, clubID.String(), "any_member", "open")
+	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	if err != nil {
+		t.Fatalf("parse main arena id: %v", err)
+	}
+
+	member := createTestPlayer(t, pool, "Игрок рынка")
+	guest := createBareTestPlayer(t, pool, "Напарник рынка")
+	addClubMember(t, router, admin, clubID.String(), member)
+
+	game := createTestGame(t, pool, "Игра рынка")
+	marketSvc := elo.NewMarketService(pool)
+	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID:         newID(t),
+		ClubID:     clubID,
+		MarketType: "match_winner",
+		StartsAt:   time.Now(),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  createTestAdmin(t, pool),
+		MatchWinner: &elo.MatchWinnerCreateParams{
+			TargetPlayerIDs:   []idpkg.ID{member},
+			AllowOtherPlayers: true,
+			GameIDs:           []idpkg.ID{game},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMarket: %v", err)
+	}
+	// The member guarantees and bets on their own win.
+	setBetLimit(t, pool, member, 100)
+	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, member, 10, 0); err != nil {
+		t.Fatalf("guarantee: %v", err)
+	}
+	outcome := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", member)
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), market.ID, member, outcome, 1, liveProbability(t, ctx, marketSvc, market.ID, outcome)); err != nil {
+		t.Fatalf("bet: %v", err)
+	}
+
+	// The member wins a match against the guest → the market resolves; both
+	// settlement rows land in the club's main arena, none in the global one.
+	matchSvc := newMatchService(pool)
+	match, err := matchSvc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t))
+	if err != nil {
+		t.Fatalf("AddMatch: %v", err)
+	}
+	if got := arenaMarketRows(t, pool, clubArenaID, market.ID); got != 2 {
+		t.Fatalf("club arena holds %d market rows, want buyer + guarantor", got)
+	}
+	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
+		t.Fatalf("global arena holds %d rows of a club market", got)
+	}
+
+	// A match edit re-runs the recalculation: the market unsets from the club
+	// arena and re-settles there (still nothing in the global arena).
+	if _, err := matchSvc.UpdateMatch(ctx, match.ID, game, map[idpkg.ID]float64{member: 60, guest: 55}, match.Date.Time, elo.UpdateMatchOpts{ActorUserID: createTestAdmin(t, pool)}); err != nil {
+		t.Fatalf("UpdateMatch: %v", err)
+	}
+	if got := arenaMarketRows(t, pool, clubArenaID, market.ID); got != 2 {
+		t.Fatalf("after the edit the club arena holds %d market rows, want 2", got)
+	}
+	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
+		t.Fatalf("after the edit the global arena holds %d rows of a club market", got)
+	}
+}
+
+// TestClubs_TournamentWinnerMarketInClubArena pins the tournament-winner
+// market's inheritance: it is born with the tournament's club, its
+// settlements (cancellation refunds included) land in that club's main arena.
+func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Турнирный клуб"}`, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	clubArena := convertClub(t, router, admin, clubID.String(), "any_member", "open")
+	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	if err != nil {
+		t.Fatalf("parse main arena id: %v", err)
+	}
+
+	p1 := createTestPlayer(t, pool, "Финалист1")
+	p2 := createTestPlayer(t, pool, "Финалист2")
+	game := createTestGame(t, pool, "Игра финала")
+
+	// Create (club-scoped) → start with the first offered plan.
+	tournamentID := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Кубок клуба", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%q, %q]}`,
+			tournamentID, game, p1, p2))
+	if w.Code != http.StatusOK {
+		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
+	}
+	var created struct {
+		Data struct {
+			Id     string `json:"id"`
+			ClubId string `json:"club_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	tid := mustID(t, created.Data.Id)
+	if created.Data.ClubId != short(clubID) {
+		t.Fatalf("tournament club_id = %s, want the creating club %s", created.Data.ClubId, short(clubID))
+	}
+
+	w = doJSON(t, router, http.MethodGet, "/tournaments/"+tid.String()+"/bracket-plans", admin, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("bracket plans: %d %s", w.Code, w.Body.String())
+	}
+	var plans struct {
+		Data struct {
+			Plans []json.RawMessage `json:"plans"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &plans); err != nil || len(plans.Data.Plans) == 0 {
+		t.Fatalf("decode plans: %v (%d plans)", err, len(plans.Data.Plans))
+	}
+	w = doJSON(t, router, http.MethodPost, "/tournaments/"+tid.String()+"/start", admin,
+		fmt.Sprintf(`{"plan": %s}`, plans.Data.Plans[0]))
+	if w.Code != http.StatusOK {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+
+	// The auto market is born under the tournament's club.
+	tsvc := newTournamentService(pool)
+	markets, err := pool.Query(ctx,
+		`SELECT m.id FROM markets m JOIN market_tournament_winner_params twp ON twp.market_id = m.id WHERE twp.tournament_id = $1`, tid)
+	if err != nil {
+		t.Fatalf("list tournament markets: %v", err)
+	}
+	var marketID idpkg.ID
+	found := false
+	for markets.Next() {
+		if err := markets.Scan(&marketID); err != nil {
+			t.Fatalf("scan market id: %v", err)
+		}
+		found = true
+	}
+	markets.Close()
+	if !found {
+		t.Fatalf("no tournament_winner market was born with the tournament")
+	}
+	var marketClub string
+	if err := pool.QueryRow(ctx, `SELECT club_id::text FROM markets WHERE id = $1`, marketID).Scan(&marketClub); err != nil {
+		t.Fatalf("read market club: %v", err)
+	}
+	if marketClub != clubID.String() {
+		t.Fatalf("market club = %s, want the tournament's club %s", marketClub, clubID)
+	}
+
+	// Guarantee + bet, then cancel the tournament: the net-zero refund rows
+	// land in the club's main arena, not the global one.
+	marketSvc := elo.NewMarketService(pool)
+	setBetLimit(t, pool, p1, 100)
+	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), marketID, p1, 10, 0); err != nil {
+		t.Fatalf("guarantee: %v", err)
+	}
+	outcome := marketOutcomeID(t, ctx, marketSvc, marketID, "player", p1)
+	if _, err := marketSvc.PlaceBet(ctx, newID(t), marketID, p1, outcome, 1, liveProbability(t, ctx, marketSvc, marketID, outcome)); err != nil {
+		t.Fatalf("bet: %v", err)
+	}
+	if err := tsvc.CancelTournament(ctx, tid, createTestAdmin(t, pool)); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if got := arenaMarketRows(t, pool, clubArenaID, marketID); got == 0 {
+		t.Fatalf("cancellation refunds did not land in the club arena")
+	}
+	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, marketID); got != 0 {
+		t.Fatalf("global arena holds %d rows of a club tournament market", got)
+	}
+}
+
+// TestClubs_ClubFeed pins the club feed: membership-scoped events (a mixed
+// match appears even when it does not count into a members_only main arena),
+// club-owned markets only, member corrections only, and cursor pagination.
+func TestClubs_ClubFeed(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	admin, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Ленточный клуб"}`, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	clubArena := convertClub(t, router, admin, clubID.String(), "members_only", "open")
+	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	if err != nil {
+		t.Fatalf("parse main arena id: %v", err)
+	}
+
+	member := createTestPlayer(t, pool, "Ленточник")
+	guest := createBareTestPlayer(t, pool, "Безленточный")
+	addClubMember(t, router, admin, clubID.String(), member)
+	game := createTestGame(t, pool, "Игра ленты")
+	svc := newMatchService(pool)
+
+	// A mixed member+guest match: does NOT count into the members_only main
+	// arena, yet appears in the club feed — membership-scoped by design.
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch mixed: %v", err)
 	}
 	if got := settlementCount(t, pool, clubArenaID, nil); got != 0 {
-		t.Fatalf("members_only replay kept %d rows of the mixed match, want 0", got)
+		t.Fatalf("mixed match counted into the members_only arena (%d rows)", got)
+	}
+	// A guest-only match stays out of the feed.
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Второй без ленты"): 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch guests: %v", err)
+	}
+
+	// Markets: the club's own market is in; a «Синие люди» market is not.
+	marketSvc := elo.NewMarketService(pool)
+	_, err = marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID: newID(t), ClubID: clubID, MarketType: "win_streak",
+		StartsAt: time.Now(), ClosesAt: time.Now().Add(24 * time.Hour),
+		CreatedBy: createTestAdmin(t, pool),
+		WinStreak: &elo.WinStreakCreateParams{TargetPlayerID: member, WinsRequired: 3},
+	})
+	if err != nil {
+		t.Fatalf("create club market: %v", err)
+	}
+	if _, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
+		ID: newID(t), ClubID: blueMenClubID, MarketType: "win_streak",
+		StartsAt: time.Now(), ClosesAt: time.Now().Add(24 * time.Hour),
+		CreatedBy: createTestAdmin(t, pool),
+		WinStreak: &elo.WinStreakCreateParams{TargetPlayerID: member, WinsRequired: 3},
+	}); err != nil {
+		t.Fatalf("create blue market: %v", err)
+	}
+
+	// Corrections: the member's is in, the guest's is not.
+	correctionSvc := newCorrectionService(pool)
+	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), member, 5); err != nil {
+		t.Fatalf("member correction: %v", err)
+	}
+	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), guest, 5); err != nil {
+		t.Fatalf("guest correction: %v", err)
+	}
+
+	clubFeed := "/clubs/" + clubID.String() + "/feed"
+	page := decodeFeedPage(t, router, clubFeed)
+	eventTypes := feedEventTypesOf(page)
+	if !slices.Contains(eventTypes, "match") || !slices.Contains(eventTypes, "market") || !slices.Contains(eventTypes, "correction") {
+		t.Fatalf("club feed = %v, want match, market and correction events", eventTypes)
+	}
+	if got := countFeedEventsOfType(page, "match"); got != 1 {
+		t.Fatalf("club feed holds %d matches, want only the member's", got)
+	}
+	if got := countFeedEventsOfType(page, "market"); got != 1 {
+		t.Fatalf("club feed holds %d markets, want only the club-owned one", got)
+	}
+	if got := countFeedEventsOfType(page, "correction"); got != 1 {
+		t.Fatalf("club feed holds %d corrections, want only the member's", got)
+	}
+
+	// Cursor pagination: limit=1 walks without repeats; a foreign club's
+	// token is a bad request.
+	first := decodeFeedPage(t, router, clubFeed+"?limit=1")
+	if first.Next == nil {
+		t.Fatalf("expected a next token on the limited page")
+	}
+	seen := map[string]bool{feedEventID(first, 0): true}
+	tokenPath := clubFeed + "?limit=1&next=" + url.QueryEscape(*first.Next)
+	second := decodeFeedPage(t, router, tokenPath)
+	seen[feedEventID(second, 0)] = true
+	if len(seen) != 2 {
+		t.Fatalf("pagination repeated an event")
+	}
+	otherClub := newID(t)
+	foreign := decodeFeedStatus(t, router, "/clubs/"+otherClub.String()+"/feed?limit=1&next="+url.QueryEscape(*first.Next))
+	if foreign != http.StatusBadRequest {
+		t.Fatalf("a foreign club's cursor gave %d, want 400", foreign)
+	}
+
+	// A group club has no feed (404), like a missing one.
+	groupID := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Безленточный клуб"}`, groupID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST group club: %d %s", w.Code, w.Body.String())
+	}
+	if status := decodeFeedStatus(t, router, "/clubs/"+groupID.String()+"/feed"); status != http.StatusNotFound {
+		t.Fatalf("group club feed gave %d, want 404", status)
+	}
+	if status := decodeFeedStatus(t, router, "/clubs/"+newID(t).String()+"/feed"); status != http.StatusNotFound {
+		t.Fatalf("missing club feed gave %d, want 404", status)
 	}
 }
 
@@ -719,4 +1166,33 @@ func equalStrings(a, b []string) bool {
 	slices.Sort(x)
 	slices.Sort(y)
 	return slices.Equal(x, y)
+}
+
+// decodeFeedStatus fetches one feed page and returns only the status code —
+// for the error branches of the club feed.
+func decodeFeedStatus(t *testing.T, router http.Handler, path string) int {
+	t.Helper()
+	return doJSON(t, router, http.MethodGet, path, "", "").Code
+}
+
+func feedEventTypesOf(page feedPageJSON) []string {
+	out := make([]string, 0, len(page.Data))
+	for _, e := range page.Data {
+		out = append(out, e.Type)
+	}
+	return out
+}
+
+func countFeedEventsOfType(page feedPageJSON, eventType string) int {
+	n := 0
+	for _, e := range page.Data {
+		if e.Type == eventType {
+			n++
+		}
+	}
+	return n
+}
+
+func feedEventID(page feedPageJSON, i int) string {
+	return page.Data[i].Type + "/" + page.Data[i].Data.Id
 }

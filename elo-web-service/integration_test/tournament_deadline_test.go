@@ -27,7 +27,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Дедлайнный кубок", "grand_final_deadline": "2099-01-01T00:00:00Z", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 

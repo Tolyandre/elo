@@ -50,6 +50,10 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 	if market.Status != "open" {
 		return PlaceBetOutcome{}, ErrMarketNotOpen
 	}
+	// A members_only club's markets admit current members only (ADR-36).
+	if err := ensureMarketOpenToPlayer(ctx, q, market.ClubID, playerID); err != nil {
+		return PlaceBetOutcome{}, err
+	}
 	// Without guarantors there is no liquidity to trade against: the b→0 limit
 	// of the LMSR makes underdog shares free lottery tickets with nobody to
 	// pay the winners (ADR-20), so bets are rejected outright.
@@ -207,6 +211,10 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 	if market.Status != "open" {
 		return GuaranteeOutcome{}, ErrMarketNotOpen
 	}
+	// A members_only club's markets admit current members only (ADR-36).
+	if err := ensureMarketOpenToPlayer(ctx, q, market.ClubID, playerID); err != nil {
+		return GuaranteeOutcome{}, err
+	}
 
 	wagers, err := q.ListMarketGuaranteeWagers(ctx, marketID)
 	if err != nil {
@@ -300,4 +308,25 @@ func guaranteeWagersFromDB(rows []db.ListMarketGuaranteeWagersRow) []GuaranteeWa
 		}
 	}
 	return wagers
+}
+
+// ensureMarketOpenToPlayer enforces the owning club's main-arena openness
+// (ADR-36): when it is members_only, bets and guarantees are restricted to
+// current club members; any_member markets admit everyone (guests included).
+func ensureMarketOpenToPlayer(ctx context.Context, q *db.Queries, marketClubID, playerID id.ID) error {
+	club, err := q.GetClubByID(ctx, marketClubID)
+	if err != nil {
+		return fmt.Errorf("get club: %w", err)
+	}
+	if club.ArenaMembershipMode.String != ArenaMembershipMembersOnly {
+		return nil
+	}
+	member, err := q.PlayerIsClubMember(ctx, db.PlayerIsClubMemberParams{ClubID: marketClubID, PlayerID: playerID})
+	if err != nil {
+		return fmt.Errorf("check club membership: %w", err)
+	}
+	if !member {
+		return ErrMarketMembersOnly
+	}
+	return nil
 }

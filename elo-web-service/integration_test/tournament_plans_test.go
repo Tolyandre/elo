@@ -71,7 +71,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок четвёрок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
 
@@ -223,7 +223,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 	one := createTestPlayer(t, pool, "Один")
 	createBody = fmt.Sprintf(`{"id": %q, "name": "Малый кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 4}], "participant_ids": [%q]}`,
 		short(small), short(gameID2), short(one))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create small tournament: %d %s", w.Code, w.Body.String())
 	}
 	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(small)+"/bracket-plans", admin, "")
@@ -234,7 +234,7 @@ func TestTournament_BracketPlans(t *testing.T) {
 	// Empty pool → 400.
 	empty := newID(t)
 	createBody = fmt.Sprintf(`{"id": %q, "name": "Без игр"}`, short(empty))
-	if w := doJSON(t, router, http.MethodPost, "/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create empty-pool tournament: %d %s", w.Code, w.Body.String())
 	}
 	w = doJSON(t, router, http.MethodGet, "/tournaments/"+short(empty)+"/bracket-plans", admin, "")

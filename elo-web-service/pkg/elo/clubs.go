@@ -2,6 +2,7 @@ package elo
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -28,6 +29,13 @@ const (
 type IClubService interface {
 	ListClubs(ctx context.Context) ([]db.ListClubsRow, error)
 	GetClub(ctx context.Context, clubID id.ID) ([]db.GetClubRow, error)
+	// FeedArena returns the club's main arena id — the club feed's settlement
+	// source (ADR-36). No rows means the club is missing or a group: both are
+	// a 404 for the feed.
+	FeedArena(ctx context.Context, clubID id.ID) (id.ID, error)
+	// ListClubFeedEvents selects one page of the club feed's event keys
+	// (ADR-36); the handler assembles the payloads per type.
+	ListClubFeedEvents(ctx context.Context, arg db.ListClubFeedEventsParams) ([]db.ListClubFeedEventsRow, error)
 	// CreateClub/UpdateClub/DeleteClub record audit events for the actor
 	// (ADR-14); a zero actor skips the audit row. Icon updates and membership
 	// changes are not audited.
@@ -72,6 +80,21 @@ func (s *ClubService) ListClubs(ctx context.Context) ([]db.ListClubsRow, error) 
 
 func (s *ClubService) GetClub(ctx context.Context, clubID id.ID) ([]db.GetClubRow, error) {
 	return s.Queries.GetClub(ctx, clubID)
+}
+
+// FeedArena returns the club's main arena id; no rows when the club is
+// missing or a group (both a 404 for the club feed).
+func (s *ClubService) FeedArena(ctx context.Context, clubID id.ID) (id.ID, error) {
+	row, err := s.Queries.GetArenaByClub(ctx, &clubID)
+	if err != nil {
+		var zero id.ID
+		return zero, err
+	}
+	return row.ID, nil
+}
+
+func (s *ClubService) ListClubFeedEvents(ctx context.Context, arg db.ListClubFeedEventsParams) ([]db.ListClubFeedEventsRow, error) {
+	return s.Queries.ListClubFeedEvents(ctx, arg)
 }
 
 func (s *ClubService) CreateClub(ctx context.Context, clubID id.ID, name string, actor id.ID) (db.Club, error) {
@@ -211,9 +234,10 @@ func (s *ClubService) ConvertToTenant(ctx context.Context, clubID id.ID, arenaMe
 // UpdateTenantSettings changes the openness settings of an existing tenant
 // (ADR-36). An arena_membership_mode change re-interprets the main arena's
 // whole history (the mode is a current setting applied over all history), so
-// the arena is recalculated in the same transaction: the converted global
-// arena via the full in-transaction replay, any fresh tenant arena via a
-// full stale mark picked up by the background updater.
+// the recalculation runs in the settings transaction: the arena's match rows
+// replay (a fresh arena here; the global arena inside the sweep below), then
+// the full settlement sweep re-chains every market into its owning club's
+// arena against the new history.
 func (s *ClubService) UpdateTenantSettings(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error) {
 	if err := validateTenantSettings(arenaMembershipMode, tournamentsOpenness); err != nil {
 		return db.Club{}, err
@@ -250,7 +274,7 @@ func (s *ClubService) UpdateTenantSettings(ctx context.Context, clubID id.ID, ar
 // recalculateMainArenaForModeChange re-settles the club's main arena from
 // scratch after its arena_membership_mode changed (ADR-36).
 func (s *ClubService) recalculateMainArenaForModeChange(ctx context.Context, q *db.Queries, clubID id.ID) error {
-	arena, err := q.GetArenaByClub(ctx, &clubID)
+	row, err := q.GetArenaByClub(ctx, &clubID)
 	if db.IsNoRows(err) {
 		// A tenant always has a main arena; nothing to re-settle otherwise.
 		return nil
@@ -258,13 +282,29 @@ func (s *ClubService) recalculateMainArenaForModeChange(ctx context.Context, q *
 	if err != nil {
 		return err
 	}
-	if arena.ID == GlobalArenaID {
-		// The global arena is never drained by the background worker (its
-		// market/correction settlements would be lost by a match-only
-		// replay) — run the full replay right here, in this transaction.
-		return s.GlobalReplay.RecalculateGlobalWithinTx(ctx, q, time.Time{})
+	if row.ID != GlobalArenaID {
+		// A fresh tenant arena: replay its match rows right here, in this
+		// transaction (market rows survive — the arena replay deletes
+		// matches only), so the sweep below re-chains every market
+		// settlement against the new history instead of the stale one.
+		// The mark is required: the updater's staleness check skips
+		// un-marked arenas, and it clears the mark after the clean replay.
+		if err := q.MarkArenasStaleFull(ctx, []id.ID{row.ID}); err != nil {
+			return err
+		}
+		arena, err := arenaFromGetArenaByClubRow(row)
+		if err != nil {
+			return err
+		}
+		if err := s.Arenas.updateArenaWithinTx(ctx, q, arena); err != nil {
+			return fmt.Errorf("replay main arena: %w", err)
+		}
 	}
-	return q.MarkArenasStaleFull(ctx, []id.ID{arena.ID})
+	// The full settlement sweep: matches re-settle per the club gate, and
+	// every market unsets and re-settles into its owning club's main arena
+	// against the fresh chains. The global arena is never drained by the
+	// background worker, so its share of the replay always runs here.
+	return s.GlobalReplay.RecalculateGlobalWithinTx(ctx, q, time.Time{})
 }
 
 func (s *ClubService) AddMember(ctx context.Context, clubID, playerID id.ID) error {
