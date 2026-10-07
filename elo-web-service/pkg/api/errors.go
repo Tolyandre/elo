@@ -59,13 +59,14 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrCompetitiveMismatch),
 		errors.Is(err, elo.ErrModeContradictsGame),
 		errors.Is(err, elo.ErrCoopGameNotAllowed),
-		errors.Is(err, elo.ErrClubTenantSettingsInvalid),
-		errors.Is(err, elo.ErrTenantClubDeleteForbidden),
+		errors.Is(err, elo.ErrTenantSettingsInvalid),
+		errors.Is(err, elo.ErrTenantClubsInvalid),
+		errors.Is(err, elo.ErrClubInTenantDeleteForbidden),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
 	// --- 403 Forbidden: authenticated but not allowed -----------------------
-	// A members_only club's tournament/market refuses non-members (ADR-36);
+	// A members_only tenant's tournament/market refuses non-members (ADR-36);
 	// ErrPlayerHasNoLinkedPlayer covers the unlinked-user gates.
 	case errors.Is(err, elo.ErrPlayerHasNoLinkedPlayer),
 		errors.Is(err, elo.ErrTournamentMembersOnly),
@@ -89,9 +90,8 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrMatchOutsideCampWindows),
 		errors.Is(err, elo.ErrArenaIsAutoManaged),
 		errors.Is(err, elo.ErrGlobalArenaIsPermanent),
-		errors.Is(err, elo.ErrClubArenaIsManaged),
-		errors.Is(err, elo.ErrClubAlreadyTenant),
-		errors.Is(err, elo.ErrClubNotTenant),
+		errors.Is(err, elo.ErrTenantArenaIsManaged),
+		errors.Is(err, elo.ErrClubAlreadyInTenant),
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),
 		errors.Is(err, elo.ErrTournamentNotEditable),
 		errors.Is(err, elo.ErrTournamentNotOpenForRegistration),

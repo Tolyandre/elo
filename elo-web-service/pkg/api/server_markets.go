@@ -38,7 +38,7 @@ type paramsFiller[T any] interface {
 // buildMarket is written once.
 type marketRow struct {
 	ID                id.ID
-	ClubID            id.ID
+	TenantID          id.ID
 	MarketType        string
 	Status            string
 	ResolutionOutcome *id.ID
@@ -63,7 +63,7 @@ type marketRow struct {
 func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 	return marketRow{
 		ID:                r.ID,
-		ClubID:            r.ClubID,
+		TenantID:          r.TenantID,
 		MarketType:        r.MarketType,
 		Status:            r.Status,
 		ResolutionOutcome: r.ResolutionOutcome,
@@ -89,7 +89,7 @@ func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 	return marketRow{
 		ID:                r.ID,
-		ClubID:            r.ClubID,
+		TenantID:          r.TenantID,
 		MarketType:        r.MarketType,
 		Status:            r.Status,
 		ResolutionOutcome: r.ResolutionOutcome,
@@ -286,7 +286,7 @@ func apiClosesAt(marketType string, closesAt pgtype.Timestamptz) *time.Time {
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	m := Market{
 		Id:         r.ID,
-		ClubId:     Base58ID(r.ClubID),
+		TenantId:   Base58ID(r.TenantID),
 		MarketType: MarketMarketType(r.MarketType),
 		Status:     MarketStatus(r.Status),
 		LiquidityB: r.LiquidityB,
@@ -487,7 +487,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 
 	detail := MarketDetail{
 		Id:         row.ID,
-		ClubId:     Base58ID(row.ClubID),
+		TenantId:   Base58ID(row.TenantID),
 		MarketType: MarketDetailMarketType(row.MarketType),
 		Status:     MarketDetailStatus(row.Status),
 		LiquidityB: row.LiquidityB,
@@ -639,7 +639,7 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 // donut segment, so the cardinality stays displayable.
 const maxMatchWinnerTargets = 12
 
-func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubMarketRequestObject) (CreateClubMarketResponseObject, error) {
+func (s *StrictServer) CreateTenantMarket(ctx context.Context, request CreateTenantMarketRequestObject) (CreateTenantMarketResponseObject, error) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
 		return nil, fmt.Errorf("gin context not available")
@@ -648,7 +648,7 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
 	if err != nil {
 		if domainStatusCode(err) == http.StatusNotFound {
-			return CreateClubMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
+			return CreateTenantMarket401JSONResponse{Status: StatusFail, Message: "authentication required"}, nil
 		}
 		return nil, err
 	}
@@ -658,14 +658,14 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 	startsAt := time.Now()
 	if body.StartsAt != nil {
 		if body.StartsAt.Before(time.Now()) {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "starts_at не может быть в прошлом"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "starts_at не может быть в прошлом"}, nil
 		}
 		startsAt = *body.StartsAt
 	}
 
 	params := elo.CreateMarketParams{
 		ID:         id.ID(body.Id),
-		ClubID:     parseIDParam(request.Id),
+		TenantID:   parseIDParam(request.Id),
 		MarketType: string(body.MarketType),
 		StartsAt:   startsAt,
 		CreatedBy:  user.ID,
@@ -678,7 +678,7 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 	switch string(body.MarketType) {
 	case "match_winner", "win_streak":
 		if body.ClosesAt == nil {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: string(body.MarketType) + " requires closes_at"}, nil
 		}
 		params.ClosesAt = *body.ClosesAt
 	}
@@ -686,13 +686,13 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 	switch string(body.MarketType) {
 	case "match_winner":
 		if body.TargetPlayerIds == nil || len(*body.TargetPlayerIds) == 0 {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires target_player_ids"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires target_player_ids"}, nil
 		}
 		if len(*body.TargetPlayerIds) > maxMatchWinnerTargets {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "слишком много целевых игроков"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "слишком много целевых игроков"}, nil
 		}
 		if body.AllowOtherPlayers == nil {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires allow_other_players"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "match_winner requires allow_other_players"}, nil
 		}
 		// Deduplicate while preserving order.
 		seen := make(map[id.ID]bool, len(*body.TargetPlayerIds))
@@ -707,7 +707,7 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 		// A single named player without the shared "other" winner leaves a
 		// degenerate market: any other player's win would resolve nothing.
 		if len(targets) == 1 && !*body.AllowOtherPlayers {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "для рынка с одним целевым игроком нужно разрешить победы других игроков"}, nil
 		}
 		var gameIDs []id.ID
 		if body.GameIds != nil {
@@ -721,10 +721,10 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 
 	case "win_streak":
 		if body.TargetPlayerId == nil || *body.TargetPlayerId == "" {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "invalid target_player_id"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "invalid target_player_id"}, nil
 		}
 		if body.WinsRequired == nil {
-			return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "win_streak requires wins_required"}, nil
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "win_streak requires wins_required"}, nil
 		}
 		var streakGameIDs []id.ID
 		if body.StreakGameIds != nil {
@@ -743,22 +743,19 @@ func (s *StrictServer) CreateClubMarket(ctx context.Context, request CreateClubM
 		}
 
 	default:
-		return CreateClubMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil
+		return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: "unknown market_type: " + string(body.MarketType)}, nil
 	}
 
 	market, err := s.api.MarketService.CreateMarket(ctx, params)
 	if err != nil {
-		// The service validates the path club: missing → 404, group → 409.
-		switch domainStatusCode(err) {
-		case http.StatusNotFound:
-			return CreateClubMarket404JSONResponse{Status: StatusFail, Message: "Club not found"}, nil
-		case http.StatusConflict:
-			return CreateClubMarket409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		// The service validates the path tenant: missing → 404.
+		if domainStatusCode(err) == http.StatusNotFound {
+			return CreateTenantMarket404JSONResponse{Status: StatusFail, Message: "Tenant not found"}, nil
 		}
 		return nil, err
 	}
 
-	resp := CreateClubMarket201JSONResponse{Status: StatusSuccess}
+	resp := CreateTenantMarket201JSONResponse{Status: StatusSuccess}
 	resp.Data.Id = market.ID
 	return resp, nil
 }

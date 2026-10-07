@@ -52,19 +52,15 @@ func createMarketTx(ctx context.Context, q *db.Queries, params CreateMarketParam
 		closesAt = pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}
 	}
 
-	// The owning club must be a tenant (ADR-36): a group has no main arena
-	// for the market to settle into. A missing club maps to the handler's 404.
-	club, err := q.GetClubByID(ctx, params.ClubID)
-	if err != nil {
-		return db.Market{}, fmt.Errorf("get club: %w", err)
-	}
-	if club.Kind != ClubKindTenant {
-		return db.Market{}, ErrClubNotTenant
+	// The owning tenant must exist (ADR-36): the market settles into its main
+	// arena. A missing tenant maps to the handler's 404.
+	if _, err := q.GetTenantByID(ctx, params.TenantID); err != nil {
+		return db.Market{}, fmt.Errorf("get tenant: %w", err)
 	}
 
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{
 		ID:         params.ID,
-		ClubID:     params.ClubID,
+		TenantID:   params.TenantID,
 		MarketType: params.MarketType,
 		StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
 		ClosesAt:   closesAt,

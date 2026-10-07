@@ -1,10 +1,10 @@
 "use client"
 import type { Base58ID } from "@/lib/id";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
-import { useClubs } from "@/app/clubsContext";
+import { useTenants } from "@/app/tenantsContext";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -80,18 +80,17 @@ export function CreateMarketForm() {
 
     const canEdit = me.canEdit;
 
-    // The owning tenant club (ADR-36): settlements land in its main arena and
-    // a members_only club restricts bets to its members. A single tenant
+    // The owning tenant (ADR-36): settlements land in its main arena and a
+    // members_only tenant restricts bets to its members. A single tenant
     // community (today's production shape) preselects itself.
-    const { clubs, clubDisplayName } = useClubs();
-    const tenantClubs = useMemo(() => clubs.filter((c) => c.kind === "tenant"), [clubs]);
-    const [clubId, setClubId] = useState<Base58ID | "">("");
-    const effectiveClubId = clubId || (tenantClubs.length === 1 ? tenantClubs[0].id : "");
+    const { tenants } = useTenants();
+    const [tenantId, setTenantId] = useState<Base58ID | "">("");
+    const effectiveTenantId = tenantId || (tenants.length === 1 ? tenants[0].id : "");
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!effectiveClubId) {
-            setError("Укажите клуб сообщества");
+        if (!effectiveTenantId) {
+            setError("Укажите сообщество");
             return;
         }
         setError("");
@@ -113,7 +112,7 @@ export function CreateMarketForm() {
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
-            await createMarketPromise(effectiveClubId, payload);
+            await createMarketPromise(effectiveTenantId, payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/?tab=feed");
         } catch (err) {
@@ -135,7 +134,7 @@ export function CreateMarketForm() {
             const probability = 1 / n;
             return {
                 id: "" as Base58ID, market_type: marketType, status: "open",
-                club_id: (effectiveClubId || "") as Base58ID,
+                tenant_id: (effectiveTenantId || "") as Base58ID,
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
                 liquidity_b: 0,
@@ -151,7 +150,7 @@ export function CreateMarketForm() {
         }
         return {
             id: "" as Base58ID, market_type: marketType, status: "open",
-            club_id: (effectiveClubId || "") as Base58ID,
+            tenant_id: (effectiveTenantId || "") as Base58ID,
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
             liquidity_b: 0,
@@ -179,14 +178,14 @@ export function CreateMarketForm() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                    <Label>Клуб сообщества</Label>
-                    <Select value={effectiveClubId || undefined} onValueChange={(v) => setClubId(v as Base58ID)}>
-                        <SelectTrigger className="w-full" aria-label="Клуб сообщества">
-                            <SelectValue placeholder="Выберите клуб" />
+                    <Label>Сообщество</Label>
+                    <Select value={effectiveTenantId || undefined} onValueChange={(v) => setTenantId(v as Base58ID)}>
+                        <SelectTrigger className="w-full" aria-label="Сообщество">
+                            <SelectValue placeholder="Выберите сообщество" />
                         </SelectTrigger>
                         <SelectContent>
-                            {tenantClubs.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{clubDisplayName(c)}</SelectItem>
+                            {tenants.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>

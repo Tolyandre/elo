@@ -197,7 +197,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   now.Add(-time.Hour),

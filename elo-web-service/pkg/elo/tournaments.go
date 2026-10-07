@@ -67,10 +67,10 @@ type TournamentGameInput struct {
 // TournamentWriteOpts carries the registration-time configuration.
 // On update, nil Games / nil ParticipantIDs keep the stored set (the PUT body
 // marks them "when present"); a nil GrandFinalDeadline clears it.
-// ClubID is create-only (the create path is POST /clubs/{id}/tournaments,
-// ADR-36): the owning club is immutable afterwards, updates ignore it.
+// TenantID is create-only (the create path is POST /tenants/{id}/tournaments,
+// ADR-36): the owning tenant is immutable afterwards, updates ignore it.
 type TournamentWriteOpts struct {
-	ClubID             id.ID
+	TenantID           id.ID
 	Name               string
 	GrandFinalDeadline *time.Time
 	Games              []TournamentGameInput
@@ -86,15 +86,10 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 	if err := validateTournamentInput(opts); err != nil {
 		return db.Tournament{}, err
 	}
-	// The owning club must be a tenant (ADR-36): a group has no main arena
-	// for the tournament-winner market to settle into. A missing club maps to
-	// the handler's 404.
-	club, err := s.Queries.GetClubByID(ctx, opts.ClubID)
-	if err != nil {
-		return db.Tournament{}, fmt.Errorf("get club: %w", err)
-	}
-	if club.Kind != ClubKindTenant {
-		return db.Tournament{}, ErrClubNotTenant
+	// The owning tenant must exist (ADR-36): the tournament-winner market
+	// settles into its main arena. A missing tenant maps to the handler's 404.
+	if _, err := s.Queries.GetTenantByID(ctx, opts.TenantID); err != nil {
+		return db.Tournament{}, fmt.Errorf("get tenant: %w", err)
 	}
 	if !tid.IsZero() {
 		// Idempotent create: an id replay returns the already-created row.
@@ -112,7 +107,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 	if _, err := runInTxResult(ctx, s.Pool, func(q *db.Queries) (db.Tournament, error) {
 		row, err := q.CreateTournament(ctx, db.CreateTournamentParams{
 			ID:                 tid,
-			ClubID:             opts.ClubID,
+			TenantID:           opts.TenantID,
 			Name:               opts.Name,
 			GrandFinalDeadline: timePtrTz(opts.GrandFinalDeadline),
 		})
@@ -126,7 +121,7 @@ func (s *TournamentService) CreateTournament(ctx context.Context, tid id.ID, opt
 		if err := writeTournamentPool(ctx, q, tid, opts.Games); err != nil {
 			return db.Tournament{}, err
 		}
-		if err := writeTournamentParticipants(ctx, q, opts.ClubID, tid, opts.ParticipantIDs); err != nil {
+		if err := writeTournamentParticipants(ctx, q, opts.TenantID, tid, opts.ParticipantIDs); err != nil {
 			return db.Tournament{}, err
 		}
 		deadline := (*time.Time)(nil)
@@ -184,7 +179,7 @@ func (s *TournamentService) UpdateTournament(ctx context.Context, tid id.ID, opt
 			}
 		}
 		if opts.ParticipantIDs != nil {
-			if err := writeTournamentParticipants(ctx, q, t.ClubID, tid, opts.ParticipantIDs); err != nil {
+			if err := writeTournamentParticipants(ctx, q, t.TenantID, tid, opts.ParticipantIDs); err != nil {
 				return struct{}{}, err
 			}
 		}
@@ -258,9 +253,9 @@ func (s *TournamentService) ChangeRegistration(ctx context.Context, tid, playerI
 			return err
 		}
 		if join {
-			// A members_only club's tournaments are restricted to current
+			// A members_only tenant's tournaments are restricted to current
 			// members (ADR-36); withdrawal stays open for lapsed members.
-			if err := ensureTournamentOpenToPlayers(ctx, q, t.ClubID, []id.ID{playerID}); err != nil {
+			if err := ensureTournamentOpenToPlayers(ctx, q, t.TenantID, []id.ID{playerID}); err != nil {
 				return err
 			}
 			if err := q.AddTournamentParticipant(ctx, db.AddTournamentParticipantParams{
@@ -426,10 +421,10 @@ func writeTournamentPool(ctx context.Context, q *db.Queries, tid id.ID, games []
 }
 
 // writeTournamentParticipants applies the desired participant set. The
-// owning club's tournaments_openness gates the set (ADR-36): a members_only
-// club's roster admits current members only.
-func writeTournamentParticipants(ctx context.Context, q *db.Queries, clubID, tid id.ID, wanted []id.ID) error {
-	if err := ensureTournamentOpenToPlayers(ctx, q, clubID, wanted); err != nil {
+// owning tenant's tournaments_openness gates the set (ADR-36): a members_only
+// tenant's roster admits current members only.
+func writeTournamentParticipants(ctx context.Context, q *db.Queries, tenantID, tid id.ID, wanted []id.ID) error {
+	if err := ensureTournamentOpenToPlayers(ctx, q, tenantID, wanted); err != nil {
 		return err
 	}
 	if err := q.DeleteTournamentParticipantsNotIn(ctx, db.DeleteTournamentParticipantsNotInParams{
@@ -448,21 +443,22 @@ func writeTournamentParticipants(ctx context.Context, q *db.Queries, clubID, tid
 	return nil
 }
 
-// ensureTournamentOpenToPlayers enforces the owning club's tournaments
-// openness (ADR-36): a members_only club admits current members only; an
-// open club (and «Синие люди», which converts with open) admits everyone.
-func ensureTournamentOpenToPlayers(ctx context.Context, q *db.Queries, clubID id.ID, players []id.ID) error {
-	club, err := q.GetClubByID(ctx, clubID)
+// ensureTournamentOpenToPlayers enforces the owning tenant's tournaments
+// openness (ADR-36): a members_only tenant admits current members (of any of
+// its clubs) only; an open tenant (and «Синие люди», which starts with open)
+// admits everyone.
+func ensureTournamentOpenToPlayers(ctx context.Context, q *db.Queries, tenantID id.ID, players []id.ID) error {
+	tenant, err := q.GetTenantByID(ctx, tenantID)
 	if err != nil {
-		return fmt.Errorf("get club: %w", err)
+		return fmt.Errorf("get tenant: %w", err)
 	}
-	if club.TournamentsOpenness.String != TournamentOpennessMembersOnly {
+	if tenant.TournamentsOpenness != TournamentOpennessMembersOnly {
 		return nil
 	}
 	for _, pid := range players {
-		member, err := q.PlayerIsClubMember(ctx, db.PlayerIsClubMemberParams{ClubID: clubID, PlayerID: pid})
+		member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenantID, PlayerID: pid})
 		if err != nil {
-			return fmt.Errorf("check club membership: %w", err)
+			return fmt.Errorf("check tenant membership: %w", err)
 		}
 		if !member {
 			return ErrTournamentMembersOnly

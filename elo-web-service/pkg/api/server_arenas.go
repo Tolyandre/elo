@@ -337,23 +337,26 @@ const (
 // arenaFeedCursor is the pagination token for the arena and home feeds: the
 // last event's (date, type, id) tuple plus the active match filters, so
 // continuation requests carry only the token. The full tuple closes the
-// date-only cursor's same-timestamp straddle.
+// date-only cursor's same-timestamp straddle. TenantID bakes the tenant
+// feed's identity (ADR-36); ClubID is the home-feed's club **filter**.
 type arenaFeedCursor struct {
 	Date     string  `json:"date"`
 	Type     string  `json:"type"`
 	ID       string  `json:"id"`
 	PlayerID *string `json:"player_id,omitempty"`
 	ClubID   *string `json:"club_id,omitempty"`
+	TenantID *string `json:"tenant_id,omitempty"`
 	GameID   *string `json:"game_id,omitempty"`
 }
 
-func encodeArenaFeedCursor(playerID, clubID, gameID *string, date time.Time, eventType string, eventID id.ID) string {
+func encodeArenaFeedCursor(playerID, clubID, tenantID, gameID *string, date time.Time, eventType string, eventID id.ID) string {
 	token, _ := json.Marshal(arenaFeedCursor{
 		Date:     date.UTC().Format(time.RFC3339Nano),
 		Type:     eventType,
 		ID:       string(eventID),
 		PlayerID: playerID,
 		ClubID:   clubID,
+		TenantID: tenantID,
 		GameID:   gameID,
 	})
 	return base64.StdEncoding.EncodeToString(token)
@@ -376,8 +379,8 @@ func decodeArenaFeedCursor(token string) (arenaFeedCursor, pgtype.Timestamptz, e
 }
 
 // feedRequest carries the parsed parameters shared by the arena feed
-// (GET /arenas/{id}/feed), the home feed (GET /feed) and the club feed
-// (GET /clubs/{id}/feed, ADR-36) endpoints (ADR-32).
+// (GET /arenas/{id}/feed), the home feed (GET /feed) and the tenant feed
+// (GET /tenants/{id}/feed, ADR-36) endpoints (ADR-32).
 type feedRequest struct {
 	arenaID id.ID
 	// includeSettlements merges the correction and market-resolution events
@@ -388,11 +391,11 @@ type feedRequest struct {
 	// no arena (the membership function rejects their mode), so only the home
 	// feed carries them.
 	includeCoop bool
-	// clubFeed marks the club feed's scope: events select via
-	// ListClubFeedEvents (membership-scoped) instead of the arena membership,
-	// and feedClubID is the feed's owning club.
-	clubFeed                 bool
-	feedClubID               id.ID
+	// tenantFeed marks the tenant feed's scope: events select via
+	// ListTenantFeedEvents (membership-scoped) instead of the arena
+	// membership, and feedTenantID is the feed's owning tenant.
+	tenantFeed               bool
+	feedTenantID             id.ID
 	playerID, clubID, gameID *string
 	cursorDate               pgtype.Timestamptz
 	cursorType               pgtype.Text
@@ -441,22 +444,21 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 	return req, nil
 }
 
-// parseClubFeedRequest parses GET /clubs/{id}/feed (ADR-36): the event query
-// is the club's own (membership-scoped), the payload settlements come from the
-// club's main arena, and the cursor token bakes the club identity so a token
-// from another club's feed is a bad request.
-func parseClubFeedRequest(arenaID, clubID id.ID, playerId, gameId, next *string, limitParam *int) (feedRequest, error) {
-	club := string(clubID)
+// parseTenantFeedRequest parses GET /tenants/{id}/feed (ADR-36): the event
+// query is the tenant's own (membership-scoped), the payload settlements come
+// from the tenant's main arena, and the cursor token bakes the tenant
+// identity so a token from another tenant's feed is a bad request.
+func parseTenantFeedRequest(arenaID, tenantID id.ID, playerId, gameId, next *string, limitParam *int) (feedRequest, error) {
+	tenant := string(tenantID)
 	req, err := parseFeedRequest(arenaID, true, true, playerId, nil, gameId, next, limitParam)
 	if err != nil {
 		return req, err
 	}
-	req.clubFeed = true
-	req.feedClubID = clubID
-	req.clubID = &club
+	req.tenantFeed = true
+	req.feedTenantID = tenantID
 	if next != nil && *next != "" {
-		if c, _, derr := decodeArenaFeedCursor(*next); derr == nil && c.ClubID != nil && *c.ClubID != club {
-			return req, fmt.Errorf("cursor belongs to another club's feed")
+		if c, _, derr := decodeArenaFeedCursor(*next); derr == nil && c.TenantID != nil && *c.TenantID != tenant {
+			return req, fmt.Errorf("cursor belongs to another tenant's feed")
 		}
 	}
 	return req, nil
@@ -473,9 +475,9 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 		EventType string
 	}
 	var keys []feedEventKey
-	if req.clubFeed {
-		rows, err := s.api.ClubService.ListClubFeedEvents(ctx, db.ListClubFeedEventsParams{
-			ClubID:     req.feedClubID,
+	if req.tenantFeed {
+		rows, err := s.api.TenantService.ListTenantFeedEvents(ctx, db.ListTenantFeedEventsParams{
+			TenantID:   req.feedTenantID,
 			CursorDate: req.cursorDate,
 			CursorType: req.cursorType,
 			CursorID:   req.cursorID,
@@ -572,7 +574,7 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 	var next *string
 	if int32(len(keys)) == req.limit {
 		last := keys[len(keys)-1]
-		token := encodeArenaFeedCursor(req.playerID, req.clubID, req.gameID, last.SortDate.Time, last.EventType, last.ID)
+		token := encodeArenaFeedCursor(req.playerID, req.clubID, tenantIDPtr(req), req.gameID, last.SortDate.Time, last.EventType, last.ID)
 		next = &token
 	}
 	return FeedPage{Status: StatusSuccess, Data: data, Next: next}, nil

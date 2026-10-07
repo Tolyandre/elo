@@ -19,27 +19,27 @@ import (
 // enumeration the organizer picks a shape from. Start / bracket / organizer
 // tooling live in the same file as their phases land.
 
-// CreateClubTournament creates a tournament under its owning club (ADR-36):
-// the path club must be an existing tenant; the service validates both.
-func (s *StrictServer) CreateClubTournament(ctx context.Context, request CreateClubTournamentRequestObject) (CreateClubTournamentResponseObject, error) {
+// CreateTenantTournament creates a tournament under its owning tenant (ADR-36):
+// the path tenant must exist; the service validates it.
+func (s *StrictServer) CreateTenantTournament(ctx context.Context, request CreateTenantTournamentRequestObject) (CreateTenantTournamentResponseObject, error) {
 	var tid id.ID
 	if request.Body.Id != nil {
 		tid = id.ID(*request.Body.Id)
 	}
 	opts := tournamentWriteOpts(request.Body, currentActorID(ctx))
-	opts.ClubID = parseIDParam(request.Id)
+	opts.TenantID = parseIDParam(request.Id)
 	t, err := s.api.TournamentService.CreateTournament(ctx, tid, opts)
 	if err != nil {
 		switch domainStatusCode(err) {
 		case http.StatusBadRequest:
-			return CreateClubTournament400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+			return CreateTenantTournament400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusForbidden:
-			// A members_only club's roster admits current members only (ADR-36).
-			return CreateClubTournament403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+			// A members_only tenant's roster admits current members only (ADR-36).
+			return CreateTenantTournament403JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		case http.StatusNotFound:
-			return CreateClubTournament404JSONResponse{Status: StatusFail, Message: "Клуб не найден"}, nil
+			return CreateTenantTournament404JSONResponse{Status: StatusFail, Message: "Сообщество не найдено"}, nil
 		case http.StatusConflict:
-			return CreateClubTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+			return CreateTenantTournament409JSONResponse{Status: StatusFail, Message: err.Error()}, nil
 		}
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (s *StrictServer) CreateClubTournament(ctx context.Context, request CreateC
 	if err != nil {
 		return nil, err
 	}
-	return CreateClubTournament200JSONResponse{Status: StatusSuccess, Data: tournamentToAPI(detail)}, nil
+	return CreateTenantTournament200JSONResponse{Status: StatusSuccess, Data: tournamentToAPI(detail)}, nil
 }
 
 func (s *StrictServer) UpdateTournament(ctx context.Context, request UpdateTournamentRequestObject) (UpdateTournamentResponseObject, error) {
@@ -141,7 +141,7 @@ func (s *StrictServer) changeRegistration(ctx context.Context, rawID string, joi
 	case http.StatusNotFound:
 		return http.StatusNotFound, "Турнир не найден", nil
 	case http.StatusForbidden:
-		// A members_only club's tournament refuses non-members (ADR-36).
+		// A members_only tenant's tournament refuses non-members (ADR-36).
 		return http.StatusForbidden, err.Error(), nil
 	case http.StatusConflict:
 		return http.StatusConflict, err.Error(), nil
@@ -402,7 +402,7 @@ func tournamentToAPI(d elo.TournamentDetail) Tournament {
 	t := d.Row
 	out := Tournament{
 		Id:          Base58ID(t.ID),
-		ClubId:      Base58ID(t.ClubID),
+		TenantId:    Base58ID(t.TenantID),
 		Name:        t.Name,
 		Status:      TournamentStatus(t.Status),
 		Elimination: eliminationToAPI[TournamentElimination](t.Elimination),

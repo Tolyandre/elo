@@ -86,15 +86,15 @@ func (q *Queries) CountTournamentParticipants(ctx context.Context, tournamentID 
 
 const createTournament = `-- name: CreateTournament :one
 
-INSERT INTO tournaments (id, club_id, name, status, grand_final_deadline)
+INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline)
 VALUES ($1, $2, $3, 'registration', $4)
 ON CONFLICT (id) DO NOTHING
-RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id
+RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id
 `
 
 type CreateTournamentParams struct {
 	ID                 id.ID              `json:"id"`
-	ClubID             id.ID              `json:"club_id"`
+	TenantID           id.ID              `json:"tenant_id"`
 	Name               string             `json:"name"`
 	GrandFinalDeadline pgtype.Timestamptz `json:"grand_final_deadline"`
 }
@@ -105,12 +105,12 @@ type CreateTournamentParams struct {
 // Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 // with the same id inserts nothing and the service fetches the stored row.
 // elimination stays NULL until start stamps the chosen plan's family.
-// Every tournament belongs to a club (ADR-36): the create path is
-// POST /clubs/{id}/tournaments and the club is a tenant.
+// Every tournament belongs to a tenant (ADR-36): the create path is
+// POST /tenants/{id}/tournaments.
 func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error) {
 	row := q.db.QueryRow(ctx, createTournament,
 		arg.ID,
-		arg.ClubID,
+		arg.TenantID,
 		arg.Name,
 		arg.GrandFinalDeadline,
 	)
@@ -126,7 +126,7 @@ func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentPara
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
-		&i.ClubID,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -159,7 +159,7 @@ func (q *Queries) DeleteTournamentParticipantsNotIn(ctx context.Context, arg Del
 }
 
 const getTournament = `-- name: GetTournament :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments WHERE id = $1
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments WHERE id = $1
 `
 
 func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, error) {
@@ -176,13 +176,13 @@ func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, e
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
-		&i.ClubID,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getTournamentForUpdate = `-- name: GetTournamentForUpdate :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments WHERE id = $1 FOR UPDATE
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments WHERE id = $1 FOR UPDATE
 `
 
 // Row-locked variant for the lifecycle mutations (start/cancel/config): a
@@ -201,7 +201,7 @@ func (q *Queries) GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tour
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
-		&i.ClubID,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -327,7 +327,7 @@ func (q *Queries) ListTournamentParticipants(ctx context.Context, tournamentID i
 }
 
 const listTournaments = `-- name: ListTournaments :many
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, tenant_id FROM tournaments
 ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'registration' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
          name
 `
@@ -353,7 +353,7 @@ func (q *Queries) ListTournaments(ctx context.Context) ([]Tournament, error) {
 			&i.Plan,
 			&i.PlanSchemaVersion,
 			&i.CreatedAt,
-			&i.ClubID,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}

@@ -9,6 +9,7 @@ export type Player = components["schemas"]["Player"];
 export type RecentPlayer = components["schemas"]["RecentPlayer"];
 export type User = components["schemas"]["User"];
 export type Club = components["schemas"]["Club"];
+export type Tenant = components["schemas"]["Tenant"];
 export type GameList = components["schemas"]["GameList"];
 export type GameListItem = components["schemas"]["GameListItem"];
 export type FavoriteGames = components["schemas"]["FavoriteGames"];

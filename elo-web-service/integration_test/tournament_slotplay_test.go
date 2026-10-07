@@ -27,7 +27,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пропусков", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	smallPlan := `{"plan":{"elimination":"single","rounds":[
@@ -128,7 +128,7 @@ func TestTournament_EditCascadeAndGuards(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Каскадный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
@@ -322,7 +322,7 @@ func TestTournament_EditLinkChange(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок правок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
@@ -504,7 +504,7 @@ func TestTournament_RulingAttachDetach(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок судей", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	// One 4-seat grand final: the whole tournament is one table.
@@ -688,7 +688,7 @@ func TestTournament_RulingOverridesAndGuards(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Гарантный кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
@@ -854,7 +854,7 @@ func TestTournament_SlotAdjustAuditFeed(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок пересадок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}, {"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), short(gameID2), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
@@ -914,7 +914,7 @@ func TestTournament_MinScoreGate(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок минимума", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {

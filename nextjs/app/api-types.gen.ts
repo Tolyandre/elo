@@ -681,30 +681,10 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a club (name, icon, tenant settings)
-         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters). The tenant settings `arena_membership_mode` / `tournaments_openness` may only be set on a tenant club (ADR-36) and are always provided together; setting them on a group club is a 409.
+         * Update a club (name, icon)
+         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters).
          */
         patch: operations["PatchClub"];
-        trace?: never;
-    };
-    "/clubs/{id}/convert": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Convert a group club into a tenant club
-         * @description One-way conversion (ADR-36): the club becomes a tenant with the given openness settings, and its main arena is created (a fresh tenant arena, or — for the well-known original club — the already existing global arena). Converting an already-tenant club is a 409.
-         */
-        post: operations["ConvertClub"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/clubs/{id}/members": {
@@ -741,7 +721,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/clubs/{id}/feed": {
+    "/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all tenants (with their clubs and main arenas) */
+        get: operations["ListTenants"];
+        put?: never;
+        /**
+         * Create a tenant (its main arena is created in the same transaction)
+         * @description Creates the tenant with the given openness settings, attaches the initial clubs (each must exist and belong to no other tenant) and ensures the main arena — a fresh filter-less arena named after the tenant. Name must be unique (409 otherwise).
+         */
+        post: operations["CreateTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a tenant by ID */
+        get: operations["GetTenant"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a tenant (name, openness settings)
+         * @description Partial update. A field that is omitted is left unchanged. The openness settings `arena_membership_mode` / `tournaments_openness` are always provided together. An `arena_membership_mode` change re-interprets the main arena's whole history: the recalculation runs in the same transaction. Renaming the tenant also renames its main arena. Clubs are managed through the dedicated clubs endpoint, not here.
+         */
+        patch: operations["PatchTenant"];
+        trace?: never;
+    };
+    "/tenants/{id}/clubs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the tenant's club composition
+         * @description Wholesale composition replacement (ADR-36): the submitted club ids become the tenant's clubs; every other currently attached club is detached. Each club must exist and belong to no other tenant. A change of composition changes who is a member, so the main arena is recalculated in the same transaction.
+         */
+        put: operations["SetTenantClubs"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/{id}/feed": {
         parameters: {
             query?: never;
             header?: never;
@@ -749,10 +791,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The club's feed (ADR-36) — the community's activity, membership-scoped
-         * @description A merged, date-ordered stream of match, correction and market events. Match events go to any current member's matches (coop included); correction events to corrections of current members; market events to the markets the club OWNS. Membership-scoped by design — a tournament match appears even when it does not count into the club's main arena rating. Match payloads carry settlement columns from the club's main arena. Parameters and cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the club itself is the feed's identity.
+         * The tenant's feed (ADR-36) — the community's activity, membership-scoped
+         * @description A merged, date-ordered stream of match, correction and market events. Match events go to any current member's matches — of any club of the tenant (coop included); correction events to corrections of current members; market events to the markets the tenant OWNS. Membership-scoped by design — a tournament match appears even when it does not count into the tenant's main arena rating. Match payloads carry settlement columns from the tenant's main arena. Parameters and cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the tenant itself is the feed's identity.
          */
-        get: operations["ListClubFeed"];
+        get: operations["ListTenantFeed"];
         put?: never;
         post?: never;
         delete?: never;
@@ -761,7 +803,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/clubs/{id}/tournaments": {
+    "/tenants/{id}/tournaments": {
         parameters: {
             query?: never;
             header?: never;
@@ -771,17 +813,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a tournament owned by the club (status = registration)
-         * @description Every tournament belongs to a club (ADR-36). The path club must be an existing tenant — creating under a group is a 409, under a missing club a 404. The club cannot be changed later.
+         * Create a tournament owned by the tenant (status = registration)
+         * @description Every tournament belongs to a tenant (ADR-36). The path tenant must exist — a missing tenant is a 404. The owner cannot be changed later.
          */
-        post: operations["CreateClubTournament"];
+        post: operations["CreateTenantTournament"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/clubs/{id}/markets": {
+    "/tenants/{id}/markets": {
         parameters: {
             query?: never;
             header?: never;
@@ -791,10 +833,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a new betting market owned by the club
-         * @description Every market belongs to a club (ADR-36). The path club must be an existing tenant — creating under a group is a 409, under a missing club a 404. tournament_winner markets are not creatable by hand.
+         * Create a new betting market owned by the tenant
+         * @description Every market belongs to a tenant (ADR-36). The path tenant must exist — a missing tenant is a 404. tournament_winner markets are not creatable by hand.
          */
-        post: operations["CreateClubMarket"];
+        post: operations["CreateTenantMarket"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1548,8 +1590,8 @@ export interface components {
         };
         Tournament: {
             id: components["schemas"]["Base58ID"];
-            /** @description The owning tenant club (ADR-36); immutable after create. */
-            club_id: components["schemas"]["Base58ID"];
+            /** @description The owning tenant (ADR-36); immutable after create. */
+            tenant_id: components["schemas"]["Base58ID"];
             name: string;
             /** @enum {string} */
             status: "registration" | "running" | "completed" | "cancelled";
@@ -1694,23 +1736,8 @@ export interface components {
             icon?: string | null;
             /** @description List of player IDs (active members; ADR-36 stint history) */
             player_ids: components["schemas"]["Base58ID"][];
-            /**
-             * @description `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
-             * @enum {string}
-             */
-            kind: "group" | "tenant";
-            /**
-             * @description Tenant only — which matches count into the main arena.
-             * @enum {string|null}
-             */
-            arena_membership_mode?: "any_member" | "members_only" | null;
-            /**
-             * @description Tenant only — whether tournament registration is restricted to members.
-             * @enum {string|null}
-             */
-            tournaments_openness?: "members_only" | "open" | null;
-            /** @description The tenant club's main arena. Present for tenants only (the original club's main arena is the global arena). */
-            main_arena_id?: components["schemas"]["Base58ID"];
+            /** @description The club's tenant (ADR-36). Present when the club belongs to a tenant; absent for plain group clubs. */
+            tenant_id?: components["schemas"]["Base58ID"];
         };
         Tag: {
             id: components["schemas"]["Base58ID"];
@@ -1783,8 +1810,8 @@ export interface components {
         };
         Market: {
             id: components["schemas"]["Base58ID"];
-            /** @description The owning tenant club (ADR-36); settlements land in its main arena. */
-            club_id: components["schemas"]["Base58ID"];
+            /** @description The owning tenant (ADR-36); settlements land in its main arena. */
+            tenant_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             market_type: "match_winner" | "win_streak" | "tournament_winner";
             /** @enum {string} */
@@ -1959,11 +1986,11 @@ export interface components {
             /** @description Display name of the acting user at read time; null for system events. */
             actor_name: string | null;
             /** @enum {string} */
-            entity_type: "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament";
+            entity_type: "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant";
             entity_id: components["schemas"]["Base58ID"];
             /** @enum {string} */
             action: "created" | "updated" | "renamed" | "deleted";
-            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
+            /** @description Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26). */
             details?: (components["schemas"]["AuditEntityDetails"] | components["schemas"]["AuditRenameDetails"] | components["schemas"]["AuditMatchUpdateDetails"] | components["schemas"]["AuditArenaCampConfigDetails"] | components["schemas"]["AuditCampLinkDetails"] | components["schemas"]["AuditTournamentConfigDetails"] | components["schemas"]["AuditTournamentStartDetails"] | components["schemas"]["AuditTournamentStateDetails"] | components["schemas"]["AuditSlotRulingDetails"] | components["schemas"]["AuditSlotLinkDetails"] | components["schemas"]["AuditSlotAdjustDetails"]) | null;
         };
         AuditEntityDetails: {
@@ -2132,6 +2159,24 @@ export interface components {
             has_rematches: boolean;
             /** @description Every plan seats players from the same previous-round slot together somewhere. */
             all_rematches: boolean;
+        };
+        Tenant: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            /** @description The clubs belonging to the tenant (ADR-36); a tenant holds one or many. */
+            club_ids: components["schemas"]["Base58ID"][];
+            /**
+             * @description Which matches count into the main arena.
+             * @enum {string}
+             */
+            arena_membership_mode: "any_member" | "members_only";
+            /**
+             * @description Whether tournament registration is restricted to members.
+             * @enum {string}
+             */
+            tournaments_openness: "members_only" | "open";
+            /** @description The tenant's main arena — its global rating space. */
+            main_arena_id: components["schemas"]["Base58ID"];
         };
         /** @description Name and date window of a camp arena (ADR-27) as before → after pairs. Create fills the 'to' side, update both sides (changed fields only), delete the 'from' side. Untouched fields stay null. */
         AuditArenaCampConfigDetails: {
@@ -5004,7 +5049,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiSuccessMessage"];
                 };
             };
-            /** @description Bad request */
+            /** @description Bad request, or the club belongs to a tenant (ADR-36) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -5056,10 +5101,6 @@ export interface operations {
                 "application/json": {
                     name?: string;
                     icon?: string;
-                    /** @enum {string} */
-                    arena_membership_mode?: "any_member" | "members_only";
-                    /** @enum {string} */
-                    tournaments_openness?: "members_only" | "open";
                 };
             };
         };
@@ -5105,94 +5146,6 @@ export interface operations {
             };
             /** @description Club not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Tenant settings on a group club, or an invalid settings pair */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    ConvertClub: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @enum {string} */
-                    arena_membership_mode: "any_member" | "members_only";
-                    /** @enum {string} */
-                    tournaments_openness: "members_only" | "open";
-                };
-            };
-        };
-        responses: {
-            /** @description Converted club */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status: string;
-                        data: components["schemas"]["Club"];
-                    };
-                };
-            };
-            /** @description Bad request (missing or invalid settings) */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Club not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description The club is already a tenant */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5307,7 +5260,302 @@ export interface operations {
             };
         };
     };
-    ListClubFeed: {
+    ListTenants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of tenants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tenant"][];
+                    };
+                };
+            };
+        };
+    };
+    CreateTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    id: components["schemas"]["Base58ID"];
+                    name: string;
+                    /** @enum {string} */
+                    arena_membership_mode: "any_member" | "members_only";
+                    /** @enum {string} */
+                    tournaments_openness: "members_only" | "open";
+                    /** @description Initial club composition (may be empty). */
+                    club_ids?: components["schemas"]["Base58ID"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Created tenant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tenant"];
+                    };
+                };
+            };
+            /** @description Bad request (missing or invalid settings or club list) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant with this name already exists, or a club already belongs to another tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    GetTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tenant"];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    PatchTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    /** @enum {string} */
+                    arena_membership_mode?: "any_member" | "members_only";
+                    /** @enum {string} */
+                    tournaments_openness?: "members_only" | "open";
+                };
+            };
+        };
+        responses: {
+            /** @description Updated tenant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tenant"];
+                    };
+                };
+            };
+            /** @description Bad request, or an invalid settings pair */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant with this name already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    SetTenantClubs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The full desired club set (may be empty). */
+                    club_ids: components["schemas"]["Base58ID"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Composition applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Tenant"];
+                    };
+                };
+            };
+            /** @description Bad request (duplicate club ids, or a club does not exist) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description A club already belongs to another tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListTenantFeed: {
         parameters: {
             query?: {
                 /** @description Filter match and market events by player ID (the arena feed's matching rule) */
@@ -5345,7 +5593,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Club not found, or a group club (no main arena to read settlements from) */
+            /** @description Tenant not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5356,7 +5604,7 @@ export interface operations {
             };
         };
     };
-    CreateClubTournament: {
+    CreateTenantTournament: {
         parameters: {
             query?: never;
             header?: never;
@@ -5398,7 +5646,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Editor permission required, or the club restricts tournaments to its members (tournaments_openness = members_only, ADR-36) and the submitted participant list contains a non-member */
+            /** @description Editor permission required, or the tenant restricts tournaments to its members (tournaments_openness = members_only, ADR-36) and the submitted participant list contains a non-member */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5407,7 +5655,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Club not found */
+            /** @description Tenant not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5416,7 +5664,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Tournament name already taken, or the path club is not a tenant */
+            /** @description Tournament name already taken */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5427,7 +5675,7 @@ export interface operations {
             };
         };
     };
-    CreateClubMarket: {
+    CreateTenantMarket: {
         parameters: {
             query?: never;
             header?: never;
@@ -5511,17 +5759,8 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description Club not found */
+            /** @description Tenant not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description The path club is not a tenant */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6071,7 +6310,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description No player linked to the user, or the market's club restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
+            /** @description No player linked to the user, or the market's tenant restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6172,7 +6411,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
-            /** @description No player linked to the user, or the market's club restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
+            /** @description No player linked to the user, or the market's tenant restricts bets and guarantees to its members (arena_membership_mode = members_only, ADR-36) and the player is not a current member */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6420,7 +6659,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Filter by entity type(s); repeated for several types */
-                entity_type?: ("match" | "game" | "player" | "club" | "tag" | "arena" | "tournament")[];
+                entity_type?: ("match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant")[];
                 /** @description Filter by entity ID (requires entity_type) */
                 entity_id?: string;
                 /** @description Cursor token from previous page's "next" field */

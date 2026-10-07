@@ -41,7 +41,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	matchSvc := newMatchService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         idpkg.ID("00000000-0000-0000-0000-0000000000e4"),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),

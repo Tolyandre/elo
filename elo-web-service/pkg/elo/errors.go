@@ -8,7 +8,7 @@ var (
 	ErrMatchDateOutOfRange              = errors.New("дата партии не может быть в будущем или старше 30 дней")
 	ErrBetLimitExceeded                 = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen                    = errors.New("рынок не открыт")
-	ErrMarketMembersOnly                = errors.New("ставки и поручительство на этом рынке доступны только членам клуба")
+	ErrMarketMembersOnly                = errors.New("ставки и поручительство на этом рынке доступны только участникам сообщества")
 	ErrMarketOutcomeNotFound            = errors.New("указанный исход не существует на этом рынке")
 	ErrProbabilityChanged               = errors.New("цена изменилась, обновите страницу и повторите ставку")
 	ErrMarketNeedsGuarantor             = errors.New("рынок ждёт поручителей: пока ставок нет, встать поручителем можно на странице рынка")
@@ -34,7 +34,7 @@ var (
 	ErrTournamentDeadlineInvalid        = errors.New("дедлайн гранд-финала должен быть в будущем")
 	ErrTournamentNotEditable            = errors.New("турнир больше не в регистрации — конфигурацию изменить нельзя")
 	ErrTournamentNotOpenForRegistration = errors.New("регистрация на этот турнир закрыта")
-	ErrTournamentMembersOnly            = errors.New("регистрация на этот турнир открыта только членам клуба")
+	ErrTournamentMembersOnly            = errors.New("регистрация на этот турнир открыта только участникам сообщества")
 	ErrTournamentTooFewParticipants     = errors.New("для сетки нужно минимум 2 участника")
 	ErrTournamentPoolEmpty              = errors.New("добавьте в пул хотя бы одну игру")
 	ErrTournamentPlanInvalid            = errors.New("этот план сетки не входит в допустимые для текущего состава участников и пула")
@@ -59,12 +59,13 @@ var (
 	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
 	ErrArenaNameTaken         = errors.New("арена с таким названием уже существует")
 
-	// Club tenants (ADR-36).
-	ErrClubArenaIsManaged        = errors.New("главная арена сообщества управляется через настройки клуба и не меняется напрямую")
-	ErrClubAlreadyTenant         = errors.New("клуб уже является сообществом")
-	ErrClubNotTenant             = errors.New("клуб не является сообществом")
-	ErrTenantClubDeleteForbidden = errors.New("клуб-сообщество нельзя удалить: за ним закреплена арена рейтинга")
-	ErrClubTenantSettingsInvalid = errors.New("настройки сообщества заданы неверно")
+	// Tenants (ADR-36).
+	ErrTenantArenaIsManaged        = errors.New("главная арена сообщества управляется через настройки сообщества и не меняется напрямую")
+	ErrTenantNotFound              = errors.New("сообщество не найдено")
+	ErrTenantSettingsInvalid       = errors.New("настройки сообщества заданы неверно")
+	ErrTenantClubsInvalid          = errors.New("состав клубов сообщества задан неверно")
+	ErrClubInTenantDeleteForbidden = errors.New("клуб входит в сообщество и не может быть удалён: сначала исключите его из сообщества")
+	ErrClubAlreadyInTenant         = errors.New("клуб уже входит в другое сообщество")
 
 	// Game modes (ADR-33).
 	ErrCoopScoresRejected  = errors.New("кооперативная партия не принимает очки игроков — отправьте общий игровой результат")

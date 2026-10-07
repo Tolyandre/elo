@@ -46,11 +46,11 @@ export async function getMarketProbabilityHistoryPromise(id: Base58ID): Promise<
     return (await unwrap(client.GET("/markets/{id}/probability-history", { params: { path: { id } } }))).data.points;
 }
 
-// Markets are created under their owning tenant club (ADR-36): settlements
-// land in the club's main arena, and a members_only club restricts bets and
+// Markets are created under their owning tenant (ADR-36): settlements land
+// in the tenant's main arena, and a members_only tenant restricts bets and
 // guarantees to its members.
 export async function createMarketPromise(
-    clubId: Base58ID,
+    tenantId: Base58ID,
     payload: {
         market_type: "match_winner" | "win_streak";
         starts_at: string | null;
@@ -66,8 +66,8 @@ export async function createMarketPromise(
         max_losses?: number | null;
     },
 ): Promise<{ id: Base58ID }> {
-    return (await unwrap(client.POST("/clubs/{id}/markets", {
-        params: { path: { id: clubId } },
+    return (await unwrap(client.POST("/tenants/{id}/markets", {
+        params: { path: { id: tenantId } },
         body: {
             id: newId(),
             ...payload,

@@ -23,7 +23,8 @@ DELETE FROM matches;
 
 -- name: ListMatchesWithPlayersPaginated :many
 -- The rating columns are the display arena's (@arena_id — the caller's current
--- club main arena, ADR-36; the global arena until the frontend carries ?club=).
+-- tenant main arena, ADR-36; the global arena until the frontend carries
+-- ?tenant=). The club_id / no_club filters stay club-level grouping filters.
 WITH paginated_matches AS (
     SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won
     FROM matches m

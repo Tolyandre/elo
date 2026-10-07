@@ -2,11 +2,12 @@
 
 package integration_test
 
-// Club tenants (ADR-36): the converted «Синие люди» tenant with its
-// global-arena main arena, the group lifecycle (create / convert / delete),
-// the stint-based membership, and the attribution phase: club-arena
-// membership per openness at the match date, members-only listing, and the
-// mode-change recalculation.
+// Tenants (ADR-36): the «Синие люди» tenant with its global-arena main arena
+// and the two seeded clubs, the tenant lifecycle (create / settings /
+// composition), the stint-based club membership, and the attribution phase:
+// tenant-arena membership per openness at the match date (members of any club
+// of the tenant count), members-only listing, and the mode/composition-change
+// recalculation.
 
 import (
 	"context"
@@ -29,13 +30,11 @@ import (
 const blueMenClubUUID = "00000000-0000-0000-0000-000000000001"
 
 type clubJSON struct {
-	Id                  string   `json:"id"`
-	Name                string   `json:"name"`
-	PlayerIds           []string `json:"player_ids"`
-	Kind                string   `json:"kind"`
-	ArenaMembershipMode *string  `json:"arena_membership_mode"`
-	TournamentsOpenness *string  `json:"tournaments_openness"`
-	MainArenaId         *string  `json:"main_arena_id"`
+	Id          string   `json:"id"`
+	Name        string   `json:"name"`
+	PlayerIds   []string `json:"player_ids"`
+	TenantId    *string  `json:"tenant_id"`
+	GeologistId *string  `json:"geologist_name"`
 }
 
 type clubsListJSON struct {
@@ -76,44 +75,108 @@ func getClub(t *testing.T, router interface {
 	return w.Code, &resp.Data
 }
 
-// TestClubs_BlueMenTenantBackfill pins the migration backfill: «Синие люди»
-// is a tenant whose main arena is the global arena, with any_member / open.
-func TestClubs_BlueMenTenantBackfill(t *testing.T) {
+type tenantJSON struct {
+	Id                  string   `json:"id"`
+	Name                string   `json:"name"`
+	ClubIds             []string `json:"club_ids"`
+	ArenaMembershipMode string   `json:"arena_membership_mode"`
+	TournamentsOpenness string   `json:"tournaments_openness"`
+	MainArenaId         string   `json:"main_arena_id"`
+}
+
+func getTenant(t *testing.T, router interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}, id string) (int, *tenantJSON) {
+	t.Helper()
+	w := doJSON(t, router, http.MethodGet, "/tenants/"+id, "", "")
+	if w.Code != http.StatusOK {
+		return w.Code, nil
+	}
+	var resp struct {
+		Status string     `json:"status"`
+		Data   tenantJSON `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode tenant: %v", err)
+	}
+	return w.Code, &resp.Data
+}
+
+// TestTenants_BlueMenBackfill pins the migration backfill: the «Синие люди»
+// tenant owns the global arena as its main arena, carries any_member / open,
+// and holds both clubs («Синие люди» and «Весёлые карточные игры»).
+func TestTenants_BlueMenBackfill(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	router := setupRouter(pool)
 
-	code, club := getClub(t, router, blueMenClubUUID)
+	code, tenant := getTenant(t, router, blueMenTenantUUID)
 	if code != http.StatusOK {
-		t.Fatalf("GET /clubs/%s: %d %s", blueMenClubUUID, code, "")
+		t.Fatalf("GET /tenants/%s: %d %s", blueMenTenantUUID, code, "")
 	}
-	if club.Kind != "tenant" {
-		t.Fatalf("«Синие люди» kind = %q, want tenant", club.Kind)
+	if tenant.Name != "Синие люди" {
+		t.Fatalf("tenant name = %q, want «Синие люди»", tenant.Name)
 	}
-	if club.ArenaMembershipMode == nil || *club.ArenaMembershipMode != "any_member" {
-		t.Fatalf("arena_membership_mode = %v, want any_member", club.ArenaMembershipMode)
+	if tenant.ArenaMembershipMode != "any_member" {
+		t.Fatalf("arena_membership_mode = %q, want any_member", tenant.ArenaMembershipMode)
 	}
-	if club.TournamentsOpenness == nil || *club.TournamentsOpenness != "open" {
-		t.Fatalf("tournaments_openness = %v, want open", club.TournamentsOpenness)
+	if tenant.TournamentsOpenness != "open" {
+		t.Fatalf("tournaments_openness = %q, want open", tenant.TournamentsOpenness)
 	}
-	if club.MainArenaId == nil || *club.MainArenaId != elo.GlobalArenaID.Base58().String() {
-		t.Fatalf("main_arena_id = %v, want the global arena %s", club.MainArenaId, elo.GlobalArenaID.Base58())
+	if tenant.MainArenaId != elo.GlobalArenaID.Base58().String() {
+		t.Fatalf("main_arena_id = %s, want the global arena %s", tenant.MainArenaId, elo.GlobalArenaID.Base58())
+	}
+	wantClubs := []string{short(idpkg.ID(blueMenClubUUID)), short(idpkg.ID(vkiClubUUID))}
+	if !equalStrings(tenant.ClubIds, wantClubs) {
+		t.Fatalf("club_ids = %v, want %v", tenant.ClubIds, wantClubs)
 	}
 
-	// The arena row carries the club anchor.
+	// Both clubs carry the tenant back-reference.
+	for _, cid := range []string{blueMenClubUUID, vkiClubUUID} {
+		var attached *string
+		if err := pool.QueryRow(context.Background(),
+			`SELECT tenant_id::text FROM clubs WHERE id = $1`, cid).Scan(&attached); err != nil {
+			t.Fatalf("read club %s: %v", cid, err)
+		}
+		if attached == nil || *attached != blueMenTenantUUID {
+			t.Fatalf("club %s tenant_id = %v, want %s", cid, attached, blueMenTenantUUID)
+		}
+	}
+
+	// The arena row carries the tenant anchor.
 	var anchored *string
 	if err := pool.QueryRow(context.Background(),
-		`SELECT club_id::text FROM arenas WHERE id = $1`, elo.GlobalArenaID).Scan(&anchored); err != nil {
+		`SELECT tenant_id::text FROM arenas WHERE id = $1`, elo.GlobalArenaID).Scan(&anchored); err != nil {
 		t.Fatalf("read global arena: %v", err)
 	}
-	if anchored == nil || *anchored != blueMenClubUUID {
-		t.Fatalf("global arena club_id = %v, want %s", anchored, blueMenClubUUID)
+	if anchored == nil || *anchored != blueMenTenantUUID {
+		t.Fatalf("global arena tenant_id = %v, want %s", anchored, blueMenTenantUUID)
+	}
+
+	// Pre-tenancy tournaments and markets are tied to the tenant.
+	var orphans int
+	if err := pool.QueryRow(context.Background(),
+		`SELECT (SELECT COUNT(*) FROM tournaments WHERE tenant_id <> '00000000-0000-0000-0000-000000000002')
+		      + (SELECT COUNT(*) FROM markets WHERE tenant_id <> '00000000-0000-0000-0000-000000000002')`).Scan(&orphans); err != nil {
+		t.Fatalf("count orphan rows: %v", err)
+	}
+	if orphans != 0 {
+		t.Fatalf("%d tournaments/markets are not owned by «Синие люди»", orphans)
+	}
+
+	// Clubs stay plain grouping: no kind/tenant fields on the club read.
+	code, club := getClub(t, router, blueMenClubUUID)
+	if code != http.StatusOK {
+		t.Fatalf("GET /clubs/%s: %d", blueMenClubUUID, code)
+	}
+	if club.TenantId == nil || *club.TenantId != short(idpkg.ID(blueMenTenantUUID)) {
+		t.Fatalf("club tenant_id = %v, want the «Синие люди» tenant", club.TenantId)
 	}
 }
 
-// TestClubs_GroupLifecycleAndConvert walks create → convert → settings →
-// delete guards.
-func TestClubs_GroupLifecycleAndConvert(t *testing.T) {
+// TestTenants_Lifecycle walks create (with composition) → settings → rename →
+// composition replace → guards.
+func TestTenants_Lifecycle(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -121,70 +184,54 @@ func TestClubs_GroupLifecycleAndConvert(t *testing.T) {
 	router := setupRouter(pool)
 	token, _ := createTestUserWithID(t, pool, true)
 
-	// A fresh club is a plain group: no mode, no main arena.
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", token,
-		fmt.Sprintf(`{"id": %q, "name": "Групповой клуб"}`, clubID))
+	// Two fresh group clubs to compose from.
+	clubA, clubB := newID(t), newID(t)
+	for id, name := range map[idpkg.ID]string{clubA: "Клуб А", clubB: "Клуб Б"} {
+		w := doJSON(t, router, http.MethodPost, "/clubs", token,
+			fmt.Sprintf(`{"id": %q, "name": %q}`, id, name))
+		if w.Code != http.StatusOK {
+			t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+		}
+	}
+
+	// Create the tenant with an initial composition; the main arena is born
+	// with it.
+	tenantID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/tenants", token,
+		fmt.Sprintf(`{"id": %q, "name": "Сообщество", "arena_membership_mode": "any_member", "tournaments_openness": "open", "club_ids": [%q, %q]}`,
+			tenantID, clubA, clubB))
 	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+		t.Fatalf("POST /tenants: %d %s", w.Code, w.Body.String())
 	}
 	var created struct {
-		Data clubJSON `json:"data"`
+		Data tenantJSON `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
-	if created.Data.Kind != "group" || created.Data.MainArenaId != nil ||
-		created.Data.ArenaMembershipMode != nil || created.Data.TournamentsOpenness != nil {
-		t.Fatalf("fresh club = %+v, want a bare group", created.Data)
+	if len(created.Data.ClubIds) != 2 || created.Data.MainArenaId == "" {
+		t.Fatalf("created tenant = %+v, want both clubs and a main arena", created.Data)
 	}
+	mainArenaID := created.Data.MainArenaId
 
-	// A tenant settings PATCH on a group club is a conflict.
-	w = doJSON(t, router, http.MethodPatch, "/clubs/"+clubID.String(), token,
-		`{"arena_membership_mode": "any_member", "tournaments_openness": "open"}`)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("PATCH tenant settings on group: %d %s", w.Code, w.Body.String())
-	}
-	// Half a settings pair is a bad request.
-	w = doJSON(t, router, http.MethodPatch, "/clubs/"+clubID.String(), token,
-		`{"arena_membership_mode": "any_member"}`)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("PATCH half settings pair: %d %s", w.Code, w.Body.String())
-	}
-
-	// Convert.
-	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/convert", token,
-		`{"arena_membership_mode": "any_member", "tournaments_openness": "open"}`)
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST convert: %d %s", w.Code, w.Body.String())
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
-		t.Fatalf("decode convert: %v", err)
-	}
-	if created.Data.Kind != "tenant" || created.Data.MainArenaId == nil {
-		t.Fatalf("converted club = %+v, want tenant with a main arena", created.Data)
-	}
-	mainArenaID := *created.Data.MainArenaId
-
-	// The main arena exists, is named after the club, carries the club anchor,
-	// and is guarded against direct PATCH/DELETE.
-	w = doJSON(t, router, http.MethodGet, "/arenas/"+mainArenaID, "", "")
-	if w.Code != http.StatusOK {
-		t.Fatalf("GET main arena: %d %s", w.Code, w.Body.String())
-	}
+	// The fresh main arena exists, is named after the tenant, carries the
+	// tenant anchor, and is guarded against direct PATCH/DELETE.
 	arenaCanonical, err := idpkg.ParseTolerant(mainArenaID)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
 	var anchored *string
 	if err := pool.QueryRow(ctx,
-		`SELECT club_id::text FROM arenas WHERE id = $1`, arenaCanonical).Scan(&anchored); err != nil {
+		`SELECT tenant_id::text FROM arenas WHERE id = $1`, arenaCanonical).Scan(&anchored); err != nil {
 		t.Fatalf("read main arena row: %v", err)
 	}
-	if anchored == nil || *anchored != clubID.String() {
-		t.Fatalf("main arena club_id = %v, want %s", anchored, clubID)
+	if anchored == nil || *anchored != tenantID.String() {
+		t.Fatalf("main arena tenant_id = %v, want %s", anchored, tenantID)
 	}
-
+	w = doJSON(t, router, http.MethodGet, "/arenas/"+mainArenaID, "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET main arena: %d %s", w.Code, w.Body.String())
+	}
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+mainArenaID, token,
 		`{"name": "Переименовали", "settings": {"starting_rating": 1000, "leagues": []}, "filter": {"game_ids": [], "tag_ids": []}}`)
 	if w.Code != http.StatusConflict {
@@ -195,34 +242,14 @@ func TestClubs_GroupLifecycleAndConvert(t *testing.T) {
 		t.Fatalf("DELETE main arena: %d %s", w.Code, w.Body.String())
 	}
 
-	// Second conversion is a conflict; settings updates go through PATCH.
-	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/convert", token,
-		`{"arena_membership_mode": "any_member", "tournaments_openness": "open"}`)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("second convert: %d %s", w.Code, w.Body.String())
-	}
-	w = doJSON(t, router, http.MethodPatch, "/clubs/"+clubID.String(), token,
-		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`)
-	if w.Code != http.StatusOK {
-		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
-	}
-	code, club := getClub(t, router, clubID.String())
-	if code != http.StatusOK {
-		t.Fatalf("GET club after settings patch: %d", code)
-	}
-	if club.ArenaMembershipMode == nil || *club.ArenaMembershipMode != "members_only" {
-		t.Fatalf("mode after patch = %v, want members_only", club.ArenaMembershipMode)
-	}
-
-	// The 'games' arena list excludes the club's main arena.
+	// The 'games' arena list excludes the tenant's main arena.
 	w = doJSON(t, router, http.MethodGet, "/arenas?kind=games", "", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET arenas kind=games: %d %s", w.Code, w.Body.String())
 	}
 	var arenas struct {
 		Data []struct {
-			Id   string `json:"id"`
-			Name string `json:"name"`
+			Id string `json:"id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &arenas); err != nil {
@@ -230,24 +257,109 @@ func TestClubs_GroupLifecycleAndConvert(t *testing.T) {
 	}
 	for _, a := range arenas.Data {
 		if a.Id == mainArenaID {
-			t.Fatalf("club main arena %s leaked into the games arena list", mainArenaID)
+			t.Fatalf("tenant main arena %s leaked into the games arena list", mainArenaID)
 		}
 	}
 
-	// A tenant club cannot be deleted; a plain group (no members) can.
-	w = doJSON(t, router, http.MethodDelete, "/clubs/"+clubID.String(), token, "")
+	// A settings PATCH with half a pair is a bad request; the full pair goes
+	// through.
+	w = doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
+		`{"arena_membership_mode": "any_member"}`)
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("DELETE tenant club: %d %s", w.Code, w.Body.String())
+		t.Fatalf("PATCH half settings pair: %d %s", w.Code, w.Body.String())
 	}
-	otherID := newID(t)
-	w = doJSON(t, router, http.MethodPost, "/clubs", token,
-		fmt.Sprintf(`{"id": %q, "name": "Одноразовый клуб"}`, otherID))
+	w = doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
+		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`)
 	if w.Code != http.StatusOK {
-		t.Fatalf("POST second club: %d %s", w.Code, w.Body.String())
+		t.Fatalf("PATCH tenant settings: %d %s", w.Code, w.Body.String())
 	}
-	w = doJSON(t, router, http.MethodDelete, "/clubs/"+otherID.String(), token, "")
+	code, tenant := getTenant(t, router, tenantID.String())
+	if code != http.StatusOK {
+		t.Fatalf("GET tenant after settings patch: %d", code)
+	}
+	if tenant.ArenaMembershipMode != "members_only" {
+		t.Fatalf("mode after patch = %q, want members_only", tenant.ArenaMembershipMode)
+	}
+
+	// Rename (the main arena follows).
+	w = doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
+		`{"name": "Новое имя"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("PATCH tenant name: %d %s", w.Code, w.Body.String())
+	}
+	var arenaName string
+	if err := pool.QueryRow(ctx, `SELECT name FROM arenas WHERE id = $1`, arenaCanonical).Scan(&arenaName); err != nil {
+		t.Fatalf("read arena name: %v", err)
+	}
+	if arenaName != "Новое имя" {
+		t.Fatalf("main arena name = %q, want the tenant's new name", arenaName)
+	}
+
+	// Composition replace: drop clubB, keep clubA. The clubs read carries it.
+	clubC := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Клуб В"}`, clubC))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST third club: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubC))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
+	}
+	code, tenant = getTenant(t, router, tenantID.String())
+	if code != http.StatusOK || !equalStrings(tenant.ClubIds, []string{short(clubA), short(clubC)}) {
+		t.Fatalf("tenant after composition change = %+v, want clubs A and C", tenant)
+	}
+	var detached *string
+	if err := pool.QueryRow(ctx, `SELECT tenant_id::text FROM clubs WHERE id = $1`, clubB).Scan(&detached); err != nil {
+		t.Fatalf("read detached club: %v", err)
+	}
+	if detached != nil {
+		t.Fatalf("club B still attached to %s after the composition replace", *detached)
+	}
+
+	// A club of another tenant cannot be poached (409) and a tenant-attached
+	// club cannot be deleted (400); a plain group can.
+	otherTenant := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/tenants", token,
+		fmt.Sprintf(`{"id": %q, "name": "Другое", "arena_membership_mode": "any_member", "tournaments_openness": "open", "club_ids": [%q]}`,
+			otherTenant, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST second tenant: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q]}`, clubB))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("poach club from another tenant: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodDelete, "/clubs/"+clubB.String(), token, "")
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("DELETE attached club: %d %s", w.Code, w.Body.String())
+	}
+	groupClub := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Одноразовый клуб"}`, groupClub))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST group club: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodDelete, "/clubs/"+groupClub.String(), token, "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("DELETE group club: %d %s", w.Code, w.Body.String())
+	}
+
+	// Tenant names are unique (409).
+	w = doJSON(t, router, http.MethodPost, "/tenants", token,
+		fmt.Sprintf(`{"id": %q, "name": "Новое имя", "arena_membership_mode": "any_member", "tournaments_openness": "open"}`, newID(t)))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate tenant name: %d %s", w.Code, w.Body.String())
+	}
+
+	// Invalid settings are a bad request.
+	w = doJSON(t, router, http.MethodPost, "/tenants", token,
+		fmt.Sprintf(`{"id": %q, "name": "Плохие настройки", "arena_membership_mode": "nope", "tournaments_openness": "open"}`, newID(t)))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid settings: %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -335,27 +447,35 @@ func TestClubs_MemberStints(t *testing.T) {
 	}
 }
 
-// convertClub converts a fresh group over HTTP and returns the main arena id
-// (Base58).
-func convertClub(t *testing.T, router interface {
+// createTenant creates a fresh tenant over HTTP with one fresh club and
+// returns (tenantID, clubID, mainArenaID-Base58).
+func createTenant(t *testing.T, router interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
-}, token, clubID, mode, openness string) string {
+}, token, name, mode, openness string) (idpkg.ID, idpkg.ID, string) {
 	t.Helper()
-	w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/convert", token,
-		fmt.Sprintf(`{"arena_membership_mode": %q, "tournaments_openness": %q}`, mode, openness))
+	clubID := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": %q}`, clubID, name+" клуб"))
 	if w.Code != http.StatusOK {
-		t.Fatalf("convert %s: %d %s", clubID, w.Code, w.Body.String())
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+	tenantID := newID(t)
+	w = doJSON(t, router, http.MethodPost, "/tenants", token,
+		fmt.Sprintf(`{"id": %q, "name": %q, "arena_membership_mode": %q, "tournaments_openness": %q, "club_ids": [%q]}`,
+			tenantID, name, mode, openness, clubID))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST /tenants %s: %d %s", name, w.Code, w.Body.String())
 	}
 	var resp struct {
-		Data clubJSON `json:"data"`
+		Data tenantJSON `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode convert: %v", err)
+		t.Fatalf("decode create tenant: %v", err)
 	}
-	if resp.Data.MainArenaId == nil {
-		t.Fatalf("converted club %s has no main arena", clubID)
+	if resp.Data.MainArenaId == "" {
+		t.Fatalf("tenant %s has no main arena", name)
 	}
-	return *resp.Data.MainArenaId
+	return tenantID, clubID, resp.Data.MainArenaId
 }
 
 func addClubMember(t *testing.T, router interface {
@@ -420,11 +540,12 @@ func arenaPlayerNames(t *testing.T, router interface {
 	return names
 }
 
-// TestClubs_ClubArenaAttributionAnyMember pins the any_member rule: a match
-// with at least one member at its date counts into the fresh main arena (the
-// match-write drain settles it synchronously); a member-less match counts
-// nowhere. Guests accumulate rating and are listed in the arena ranking.
-func TestClubs_ClubArenaAttributionAnyMember(t *testing.T) {
+// TestTenants_ArenaAttributionAnyMember pins the any_member rule across the
+// tenant's clubs: a match with at least one member of ANY club of the tenant
+// at its date counts into the main arena (the match-write drain settles it
+// synchronously); a member-less match counts nowhere. Guests accumulate
+// rating and are listed in the arena ranking.
+func TestTenants_ArenaAttributionAnyMember(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -432,32 +553,48 @@ func TestClubs_ClubArenaAttributionAnyMember(t *testing.T) {
 	router := setupRouter(pool)
 	token, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", token,
-		fmt.Sprintf(`{"id": %q, "name": "Клуб атрибуции"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, token, clubID.String(), "any_member", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, clubA, tenantArena := createTenant(t, router, token, "Атрибуция", "any_member", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
 
 	member := createTestPlayer(t, pool, "Член клуба")
 	guest := createBareTestPlayer(t, pool, "Гость клуба")
-	addClubMember(t, router, token, clubID.String(), member)
+	addClubMember(t, router, token, clubA.String(), member)
+
+	// A second club joins the tenant; its member is a community member too.
+	clubB := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Второй клуб"}`, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST second club: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
+	}
+	memberB := createBareTestPlayer(t, pool, "Член второго клуба")
+	addClubMember(t, router, token, clubB.String(), memberB)
 
 	game := createTestGame(t, pool, "Игра атрибуции")
 	svc := newMatchService(pool)
 
-	// Member + guest: counts under any_member — the club arena's affected-set
-	// drain settles it in the same transaction, and the global arena takes it
-	// too («Синие люди» is any_member as well).
+	// Member of club A + guest: counts under any_member — the arena's
+	// affected-set drain settles it in the same transaction, and the global
+	// arena takes it too («Синие люди» is any_member as well).
 	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch member+guest: %v", err)
 	}
-	// Member-less match: settles nowhere (the club predicate rejects it on
+
+	// Member of club B + guest: the club B membership counts into the SAME
+	// tenant arena — the whole point of the multi-club tenant.
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch clubB member+guest: %v", err)
+	}
+
+	// Member-less match: settles nowhere (the tenant predicate rejects it on
 	// both arenas).
 	g1 := createBareTestPlayer(t, pool, "Посторонний1")
 	g2 := createBareTestPlayer(t, pool, "Посторонний2")
@@ -466,31 +603,35 @@ func TestClubs_ClubArenaAttributionAnyMember(t *testing.T) {
 		t.Fatalf("AddMatch strangers: %v", err)
 	}
 
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 2 {
-		t.Fatalf("club arena settled %d rows, want the 2 participants of the member match", got)
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 4 {
+		t.Fatalf("tenant arena settled %d rows, want the 4 participants of the member matches", got)
 	}
+	// The global arena (the «Синие люди» main arena) only takes the first
+	// match: its member plays there; memberB is a member of the fresh
+	// tenant's club only, so the second match is member-less for Blue Men.
 	if got := settlementCount(t, pool, elo.GlobalArenaID, nil); got != 2 {
-		t.Fatalf("global arena settled %d rows, want only the member match", got)
+		t.Fatalf("global arena settled %d rows, want only the Blue-Men member match", got)
 	}
-	if got := settlementCount(t, pool, clubArenaID, strangers.ID); got != 0 {
-		t.Fatalf("member-less match leaked %d rows into the club arena", got)
+	if got := settlementCount(t, pool, tenantArenaID, strangers.ID); got != 0 {
+		t.Fatalf("member-less match leaked %d rows into the tenant arena", got)
 	}
 	if got := settlementCount(t, pool, elo.GlobalArenaID, strangers.ID); got != 0 {
 		t.Fatalf("member-less match leaked %d rows into the global arena", got)
 	}
 
-	// The guest is listed in the arena ranking (any_member).
-	names := arenaPlayerNames(t, router, clubArena)
-	if !slices.Contains(names, "Член клуба") || !slices.Contains(names, "Гость клуба") {
-		t.Fatalf("arena players = %v, want the member and the listed guest", names)
+	// The guests are listed in the arena ranking (any_member).
+	names := arenaPlayerNames(t, router, tenantArena)
+	if !slices.Contains(names, "Член клуба") || !slices.Contains(names, "Член второго клуба") || !slices.Contains(names, "Гость клуба") {
+		t.Fatalf("arena players = %v, want both members and the listed guest", names)
 	}
 }
 
-// TestClubs_MembersOnlyRules pins the members_only listing rules: mixed
-// matches do not count into the arena; former members keep their settlement
-// history and point-in-time ranks but drop out of the current listing; a
-// re-joined member is listed again.
-func TestClubs_MembersOnlyRules(t *testing.T) {
+// TestTenants_MembersOnlyRules pins the members_only listing rules: mixed
+// matches do not count into the arena; a member of any club of the tenant
+// counts; former members keep their settlement history and point-in-time
+// ranks but drop out of the current listing; a re-joined member is listed
+// again.
+func TestTenants_MembersOnlyRules(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -498,14 +639,8 @@ func TestClubs_MembersOnlyRules(t *testing.T) {
 	router := setupRouter(pool)
 	token, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", token,
-		fmt.Sprintf(`{"id": %q, "name": "Только свои"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, token, clubID.String(), "members_only", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, clubA, tenantArena := createTenant(t, router, token, "Только свои", "members_only", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
@@ -513,8 +648,24 @@ func TestClubs_MembersOnlyRules(t *testing.T) {
 	member := createTestPlayer(t, pool, "Свой1")
 	member2 := createTestPlayer(t, pool, "Свой2")
 	guest := createBareTestPlayer(t, pool, "Чужой")
-	addClubMember(t, router, token, clubID.String(), member)
-	addClubMember(t, router, token, clubID.String(), member2)
+	addClubMember(t, router, token, clubA.String(), member)
+	addClubMember(t, router, token, clubA.String(), member2)
+
+	// A second club attached later: its member counts into the members_only
+	// arena too (membership is tenant-wide).
+	clubB := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Свои-Б"}`, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST second club: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
+	}
+	memberB := createTestPlayer(t, pool, "Свой-Б")
+	addClubMember(t, router, token, clubB.String(), memberB)
 
 	game := createTestGame(t, pool, "Игра своих")
 	svc := newMatchService(pool)
@@ -524,41 +675,42 @@ func TestClubs_MembersOnlyRules(t *testing.T) {
 	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 0 {
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("mixed match settled %d rows into the members_only arena, want 0", got)
 	}
 
-	// Member-only match: the arena joins the affected set and the synchronous
-	// drain replays it — the mixed match stays out of the replay.
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, member2: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	// Member-only match across BOTH clubs: the arena joins the affected set
+	// and the synchronous drain replays it — the mixed match stays out of the
+	// replay.
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch members: %v", err)
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 2 {
-		t.Fatalf("members_only arena settled %d rows, want only the member match", got)
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
+		t.Fatalf("members_only arena settled %d rows, want only the cross-club member match", got)
 	}
 	if got := settlementCount(t, pool, elo.GlobalArenaID, nil); got != 4 {
 		t.Fatalf("global arena settled %d rows, want both matches («Синие люди» is any_member)", got)
 	}
 
 	// Current listing: members only.
-	if names := arenaPlayerNames(t, router, clubArena); !equalStrings(names, []string{"Свой1", "Свой2"}) {
+	if names := arenaPlayerNames(t, router, tenantArena); !equalStrings(names, []string{"Свой1", "Свой-Б"}) {
 		t.Fatalf("arena players = %v, want the two members", names)
 	}
 
 	// Removing a member keeps his settlement history (the match counts — he
 	// was a member at its date) but drops him from the current listing.
-	removeClubMember(t, router, token, clubID.String(), member)
+	removeClubMember(t, router, token, clubA.String(), member)
 	if _, err := newArenaService(pool).RecalculateArenas(ctx); err != nil {
 		t.Fatalf("RecalculateArenas: %v", err)
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 2 {
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("former member's settlements were dropped: %d rows, want 2", got)
 	}
-	if names := arenaPlayerNames(t, router, clubArena); !equalStrings(names, []string{"Свой2"}) {
+	if names := arenaPlayerNames(t, router, tenantArena); !equalStrings(names, []string{"Свой-Б"}) {
 		t.Fatalf("arena players after remove = %v, want only the current member", names)
 	}
 	// Point-in-time ranks keep the former member (ADR-36).
-	standings, err := newArenaService(pool).GetArenaPlayersAt(ctx, clubArenaID, time.Now().Add(time.Minute))
+	standings, err := newArenaService(pool).GetArenaPlayersAt(ctx, tenantArenaID, time.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatalf("GetArenaPlayersAt: %v", err)
 	}
@@ -571,18 +723,18 @@ func TestClubs_MembersOnlyRules(t *testing.T) {
 	}
 
 	// Re-joining lists the member again.
-	addClubMember(t, router, token, clubID.String(), member)
-	if names := arenaPlayerNames(t, router, clubArena); !equalStrings(names, []string{"Свой1", "Свой2"}) {
+	addClubMember(t, router, token, clubA.String(), member)
+	if names := arenaPlayerNames(t, router, tenantArena); !equalStrings(names, []string{"Свой1", "Свой-Б"}) {
 		t.Fatalf("arena players after re-join = %v, want both members back", names)
 	}
 }
 
-// TestClubs_GlobalArenaOpennessGate pins the global-arena side of the
+// TestTenants_GlobalArenaOpennessGate pins the global-arena side of the
 // attribution: «Синие люди» is any_member (migration 068), so a member-less
 // match leaves no rating rows — and a main-arena mode change re-settles the
 // whole history in the settings transaction (the global arena is never
 // drained by the background worker).
-func TestClubs_GlobalArenaOpennessGate(t *testing.T) {
+func TestTenants_GlobalArenaOpennessGate(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -625,7 +777,7 @@ func TestClubs_GlobalArenaOpennessGate(t *testing.T) {
 	// Mode change → full in-transaction replay: the mixed match leaves the
 	// rating under members_only, and the global arena is left clean of stale
 	// marks (the worker must never drain it).
-	w := doJSON(t, router, http.MethodPatch, "/clubs/"+blueMenClubUUID, token,
+	w := doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "members_only"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH «Синие люди» mode: %d %s", w.Code, w.Body.String())
@@ -643,7 +795,7 @@ func TestClubs_GlobalArenaOpennessGate(t *testing.T) {
 	}
 
 	// Back to any_member: the replay brings the mixed match's settlements back.
-	w = doJSON(t, router, http.MethodPatch, "/clubs/"+blueMenClubUUID, token,
+	w = doJSON(t, router, http.MethodPatch, "/tenants/"+blueMenTenantUUID, token,
 		`{"arena_membership_mode": "any_member", "tournaments_openness": "open"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH «Синие люди» mode back: %d %s", w.Code, w.Body.String())
@@ -653,56 +805,49 @@ func TestClubs_GlobalArenaOpennessGate(t *testing.T) {
 	}
 }
 
-// TestClubs_FreshArenaModeChangeRecalc pins the fresh-arena side of a mode
+// TestTenants_FreshArenaModeChangeRecalc pins the fresh-arena side of a mode
 // change: the main arena's match rows replay synchronously in the settings
 // transaction (no stale mark — the worker never has to catch up) and the
 // replay re-settles the history under the new mode.
-func TestClubs_FreshArenaModeChangeRecalc(t *testing.T) {
+func TestTenants_FreshArenaModeChangeRecalc(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
-	ctx := context.Background()
 
 	router := setupRouter(pool)
 	token, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", token,
-		fmt.Sprintf(`{"id": %q, "name": "Переключаемый"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, token, clubID.String(), "any_member", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, clubA, tenantArena := createTenant(t, router, token, "Переключаемый", "any_member", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
 
 	member := createTestPlayer(t, pool, "Ветеран")
 	guest := createBareTestPlayer(t, pool, "Новичок")
-	addClubMember(t, router, token, clubID.String(), member)
+	addClubMember(t, router, token, clubA.String(), member)
 
 	game := createTestGame(t, pool, "Игра переключений")
 	svc := newMatchService(pool)
-	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	if _, err := svc.AddMatch(context.Background(), game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 2 {
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("any_member arena settled %d rows, want 2", got)
 	}
 
 	// The mode change replays synchronously: the mixed match leaves the
 	// members_only arena and no stale mark is left behind.
-	w = doJSON(t, router, http.MethodPatch, "/clubs/"+clubID.String(), token,
+	w := doJSON(t, router, http.MethodPatch, "/tenants/"+tenantID.String(), token,
 		`{"arena_membership_mode": "members_only", "tournaments_openness": "open"}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("PATCH mode: %d %s", w.Code, w.Body.String())
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 0 {
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("members_only replay kept %d rows of the mixed match, want 0", got)
 	}
 	var staleAt *time.Time
-	if err := pool.QueryRow(ctx,
-		`SELECT stale_at FROM arenas WHERE id = $1`, clubArenaID).Scan(&staleAt); err != nil {
+	if err := pool.QueryRow(context.Background(),
+		`SELECT stale_at FROM arenas WHERE id = $1`, tenantArenaID).Scan(&staleAt); err != nil {
 		t.Fatalf("read arena staleness: %v", err)
 	}
 	if staleAt != nil {
@@ -710,10 +855,75 @@ func TestClubs_FreshArenaModeChangeRecalc(t *testing.T) {
 	}
 }
 
-// TestClubs_TournamentOpenness pins the tournaments_openness rule: a
-// members_only club's tournament refuses non-members on the organizer's
+// TestTenants_CompositionChangeRecalc pins the composition side of the
+// recalculation: attaching a club with members re-interprets the arena's
+// history in the same transaction — their earlier matches flow into the main
+// arena without any manual replay. The members_only mode makes the flip
+// observable: a match of a not-yet-attached club's member does not count
+// (mixed), and attaching the club re-settles it.
+func TestTenants_CompositionChangeRecalc(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	tenantID, clubA, tenantArena := createTenant(t, router, token, "Композиция", "members_only", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
+	if err != nil {
+		t.Fatalf("parse main arena id: %v", err)
+	}
+	memberA := createTestPlayer(t, pool, "Первый состав")
+	addClubMember(t, router, token, clubA.String(), memberA)
+
+	game := createTestGame(t, pool, "Игра композиции")
+	svc := newMatchService(pool)
+
+	// Club B is not attached yet: its member is not a community member, so the
+	// match {memberA, memberB} is mixed for this members_only arena and counts
+	// nowhere in it.
+	clubB := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Поздний клуб"}`, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST club B: %d %s", w.Code, w.Body.String())
+	}
+	memberB := createBareTestPlayer(t, pool, "Поздний член")
+	addClubMember(t, router, token, clubB.String(), memberB)
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberA: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch: %v", err)
+	}
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
+		t.Fatalf("before the composition change the arena settled %d rows, want 0 (mixed)", got)
+	}
+
+	// Attaching club B re-interprets the history: the match becomes members-only
+	// clean and settles in the same transaction.
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
+	}
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
+		t.Fatalf("after attaching club B the arena settled %d rows, want both members", got)
+	}
+
+	// Detaching back removes the settlements again.
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", token,
+		fmt.Sprintf(`{"club_ids": [%q]}`, clubA))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs back: %d %s", w.Code, w.Body.String())
+	}
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
+		t.Fatalf("after detaching club B the arena settled %d rows, want 0 again", got)
+	}
+}
+
+// TestTenants_TournamentOpenness pins the tournaments_openness rule: a
+// members_only tenant's tournament refuses non-members on the organizer's
 // participant list and at self-registration; current members register freely.
-func TestClubs_TournamentOpenness(t *testing.T) {
+func TestTenants_TournamentOpenness(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -722,44 +932,43 @@ func TestClubs_TournamentOpenness(t *testing.T) {
 	router := setupRouter(pool)
 	admin, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Закрытый клуб"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	convertClub(t, router, admin, clubID.String(), "members_only", "members_only")
+	tenantID, clubID, _ := createTenant(t, router, admin, "Закрытый клуб", "members_only", "members_only")
+	_ = clubID
 
 	member := createTestPlayer(t, pool, "Свой игрок")
 	guest := createBareTestPlayer(t, pool, "Посторонний")
 	addClubMember(t, router, admin, clubID.String(), member)
 
-	// Organizer list gate: a members_only club's roster with a non-member is
+	// Organizer list gate: a members_only tenant's roster with a non-member is
 	// a 403; members-only roster passes.
-	game := createTestGame(t, pool, "Игра закрытого клуба")
+	game := createTestGame(t, pool, "Игра закрытого сообщества")
 	createBody := func(participants string) string {
 		return fmt.Sprintf(`{"id": %q, "name": %q, "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": %s}`,
 			newID(t), "Закрытый турнир", game, participants)
 	}
-	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
+	w := doJSON(t, router, http.MethodPost, "/tenants/"+tenantID.String()+"/tournaments", admin,
 		createBody(fmt.Sprintf(`[%q]`, guest)))
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("create with guest participant: %d %s", w.Code, w.Body.String())
 	}
-	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
+	w = doJSON(t, router, http.MethodPost, "/tenants/"+tenantID.String()+"/tournaments", admin,
 		createBody(fmt.Sprintf(`[%q]`, member)))
 	if w.Code != http.StatusOK {
 		t.Fatalf("create with member participant: %d %s", w.Code, w.Body.String())
 	}
 	var created struct {
 		Data struct {
-			Id string `json:"id"`
+			Id       string `json:"id"`
+			TenantId string `json:"tenant_id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
 	tid := mustID(t, created.Data.Id)
+	if created.Data.TenantId != short(tenantID) {
+		t.Fatalf("tournament tenant_id = %s, want the creating tenant %s", created.Data.TenantId, short(tenantID))
+	}
 
 	// Self-registration gate: the member registers; the non-member gets
 	// ErrTournamentMembersOnly (service level — the HTTP path adds only the
@@ -780,10 +989,10 @@ func TestClubs_TournamentOpenness(t *testing.T) {
 	}
 }
 
-// TestClubs_MarketMembersOnly pins the bet/guarantee restriction: on a
-// members_only club's market, current members bet and guarantee; non-members
+// TestTenants_MarketMembersOnly pins the bet/guarantee restriction: on a
+// members_only tenant's market, current members bet and guarantee; non-members
 // get ErrMarketMembersOnly.
-func TestClubs_MarketMembersOnly(t *testing.T) {
+func TestTenants_MarketMembersOnly(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -791,13 +1000,7 @@ func TestClubs_MarketMembersOnly(t *testing.T) {
 	router := setupRouter(pool)
 	admin, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Свой круг"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	convertClub(t, router, admin, clubID.String(), "members_only", "open")
+	tenantID, clubID, _ := createTenant(t, router, admin, "Свой круг", "members_only", "open")
 
 	member := createTestPlayer(t, pool, "Свои ставки")
 	outsider := createBareTestPlayer(t, pool, "Чужие ставки")
@@ -807,7 +1010,7 @@ func TestClubs_MarketMembersOnly(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		ID:         newID(t),
-		ClubID:     clubID,
+		TenantID:   tenantID,
 		MarketType: "match_winner",
 		StartsAt:   time.Now(),
 		ClosesAt:   time.Now().Add(24 * time.Hour),
@@ -840,10 +1043,10 @@ func TestClubs_MarketMembersOnly(t *testing.T) {
 	}
 }
 
-// TestClubs_MarketSettlesIntoClubArena pins the settlement arena: a market
-// resolves into its owning club's main arena — buyer and guarantor rows
+// TestTenants_MarketSettlesIntoTenantArena pins the settlement arena: a market
+// resolves into its owning tenant's main arena — buyer and guarantor rows
 // included — and the recalculation re-settles it there after a match edit.
-func TestClubs_MarketSettlesIntoClubArena(t *testing.T) {
+func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -851,14 +1054,8 @@ func TestClubs_MarketSettlesIntoClubArena(t *testing.T) {
 	router := setupRouter(pool)
 	admin, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Арена рынка"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, admin, clubID.String(), "any_member", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, clubID, tenantArena := createTenant(t, router, admin, "Арена рынка", "any_member", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
@@ -871,7 +1068,7 @@ func TestClubs_MarketSettlesIntoClubArena(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		ID:         newID(t),
-		ClubID:     clubID,
+		TenantID:   tenantID,
 		MarketType: "match_winner",
 		StartsAt:   time.Now(),
 		ClosesAt:   time.Now().Add(24 * time.Hour),
@@ -896,36 +1093,37 @@ func TestClubs_MarketSettlesIntoClubArena(t *testing.T) {
 	}
 
 	// The member wins a match against the guest → the market resolves; both
-	// settlement rows land in the club's main arena, none in the global one.
+	// settlement rows land in the tenant's main arena, none in the global one.
 	matchSvc := newMatchService(pool)
 	match, err := matchSvc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t))
 	if err != nil {
 		t.Fatalf("AddMatch: %v", err)
 	}
-	if got := arenaMarketRows(t, pool, clubArenaID, market.ID); got != 2 {
-		t.Fatalf("club arena holds %d market rows, want buyer + guarantor", got)
+	if got := arenaMarketRows(t, pool, tenantArenaID, market.ID); got != 2 {
+		t.Fatalf("tenant arena holds %d market rows, want buyer + guarantor", got)
 	}
 	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
-		t.Fatalf("global arena holds %d rows of a club market", got)
+		t.Fatalf("global arena holds %d rows of a tenant market", got)
 	}
 
-	// A match edit re-runs the recalculation: the market unsets from the club
-	// arena and re-settles there (still nothing in the global arena).
+	// A match edit re-runs the recalculation: the market unsets from the
+	// tenant arena and re-settles there (still nothing in the global arena).
 	if _, err := matchSvc.UpdateMatch(ctx, match.ID, game, map[idpkg.ID]float64{member: 60, guest: 55}, match.Date.Time, elo.UpdateMatchOpts{ActorUserID: createTestAdmin(t, pool)}); err != nil {
 		t.Fatalf("UpdateMatch: %v", err)
 	}
-	if got := arenaMarketRows(t, pool, clubArenaID, market.ID); got != 2 {
-		t.Fatalf("after the edit the club arena holds %d market rows, want 2", got)
+	if got := arenaMarketRows(t, pool, tenantArenaID, market.ID); got != 2 {
+		t.Fatalf("after the edit the tenant arena holds %d market rows, want 2", got)
 	}
 	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, market.ID); got != 0 {
-		t.Fatalf("after the edit the global arena holds %d rows of a club market", got)
+		t.Fatalf("after the edit the global arena holds %d rows of a tenant market", got)
 	}
 }
 
-// TestClubs_TournamentWinnerMarketInClubArena pins the tournament-winner
-// market's inheritance: it is born with the tournament's club, its
-// settlements (cancellation refunds included) land in that club's main arena.
-func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
+// TestTenants_TournamentWinnerMarketInTenantArena pins the tournament-winner
+// market's inheritance: it is born with the tournament's tenant, its
+// settlements (cancellation refunds included) land in that tenant's main
+// arena.
+func TestTenants_TournamentWinnerMarketInTenantArena(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -933,14 +1131,8 @@ func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
 	router := setupRouter(pool)
 	admin, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Турнирный клуб"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, admin, clubID.String(), "any_member", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, _, tenantArena := createTenant(t, router, admin, "Турнирное сообщество", "any_member", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
@@ -949,26 +1141,26 @@ func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
 	p2 := createTestPlayer(t, pool, "Финалист2")
 	game := createTestGame(t, pool, "Игра финала")
 
-	// Create (club-scoped) → start with the first offered plan.
+	// Create (tenant-scoped) → start with the first offered plan.
 	tournamentID := newID(t)
-	w = doJSON(t, router, http.MethodPost, "/clubs/"+clubID.String()+"/tournaments", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Кубок клуба", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%q, %q]}`,
+	w := doJSON(t, router, http.MethodPost, "/tenants/"+tenantID.String()+"/tournaments", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Кубок сообщества", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%q, %q]}`,
 			tournamentID, game, p1, p2))
 	if w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
 	var created struct {
 		Data struct {
-			Id     string `json:"id"`
-			ClubId string `json:"club_id"`
+			Id       string `json:"id"`
+			TenantId string `json:"tenant_id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
 	tid := mustID(t, created.Data.Id)
-	if created.Data.ClubId != short(clubID) {
-		t.Fatalf("tournament club_id = %s, want the creating club %s", created.Data.ClubId, short(clubID))
+	if created.Data.TenantId != short(tenantID) {
+		t.Fatalf("tournament tenant_id = %s, want the creating tenant %s", created.Data.TenantId, short(tenantID))
 	}
 
 	w = doJSON(t, router, http.MethodGet, "/tournaments/"+tid.String()+"/bracket-plans", admin, "")
@@ -989,7 +1181,7 @@ func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
 		t.Fatalf("start: %d %s", w.Code, w.Body.String())
 	}
 
-	// The auto market is born under the tournament's club.
+	// The auto market is born under the tournament's tenant.
 	tsvc := newTournamentService(pool)
 	markets, err := pool.Query(ctx,
 		`SELECT m.id FROM markets m JOIN market_tournament_winner_params twp ON twp.market_id = m.id WHERE twp.tournament_id = $1`, tid)
@@ -1008,16 +1200,16 @@ func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
 	if !found {
 		t.Fatalf("no tournament_winner market was born with the tournament")
 	}
-	var marketClub string
-	if err := pool.QueryRow(ctx, `SELECT club_id::text FROM markets WHERE id = $1`, marketID).Scan(&marketClub); err != nil {
-		t.Fatalf("read market club: %v", err)
+	var marketTenant string
+	if err := pool.QueryRow(ctx, `SELECT tenant_id::text FROM markets WHERE id = $1`, marketID).Scan(&marketTenant); err != nil {
+		t.Fatalf("read market tenant: %v", err)
 	}
-	if marketClub != clubID.String() {
-		t.Fatalf("market club = %s, want the tournament's club %s", marketClub, clubID)
+	if marketTenant != tenantID.String() {
+		t.Fatalf("market tenant = %s, want the tournament's tenant %s", marketTenant, tenantID)
 	}
 
 	// Guarantee + bet, then cancel the tournament: the net-zero refund rows
-	// land in the club's main arena, not the global one.
+	// land in the tenant's main arena, not the global one.
 	marketSvc := elo.NewMarketService(pool)
 	setBetLimit(t, pool, p1, 100)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), marketID, p1, 10, 0); err != nil {
@@ -1030,18 +1222,19 @@ func TestClubs_TournamentWinnerMarketInClubArena(t *testing.T) {
 	if err := tsvc.CancelTournament(ctx, tid, createTestAdmin(t, pool)); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
-	if got := arenaMarketRows(t, pool, clubArenaID, marketID); got == 0 {
-		t.Fatalf("cancellation refunds did not land in the club arena")
+	if got := arenaMarketRows(t, pool, tenantArenaID, marketID); got == 0 {
+		t.Fatalf("cancellation refunds did not land in the tenant arena")
 	}
 	if got := arenaMarketRows(t, pool, elo.GlobalArenaID, marketID); got != 0 {
-		t.Fatalf("global arena holds %d rows of a club tournament market", got)
+		t.Fatalf("global arena holds %d rows of a tenant tournament market", got)
 	}
 }
 
-// TestClubs_ClubFeed pins the club feed: membership-scoped events (a mixed
-// match appears even when it does not count into a members_only main arena),
-// club-owned markets only, member corrections only, and cursor pagination.
-func TestClubs_ClubFeed(t *testing.T) {
+// TestTenants_ClubFeed pins the tenant feed: membership-scoped events across
+// all clubs of the tenant (a mixed match appears even when it does not count
+// into a members_only main arena), tenant-owned markets only, member
+// corrections only, and cursor pagination.
+func TestTenants_ClubFeed(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -1049,50 +1242,64 @@ func TestClubs_ClubFeed(t *testing.T) {
 	router := setupRouter(pool)
 	admin, _ := createTestUserWithID(t, pool, true)
 
-	clubID := newID(t)
-	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Ленточный клуб"}`, clubID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
-	}
-	clubArena := convertClub(t, router, admin, clubID.String(), "members_only", "open")
-	clubArenaID, err := idpkg.ParseTolerant(clubArena)
+	tenantID, clubA, tenantArena := createTenant(t, router, admin, "Ленточное сообщество", "members_only", "open")
+	tenantArenaID, err := idpkg.ParseTolerant(tenantArena)
 	if err != nil {
 		t.Fatalf("parse main arena id: %v", err)
 	}
 
+	// A second club of the same tenant: its member's matches are feed events
+	// too.
+	clubB := newID(t)
+	w := doJSON(t, router, http.MethodPost, "/clubs", admin,
+		fmt.Sprintf(`{"id": %q, "name": "Ленты-Б"}`, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("POST club B: %d %s", w.Code, w.Body.String())
+	}
+	w = doJSON(t, router, http.MethodPut, "/tenants/"+tenantID.String()+"/clubs", admin,
+		fmt.Sprintf(`{"club_ids": [%q, %q]}`, clubA, clubB))
+	if w.Code != http.StatusOK {
+		t.Fatalf("PUT tenant clubs: %d %s", w.Code, w.Body.String())
+	}
+
 	member := createTestPlayer(t, pool, "Ленточник")
+	memberB := createTestPlayer(t, pool, "Ленточник-Б")
 	guest := createBareTestPlayer(t, pool, "Безленточный")
-	addClubMember(t, router, admin, clubID.String(), member)
+	addClubMember(t, router, admin, clubA.String(), member)
+	addClubMember(t, router, admin, clubB.String(), memberB)
 	game := createTestGame(t, pool, "Игра ленты")
 	svc := newMatchService(pool)
 
 	// A mixed member+guest match: does NOT count into the members_only main
-	// arena, yet appears in the club feed — membership-scoped by design.
+	// arena, yet appears in the tenant feed — membership-scoped by design.
 	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
-	if got := settlementCount(t, pool, clubArenaID, nil); got != 0 {
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("mixed match counted into the members_only arena (%d rows)", got)
+	}
+	// A member of club B: in the same feed.
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch clubB member: %v", err)
 	}
 	// A guest-only match stays out of the feed.
 	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Второй без ленты"): 30}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch guests: %v", err)
 	}
 
-	// Markets: the club's own market is in; a «Синие люди» market is not.
+	// Markets: the tenant's own market is in; a «Синие люди» market is not.
 	marketSvc := elo.NewMarketService(pool)
 	_, err = marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID: newID(t), ClubID: clubID, MarketType: "win_streak",
+		ID: newID(t), TenantID: tenantID, MarketType: "win_streak",
 		StartsAt: time.Now(), ClosesAt: time.Now().Add(24 * time.Hour),
 		CreatedBy: createTestAdmin(t, pool),
 		WinStreak: &elo.WinStreakCreateParams{TargetPlayerID: member, WinsRequired: 3},
 	})
 	if err != nil {
-		t.Fatalf("create club market: %v", err)
+		t.Fatalf("create tenant market: %v", err)
 	}
 	if _, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID: newID(t), ClubID: blueMenClubID, MarketType: "win_streak",
+		ID: newID(t), TenantID: blueMenTenantID, MarketType: "win_streak",
 		StartsAt: time.Now(), ClosesAt: time.Now().Add(24 * time.Hour),
 		CreatedBy: createTestAdmin(t, pool),
 		WinStreak: &elo.WinStreakCreateParams{TargetPlayerID: member, WinsRequired: 3},
@@ -1109,53 +1316,43 @@ func TestClubs_ClubFeed(t *testing.T) {
 		t.Fatalf("guest correction: %v", err)
 	}
 
-	clubFeed := "/clubs/" + clubID.String() + "/feed"
-	page := decodeFeedPage(t, router, clubFeed)
+	tenantFeed := "/tenants/" + tenantID.String() + "/feed"
+	page := decodeFeedPage(t, router, tenantFeed)
 	eventTypes := feedEventTypesOf(page)
 	if !slices.Contains(eventTypes, "match") || !slices.Contains(eventTypes, "market") || !slices.Contains(eventTypes, "correction") {
-		t.Fatalf("club feed = %v, want match, market and correction events", eventTypes)
+		t.Fatalf("tenant feed = %v, want match, market and correction events", eventTypes)
 	}
-	if got := countFeedEventsOfType(page, "match"); got != 1 {
-		t.Fatalf("club feed holds %d matches, want only the member's", got)
+	if got := countFeedEventsOfType(page, "match"); got != 2 {
+		t.Fatalf("tenant feed holds %d matches, want both members'", got)
 	}
 	if got := countFeedEventsOfType(page, "market"); got != 1 {
-		t.Fatalf("club feed holds %d markets, want only the club-owned one", got)
+		t.Fatalf("tenant feed holds %d markets, want only the tenant-owned one", got)
 	}
 	if got := countFeedEventsOfType(page, "correction"); got != 1 {
-		t.Fatalf("club feed holds %d corrections, want only the member's", got)
+		t.Fatalf("tenant feed holds %d corrections, want only the member's", got)
 	}
 
-	// Cursor pagination: limit=1 walks without repeats; a foreign club's
+	// Cursor pagination: limit=1 walks without repeats; a foreign tenant's
 	// token is a bad request.
-	first := decodeFeedPage(t, router, clubFeed+"?limit=1")
+	first := decodeFeedPage(t, router, tenantFeed+"?limit=1")
 	if first.Next == nil {
 		t.Fatalf("expected a next token on the limited page")
 	}
 	seen := map[string]bool{feedEventID(first, 0): true}
-	tokenPath := clubFeed + "?limit=1&next=" + url.QueryEscape(*first.Next)
+	tokenPath := tenantFeed + "?limit=1&next=" + url.QueryEscape(*first.Next)
 	second := decodeFeedPage(t, router, tokenPath)
 	seen[feedEventID(second, 0)] = true
 	if len(seen) != 2 {
 		t.Fatalf("pagination repeated an event")
 	}
-	otherClub := newID(t)
-	foreign := decodeFeedStatus(t, router, "/clubs/"+otherClub.String()+"/feed?limit=1&next="+url.QueryEscape(*first.Next))
+	foreign := decodeFeedStatus(t, router, "/tenants/"+blueMenTenantUUID+"/feed?limit=1&next="+url.QueryEscape(*first.Next))
 	if foreign != http.StatusBadRequest {
-		t.Fatalf("a foreign club's cursor gave %d, want 400", foreign)
+		t.Fatalf("a foreign tenant's cursor gave %d, want 400", foreign)
 	}
 
-	// A group club has no feed (404), like a missing one.
-	groupID := newID(t)
-	w = doJSON(t, router, http.MethodPost, "/clubs", admin,
-		fmt.Sprintf(`{"id": %q, "name": "Безленточный клуб"}`, groupID))
-	if w.Code != http.StatusOK {
-		t.Fatalf("POST group club: %d %s", w.Code, w.Body.String())
-	}
-	if status := decodeFeedStatus(t, router, "/clubs/"+groupID.String()+"/feed"); status != http.StatusNotFound {
-		t.Fatalf("group club feed gave %d, want 404", status)
-	}
-	if status := decodeFeedStatus(t, router, "/clubs/"+newID(t).String()+"/feed"); status != http.StatusNotFound {
-		t.Fatalf("missing club feed gave %d, want 404", status)
+	// A missing tenant is a 404.
+	if status := decodeFeedStatus(t, router, "/tenants/"+newID(t).String()+"/feed"); status != http.StatusNotFound {
+		t.Fatalf("missing tenant feed gave %d, want 404", status)
 	}
 }
 
@@ -1169,7 +1366,7 @@ func equalStrings(a, b []string) bool {
 }
 
 // decodeFeedStatus fetches one feed page and returns only the status code —
-// for the error branches of the club feed.
+// for the error branches of the tenant feed.
 func decodeFeedStatus(t *testing.T, router http.Handler, path string) int {
 	t.Helper()
 	return doJSON(t, router, http.MethodGet, path, "", "").Code

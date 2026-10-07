@@ -79,7 +79,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 
 	// A match_winner market on A vs B, backed by a guarantor so it is live.
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -213,7 +213,7 @@ func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
 	// running tournament and its link-only arena (empty filter serialization).
 	tournID := idpkg.New()
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO tournaments (id, club_id, name, status, elimination) VALUES ($1, '00000000-0000-0000-0000-000000000001', 'Турнир ленты', 'running', 'single')`,
+		`INSERT INTO tournaments (id, tenant_id, name, status, elimination) VALUES ($1, '00000000-0000-0000-0000-000000000101', 'Турнир ленты', 'running', 'single')`,
 		tournID); err != nil {
 		t.Fatalf("insert probe tournament: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 	// MW1: targets A/B pinned to game1, guaranteed by a club member, with a
 	// plain bettor on A's outcome. Resolved by a game1 match (A wins).
 	mw1, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -334,7 +334,7 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 	// MW2: no condition games ("any game"), targets C/D only — resolved by a
 	// game2 match, so its only game tie is the resolving match.
 	mw2, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -350,7 +350,7 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 
 	// WS: a first win of wsTarget over game2 resolves it to "Да".
 	ws, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "win_streak",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -470,7 +470,7 @@ func TestMarkets_ListClosedCursorPagination(t *testing.T) {
 	expiredIDs := make([]idpkg.ID, 0, 3)
 	for i := range 3 {
 		m, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-			ClubID:     blueMenClubID,
+			TenantID:   blueMenTenantID,
 			ID:         newID(t),
 			MarketType: "match_winner",
 			StartsAt:   time.Now().Add(-time.Hour),
@@ -488,7 +488,7 @@ func TestMarkets_ListClosedCursorPagination(t *testing.T) {
 	}
 	// One live market — stays in the active bucket on every page.
 	live, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -599,7 +599,7 @@ func TestArena_Feed_MarketLifecycleOrdering(t *testing.T) {
 
 	newMatchWinner := func(targets ...idpkg.ID) elo.CreateMarketParams {
 		return elo.CreateMarketParams{
-			ClubID:     blueMenClubID,
+			TenantID:   blueMenTenantID,
 			ID:         newID(t),
 			MarketType: "match_winner",
 			StartsAt:   time.Now().Add(-time.Minute),
@@ -638,7 +638,7 @@ func TestArena_Feed_MarketLifecycleOrdering(t *testing.T) {
 	// stamps resolved_at = closes_at, putting its feed event between the
 	// creation events and the old match.
 	marketCancelled, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-2 * time.Hour),

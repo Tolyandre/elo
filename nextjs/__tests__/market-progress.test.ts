@@ -69,7 +69,7 @@ describe('computeStreakProgress', () => {
 describe('streakWindowEnd', () => {
     const base = {
         id: 'mk1' as Base58ID,
-        club_id: 'c-blue' as Base58ID,
+        tenant_id: 'c-blue' as Base58ID,
         market_type: 'win_streak' as const,
         outcomes: [],
         liquidity_b: 8,
@@ -127,7 +127,7 @@ describe('streakTimeRow', () => {
     const now = new Date('2026-09-10T12:00:00Z')
     const base = {
         id: 'mk1' as Base58ID,
-        club_id: 'c-blue' as Base58ID,
+        tenant_id: 'c-blue' as Base58ID,
         market_type: 'win_streak' as const,
         outcomes: [],
         liquidity_b: 8,

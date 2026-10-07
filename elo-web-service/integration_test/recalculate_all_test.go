@@ -47,7 +47,7 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 		t.Fatalf("M1 AddMatch: %v", err)
 	}
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   t1.Add(30 * time.Minute),

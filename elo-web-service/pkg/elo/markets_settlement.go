@@ -67,9 +67,9 @@ func (s *MarketService) UnsettleMarketsFromDate(ctx context.Context, q *db.Queri
 		return fmt.Errorf("get markets for unsettle: %w", err)
 	}
 	for _, row := range rows {
-		// Each market's rows live in its club's main arena (ADR-36) — the
+		// Each market's rows live in its tenant's main arena (ADR-36) — the
 		// global-arena bulk wipe in RecalculateFrom does not cover them.
-		arena, err := marketArena(ctx, q, row.ClubID)
+		arena, err := marketArena(ctx, q, row.TenantID)
 		if err != nil {
 			return err
 		}
@@ -178,13 +178,13 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 
 	resolvedAtTz := pgtype.Timestamptz{Time: resolvedAt, Valid: true}
 
-	// Markets settle into the owning club's main arena (ADR-36); its settings
+	// Markets settle into the owning tenant's main arena (ADR-36); its settings
 	// carry the league parameters the settlement league is determined from.
 	market, err := q.GetMarket(ctx, marketID)
 	if err != nil {
 		return fmt.Errorf("get market %s: %w", marketID, err)
 	}
-	arena, err := marketArena(ctx, q, market.ClubID)
+	arena, err := marketArena(ctx, q, market.TenantID)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ type marketSettlementBalances struct {
 }
 
 // readMarketSettlementBalances reads the player's pre-market elo/rating/league
-// state in the market's arena (its club's main arena, ADR-36). Called once per
+// state in the market's arena (its tenant's main arena, ADR-36). Called once per
 // player before any of their rows are written, so the second role row cannot
 // observe the first one (they share the settlement date).
 func (s *MarketService) readMarketSettlementBalances(
@@ -368,17 +368,17 @@ func (s *MarketService) upsertMarketSettlement(
 	})
 }
 
-// marketArena resolves the arena a market settles into: its owning club's main
-// arena (ADR-36).
-func marketArena(ctx context.Context, q *db.Queries, clubID id.ID) (Arena, error) {
-	row, err := q.GetArenaByClub(ctx, &clubID)
+// marketArena resolves the arena a market settles into: its owning tenant's
+// main arena (ADR-36).
+func marketArena(ctx context.Context, q *db.Queries, tenantID id.ID) (Arena, error) {
+	row, err := q.GetArenaByTenant(ctx, &tenantID)
 	if err != nil {
-		return Arena{}, fmt.Errorf("get main arena of club %s: %w", clubID, err)
+		return Arena{}, fmt.Errorf("get main arena of tenant %s: %w", tenantID, err)
 	}
-	return arenaFromGetArenaByClubRow(row)
+	return arenaFromGetArenaByTenantRow(row)
 }
 
-// deleteMarketSettlements removes a market's settlement rows from its club's
+// deleteMarketSettlements removes a market's settlement rows from its tenant's
 // main arena (ADR-36) — the unsettle primitive shared by the recalculation
 // paths. Must be called while the market row still exists.
 func (s *MarketService) deleteMarketSettlements(ctx context.Context, q *db.Queries, marketID id.ID) error {
@@ -386,7 +386,7 @@ func (s *MarketService) deleteMarketSettlements(ctx context.Context, q *db.Queri
 	if err != nil {
 		return fmt.Errorf("get market %s: %w", marketID, err)
 	}
-	arena, err := marketArena(ctx, q, market.ClubID)
+	arena, err := marketArena(ctx, q, market.TenantID)
 	if err != nil {
 		return err
 	}

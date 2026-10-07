@@ -135,7 +135,7 @@ type IMatchService interface {
 	// tool: a stable recalculation must report no changed players.
 	RecalculateAllGlobalElo(ctx context.Context) (GlobalReplayReport, error)
 
-	// RecalculateGlobalWithinTx is the ClubService's replay handle (ADR-36):
+	// RecalculateGlobalWithinTx is the TenantService's replay handle (ADR-36):
 	// re-settles the global arena from startDate inside the caller's open
 	// transaction, honoring the main-arena openness at every match date.
 	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
@@ -147,7 +147,7 @@ type IMatchService interface {
 
 	// Read-side queries used by the match list/detail handlers. The rating
 	// columns are scoped to the given display arena (ADR-36: the caller's
-	// current club main arena; the global arena until ?club= lands).
+	// current tenant main arena; the global arena until ?tenant= lands).
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
 	GetMatchWithPlayers(ctx context.Context, matchID, arenaID id.ID) ([]db.GetMatchWithPlayersRow, error)
 	ListCampArenasByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListCampArenasByMatchIDsRow, error)
@@ -346,7 +346,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 	} else {
 		if mode == MatchModeCompetitive {
 			// Lock players and collect all prior state needed for dual-track
-			// settlement. settles=false when the club predicate (ADR-36) keeps
+			// settlement. settles=false when the tenant predicate (ADR-36) keeps
 			// the match out of the global arena's rating.
 			state, settles, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
 			if err != nil {
@@ -355,7 +355,7 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 
 			if !settles {
 				// No Elo settlement — the participant rows still record the
-				// match's players (they are what the club predicate of a
+				// match's players (they are what the tenant predicate of a
 				// later mode change / recalculation reads).
 				for playerID, score := range playerScores {
 					if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
@@ -706,9 +706,9 @@ func (s *MatchService) DeleteMarketAndRecalculate(ctx context.Context, marketID 
 
 		createdAt := market.CreatedAt.Time
 
-		// The market's settlements live in its club's main arena (ADR-36);
+		// The market's settlements live in its tenant's main arena (ADR-36);
 		// delete them there before the market row itself is hard-deleted.
-		arena, err := marketArena(ctx, q, market.ClubID)
+		arena, err := marketArena(ctx, q, market.TenantID)
 		if err != nil {
 			return err
 		}
@@ -741,7 +741,7 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 	return s.EventProcessor.RecalculateFrom(ctx, q, startDate, s.calculateAndUpdateElo, s.lockAndGetPrevElos)
 }
 
-// IGlobalReplay is the ClubService's handle for the full global-arena replay
+// IGlobalReplay is the TenantService's handle for the full global-arena replay
 // (ADR-36): a main-arena openness change on the converted global arena must
 // re-settle the whole history in the caller's transaction — the global arena
 // is never drained by the background worker (that would lose its market and
@@ -752,7 +752,7 @@ type IGlobalReplay interface {
 
 // RecalculateGlobalWithinTx replays the global arena's settlements (matches,
 // corrections, markets) from startDate — the settlement gate inside respects
-// the club's openness mode at every match date.
+// the tenant's openness mode at every match date.
 func (s *MatchService) RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error {
 	return s.recalculateEloFromDate(ctx, q, startDate)
 }
@@ -762,9 +762,10 @@ func (s *MatchService) RecalculateGlobalWithinTx(ctx context.Context, q *db.Quer
 // settlement path (matches, markets, corrections) maintains (ADR-24).
 //
 // Since the attribution phase (ADR-36) the global arena is «Синие люди»'s
-// main arena: the club's openness mode, evaluated at the match date against
-// membership stints, decides whether the match settles into it at all. When
-// the club predicate does not hold, settles=false and nothing is locked —
+// main arena: the tenant's openness mode, evaluated at the match date against
+// the membership stints of its clubs, decides whether the match settles into
+// it at all. When the tenant predicate does not hold, settles=false and
+// nothing is locked —
 // the caller must still advance everything that is not Elo settlement
 // (market resolution, expiry) and must write the match's score rows itself.
 func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
@@ -772,14 +773,14 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 	if err != nil {
 		return MatchPrevState{}, false, fmt.Errorf("get global arena: %w", err)
 	}
-	if globalArena.ClubID != nil {
-		contains, err := q.ClubContainsPlayers(ctx, db.ClubContainsPlayersParams{
-			ClubID:    *globalArena.ClubID,
+	if globalArena.TenantID != nil {
+		contains, err := q.TenantContainsPlayers(ctx, db.TenantContainsPlayersParams{
+			TenantID:  *globalArena.TenantID,
 			PlayerIds: playerIDsOf(playerScores),
 			Date:      match.Date.Time,
 		})
 		if err != nil {
-			return MatchPrevState{}, false, fmt.Errorf("check club membership: %w", err)
+			return MatchPrevState{}, false, fmt.Errorf("check tenant membership: %w", err)
 		}
 		if !contains {
 			return MatchPrevState{}, false, nil

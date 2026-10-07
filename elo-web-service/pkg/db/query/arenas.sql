@@ -1,12 +1,12 @@
 -- Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
 -- arena" condition has ONE canonical structure, dispatched per flavor:
 --
---   * club arenas (arenas.club_id, ADR-36): club_arena_contains_match() —
---     openness evaluated at the match date against player_club_membership
---     stints, per the club's CURRENT mode. It probes tables, so it is a
---     separate STABLE function — the explicit exception to the ADR-28
---     pure-expression rule — and the queries dispatch with
---     CASE WHEN a.club_id IS NOT NULL. It only ever runs for club arenas,
+--   * tenant arenas (arenas.tenant_id, ADR-36): tenant_arena_contains_match() —
+--     openness evaluated at the match date against the player_club_membership
+--     stints of the tenant's clubs, per the tenant's CURRENT mode. It probes
+--     tables, so it is a separate STABLE function — the explicit exception to
+--     the ADR-28 pure-expression rule — and the queries dispatch with
+--     CASE WHEN a.tenant_id IS NOT NULL. It only ever runs for tenant arenas,
 --     whose count stays proportional to the number of tenants.
 --   * every other flavor: the arena_contains_match() function created by
 --     migrations 054–056 (see adr/28-arena-membership-function.md). The
@@ -26,7 +26,7 @@
 
 -- name: GetArena :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -38,7 +38,7 @@ WHERE a.id = $1;
 -- Row-locked variant used by the recalculation updater: concurrent dirty marks
 -- queue behind the lock and apply after the recalculation commits.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -53,7 +53,7 @@ FOR UPDATE OF a;
 -- the tournament arenas (empty until ADR-26 creates them).
 -- name: ListArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
@@ -65,8 +65,8 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        ) ELSE '{}'::uuid[] END AS camp_player_ids,
        (
            SELECT COUNT(*) FROM matches m
-           WHERE (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+           WHERE (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -77,7 +77,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
        ) AS matches_count
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
-LEFT JOIN clubs c ON c.id = a.club_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
 WHERE (
     sqlc.narg('kind')::text IS NULL
     OR (sqlc.narg('kind')::text = 'tournaments' AND a.tournament_id IS NOT NULL)
@@ -100,7 +100,7 @@ ORDER BY a.name;
 -- tournament arenas are link-only (no filter) and never appear here: their
 -- membership is the explicit arena_matches link, not the game.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -110,7 +110,7 @@ WHERE a.game_id = sqlc.arg('game_id')
    OR (
        NOT a.camp
        AND a.tournament_id IS NULL
-       -- Pure club arenas (no filter, ADR-36) are not "global" arenas: they
+       -- Pure tenant arenas (no filter, ADR-36) are not "global" arenas: they
        -- don't back every game's arena list. The converted global arena keeps
        -- its unconditional filter and stays.
        AND a.match_filter_id IS NOT NULL
@@ -126,20 +126,20 @@ WHERE a.game_id = sqlc.arg('game_id')
    )
 ORDER BY a.name;
 
--- name: GetArenaByClub :one
--- A tenant club's main arena (ADR-36); empty when the club has none (groups).
+-- name: GetArenaByTenant :one
+-- A tenant's main arena (ADR-36); empty when the tenant has none.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
-WHERE a.club_id = $1;
+WHERE a.tenant_id = $1;
 
 -- name: GetArenaByGame :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -151,7 +151,7 @@ WHERE a.game_id = $1;
 -- Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
 -- empty until ADR-26 creates them.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -165,7 +165,7 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING id;
 
 -- name: CreateArena :one
-INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, club_id, camp, starts_at, ends_at)
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, tenant_id, camp, starts_at, ends_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
@@ -201,10 +201,10 @@ RETURNING id, name;
 SELECT a.id
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
-LEFT JOIN clubs c ON c.id = a.club_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
 JOIN matches m ON m.id = sqlc.arg('match_id')
-WHERE (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+WHERE (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -244,7 +244,7 @@ WHERE id = ANY(sqlc.arg('arena_ids')::uuid[]);
 
 -- name: ListStaleArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.tenant_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -287,11 +287,11 @@ FROM (
         SELECT m.id
         FROM arenas a
         LEFT JOIN match_filters f ON f.id = a.match_filter_id
-        LEFT JOIN clubs c ON c.id = a.club_id
+        LEFT JOIN tenants t ON t.id = a.tenant_id
         CROSS JOIN matches m
         WHERE a.id = sqlc.arg('arena_id')
-          AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+          AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -323,7 +323,7 @@ SELECT p.id AS player_id, p.name AS player_name,
 FROM arena_player_stats st
 JOIN players p ON p.id = st.player_id
 JOIN arenas ar ON ar.id = st.arena_id
-LEFT JOIN clubs cl ON cl.id = ar.club_id
+LEFT JOIN tenants tn ON tn.id = ar.tenant_id
 LEFT JOIN LATERAL (
     SELECT s.rating_after, s.elo_after, s.league
     FROM arena_settlements s
@@ -337,11 +337,11 @@ LEFT JOIN LATERAL (
     JOIN match_scores ms ON ms.match_id = m.id
     JOIN arenas a ON a.id = st.arena_id
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN clubs c ON c.id = a.club_id
+    LEFT JOIN tenants t ON t.id = a.tenant_id
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '60 days') AND m.date <= now()
-      AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -356,11 +356,11 @@ LEFT JOIN LATERAL (
     JOIN match_scores ms ON ms.match_id = m.id
     JOIN arenas a ON a.id = st.arena_id
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN clubs c ON c.id = a.club_id
+    LEFT JOIN tenants t ON t.id = a.tenant_id
     WHERE ms.player_id = p.id
       AND m.date >= (now() - interval '180 days') AND m.date <= now()
-      AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -370,15 +370,20 @@ LEFT JOIN LATERAL (
       END)
 ) cnt180 ON true
 WHERE st.arena_id = sqlc.arg('arena_id')
-  -- members_only arenas (ADR-36) list and rank current members only; guests
-  -- and former members drop out of the current listing. Former members keep
-  -- their settlement history and their point-in-time ranks (ListArenaPlayersAt
-  -- stays unfiltered).
+  -- members_only tenant arenas (ADR-36) list and rank current members only —
+  -- a current member of ANY club of the tenant; guests and former members
+  -- drop out of the current listing. Former members keep their settlement
+  -- history and their point-in-time ranks (ListArenaPlayersAt stays
+  -- unfiltered).
   AND (
-      cl.arena_membership_mode IS DISTINCT FROM 'members_only'
+      tn.arena_membership_mode IS DISTINCT FROM 'members_only'
       OR EXISTS (
-          SELECT 1 FROM player_club_membership pcm
-          WHERE pcm.club_id = ar.club_id AND pcm.player_id = p.id AND pcm.left_at IS NULL
+          SELECT 1
+          FROM clubs c2
+          JOIN player_club_membership pcm ON pcm.club_id = c2.id
+          WHERE c2.tenant_id = ar.tenant_id
+            AND pcm.player_id = p.id
+            AND pcm.left_at IS NULL
       )
   )
 ORDER BY p.name;
@@ -399,13 +404,13 @@ WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM arenas a
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN clubs c ON c.id = a.club_id
+    LEFT JOIN tenants t ON t.id = a.tenant_id
     CROSS JOIN matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE a.id = sqlc.arg('arena_id')
       AND (
-          (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+          (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -579,12 +584,12 @@ FROM matches m
 JOIN match_scores ms ON ms.match_id = m.id
 JOIN arenas a ON a.id = sqlc.arg('arena_id')
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
-LEFT JOIN clubs c ON c.id = a.club_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
 WHERE ms.player_id = sqlc.arg('player_id')
   AND m.date >= sqlc.arg('date_from')::timestamptz
   AND m.date <= sqlc.arg('date_to')::timestamptz
-  AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+  AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -600,12 +605,12 @@ WHERE ms.player_id = sqlc.arg('player_id')
 SELECT m.*
 FROM arenas a
 LEFT JOIN match_filters f ON f.id = a.match_filter_id
-LEFT JOIN clubs c ON c.id = a.club_id
+LEFT JOIN tenants t ON t.id = a.tenant_id
 CROSS JOIN matches m
 WHERE a.id = sqlc.arg('arena_id')::uuid
   AND m.date >= sqlc.arg('from_date')::timestamptz
-  AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+  AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -643,11 +648,11 @@ LEFT JOIN LATERAL (
     JOIN match_scores ms ON ms.match_id = m.id
     JOIN arenas a ON a.id = $1
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN clubs c ON c.id = a.club_id
+    LEFT JOIN tenants t ON t.id = a.tenant_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
-      AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,
@@ -662,11 +667,11 @@ LEFT JOIN LATERAL (
     JOIN match_scores ms ON ms.match_id = m.id
     JOIN arenas a ON a.id = $1
     LEFT JOIN match_filters f ON f.id = a.match_filter_id
-    LEFT JOIN clubs c ON c.id = a.club_id
+    LEFT JOIN tenants t ON t.id = a.tenant_id
     WHERE ms.player_id = p.id
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
-      AND (CASE WHEN a.club_id IS NOT NULL
-      THEN club_arena_contains_match(a.club_id, c.arena_membership_mode, m.mode, m.id, m.date)
+      AND (CASE WHEN a.tenant_id IS NOT NULL
+      THEN tenant_arena_contains_match(a.tenant_id, t.arena_membership_mode, m.mode, m.id, m.date)
       ELSE arena_contains_match(
     m.mode,
     a.camp OR a.tournament_id IS NOT NULL,

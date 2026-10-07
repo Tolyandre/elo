@@ -4,7 +4,7 @@ import { client, unwrap } from "./client";
 import type { components } from "../api-types.gen";
 import type { Base58ID } from "@/lib/id";
 
-export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament";
+export type AuditEntityType = "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant";
 export type AuditAction = "created" | "updated" | "renamed" | "deleted";
 
 /** Details narrowed into a discriminated union by action/entity_type. */

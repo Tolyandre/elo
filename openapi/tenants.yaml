@@ -1,0 +1,379 @@
+# Tenants (ADR-36): a tenant is a community — a separate entity owning one
+# main arena, openness settings, and one or many clubs. Clubs stay pure
+# player grouping (clubs.yaml); tenant membership is derived from the
+# membership stints of its clubs.
+
+# ─── Path items ──────────────────────────────────────────────────────────────
+
+TenantsCollection:
+  get:
+    operationId: ListTenants
+    tags: [tenants]
+    summary: List all tenants (with their clubs and main arenas)
+    responses:
+      "200":
+        description: List of tenants
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/Tenant'
+              required: [status, data]
+  post:
+    operationId: CreateTenant
+    tags: [tenants]
+    summary: Create a tenant (its main arena is created in the same transaction)
+    description: >-
+      Creates the tenant with the given openness settings, attaches the
+      initial clubs (each must exist and belong to no other tenant) and
+      ensures the main arena — a fresh filter-less arena named after the
+      tenant. Name must be unique (409 otherwise).
+    security:
+      - cookieAuth: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id:
+                $ref: './common.yaml#/Base58ID'
+              name:
+                type: string
+              arena_membership_mode:
+                type: string
+                enum: [any_member, members_only]
+              tournaments_openness:
+                type: string
+                enum: [members_only, open]
+              club_ids:
+                type: array
+                items:
+                  $ref: './common.yaml#/Base58ID'
+                description: Initial club composition (may be empty).
+            required: [id, name, arena_membership_mode, tournaments_openness]
+    responses:
+      "200":
+        description: Created tenant
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tenant'
+              required: [status, data]
+      "400":
+        description: Bad request (missing or invalid settings or club list)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tenant with this name already exists, or a club already belongs to another tenant
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TenantItem:
+  get:
+    operationId: GetTenant
+    tags: [tenants]
+    summary: Get a tenant by ID
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Tenant details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tenant'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+  patch:
+    operationId: PatchTenant
+    tags: [tenants]
+    summary: Update a tenant (name, openness settings)
+    description: >-
+      Partial update. A field that is omitted is left unchanged. The openness
+      settings `arena_membership_mode` / `tournaments_openness` are always
+      provided together. An `arena_membership_mode` change re-interprets the
+      main arena's whole history: the recalculation runs in the same
+      transaction. Renaming the tenant also renames its main arena. Clubs are
+      managed through the dedicated clubs endpoint, not here.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              arena_membership_mode:
+                type: string
+                enum: [any_member, members_only]
+              tournaments_openness:
+                type: string
+                enum: [members_only, open]
+    responses:
+      "200":
+        description: Updated tenant
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tenant'
+              required: [status, data]
+      "400":
+        description: Bad request, or an invalid settings pair
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tenant with this name already exists
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TenantClubs:
+  put:
+    operationId: SetTenantClubs
+    tags: [tenants]
+    summary: Replace the tenant's club composition
+    description: >-
+      Wholesale composition replacement (ADR-36): the submitted club ids
+      become the tenant's clubs; every other currently attached club is
+      detached. Each club must exist and belong to no other tenant. A change
+      of composition changes who is a member, so the main arena is
+      recalculated in the same transaction.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              club_ids:
+                type: array
+                items:
+                  $ref: './common.yaml#/Base58ID'
+                description: The full desired club set (may be empty).
+            required: [club_ids]
+    responses:
+      "200":
+        description: Composition applied
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Tenant'
+              required: [status, data]
+      "400":
+        description: Bad request (duplicate club ids, or a club does not exist)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: A club already belongs to another tenant
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+TenantFeedPath:
+  get:
+    operationId: ListTenantFeed
+    tags: [tenants]
+    summary: The tenant's feed (ADR-36) — the community's activity, membership-scoped
+    description: >-
+      A merged, date-ordered stream of match, correction and market events.
+      Match events go to any current member's matches — of any club of the
+      tenant (coop included); correction events to corrections of current
+      members; market events to the markets the tenant OWNS.
+      Membership-scoped by design — a tournament match appears even when it
+      does not count into the tenant's main arena rating. Match payloads
+      carry settlement columns from the tenant's main arena. Parameters and
+      cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the
+      tenant itself is the feed's identity.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: player_id
+        in: query
+        schema:
+          type: string
+        description: Filter match and market events by player ID (the arena feed's matching rule)
+      - name: game_id
+        in: query
+        schema:
+          type: string
+        description: Filter match and market events by game ID (the arena feed's matching rule)
+      - name: next
+        in: query
+        schema:
+          type: string
+        description: Cursor token from previous page's "next" field
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 30
+        description: Number of events per page
+    responses:
+      "200":
+        description: Paginated feed event list
+        content:
+          application/json:
+            schema:
+              $ref: './arenas.yaml#/FeedPage'
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Tenant not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
+# ─── Schemas ─────────────────────────────────────────────────────────────────
+
+Tenant:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    club_ids:
+      type: array
+      items:
+        $ref: './common.yaml#/Base58ID'
+      description: The clubs belonging to the tenant (ADR-36); a tenant holds one or many.
+    arena_membership_mode:
+      type: string
+      enum: [any_member, members_only]
+      description: Which matches count into the main arena.
+    tournaments_openness:
+      type: string
+      enum: [members_only, open]
+      description: Whether tournament registration is restricted to members.
+    main_arena_id:
+      $ref: './common.yaml#/Base58ID'
+      description: The tenant's main arena — its global rating space.
+  required: [id, name, club_ids, arena_membership_mode, tournaments_openness, main_arena_id]

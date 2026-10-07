@@ -13,4 +13,5 @@ export * from "./api/markets";
 export * from "./api/players";
 export * from "./api/settings";
 export * from "./api/tables";
+export * from "./api/tenants";
 export * from "./api/tournaments";

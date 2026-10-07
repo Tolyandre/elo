@@ -39,4 +39,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [33](33-game-modes.md) | Game modes: competitive, coop/solo, mixed — coop matches feed the home feed only |
 | [34](34-guarantor-risk-to-depth.md) | Guarantor risk fully converts to liquidity (the L cap removal) |
 | [35](35-tournament-market-born-on-start.md) | A tournament's betting market is born with the tournament — never created by hand |
-| [36](36-club-tenants.md) | Club tenants: a club is a group or a tenant with its own main arena, openness settings and membership history |
+| [36](36-tenants.md) | Tenants (communities): a separate entity owning a main arena, openness settings and one or many clubs; clubs stay player grouping with membership stints |

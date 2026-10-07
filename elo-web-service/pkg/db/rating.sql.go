@@ -65,7 +65,7 @@ type DeleteArenaSettlementsFromDateParams struct {
 // rows from the date on — the replay re-settles matches only. Market and
 // correction rows belong to their own lifecycles (markets re-settle via the
 // unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
-// club's arena; corrections live only in the global arena) and must survive
+// tenant's arena; corrections live only in the global arena) and must survive
 // an arena replay.
 func (q *Queries) DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error {
 	_, err := q.db.Exec(ctx, deleteArenaSettlementsFromDate, arg.ArenaID, arg.Date)
@@ -313,10 +313,10 @@ type UpsertArenaSettlementByMatchParams struct {
 // working with the global arena pass elo.GlobalArenaID. The global arena is
 // seeded by migration 051 with the well-known id below; since ADR-36 phase 2
 // the display reads in matches.sql, players.sql and player_ranks.sql take the
-// arena as a parameter (the global arena until the frontend carries ?club=),
+// arena as a parameter (the global arena until the frontend carries ?tenant=),
 // and the global arena itself is «Синие люди»'s main arena (migration 068).
 // corrections.sql and markets.sql keep the SQL literal until the
-// tournaments/markets phase settles them into the owning club's arena.
+// tournaments/markets phase settles them into the owning tenant's arena.
 func (q *Queries) UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error {
 	_, err := q.db.Exec(ctx, upsertArenaSettlementByMatch,
 		arg.ID,

@@ -1,10 +1,21 @@
 -- Dev seed data. DO NOT apply to production.
 
 -- Default club. The row already exists on any DB built from the 061 baseline
--- (seeded there as «Синие люди») and is converted to the tenant club by
--- migration 068; this insert is a no-op kept for older dev databases.
+-- (seeded there as «Синие люди», alongside «Весёлые карточные игры»);
+-- migration 068 creates the «Синие люди» tenant
+-- (00000000-0000-0000-0000-000000000101) and attaches both of its clubs to
+-- it. These statements are no-ops on migrated databases and make fresh dev
+-- databases match the migrated shape.
 INSERT INTO clubs (id, name) VALUES ('00000000-0000-0000-0000-000000000001', 'Синие люди')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO tenants (id, name, arena_membership_mode, tournaments_openness)
+VALUES ('00000000-0000-0000-0000-000000000101', 'Синие люди', 'any_member', 'open')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE clubs
+SET tenant_id = '00000000-0000-0000-0000-000000000101'
+WHERE name IN ('Синие люди', 'Весёлые карточные игры');
 
 -- User for mock-oauth2 login (the mock login page lists users from this table)
 -- Uses a different id from the 035_schema user (116214603310517670471) to avoid PK conflict.
@@ -281,6 +292,12 @@ DECLARE
     dev_user_id UUID;
 BEGIN
     SELECT id INTO dev_user_id FROM users WHERE google_oauth_user_id = 'dev-user-001';
+    -- A prod copy carries real users (the well-known dev-user id may be
+    -- taken); fall back to any editor so the market fixtures' created_by
+    -- stays NOT NULL-clean on a seeded-over copy.
+    IF dev_user_id IS NULL THEN
+        SELECT id INTO dev_user_id FROM users WHERE allow_editing ORDER BY id LIMIT 1;
+    END IF;
 
     -- bet_limit for players (formula: K / (1 + 10^((startingElo - playerElo) / D)) with K=32, D=400, startingElo=1000)
     -- bet_limits based on final Elo after match 202
@@ -290,10 +307,10 @@ BEGIN
     UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.0)             / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000067'::uuid;
 
     -- Market 1: open match_winner (Alice or Bob wins in Skull King)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, club_id)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, tenant_id)
     VALUES ('00000000-0000-0000-0000-000000000001', 'match_winner', 'open',
             NOW() - INTERVAL '1 day', NOW() + INTERVAL '7 days', dev_user_id,
-            '00000000-0000-0000-0000-000000000001')
+  '00000000-0000-0000-0000-000000000101')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
@@ -318,10 +335,10 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Market 2: open win_streak (Bob wins 3 times in Skull King, max 1 loss)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, club_id)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, tenant_id)
     VALUES ('00000000-0000-0000-0000-000000000002', 'win_streak', 'open',
             NOW() - INTERVAL '2 days', NOW() + INTERVAL '5 days', dev_user_id,
-            '00000000-0000-0000-0000-000000000001')
+  '00000000-0000-0000-0000-000000000101')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_win_streak_params (market_id, target_player_id, game_ids, wins_required, max_losses)
@@ -346,13 +363,13 @@ BEGIN
     -- match_winner markets satisfy since ADR-11 — so a recalculation re-links
     -- exactly match 200 and reproduces the settlement rows below.
     -- resolution_outcome is set below, after the outcome rows exist (circular FK).
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, club_id)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, resolution_match_id, tenant_id)
     VALUES ('00000000-0000-0000-0000-000000000003', 'match_winner', 'resolved',
             (SELECT date FROM matches WHERE id = '00000000-0000-0000-0000-0000000000c8'::uuid),
             (SELECT date FROM matches WHERE id = '00000000-0000-0000-0000-0000000000c8'::uuid),
             dev_user_id, NOW() - INTERVAL '7 days',
             '00000000-0000-0000-0000-0000000000c8'::uuid,
-            '00000000-0000-0000-0000-000000000001')
+  '00000000-0000-0000-0000-000000000101')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)
@@ -380,10 +397,10 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     -- Market 4: cancelled match_winner (expired without matching match)
-    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, club_id)
+    INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, resolved_at, tenant_id)
     VALUES ('00000000-0000-0000-0000-000000000004', 'match_winner', 'cancelled',
             NOW() - INTERVAL '14 days', NOW() - INTERVAL '7 days', dev_user_id, NOW() - INTERVAL '7 days',
-            '00000000-0000-0000-0000-000000000001')
+  '00000000-0000-0000-0000-000000000101')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO market_match_winner_params (market_id, target_player_ids, allow_other_players, game_ids)

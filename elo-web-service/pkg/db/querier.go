@@ -57,17 +57,6 @@ type Querier interface {
 	// The champion is invalidated by a post-completion bracket change (an edit
 	// cascade); the tournament re-runs its final and completes again.
 	ClearTournamentWinner(ctx context.Context, argID id.ID) error
-	// Whether the participants count into the club's main arena under its CURRENT
-	// openness mode, evaluated at @date against stint history (ADR-36): any_member
-	// — at least one participant was a member at @date; members_only — all were.
-	// The Go settlement gate consults this before settling a match into the
-	// club's arena (the SQL-side twin, club_arena_contains_match, probes
-	// match_scores itself and lives in migration 069).
-	ClubContainsPlayers(ctx context.Context, arg ClubContainsPlayersParams) (bool, error)
-	// One-way group → tenant conversion (ADR-36); returns no rows when the club
-	// is missing or already a tenant. The caller creates the main arena in the
-	// same transaction.
-	ConvertClubToTenant(ctx context.Context, arg ConvertClubToTenantParams) (Club, error)
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (per the membership function) within
@@ -79,14 +68,14 @@ type Querier interface {
 	// source seats).
 	CountUnresolvedSeats(ctx context.Context, slotID id.ID) (int32, error)
 	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
-	// A new club is a plain group (ADR-36): kind defaults, tenant columns NULL.
+	// A new club is a plain group (ADR-36): no tenant.
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
 	CreateGameTable(ctx context.Context, arg CreateGameTableParams) (GameTable, error)
-	// Every market belongs to a club (ADR-36): the create path is
-	// POST /clubs/{id}/markets and the auto-created tournament_winner market
-	// inherits the tournament's club.
+	// Every market belongs to a tenant (ADR-36): the create path is
+	// POST /tenants/{id}/markets and the auto-created tournament_winner market
+	// inherits the tournament's tenant.
 	CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error)
 	CreateMatch(ctx context.Context, arg CreateMatchParams) (Match, error)
 	CreateMatchFilter(ctx context.Context, arg CreateMatchFilterParams) (id.ID, error)
@@ -98,14 +87,15 @@ type Querier interface {
 	// Bulk-inserts the per-target "player wins" outcomes of a match_winner market.
 	CreatePlayerOutcomes(ctx context.Context, arg CreatePlayerOutcomesParams) error
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
+	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	// Tournament queries (ADR-26). The bracket materialization has its own file
 	// (tournament_brackets.sql); this one covers the entity itself: lifecycle
 	// state, registration-time config, participants, and the game pool.
 	// Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 	// with the same id inserts nothing and the service fetches the stored row.
 	// elimination stays NULL until start stamps the chosen plan's family.
-	// Every tournament belongs to a club (ADR-36): the create path is
-	// POST /clubs/{id}/tournaments and the club is a tenant.
+	// Every tournament belongs to a tenant (ADR-36): the create path is
+	// POST /tenants/{id}/tournaments.
 	CreateTournament(ctx context.Context, arg CreateTournamentParams) (Tournament, error)
 	CreateTournamentRound(ctx context.Context, arg CreateTournamentRoundParams) (TournamentRound, error)
 	CreateTournamentSeat(ctx context.Context, arg CreateTournamentSeatParams) error
@@ -130,7 +120,7 @@ type Querier interface {
 	// rows from the date on — the replay re-settles matches only. Market and
 	// correction rows belong to their own lifecycles (markets re-settle via the
 	// unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
-	// club's arena; corrections live only in the global arena) and must survive
+	// tenant's arena; corrections live only in the global arena) and must survive
 	// an arena replay.
 	DeleteArenaSettlementsFromDate(ctx context.Context, arg DeleteArenaSettlementsFromDateParams) error
 	// ---------------------------------------------------------------------------
@@ -172,12 +162,12 @@ type Querier interface {
 	// Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
 	// arena" condition has ONE canonical structure, dispatched per flavor:
 	//
-	//   * club arenas (arenas.club_id, ADR-36): club_arena_contains_match() —
-	//     openness evaluated at the match date against player_club_membership
-	//     stints, per the club's CURRENT mode. It probes tables, so it is a
-	//     separate STABLE function — the explicit exception to the ADR-28
-	//     pure-expression rule — and the queries dispatch with
-	//     CASE WHEN a.club_id IS NOT NULL. It only ever runs for club arenas,
+	//   * tenant arenas (arenas.tenant_id, ADR-36): tenant_arena_contains_match() —
+	//     openness evaluated at the match date against the player_club_membership
+	//     stints of the tenant's clubs, per the tenant's CURRENT mode. It probes
+	//     tables, so it is a separate STABLE function — the explicit exception to
+	//     the ADR-28 pure-expression rule — and the queries dispatch with
+	//     CASE WHEN a.tenant_id IS NOT NULL. It only ever runs for tenant arenas,
 	//     whose count stays proportional to the number of tenants.
 	//   * every other flavor: the arena_contains_match() function created by
 	//     migrations 054–056 (see adr/28-arena-membership-function.md). The
@@ -194,9 +184,9 @@ type Querier interface {
 	// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 	// asserts the generated row structs stay field-identical.
 	GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error)
-	// A tenant club's main arena (ADR-36); empty when the club has none (groups).
-	GetArenaByClub(ctx context.Context, clubID *id.ID) (GetArenaByClubRow, error)
 	GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaByGameRow, error)
+	// A tenant's main arena (ADR-36); empty when the tenant has none.
+	GetArenaByTenant(ctx context.Context, tenantID *id.ID) (GetArenaByTenantRow, error)
 	// Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
 	// empty until ADR-26 creates them.
 	GetArenaByTournament(ctx context.Context, tournamentID *id.ID) (GetArenaByTournamentRow, error)
@@ -235,7 +225,7 @@ type Querier interface {
 	// the house result (ADR-10). DISTINCT because a player may hold several
 	// guarantee wagers but settles as one guarantor row; the sort key is selected
 	// so DISTINCT accepts the ORDER BY. A market's rows live in exactly one arena
-	// (its club's main arena, ADR-36), so market_id alone identifies them.
+	// (its tenant's main arena, ADR-36), so market_id alone identifies them.
 	GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error)
 	GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.Timestamptz, error)
 	GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleRow, error)
@@ -289,11 +279,14 @@ type Querier interface {
 	// An empty game-id list counts matches from every game (the market's "any
 	// game" setting, same convention as match_winner's game_ids).
 	GetPlayerStreakStats(ctx context.Context, arg GetPlayerStreakStatsParams) (GetPlayerStreakStatsRow, error)
-	// A market settles exactly once into its owning club's main arena (ADR-36),
+	// A market settles exactly once into its owning tenant's main arena (ADR-36),
 	// so market_id alone identifies its rows (index arena_settlements_market_id_idx).
 	GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error)
 	GetTagByID(ctx context.Context, argID id.ID) (Tag, error)
 	GetTagGameCount(ctx context.Context, tagID id.ID) (int64, error)
+	GetTenant(ctx context.Context, argID id.ID) ([]GetTenantRow, error)
+	// Bare row for existence checks and settings recalculation.
+	GetTenantByID(ctx context.Context, argID id.ID) (Tenant, error)
 	GetTournament(ctx context.Context, argID id.ID) (Tournament, error)
 	// The champion slot: the final-track slot advancing exactly one player
 	// (a bracket has exactly one; a tournament-winner market resolves against it).
@@ -393,16 +386,6 @@ type Querier interface {
 	// the status column), so (resolved_at, id) is a total order and the
 	// continuation cursor.
 	ListClosedMarketKeys(ctx context.Context, arg ListClosedMarketKeysParams) ([]ListClosedMarketKeysRow, error)
-	// One page of the club feed (GET /clubs/{id}/feed, ADR-36): the community's
-	// activity, membership-scoped — deliberately NOT arena-attribution-scoped, so
-	// a tournament match appears even when it does not count into the club's main
-	// arena rating. Match events go to any current member's matches (coop
-	// included: community life, not just rating); correction events to
-	// corrections of current members; market events to the markets the club
-	// OWNS (a member's bet on another club's market is that club's news).
-	// Parameters and cursor are the arena feed's minus the arena and the
-	// include flags; the club itself is the feed's identity.
-	ListClubFeedEvents(ctx context.Context, arg ListClubFeedEventsParams) ([]ListClubFeedEventsRow, error)
 	// ---------------------------------------------------------------------------
 	// "Недавние" player-picker candidates (GET /players/recent)
 	// ---------------------------------------------------------------------------
@@ -412,10 +395,10 @@ type Querier interface {
 	// Users whose linked player is an active member of any of the given clubs —
 	// the "users associated with the current user's club" for the recent list.
 	ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error)
-	// Club queries. player_club_membership is stint history (ADR-36): joined_at
-	// / left_at, left_at NULL = active stint. Reads of "the members" always
-	// filter to active stints; the /club tenancy fields (kind, openness, main
-	// arena) are part of every club read.
+	// Club queries (ADR-05 grouping + ADR-36 membership stints).
+	// player_club_membership is stint history: joined_at / left_at, left_at NULL
+	// = active stint. Reads of "the members" always filter to active stints.
+	// Tenant fields (openness, main arena) live on the tenants table (tenants.sql).
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	// Payload rows for the feed's correction events (ADR-32), for an explicit id
 	// set selected by ListArenaFeedEvents.
@@ -464,7 +447,8 @@ type Querier interface {
 	// arenas and filter matches for every other kind (one replay source, ADR-28).
 	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
 	// The rating columns are the display arena's (@arena_id — the caller's current
-	// club main arena, ADR-36; the global arena until the frontend carries ?club=).
+	// tenant main arena, ADR-36; the global arena until the frontend carries
+	// ?tenant=). The club_id / no_club filters stay club-level grouping filters.
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	// Open tournament_winner markets of one tournament — the completion hook's
@@ -535,6 +519,22 @@ type Querier interface {
 	// when any game's tags change (a tag toggle can flip any of them).
 	ListTagFilteredArenaIds(ctx context.Context) ([]id.ID, error)
 	ListTags(ctx context.Context) ([]ListTagsRow, error)
+	// One page of the tenant feed (GET /tenants/{id}/feed, ADR-36): the
+	// community's activity, membership-scoped — deliberately NOT
+	// arena-attribution-scoped, so a tournament match appears even when it does
+	// not count into the tenant's main arena rating. Match events go to any
+	// current member's matches — of any club of the tenant (coop included:
+	// community life, not just rating); correction events to corrections of
+	// current members; market events to the markets the tenant OWNS (a member's
+	// bet on another tenant's market is that tenant's news). Parameters and
+	// cursor are the arena feed's minus the arena and the include flags; the
+	// tenant itself is the feed's identity.
+	ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error)
+	// Tenant queries (ADR-36). A tenant is a separate community entity: name,
+	// openness settings, one main arena (arenas.tenant_id), and one or many
+	// clubs (clubs.tenant_id). Tenant membership is derived from club membership
+	// stints: an active stint in any club of the tenant.
+	ListTenants(ctx context.Context) ([]ListTenantsRow, error)
 	ListTournamentGames(ctx context.Context, tournamentID id.ID) ([]TournamentGame, error)
 	ListTournamentParticipants(ctx context.Context, tournamentID id.ID) ([]ListTournamentParticipantsRow, error)
 	ListTournamentRounds(ctx context.Context, tournamentID id.ID) ([]TournamentRound, error)
@@ -560,9 +560,10 @@ type Querier interface {
 	// Dirty queue
 	// ---------------------------------------------------------------------------
 	MarkArenasStaleFull(ctx context.Context, arenaIds []id.ID) error
-	// Current-member check (active stint, ADR-36) — the members_only gates:
-	// tournament registration and bets/guarantees on a members_only club's market.
-	PlayerIsClubMember(ctx context.Context, arg PlayerIsClubMemberParams) (bool, error)
+	// Current-member check (active stint in any club of the tenant, ADR-36) —
+	// the members_only gates: tournament registration and bets/guarantees on a
+	// members_only tenant's market.
+	PlayerIsTenantMember(ctx context.Context, arg PlayerIsTenantMemberParams) (bool, error)
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
 	// Closes the active stint; closed stints stay as history (ADR-36).
@@ -582,6 +583,10 @@ type Querier interface {
 	SetSlotSeatsFromAdvances(ctx context.Context, slotID id.ID) error
 	SetSlotStatus(ctx context.Context, arg SetSlotStatusParams) error
 	SetSlotStatusAndRuling(ctx context.Context, arg SetSlotStatusAndRulingParams) error
+	// Wholesale composition replacement (ADR-36): attach the given clubs to the
+	// tenant and detach every other club currently attached to it. Callers
+	// validate existence and "no other tenant" first.
+	SetTenantClubs(ctx context.Context, arg SetTenantClubsParams) error
 	// The grand final advanced exactly one player (ADR-26): read-only from here.
 	SetTournamentCompleted(ctx context.Context, arg SetTournamentCompletedParams) error
 	// The single start action (ADR-26): snapshot the chosen plan + seed, stamp
@@ -592,6 +597,17 @@ type Querier interface {
 	SetTournamentStatus(ctx context.Context, arg SetTournamentStatusParams) error
 	SlotHasAdvances(ctx context.Context, slotID id.ID) (bool, error)
 	SlotHasMatches(ctx context.Context, slotID id.ID) (bool, error)
+	// Whether the participants count into the tenant's main arena under its
+	// CURRENT openness mode, evaluated at @date against stint history (ADR-36):
+	// any_member — at least one participant was a member of any club of the
+	// tenant at @date; members_only — all were. The Go settlement gate consults
+	// this before settling a match into the tenant's arena (the SQL-side twin,
+	// tenant_arena_contains_match, probes match_scores itself and lives in
+	// migration 069).
+	TenantContainsPlayers(ctx context.Context, arg TenantContainsPlayersParams) (bool, error)
+	// Uniqueness guard for tenant create/rename (case-insensitive, mirroring
+	// clubs). @exclude_id skips the tenant being updated; NULL on create.
+	TenantNameExists(ctx context.Context, arg TenantNameExistsParams) (bool, error)
 	// Restores the pre-settlement status: betting_closed if the betting lock user event
 	// was set, otherwise open. betting_closed_at is intentionally left untouched — it is
 	// a user event and must never be cleared by recalculation.
@@ -601,9 +617,6 @@ type Querier interface {
 	UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
-	// Openness settings of an existing tenant (ADR-36); no rows when the club is
-	// missing or still a group.
-	UpdateClubTenantSettings(ctx context.Context, arg UpdateClubTenantSettingsParams) (Club, error)
 	// `name` is generated (migration 063) and follows the three source names.
 	UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, error)
 	UpdateGameBggImages(ctx context.Context, arg UpdateGameBggImagesParams) (Game, error)
@@ -618,6 +631,10 @@ type Querier interface {
 	// Fills one seat cache from the source slot's derived placing.
 	UpdateSeatPlayer(ctx context.Context, arg UpdateSeatPlayerParams) error
 	UpdateTagName(ctx context.Context, arg UpdateTagNameParams) (Tag, error)
+	UpdateTenantName(ctx context.Context, arg UpdateTenantNameParams) (Tenant, error)
+	// Openness settings of an existing tenant (ADR-36); no rows when the tenant
+	// is missing.
+	UpdateTenantSettings(ctx context.Context, arg UpdateTenantSettingsParams) (Tenant, error)
 	// Registration-time config (ADR-26): name and the optional grand-final
 	// deadline. The pool and participants are managed by their own queries.
 	UpdateTournamentConfig(ctx context.Context, arg UpdateTournamentConfigParams) error
@@ -627,17 +644,17 @@ type Querier interface {
 	UpsertArenaSettlementByCorrection(ctx context.Context, arg UpsertArenaSettlementByCorrectionParams) error
 	// One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 	// a player who is both gets two rows, hence the discriminator in the conflict
-	// target. Markets settle into the owning club's main arena (ADR-36); the
-	// caller resolves it from markets.club_id.
+	// target. Markets settle into the owning tenant's main arena (ADR-36); the
+	// caller resolves it from markets.tenant_id.
 	UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error
 	// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
 	// working with the global arena pass elo.GlobalArenaID. The global arena is
 	// seeded by migration 051 with the well-known id below; since ADR-36 phase 2
 	// the display reads in matches.sql, players.sql and player_ranks.sql take the
-	// arena as a parameter (the global arena until the frontend carries ?club=),
+	// arena as a parameter (the global arena until the frontend carries ?tenant=),
 	// and the global arena itself is «Синие люди»'s main arena (migration 068).
 	// corrections.sql and markets.sql keep the SQL literal until the
-	// tournaments/markets phase settles them into the owning club's arena.
+	// tournaments/markets phase settles them into the owning tenant's arena.
 	UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
 }

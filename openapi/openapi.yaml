@@ -320,21 +320,26 @@ paths:
     $ref: './clubs.yaml#/ClubsCollection'
   /clubs/{id}:
     $ref: './clubs.yaml#/ClubItem'
-  /clubs/{id}/convert:
-    $ref: './clubs.yaml#/ClubConvert'
   /clubs/{id}/members:
     $ref: './clubs.yaml#/ClubMembers'
   /clubs/{id}/members/{playerId}:
     $ref: './clubs.yaml#/ClubMemberItem'
-  /clubs/{id}/feed:
-    $ref: './clubs.yaml#/ClubFeedPath'
 
-  # Club-owned tournaments and markets (ADR-36): every tournament/market is
-  # created under its owning tenant club.
-  /clubs/{id}/tournaments:
-    $ref: './tournaments.yaml#/ClubTournamentsCollection'
-  /clubs/{id}/markets:
-    $ref: './markets.yaml#/ClubMarketsCollection'
+  # Tenants (ADR-36): communities owning a main arena, openness settings and
+  # one or many clubs. Every tournament/market is created under its owning
+  # tenant.
+  /tenants:
+    $ref: './tenants.yaml#/TenantsCollection'
+  /tenants/{id}:
+    $ref: './tenants.yaml#/TenantItem'
+  /tenants/{id}/clubs:
+    $ref: './tenants.yaml#/TenantClubs'
+  /tenants/{id}/feed:
+    $ref: './tenants.yaml#/TenantFeedPath'
+  /tenants/{id}/tournaments:
+    $ref: './tournaments.yaml#/TenantTournamentsCollection'
+  /tenants/{id}/markets:
+    $ref: './markets.yaml#/TenantMarketsCollection'
 
   # Settings
   /settings:

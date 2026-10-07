@@ -30,7 +30,7 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	marketSvc := elo.NewMarketService(pool)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),

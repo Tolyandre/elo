@@ -228,18 +228,23 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.GET("/clubs", strictWrapper.ListClubs)
 	r.GET("/clubs/:id", strictWrapper.GetClub)
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
-	r.POST("/clubs/:id/convert", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ConvertClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
 	r.POST("/clubs/:id/members", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddClubMember)
 	r.DELETE("/clubs/:id/members/:playerId", o.DeserializeUser(), a.RequireEditor(), strictWrapper.RemoveClubMember)
+	// Tenants (ADR-36): the community surface.
+	r.GET("/tenants", strictWrapper.ListTenants)
+	r.POST("/tenants", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTenant)
+	r.GET("/tenants/:id", strictWrapper.GetTenant)
+	r.PATCH("/tenants/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchTenant)
+	r.PUT("/tenants/:id/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.SetTenantClubs)
+	r.GET("/tenants/:id/feed", strictWrapper.ListTenantFeed)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
 	// Tournaments (ADR-26): public reads, editor-gated organization, the
 	// self-registration behind the linked-player gate. Creation is
-	// club-scoped (ADR-36).
+	// tenant-scoped (ADR-36).
 	r.GET("/tournaments", strictWrapper.ListTournaments)
-	r.POST("/clubs/:id/tournaments", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClubTournament)
-	r.POST("/clubs/:id/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClubMarket)
-	r.GET("/clubs/:id/feed", strictWrapper.ListClubFeed)
+	r.POST("/tenants/:id/tournaments", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTenantTournament)
+	r.POST("/tenants/:id/markets", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateTenantMarket)
 	r.GET("/tournaments/:id", strictWrapper.GetTournament)
 	r.PUT("/tournaments/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateTournament)
 	r.GET("/tournaments/:id/bracket-plans", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ListTournamentBracketPlans)
@@ -721,9 +726,22 @@ func doJSON(t *testing.T, router interface {
 	return w
 }
 
-// blueMenClubID is the «Синие люди» tenant club id — the owner every
-// fixture tournament/market gets, whose main arena is the global arena.
+// blueMenClubID is the «Синие люди» club id (ADR-05 grouping) — the club the
+// test players auto-join, one of the two clubs of the «Синие люди» tenant.
 var blueMenClubID = idpkg.ID(blueMenClubUUID)
+
+// blueMenTenantUUID / blueMenTenantID is the «Синие люди» tenant (ADR-36,
+// seeded by migration 068) — the owner fixture tournaments and markets get,
+// whose main arena is the global arena.
+const blueMenTenantUUID = "00000000-0000-0000-0000-000000000101"
+
+var blueMenTenantID = idpkg.ID(blueMenTenantUUID)
+
+// vkiClubUUID is the «Весёлые карточные игры» club — the second club of the
+// «Синие люди» tenant (seeded by migration 061 with its production members).
+const vkiClubUUID = "00000000-0000-0000-0000-000000000002"
+
+var vkiClubID = idpkg.ID(vkiClubUUID)
 
 func newTournamentService(pool *pgxpool.Pool) *elo.TournamentService {
 	arenaSvc := newArenaService(pool)

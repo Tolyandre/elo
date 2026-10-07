@@ -132,7 +132,7 @@ func TestTournament_StartMaterializesBracket(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Стартовый кубок", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 
@@ -299,7 +299,7 @@ func TestTournament_StartByeRemainder(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок двоек", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 
@@ -415,7 +415,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Кубок флажков", "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", admin, flagshipPlanBody); w.Code != http.StatusOK {
@@ -616,7 +616,7 @@ func TestTournament_WBLBRunWithMerge(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": "Дабл-кубок", "games": [{"game_id": %q, "min_players": 2, "max_players": 2}], "participant_ids": [%s]}`,
 		short(tid), short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", admin, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", admin, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
 	}
 

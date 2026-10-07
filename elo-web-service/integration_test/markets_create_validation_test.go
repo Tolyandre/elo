@@ -24,7 +24,7 @@ func postMarket(t *testing.T, router interface {
 }, token string, body map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 	payload, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/markets", strings.NewReader(string(payload)))
+	req := httptest.NewRequest(http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/markets", strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()

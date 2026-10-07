@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createTournamentPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
-import { useClubs } from "@/app/clubsContext";
+import { useTenants } from "@/app/tenantsContext";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { ErrorAlert } from "@/components/error-alert";
 import { Button } from "@/components/ui/button";
@@ -27,21 +27,20 @@ import type { Base58ID } from "@/lib/id";
  * job during registration. The elimination family is no creation field: both
  * families' plans are offered side by side in the shape picker and the chosen
  * plan's family is stamped at start. Every tournament belongs to a tenant
- * club (ADR-36) — the owning club is chosen at create time and is immutable.
+ * (ADR-36) — the owning community is chosen at create time and is immutable.
  */
 export default function NewTournamentPage() {
     const { canEdit } = useMe();
-    const { clubs, clubDisplayName } = useClubs();
+    const { tenants } = useTenants();
     const router = useRouter();
     const [name, setName] = useState("");
     const [deadline, setDeadline] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
-    const tenantClubs = useMemo(() => clubs.filter((c) => c.kind === "tenant"), [clubs]);
-    const [clubId, setClubId] = useState<Base58ID | "">("");
+    const [tenantId, setTenantId] = useState<Base58ID | "">("");
     // A single tenant community (today's production shape) preselects itself.
-    const effectiveClubId = clubId || (tenantClubs.length === 1 ? tenantClubs[0].id : "");
+    const effectiveTenantId = tenantId || (tenants.length === 1 ? tenants[0].id : "");
 
     if (!canEdit) {
         return (
@@ -59,14 +58,14 @@ export default function NewTournamentPage() {
             setError("Укажите название турнира");
             return;
         }
-        if (!effectiveClubId) {
-            setError("Укажите клуб сообщества");
+        if (!effectiveTenantId) {
+            setError("Укажите сообщество");
             return;
         }
         setSubmitting(true);
         setError("");
         try {
-            const created = await createTournamentPromise(effectiveClubId, {
+            const created = await createTournamentPromise(effectiveTenantId, {
                 name: name.trim(),
                 grand_final_deadline: deadline ? new Date(deadline).toISOString() : null,
             });
@@ -84,19 +83,19 @@ export default function NewTournamentPage() {
             <PageHeader title="Новый турнир" />
             <form onSubmit={handleSubmit}>
                 <div>
-                    <Label htmlFor="tournament-club" className="block font-semibold mb-2">Клуб сообщества:</Label>
-                    <Select value={effectiveClubId || undefined} onValueChange={(v) => setClubId(v as Base58ID)}>
-                        <SelectTrigger id="tournament-club" aria-label="Клуб сообщества">
-                            <SelectValue placeholder="Выберите клуб" />
+                    <Label htmlFor="tournament-tenant" className="block font-semibold mb-2">Сообщество:</Label>
+                    <Select value={effectiveTenantId || undefined} onValueChange={(v) => setTenantId(v as Base58ID)}>
+                        <SelectTrigger id="tournament-tenant" aria-label="Сообщество">
+                            <SelectValue placeholder="Выберите сообщество" />
                         </SelectTrigger>
                         <SelectContent>
-                            {tenantClubs.map((c) => (
-                                <SelectItem key={c.id} value={c.id}>{clubDisplayName(c)}</SelectItem>
+                            {tenants.map((t) => (
+                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground mt-1">
-                        Турнир принадлежит клубу сообщества; позже клуб сменить нельзя.
+                        Турнир принадлежит сообществу; позже сменить нельзя.
                     </p>
                 </div>
                 <div>

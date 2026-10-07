@@ -313,6 +313,16 @@ func idPtr(s *string) *id.ID {
 	return &v
 }
 
+// tenantIDPtr exposes the tenant feed's owning tenant for the cursor token
+// (the feed's identity, baked like the arena feed's filters).
+func tenantIDPtr(req feedRequest) *string {
+	if !req.tenantFeed {
+		return nil
+	}
+	v := string(req.feedTenantID)
+	return &v
+}
+
 func strPtr(v *id.ID) *string {
 	if v == nil {
 		return nil

@@ -14,14 +14,14 @@ import (
 )
 
 const createMarket = `-- name: CreateMarket :one
-INSERT INTO markets (id, club_id, market_type, starts_at, closes_at, created_by, liquidity_b)
+INSERT INTO markets (id, tenant_id, market_type, starts_at, closes_at, created_by, liquidity_b)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, club_id
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, tenant_id
 `
 
 type CreateMarketParams struct {
 	ID         id.ID              `json:"id"`
-	ClubID     id.ID              `json:"club_id"`
+	TenantID   id.ID              `json:"tenant_id"`
 	MarketType string             `json:"market_type"`
 	StartsAt   pgtype.Timestamptz `json:"starts_at"`
 	ClosesAt   pgtype.Timestamptz `json:"closes_at"`
@@ -29,13 +29,13 @@ type CreateMarketParams struct {
 	LiquidityB float64            `json:"liquidity_b"`
 }
 
-// Every market belongs to a club (ADR-36): the create path is
-// POST /clubs/{id}/markets and the auto-created tournament_winner market
-// inherits the tournament's club.
+// Every market belongs to a tenant (ADR-36): the create path is
+// POST /tenants/{id}/markets and the auto-created tournament_winner market
+// inherits the tournament's tenant.
 func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error) {
 	row := q.db.QueryRow(ctx, createMarket,
 		arg.ID,
-		arg.ClubID,
+		arg.TenantID,
 		arg.MarketType,
 		arg.StartsAt,
 		arg.ClosesAt,
@@ -56,7 +56,7 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.ResolutionOutcome,
 		&i.BettingClosedAt,
 		&i.LiquidityB,
-		&i.ClubID,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -308,7 +308,7 @@ const getMarket = `-- name: GetMarket :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.club_id,
+    om.liquidity_b, om.tenant_id,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -339,7 +339,7 @@ type GetMarketRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	ClubID            id.ID              `json:"club_id"`
+	TenantID          id.ID              `json:"tenant_id"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -367,7 +367,7 @@ func (q *Queries) GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, err
 		&i.ResolutionMatchID,
 		&i.BettingClosedAt,
 		&i.LiquidityB,
-		&i.ClubID,
+		&i.TenantID,
 		&i.TargetPlayerIds,
 		&i.AllowOtherPlayers,
 		&i.MwGameIds,
@@ -456,7 +456,7 @@ type GetMarketGuarantorPayoutsRow struct {
 // the house result (ADR-10). DISTINCT because a player may hold several
 // guarantee wagers but settles as one guarantor row; the sort key is selected
 // so DISTINCT accepts the ORDER BY. A market's rows live in exactly one arena
-// (its club's main arena, ADR-36), so market_id alone identifies them.
+// (its tenant's main arena, ADR-36), so market_id alone identifies them.
 func (q *Queries) GetMarketGuarantorPayouts(ctx context.Context, marketID id.ID) ([]GetMarketGuarantorPayoutsRow, error) {
 	rows, err := q.db.Query(ctx, getMarketGuarantorPayouts, marketID)
 	if err != nil {
@@ -495,15 +495,15 @@ func (q *Queries) GetMarketResolvedAt(ctx context.Context, argID id.ID) (pgtype.
 }
 
 const getMarketsForUnsettle = `-- name: GetMarketsForUnsettle :many
-SELECT DISTINCT om.id, om.club_id
+SELECT DISTINCT om.id, om.tenant_id
 FROM markets om
 WHERE om.status IN ('resolved', 'cancelled')
   AND om.resolved_at >= $1
 `
 
 type GetMarketsForUnsettleRow struct {
-	ID     id.ID `json:"id"`
-	ClubID id.ID `json:"club_id"`
+	ID       id.ID `json:"id"`
+	TenantID id.ID `json:"tenant_id"`
 }
 
 func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.Timestamptz) ([]GetMarketsForUnsettleRow, error) {
@@ -515,7 +515,7 @@ func (q *Queries) GetMarketsForUnsettle(ctx context.Context, resolvedAt pgtype.T
 	items := []GetMarketsForUnsettleRow{}
 	for rows.Next() {
 		var i GetMarketsForUnsettleRow
-		if err := rows.Scan(&i.ID, &i.ClubID); err != nil {
+		if err := rows.Scan(&i.ID, &i.TenantID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -778,7 +778,7 @@ type GetSettlementDetailsRow struct {
 	Earned     float64 `json:"earned"`
 }
 
-// A market settles exactly once into its owning club's main arena (ADR-36),
+// A market settles exactly once into its owning tenant's main arena (ADR-36),
 // so market_id alone identifies its rows (index arena_settlements_market_id_idx).
 func (q *Queries) GetSettlementDetails(ctx context.Context, marketID *id.ID) ([]GetSettlementDetailsRow, error) {
 	rows, err := q.db.Query(ctx, getSettlementDetails, marketID)
@@ -1210,7 +1210,7 @@ const listMarketsByIDs = `-- name: ListMarketsByIDs :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.club_id,
+    om.liquidity_b, om.tenant_id,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -1241,7 +1241,7 @@ type ListMarketsByIDsRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	ClubID            id.ID              `json:"club_id"`
+	TenantID          id.ID              `json:"tenant_id"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -1277,7 +1277,7 @@ func (q *Queries) ListMarketsByIDs(ctx context.Context, ids []id.ID) ([]ListMark
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
 			&i.LiquidityB,
-			&i.ClubID,
+			&i.TenantID,
 			&i.TargetPlayerIds,
 			&i.AllowOtherPlayers,
 			&i.MwGameIds,
@@ -1302,7 +1302,7 @@ const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :man
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.club_id,
+    om.liquidity_b, om.tenant_id,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -1333,7 +1333,7 @@ type ListMarketsByResolutionMatchRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	ClubID            id.ID              `json:"club_id"`
+	TenantID          id.ID              `json:"tenant_id"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -1367,7 +1367,7 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
 			&i.LiquidityB,
-			&i.ClubID,
+			&i.TenantID,
 			&i.TargetPlayerIds,
 			&i.AllowOtherPlayers,
 			&i.MwGameIds,
@@ -1927,8 +1927,8 @@ type UpsertArenaSettlementByMarketParams struct {
 
 // One row per role per player (buyer 'market' / guarantor 'market_guarantor'):
 // a player who is both gets two rows, hence the discriminator in the conflict
-// target. Markets settle into the owning club's main arena (ADR-36); the
-// caller resolves it from markets.club_id.
+// target. Markets settle into the owning tenant's main arena (ADR-36); the
+// caller resolves it from markets.tenant_id.
 func (q *Queries) UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error {
 	_, err := q.db.Exec(ctx, upsertArenaSettlementByMarket,
 		arg.ID,

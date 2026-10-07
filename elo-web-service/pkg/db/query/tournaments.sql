@@ -6,9 +6,9 @@
 -- Client-supplied id (ADR-06): the insert is an idempotent create — a replay
 -- with the same id inserts nothing and the service fetches the stored row.
 -- elimination stays NULL until start stamps the chosen plan's family.
--- Every tournament belongs to a club (ADR-36): the create path is
--- POST /clubs/{id}/tournaments and the club is a tenant.
-INSERT INTO tournaments (id, club_id, name, status, grand_final_deadline)
+-- Every tournament belongs to a tenant (ADR-36): the create path is
+-- POST /tenants/{id}/tournaments.
+INSERT INTO tournaments (id, tenant_id, name, status, grand_final_deadline)
 VALUES ($1, $2, $3, 'registration', $4)
 ON CONFLICT (id) DO NOTHING
 RETURNING *;

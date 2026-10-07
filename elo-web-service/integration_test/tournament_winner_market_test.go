@@ -42,7 +42,7 @@ func startFinalOnlyTournament(t *testing.T, pool *pgxpool.Pool, adminToken strin
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": %q, "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), name, short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", adminToken, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", adminToken, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", adminToken, finalOnlyPlan); w.Code != http.StatusOK {
@@ -102,7 +102,7 @@ func startWinnersFinalTournament(t *testing.T, pool *pgxpool.Pool, adminToken st
 	}
 	createBody := fmt.Sprintf(`{"id": %q, "name": %q, "games": [{"game_id": %q, "min_players": 4, "max_players": 4}], "participant_ids": [%s]}`,
 		short(tid), name, short(gameID), strings.Join(ids, ","))
-	if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/tournaments", adminToken, createBody); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/tournaments", adminToken, createBody); w.Code != http.StatusOK {
 		t.Fatalf("create tournament: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodPost, "/tournaments/"+short(tid)+"/start", adminToken, winnersFinalPlan); w.Code != http.StatusOK {
@@ -137,7 +137,7 @@ func createTournamentWinnerMarket(t *testing.T, ctx context.Context, pool *pgxpo
 	t.Helper()
 	marketSvc := elo.NewMarketService(pool)
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:           blueMenClubID,
+		TenantID:         blueMenTenantID,
 		ID:               newID(t),
 		MarketType:       "tournament_winner",
 		StartsAt:         time.Now().Add(-time.Minute),
@@ -643,7 +643,7 @@ func TestTournamentWinnerMarket_CreateValidation(t *testing.T) {
 	// — a running tournament and an unknown one are rejected the same way.
 	for _, tid := range []idpkg.ID{runningID, newID(t)} {
 		body := fmt.Sprintf(`{"id": %q, "market_type": "tournament_winner", "tournament_id": %q}`, short(newID(t)), short(tid))
-		if w := doJSON(t, router, http.MethodPost, "/clubs/00000000-0000-0000-0000-000000000001/markets", adminToken, body); w.Code != http.StatusBadRequest {
+		if w := doJSON(t, router, http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/markets", adminToken, body); w.Code != http.StatusBadRequest {
 			t.Fatalf("manual tournament_winner market must 400, got %d %s", w.Code, w.Body.String())
 		}
 	}

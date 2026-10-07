@@ -38,7 +38,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -147,7 +147,7 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),
@@ -244,7 +244,7 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ClubID:     blueMenClubID,
+		TenantID:   blueMenTenantID,
 		ID:         newID(t),
 		MarketType: "match_winner",
 		StartsAt:   time.Now().Add(-time.Minute),

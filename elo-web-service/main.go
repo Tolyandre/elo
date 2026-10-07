@@ -178,17 +178,23 @@ func main() {
 	// Clubs
 	router.GET("/clubs", strictWrapper.ListClubs)
 	router.GET("/clubs/:id", strictWrapper.GetClub)
-	router.GET("/clubs/:id/feed", strictWrapper.ListClubFeed)
 	router.POST("/clubs", append(editorAuth(), strictWrapper.CreateClub)...)
 	router.PATCH("/clubs/:id", append(editorAuth(), strictWrapper.PatchClub)...)
-	router.POST("/clubs/:id/convert", append(editorAuth(), strictWrapper.ConvertClub)...)
 	router.DELETE("/clubs/:id", append(editorAuth(), strictWrapper.DeleteClub)...)
 	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
 	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)
-	// Club-owned tournaments and markets (ADR-36): the path club must be an
-	// existing tenant; the services validate it.
-	router.POST("/clubs/:id/tournaments", append(editorAuth(), strictWrapper.CreateClubTournament)...)
-	router.POST("/clubs/:id/markets", append(editorAuth(), strictWrapper.CreateClubMarket)...)
+
+	// Tenants (ADR-36): the community surface — lifecycle, openness settings,
+	// club composition, feed, and the tenant-scoped tournaments and markets
+	// (the path tenant must exist; the services validate it).
+	router.GET("/tenants", strictWrapper.ListTenants)
+	router.GET("/tenants/:id", strictWrapper.GetTenant)
+	router.GET("/tenants/:id/feed", strictWrapper.ListTenantFeed)
+	router.POST("/tenants", append(editorAuth(), strictWrapper.CreateTenant)...)
+	router.PATCH("/tenants/:id", append(editorAuth(), strictWrapper.PatchTenant)...)
+	router.PUT("/tenants/:id/clubs", append(editorAuth(), strictWrapper.SetTenantClubs)...)
+	router.POST("/tenants/:id/tournaments", append(editorAuth(), strictWrapper.CreateTenantTournament)...)
+	router.POST("/tenants/:id/markets", append(editorAuth(), strictWrapper.CreateTenantMarket)...)
 
 	// Tags — shared game-tag vocabulary (many-to-many via /games/:id/tags).
 	router.GET("/tags", strictWrapper.ListTags)
@@ -214,7 +220,7 @@ func main() {
 
 	// Tournaments (ADR-26) — public reads, editor-gated organization, the
 	// self-registration behind the linked-player gate. Creation is
-	// club-scoped: POST /clubs/:id/tournaments (ADR-36).
+	// tenant-scoped: POST /tenants/:id/tournaments (ADR-36).
 	router.GET("/tournaments", strictWrapper.ListTournaments)
 	router.GET("/tournaments/:id", strictWrapper.GetTournament)
 	router.PUT("/tournaments/:id", append(editorAuth(), strictWrapper.UpdateTournament)...)

@@ -62,7 +62,7 @@ vi.mock("@/app/pageHeaderContext", () => ({
 
 const tournament: Tournament = {
     id: "T1" as Base58ID,
-    club_id: "c-blue" as Base58ID,
+    tenant_id: "c-blue" as Base58ID,
     name: "Тест",
     status: "registration",
     elimination: null,

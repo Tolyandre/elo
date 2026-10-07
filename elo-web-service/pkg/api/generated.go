@@ -80,6 +80,7 @@ const (
 	AuditEntryEntityTypeMatch      AuditEntryEntityType = "match"
 	AuditEntryEntityTypePlayer     AuditEntryEntityType = "player"
 	AuditEntryEntityTypeTag        AuditEntryEntityType = "tag"
+	AuditEntryEntityTypeTenant     AuditEntryEntityType = "tenant"
 	AuditEntryEntityTypeTournament AuditEntryEntityType = "tournament"
 )
 
@@ -97,6 +98,8 @@ func (e AuditEntryEntityType) Valid() bool {
 	case AuditEntryEntityTypePlayer:
 		return true
 	case AuditEntryEntityTypeTag:
+		return true
+	case AuditEntryEntityTypeTenant:
 		return true
 	case AuditEntryEntityTypeTournament:
 		return true
@@ -204,60 +207,6 @@ func (e BracketSlotStatus) Valid() bool {
 	case BracketSlotStatusPlaying:
 		return true
 	case BracketSlotStatusWaiting:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ClubArenaMembershipMode.
-const (
-	ClubArenaMembershipModeAnyMember   ClubArenaMembershipMode = "any_member"
-	ClubArenaMembershipModeMembersOnly ClubArenaMembershipMode = "members_only"
-)
-
-// Valid indicates whether the value is a known member of the ClubArenaMembershipMode enum.
-func (e ClubArenaMembershipMode) Valid() bool {
-	switch e {
-	case ClubArenaMembershipModeAnyMember:
-		return true
-	case ClubArenaMembershipModeMembersOnly:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ClubKind.
-const (
-	Group  ClubKind = "group"
-	Tenant ClubKind = "tenant"
-)
-
-// Valid indicates whether the value is a known member of the ClubKind enum.
-func (e ClubKind) Valid() bool {
-	switch e {
-	case Group:
-		return true
-	case Tenant:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ClubTournamentsOpenness.
-const (
-	ClubTournamentsOpennessMembersOnly ClubTournamentsOpenness = "members_only"
-	ClubTournamentsOpennessOpen        ClubTournamentsOpenness = "open"
-)
-
-// Valid indicates whether the value is a known member of the ClubTournamentsOpenness enum.
-func (e ClubTournamentsOpenness) Valid() bool {
-	switch e {
-	case ClubTournamentsOpennessMembersOnly:
-		return true
-	case ClubTournamentsOpennessOpen:
 		return true
 	default:
 		return false
@@ -810,6 +759,42 @@ func (e MatchesMatchMode) Valid() bool {
 	}
 }
 
+// Defines values for TenantsTenantArenaMembershipMode.
+const (
+	TenantsTenantArenaMembershipModeAnyMember   TenantsTenantArenaMembershipMode = "any_member"
+	TenantsTenantArenaMembershipModeMembersOnly TenantsTenantArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the TenantsTenantArenaMembershipMode enum.
+func (e TenantsTenantArenaMembershipMode) Valid() bool {
+	switch e {
+	case TenantsTenantArenaMembershipModeAnyMember:
+		return true
+	case TenantsTenantArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantsTenantTournamentsOpenness.
+const (
+	TenantsTenantTournamentsOpennessMembersOnly TenantsTenantTournamentsOpenness = "members_only"
+	TenantsTenantTournamentsOpennessOpen        TenantsTenantTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the TenantsTenantTournamentsOpenness enum.
+func (e TenantsTenantTournamentsOpenness) Valid() bool {
+	switch e {
+	case TenantsTenantTournamentsOpennessMembersOnly:
+		return true
+	case TenantsTenantTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TournamentsBracketPlanFacetsEliminations.
 const (
 	TournamentsBracketPlanFacetsEliminationsDouble TournamentsBracketPlanFacetsEliminations = "double"
@@ -872,6 +857,7 @@ const (
 	ListAuditEventsParamsEntityTypeMatch      ListAuditEventsParamsEntityType = "match"
 	ListAuditEventsParamsEntityTypePlayer     ListAuditEventsParamsEntityType = "player"
 	ListAuditEventsParamsEntityTypeTag        ListAuditEventsParamsEntityType = "tag"
+	ListAuditEventsParamsEntityTypeTenant     ListAuditEventsParamsEntityType = "tenant"
 	ListAuditEventsParamsEntityTypeTournament ListAuditEventsParamsEntityType = "tournament"
 )
 
@@ -890,97 +876,9 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 		return true
 	case ListAuditEventsParamsEntityTypeTag:
 		return true
+	case ListAuditEventsParamsEntityTypeTenant:
+		return true
 	case ListAuditEventsParamsEntityTypeTournament:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatchClubJSONBodyArenaMembershipMode.
-const (
-	PatchClubJSONBodyArenaMembershipModeAnyMember   PatchClubJSONBodyArenaMembershipMode = "any_member"
-	PatchClubJSONBodyArenaMembershipModeMembersOnly PatchClubJSONBodyArenaMembershipMode = "members_only"
-)
-
-// Valid indicates whether the value is a known member of the PatchClubJSONBodyArenaMembershipMode enum.
-func (e PatchClubJSONBodyArenaMembershipMode) Valid() bool {
-	switch e {
-	case PatchClubJSONBodyArenaMembershipModeAnyMember:
-		return true
-	case PatchClubJSONBodyArenaMembershipModeMembersOnly:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PatchClubJSONBodyTournamentsOpenness.
-const (
-	PatchClubJSONBodyTournamentsOpennessMembersOnly PatchClubJSONBodyTournamentsOpenness = "members_only"
-	PatchClubJSONBodyTournamentsOpennessOpen        PatchClubJSONBodyTournamentsOpenness = "open"
-)
-
-// Valid indicates whether the value is a known member of the PatchClubJSONBodyTournamentsOpenness enum.
-func (e PatchClubJSONBodyTournamentsOpenness) Valid() bool {
-	switch e {
-	case PatchClubJSONBodyTournamentsOpennessMembersOnly:
-		return true
-	case PatchClubJSONBodyTournamentsOpennessOpen:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConvertClubJSONBodyArenaMembershipMode.
-const (
-	ConvertClubJSONBodyArenaMembershipModeAnyMember   ConvertClubJSONBodyArenaMembershipMode = "any_member"
-	ConvertClubJSONBodyArenaMembershipModeMembersOnly ConvertClubJSONBodyArenaMembershipMode = "members_only"
-)
-
-// Valid indicates whether the value is a known member of the ConvertClubJSONBodyArenaMembershipMode enum.
-func (e ConvertClubJSONBodyArenaMembershipMode) Valid() bool {
-	switch e {
-	case ConvertClubJSONBodyArenaMembershipModeAnyMember:
-		return true
-	case ConvertClubJSONBodyArenaMembershipModeMembersOnly:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for ConvertClubJSONBodyTournamentsOpenness.
-const (
-	ConvertClubJSONBodyTournamentsOpennessMembersOnly ConvertClubJSONBodyTournamentsOpenness = "members_only"
-	ConvertClubJSONBodyTournamentsOpennessOpen        ConvertClubJSONBodyTournamentsOpenness = "open"
-)
-
-// Valid indicates whether the value is a known member of the ConvertClubJSONBodyTournamentsOpenness enum.
-func (e ConvertClubJSONBodyTournamentsOpenness) Valid() bool {
-	switch e {
-	case ConvertClubJSONBodyTournamentsOpennessMembersOnly:
-		return true
-	case ConvertClubJSONBodyTournamentsOpennessOpen:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CreateClubMarketJSONBodyMarketType.
-const (
-	CreateClubMarketJSONBodyMarketTypeMatchWinner CreateClubMarketJSONBodyMarketType = "match_winner"
-	CreateClubMarketJSONBodyMarketTypeWinStreak   CreateClubMarketJSONBodyMarketType = "win_streak"
-)
-
-// Valid indicates whether the value is a known member of the CreateClubMarketJSONBodyMarketType enum.
-func (e CreateClubMarketJSONBodyMarketType) Valid() bool {
-	switch e {
-	case CreateClubMarketJSONBodyMarketTypeMatchWinner:
-		return true
-	case CreateClubMarketJSONBodyMarketTypeWinStreak:
 		return true
 	default:
 		return false
@@ -1017,6 +915,96 @@ const (
 func (e PatchMarketJSONBodyStatus) Valid() bool {
 	switch e {
 	case PatchMarketJSONBodyStatusBettingClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateTenantJSONBodyArenaMembershipMode.
+const (
+	CreateTenantJSONBodyArenaMembershipModeAnyMember   CreateTenantJSONBodyArenaMembershipMode = "any_member"
+	CreateTenantJSONBodyArenaMembershipModeMembersOnly CreateTenantJSONBodyArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the CreateTenantJSONBodyArenaMembershipMode enum.
+func (e CreateTenantJSONBodyArenaMembershipMode) Valid() bool {
+	switch e {
+	case CreateTenantJSONBodyArenaMembershipModeAnyMember:
+		return true
+	case CreateTenantJSONBodyArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateTenantJSONBodyTournamentsOpenness.
+const (
+	CreateTenantJSONBodyTournamentsOpennessMembersOnly CreateTenantJSONBodyTournamentsOpenness = "members_only"
+	CreateTenantJSONBodyTournamentsOpennessOpen        CreateTenantJSONBodyTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the CreateTenantJSONBodyTournamentsOpenness enum.
+func (e CreateTenantJSONBodyTournamentsOpenness) Valid() bool {
+	switch e {
+	case CreateTenantJSONBodyTournamentsOpennessMembersOnly:
+		return true
+	case CreateTenantJSONBodyTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchTenantJSONBodyArenaMembershipMode.
+const (
+	PatchTenantJSONBodyArenaMembershipModeAnyMember   PatchTenantJSONBodyArenaMembershipMode = "any_member"
+	PatchTenantJSONBodyArenaMembershipModeMembersOnly PatchTenantJSONBodyArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the PatchTenantJSONBodyArenaMembershipMode enum.
+func (e PatchTenantJSONBodyArenaMembershipMode) Valid() bool {
+	switch e {
+	case PatchTenantJSONBodyArenaMembershipModeAnyMember:
+		return true
+	case PatchTenantJSONBodyArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchTenantJSONBodyTournamentsOpenness.
+const (
+	PatchTenantJSONBodyTournamentsOpennessMembersOnly PatchTenantJSONBodyTournamentsOpenness = "members_only"
+	PatchTenantJSONBodyTournamentsOpennessOpen        PatchTenantJSONBodyTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the PatchTenantJSONBodyTournamentsOpenness enum.
+func (e PatchTenantJSONBodyTournamentsOpenness) Valid() bool {
+	switch e {
+	case PatchTenantJSONBodyTournamentsOpennessMembersOnly:
+		return true
+	case PatchTenantJSONBodyTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateTenantMarketJSONBodyMarketType.
+const (
+	CreateTenantMarketJSONBodyMarketTypeMatchWinner CreateTenantMarketJSONBodyMarketType = "match_winner"
+	CreateTenantMarketJSONBodyMarketTypeWinStreak   CreateTenantMarketJSONBodyMarketType = "win_streak"
+)
+
+// Valid indicates whether the value is a known member of the CreateTenantMarketJSONBodyMarketType enum.
+func (e CreateTenantMarketJSONBodyMarketType) Valid() bool {
+	switch e {
+	case CreateTenantMarketJSONBodyMarketTypeMatchWinner:
+		return true
+	case CreateTenantMarketJSONBodyMarketTypeWinStreak:
 		return true
 	default:
 		return false
@@ -1229,7 +1217,7 @@ type AuditEntry struct {
 	ActorUserId Base58ID  `json:"actor_user_id"`
 	CreatedAt   time.Time `json:"created_at"`
 
-	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+	// Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 	Details *AuditEntry_Details `json:"details,omitempty"`
 
 	// EntityId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -1243,7 +1231,7 @@ type AuditEntry struct {
 // AuditEntryAction defines model for AuditEntry.Action.
 type AuditEntryAction string
 
-// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
+// AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), renamed → AuditRenameDetails, updated → AuditMatchUpdateDetails; arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).
 type AuditEntry_Details struct {
 	union json.RawMessage
 }
@@ -1406,38 +1394,21 @@ type BracketSlotStatus string
 
 // Club defines model for Club.
 type Club struct {
-	// ArenaMembershipMode Tenant only — which matches count into the main arena.
-	ArenaMembershipMode *ClubArenaMembershipMode `json:"arena_membership_mode,omitempty"`
-	GeologistName       *string                  `json:"geologist_name,omitempty"`
+	GeologistName *string `json:"geologist_name,omitempty"`
 
 	// Icon Key into the frontend's built-in club icon set (e.g. "clover"). Null means the club has no icon. The icon itself is a version-controlled static SVG in the frontend.
 	Icon *string `json:"icon,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-
-	// Kind `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
-	Kind ClubKind `json:"kind"`
-
-	// MainArenaId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	MainArenaId *Base58ID `json:"main_arena_id,omitempty"`
-	Name        string    `json:"name"`
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
 
 	// PlayerIds List of player IDs (active members; ADR-36 stint history)
 	PlayerIds []Base58ID `json:"player_ids"`
 
-	// TournamentsOpenness Tenant only — whether tournament registration is restricted to members.
-	TournamentsOpenness *ClubTournamentsOpenness `json:"tournaments_openness,omitempty"`
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId *Base58ID `json:"tenant_id,omitempty"`
 }
-
-// ClubArenaMembershipMode Tenant only — which matches count into the main arena.
-type ClubArenaMembershipMode string
-
-// ClubKind `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
-type ClubKind string
-
-// ClubTournamentsOpenness Tenant only — whether tournament registration is restricted to members.
-type ClubTournamentsOpenness string
 
 // Correction defines model for Correction.
 type Correction struct {
@@ -1724,10 +1695,7 @@ type IawwGameStatePhase string
 type Market struct {
 	BettingClosedAt *time.Time `json:"betting_closed_at,omitempty"`
 	ClosesAt        *time.Time `json:"closes_at,omitempty"`
-
-	// ClubId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	ClubId    Base58ID   `json:"club_id"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
 
 	// FeeCollected Total maker fees the market generated (final once resolved).
 	FeeCollected *float64 `json:"fee_collected,omitempty"`
@@ -1765,6 +1733,9 @@ type Market struct {
 	Settlement *[]SettlementDetail `json:"settlement,omitempty"`
 	StartsAt   *time.Time          `json:"starts_at,omitempty"`
 	Status     MarketStatus        `json:"status"`
+
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId Base58ID `json:"tenant_id"`
 }
 
 // MarketMarketType defines model for Market.MarketType.
@@ -1783,10 +1754,7 @@ type MarketDetail struct {
 	BetLimit        *float64   `json:"bet_limit,omitempty"`
 	BettingClosedAt *time.Time `json:"betting_closed_at,omitempty"`
 	ClosesAt        *time.Time `json:"closes_at,omitempty"`
-
-	// ClubId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	ClubId    Base58ID   `json:"club_id"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
 
 	// FeeCollected Total maker fees the market generated (final once resolved).
 	FeeCollected *float64 `json:"fee_collected,omitempty"`
@@ -1837,6 +1805,9 @@ type MarketDetail struct {
 	Settlement *[]SettlementDetail `json:"settlement,omitempty"`
 	StartsAt   *time.Time          `json:"starts_at,omitempty"`
 	Status     MarketDetailStatus  `json:"status"`
+
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId Base58ID `json:"tenant_id"`
 }
 
 // MarketDetailMarketType defines model for MarketDetail.MarketType.
@@ -2155,8 +2126,6 @@ type Tag struct {
 
 // Tournament defines model for Tournament.
 type Tournament struct {
-	// ClubId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	ClubId    Base58ID   `json:"club_id"`
 	CreatedAt *time.Time `json:"created_at,omitempty"`
 
 	// Elimination The chosen plan's family, stamped at start; NULL during registration.
@@ -2171,6 +2140,9 @@ type Tournament struct {
 	// ParticipantIds Player ids in registration order (list/detail reads)
 	ParticipantIds *[]Base58ID      `json:"participant_ids,omitempty"`
 	Status         TournamentStatus `json:"status"`
+
+	// TenantId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TenantId Base58ID `json:"tenant_id"`
 
 	// WinnerPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	WinnerPlayerId *Base58ID `json:"winner_player_id,omitempty"`
@@ -2499,6 +2471,31 @@ type TablesUpdateTableStateRequest struct {
 	Version int64 `json:"version"`
 }
 
+// TenantsTenant defines model for tenants_Tenant.
+type TenantsTenant struct {
+	// ArenaMembershipMode Which matches count into the main arena.
+	ArenaMembershipMode TenantsTenantArenaMembershipMode `json:"arena_membership_mode"`
+
+	// ClubIds The clubs belonging to the tenant (ADR-36); a tenant holds one or many.
+	ClubIds []Base58ID `json:"club_ids"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// MainArenaId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	MainArenaId Base58ID `json:"main_arena_id"`
+	Name        string   `json:"name"`
+
+	// TournamentsOpenness Whether tournament registration is restricted to members.
+	TournamentsOpenness TenantsTenantTournamentsOpenness `json:"tournaments_openness"`
+}
+
+// TenantsTenantArenaMembershipMode Which matches count into the main arena.
+type TenantsTenantArenaMembershipMode string
+
+// TenantsTenantTournamentsOpenness Whether tournament registration is restricted to members.
+type TenantsTenantTournamentsOpenness string
+
 // TournamentsBracketPlanFacets The option space of the explored elimination families, ignoring the display filters and the cap — the shape picker's chip options.
 type TournamentsBracketPlanFacets struct {
 	// Advances Distinct per-round advance values across those plans (a plan may mix values between rounds), sorted ascending.
@@ -2608,79 +2605,9 @@ type CreateClubJSONBody struct {
 
 // PatchClubJSONBody defines parameters for PatchClub.
 type PatchClubJSONBody struct {
-	ArenaMembershipMode *PatchClubJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
-	Icon                *string                               `json:"icon,omitempty"`
-	Name                *string                               `json:"name,omitempty"`
-	TournamentsOpenness *PatchClubJSONBodyTournamentsOpenness `json:"tournaments_openness,omitempty"`
+	Icon *string `json:"icon,omitempty"`
+	Name *string `json:"name,omitempty"`
 }
-
-// PatchClubJSONBodyArenaMembershipMode defines parameters for PatchClub.
-type PatchClubJSONBodyArenaMembershipMode string
-
-// PatchClubJSONBodyTournamentsOpenness defines parameters for PatchClub.
-type PatchClubJSONBodyTournamentsOpenness string
-
-// ConvertClubJSONBody defines parameters for ConvertClub.
-type ConvertClubJSONBody struct {
-	ArenaMembershipMode ConvertClubJSONBodyArenaMembershipMode `json:"arena_membership_mode"`
-	TournamentsOpenness ConvertClubJSONBodyTournamentsOpenness `json:"tournaments_openness"`
-}
-
-// ConvertClubJSONBodyArenaMembershipMode defines parameters for ConvertClub.
-type ConvertClubJSONBodyArenaMembershipMode string
-
-// ConvertClubJSONBodyTournamentsOpenness defines parameters for ConvertClub.
-type ConvertClubJSONBodyTournamentsOpenness string
-
-// ListClubFeedParams defines parameters for ListClubFeed.
-type ListClubFeedParams struct {
-	// PlayerId Filter match and market events by player ID (the arena feed's matching rule)
-	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
-
-	// GameId Filter match and market events by game ID (the arena feed's matching rule)
-	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
-
-	// Next Cursor token from previous page's "next" field
-	Next *string `form:"next,omitempty" json:"next,omitempty"`
-
-	// Limit Number of events per page
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// CreateClubMarketJSONBody defines parameters for CreateClubMarket.
-type CreateClubMarketJSONBody struct {
-	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
-	AllowOtherPlayers *bool `json:"allow_other_players,omitempty"`
-
-	// ClosesAt Required for both market types
-	ClosesAt *time.Time `json:"closes_at,omitempty"`
-
-	// GameIds Games the match must belong to; empty means any game.
-	GameIds *[]Base58ID `json:"game_ids,omitempty"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-
-	// MarketType tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
-	MarketType CreateClubMarketJSONBodyMarketType `json:"market_type"`
-	MaxLosses  *int                               `json:"max_losses,omitempty"`
-
-	// StartsAt Defaults to now if omitted; must not be in the past if provided
-	StartsAt *time.Time `json:"starts_at,omitempty"`
-
-	// StreakGameIds Games the matches must belong to; empty means any game.
-	StreakGameIds *[]Base58ID `json:"streak_game_ids,omitempty"`
-
-	// TargetPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	TargetPlayerId *Base58ID `json:"target_player_id,omitempty"`
-
-	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
-	TargetPlayerIds *[]Base58ID `json:"target_player_ids,omitempty"`
-	WinsRequired    *int        `json:"wins_required,omitempty"`
-}
-
-// CreateClubMarketJSONBodyMarketType defines parameters for CreateClubMarket.
-type CreateClubMarketJSONBodyMarketType string
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.
 type AddClubMemberJSONBody struct {
@@ -2950,6 +2877,94 @@ type PatchTagJSONBody struct {
 	Name string `json:"name"`
 }
 
+// CreateTenantJSONBody defines parameters for CreateTenant.
+type CreateTenantJSONBody struct {
+	ArenaMembershipMode CreateTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode"`
+
+	// ClubIds Initial club composition (may be empty).
+	ClubIds *[]Base58ID `json:"club_ids,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id                  Base58ID                                `json:"id"`
+	Name                string                                  `json:"name"`
+	TournamentsOpenness CreateTenantJSONBodyTournamentsOpenness `json:"tournaments_openness"`
+}
+
+// CreateTenantJSONBodyArenaMembershipMode defines parameters for CreateTenant.
+type CreateTenantJSONBodyArenaMembershipMode string
+
+// CreateTenantJSONBodyTournamentsOpenness defines parameters for CreateTenant.
+type CreateTenantJSONBodyTournamentsOpenness string
+
+// PatchTenantJSONBody defines parameters for PatchTenant.
+type PatchTenantJSONBody struct {
+	ArenaMembershipMode *PatchTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
+	Name                *string                                 `json:"name,omitempty"`
+	TournamentsOpenness *PatchTenantJSONBodyTournamentsOpenness `json:"tournaments_openness,omitempty"`
+}
+
+// PatchTenantJSONBodyArenaMembershipMode defines parameters for PatchTenant.
+type PatchTenantJSONBodyArenaMembershipMode string
+
+// PatchTenantJSONBodyTournamentsOpenness defines parameters for PatchTenant.
+type PatchTenantJSONBodyTournamentsOpenness string
+
+// SetTenantClubsJSONBody defines parameters for SetTenantClubs.
+type SetTenantClubsJSONBody struct {
+	// ClubIds The full desired club set (may be empty).
+	ClubIds []Base58ID `json:"club_ids"`
+}
+
+// ListTenantFeedParams defines parameters for ListTenantFeed.
+type ListTenantFeedParams struct {
+	// PlayerId Filter match and market events by player ID (the arena feed's matching rule)
+	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
+
+	// GameId Filter match and market events by game ID (the arena feed's matching rule)
+	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
+
+	// Next Cursor token from previous page's "next" field
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+
+	// Limit Number of events per page
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// CreateTenantMarketJSONBody defines parameters for CreateTenantMarket.
+type CreateTenantMarketJSONBody struct {
+	// AllowOtherPlayers When true, a match may include players outside the targets (all targets must still participate). When false, the market targets a match with exactly these players. A match resolving in a tie (or a non-target sole winner) resolves the "other" outcome.
+	AllowOtherPlayers *bool `json:"allow_other_players,omitempty"`
+
+	// ClosesAt Required for both market types
+	ClosesAt *time.Time `json:"closes_at,omitempty"`
+
+	// GameIds Games the match must belong to; empty means any game.
+	GameIds *[]Base58ID `json:"game_ids,omitempty"`
+
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id Base58ID `json:"id"`
+
+	// MarketType tournament_winner markets are not creatable by hand — one is born automatically when its tournament starts.
+	MarketType CreateTenantMarketJSONBodyMarketType `json:"market_type"`
+	MaxLosses  *int                                 `json:"max_losses,omitempty"`
+
+	// StartsAt Defaults to now if omitted; must not be in the past if provided
+	StartsAt *time.Time `json:"starts_at,omitempty"`
+
+	// StreakGameIds Games the matches must belong to; empty means any game.
+	StreakGameIds *[]Base58ID `json:"streak_game_ids,omitempty"`
+
+	// TargetPlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	TargetPlayerId *Base58ID `json:"target_player_id,omitempty"`
+
+	// TargetPlayerIds Target players — one "player wins" outcome is created per player.
+	TargetPlayerIds *[]Base58ID `json:"target_player_ids,omitempty"`
+	WinsRequired    *int        `json:"wins_required,omitempty"`
+}
+
+// CreateTenantMarketJSONBodyMarketType defines parameters for CreateTenantMarket.
+type CreateTenantMarketJSONBodyMarketType string
+
 // ListTournamentBracketPlansParams defines parameters for ListTournamentBracketPlans.
 type ListTournamentBracketPlansParams struct {
 	// Elimination Families to explore; repeated for several; absent = both
@@ -3030,17 +3045,8 @@ type CreateClubJSONRequestBody CreateClubJSONBody
 // PatchClubJSONRequestBody defines body for PatchClub for application/json ContentType.
 type PatchClubJSONRequestBody PatchClubJSONBody
 
-// ConvertClubJSONRequestBody defines body for ConvertClub for application/json ContentType.
-type ConvertClubJSONRequestBody ConvertClubJSONBody
-
-// CreateClubMarketJSONRequestBody defines body for CreateClubMarket for application/json ContentType.
-type CreateClubMarketJSONRequestBody CreateClubMarketJSONBody
-
 // AddClubMemberJSONRequestBody defines body for AddClubMember for application/json ContentType.
 type AddClubMemberJSONRequestBody AddClubMemberJSONBody
-
-// CreateClubTournamentJSONRequestBody defines body for CreateClubTournament for application/json ContentType.
-type CreateClubTournamentJSONRequestBody = TournamentInput
 
 // CreateGameJSONRequestBody defines body for CreateGame for application/json ContentType.
 type CreateGameJSONRequestBody CreateGameJSONBody
@@ -3095,6 +3101,21 @@ type CreateTagJSONRequestBody CreateTagJSONBody
 
 // PatchTagJSONRequestBody defines body for PatchTag for application/json ContentType.
 type PatchTagJSONRequestBody PatchTagJSONBody
+
+// CreateTenantJSONRequestBody defines body for CreateTenant for application/json ContentType.
+type CreateTenantJSONRequestBody CreateTenantJSONBody
+
+// PatchTenantJSONRequestBody defines body for PatchTenant for application/json ContentType.
+type PatchTenantJSONRequestBody PatchTenantJSONBody
+
+// SetTenantClubsJSONRequestBody defines body for SetTenantClubs for application/json ContentType.
+type SetTenantClubsJSONRequestBody SetTenantClubsJSONBody
+
+// CreateTenantMarketJSONRequestBody defines body for CreateTenantMarket for application/json ContentType.
+type CreateTenantMarketJSONRequestBody CreateTenantMarketJSONBody
+
+// CreateTenantTournamentJSONRequestBody defines body for CreateTenantTournament for application/json ContentType.
+type CreateTenantTournamentJSONRequestBody = TournamentInput
 
 // UpdateTournamentJSONRequestBody defines body for UpdateTournament for application/json ContentType.
 type UpdateTournamentJSONRequestBody = TournamentInput
@@ -3932,27 +3953,15 @@ type ServerInterface interface {
 	// GetClub Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(c *gin.Context, id string)
-	// PatchClub Update a club (name, icon, tenant settings)
+	// PatchClub Update a club (name, icon)
 	// (PATCH /clubs/{id})
 	PatchClub(c *gin.Context, id string)
-	// ConvertClub Convert a group club into a tenant club
-	// (POST /clubs/{id}/convert)
-	ConvertClub(c *gin.Context, id string)
-	// ListClubFeed The club's feed (ADR-36) — the community's activity, membership-scoped
-	// (GET /clubs/{id}/feed)
-	ListClubFeed(c *gin.Context, id string, params ListClubFeedParams)
-	// CreateClubMarket Create a new betting market owned by the club
-	// (POST /clubs/{id}/markets)
-	CreateClubMarket(c *gin.Context, id string)
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(c *gin.Context, id string)
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(c *gin.Context, id string, playerId string)
-	// CreateClubTournament Create a tournament owned by the club (status = registration)
-	// (POST /clubs/{id}/tournaments)
-	CreateClubTournament(c *gin.Context, id string)
 	// ListHomeFeed The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
 	// (GET /feed)
 	ListHomeFeed(c *gin.Context, params ListHomeFeedParams)
@@ -4094,6 +4103,30 @@ type ServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(c *gin.Context, id string)
+	// ListTenants List all tenants (with their clubs and main arenas)
+	// (GET /tenants)
+	ListTenants(c *gin.Context)
+	// CreateTenant Create a tenant (its main arena is created in the same transaction)
+	// (POST /tenants)
+	CreateTenant(c *gin.Context)
+	// GetTenant Get a tenant by ID
+	// (GET /tenants/{id})
+	GetTenant(c *gin.Context, id string)
+	// PatchTenant Update a tenant (name, openness settings)
+	// (PATCH /tenants/{id})
+	PatchTenant(c *gin.Context, id string)
+	// SetTenantClubs Replace the tenant's club composition
+	// (PUT /tenants/{id}/clubs)
+	SetTenantClubs(c *gin.Context, id string)
+	// ListTenantFeed The tenant's feed (ADR-36) — the community's activity, membership-scoped
+	// (GET /tenants/{id}/feed)
+	ListTenantFeed(c *gin.Context, id string, params ListTenantFeedParams)
+	// CreateTenantMarket Create a new betting market owned by the tenant
+	// (POST /tenants/{id}/markets)
+	CreateTenantMarket(c *gin.Context, id string)
+	// CreateTenantTournament Create a tournament owned by the tenant (status = registration)
+	// (POST /tenants/{id}/tournaments)
+	CreateTenantTournament(c *gin.Context, id string)
 	// ListTournaments List tournaments (running/registration first, then finished)
 	// (GET /tournaments)
 	ListTournaments(c *gin.Context)
@@ -4651,116 +4684,6 @@ func (siw *ServerInterfaceWrapper) PatchClub(c *gin.Context) {
 	siw.Handler.PatchClub(c, id)
 }
 
-// ConvertClub operation middleware
-func (siw *ServerInterfaceWrapper) ConvertClub(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ConvertClub(c, id)
-}
-
-// ListClubFeed operation middleware
-func (siw *ServerInterfaceWrapper) ListClubFeed(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListClubFeedParams
-
-	// ------------- Optional query parameter "player_id" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "game_id" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "next" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter next: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListClubFeed(c, id, params)
-}
-
-// CreateClubMarket operation middleware
-func (siw *ServerInterfaceWrapper) CreateClubMarket(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateClubMarket(c, id)
-}
-
 // AddClubMember operation middleware
 func (siw *ServerInterfaceWrapper) AddClubMember(c *gin.Context) {
 
@@ -4818,31 +4741,6 @@ func (siw *ServerInterfaceWrapper) RemoveClubMember(c *gin.Context) {
 	}
 
 	siw.Handler.RemoveClubMember(c, id, playerId)
-}
-
-// CreateClubTournament operation middleware
-func (siw *ServerInterfaceWrapper) CreateClubTournament(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateClubTournament(c, id)
 }
 
 // ListHomeFeed operation middleware
@@ -5912,6 +5810,217 @@ func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
 	siw.Handler.PatchTag(c, id)
 }
 
+// ListTenants operation middleware
+func (siw *ServerInterfaceWrapper) ListTenants(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTenants(c)
+}
+
+// CreateTenant operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenant(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTenant(c)
+}
+
+// GetTenant operation middleware
+func (siw *ServerInterfaceWrapper) GetTenant(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetTenant(c, id)
+}
+
+// PatchTenant operation middleware
+func (siw *ServerInterfaceWrapper) PatchTenant(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchTenant(c, id)
+}
+
+// SetTenantClubs operation middleware
+func (siw *ServerInterfaceWrapper) SetTenantClubs(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SetTenantClubs(c, id)
+}
+
+// ListTenantFeed operation middleware
+func (siw *ServerInterfaceWrapper) ListTenantFeed(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTenantFeedParams
+
+	// ------------- Optional query parameter "player_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "game_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "game_id", c.Request.URL.Query(), &params.GameId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter game_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", c.Request.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter next: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListTenantFeed(c, id, params)
+}
+
+// CreateTenantMarket operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenantMarket(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTenantMarket(c, id)
+}
+
+// CreateTenantTournament operation middleware
+func (siw *ServerInterfaceWrapper) CreateTenantTournament(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateTenantTournament(c, id)
+}
+
 // ListTournaments operation middleware
 func (siw *ServerInterfaceWrapper) ListTournaments(c *gin.Context) {
 
@@ -6406,12 +6515,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/clubs/:id", wrapper.DeleteClub)
 	router.GET(options.BaseURL+"/clubs/:id", wrapper.GetClub)
 	router.PATCH(options.BaseURL+"/clubs/:id", wrapper.PatchClub)
-	router.POST(options.BaseURL+"/clubs/:id/convert", wrapper.ConvertClub)
-	router.GET(options.BaseURL+"/clubs/:id/feed", wrapper.ListClubFeed)
-	router.POST(options.BaseURL+"/clubs/:id/markets", wrapper.CreateClubMarket)
 	router.POST(options.BaseURL+"/clubs/:id/members", wrapper.AddClubMember)
 	router.DELETE(options.BaseURL+"/clubs/:id/members/:playerId", wrapper.RemoveClubMember)
-	router.POST(options.BaseURL+"/clubs/:id/tournaments", wrapper.CreateClubTournament)
 	router.GET(options.BaseURL+"/feed", wrapper.ListHomeFeed)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
 	router.POST(options.BaseURL+"/games", wrapper.CreateGame)
@@ -6459,6 +6564,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tags", wrapper.CreateTag)
 	router.DELETE(options.BaseURL+"/tags/:id", wrapper.DeleteTag)
 	router.PATCH(options.BaseURL+"/tags/:id", wrapper.PatchTag)
+	router.GET(options.BaseURL+"/tenants", wrapper.ListTenants)
+	router.POST(options.BaseURL+"/tenants", wrapper.CreateTenant)
+	router.GET(options.BaseURL+"/tenants/:id", wrapper.GetTenant)
+	router.PATCH(options.BaseURL+"/tenants/:id", wrapper.PatchTenant)
+	router.PUT(options.BaseURL+"/tenants/:id/clubs", wrapper.SetTenantClubs)
+	router.GET(options.BaseURL+"/tenants/:id/feed", wrapper.ListTenantFeed)
+	router.POST(options.BaseURL+"/tenants/:id/markets", wrapper.CreateTenantMarket)
+	router.POST(options.BaseURL+"/tenants/:id/tournaments", wrapper.CreateTenantTournament)
 	router.GET(options.BaseURL+"/tournaments", wrapper.ListTournaments)
 	router.GET(options.BaseURL+"/tournaments/:id", wrapper.GetTournament)
 	router.PUT(options.BaseURL+"/tournaments/:id", wrapper.UpdateTournament)
@@ -7480,266 +7593,6 @@ func (response PatchClub404JSONResponse) VisitPatchClubResponse(w http.ResponseW
 	return err
 }
 
-type PatchClub409JSONResponse ApiError
-
-func (response PatchClub409JSONResponse) VisitPatchClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClubRequestObject struct {
-	Id   string `json:"id"`
-	Body *ConvertClubJSONRequestBody
-}
-
-type ConvertClubResponseObject interface {
-	VisitConvertClubResponse(w http.ResponseWriter) error
-}
-
-type ConvertClub200JSONResponse struct {
-	Data   Club   `json:"data"`
-	Status string `json:"status"`
-}
-
-func (response ConvertClub200JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClub400JSONResponse ApiError
-
-func (response ConvertClub400JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClub401JSONResponse ApiError
-
-func (response ConvertClub401JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClub403JSONResponse ApiError
-
-func (response ConvertClub403JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClub404JSONResponse ApiError
-
-func (response ConvertClub404JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ConvertClub409JSONResponse ApiError
-
-func (response ConvertClub409JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListClubFeedRequestObject struct {
-	Id     string `json:"id"`
-	Params ListClubFeedParams
-}
-
-type ListClubFeedResponseObject interface {
-	VisitListClubFeedResponse(w http.ResponseWriter) error
-}
-
-type ListClubFeed200JSONResponse FeedPage
-
-func (response ListClubFeed200JSONResponse) VisitListClubFeedResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListClubFeed400JSONResponse ApiError
-
-func (response ListClubFeed400JSONResponse) VisitListClubFeedResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListClubFeed404JSONResponse ApiError
-
-func (response ListClubFeed404JSONResponse) VisitListClubFeedResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarketRequestObject struct {
-	Id   string `json:"id"`
-	Body *CreateClubMarketJSONRequestBody
-}
-
-type CreateClubMarketResponseObject interface {
-	VisitCreateClubMarketResponse(w http.ResponseWriter) error
-}
-
-type CreateClubMarket201JSONResponse struct {
-	Data struct {
-		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-		Id Base58ID `json:"id"`
-	} `json:"data"`
-	Status string `json:"status"`
-}
-
-func (response CreateClubMarket201JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarket400JSONResponse ApiError
-
-func (response CreateClubMarket400JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarket401JSONResponse ApiError
-
-func (response CreateClubMarket401JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarket403JSONResponse ApiError
-
-func (response CreateClubMarket403JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarket404JSONResponse ApiError
-
-func (response CreateClubMarket404JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubMarket409JSONResponse ApiError
-
-func (response CreateClubMarket409JSONResponse) VisitCreateClubMarketResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type AddClubMemberRequestObject struct {
 	Id   string `json:"id"`
 	Body *AddClubMemberJSONRequestBody
@@ -7866,99 +7719,6 @@ func (response RemoveClubMember403JSONResponse) VisitRemoveClubMemberResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournamentRequestObject struct {
-	Id   string `json:"id"`
-	Body *CreateClubTournamentJSONRequestBody
-}
-
-type CreateClubTournamentResponseObject interface {
-	VisitCreateClubTournamentResponse(w http.ResponseWriter) error
-}
-
-type CreateClubTournament200JSONResponse TournamentResponse
-
-func (response CreateClubTournament200JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournament400JSONResponse ApiError
-
-func (response CreateClubTournament400JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournament401JSONResponse ApiError
-
-func (response CreateClubTournament401JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournament403JSONResponse ApiError
-
-func (response CreateClubTournament403JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournament404JSONResponse ApiError
-
-func (response CreateClubTournament404JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateClubTournament409JSONResponse ApiError
-
-func (response CreateClubTournament409JSONResponse) VisitCreateClubTournamentResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -10864,6 +10624,585 @@ func (response PatchTag409JSONResponse) VisitPatchTagResponse(w http.ResponseWri
 	return err
 }
 
+type ListTenantsRequestObject struct {
+}
+
+type ListTenantsResponseObject interface {
+	VisitListTenantsResponse(w http.ResponseWriter) error
+}
+
+type ListTenants200JSONResponse struct {
+	Data   []TenantsTenant `json:"data"`
+	Status string          `json:"status"`
+}
+
+func (response ListTenants200JSONResponse) VisitListTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantRequestObject struct {
+	Body *CreateTenantJSONRequestBody
+}
+
+type CreateTenantResponseObject interface {
+	VisitCreateTenantResponse(w http.ResponseWriter) error
+}
+
+type CreateTenant200JSONResponse struct {
+	Data   TenantsTenant `json:"data"`
+	Status string        `json:"status"`
+}
+
+func (response CreateTenant200JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant400JSONResponse ApiError
+
+func (response CreateTenant400JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant401JSONResponse ApiError
+
+func (response CreateTenant401JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant403JSONResponse ApiError
+
+func (response CreateTenant403JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenant409JSONResponse ApiError
+
+func (response CreateTenant409JSONResponse) VisitCreateTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenantRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetTenantResponseObject interface {
+	VisitGetTenantResponse(w http.ResponseWriter) error
+}
+
+type GetTenant200JSONResponse struct {
+	Data   TenantsTenant `json:"data"`
+	Status string        `json:"status"`
+}
+
+func (response GetTenant200JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenant400JSONResponse ApiError
+
+func (response GetTenant400JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTenant404JSONResponse ApiError
+
+func (response GetTenant404JSONResponse) VisitGetTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenantRequestObject struct {
+	Id   string `json:"id"`
+	Body *PatchTenantJSONRequestBody
+}
+
+type PatchTenantResponseObject interface {
+	VisitPatchTenantResponse(w http.ResponseWriter) error
+}
+
+type PatchTenant200JSONResponse struct {
+	Data   TenantsTenant `json:"data"`
+	Status string        `json:"status"`
+}
+
+func (response PatchTenant200JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenant400JSONResponse ApiError
+
+func (response PatchTenant400JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenant401JSONResponse ApiError
+
+func (response PatchTenant401JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenant403JSONResponse ApiError
+
+func (response PatchTenant403JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenant404JSONResponse ApiError
+
+func (response PatchTenant404JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchTenant409JSONResponse ApiError
+
+func (response PatchTenant409JSONResponse) VisitPatchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubsRequestObject struct {
+	Id   string `json:"id"`
+	Body *SetTenantClubsJSONRequestBody
+}
+
+type SetTenantClubsResponseObject interface {
+	VisitSetTenantClubsResponse(w http.ResponseWriter) error
+}
+
+type SetTenantClubs200JSONResponse struct {
+	Data   TenantsTenant `json:"data"`
+	Status string        `json:"status"`
+}
+
+func (response SetTenantClubs200JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubs400JSONResponse ApiError
+
+func (response SetTenantClubs400JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubs401JSONResponse ApiError
+
+func (response SetTenantClubs401JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubs403JSONResponse ApiError
+
+func (response SetTenantClubs403JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubs404JSONResponse ApiError
+
+func (response SetTenantClubs404JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTenantClubs409JSONResponse ApiError
+
+func (response SetTenantClubs409JSONResponse) VisitSetTenantClubsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantFeedRequestObject struct {
+	Id     string `json:"id"`
+	Params ListTenantFeedParams
+}
+
+type ListTenantFeedResponseObject interface {
+	VisitListTenantFeedResponse(w http.ResponseWriter) error
+}
+
+type ListTenantFeed200JSONResponse FeedPage
+
+func (response ListTenantFeed200JSONResponse) VisitListTenantFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantFeed400JSONResponse ApiError
+
+func (response ListTenantFeed400JSONResponse) VisitListTenantFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTenantFeed404JSONResponse ApiError
+
+func (response ListTenantFeed404JSONResponse) VisitListTenantFeedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMarketRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateTenantMarketJSONRequestBody
+}
+
+type CreateTenantMarketResponseObject interface {
+	VisitCreateTenantMarketResponse(w http.ResponseWriter) error
+}
+
+type CreateTenantMarket201JSONResponse struct {
+	Data struct {
+		// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+		Id Base58ID `json:"id"`
+	} `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response CreateTenantMarket201JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMarket400JSONResponse ApiError
+
+func (response CreateTenantMarket400JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMarket401JSONResponse ApiError
+
+func (response CreateTenantMarket401JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMarket403JSONResponse ApiError
+
+func (response CreateTenantMarket403JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantMarket404JSONResponse ApiError
+
+func (response CreateTenantMarket404JSONResponse) VisitCreateTenantMarketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournamentRequestObject struct {
+	Id   string `json:"id"`
+	Body *CreateTenantTournamentJSONRequestBody
+}
+
+type CreateTenantTournamentResponseObject interface {
+	VisitCreateTenantTournamentResponse(w http.ResponseWriter) error
+}
+
+type CreateTenantTournament200JSONResponse TournamentResponse
+
+func (response CreateTenantTournament200JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournament400JSONResponse ApiError
+
+func (response CreateTenantTournament400JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournament401JSONResponse ApiError
+
+func (response CreateTenantTournament401JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournament403JSONResponse ApiError
+
+func (response CreateTenantTournament403JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournament404JSONResponse ApiError
+
+func (response CreateTenantTournament404JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTenantTournament409JSONResponse ApiError
+
+func (response CreateTenantTournament409JSONResponse) VisitCreateTenantTournamentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTournamentsRequestObject struct {
 }
 
@@ -12025,27 +12364,15 @@ type StrictServerInterface interface {
 	// GetClub Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error)
-	// PatchClub Update a club (name, icon, tenant settings)
+	// PatchClub Update a club (name, icon)
 	// (PATCH /clubs/{id})
 	PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error)
-	// ConvertClub Convert a group club into a tenant club
-	// (POST /clubs/{id}/convert)
-	ConvertClub(ctx context.Context, request ConvertClubRequestObject) (ConvertClubResponseObject, error)
-	// ListClubFeed The club's feed (ADR-36) — the community's activity, membership-scoped
-	// (GET /clubs/{id}/feed)
-	ListClubFeed(ctx context.Context, request ListClubFeedRequestObject) (ListClubFeedResponseObject, error)
-	// CreateClubMarket Create a new betting market owned by the club
-	// (POST /clubs/{id}/markets)
-	CreateClubMarket(ctx context.Context, request CreateClubMarketRequestObject) (CreateClubMarketResponseObject, error)
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(ctx context.Context, request AddClubMemberRequestObject) (AddClubMemberResponseObject, error)
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error)
-	// CreateClubTournament Create a tournament owned by the club (status = registration)
-	// (POST /clubs/{id}/tournaments)
-	CreateClubTournament(ctx context.Context, request CreateClubTournamentRequestObject) (CreateClubTournamentResponseObject, error)
 	// ListHomeFeed The main page's feed (ADR-32) — all events of interest, not just rating-relevant ones
 	// (GET /feed)
 	ListHomeFeed(ctx context.Context, request ListHomeFeedRequestObject) (ListHomeFeedResponseObject, error)
@@ -12187,6 +12514,30 @@ type StrictServerInterface interface {
 	// PatchTag Rename a tag (applies to every game carrying it)
 	// (PATCH /tags/{id})
 	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
+	// ListTenants List all tenants (with their clubs and main arenas)
+	// (GET /tenants)
+	ListTenants(ctx context.Context, request ListTenantsRequestObject) (ListTenantsResponseObject, error)
+	// CreateTenant Create a tenant (its main arena is created in the same transaction)
+	// (POST /tenants)
+	CreateTenant(ctx context.Context, request CreateTenantRequestObject) (CreateTenantResponseObject, error)
+	// GetTenant Get a tenant by ID
+	// (GET /tenants/{id})
+	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
+	// PatchTenant Update a tenant (name, openness settings)
+	// (PATCH /tenants/{id})
+	PatchTenant(ctx context.Context, request PatchTenantRequestObject) (PatchTenantResponseObject, error)
+	// SetTenantClubs Replace the tenant's club composition
+	// (PUT /tenants/{id}/clubs)
+	SetTenantClubs(ctx context.Context, request SetTenantClubsRequestObject) (SetTenantClubsResponseObject, error)
+	// ListTenantFeed The tenant's feed (ADR-36) — the community's activity, membership-scoped
+	// (GET /tenants/{id}/feed)
+	ListTenantFeed(ctx context.Context, request ListTenantFeedRequestObject) (ListTenantFeedResponseObject, error)
+	// CreateTenantMarket Create a new betting market owned by the tenant
+	// (POST /tenants/{id}/markets)
+	CreateTenantMarket(ctx context.Context, request CreateTenantMarketRequestObject) (CreateTenantMarketResponseObject, error)
+	// CreateTenantTournament Create a tournament owned by the tenant (status = registration)
+	// (POST /tenants/{id}/tournaments)
+	CreateTenantTournament(ctx context.Context, request CreateTenantTournamentRequestObject) (CreateTenantTournamentResponseObject, error)
 	// ListTournaments List tournaments (running/registration first, then finished)
 	// (GET /tournaments)
 	ListTournaments(ctx context.Context, request ListTournamentsRequestObject) (ListTournamentsResponseObject, error)
@@ -12838,99 +13189,6 @@ func (sh *strictHandler) PatchClub(ctx *gin.Context, id string) {
 	}
 }
 
-// ConvertClub operation middleware
-func (sh *strictHandler) ConvertClub(ctx *gin.Context, id string) {
-	var request ConvertClubRequestObject
-
-	request.Id = id
-
-	var body ConvertClubJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ConvertClub(ctx, request.(ConvertClubRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ConvertClub")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ConvertClubResponseObject); ok {
-		if err := validResponse.VisitConvertClubResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListClubFeed operation middleware
-func (sh *strictHandler) ListClubFeed(ctx *gin.Context, id string, params ListClubFeedParams) {
-	var request ListClubFeedRequestObject
-
-	request.Id = id
-	request.Params = params
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListClubFeed(ctx, request.(ListClubFeedRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListClubFeed")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListClubFeedResponseObject); ok {
-		if err := validResponse.VisitListClubFeedResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateClubMarket operation middleware
-func (sh *strictHandler) CreateClubMarket(ctx *gin.Context, id string) {
-	var request CreateClubMarketRequestObject
-
-	request.Id = id
-
-	var body CreateClubMarketJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateClubMarket(ctx, request.(CreateClubMarketRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateClubMarket")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateClubMarketResponseObject); ok {
-		if err := validResponse.VisitCreateClubMarketResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // AddClubMember operation middleware
 func (sh *strictHandler) AddClubMember(ctx *gin.Context, id string) {
 	var request AddClubMemberRequestObject
@@ -12984,39 +13242,6 @@ func (sh *strictHandler) RemoveClubMember(ctx *gin.Context, id string, playerId 
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(RemoveClubMemberResponseObject); ok {
 		if err := validResponse.VisitRemoveClubMemberResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateClubTournament operation middleware
-func (sh *strictHandler) CreateClubTournament(ctx *gin.Context, id string) {
-	var request CreateClubTournamentRequestObject
-
-	request.Id = id
-
-	var body CreateClubTournamentJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateClubTournament(ctx, request.(CreateClubTournamentRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateClubTournament")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateClubTournamentResponseObject); ok {
-		if err := validResponse.VisitCreateClubTournamentResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -14334,6 +14559,246 @@ func (sh *strictHandler) PatchTag(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchTagResponseObject); ok {
 		if err := validResponse.VisitPatchTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenants operation middleware
+func (sh *strictHandler) ListTenants(ctx *gin.Context) {
+	var request ListTenantsRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenants(ctx, request.(ListTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenants")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListTenantsResponseObject); ok {
+		if err := validResponse.VisitListTenantsResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenant operation middleware
+func (sh *strictHandler) CreateTenant(ctx *gin.Context) {
+	var request CreateTenantRequestObject
+
+	var body CreateTenantJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenant(ctx, request.(CreateTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenant")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTenantResponseObject); ok {
+		if err := validResponse.VisitCreateTenantResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTenant operation middleware
+func (sh *strictHandler) GetTenant(ctx *gin.Context, id string) {
+	var request GetTenantRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTenant(ctx, request.(GetTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTenant")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetTenantResponseObject); ok {
+		if err := validResponse.VisitGetTenantResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchTenant operation middleware
+func (sh *strictHandler) PatchTenant(ctx *gin.Context, id string) {
+	var request PatchTenantRequestObject
+
+	request.Id = id
+
+	var body PatchTenantJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchTenant(ctx, request.(PatchTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchTenant")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(PatchTenantResponseObject); ok {
+		if err := validResponse.VisitPatchTenantResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTenantClubs operation middleware
+func (sh *strictHandler) SetTenantClubs(ctx *gin.Context, id string) {
+	var request SetTenantClubsRequestObject
+
+	request.Id = id
+
+	var body SetTenantClubsJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTenantClubs(ctx, request.(SetTenantClubsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTenantClubs")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(SetTenantClubsResponseObject); ok {
+		if err := validResponse.VisitSetTenantClubsResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTenantFeed operation middleware
+func (sh *strictHandler) ListTenantFeed(ctx *gin.Context, id string, params ListTenantFeedParams) {
+	var request ListTenantFeedRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTenantFeed(ctx, request.(ListTenantFeedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTenantFeed")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListTenantFeedResponseObject); ok {
+		if err := validResponse.VisitListTenantFeedResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenantMarket operation middleware
+func (sh *strictHandler) CreateTenantMarket(ctx *gin.Context, id string) {
+	var request CreateTenantMarketRequestObject
+
+	request.Id = id
+
+	var body CreateTenantMarketJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenantMarket(ctx, request.(CreateTenantMarketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenantMarket")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTenantMarketResponseObject); ok {
+		if err := validResponse.VisitCreateTenantMarketResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTenantTournament operation middleware
+func (sh *strictHandler) CreateTenantTournament(ctx *gin.Context, id string) {
+	var request CreateTenantTournamentRequestObject
+
+	request.Id = id
+
+	var body CreateTenantTournamentJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTenantTournament(ctx, request.(CreateTenantTournamentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTenantTournament")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateTenantTournamentResponseObject); ok {
+		if err := validResponse.VisitCreateTenantTournamentResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

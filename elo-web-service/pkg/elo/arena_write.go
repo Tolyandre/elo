@@ -118,13 +118,13 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 		}
 		// Auto-managed arenas are owned by their game lifecycle; their filters
 		// and settings are system-managed (ADR-24). Camp arenas are never
-		// auto-managed (their anchors are NULL since ADR-27). A tenant club's
-		// main arena (ADR-36) is managed through the club settings.
+		// auto-managed (their anchors are NULL since ADR-27). A tenant's
+		// main arena (ADR-36) is managed through the tenant settings.
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
 		}
-		if existing.ClubID != nil {
-			return Arena{}, ErrClubArenaIsManaged
+		if existing.TenantID != nil {
+			return Arena{}, ErrTenantArenaIsManaged
 		}
 		if err := ensureArenaNameFree(ctx, q, opts.Name, &arenaID); err != nil {
 			return Arena{}, err
@@ -220,8 +220,8 @@ func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
 		}
-		if existing.ClubID != nil {
-			return Arena{}, ErrClubArenaIsManaged
+		if existing.TenantID != nil {
+			return Arena{}, ErrTenantArenaIsManaged
 		}
 		row, err := q.DeleteArena(ctx, arenaID)
 		if err != nil {
@@ -360,14 +360,14 @@ func (s *ArenaService) EnsureGameArena(ctx context.Context, q *db.Queries, gameI
 	})
 }
 
-// EnsureClubArena creates a tenant club's main arena when missing (ADR-36,
-// called at conversion). The arena mirrors the global arena's shape — newbie +
-// amateur + elite leagues over the live elo settings, starting rating = the
-// standard starting elo — but carries no filter: club rules decide membership
-// (the attribution lands in a later ADR-36 phase, so a fresh club arena
-// matches nothing yet).
-func (s *ArenaService) EnsureClubArena(ctx context.Context, q *db.Queries, clubID id.ID, clubName string) error {
-	if _, err := q.GetArenaByClub(ctx, &clubID); !db.IsNoRows(err) {
+// EnsureTenantArena creates a tenant's main arena when missing (ADR-36,
+// called at tenant creation). The arena mirrors the global arena's shape —
+// newbie + amateur + elite leagues over the live elo settings, starting
+// rating = the standard starting elo — but carries no filter: tenant rules
+// decide membership (the attribution lands in a later ADR-36 phase, so a
+// fresh tenant arena matches nothing yet).
+func (s *ArenaService) EnsureTenantArena(ctx context.Context, q *db.Queries, tenantID id.ID, tenantName string) error {
+	if _, err := q.GetArenaByTenant(ctx, &tenantID); !db.IsNoRows(err) {
 		return err // exists (or real error)
 	}
 	newbie, elite, startingElo, err := s.defaultLeagueParams(ctx)
@@ -379,9 +379,9 @@ func (s *ArenaService) EnsureClubArena(ctx context.Context, q *db.Queries, clubI
 		return err
 	}
 	return createAutoArena(ctx, q, arenaCreateInput{
-		name:           arenaName(clubName),
+		name:           arenaName(tenantName),
 		settings:       raw,
-		clubID:         &clubID,
+		tenantID:       &tenantID,
 		startingRating: startingElo,
 		startingElo:    startingElo,
 	})
@@ -391,14 +391,14 @@ type arenaCreateInput struct {
 	name           string
 	settings       json.RawMessage
 	gameID         *id.ID
-	clubID         *id.ID
+	tenantID       *id.ID
 	startingRating float64
 	startingElo    float64
 }
 
 // createAutoArena inserts the arena row (and the filter, for game arenas) and
-// marks the arena stale. Club arenas (ADR-36) take no filter: their membership
-// is decided by club rules, not by arena_contains_match.
+// marks the arena stale. Tenant arenas (ADR-36) take no filter: their
+// membership is decided by tenant rules, not by arena_contains_match.
 func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) error {
 	var filterID *id.ID
 	if in.gameID != nil {
@@ -415,7 +415,7 @@ func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) er
 		Settings:              in.settings,
 		SettingsSchemaVersion: arenasettings.CurrentVersion,
 		GameID:                in.gameID,
-		ClubID:                in.clubID,
+		TenantID:              in.tenantID,
 	})
 	if err != nil {
 		return fmt.Errorf("create arena: %w", err)

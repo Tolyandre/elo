@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -32,88 +31,10 @@ func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) er
 	return err
 }
 
-const clubContainsPlayers = `-- name: ClubContainsPlayers :one
-SELECT CASE c.arena_membership_mode
-           WHEN 'any_member' THEN EXISTS (
-               SELECT 1
-               FROM player_club_membership pcm
-               WHERE pcm.club_id = c.id
-                 AND pcm.player_id = ANY($1::uuid[])
-                 AND pcm.joined_at <= $2::timestamptz
-                 AND (pcm.left_at IS NULL OR pcm.left_at > $2::timestamptz)
-           )
-           WHEN 'members_only' THEN NOT EXISTS (
-               SELECT 1
-               FROM unnest($1::uuid[]) AS pid
-               WHERE NOT EXISTS (
-                   SELECT 1
-                   FROM player_club_membership pcm2
-                   WHERE pcm2.club_id = c.id
-                     AND pcm2.player_id = pid
-                     AND pcm2.joined_at <= $2::timestamptz
-                     AND (pcm2.left_at IS NULL OR pcm2.left_at > $2::timestamptz)
-               )
-           )
-           ELSE false
-       END AS contains
-FROM clubs c
-WHERE c.id = $3
-`
-
-type ClubContainsPlayersParams struct {
-	PlayerIds []id.ID   `json:"player_ids"`
-	Date      time.Time `json:"date"`
-	ClubID    id.ID     `json:"club_id"`
-}
-
-// Whether the participants count into the club's main arena under its CURRENT
-// openness mode, evaluated at @date against stint history (ADR-36): any_member
-// — at least one participant was a member at @date; members_only — all were.
-// The Go settlement gate consults this before settling a match into the
-// club's arena (the SQL-side twin, club_arena_contains_match, probes
-// match_scores itself and lives in migration 069).
-func (q *Queries) ClubContainsPlayers(ctx context.Context, arg ClubContainsPlayersParams) (bool, error) {
-	row := q.db.QueryRow(ctx, clubContainsPlayers, arg.PlayerIds, arg.Date, arg.ClubID)
-	var contains bool
-	err := row.Scan(&contains)
-	return contains, err
-}
-
-const convertClubToTenant = `-- name: ConvertClubToTenant :one
-UPDATE clubs
-SET kind = 'tenant', arena_membership_mode = $2, tournaments_openness = $3
-WHERE id = $1 AND kind = 'group'
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
-`
-
-type ConvertClubToTenantParams struct {
-	ID                  id.ID       `json:"id"`
-	ArenaMembershipMode pgtype.Text `json:"arena_membership_mode"`
-	TournamentsOpenness pgtype.Text `json:"tournaments_openness"`
-}
-
-// One-way group → tenant conversion (ADR-36); returns no rows when the club
-// is missing or already a tenant. The caller creates the main arena in the
-// same transaction.
-func (q *Queries) ConvertClubToTenant(ctx context.Context, arg ConvertClubToTenantParams) (Club, error) {
-	row := q.db.QueryRow(ctx, convertClubToTenant, arg.ID, arg.ArenaMembershipMode, arg.TournamentsOpenness)
-	var i Club
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
-	)
-	return i, err
-}
-
 const createClub = `-- name: CreateClub :one
 INSERT INTO clubs (id, name)
 VALUES ($1, $2)
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+RETURNING id, name, geologist_name, icon, tenant_id
 `
 
 type CreateClubParams struct {
@@ -121,7 +42,7 @@ type CreateClubParams struct {
 	Name string `json:"name"`
 }
 
-// A new club is a plain group (ADR-36): kind defaults, tenant columns NULL.
+// A new club is a plain group (ADR-36): no tenant.
 func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, error) {
 	row := q.db.QueryRow(ctx, createClub, arg.ID, arg.Name)
 	var i Club
@@ -130,9 +51,7 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -140,7 +59,7 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 const deleteClub = `-- name: DeleteClub :one
 DELETE FROM clubs
 WHERE id = $1
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+RETURNING id, name, geologist_name, icon, tenant_id
 `
 
 func (q *Queries) DeleteClub(ctx context.Context, argID id.ID) (Club, error) {
@@ -151,9 +70,7 @@ func (q *Queries) DeleteClub(ctx context.Context, argID id.ID) (Club, error) {
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -164,27 +81,20 @@ SELECT
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
     c.icon AS club_icon,
-    c.kind AS club_kind,
-    c.arena_membership_mode AS club_arena_membership_mode,
-    c.tournaments_openness AS club_tournaments_openness,
-    ma.id AS main_arena_id,
+    c.tenant_id AS club_tenant_id,
     pcm.player_id AS player_id
 FROM clubs c
-LEFT JOIN arenas ma ON ma.club_id = c.id
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id AND pcm.left_at IS NULL
 WHERE c.id = $1
 `
 
 type GetClubRow struct {
-	ClubID                  id.ID       `json:"club_id"`
-	ClubName                string      `json:"club_name"`
-	ClubGeologistName       pgtype.Text `json:"club_geologist_name"`
-	ClubIcon                pgtype.Text `json:"club_icon"`
-	ClubKind                string      `json:"club_kind"`
-	ClubArenaMembershipMode pgtype.Text `json:"club_arena_membership_mode"`
-	ClubTournamentsOpenness pgtype.Text `json:"club_tournaments_openness"`
-	MainArenaID             *id.ID      `json:"main_arena_id"`
-	PlayerID                *id.ID      `json:"player_id"`
+	ClubID            id.ID       `json:"club_id"`
+	ClubName          string      `json:"club_name"`
+	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
+	ClubIcon          pgtype.Text `json:"club_icon"`
+	ClubTenantID      *id.ID      `json:"club_tenant_id"`
+	PlayerID          *id.ID      `json:"player_id"`
 }
 
 func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error) {
@@ -201,10 +111,7 @@ func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error
 			&i.ClubName,
 			&i.ClubGeologistName,
 			&i.ClubIcon,
-			&i.ClubKind,
-			&i.ClubArenaMembershipMode,
-			&i.ClubTournamentsOpenness,
-			&i.MainArenaID,
+			&i.ClubTenantID,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -218,7 +125,7 @@ func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error
 }
 
 const getClubByID = `-- name: GetClubByID :one
-SELECT id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness FROM clubs WHERE id = $1
+SELECT id, name, geologist_name, icon, tenant_id FROM clubs WHERE id = $1
 `
 
 // Old-name read for the rename audit trail (ADR-14).
@@ -230,153 +137,9 @@ func (q *Queries) GetClubByID(ctx context.Context, argID id.ID) (Club, error) {
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
+		&i.TenantID,
 	)
 	return i, err
-}
-
-const listClubFeedEvents = `-- name: ListClubFeedEvents :many
-WITH events AS (
-    SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
-    FROM matches m
-    JOIN match_scores ms ON ms.match_id = m.id
-    WHERE EXISTS (
-              SELECT 1 FROM player_club_membership pcm
-              WHERE pcm.club_id = $5::uuid
-                AND pcm.left_at IS NULL
-                AND pcm.player_id = ms.player_id
-          )
-      AND (
-          $6::uuid IS NULL OR ms.player_id = $6::uuid
-      )
-      AND (
-          $7::uuid IS NULL OR m.game_id = $7::uuid
-      )
-    UNION ALL
-    SELECT c.id, c.date, 'correction'::text
-    FROM corrections c
-    WHERE EXISTS (
-              SELECT 1 FROM player_club_membership pcm
-              WHERE pcm.club_id = $5::uuid
-                AND pcm.left_at IS NULL
-                AND pcm.player_id = c.player_id
-          )
-    UNION ALL
-    -- The club's markets: an active market (open or betting-locked) sorts at
-    -- its creation moment, a settled one (resolved or cancelled) at its
-    -- resolution moment — the arena feed's ordering, with the owning club as
-    -- the membership condition.
-    SELECT om.id,
-           CASE WHEN om.status IN ('open', 'betting_closed') THEN om.created_at
-                ELSE om.resolved_at
-           END AS sort_date,
-           'market'::text
-    FROM markets om
-    WHERE om.club_id = $5::uuid
-      AND (
-          (om.status IN ('open', 'betting_closed') AND om.created_at IS NOT NULL)
-          OR (om.status IN ('resolved', 'cancelled') AND om.resolved_at IS NOT NULL)
-      )
-      AND (
-          $6::uuid IS NULL
-          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
-                     WHERE mwp.market_id = om.id
-                       AND $6::uuid = ANY(mwp.target_player_ids))
-          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
-                     WHERE wsp.market_id = om.id
-                       AND wsp.target_player_id = $6::uuid)
-          OR EXISTS (SELECT 1 FROM market_outcomes mo
-                     WHERE mo.market_id = om.id
-                       AND mo.player_id = $6::uuid)
-          OR EXISTS (SELECT 1 FROM market_guarantees mg
-                     WHERE mg.market_id = om.id
-                       AND mg.player_id = $6::uuid)
-          OR EXISTS (SELECT 1 FROM arena_settlements ars
-                     WHERE ars.market_id = om.id
-                       AND ars.player_id = $6::uuid)
-      )
-      AND (
-          $7::uuid IS NULL
-          OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
-                     WHERE mwp.market_id = om.id
-                       AND $7::uuid = ANY(mwp.game_ids))
-          OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
-                     WHERE wsp.market_id = om.id
-                       AND $7::uuid = ANY(wsp.game_ids))
-          OR EXISTS (SELECT 1 FROM matches rm
-                     WHERE rm.id = om.resolution_match_id
-                       AND rm.game_id = $7::uuid)
-      )
-)
-SELECT id, sort_date, event_type
-FROM events
-WHERE
-    $1::timestamptz IS NULL
-    OR sort_date < $1::timestamptz
-    OR (
-        sort_date = $1::timestamptz
-        AND (
-            event_type < $2::text
-            OR (event_type = $2::text AND id < $3::uuid)
-        )
-    )
-ORDER BY sort_date DESC, event_type DESC, id DESC
-LIMIT $4::int4
-`
-
-type ListClubFeedEventsParams struct {
-	CursorDate pgtype.Timestamptz `json:"cursor_date"`
-	CursorType pgtype.Text        `json:"cursor_type"`
-	CursorID   *id.ID             `json:"cursor_id"`
-	Limit      int32              `json:"limit"`
-	ClubID     id.ID              `json:"club_id"`
-	PlayerID   *id.ID             `json:"player_id"`
-	GameID     *id.ID             `json:"game_id"`
-}
-
-type ListClubFeedEventsRow struct {
-	ID        id.ID              `json:"id"`
-	SortDate  pgtype.Timestamptz `json:"sort_date"`
-	EventType string             `json:"event_type"`
-}
-
-// One page of the club feed (GET /clubs/{id}/feed, ADR-36): the community's
-// activity, membership-scoped — deliberately NOT arena-attribution-scoped, so
-// a tournament match appears even when it does not count into the club's main
-// arena rating. Match events go to any current member's matches (coop
-// included: community life, not just rating); correction events to
-// corrections of current members; market events to the markets the club
-// OWNS (a member's bet on another club's market is that club's news).
-// Parameters and cursor are the arena feed's minus the arena and the
-// include flags; the club itself is the feed's identity.
-func (q *Queries) ListClubFeedEvents(ctx context.Context, arg ListClubFeedEventsParams) ([]ListClubFeedEventsRow, error) {
-	rows, err := q.db.Query(ctx, listClubFeedEvents,
-		arg.CursorDate,
-		arg.CursorType,
-		arg.CursorID,
-		arg.Limit,
-		arg.ClubID,
-		arg.PlayerID,
-		arg.GameID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListClubFeedEventsRow{}
-	for rows.Next() {
-		var i ListClubFeedEventsRow
-		if err := rows.Scan(&i.ID, &i.SortDate, &i.EventType); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const listClubs = `-- name: ListClubs :many
@@ -386,32 +149,25 @@ SELECT
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
     c.icon AS club_icon,
-    c.kind AS club_kind,
-    c.arena_membership_mode AS club_arena_membership_mode,
-    c.tournaments_openness AS club_tournaments_openness,
-    ma.id AS main_arena_id,
+    c.tenant_id AS club_tenant_id,
     pcm.player_id AS player_id
 FROM clubs c
-LEFT JOIN arenas ma ON ma.club_id = c.id
 LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id AND pcm.left_at IS NULL
 `
 
 type ListClubsRow struct {
-	ClubID                  id.ID       `json:"club_id"`
-	ClubName                string      `json:"club_name"`
-	ClubGeologistName       pgtype.Text `json:"club_geologist_name"`
-	ClubIcon                pgtype.Text `json:"club_icon"`
-	ClubKind                string      `json:"club_kind"`
-	ClubArenaMembershipMode pgtype.Text `json:"club_arena_membership_mode"`
-	ClubTournamentsOpenness pgtype.Text `json:"club_tournaments_openness"`
-	MainArenaID             *id.ID      `json:"main_arena_id"`
-	PlayerID                *id.ID      `json:"player_id"`
+	ClubID            id.ID       `json:"club_id"`
+	ClubName          string      `json:"club_name"`
+	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
+	ClubIcon          pgtype.Text `json:"club_icon"`
+	ClubTenantID      *id.ID      `json:"club_tenant_id"`
+	PlayerID          *id.ID      `json:"player_id"`
 }
 
-// Club queries. player_club_membership is stint history (ADR-36): joined_at
-// / left_at, left_at NULL = active stint. Reads of "the members" always
-// filter to active stints; the /club tenancy fields (kind, openness, main
-// arena) are part of every club read.
+// Club queries (ADR-05 grouping + ADR-36 membership stints).
+// player_club_membership is stint history: joined_at / left_at, left_at NULL
+// = active stint. Reads of "the members" always filter to active stints.
+// Tenant fields (openness, main arena) live on the tenants table (tenants.sql).
 func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 	rows, err := q.db.Query(ctx, listClubs)
 	if err != nil {
@@ -426,10 +182,7 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 			&i.ClubName,
 			&i.ClubGeologistName,
 			&i.ClubIcon,
-			&i.ClubKind,
-			&i.ClubArenaMembershipMode,
-			&i.ClubTournamentsOpenness,
-			&i.MainArenaID,
+			&i.ClubTenantID,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -440,29 +193,6 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 		return nil, err
 	}
 	return items, nil
-}
-
-const playerIsClubMember = `-- name: PlayerIsClubMember :one
-SELECT EXISTS (
-    SELECT 1 FROM player_club_membership
-    WHERE club_id = $1
-      AND player_id = $2
-      AND left_at IS NULL
-) AS is_member
-`
-
-type PlayerIsClubMemberParams struct {
-	ClubID   id.ID `json:"club_id"`
-	PlayerID id.ID `json:"player_id"`
-}
-
-// Current-member check (active stint, ADR-36) — the members_only gates:
-// tournament registration and bets/guarantees on a members_only club's market.
-func (q *Queries) PlayerIsClubMember(ctx context.Context, arg PlayerIsClubMemberParams) (bool, error) {
-	row := q.db.QueryRow(ctx, playerIsClubMember, arg.ClubID, arg.PlayerID)
-	var is_member bool
-	err := row.Scan(&is_member)
-	return is_member, err
 }
 
 const removeClubMember = `-- name: RemoveClubMember :exec
@@ -486,7 +216,7 @@ const updateClubIcon = `-- name: UpdateClubIcon :one
 UPDATE clubs
 SET icon = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+RETURNING id, name, geologist_name, icon, tenant_id
 `
 
 type UpdateClubIconParams struct {
@@ -502,9 +232,7 @@ func (q *Queries) UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) 
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
+		&i.TenantID,
 	)
 	return i, err
 }
@@ -513,7 +241,7 @@ const updateClubName = `-- name: UpdateClubName :one
 UPDATE clubs
 SET name = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+RETURNING id, name, geologist_name, icon, tenant_id
 `
 
 type UpdateClubNameParams struct {
@@ -529,39 +257,7 @@ func (q *Queries) UpdateClubName(ctx context.Context, arg UpdateClubNameParams) 
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
-	)
-	return i, err
-}
-
-const updateClubTenantSettings = `-- name: UpdateClubTenantSettings :one
-UPDATE clubs
-SET arena_membership_mode = $2, tournaments_openness = $3
-WHERE id = $1 AND kind = 'tenant'
-RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
-`
-
-type UpdateClubTenantSettingsParams struct {
-	ID                  id.ID       `json:"id"`
-	ArenaMembershipMode pgtype.Text `json:"arena_membership_mode"`
-	TournamentsOpenness pgtype.Text `json:"tournaments_openness"`
-}
-
-// Openness settings of an existing tenant (ADR-36); no rows when the club is
-// missing or still a group.
-func (q *Queries) UpdateClubTenantSettings(ctx context.Context, arg UpdateClubTenantSettingsParams) (Club, error) {
-	row := q.db.QueryRow(ctx, updateClubTenantSettings, arg.ID, arg.ArenaMembershipMode, arg.TournamentsOpenness)
-	var i Club
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.GeologistName,
-		&i.Icon,
-		&i.Kind,
-		&i.ArenaMembershipMode,
-		&i.TournamentsOpenness,
+		&i.TenantID,
 	)
 	return i, err
 }

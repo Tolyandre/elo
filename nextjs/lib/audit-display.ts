@@ -13,6 +13,7 @@ const ENTITY_NOUN: Record<AuditEntityType, string> = {
     tag: "тег",
     arena: "арену",
     tournament: "турнир",
+    tenant: "сообщество",
 };
 
 /** One row of the expanded match-edit diff. */

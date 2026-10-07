@@ -49,6 +49,7 @@ const (
 	EntityTag        = "tag"
 	EntityArena      = "arena"
 	EntityTournament = "tournament"
+	EntityTenant     = "tenant"
 )
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK

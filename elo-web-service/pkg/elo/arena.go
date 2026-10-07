@@ -74,10 +74,10 @@ type Arena struct {
 	// (including camps).
 	GameID       *id.ID
 	TournamentID *id.ID
-	// A tenant club's main arena (ADR-36): membership is decided by club
+	// A tenant's main arena (ADR-36): membership is decided by tenant
 	// rules, not by arena_contains_match. The converted global arena carries
-	// its club alongside the unconditional filter.
-	ClubID *id.ID
+	// its tenant alongside the unconditional filter.
+	TenantID *id.ID
 	// Camp arena (ADR-27): membership is the explicit arena_matches link, the
 	// window bounds are required, and the filter is absent.
 	Camp     bool
@@ -142,9 +142,9 @@ type IArenaService interface {
 	ListArenasForGame(ctx context.Context, gameID id.ID) ([]Arena, error)
 	GetArenaByGame(ctx context.Context, gameID id.ID) (Arena, error)
 	GetArenaByTournament(ctx context.Context, tournamentID id.ID) (Arena, error)
-	// GetArenaByClub returns a tenant club's main arena (ADR-36); no rows
-	// (sqlc ErrNoRows) when the club has none (groups).
-	GetArenaByClub(ctx context.Context, clubID id.ID) (Arena, error)
+	// GetArenaByTenant returns a tenant's main arena (ADR-36); no rows
+	// (sqlc ErrNoRows) when the tenant has none.
+	GetArenaByTenant(ctx context.Context, tenantID id.ID) (Arena, error)
 	GetArenaPlayers(ctx context.Context, arenaID id.ID) ([]ArenaPlayer, error)
 	// GetArenaPlayersAt computes the arena standings as of a past moment
 	// (read-time over the settlement ledger) for the rank-change history.
@@ -168,9 +168,9 @@ type IArenaService interface {
 	// renaming service's transaction. The created arenas start stale and are
 	// filled by the background worker.
 	EnsureGameArena(ctx context.Context, q *db.Queries, gameID id.ID, gameName string) error
-	// EnsureClubArena creates a tenant club's main arena when missing (ADR-36,
-	// at conversion); idempotent like EnsureGameArena.
-	EnsureClubArena(ctx context.Context, q *db.Queries, clubID id.ID, clubName string) error
+	// EnsureTenantArena creates a tenant's main arena when missing (ADR-36,
+	// at tenant creation); idempotent like EnsureGameArena.
+	EnsureTenantArena(ctx context.Context, q *db.Queries, tenantID id.ID, tenantName string) error
 	SyncArenaName(ctx context.Context, q *db.Queries, arena Arena, entityName string) error
 
 	// Update pipeline. MarkAndDrainAfterMatchWrite marks the affected arenas
@@ -243,7 +243,7 @@ func ptrText(s *string) pgtype.Text {
 }
 
 func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int32,
-	gameID, tournamentID, clubID *id.ID, camp bool, startsAt, endsAt, recalcFrom, staleAt, dateFrom, dateTo pgtype.Timestamptz,
+	gameID, tournamentID, tenantID *id.ID, camp bool, startsAt, endsAt, recalcFrom, staleAt, dateFrom, dateTo pgtype.Timestamptz,
 	filterGameIDs, filterTagIDs []id.ID,
 ) (Arena, error) {
 	settings, err := arenasettings.Parse(raw)
@@ -253,7 +253,7 @@ func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int
 	return Arena{
 		ID: arenaID, Name: name,
 		Settings: settings, SettingsRaw: raw, SettingsVersion: int(version),
-		GameID: gameID, TournamentID: tournamentID, ClubID: clubID,
+		GameID: gameID, TournamentID: tournamentID, TenantID: tenantID,
 		Camp:       camp,
 		StartsAt:   tsPtr(startsAt),
 		EndsAt:     tsPtr(endsAt),
@@ -272,43 +272,43 @@ func arenaFromParts(arenaID id.ID, name string, raw json.RawMessage, version int
 
 func arenaFromGetArenaRow(r db.GetArenaRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromGetArenaByGameRow(r db.GetArenaByGameRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromGetArenaByTournamentRow(r db.GetArenaByTournamentRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromGetArenaForUpdateRow(r db.GetArenaForUpdateRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromListRow(r db.ListArenasRow) (ArenaWithCount, error) {
 	a, err := arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 	return ArenaWithCount{Arena: a, MatchesCount: int(r.MatchesCount), CampPlayerIds: r.CampPlayerIds}, err
 }
 
 func arenaFromListArenasForGameRow(r db.ListArenasForGameRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }
 
 func arenaFromStaleRow(r db.ListStaleArenasRow) (Arena, error) {
 	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
-		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.GameID, r.TournamentID, r.TenantID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
 		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
 }

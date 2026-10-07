@@ -19,13 +19,13 @@ import (
 // a tournament that just started (ADR-35): the market's fate is the
 // tournament's, so it is never created by hand. The roster is read
 // server-side — the caller's transaction froze it by flipping the tournament
-// to running. The market inherits the tournament's club (ADR-36): its
-// settlements land in that club's main arena. Must be called within the
+// to running. The market inherits the tournament's tenant (ADR-36): its
+// settlements land in that tenant's main arena. Must be called within the
 // start transaction, after the status write.
-func (s *MarketService) CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, clubID, createdBy id.ID) error {
+func (s *MarketService) CreateTournamentWinnerMarket(ctx context.Context, q *db.Queries, tid, tenantID, createdBy id.ID) error {
 	_, err := createMarketTx(ctx, q, CreateMarketParams{
 		ID:         id.New(),
-		ClubID:     clubID,
+		TenantID:   tenantID,
 		MarketType: "tournament_winner",
 		StartsAt:   time.Now(),
 		CreatedBy:  createdBy,

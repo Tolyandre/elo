@@ -50,8 +50,8 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 	if market.Status != "open" {
 		return PlaceBetOutcome{}, ErrMarketNotOpen
 	}
-	// A members_only club's markets admit current members only (ADR-36).
-	if err := ensureMarketOpenToPlayer(ctx, q, market.ClubID, playerID); err != nil {
+	// A members_only tenant's markets admit current members only (ADR-36).
+	if err := ensureMarketOpenToPlayer(ctx, q, market.TenantID, playerID); err != nil {
 		return PlaceBetOutcome{}, err
 	}
 	// Without guarantors there is no liquidity to trade against: the b→0 limit
@@ -211,8 +211,8 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 	if market.Status != "open" {
 		return GuaranteeOutcome{}, ErrMarketNotOpen
 	}
-	// A members_only club's markets admit current members only (ADR-36).
-	if err := ensureMarketOpenToPlayer(ctx, q, market.ClubID, playerID); err != nil {
+	// A members_only tenant's markets admit current members only (ADR-36).
+	if err := ensureMarketOpenToPlayer(ctx, q, market.TenantID, playerID); err != nil {
 		return GuaranteeOutcome{}, err
 	}
 
@@ -310,20 +310,21 @@ func guaranteeWagersFromDB(rows []db.ListMarketGuaranteeWagersRow) []GuaranteeWa
 	return wagers
 }
 
-// ensureMarketOpenToPlayer enforces the owning club's main-arena openness
+// ensureMarketOpenToPlayer enforces the owning tenant's main-arena openness
 // (ADR-36): when it is members_only, bets and guarantees are restricted to
-// current club members; any_member markets admit everyone (guests included).
-func ensureMarketOpenToPlayer(ctx context.Context, q *db.Queries, marketClubID, playerID id.ID) error {
-	club, err := q.GetClubByID(ctx, marketClubID)
+// current members (of any club of the tenant); any_member markets admit
+// everyone (guests included).
+func ensureMarketOpenToPlayer(ctx context.Context, q *db.Queries, marketTenantID, playerID id.ID) error {
+	tenant, err := q.GetTenantByID(ctx, marketTenantID)
 	if err != nil {
-		return fmt.Errorf("get club: %w", err)
+		return fmt.Errorf("get tenant: %w", err)
 	}
-	if club.ArenaMembershipMode.String != ArenaMembershipMembersOnly {
+	if tenant.ArenaMembershipMode != ArenaMembershipMembersOnly {
 		return nil
 	}
-	member, err := q.PlayerIsClubMember(ctx, db.PlayerIsClubMemberParams{ClubID: marketClubID, PlayerID: playerID})
+	member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &marketTenantID, PlayerID: playerID})
 	if err != nil {
-		return fmt.Errorf("check club membership: %w", err)
+		return fmt.Errorf("check tenant membership: %w", err)
 	}
 	if !member {
 		return ErrMarketMembersOnly

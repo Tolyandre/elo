@@ -21,6 +21,7 @@ type API struct {
 	CorrectionService  elo.ICorrectionService
 	EloSettingsService elo.IEloSettingsService
 	ClubService        elo.IClubService
+	TenantService      elo.ITenantService
 	TagService         elo.ITagService
 	TableService       elo.ITableService
 	AuditService       elo.IAuditService
@@ -62,7 +63,8 @@ func NewWithClients(pool *pgxpool.Pool, teseraClient *tesera.Client, bggClient *
 		MarketQueries:      db.New(pool),
 		CorrectionService:  elo.NewCorrectionService(pool, arenaService),
 		EloSettingsService: elo.NewEloSettingsService(pool),
-		ClubService:        elo.NewClubService(pool, arenaService, matchService),
+		ClubService:        elo.NewClubService(pool),
+		TenantService:      elo.NewTenantService(pool, arenaService, matchService),
 		TagService:         elo.NewTagService(pool, arenaService),
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
