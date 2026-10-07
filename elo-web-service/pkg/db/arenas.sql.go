@@ -984,6 +984,7 @@ LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.game_id = $1
    OR (
        NOT a.camp
+       AND a.tournament_id IS NULL
        AND coalesce(cardinality(f.game_ids), 0) = 0
        AND coalesce(cardinality(f.tag_ids), 0) = 0
        AND f.date_from IS NULL
@@ -1016,8 +1017,9 @@ type ListArenasForGameRow struct {
 }
 
 // Arenas whose filter includes game @game_id or one of its tags, plus
-// unconditional (global) arenas — the /games page arena list. Camp arenas
-// have no filter and never appear here.
+// unconditional (global) arenas — the /games page arena list. Camp and
+// tournament arenas are link-only (no filter) and never appear here: their
+// membership is the explicit arena_matches link, not the game.
 func (q *Queries) ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error) {
 	rows, err := q.db.Query(ctx, listArenasForGame, gameID)
 	if err != nil {

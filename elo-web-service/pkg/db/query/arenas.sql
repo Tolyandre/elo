@@ -84,8 +84,9 @@ ORDER BY a.name;
 
 -- name: ListArenasForGame :many
 -- Arenas whose filter includes game @game_id or one of its tags, plus
--- unconditional (global) arenas — the /games page arena list. Camp arenas
--- have no filter and never appear here.
+-- unconditional (global) arenas — the /games page arena list. Camp and
+-- tournament arenas are link-only (no filter) and never appear here: their
+-- membership is the explicit arena_matches link, not the game.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
        a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
@@ -96,6 +97,7 @@ LEFT JOIN match_filters f ON f.id = a.match_filter_id
 WHERE a.game_id = sqlc.arg('game_id')
    OR (
        NOT a.camp
+       AND a.tournament_id IS NULL
        AND coalesce(cardinality(f.game_ids), 0) = 0
        AND coalesce(cardinality(f.tag_ids), 0) = 0
        AND f.date_from IS NULL

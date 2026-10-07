@@ -252,6 +252,75 @@ func TestArena_CRUDAndValidation(t *testing.T) {
 	}
 }
 
+// TestArena_GameListExcludesLinkOnlyArenas pins the /games page arena list
+// (GET /arenas?game_id=): the game's own arena and the global arena are
+// listed, while link-only arenas — tournament and camp — never are. Their
+// membership is the explicit arena_matches link, not a filter on the game,
+// so an empty filter must not read as "any game".
+func TestArena_GameListExcludesLinkOnlyArenas(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	gameSvc := newGameService(pool)
+	gameRec, err := gameSvc.AddGame(ctx, newID(t), "Арена-лист игра", idpkg.ID(""))
+	if err != nil {
+		t.Fatalf("AddGame: %v", err)
+	}
+	gameID := gameRec.ID
+
+	// Probe tournament arena (the ensureTournamentArena shape: non-camp, no
+	// filter, tournament anchor) and probe camp arena.
+	tournID := idpkg.New()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO tournaments (id, name, status, elimination) VALUES ($1, 'Арена-лист турнир', 'running', 'single')`,
+		tournID); err != nil {
+		t.Fatalf("insert probe tournament: %v", err)
+	}
+	tournArenaID := idpkg.NewMonotonic()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO arenas (id, name, settings, settings_schema_version, tournament_id, camp)
+		 VALUES ($1, 'Арена-лист турнирная арена', '{"starting_rating":1000,"leagues":[]}', 1, $2, false)`,
+		tournArenaID, tournID); err != nil {
+		t.Fatalf("insert probe tournament arena: %v", err)
+	}
+	campArenaID := idpkg.NewMonotonic()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO arenas (id, name, settings, settings_schema_version, camp, starts_at, ends_at)
+		 VALUES ($1, 'Арена-лист лагерь', '{"starting_rating":1000,"leagues":[]}', 1, true, NOW() - interval '1 day', NOW() + interval '1 day')`,
+		campArenaID); err != nil {
+		t.Fatalf("insert probe camp arena: %v", err)
+	}
+
+	router := setupRouter(pool)
+	w := doJSON(t, router, http.MethodGet, "/arenas?game_id="+string(gameID), "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET /arenas?game_id: %d %s", w.Code, w.Body.String())
+	}
+	var list arenasListJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	want := map[idpkg.ID]bool{
+		elo.GlobalArenaID:            true,
+		gameArenaID(t, pool, gameID): true,
+	}
+	for _, a := range list.Data {
+		canonical, err := idpkg.ParseTolerant(a.Id)
+		if err != nil {
+			t.Fatalf("parse listed arena id %q: %v", a.Id, err)
+		}
+		if !want[canonical] {
+			t.Fatalf("unexpected arena %q (%s) in the game list", a.Name, a.Id)
+		}
+		delete(want, canonical)
+	}
+	for arenaID := range want {
+		t.Fatalf("game list misses expected arena %s", arenaID)
+	}
+}
+
 // TestArena_GlobalArenaBacksPlayersPage pins the invariant that /players is
 // the global arena: after a match the player's rating shows up in both.
 func TestArena_GlobalArenaBacksPlayersPage(t *testing.T) {

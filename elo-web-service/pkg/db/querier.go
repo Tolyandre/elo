@@ -331,8 +331,9 @@ type Querier interface {
 	// the tournament arenas (empty until ADR-26 creates them).
 	ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArenasRow, error)
 	// Arenas whose filter includes game @game_id or one of its tags, plus
-	// unconditional (global) arenas — the /games page arena list. Camp arenas
-	// have no filter and never appear here.
+	// unconditional (global) arenas — the /games page arena list. Camp and
+	// tournament arenas are link-only (no filter) and never appear here: their
+	// membership is the explicit arena_matches link, not the game.
 	ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListArenasForGameRow, error)
 	// Arena ids containing the given match per the membership function — part of
 	// the synchronous-drain affected set on match writes. Camps are included via
