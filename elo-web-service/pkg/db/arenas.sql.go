@@ -66,7 +66,7 @@ WHERE ms.player_id = $2
   AND m.date <= $4::timestamptz
   AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -95,9 +95,9 @@ func (q *Queries) CountPlayerMatchesInArenaInPeriod(ctx context.Context, arg Cou
 }
 
 const createArena = `-- name: CreateArena :one
-INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, camp, starts_at, ends_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, recalc_from, stale_at, camp, starts_at, ends_at
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, club_id, camp, starts_at, ends_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, recalc_from, stale_at, camp, starts_at, ends_at, club_id
 `
 
 type CreateArenaParams struct {
@@ -108,6 +108,7 @@ type CreateArenaParams struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	Camp                  bool               `json:"camp"`
 	StartsAt              pgtype.Timestamptz `json:"starts_at"`
 	EndsAt                pgtype.Timestamptz `json:"ends_at"`
@@ -122,6 +123,7 @@ func (q *Queries) CreateArena(ctx context.Context, arg CreateArenaParams) (Arena
 		arg.SettingsSchemaVersion,
 		arg.GameID,
 		arg.TournamentID,
+		arg.ClubID,
 		arg.Camp,
 		arg.StartsAt,
 		arg.EndsAt,
@@ -140,6 +142,7 @@ func (q *Queries) CreateArena(ctx context.Context, arg CreateArenaParams) (Arena
 		&i.Camp,
 		&i.StartsAt,
 		&i.EndsAt,
+		&i.ClubID,
 	)
 	return i, err
 }
@@ -206,7 +209,7 @@ const getArena = `-- name: GetArena :one
 
 
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -222,6 +225,7 @@ type GetArenaRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -246,7 +250,7 @@ type GetArenaRow struct {
 // with sub-SELECTs are never inlined, and an opaque call re-runs its subplans
 // per (arena, match) pair — measured 24s (id args) and 3.3s (column args)
 // against 350ms for the inlined form on the arenas list at 2026-09 data scale.
-// The read queries share one 15-column projection (arena row + its filter
+// The read queries share one 16-column projection (arena row + its filter
 // columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 // asserts the generated row structs stay field-identical.
 func (q *Queries) GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error) {
@@ -259,6 +263,62 @@ func (q *Queries) GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error
 		&i.SettingsSchemaVersion,
 		&i.GameID,
 		&i.TournamentID,
+		&i.ClubID,
+		&i.RecalcFrom,
+		&i.StaleAt,
+		&i.Camp,
+		&i.StartsAt,
+		&i.EndsAt,
+		&i.DateFrom,
+		&i.DateTo,
+		&i.FilterGameIds,
+		&i.FilterTagIds,
+	)
+	return i, err
+}
+
+const getArenaByClub = `-- name: GetArenaByClub :one
+SELECT a.id, a.name, a.settings, a.settings_schema_version,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
+       f.date_from, f.date_to,
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
+FROM arenas a
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+WHERE a.club_id = $1
+`
+
+type GetArenaByClubRow struct {
+	ID                    id.ID              `json:"id"`
+	Name                  string             `json:"name"`
+	Settings              json.RawMessage    `json:"settings"`
+	SettingsSchemaVersion int32              `json:"settings_schema_version"`
+	GameID                *id.ID             `json:"game_id"`
+	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
+	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
+	StaleAt               pgtype.Timestamptz `json:"stale_at"`
+	Camp                  bool               `json:"camp"`
+	StartsAt              pgtype.Timestamptz `json:"starts_at"`
+	EndsAt                pgtype.Timestamptz `json:"ends_at"`
+	DateFrom              pgtype.Timestamptz `json:"date_from"`
+	DateTo                pgtype.Timestamptz `json:"date_to"`
+	FilterGameIds         []id.ID            `json:"filter_game_ids"`
+	FilterTagIds          []id.ID            `json:"filter_tag_ids"`
+}
+
+// A tenant club's main arena (ADR-36); empty when the club has none (groups).
+func (q *Queries) GetArenaByClub(ctx context.Context, clubID *id.ID) (GetArenaByClubRow, error) {
+	row := q.db.QueryRow(ctx, getArenaByClub, clubID)
+	var i GetArenaByClubRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Settings,
+		&i.SettingsSchemaVersion,
+		&i.GameID,
+		&i.TournamentID,
+		&i.ClubID,
 		&i.RecalcFrom,
 		&i.StaleAt,
 		&i.Camp,
@@ -274,7 +334,7 @@ func (q *Queries) GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error
 
 const getArenaByGame = `-- name: GetArenaByGame :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -290,6 +350,7 @@ type GetArenaByGameRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -311,6 +372,7 @@ func (q *Queries) GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaBy
 		&i.SettingsSchemaVersion,
 		&i.GameID,
 		&i.TournamentID,
+		&i.ClubID,
 		&i.RecalcFrom,
 		&i.StaleAt,
 		&i.Camp,
@@ -326,7 +388,7 @@ func (q *Queries) GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaBy
 
 const getArenaByTournament = `-- name: GetArenaByTournament :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -342,6 +404,7 @@ type GetArenaByTournamentRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -365,6 +428,7 @@ func (q *Queries) GetArenaByTournament(ctx context.Context, tournamentID *id.ID)
 		&i.SettingsSchemaVersion,
 		&i.GameID,
 		&i.TournamentID,
+		&i.ClubID,
 		&i.RecalcFrom,
 		&i.StaleAt,
 		&i.Camp,
@@ -380,7 +444,7 @@ func (q *Queries) GetArenaByTournament(ctx context.Context, tournamentID *id.ID)
 
 const getArenaForUpdate = `-- name: GetArenaForUpdate :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -397,6 +461,7 @@ type GetArenaForUpdateRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -420,6 +485,7 @@ func (q *Queries) GetArenaForUpdate(ctx context.Context, argID id.ID) (GetArenaF
 		&i.SettingsSchemaVersion,
 		&i.GameID,
 		&i.TournamentID,
+		&i.ClubID,
 		&i.RecalcFrom,
 		&i.StaleAt,
 		&i.Camp,
@@ -453,7 +519,7 @@ FROM (
         WHERE a.id = $1
           AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -481,7 +547,7 @@ WITH events AS (
       AND (
           arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -497,6 +563,7 @@ WITH events AS (
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
               WHERE pcm.club_id = $8::uuid
+                AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
           )
       )
@@ -556,6 +623,7 @@ WITH events AS (
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
               WHERE pcm.club_id = $8::uuid
+                AND pcm.left_at IS NULL
                 AND (
                     EXISTS (SELECT 1 FROM market_match_winner_params mwp
                             WHERE mwp.market_id = om.id
@@ -694,7 +762,7 @@ LEFT JOIN LATERAL (
       AND m.date >= (now() - interval '60 days') AND m.date <= now()
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -709,7 +777,7 @@ LEFT JOIN LATERAL (
       AND m.date >= (now() - interval '180 days') AND m.date <= now()
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -802,7 +870,7 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -817,7 +885,7 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -873,7 +941,7 @@ func (q *Queries) ListArenaPlayersAt(ctx context.Context, arg ListArenaPlayersAt
 
 const listArenas = `-- name: ListArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
@@ -887,7 +955,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -918,6 +986,7 @@ type ListArenasRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -951,6 +1020,7 @@ func (q *Queries) ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArena
 			&i.SettingsSchemaVersion,
 			&i.GameID,
 			&i.TournamentID,
+			&i.ClubID,
 			&i.RecalcFrom,
 			&i.StaleAt,
 			&i.Camp,
@@ -975,7 +1045,7 @@ func (q *Queries) ListArenas(ctx context.Context, kind pgtype.Text) ([]ListArena
 
 const listArenasForGame = `-- name: ListArenasForGame :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -985,6 +1055,10 @@ WHERE a.game_id = $1
    OR (
        NOT a.camp
        AND a.tournament_id IS NULL
+       -- Pure club arenas (no filter, ADR-36) are not "global" arenas: they
+       -- don't back every game's arena list. The converted global arena keeps
+       -- its unconditional filter and stays.
+       AND a.match_filter_id IS NOT NULL
        AND coalesce(cardinality(f.game_ids), 0) = 0
        AND coalesce(cardinality(f.tag_ids), 0) = 0
        AND f.date_from IS NULL
@@ -1005,6 +1079,7 @@ type ListArenasForGameRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -1036,6 +1111,7 @@ func (q *Queries) ListArenasForGame(ctx context.Context, gameID *id.ID) ([]ListA
 			&i.SettingsSchemaVersion,
 			&i.GameID,
 			&i.TournamentID,
+			&i.ClubID,
 			&i.RecalcFrom,
 			&i.StaleAt,
 			&i.Camp,
@@ -1063,7 +1139,7 @@ LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = $1
 WHERE arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -1200,7 +1276,7 @@ WHERE a.id = $1::uuid
   AND m.date >= $2::timestamptz
   AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -1247,7 +1323,7 @@ func (q *Queries) ListMatchesForArenaReplay(ctx context.Context, arg ListMatches
 
 const listStaleArenas = `-- name: ListStaleArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -1264,6 +1340,7 @@ type ListStaleArenasRow struct {
 	SettingsSchemaVersion int32              `json:"settings_schema_version"`
 	GameID                *id.ID             `json:"game_id"`
 	TournamentID          *id.ID             `json:"tournament_id"`
+	ClubID                *id.ID             `json:"club_id"`
 	RecalcFrom            pgtype.Timestamptz `json:"recalc_from"`
 	StaleAt               pgtype.Timestamptz `json:"stale_at"`
 	Camp                  bool               `json:"camp"`
@@ -1291,6 +1368,7 @@ func (q *Queries) ListStaleArenas(ctx context.Context, dueBefore time.Time) ([]L
 			&i.SettingsSchemaVersion,
 			&i.GameID,
 			&i.TournamentID,
+			&i.ClubID,
 			&i.RecalcFrom,
 			&i.StaleAt,
 			&i.Camp,
@@ -1383,7 +1461,7 @@ UPDATE arenas
 SET name = $2, match_filter_id = $3, settings = $4, settings_schema_version = $5,
     camp = $6, starts_at = $7, ends_at = $8
 WHERE id = $1
-RETURNING id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, recalc_from, stale_at, camp, starts_at, ends_at
+RETURNING id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, recalc_from, stale_at, camp, starts_at, ends_at, club_id
 `
 
 type UpdateArenaParams struct {
@@ -1422,6 +1500,7 @@ func (q *Queries) UpdateArena(ctx context.Context, arg UpdateArenaParams) (Arena
 		&i.Camp,
 		&i.StartsAt,
 		&i.EndsAt,
+		&i.ClubID,
 	)
 	return i, err
 }

@@ -244,12 +244,14 @@ func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]Get
 
 const listClubIDsByPlayerID = `-- name: ListClubIDsByPlayerID :many
 
-SELECT club_id FROM player_club_membership WHERE player_id = $1
+SELECT club_id FROM player_club_membership WHERE player_id = $1 AND left_at IS NULL
 `
 
 // ---------------------------------------------------------------------------
 // "Недавние" player-picker candidates (GET /players/recent)
 // ---------------------------------------------------------------------------
+// Active club memberships only (ADR-36 stint history): a former member's
+// club disappears from the picker tabs.
 func (q *Queries) ListClubIDsByPlayerID(ctx context.Context, playerID id.ID) ([]id.ID, error) {
 	rows, err := q.db.Query(ctx, listClubIDsByPlayerID, playerID)
 	if err != nil {
@@ -274,11 +276,12 @@ const listClubMemberUserIDs = `-- name: ListClubMemberUserIDs :many
 SELECT DISTINCT u.id
 FROM users u
 JOIN player_club_membership pcm ON pcm.player_id = u.player_id
-WHERE pcm.club_id = ANY($1::uuid[])
+WHERE pcm.left_at IS NULL
+  AND pcm.club_id = ANY($1::uuid[])
 `
 
-// Users whose linked player is a member of any of the given clubs — the
-// "users associated with the current user's club" for the recent list.
+// Users whose linked player is an active member of any of the given clubs —
+// the "users associated with the current user's club" for the recent list.
 func (q *Queries) ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error) {
 	rows, err := q.db.Query(ctx, listClubMemberUserIDs, clubIds)
 	if err != nil {
@@ -419,6 +422,7 @@ WHERE EXISTS (
         FROM match_scores partner
         JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
         WHERE partner.match_id = ms.match_id
+          AND pcm.left_at IS NULL
           AND pcm.club_id = ANY($2::uuid[])
       )
 GROUP BY p.id, p.name

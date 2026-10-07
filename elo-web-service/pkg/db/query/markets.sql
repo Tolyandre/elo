@@ -1,7 +1,7 @@
 -- name: CreateMarket :one
 INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b;
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, club_id;
 
 -- name: LockMarket :exec
 -- Serializes market mutations (bets and guarantee joins) on the market row so

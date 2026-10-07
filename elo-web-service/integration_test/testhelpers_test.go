@@ -225,8 +225,13 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	// Admin update-arenas (ADR-24): the /debug page action.
 	r.POST("/admin/update-arenas", o.DeserializeUser(), a.RequireEditor(), strictWrapper.UpdateArenas)
 	r.POST("/clubs", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreateClub)
+	r.GET("/clubs", strictWrapper.ListClubs)
+	r.GET("/clubs/:id", strictWrapper.GetClub)
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
+	r.POST("/clubs/:id/convert", o.DeserializeUser(), a.RequireEditor(), strictWrapper.ConvertClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
+	r.POST("/clubs/:id/members", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddClubMember)
+	r.DELETE("/clubs/:id/members/:playerId", o.DeserializeUser(), a.RequireEditor(), strictWrapper.RemoveClubMember)
 	r.GET("/audit", strictWrapper.ListAuditEvents)
 	// Tournaments (ADR-26): public reads, editor-gated organization, the
 	// self-registration behind the linked-player gate.

@@ -20,6 +20,9 @@ type Querier interface {
 	// never altered afterwards except by the edit-form desired-set diff; the
 	// tournament flavor attaches at slot-link time and detaches/voids with it.
 	AddArenaMatch(ctx context.Context, arg AddArenaMatchParams) error
+	// Opens a membership stint at now() (ADR-36). A still-active stint for the
+	// same (club, player) makes this a no-op via the partial unique index
+	// player_club_membership_active_uniq.
 	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
@@ -54,6 +57,10 @@ type Querier interface {
 	// The champion is invalidated by a post-completion bracket change (an edit
 	// cascade); the tournament re-runs its final and completes again.
 	ClearTournamentWinner(ctx context.Context, argID id.ID) error
+	// One-way group → tenant conversion (ADR-36); returns no rows when the club
+	// is missing or already a tenant. The caller creates the main arena in the
+	// same transaction.
+	ConvertClubToTenant(ctx context.Context, arg ConvertClubToTenantParams) (Club, error)
 	CountCorrectionsFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	CountMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) (int64, error)
 	// Matches of one player inside the arena (per the membership function) within
@@ -65,6 +72,7 @@ type Querier interface {
 	// source seats).
 	CountUnresolvedSeats(ctx context.Context, slotID id.ID) (int32, error)
 	CreateArena(ctx context.Context, arg CreateArenaParams) (Arena, error)
+	// A new club is a plain group (ADR-36): kind defaults, tenant columns NULL.
 	CreateClub(ctx context.Context, arg CreateClubParams) (Club, error)
 	CreateCorrection(ctx context.Context, arg CreateCorrectionParams) (Correction, error)
 	CreateEloSettings(ctx context.Context, arg CreateEloSettingsParams) error
@@ -156,10 +164,12 @@ type Querier interface {
 	// with sub-SELECTs are never inlined, and an opaque call re-runs its subplans
 	// per (arena, match) pair — measured 24s (id args) and 3.3s (column args)
 	// against 350ms for the inlined form on the arenas list at 2026-09 data scale.
-	// The read queries share one 15-column projection (arena row + its filter
+	// The read queries share one 16-column projection (arena row + its filter
 	// columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 	// asserts the generated row structs stay field-identical.
 	GetArena(ctx context.Context, argID id.ID) (GetArenaRow, error)
+	// A tenant club's main arena (ADR-36); empty when the club has none (groups).
+	GetArenaByClub(ctx context.Context, clubID *id.ID) (GetArenaByClubRow, error)
 	GetArenaByGame(ctx context.Context, gameID *id.ID) (GetArenaByGameRow, error)
 	// Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
 	// empty until ADR-26 creates them.
@@ -357,10 +367,16 @@ type Querier interface {
 	// ---------------------------------------------------------------------------
 	// "Недавние" player-picker candidates (GET /players/recent)
 	// ---------------------------------------------------------------------------
+	// Active club memberships only (ADR-36 stint history): a former member's
+	// club disappears from the picker tabs.
 	ListClubIDsByPlayerID(ctx context.Context, playerID id.ID) ([]id.ID, error)
-	// Users whose linked player is a member of any of the given clubs — the
-	// "users associated with the current user's club" for the recent list.
+	// Users whose linked player is an active member of any of the given clubs —
+	// the "users associated with the current user's club" for the recent list.
 	ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error)
+	// Club queries. player_club_membership is stint history (ADR-36): joined_at
+	// / left_at, left_at NULL = active stint. Reads of "the members" always
+	// filter to active stints; the /club tenancy fields (kind, openness, main
+	// arena) are part of every club read.
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	// Payload rows for the feed's correction events (ADR-32), for an explicit id
 	// set selected by ListArenaFeedEvents.
@@ -500,6 +516,7 @@ type Querier interface {
 	MarkArenasStaleFull(ctx context.Context, arenaIds []id.ID) error
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
+	// Closes the active stint; closed stints stay as history (ADR-36).
 	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
 	RemoveTournamentParticipant(ctx context.Context, arg RemoveTournamentParticipantParams) error
@@ -535,6 +552,9 @@ type Querier interface {
 	UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error
 	UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) (Club, error)
 	UpdateClubName(ctx context.Context, arg UpdateClubNameParams) (Club, error)
+	// Openness settings of an existing tenant (ADR-36); no rows when the club is
+	// missing or still a group.
+	UpdateClubTenantSettings(ctx context.Context, arg UpdateClubTenantSettingsParams) (Club, error)
 	// `name` is generated (migration 063) and follows the three source names.
 	UpdateGame(ctx context.Context, arg UpdateGameParams) (Game, error)
 	UpdateGameBggImages(ctx context.Context, arg UpdateGameBggImagesParams) (Game, error)

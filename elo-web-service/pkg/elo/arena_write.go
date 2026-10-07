@@ -118,9 +118,13 @@ func (s *ArenaService) UpdateArena(ctx context.Context, actor id.ID, arenaID id.
 		}
 		// Auto-managed arenas are owned by their game lifecycle; their filters
 		// and settings are system-managed (ADR-24). Camp arenas are never
-		// auto-managed (their anchors are NULL since ADR-27).
+		// auto-managed (their anchors are NULL since ADR-27). A tenant club's
+		// main arena (ADR-36) is managed through the club settings.
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
+		}
+		if existing.ClubID != nil {
+			return Arena{}, ErrClubArenaIsManaged
 		}
 		if err := ensureArenaNameFree(ctx, q, opts.Name, &arenaID); err != nil {
 			return Arena{}, err
@@ -215,6 +219,9 @@ func (s *ArenaService) DeleteArena(ctx context.Context, actor id.ID, arenaID id.
 		}
 		if existing.GameID != nil || existing.TournamentID != nil {
 			return Arena{}, ErrArenaIsAutoManaged
+		}
+		if existing.ClubID != nil {
+			return Arena{}, ErrClubArenaIsManaged
 		}
 		row, err := q.DeleteArena(ctx, arenaID)
 		if err != nil {
@@ -353,31 +360,62 @@ func (s *ArenaService) EnsureGameArena(ctx context.Context, q *db.Queries, gameI
 	})
 }
 
+// EnsureClubArena creates a tenant club's main arena when missing (ADR-36,
+// called at conversion). The arena mirrors the global arena's shape — newbie +
+// amateur + elite leagues over the live elo settings, starting rating = the
+// standard starting elo — but carries no filter: club rules decide membership
+// (the attribution lands in a later ADR-36 phase, so a fresh club arena
+// matches nothing yet).
+func (s *ArenaService) EnsureClubArena(ctx context.Context, q *db.Queries, clubID id.ID, clubName string) error {
+	if _, err := q.GetArenaByClub(ctx, &clubID); !db.IsNoRows(err) {
+		return err // exists (or real error)
+	}
+	newbie, elite, startingElo, err := s.defaultLeagueParams(ctx)
+	if err != nil {
+		return err
+	}
+	raw, err := settingsDoc(startingElo, []arenasettings.League{newbie, {Kind: LeagueAmateur}, elite})
+	if err != nil {
+		return err
+	}
+	return createAutoArena(ctx, q, arenaCreateInput{
+		name:           arenaName(clubName),
+		settings:       raw,
+		clubID:         &clubID,
+		startingRating: startingElo,
+		startingElo:    startingElo,
+	})
+}
+
 type arenaCreateInput struct {
 	name           string
 	settings       json.RawMessage
 	gameID         *id.ID
+	clubID         *id.ID
 	startingRating float64
 	startingElo    float64
 }
 
-// createAutoArena inserts the filter + arena rows and marks the arena stale.
+// createAutoArena inserts the arena row (and the filter, for game arenas) and
+// marks the arena stale. Club arenas (ADR-36) take no filter: their membership
+// is decided by club rules, not by arena_contains_match.
 func createAutoArena(ctx context.Context, q *db.Queries, in arenaCreateInput) error {
-	var filter MatchFilter
+	var filterID *id.ID
 	if in.gameID != nil {
-		filter.GameIDs = []id.ID{*in.gameID}
-	}
-	filterID, err := createMatchFilter(ctx, q, filter)
-	if err != nil {
-		return err
+		fid, err := createMatchFilter(ctx, q, MatchFilter{GameIDs: []id.ID{*in.gameID}})
+		if err != nil {
+			return err
+		}
+		filterID = &fid
 	}
 	row, err := q.CreateArena(ctx, db.CreateArenaParams{
 		ID:                    id.NewMonotonic(),
 		Name:                  in.name,
-		MatchFilterID:         &filterID,
+		MatchFilterID:         filterID,
 		Settings:              in.settings,
 		SettingsSchemaVersion: arenasettings.CurrentVersion,
 		GameID:                in.gameID,
+		ClubID:                in.clubID,
 	})
 	if err != nil {
 		return fmt.Errorf("create arena: %w", err)

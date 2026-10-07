@@ -320,6 +320,8 @@ paths:
     $ref: './clubs.yaml#/ClubsCollection'
   /clubs/{id}:
     $ref: './clubs.yaml#/ClubItem'
+  /clubs/{id}/convert:
+    $ref: './clubs.yaml#/ClubConvert'
   /clubs/{id}/members:
     $ref: './clubs.yaml#/ClubMembers'
   /clubs/{id}/members/{playerId}:

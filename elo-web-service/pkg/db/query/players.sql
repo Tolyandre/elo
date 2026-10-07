@@ -94,15 +94,18 @@ ORDER BY elo_earned DESC;
 -- ---------------------------------------------------------------------------
 
 -- name: ListClubIDsByPlayerID :many
-SELECT club_id FROM player_club_membership WHERE player_id = $1;
+-- Active club memberships only (ADR-36 stint history): a former member's
+-- club disappears from the picker tabs.
+SELECT club_id FROM player_club_membership WHERE player_id = $1 AND left_at IS NULL;
 
 -- name: ListClubMemberUserIDs :many
--- Users whose linked player is a member of any of the given clubs — the
--- "users associated with the current user's club" for the recent list.
+-- Users whose linked player is an active member of any of the given clubs —
+-- the "users associated with the current user's club" for the recent list.
 SELECT DISTINCT u.id
 FROM users u
 JOIN player_club_membership pcm ON pcm.player_id = u.player_id
-WHERE pcm.club_id = ANY(sqlc.arg('club_ids')::uuid[]);
+WHERE pcm.left_at IS NULL
+  AND pcm.club_id = ANY(sqlc.arg('club_ids')::uuid[]);
 
 -- name: ListRecentCoPlayers :many
 -- Players who shared a match with the current user's player or with a member
@@ -122,6 +125,7 @@ WHERE EXISTS (
         FROM match_scores partner
         JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
         WHERE partner.match_id = ms.match_id
+          AND pcm.left_at IS NULL
           AND pcm.club_id = ANY(sqlc.arg('club_ids')::uuid[])
       )
 GROUP BY p.id, p.name

@@ -346,6 +346,7 @@ WITH paginated_matches AS (
             OR EXISTS (
                 SELECT 1 FROM player_club_membership pcm
                 WHERE pcm.club_id = $4::uuid
+                AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
             )
         )
@@ -354,6 +355,7 @@ WITH paginated_matches AS (
             OR NOT EXISTS (
                 SELECT 1 FROM player_club_membership pcm2
                 WHERE pcm2.player_id = ms.player_id
+                AND pcm2.left_at IS NULL
             )
         )
         AND (

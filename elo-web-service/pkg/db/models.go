@@ -25,6 +25,7 @@ type Arena struct {
 	Camp                  bool               `json:"camp"`
 	StartsAt              pgtype.Timestamptz `json:"starts_at"`
 	EndsAt                pgtype.Timestamptz `json:"ends_at"`
+	ClubID                *id.ID             `json:"club_id"`
 }
 
 type ArenaMatch struct {
@@ -84,10 +85,13 @@ type Bet struct {
 }
 
 type Club struct {
-	ID            id.ID       `json:"id"`
-	Name          string      `json:"name"`
-	GeologistName pgtype.Text `json:"geologist_name"`
-	Icon          pgtype.Text `json:"icon"`
+	ID                  id.ID       `json:"id"`
+	Name                string      `json:"name"`
+	GeologistName       pgtype.Text `json:"geologist_name"`
+	Icon                pgtype.Text `json:"icon"`
+	Kind                string      `json:"kind"`
+	ArenaMembershipMode pgtype.Text `json:"arena_membership_mode"`
+	TournamentsOpenness pgtype.Text `json:"tournaments_openness"`
 }
 
 type Correction struct {
@@ -157,6 +161,7 @@ type Market struct {
 	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
+	ClubID            *id.ID             `json:"club_id"`
 }
 
 type MarketGuarantee struct {
@@ -230,8 +235,10 @@ type Player struct {
 }
 
 type PlayerClubMembership struct {
-	ClubID   id.ID `json:"club_id"`
-	PlayerID id.ID `json:"player_id"`
+	ClubID   id.ID              `json:"club_id"`
+	PlayerID id.ID              `json:"player_id"`
+	JoinedAt time.Time          `json:"joined_at"`
+	LeftAt   pgtype.Timestamptz `json:"left_at"`
 }
 
 type Tag struct {
@@ -250,6 +257,7 @@ type Tournament struct {
 	Plan               json.RawMessage    `json:"plan"`
 	PlanSchemaVersion  int32              `json:"plan_schema_version"`
 	CreatedAt          time.Time          `json:"created_at"`
+	ClubID             *id.ID             `json:"club_id"`
 }
 
 type TournamentGame struct {

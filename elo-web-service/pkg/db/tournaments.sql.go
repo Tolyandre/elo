@@ -89,7 +89,7 @@ const createTournament = `-- name: CreateTournament :one
 INSERT INTO tournaments (id, name, status, grand_final_deadline)
 VALUES ($1, $2, 'registration', $3)
 ON CONFLICT (id) DO NOTHING
-RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at
+RETURNING id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id
 `
 
 type CreateTournamentParams struct {
@@ -118,6 +118,7 @@ func (q *Queries) CreateTournament(ctx context.Context, arg CreateTournamentPara
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
+		&i.ClubID,
 	)
 	return i, err
 }
@@ -150,7 +151,7 @@ func (q *Queries) DeleteTournamentParticipantsNotIn(ctx context.Context, arg Del
 }
 
 const getTournament = `-- name: GetTournament :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at FROM tournaments WHERE id = $1
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments WHERE id = $1
 `
 
 func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, error) {
@@ -167,12 +168,13 @@ func (q *Queries) GetTournament(ctx context.Context, argID id.ID) (Tournament, e
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
+		&i.ClubID,
 	)
 	return i, err
 }
 
 const getTournamentForUpdate = `-- name: GetTournamentForUpdate :one
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at FROM tournaments WHERE id = $1 FOR UPDATE
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments WHERE id = $1 FOR UPDATE
 `
 
 // Row-locked variant for the lifecycle mutations (start/cancel/config): a
@@ -191,6 +193,7 @@ func (q *Queries) GetTournamentForUpdate(ctx context.Context, argID id.ID) (Tour
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
+		&i.ClubID,
 	)
 	return i, err
 }
@@ -316,7 +319,7 @@ func (q *Queries) ListTournamentParticipants(ctx context.Context, tournamentID i
 }
 
 const listTournaments = `-- name: ListTournaments :many
-SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at FROM tournaments
+SELECT id, name, status, elimination, winner_player_id, seed, grand_final_deadline, plan, plan_schema_version, created_at, club_id FROM tournaments
 ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'registration' THEN 1 WHEN 'completed' THEN 2 ELSE 3 END,
          name
 `
@@ -342,6 +345,7 @@ func (q *Queries) ListTournaments(ctx context.Context) ([]Tournament, error) {
 			&i.Plan,
 			&i.PlanSchemaVersion,
 			&i.CreatedAt,
+			&i.ClubID,
 		); err != nil {
 			return nil, err
 		}

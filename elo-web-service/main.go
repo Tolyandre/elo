@@ -180,6 +180,7 @@ func main() {
 	router.GET("/clubs/:id", strictWrapper.GetClub)
 	router.POST("/clubs", append(editorAuth(), strictWrapper.CreateClub)...)
 	router.PATCH("/clubs/:id", append(editorAuth(), strictWrapper.PatchClub)...)
+	router.POST("/clubs/:id/convert", append(editorAuth(), strictWrapper.ConvertClub)...)
 	router.DELETE("/clubs/:id", append(editorAuth(), strictWrapper.DeleteClub)...)
 	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
 	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)

@@ -682,10 +682,30 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a club (name and/or icon)
-         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters).
+         * Update a club (name, icon, tenant settings)
+         * @description Partial update. A field that is omitted is left unchanged. For `icon`, an empty string clears the icon; a non-empty value is a key into the frontend's built-in icon set and is validated server-side (lowercase kebab-case, 1-32 characters). The tenant settings `arena_membership_mode` / `tournaments_openness` may only be set on a tenant club (ADR-36) and are always provided together; setting them on a group club is a 409.
          */
         patch: operations["PatchClub"];
+        trace?: never;
+    };
+    "/clubs/{id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Convert a group club into a tenant club
+         * @description One-way conversion (ADR-36): the club becomes a tenant with the given openness settings, and its main arena is created (a fresh tenant arena, or — for the well-known original club — the already existing global arena). Converting an already-tenant club is a 409.
+         */
+        post: operations["ConvertClub"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/clubs/{id}/members": {
@@ -1612,8 +1632,25 @@ export interface components {
             geologist_name?: string | null;
             /** @description Key into the frontend's built-in club icon set (e.g. "clover"). Null means the club has no icon. The icon itself is a version-controlled static SVG in the frontend. */
             icon?: string | null;
-            /** @description List of player IDs */
+            /** @description List of player IDs (active members; ADR-36 stint history) */
             player_ids: components["schemas"]["Base58ID"][];
+            /**
+             * @description `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
+             * @enum {string}
+             */
+            kind: "group" | "tenant";
+            /**
+             * @description Tenant only — which matches count into the main arena.
+             * @enum {string|null}
+             */
+            arena_membership_mode?: "any_member" | "members_only" | null;
+            /**
+             * @description Tenant only — whether tournament registration is restricted to members.
+             * @enum {string|null}
+             */
+            tournaments_openness?: "members_only" | "open" | null;
+            /** @description The tenant club's main arena. Present for tenants only (the original club's main arena is the global arena). */
+            main_arena_id?: components["schemas"]["Base58ID"];
         };
         Tag: {
             id: components["schemas"]["Base58ID"];
@@ -5017,6 +5054,10 @@ export interface operations {
                 "application/json": {
                     name?: string;
                     icon?: string;
+                    /** @enum {string} */
+                    arena_membership_mode?: "any_member" | "members_only";
+                    /** @enum {string} */
+                    tournaments_openness?: "members_only" | "open";
                 };
             };
         };
@@ -5062,6 +5103,94 @@ export interface operations {
             };
             /** @description Club not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant settings on a group club, or an invalid settings pair */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ConvertClub: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    arena_membership_mode: "any_member" | "members_only";
+                    /** @enum {string} */
+                    tournaments_openness: "members_only" | "open";
+                };
+            };
+        };
+        responses: {
+            /** @description Converted club */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["Club"];
+                    };
+                };
+            };
+            /** @description Bad request (missing or invalid settings) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Club not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description The club is already a tenant */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

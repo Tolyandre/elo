@@ -210,6 +210,60 @@ func (e BracketSlotStatus) Valid() bool {
 	}
 }
 
+// Defines values for ClubArenaMembershipMode.
+const (
+	ClubArenaMembershipModeAnyMember   ClubArenaMembershipMode = "any_member"
+	ClubArenaMembershipModeMembersOnly ClubArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the ClubArenaMembershipMode enum.
+func (e ClubArenaMembershipMode) Valid() bool {
+	switch e {
+	case ClubArenaMembershipModeAnyMember:
+		return true
+	case ClubArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClubKind.
+const (
+	Group  ClubKind = "group"
+	Tenant ClubKind = "tenant"
+)
+
+// Valid indicates whether the value is a known member of the ClubKind enum.
+func (e ClubKind) Valid() bool {
+	switch e {
+	case Group:
+		return true
+	case Tenant:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ClubTournamentsOpenness.
+const (
+	ClubTournamentsOpennessMembersOnly ClubTournamentsOpenness = "members_only"
+	ClubTournamentsOpennessOpen        ClubTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the ClubTournamentsOpenness enum.
+func (e ClubTournamentsOpenness) Valid() bool {
+	switch e {
+	case ClubTournamentsOpennessMembersOnly:
+		return true
+	case ClubTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EloRankLeague.
 const (
 	Amateur EloRankLeague = "amateur"
@@ -843,6 +897,78 @@ func (e ListAuditEventsParamsEntityType) Valid() bool {
 	}
 }
 
+// Defines values for PatchClubJSONBodyArenaMembershipMode.
+const (
+	PatchClubJSONBodyArenaMembershipModeAnyMember   PatchClubJSONBodyArenaMembershipMode = "any_member"
+	PatchClubJSONBodyArenaMembershipModeMembersOnly PatchClubJSONBodyArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the PatchClubJSONBodyArenaMembershipMode enum.
+func (e PatchClubJSONBodyArenaMembershipMode) Valid() bool {
+	switch e {
+	case PatchClubJSONBodyArenaMembershipModeAnyMember:
+		return true
+	case PatchClubJSONBodyArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PatchClubJSONBodyTournamentsOpenness.
+const (
+	PatchClubJSONBodyTournamentsOpennessMembersOnly PatchClubJSONBodyTournamentsOpenness = "members_only"
+	PatchClubJSONBodyTournamentsOpennessOpen        PatchClubJSONBodyTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the PatchClubJSONBodyTournamentsOpenness enum.
+func (e PatchClubJSONBodyTournamentsOpenness) Valid() bool {
+	switch e {
+	case PatchClubJSONBodyTournamentsOpennessMembersOnly:
+		return true
+	case PatchClubJSONBodyTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConvertClubJSONBodyArenaMembershipMode.
+const (
+	ConvertClubJSONBodyArenaMembershipModeAnyMember   ConvertClubJSONBodyArenaMembershipMode = "any_member"
+	ConvertClubJSONBodyArenaMembershipModeMembersOnly ConvertClubJSONBodyArenaMembershipMode = "members_only"
+)
+
+// Valid indicates whether the value is a known member of the ConvertClubJSONBodyArenaMembershipMode enum.
+func (e ConvertClubJSONBodyArenaMembershipMode) Valid() bool {
+	switch e {
+	case ConvertClubJSONBodyArenaMembershipModeAnyMember:
+		return true
+	case ConvertClubJSONBodyArenaMembershipModeMembersOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConvertClubJSONBodyTournamentsOpenness.
+const (
+	ConvertClubJSONBodyTournamentsOpennessMembersOnly ConvertClubJSONBodyTournamentsOpenness = "members_only"
+	ConvertClubJSONBodyTournamentsOpennessOpen        ConvertClubJSONBodyTournamentsOpenness = "open"
+)
+
+// Valid indicates whether the value is a known member of the ConvertClubJSONBodyTournamentsOpenness enum.
+func (e ConvertClubJSONBodyTournamentsOpenness) Valid() bool {
+	switch e {
+	case ConvertClubJSONBodyTournamentsOpennessMembersOnly:
+		return true
+	case ConvertClubJSONBodyTournamentsOpennessOpen:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PatchGameJSONBodyGameMode.
 const (
 	PatchGameJSONBodyGameModeCompetitive PatchGameJSONBodyGameMode = "competitive"
@@ -1280,18 +1406,38 @@ type BracketSlotStatus string
 
 // Club defines model for Club.
 type Club struct {
-	GeologistName *string `json:"geologist_name,omitempty"`
+	// ArenaMembershipMode Tenant only — which matches count into the main arena.
+	ArenaMembershipMode *ClubArenaMembershipMode `json:"arena_membership_mode,omitempty"`
+	GeologistName       *string                  `json:"geologist_name,omitempty"`
 
 	// Icon Key into the frontend's built-in club icon set (e.g. "clover"). Null means the club has no icon. The icon itself is a version-controlled static SVG in the frontend.
 	Icon *string `json:"icon,omitempty"`
 
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id   Base58ID `json:"id"`
-	Name string   `json:"name"`
+	Id Base58ID `json:"id"`
 
-	// PlayerIds List of player IDs
+	// Kind `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
+	Kind ClubKind `json:"kind"`
+
+	// MainArenaId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	MainArenaId *Base58ID `json:"main_arena_id,omitempty"`
+	Name        string    `json:"name"`
+
+	// PlayerIds List of player IDs (active members; ADR-36 stint history)
 	PlayerIds []Base58ID `json:"player_ids"`
+
+	// TournamentsOpenness Tenant only — whether tournament registration is restricted to members.
+	TournamentsOpenness *ClubTournamentsOpenness `json:"tournaments_openness,omitempty"`
 }
+
+// ClubArenaMembershipMode Tenant only — which matches count into the main arena.
+type ClubArenaMembershipMode string
+
+// ClubKind `group` is the plain display grouping (ADR-05); `tenant` is a community with its own main arena and openness settings (ADR-36).
+type ClubKind string
+
+// ClubTournamentsOpenness Tenant only — whether tournament registration is restricted to members.
+type ClubTournamentsOpenness string
 
 // Correction defines model for Correction.
 type Correction struct {
@@ -2454,9 +2600,29 @@ type CreateClubJSONBody struct {
 
 // PatchClubJSONBody defines parameters for PatchClub.
 type PatchClubJSONBody struct {
-	Icon *string `json:"icon,omitempty"`
-	Name *string `json:"name,omitempty"`
+	ArenaMembershipMode *PatchClubJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
+	Icon                *string                               `json:"icon,omitempty"`
+	Name                *string                               `json:"name,omitempty"`
+	TournamentsOpenness *PatchClubJSONBodyTournamentsOpenness `json:"tournaments_openness,omitempty"`
 }
+
+// PatchClubJSONBodyArenaMembershipMode defines parameters for PatchClub.
+type PatchClubJSONBodyArenaMembershipMode string
+
+// PatchClubJSONBodyTournamentsOpenness defines parameters for PatchClub.
+type PatchClubJSONBodyTournamentsOpenness string
+
+// ConvertClubJSONBody defines parameters for ConvertClub.
+type ConvertClubJSONBody struct {
+	ArenaMembershipMode ConvertClubJSONBodyArenaMembershipMode `json:"arena_membership_mode"`
+	TournamentsOpenness ConvertClubJSONBodyTournamentsOpenness `json:"tournaments_openness"`
+}
+
+// ConvertClubJSONBodyArenaMembershipMode defines parameters for ConvertClub.
+type ConvertClubJSONBodyArenaMembershipMode string
+
+// ConvertClubJSONBodyTournamentsOpenness defines parameters for ConvertClub.
+type ConvertClubJSONBodyTournamentsOpenness string
 
 // AddClubMemberJSONBody defines parameters for AddClubMember.
 type AddClubMemberJSONBody struct {
@@ -2840,6 +3006,9 @@ type CreateClubJSONRequestBody CreateClubJSONBody
 
 // PatchClubJSONRequestBody defines body for PatchClub for application/json ContentType.
 type PatchClubJSONRequestBody PatchClubJSONBody
+
+// ConvertClubJSONRequestBody defines body for ConvertClub for application/json ContentType.
+type ConvertClubJSONRequestBody ConvertClubJSONBody
 
 // AddClubMemberJSONRequestBody defines body for AddClubMember for application/json ContentType.
 type AddClubMemberJSONRequestBody AddClubMemberJSONBody
@@ -3740,9 +3909,12 @@ type ServerInterface interface {
 	// GetClub Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(c *gin.Context, id string)
-	// PatchClub Update a club (name and/or icon)
+	// PatchClub Update a club (name, icon, tenant settings)
 	// (PATCH /clubs/{id})
 	PatchClub(c *gin.Context, id string)
+	// ConvertClub Convert a group club into a tenant club
+	// (POST /clubs/{id}/convert)
+	ConvertClub(c *gin.Context, id string)
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(c *gin.Context, id string)
@@ -4451,6 +4623,31 @@ func (siw *ServerInterfaceWrapper) PatchClub(c *gin.Context) {
 	}
 
 	siw.Handler.PatchClub(c, id)
+}
+
+// ConvertClub operation middleware
+func (siw *ServerInterfaceWrapper) ConvertClub(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ConvertClub(c, id)
 }
 
 // AddClubMember operation middleware
@@ -6099,6 +6296,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/clubs/:id", wrapper.DeleteClub)
 	router.GET(options.BaseURL+"/clubs/:id", wrapper.GetClub)
 	router.PATCH(options.BaseURL+"/clubs/:id", wrapper.PatchClub)
+	router.POST(options.BaseURL+"/clubs/:id/convert", wrapper.ConvertClub)
 	router.POST(options.BaseURL+"/clubs/:id/members", wrapper.AddClubMember)
 	router.DELETE(options.BaseURL+"/clubs/:id/members/:playerId", wrapper.RemoveClubMember)
 	router.GET(options.BaseURL+"/feed", wrapper.ListHomeFeed)
@@ -7167,6 +7365,116 @@ func (response PatchClub404JSONResponse) VisitPatchClubResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchClub409JSONResponse ApiError
+
+func (response PatchClub409JSONResponse) VisitPatchClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClubRequestObject struct {
+	Id   string `json:"id"`
+	Body *ConvertClubJSONRequestBody
+}
+
+type ConvertClubResponseObject interface {
+	VisitConvertClubResponse(w http.ResponseWriter) error
+}
+
+type ConvertClub200JSONResponse struct {
+	Data   Club   `json:"data"`
+	Status string `json:"status"`
+}
+
+func (response ConvertClub200JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClub400JSONResponse ApiError
+
+func (response ConvertClub400JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClub401JSONResponse ApiError
+
+func (response ConvertClub401JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClub403JSONResponse ApiError
+
+func (response ConvertClub403JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClub404JSONResponse ApiError
+
+func (response ConvertClub404JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConvertClub409JSONResponse ApiError
+
+func (response ConvertClub409JSONResponse) VisitConvertClubResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11511,9 +11819,12 @@ type StrictServerInterface interface {
 	// GetClub Get a club by ID
 	// (GET /clubs/{id})
 	GetClub(ctx context.Context, request GetClubRequestObject) (GetClubResponseObject, error)
-	// PatchClub Update a club (name and/or icon)
+	// PatchClub Update a club (name, icon, tenant settings)
 	// (PATCH /clubs/{id})
 	PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error)
+	// ConvertClub Convert a group club into a tenant club
+	// (POST /clubs/{id}/convert)
+	ConvertClub(ctx context.Context, request ConvertClubRequestObject) (ConvertClubResponseObject, error)
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(ctx context.Context, request AddClubMemberRequestObject) (AddClubMemberResponseObject, error)
@@ -12311,6 +12622,39 @@ func (sh *strictHandler) PatchClub(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(PatchClubResponseObject); ok {
 		if err := validResponse.VisitPatchClubResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConvertClub operation middleware
+func (sh *strictHandler) ConvertClub(ctx *gin.Context, id string) {
+	var request ConvertClubRequestObject
+
+	request.Id = id
+
+	var body ConvertClubJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ConvertClub(ctx, request.(ConvertClubRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConvertClub")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ConvertClubResponseObject); ok {
+		if err := validResponse.VisitConvertClubResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

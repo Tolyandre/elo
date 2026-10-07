@@ -80,6 +80,23 @@ func (s *ArenaService) GetArenaByTournament(ctx context.Context, tournamentID id
 	return arenaFromGetArenaByTournamentRow(r)
 }
 
+func (s *ArenaService) GetArenaByClub(ctx context.Context, clubID id.ID) (Arena, error) {
+	r, err := s.Queries.GetArenaByClub(ctx, &clubID)
+	if err != nil {
+		return Arena{}, fmt.Errorf("get arena for club %s: %w", clubID, err)
+	}
+	return arenaFromGetArenaByClubRow(r)
+}
+
+// arenaFromGetArenaByClubRow converts GetArenaByClubRow — the same 16-column
+// projection as GetArena, so the row struct is field-identical by
+// construction (arena_rows_test.go keeps the shared list).
+func arenaFromGetArenaByClubRow(r db.GetArenaByClubRow) (Arena, error) {
+	return arenaFromParts(r.ID, r.Name, r.Settings, r.SettingsSchemaVersion,
+		r.GameID, r.TournamentID, r.ClubID, r.Camp, r.StartsAt, r.EndsAt, r.RecalcFrom, r.StaleAt,
+		r.DateFrom, r.DateTo, r.FilterGameIds, r.FilterTagIds)
+}
+
 // GetArenaPlayers returns the arena's current players ranked, with the
 // precalculated medal stats. Leagues sort elite → amateur → newbie (the
 // settings list is promotion order, ranking inverts it), rating descending

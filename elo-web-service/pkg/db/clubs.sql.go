@@ -13,8 +13,8 @@ import (
 )
 
 const addClubMember = `-- name: AddClubMember :exec
-INSERT INTO player_club_membership (club_id, player_id)
-VALUES ($1, $2)
+INSERT INTO player_club_membership (club_id, player_id, joined_at)
+VALUES ($1, $2, NOW())
 ON CONFLICT DO NOTHING
 `
 
@@ -23,15 +23,49 @@ type AddClubMemberParams struct {
 	PlayerID id.ID `json:"player_id"`
 }
 
+// Opens a membership stint at now() (ADR-36). A still-active stint for the
+// same (club, player) makes this a no-op via the partial unique index
+// player_club_membership_active_uniq.
 func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
 	_, err := q.db.Exec(ctx, addClubMember, arg.ClubID, arg.PlayerID)
 	return err
 }
 
+const convertClubToTenant = `-- name: ConvertClubToTenant :one
+UPDATE clubs
+SET kind = 'tenant', arena_membership_mode = $2, tournaments_openness = $3
+WHERE id = $1 AND kind = 'group'
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+`
+
+type ConvertClubToTenantParams struct {
+	ID                  id.ID       `json:"id"`
+	ArenaMembershipMode pgtype.Text `json:"arena_membership_mode"`
+	TournamentsOpenness pgtype.Text `json:"tournaments_openness"`
+}
+
+// One-way group → tenant conversion (ADR-36); returns no rows when the club
+// is missing or already a tenant. The caller creates the main arena in the
+// same transaction.
+func (q *Queries) ConvertClubToTenant(ctx context.Context, arg ConvertClubToTenantParams) (Club, error) {
+	row := q.db.QueryRow(ctx, convertClubToTenant, arg.ID, arg.ArenaMembershipMode, arg.TournamentsOpenness)
+	var i Club
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
+	)
+	return i, err
+}
+
 const createClub = `-- name: CreateClub :one
 INSERT INTO clubs (id, name)
 VALUES ($1, $2)
-RETURNING id, name, geologist_name, icon
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
 `
 
 type CreateClubParams struct {
@@ -39,6 +73,7 @@ type CreateClubParams struct {
 	Name string `json:"name"`
 }
 
+// A new club is a plain group (ADR-36): kind defaults, tenant columns NULL.
 func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, error) {
 	row := q.db.QueryRow(ctx, createClub, arg.ID, arg.Name)
 	var i Club
@@ -47,6 +82,9 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
 	)
 	return i, err
 }
@@ -54,7 +92,7 @@ func (q *Queries) CreateClub(ctx context.Context, arg CreateClubParams) (Club, e
 const deleteClub = `-- name: DeleteClub :one
 DELETE FROM clubs
 WHERE id = $1
-RETURNING id, name, geologist_name, icon
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
 `
 
 func (q *Queries) DeleteClub(ctx context.Context, argID id.ID) (Club, error) {
@@ -65,6 +103,9 @@ func (q *Queries) DeleteClub(ctx context.Context, argID id.ID) (Club, error) {
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
 	)
 	return i, err
 }
@@ -75,18 +116,27 @@ SELECT
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
     c.icon AS club_icon,
+    c.kind AS club_kind,
+    c.arena_membership_mode AS club_arena_membership_mode,
+    c.tournaments_openness AS club_tournaments_openness,
+    ma.id AS main_arena_id,
     pcm.player_id AS player_id
 FROM clubs c
-LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
+LEFT JOIN arenas ma ON ma.club_id = c.id
+LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id AND pcm.left_at IS NULL
 WHERE c.id = $1
 `
 
 type GetClubRow struct {
-	ClubID            id.ID       `json:"club_id"`
-	ClubName          string      `json:"club_name"`
-	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
-	ClubIcon          pgtype.Text `json:"club_icon"`
-	PlayerID          *id.ID      `json:"player_id"`
+	ClubID                  id.ID       `json:"club_id"`
+	ClubName                string      `json:"club_name"`
+	ClubGeologistName       pgtype.Text `json:"club_geologist_name"`
+	ClubIcon                pgtype.Text `json:"club_icon"`
+	ClubKind                string      `json:"club_kind"`
+	ClubArenaMembershipMode pgtype.Text `json:"club_arena_membership_mode"`
+	ClubTournamentsOpenness pgtype.Text `json:"club_tournaments_openness"`
+	MainArenaID             *id.ID      `json:"main_arena_id"`
+	PlayerID                *id.ID      `json:"player_id"`
 }
 
 func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error) {
@@ -103,6 +153,10 @@ func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error
 			&i.ClubName,
 			&i.ClubGeologistName,
 			&i.ClubIcon,
+			&i.ClubKind,
+			&i.ClubArenaMembershipMode,
+			&i.ClubTournamentsOpenness,
+			&i.MainArenaID,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -116,7 +170,7 @@ func (q *Queries) GetClub(ctx context.Context, argID id.ID) ([]GetClubRow, error
 }
 
 const getClubByID = `-- name: GetClubByID :one
-SELECT id, name, geologist_name, icon FROM clubs WHERE id = $1
+SELECT id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness FROM clubs WHERE id = $1
 `
 
 // Old-name read for the rename audit trail (ADR-14).
@@ -128,29 +182,46 @@ func (q *Queries) GetClubByID(ctx context.Context, argID id.ID) (Club, error) {
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
 	)
 	return i, err
 }
 
 const listClubs = `-- name: ListClubs :many
+
 SELECT
     c.id AS club_id,
     c.name AS club_name,
     c.geologist_name AS club_geologist_name,
     c.icon AS club_icon,
+    c.kind AS club_kind,
+    c.arena_membership_mode AS club_arena_membership_mode,
+    c.tournaments_openness AS club_tournaments_openness,
+    ma.id AS main_arena_id,
     pcm.player_id AS player_id
 FROM clubs c
-LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id
+LEFT JOIN arenas ma ON ma.club_id = c.id
+LEFT JOIN player_club_membership pcm ON pcm.club_id = c.id AND pcm.left_at IS NULL
 `
 
 type ListClubsRow struct {
-	ClubID            id.ID       `json:"club_id"`
-	ClubName          string      `json:"club_name"`
-	ClubGeologistName pgtype.Text `json:"club_geologist_name"`
-	ClubIcon          pgtype.Text `json:"club_icon"`
-	PlayerID          *id.ID      `json:"player_id"`
+	ClubID                  id.ID       `json:"club_id"`
+	ClubName                string      `json:"club_name"`
+	ClubGeologistName       pgtype.Text `json:"club_geologist_name"`
+	ClubIcon                pgtype.Text `json:"club_icon"`
+	ClubKind                string      `json:"club_kind"`
+	ClubArenaMembershipMode pgtype.Text `json:"club_arena_membership_mode"`
+	ClubTournamentsOpenness pgtype.Text `json:"club_tournaments_openness"`
+	MainArenaID             *id.ID      `json:"main_arena_id"`
+	PlayerID                *id.ID      `json:"player_id"`
 }
 
+// Club queries. player_club_membership is stint history (ADR-36): joined_at
+// / left_at, left_at NULL = active stint. Reads of "the members" always
+// filter to active stints; the /club tenancy fields (kind, openness, main
+// arena) are part of every club read.
 func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 	rows, err := q.db.Query(ctx, listClubs)
 	if err != nil {
@@ -165,6 +236,10 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 			&i.ClubName,
 			&i.ClubGeologistName,
 			&i.ClubIcon,
+			&i.ClubKind,
+			&i.ClubArenaMembershipMode,
+			&i.ClubTournamentsOpenness,
+			&i.MainArenaID,
 			&i.PlayerID,
 		); err != nil {
 			return nil, err
@@ -178,8 +253,9 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 }
 
 const removeClubMember = `-- name: RemoveClubMember :exec
-DELETE FROM player_club_membership
-WHERE club_id = $1 AND player_id = $2
+UPDATE player_club_membership
+SET left_at = NOW()
+WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL
 `
 
 type RemoveClubMemberParams struct {
@@ -187,6 +263,7 @@ type RemoveClubMemberParams struct {
 	PlayerID id.ID `json:"player_id"`
 }
 
+// Closes the active stint; closed stints stay as history (ADR-36).
 func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error {
 	_, err := q.db.Exec(ctx, removeClubMember, arg.ClubID, arg.PlayerID)
 	return err
@@ -196,7 +273,7 @@ const updateClubIcon = `-- name: UpdateClubIcon :one
 UPDATE clubs
 SET icon = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
 `
 
 type UpdateClubIconParams struct {
@@ -212,6 +289,9 @@ func (q *Queries) UpdateClubIcon(ctx context.Context, arg UpdateClubIconParams) 
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
 	)
 	return i, err
 }
@@ -220,7 +300,7 @@ const updateClubName = `-- name: UpdateClubName :one
 UPDATE clubs
 SET name = $2
 WHERE id = $1
-RETURNING id, name, geologist_name, icon
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
 `
 
 type UpdateClubNameParams struct {
@@ -236,6 +316,39 @@ func (q *Queries) UpdateClubName(ctx context.Context, arg UpdateClubNameParams) 
 		&i.Name,
 		&i.GeologistName,
 		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
+	)
+	return i, err
+}
+
+const updateClubTenantSettings = `-- name: UpdateClubTenantSettings :one
+UPDATE clubs
+SET arena_membership_mode = $2, tournaments_openness = $3
+WHERE id = $1 AND kind = 'tenant'
+RETURNING id, name, geologist_name, icon, kind, arena_membership_mode, tournaments_openness
+`
+
+type UpdateClubTenantSettingsParams struct {
+	ID                  id.ID       `json:"id"`
+	ArenaMembershipMode pgtype.Text `json:"arena_membership_mode"`
+	TournamentsOpenness pgtype.Text `json:"tournaments_openness"`
+}
+
+// Openness settings of an existing tenant (ADR-36); no rows when the club is
+// missing or still a group.
+func (q *Queries) UpdateClubTenantSettings(ctx context.Context, arg UpdateClubTenantSettingsParams) (Club, error) {
+	row := q.db.QueryRow(ctx, updateClubTenantSettings, arg.ID, arg.ArenaMembershipMode, arg.TournamentsOpenness)
+	var i Club
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GeologistName,
+		&i.Icon,
+		&i.Kind,
+		&i.ArenaMembershipMode,
+		&i.TournamentsOpenness,
 	)
 	return i, err
 }

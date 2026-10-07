@@ -257,7 +257,7 @@ func (q *Queries) GetTournamentFinalSlot(ctx context.Context, tournamentID id.ID
 }
 
 const getTournamentOfSlot = `-- name: GetTournamentOfSlot :one
-SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at FROM tournaments t
+SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at, t.club_id FROM tournaments t
 JOIN tournament_rounds r ON r.tournament_id = t.id
 JOIN tournament_slots s ON s.round_id = r.id
 WHERE s.id = $1
@@ -277,6 +277,7 @@ func (q *Queries) GetTournamentOfSlot(ctx context.Context, argID id.ID) (Tournam
 		&i.Plan,
 		&i.PlanSchemaVersion,
 		&i.CreatedAt,
+		&i.ClubID,
 	)
 	return i, err
 }
@@ -408,7 +409,7 @@ func (q *Queries) ListAcceptanceCandidates(ctx context.Context, gameID id.ID) ([
 }
 
 const listRunningTournamentsPastDeadline = `-- name: ListRunningTournamentsPastDeadline :many
-SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at FROM tournaments t
+SELECT t.id, t.name, t.status, t.elimination, t.winner_player_id, t.seed, t.grand_final_deadline, t.plan, t.plan_schema_version, t.created_at, t.club_id FROM tournaments t
 WHERE t.status = 'running'
   AND t.grand_final_deadline IS NOT NULL
   AND t.grand_final_deadline <= NOW()
@@ -437,6 +438,7 @@ func (q *Queries) ListRunningTournamentsPastDeadline(ctx context.Context) ([]Tou
 			&i.Plan,
 			&i.PlanSchemaVersion,
 			&i.CreatedAt,
+			&i.ClubID,
 		); err != nil {
 			return nil, err
 		}

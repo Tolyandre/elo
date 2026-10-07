@@ -10,6 +10,20 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
+// Club kinds and tenant openness settings (ADR-36).
+const (
+	ClubKindGroup  = "group"
+	ClubKindTenant = "tenant"
+
+	// Which matches count into the tenant's main arena, evaluated at the
+	// match date against membership history.
+	ArenaMembershipAnyMember   = "any_member"   // ≥1 participant was a member; guests accumulate rating and are listed
+	ArenaMembershipMembersOnly = "members_only" // all participants were members; the arena lists current members only
+	// Whether tournament registration is restricted to club members.
+	TournamentOpennessMembersOnly = "members_only"
+	TournamentOpennessOpen        = "open"
+)
+
 type IClubService interface {
 	ListClubs(ctx context.Context) ([]db.ListClubsRow, error)
 	GetClub(ctx context.Context, clubID id.ID) ([]db.GetClubRow, error)
@@ -23,17 +37,25 @@ type IClubService interface {
 	DeleteClub(ctx context.Context, clubID id.ID, actor id.ID) (db.Club, error)
 	AddMember(ctx context.Context, clubID, playerID id.ID) error
 	RemoveMember(ctx context.Context, clubID, playerID id.ID) error
+	// ConvertToTenant performs the one-way group → tenant conversion (ADR-36):
+	// kind + openness settings, and the main arena created in the same
+	// transaction.
+	ConvertToTenant(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error)
+	// UpdateTenantSettings changes the openness settings of an existing tenant.
+	UpdateTenantSettings(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error)
 }
 
 type ClubService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
+	Arenas  *ArenaService
 }
 
-func NewClubService(pool *pgxpool.Pool) IClubService {
+func NewClubService(pool *pgxpool.Pool, arenas *ArenaService) IClubService {
 	return &ClubService{
 		Queries: db.New(pool),
 		Pool:    pool,
+		Arenas:  arenas,
 	}
 }
 
@@ -105,6 +127,14 @@ func (s *ClubService) DeleteClub(ctx context.Context, clubID id.ID, actor id.ID)
 	// without a pre-read.
 	var deleted db.Club
 	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		// A tenant club is load-bearing: it owns the main arena and the
+		// community's rating (ADR-36). The FK from arenas would stop the
+		// delete anyway; this is the readable error.
+		if club, err := q.GetClubByID(ctx, clubID); err == nil && club.Kind == ClubKindTenant {
+			return ErrTenantClubDeleteForbidden
+		} else if err != nil && !db.IsNoRows(err) {
+			return err
+		}
 		var derr error
 		deleted, derr = q.DeleteClub(ctx, clubID)
 		if derr != nil {
@@ -113,6 +143,89 @@ func (s *ClubService) DeleteClub(ctx context.Context, clubID id.ID, actor id.ID)
 		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionDeleted, clubID, audit.KindEntity, audit.NewEntityDetails(deleted.Name))
 	})
 	return deleted, err
+}
+
+// validateTenantSettings checks the openness settings pair (ADR-36); both are
+// always set together for a tenant, both cleared for a group.
+func validateTenantSettings(arenaMembershipMode, tournamentsOpenness string) error {
+	switch arenaMembershipMode {
+	case ArenaMembershipAnyMember, ArenaMembershipMembersOnly:
+	default:
+		return ErrClubTenantSettingsInvalid
+	}
+	switch tournamentsOpenness {
+	case TournamentOpennessMembersOnly, TournamentOpennessOpen:
+	default:
+		return ErrClubTenantSettingsInvalid
+	}
+	return nil
+}
+
+func tenantSettingsText(arenaMembershipMode, tournamentsOpenness string) (pgtype.Text, pgtype.Text) {
+	return pgtype.Text{String: arenaMembershipMode, Valid: true},
+		pgtype.Text{String: tournamentsOpenness, Valid: true}
+}
+
+// ConvertToTenant performs the one-way group → tenant conversion (ADR-36):
+// kind + openness settings, and the main arena ensured in the same
+// transaction (a fresh tenant arena starts stale and is filled by the
+// background updater; the converted global arena of «Синие люди» already
+// exists and is left untouched). Audit-recorded as a club update.
+func (s *ClubService) ConvertToTenant(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error) {
+	if err := validateTenantSettings(arenaMembershipMode, tournamentsOpenness); err != nil {
+		return db.Club{}, err
+	}
+	var converted db.Club
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetClubByID(ctx, clubID)
+		if err != nil {
+			return err
+		}
+		modeArg, opennessArg := tenantSettingsText(arenaMembershipMode, tournamentsOpenness)
+		converted, err = q.ConvertClubToTenant(ctx, db.ConvertClubToTenantParams{
+			ID:                  clubID,
+			ArenaMembershipMode: modeArg,
+			TournamentsOpenness: opennessArg,
+		})
+		if db.IsNoRows(err) {
+			return ErrClubAlreadyTenant
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.Arenas.EnsureClubArena(ctx, q, clubID, old.Name); err != nil {
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID, audit.KindEntity, audit.NewEntityDetails(old.Name))
+	})
+	return converted, err
+}
+
+// UpdateTenantSettings changes the openness settings of an existing tenant
+// (ADR-36). A mode change re-interprets the main arena's whole history; the
+// recalculation itself lands with the attribution phase.
+func (s *ClubService) UpdateTenantSettings(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error) {
+	if err := validateTenantSettings(arenaMembershipMode, tournamentsOpenness); err != nil {
+		return db.Club{}, err
+	}
+	var updated db.Club
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		modeArg, opennessArg := tenantSettingsText(arenaMembershipMode, tournamentsOpenness)
+		row, err := q.UpdateClubTenantSettings(ctx, db.UpdateClubTenantSettingsParams{
+			ID:                  clubID,
+			ArenaMembershipMode: modeArg,
+			TournamentsOpenness: opennessArg,
+		})
+		if db.IsNoRows(err) {
+			return ErrClubNotTenant
+		}
+		if err != nil {
+			return err
+		}
+		updated = row
+		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID, audit.KindEntity, audit.NewEntityDetails(row.Name))
+	})
+	return updated, err
 }
 
 func (s *ClubService) AddMember(ctx context.Context, clubID, playerID id.ID) error {

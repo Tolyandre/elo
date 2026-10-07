@@ -276,6 +276,7 @@ WHERE EXISTS (
         FROM match_scores ms
         JOIN player_club_membership pcm ON pcm.player_id = ms.player_id
         WHERE ms.match_id = m.id
+          AND pcm.left_at IS NULL
           AND pcm.club_id = ANY($1::uuid[])
       )
 GROUP BY m.game_id
@@ -367,6 +368,7 @@ WHERE EXISTS (
         FROM match_scores partner
         JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
         WHERE partner.match_id = m.id
+          AND pcm.left_at IS NULL
           AND pcm.club_id = ANY($2::uuid[])
       )
 GROUP BY g.id

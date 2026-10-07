@@ -12,13 +12,13 @@
 -- per (arena, match) pair — measured 24s (id args) and 3.3s (column args)
 -- against 350ms for the inlined form on the arenas list at 2026-09 data scale.
 
--- The read queries share one 15-column projection (arena row + its filter
+-- The read queries share one 16-column projection (arena row + its filter
 -- columns). Keep the column list identical across them: pkg/elo/arena_rows_test.go
 -- asserts the generated row structs stay field-identical.
 
 -- name: GetArena :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -30,7 +30,7 @@ WHERE a.id = $1;
 -- Row-locked variant used by the recalculation updater: concurrent dirty marks
 -- queue behind the lock and apply after the recalculation commits.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -45,7 +45,7 @@ FOR UPDATE OF a;
 -- the tournament arenas (empty until ADR-26 creates them).
 -- name: ListArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids,
@@ -59,7 +59,7 @@ SELECT a.id, a.name, a.settings, a.settings_schema_version,
            SELECT COUNT(*) FROM matches m
            WHERE arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -88,7 +88,7 @@ ORDER BY a.name;
 -- tournament arenas are link-only (no filter) and never appear here: their
 -- membership is the explicit arena_matches link, not the game.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -98,6 +98,10 @@ WHERE a.game_id = sqlc.arg('game_id')
    OR (
        NOT a.camp
        AND a.tournament_id IS NULL
+       -- Pure club arenas (no filter, ADR-36) are not "global" arenas: they
+       -- don't back every game's arena list. The converted global arena keeps
+       -- its unconditional filter and stays.
+       AND a.match_filter_id IS NOT NULL
        AND coalesce(cardinality(f.game_ids), 0) = 0
        AND coalesce(cardinality(f.tag_ids), 0) = 0
        AND f.date_from IS NULL
@@ -110,9 +114,20 @@ WHERE a.game_id = sqlc.arg('game_id')
    )
 ORDER BY a.name;
 
+-- name: GetArenaByClub :one
+-- A tenant club's main arena (ADR-36); empty when the club has none (groups).
+SELECT a.id, a.name, a.settings, a.settings_schema_version,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
+       a.camp, a.starts_at, a.ends_at,
+       f.date_from, f.date_to,
+       f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
+FROM arenas a
+LEFT JOIN match_filters f ON f.id = a.match_filter_id
+WHERE a.club_id = $1;
+
 -- name: GetArenaByGame :one
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -124,7 +139,7 @@ WHERE a.game_id = $1;
 -- Auto-managed bracket-tournament arenas (ADR-24 anchor, reused by ADR-26);
 -- empty until ADR-26 creates them.
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -138,8 +153,8 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING id;
 
 -- name: CreateArena :one
-INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, camp, starts_at, ends_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO arenas (id, name, match_filter_id, settings, settings_schema_version, game_id, tournament_id, club_id, camp, starts_at, ends_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- name: UpdateArena :one
@@ -177,7 +192,7 @@ LEFT JOIN match_filters f ON f.id = a.match_filter_id
 JOIN matches m ON m.id = sqlc.arg('match_id')
 WHERE arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
@@ -213,7 +228,7 @@ WHERE id = ANY(sqlc.arg('arena_ids')::uuid[]);
 
 -- name: ListStaleArenas :many
 SELECT a.id, a.name, a.settings, a.settings_schema_version,
-       a.game_id, a.tournament_id, a.recalc_from, a.stale_at,
+       a.game_id, a.tournament_id, a.club_id, a.recalc_from, a.stale_at,
        a.camp, a.starts_at, a.ends_at,
        f.date_from, f.date_to,
        f.game_ids AS filter_game_ids, f.tag_ids AS filter_tag_ids
@@ -260,7 +275,7 @@ FROM (
         WHERE a.id = sqlc.arg('arena_id')
           AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -304,7 +319,7 @@ LEFT JOIN LATERAL (
       AND m.date >= (now() - interval '60 days') AND m.date <= now()
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -319,7 +334,7 @@ LEFT JOIN LATERAL (
       AND m.date >= (now() - interval '180 days') AND m.date <= now()
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -349,7 +364,7 @@ WITH events AS (
       AND (
           arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -365,6 +380,7 @@ WITH events AS (
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
               WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
           )
       )
@@ -424,6 +440,7 @@ WITH events AS (
           OR EXISTS (
               SELECT 1 FROM player_club_membership pcm
               WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND pcm.left_at IS NULL
                 AND (
                     EXISTS (SELECT 1 FROM market_match_winner_params mwp
                             WHERE mwp.market_id = om.id
@@ -522,7 +539,7 @@ WHERE ms.player_id = sqlc.arg('player_id')
   AND m.date <= sqlc.arg('date_to')::timestamptz
   AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids);
@@ -539,7 +556,7 @@ WHERE a.id = sqlc.arg('arena_id')::uuid
   AND m.date >= sqlc.arg('from_date')::timestamptz
   AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -577,7 +594,7 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '60 days') AND m.date <= $2
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)
@@ -592,7 +609,7 @@ LEFT JOIN LATERAL (
       AND m.date >= ($2 - interval '180 days') AND m.date <= $2
       AND arena_contains_match(
     m.mode,
-    a.camp OR a.tournament_id IS NOT NULL,
+    a.camp OR a.tournament_id IS NOT NULL OR (a.club_id IS NOT NULL AND a.match_filter_id IS NULL),
     EXISTS (SELECT 1 FROM arena_matches am WHERE am.arena_id = a.id AND am.match_id = m.id),
     EXISTS (SELECT 1 FROM game_tag gt WHERE gt.game_id = m.game_id AND gt.tag_id = ANY(f.tag_ids)),
     m.date, m.game_id, f.date_from, f.date_to, f.game_ids, f.tag_ids)

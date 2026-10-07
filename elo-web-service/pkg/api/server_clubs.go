@@ -17,6 +17,25 @@ func textPtr(t pgtype.Text) *string {
 	return &s
 }
 
+// applyClubTenancy fills the ADR-36 tenancy fields of the wire Club from the
+// db kind / openness columns and the main-arena id. The DB CHECKs guarantee
+// the kind value; the openness enums are validated at write time.
+func applyClubTenancy(c *Club, kind string, mode, openness pgtype.Text, mainArenaID *id.ID) {
+	c.Kind = ClubKind(kind)
+	if mode.Valid {
+		m := ClubArenaMembershipMode(mode.String)
+		c.ArenaMembershipMode = &m
+	}
+	if openness.Valid {
+		o := ClubTournamentsOpenness(openness.String)
+		c.TournamentsOpenness = &o
+	}
+	if mainArenaID != nil {
+		aid := Base58ID(*mainArenaID)
+		c.MainArenaId = &aid
+	}
+}
+
 // clubFromGetRows builds a Club (with members and icon) from the LEFT-JOIN rows returned
 // by GetClub. rows must be non-empty.
 func clubFromGetRows(rows []db.GetClubRow) Club {
@@ -30,6 +49,8 @@ func clubFromGetRows(rows []db.GetClubRow) Club {
 		c.GeologistName = &gn
 	}
 	c.Icon = textPtr(rows[0].ClubIcon)
+	applyClubTenancy(&c, rows[0].ClubKind, rows[0].ClubArenaMembershipMode,
+		rows[0].ClubTournamentsOpenness, rows[0].MainArenaID)
 	for _, r := range rows {
 		if r.PlayerID != nil {
 			c.PlayerIds = append(c.PlayerIds, *r.PlayerID)
@@ -59,6 +80,8 @@ func (s *StrictServer) ListClubs(ctx context.Context, _ ListClubsRequestObject) 
 				c.GeologistName = &gn
 			}
 			c.Icon = textPtr(r.ClubIcon)
+			applyClubTenancy(&c, r.ClubKind, r.ClubArenaMembershipMode,
+				r.ClubTournamentsOpenness, r.MainArenaID)
 			clubsMap[string(r.ClubID)] = &c
 			order = append(order, r.ClubID)
 		}
@@ -87,6 +110,23 @@ func (s *StrictServer) GetClub(ctx context.Context, request GetClubRequestObject
 	return GetClub200JSONResponse{Status: StatusSuccess, Data: clubFromGetRows(rows)}, nil
 }
 
+// clubFromDB builds the wire Club from a db.Club row (create / convert
+// responses — a fresh club has no members yet).
+func clubFromDB(c db.Club) Club {
+	wire := Club{
+		Id:        c.ID,
+		Name:      c.Name,
+		PlayerIds: []id.ID{},
+	}
+	if c.GeologistName.Valid {
+		gn := c.GeologistName.String
+		wire.GeologistName = &gn
+	}
+	wire.Icon = textPtr(c.Icon)
+	applyClubTenancy(&wire, c.Kind, c.ArenaMembershipMode, c.TournamentsOpenness, nil)
+	return wire
+}
+
 func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequestObject) (CreateClubResponseObject, error) {
 	name := request.Body.Name
 	if name == "" {
@@ -101,18 +141,19 @@ func (s *StrictServer) CreateClub(ctx context.Context, request CreateClubRequest
 		return nil, err
 	}
 
-	c := Club{
-		Id:        club.ID,
-		Name:      club.Name,
-		PlayerIds: []id.ID{},
-	}
-	if club.GeologistName.Valid {
-		gn := club.GeologistName.String
-		c.GeologistName = &gn
-	}
-	c.Icon = textPtr(club.Icon)
+	return CreateClub200JSONResponse{Status: StatusSuccess, Data: clubFromDB(club)}, nil
+}
 
-	return CreateClub200JSONResponse{Status: StatusSuccess, Data: c}, nil
+// tenantSettingsFromPatch extracts the optional openness settings pair; ok is
+// false when neither field is present. Both must be provided together.
+func tenantSettingsFromPatch(mode *PatchClubJSONBodyArenaMembershipMode, openness *PatchClubJSONBodyTournamentsOpenness) (string, string, bool, bool) {
+	if mode == nil && openness == nil {
+		return "", "", false, true
+	}
+	if mode == nil || openness == nil {
+		return "", "", false, false
+	}
+	return string(*mode), string(*openness), true, true
 }
 
 func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestObject) (PatchClubResponseObject, error) {
@@ -122,13 +163,19 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 
 	updateName := request.Body.Name != nil
 	updateIcon := request.Body.Icon != nil
-	if !updateName && !updateIcon {
+	modeArg, opennessArg, updateSettings, settingsOK := tenantSettingsFromPatch(request.Body.ArenaMembershipMode, request.Body.TournamentsOpenness)
+	if !settingsOK {
+		return PatchClub400JSONResponse{Status: StatusFail, Message: "arena_membership_mode and tournaments_openness must be provided together"}, nil
+	}
+	if !updateName && !updateIcon && !updateSettings {
 		return PatchClub400JSONResponse{Status: StatusFail, Message: "nothing to update"}, nil
 	}
 
 	if updateName && *request.Body.Name == "" {
 		return PatchClub400JSONResponse{Status: StatusFail, Message: "name is required"}, nil
 	}
+
+	clubID := parseIDParam(request.Id)
 
 	// Validate the icon key before touching the database so a bad key never partially applies.
 	// An empty string clears the icon; a non-empty value is a built-in icon key.
@@ -146,8 +193,23 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		}
 	}
 
+	if updateSettings {
+		if _, err := s.api.ClubService.UpdateTenantSettings(ctx, clubID, modeArg, opennessArg, currentActorID(ctx)); err != nil {
+			switch domainStatusCode(err) {
+			case http.StatusNotFound:
+				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
+			case http.StatusConflict:
+				return PatchClub409JSONResponse{Status: StatusFail, Message: "the club is not a tenant club"}, nil
+			case http.StatusBadRequest:
+				return PatchClub400JSONResponse{Status: StatusFail, Message: "invalid tenant settings"}, nil
+			default:
+				return nil, err
+			}
+		}
+	}
+
 	if updateName {
-		if _, err := s.api.ClubService.UpdateClub(ctx, parseIDParam(request.Id), *request.Body.Name, currentActorID(ctx)); err != nil {
+		if _, err := s.api.ClubService.UpdateClub(ctx, clubID, *request.Body.Name, currentActorID(ctx)); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 			}
@@ -159,7 +221,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateIcon {
-		if _, err := s.api.ClubService.UpdateClubIcon(ctx, parseIDParam(request.Id), iconArg); err != nil {
+		if _, err := s.api.ClubService.UpdateClubIcon(ctx, clubID, iconArg); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 			}
@@ -167,7 +229,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 		}
 	}
 
-	rows, err := s.api.ClubService.GetClub(ctx, parseIDParam(request.Id))
+	rows, err := s.api.ClubService.GetClub(ctx, clubID)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +240,34 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	return PatchClub200JSONResponse{Status: StatusSuccess, Data: clubFromGetRows(rows)}, nil
 }
 
+func (s *StrictServer) ConvertClub(ctx context.Context, request ConvertClubRequestObject) (ConvertClubResponseObject, error) {
+	clubID := parseIDParam(request.Id)
+	if _, err := s.api.ClubService.ConvertToTenant(ctx, clubID,
+		string(request.Body.ArenaMembershipMode), string(request.Body.TournamentsOpenness), currentActorID(ctx)); err != nil {
+		switch domainStatusCode(err) {
+		case http.StatusNotFound:
+			return ConvertClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
+		case http.StatusConflict:
+			return ConvertClub409JSONResponse{Status: StatusFail, Message: "the club is already a tenant club"}, nil
+		case http.StatusBadRequest:
+			return ConvertClub400JSONResponse{Status: StatusFail, Message: "invalid tenant settings"}, nil
+		default:
+			return nil, err
+		}
+	}
+
+	// Re-read through the join so the response carries the (freshly created)
+	// main_arena_id.
+	rows, err := s.api.ClubService.GetClub(ctx, clubID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return ConvertClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
+	}
+	return ConvertClub200JSONResponse{Status: StatusSuccess, Data: clubFromGetRows(rows)}, nil
+}
+
 func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequestObject) (DeleteClubResponseObject, error) {
 	_, err := s.api.ClubService.DeleteClub(ctx, parseIDParam(request.Id), currentActorID(ctx))
 	switch {
@@ -185,7 +275,7 @@ func (s *StrictServer) DeleteClub(ctx context.Context, request DeleteClubRequest
 	case domainStatusCode(err) == http.StatusNotFound:
 		return DeleteClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 	case domainStatusCode(err) == http.StatusBadRequest:
-		return DeleteClub400JSONResponse{Status: StatusFail, Message: "cannot delete club with members"}, nil
+		return DeleteClub400JSONResponse{Status: StatusFail, Message: "cannot delete club"}, nil
 	default:
 		return nil, err
 	}
@@ -201,9 +291,8 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 
 	err := s.api.ClubService.AddMember(ctx, parseIDParam(request.Id), playerID)
 	if err != nil {
-		// OpenAPI only defines 200/400/401/403 for AddClubMember, so a duplicate
-		// (club_id, player_id) membership (unique violation) has no 409 in the
-		// contract and still falls through to 500 via errorMiddleware.
+		// A still-active stint for the same (club, player) is a silent no-op
+		// (the query's ON CONFLICT), so only referential errors land here.
 		if domainStatusCode(err) == http.StatusBadRequest {
 			return AddClubMember400JSONResponse{Status: StatusFail, Message: "club or player not found"}, nil
 		}

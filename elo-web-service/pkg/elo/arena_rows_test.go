@@ -7,7 +7,7 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
-// The arena read queries share one 15-column projection (see arenas.sql), so
+// The arena read queries share one 16-column projection (see arenas.sql), so
 // every generated row struct must keep the identical field sequence — the
 // arenaFrom*Row adapters fan out into arenaFromParts positionally, and a
 // swapped same-typed column would compile silently. This test fails when one

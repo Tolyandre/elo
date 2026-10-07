@@ -59,6 +59,8 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrCompetitiveMismatch),
 		errors.Is(err, elo.ErrModeContradictsGame),
 		errors.Is(err, elo.ErrCoopGameNotAllowed),
+		errors.Is(err, elo.ErrClubTenantSettingsInvalid),
+		errors.Is(err, elo.ErrTenantClubDeleteForbidden),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 
@@ -83,6 +85,9 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrMatchOutsideCampWindows),
 		errors.Is(err, elo.ErrArenaIsAutoManaged),
 		errors.Is(err, elo.ErrGlobalArenaIsPermanent),
+		errors.Is(err, elo.ErrClubArenaIsManaged),
+		errors.Is(err, elo.ErrClubAlreadyTenant),
+		errors.Is(err, elo.ErrClubNotTenant),
 		errors.Is(err, elo.ErrPlayerAlreadyLinked),
 		errors.Is(err, elo.ErrTournamentNotEditable),
 		errors.Is(err, elo.ErrTournamentNotOpenForRegistration),

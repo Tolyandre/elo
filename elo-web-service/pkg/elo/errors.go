@@ -57,6 +57,13 @@ var (
 	ErrArenaIsAutoManaged     = errors.New("арена игры или турнира управляется автоматически и не может быть изменена")
 	ErrArenaNameTaken         = errors.New("арена с таким названием уже существует")
 
+	// Club tenants (ADR-36).
+	ErrClubArenaIsManaged        = errors.New("главная арена сообщества управляется через настройки клуба и не меняется напрямую")
+	ErrClubAlreadyTenant         = errors.New("клуб уже является сообществом")
+	ErrClubNotTenant             = errors.New("клуб не является сообществом")
+	ErrTenantClubDeleteForbidden = errors.New("клуб-сообщество нельзя удалить: за ним закреплена арена рейтинга")
+	ErrClubTenantSettingsInvalid = errors.New("настройки сообщества заданы неверно")
+
 	// Game modes (ADR-33).
 	ErrCoopScoresRejected  = errors.New("кооперативная партия не принимает очки игроков — отправьте общий игровой результат")
 	ErrCoopResultRequired  = errors.New("кооперативной партии нужен общий результат: игровой счёт и победа или поражение")

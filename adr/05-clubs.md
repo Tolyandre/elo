@@ -1,5 +1,9 @@
 Необходимо упростить поиск и отображение игроков своих клубов.
 
+> Extended by ADR-36: a club can become a tenant with its own main arena,
+> openness settings and membership history; the grouping below remains the
+> behavior of a plain group club.
+
 ## Выпадающий список выбора игроков
 
 Меняем дизайн выпадающего списка. Список игроков оборачиваем в tab sheet.

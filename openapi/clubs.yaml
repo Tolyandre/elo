@@ -115,12 +115,15 @@ ClubItem:
   patch:
     operationId: PatchClub
     tags: [clubs]
-    summary: Update a club (name and/or icon)
+    summary: Update a club (name, icon, tenant settings)
     description: >-
       Partial update. A field that is omitted is left unchanged. For `icon`,
       an empty string clears the icon; a non-empty value is a key into the
       frontend's built-in icon set and is validated server-side (lowercase
-      kebab-case, 1-32 characters).
+      kebab-case, 1-32 characters). The tenant settings
+      `arena_membership_mode` / `tournaments_openness` may only be set on a
+      tenant club (ADR-36) and are always provided together; setting them on
+      a group club is a 409.
     security:
       - cookieAuth: []
     parameters:
@@ -140,6 +143,12 @@ ClubItem:
                 type: string
               icon:
                 type: string
+              arena_membership_mode:
+                type: string
+                enum: [any_member, members_only]
+              tournaments_openness:
+                type: string
+                enum: [members_only, open]
     responses:
       "200":
         description: Updated club
@@ -173,6 +182,12 @@ ClubItem:
               $ref: './common.yaml#/ApiError'
       "404":
         description: Club not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: Tenant settings on a group club, or an invalid settings pair
         content:
           application/json:
             schema:
@@ -314,6 +329,82 @@ ClubMemberItem:
             schema:
               $ref: './common.yaml#/ApiError'
 
+ClubConvert:
+  post:
+    operationId: ConvertClub
+    tags: [clubs]
+    summary: Convert a group club into a tenant club
+    description: >-
+      One-way conversion (ADR-36): the club becomes a tenant with the given
+      openness settings, and its main arena is created (a fresh tenant arena,
+      or — for the well-known original club — the already existing global
+      arena). Converting an already-tenant club is a 409.
+    security:
+      - cookieAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              arena_membership_mode:
+                type: string
+                enum: [any_member, members_only]
+              tournaments_openness:
+                type: string
+                enum: [members_only, open]
+            required: [arena_membership_mode, tournaments_openness]
+    responses:
+      "200":
+        description: Converted club
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  $ref: '#/Club'
+              required: [status, data]
+      "400":
+        description: Bad request (missing or invalid settings)
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "403":
+        description: Forbidden
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "404":
+        description: Club not found
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+      "409":
+        description: The club is already a tenant
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 Club:
@@ -337,5 +428,26 @@ Club:
       type: array
       items:
           $ref: './common.yaml#/Base58ID'
-      description: List of player IDs
-  required: [id, name, player_ids]
+      description: List of player IDs (active members; ADR-36 stint history)
+    kind:
+      type: string
+      enum: [group, tenant]
+      description: >-
+        `group` is the plain display grouping (ADR-05); `tenant` is a
+        community with its own main arena and openness settings (ADR-36).
+    arena_membership_mode:
+      type: string
+      nullable: true
+      enum: [any_member, members_only]
+      description: Tenant only — which matches count into the main arena.
+    tournaments_openness:
+      type: string
+      nullable: true
+      enum: [members_only, open]
+      description: Tenant only — whether tournament registration is restricted to members.
+    main_arena_id:
+      $ref: './common.yaml#/Base58ID'
+      description: >-
+        The tenant club's main arena. Present for tenants only (the original
+        club's main arena is the global arena).
+  required: [id, name, player_ids, kind]
