@@ -19,21 +19,29 @@ import { setUrlQuery } from "@/lib/url-state"
 import { loginUrl } from "@/lib/login-url"
 import { redirectTo } from "@/lib/redirect"
 import { useMe } from "@/app/meContext"
-import { LogOut, LayoutGrid, Settings, SlidersHorizontal, Trophy } from "lucide-react"
+import { useTenantScope } from "@/app/tenantScopeContext"
+import { useTenants } from "@/app/tenantsContext"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { Check, ChevronDown, LogOut, LayoutGrid, Settings, SlidersHorizontal, Trophy, Users } from "lucide-react"
 import { SiGithub, SiGoogle } from "@icons-pack/react-simple-icons"
 
 export function NavigationBar() {
   const isMobile = useIsMobile()
   const me = useMe();
   const pathname = usePathname();
+  const { tenant, setTenant } = useTenantScope();
+  const { tenants } = useTenants();
 
-  // «Главная» is / — the tenant's main arena (ADR-36). From any other route
-  // the Link is a normal cross-route client navigation. On / itself the router
-  // would drop a query-only change (a static-export no-op), so clearing the
-  // arena state goes through the History API instead; the arena view derives
-  // everything from the query and falls back to its defaults. The tenant
-  // survives the reset — every navigation preserves it until the user
-  // switches it (ADR-36).
+  // «Главная» is / — the tenant's main arena (ADR-36), and the nav item IS the
+  // tenant: its name links to the tenant's main page, the chevron next to it
+  // opens the switcher (with a single tenant there is nothing to switch to,
+  // so the chevron stays hidden). From any other route the Link is a normal
+  // cross-route client navigation. On / itself the router would drop a
+  // query-only change (a static-export no-op), so clearing the arena state
+  // goes through the History API instead; the arena view derives everything
+  // from the query and falls back to its defaults. The tenant survives the
+  // reset — every navigation preserves it until the user switches it.
   function goHome(e: React.MouseEvent) {
     if (pathname !== "/" || window.location.search === "") return;
     e.preventDefault();
@@ -43,6 +51,7 @@ export function NavigationBar() {
       if (tenant) params.set("tenant", tenant);
     }, "push");
   }
+  const tenantHomeHref = tenant ? `/?tenant=${tenant.id}` : "/";
 
   return (
     <NavigationMenu viewport={isMobile.isMobile} delayDuration={0} className="max-w-none">
@@ -121,10 +130,30 @@ export function NavigationBar() {
           </NavigationMenuContent>
         </NavigationMenuItem>
 
-        <NavigationMenuItem>
-          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2")}>
-            <Link href="/" onClick={goHome}>Главная</Link>
+        <NavigationMenuItem className="flex items-center">
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2 min-w-0")}>
+            <Link href={tenantHomeHref} onClick={goHome} aria-label="На главную сообщества" className="flex items-center gap-1 min-w-0">
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="truncate max-w-[8rem] sm:max-w-[12rem]">{tenant?.name ?? "Главная"}</span>
+            </Link>
           </NavigationMenuLink>
+          {tenants.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-1" aria-label="Выбрать сообщество">
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {tenants.map((t) => (
+                  <DropdownMenuItem key={t.id} onClick={() => setTenant(t.id)}>
+                    <Check className={`mr-1 h-4 w-4 shrink-0 ${t.id === tenant?.id ? "opacity-100" : "opacity-0"}`} />
+                    <span className="truncate">{t.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </NavigationMenuItem>
 
         <NavigationMenuItem>
