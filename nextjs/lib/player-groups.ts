@@ -14,6 +14,9 @@ export const NO_CLUB_LABEL = "Без клуба";
 export const RECENT_LABEL = "Недавние";
 export const OTHER_TAB_LABEL = "Другие";
 
+/** Cap of the "Недавние" tab, mirroring the server's RecentPlayersLimit. */
+export const RECENT_PLAYERS_LIMIT = 15;
+
 type Group = {
   heading: string;
   options: { value: string; label: string }[];
@@ -109,16 +112,17 @@ export function buildPlayerGroups(
 }
 
 /**
- * Ids for the "Недавние" list: the current player first, then the last `limit`
- * distinct players they've played with (most recent match first). The current
- * player is always included once they have at least one match of their own —
- * they trivially qualify as "recent". Empty when there is no current player or
- * no matches of theirs, in which case the caller omits the "Недавние" tab.
+ * Offline fallback for the "Недавние" list (used when the server's
+ * /players/recent is unavailable): the current player first, then the last
+ * distinct co-players of their own matches (most recent match first). At most
+ * `limit` entries in total; the current player only qualifies once they have
+ * at least one match of their own. Empty without a current player or matches,
+ * in which case the caller omits the "Недавние" tab.
  */
 export function recentCoPlayerIds(
   matches: Pick<Match, "date" | "score">[] | undefined,
   myPlayerId: Base58ID | undefined,
-  limit = 10,
+  limit = RECENT_PLAYERS_LIMIT,
 ): Base58ID[] {
   if (!myPlayerId || !matches) return [];
   const myMatches = [...matches]
@@ -137,8 +141,9 @@ export function recentCoPlayerIds(
     }
     if (coPlayers.length >= limit) break;
   }
-  // Current user first, then their most recent distinct co-players.
-  return [myPlayerId, ...coPlayers.slice(0, limit)];
+  // Current user first, then their most recent distinct co-players, capped at
+  // `limit` entries in total.
+  return [myPlayerId, ...coPlayers.slice(0, limit - 1)];
 }
 
 /**

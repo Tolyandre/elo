@@ -353,6 +353,13 @@ type Querier interface {
 	// the status column), so (resolved_at, id) is a total order and the
 	// continuation cursor.
 	ListClosedMarketKeys(ctx context.Context, arg ListClosedMarketKeysParams) ([]ListClosedMarketKeysRow, error)
+	// ---------------------------------------------------------------------------
+	// "Недавние" player-picker candidates (GET /players/recent)
+	// ---------------------------------------------------------------------------
+	ListClubIDsByPlayerID(ctx context.Context, playerID id.ID) ([]id.ID, error)
+	// Users whose linked player is a member of any of the given clubs — the
+	// "users associated with the current user's club" for the recent list.
+	ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error)
 	ListClubs(ctx context.Context) ([]ListClubsRow, error)
 	// Payload rows for the feed's correction events (ADR-32), for an explicit id
 	// set selected by ListArenaFeedEvents.
@@ -418,7 +425,15 @@ type Querier interface {
 	ListParticipantsOfTournaments(ctx context.Context, tournamentIds []id.ID) ([]ListParticipantsOfTournamentsRow, error)
 	ListPlayerUserLinks(ctx context.Context) ([]ListPlayerUserLinksRow, error)
 	ListPlayers(ctx context.Context) ([]Player, error)
+	// Players created by any of the given users, per the audit log (ADR-14 — the
+	// creator lives only in audit_log.actor_user_id), with the creation date.
+	// Joined to players so deleted ones drop out.
+	ListPlayersCreatedByUsers(ctx context.Context, arg ListPlayersCreatedByUsersParams) ([]ListPlayersCreatedByUsersRow, error)
 	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	// Players who shared a match with the current user's player or with a member
+	// of any of the user's clubs, with the date of their most recent such match.
+	// my_player_id is NULL when the user has no linked player.
+	ListRecentCoPlayers(ctx context.Context, arg ListRecentCoPlayersParams) ([]ListRecentCoPlayersRow, error)
 	// Resolved tournament_winner markets of one tournament — the revert hook's
 	// input (a completed tournament whose bracket changed reopens them).
 	ListResolvedTournamentWinnerMarketsByTournament(ctx context.Context, tournamentID id.ID) ([]id.ID, error)

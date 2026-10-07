@@ -35,6 +35,10 @@ type IPlayerService interface {
 	GetPlayer(ctx context.Context, playerID id.ID) (db.Player, error)
 	ListPlayers(ctx context.Context) ([]db.Player, error)
 	ListPlayerUserLinks(ctx context.Context) ([]db.ListPlayerUserLinksRow, error)
+	// ListRecentPlayers builds the player picker's "Недавние" list for the
+	// user: club co-players, players created by the user or their club's
+	// users (via the audit log), the user's player pinned first.
+	ListRecentPlayers(ctx context.Context, userID id.ID, limit int) ([]RecentPlayer, error)
 	RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error)
 	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error)
 	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error)

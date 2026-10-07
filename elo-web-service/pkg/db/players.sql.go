@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -241,6 +242,63 @@ func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]Get
 	return items, nil
 }
 
+const listClubIDsByPlayerID = `-- name: ListClubIDsByPlayerID :many
+
+SELECT club_id FROM player_club_membership WHERE player_id = $1
+`
+
+// ---------------------------------------------------------------------------
+// "Недавние" player-picker candidates (GET /players/recent)
+// ---------------------------------------------------------------------------
+func (q *Queries) ListClubIDsByPlayerID(ctx context.Context, playerID id.ID) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listClubIDsByPlayerID, playerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var club_id id.ID
+		if err := rows.Scan(&club_id); err != nil {
+			return nil, err
+		}
+		items = append(items, club_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClubMemberUserIDs = `-- name: ListClubMemberUserIDs :many
+SELECT DISTINCT u.id
+FROM users u
+JOIN player_club_membership pcm ON pcm.player_id = u.player_id
+WHERE pcm.club_id = ANY($1::uuid[])
+`
+
+// Users whose linked player is a member of any of the given clubs — the
+// "users associated with the current user's club" for the recent list.
+func (q *Queries) ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error) {
+	rows, err := q.db.Query(ctx, listClubMemberUserIDs, clubIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []id.ID{}
+	for rows.Next() {
+		var id id.ID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPlayerUserLinks = `-- name: ListPlayerUserLinks :many
 SELECT player_id, id AS user_id FROM users WHERE player_id IS NOT NULL
 `
@@ -290,6 +348,109 @@ func (q *Queries) ListPlayers(ctx context.Context) ([]Player, error) {
 			&i.GeologistName,
 			&i.BetLimit,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlayersCreatedByUsers = `-- name: ListPlayersCreatedByUsers :many
+SELECT a.entity_id AS player_id, p.name AS player_name, MAX(a.created_at)::timestamptz AS created_at
+FROM audit_log a
+JOIN players p ON p.id = a.entity_id
+WHERE a.entity_type = 'player'
+  AND a.action = 'created'
+  AND a.actor_user_id = ANY($1::uuid[])
+GROUP BY a.entity_id, p.name
+ORDER BY created_at DESC, p.name ASC
+LIMIT $2::int4
+`
+
+type ListPlayersCreatedByUsersParams struct {
+	ActorIds []id.ID `json:"actor_ids"`
+	Limit    int32   `json:"limit"`
+}
+
+type ListPlayersCreatedByUsersRow struct {
+	PlayerID   id.ID     `json:"player_id"`
+	PlayerName string    `json:"player_name"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Players created by any of the given users, per the audit log (ADR-14 — the
+// creator lives only in audit_log.actor_user_id), with the creation date.
+// Joined to players so deleted ones drop out.
+func (q *Queries) ListPlayersCreatedByUsers(ctx context.Context, arg ListPlayersCreatedByUsersParams) ([]ListPlayersCreatedByUsersRow, error) {
+	rows, err := q.db.Query(ctx, listPlayersCreatedByUsers, arg.ActorIds, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPlayersCreatedByUsersRow{}
+	for rows.Next() {
+		var i ListPlayersCreatedByUsersRow
+		if err := rows.Scan(&i.PlayerID, &i.PlayerName, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentCoPlayers = `-- name: ListRecentCoPlayers :many
+SELECT p.id AS player_id, p.name AS player_name, MAX(m.date)::timestamptz AS last_match_at
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+JOIN players p ON p.id = ms.player_id
+WHERE EXISTS (
+        SELECT 1 FROM match_scores mine
+        WHERE mine.match_id = ms.match_id
+          AND mine.player_id = $1
+      )
+   OR EXISTS (
+        SELECT 1
+        FROM match_scores partner
+        JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
+        WHERE partner.match_id = ms.match_id
+          AND pcm.club_id = ANY($2::uuid[])
+      )
+GROUP BY p.id, p.name
+ORDER BY last_match_at DESC, p.name ASC
+LIMIT $3::int4
+`
+
+type ListRecentCoPlayersParams struct {
+	MyPlayerID *id.ID  `json:"my_player_id"`
+	ClubIds    []id.ID `json:"club_ids"`
+	Limit      int32   `json:"limit"`
+}
+
+type ListRecentCoPlayersRow struct {
+	PlayerID    id.ID     `json:"player_id"`
+	PlayerName  string    `json:"player_name"`
+	LastMatchAt time.Time `json:"last_match_at"`
+}
+
+// Players who shared a match with the current user's player or with a member
+// of any of the user's clubs, with the date of their most recent such match.
+// my_player_id is NULL when the user has no linked player.
+func (q *Queries) ListRecentCoPlayers(ctx context.Context, arg ListRecentCoPlayersParams) ([]ListRecentCoPlayersRow, error) {
+	rows, err := q.db.Query(ctx, listRecentCoPlayers, arg.MyPlayerID, arg.ClubIds, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentCoPlayersRow{}
+	for rows.Next() {
+		var i ListRecentCoPlayersRow
+		if err := rows.Scan(&i.PlayerID, &i.PlayerName, &i.LastMatchAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResponsiveCommandPopover } from "@/components/responsive-command-popover"
 import { usePlayers } from "@/app/players/PlayersContext"
-import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
 import { useMe } from "@/app/meContext"
+import { useRecentPlayerIds } from "@/app/players/useRecentPlayerIds"
 import useIsMobile from "@/hooks/use-is-mobile"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command"
 import { ClubIcon } from "@/components/club-icon"
 import { ClubIcons } from "@/components/player-name"
-import { buildPlayerTabs, recentCoPlayerIds, PlayerTab } from "@/lib/player-groups"
+import { buildPlayerTabs, PlayerTab } from "@/lib/player-groups"
 
 type Option = { value: string; label: string }
 
@@ -36,14 +36,10 @@ export function PlayerCombobox({
   const { isMobile } = useIsMobile()
 
   const { players, playerDisplayName } = usePlayers()
-  const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
   const { playerId: myPlayerId } = useMe()
 
-  const recentPlayerIds = React.useMemo(
-    () => recentCoPlayerIds(matches, myPlayerId),
-    [matches, myPlayerId]
-  )
+  const recentPlayerIds = useRecentPlayerIds()
 
   const tabs = React.useMemo(
     () => buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId),

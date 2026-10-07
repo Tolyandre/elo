@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/tolyandre/elo-web-service/pkg/elo"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
@@ -107,6 +109,38 @@ func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObje
 	}
 
 	return ListPlayers200JSONResponse{Status: StatusSuccess, Data: result}, nil
+}
+
+func (s *StrictServer) ListRecentPlayers(ctx context.Context, _ ListRecentPlayersRequestObject) (ListRecentPlayersResponseObject, error) {
+	ginCtx := ginCtxFromContext(ctx)
+	if ginCtx == nil {
+		return nil, fmt.Errorf("no gin context in request")
+	}
+	user, err := MustGetCurrentUser(ginCtx, s.api.UserService)
+	if err != nil {
+		return nil, err
+	}
+
+	recents, err := s.api.PlayerService.ListRecentPlayers(ctx, user.ID, elo.RecentPlayersLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]RecentPlayer, 0, len(recents))
+	for _, r := range recents {
+		var recentAt *time.Time
+		if !r.RecentAt.IsZero() {
+			t := r.RecentAt.UTC()
+			recentAt = &t
+		}
+		data = append(data, RecentPlayer{
+			Id:       r.Player.ID,
+			Name:     r.Player.Name,
+			RecentAt: recentAt,
+		})
+	}
+
+	return ListRecentPlayers200JSONResponse{Status: StatusSuccess, Data: data}, nil
 }
 
 func (s *StrictServer) CreatePlayer(ctx context.Context, request CreatePlayerRequestObject) (CreatePlayerResponseObject, error) {

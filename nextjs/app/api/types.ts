@@ -6,6 +6,7 @@ import type { Base58ID } from "@/lib/id";
 
 export type EloRank = components["schemas"]["EloRank"];
 export type Player = components["schemas"]["Player"];
+export type RecentPlayer = components["schemas"]["RecentPlayer"];
 export type User = components["schemas"]["User"];
 export type Club = components["schemas"]["Club"];
 export type GameList = components["schemas"]["GameList"];

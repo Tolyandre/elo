@@ -191,6 +191,7 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 
 	r.GET("/ping", strictWrapper.GetPing)
 	r.GET("/players", strictWrapper.ListPlayers)
+	r.GET("/players/recent", o.DeserializeUser(), strictWrapper.ListRecentPlayers)
 	r.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
 	r.POST("/players", o.DeserializeUser(), a.RequireEditor(), strictWrapper.CreatePlayer)
 	r.PATCH("/players/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchPlayer)

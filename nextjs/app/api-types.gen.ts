@@ -36,6 +36,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/players/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent players for the current user's player picker
+         * @description Players for the picker's "Недавние" tab, computed for the authenticated user: their own player pinned first, then players who recently played alongside their player or a member of their clubs, and players recently created by them or by the users of their clubs (per the audit log). Sorted by recency — the later of the last relevant match date and the creation date — ties by name. At most 15 entries.
+         */
+        get: operations["ListRecentPlayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/players/{id}/stats": {
         parameters: {
             query?: never;
@@ -1128,6 +1148,15 @@ export interface components {
             id: components["schemas"]["Base58ID"];
             name: string;
         };
+        RecentPlayer: {
+            id: components["schemas"]["Base58ID"];
+            name: string;
+            /**
+             * Format: date-time
+             * @description The recency key the entry was ranked by — the later of the last relevant match date and the creation date. Null for entries with no activity, e.g. the pinned current player.
+             */
+            recent_at?: string | null;
+        };
         RatingPoint: {
             /** Format: date-time */
             date: string;
@@ -2209,6 +2238,38 @@ export interface operations {
             };
             /** @description Player with this name already exists */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    ListRecentPlayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recent players, most recent first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["RecentPlayer"][];
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

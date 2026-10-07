@@ -88,3 +88,56 @@ JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-0000000000
 WHERE ms.player_id = $1
 GROUP BY g.id, g.name
 ORDER BY elo_earned DESC;
+
+-- ---------------------------------------------------------------------------
+-- "Недавние" player-picker candidates (GET /players/recent)
+-- ---------------------------------------------------------------------------
+
+-- name: ListClubIDsByPlayerID :many
+SELECT club_id FROM player_club_membership WHERE player_id = $1;
+
+-- name: ListClubMemberUserIDs :many
+-- Users whose linked player is a member of any of the given clubs — the
+-- "users associated with the current user's club" for the recent list.
+SELECT DISTINCT u.id
+FROM users u
+JOIN player_club_membership pcm ON pcm.player_id = u.player_id
+WHERE pcm.club_id = ANY(sqlc.arg('club_ids')::uuid[]);
+
+-- name: ListRecentCoPlayers :many
+-- Players who shared a match with the current user's player or with a member
+-- of any of the user's clubs, with the date of their most recent such match.
+-- my_player_id is NULL when the user has no linked player.
+SELECT p.id AS player_id, p.name AS player_name, MAX(m.date)::timestamptz AS last_match_at
+FROM match_scores ms
+JOIN matches m ON m.id = ms.match_id
+JOIN players p ON p.id = ms.player_id
+WHERE EXISTS (
+        SELECT 1 FROM match_scores mine
+        WHERE mine.match_id = ms.match_id
+          AND mine.player_id = sqlc.narg('my_player_id')
+      )
+   OR EXISTS (
+        SELECT 1
+        FROM match_scores partner
+        JOIN player_club_membership pcm ON pcm.player_id = partner.player_id
+        WHERE partner.match_id = ms.match_id
+          AND pcm.club_id = ANY(sqlc.arg('club_ids')::uuid[])
+      )
+GROUP BY p.id, p.name
+ORDER BY last_match_at DESC, p.name ASC
+LIMIT sqlc.arg('limit')::int4;
+
+-- name: ListPlayersCreatedByUsers :many
+-- Players created by any of the given users, per the audit log (ADR-14 — the
+-- creator lives only in audit_log.actor_user_id), with the creation date.
+-- Joined to players so deleted ones drop out.
+SELECT a.entity_id AS player_id, p.name AS player_name, MAX(a.created_at)::timestamptz AS created_at
+FROM audit_log a
+JOIN players p ON p.id = a.entity_id
+WHERE a.entity_type = 'player'
+  AND a.action = 'created'
+  AND a.actor_user_id = ANY(sqlc.arg('actor_ids')::uuid[])
+GROUP BY a.entity_id, p.name
+ORDER BY created_at DESC, p.name ASC
+LIMIT sqlc.arg('limit')::int4;

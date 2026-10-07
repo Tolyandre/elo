@@ -76,6 +76,42 @@ PlayersCollection:
             schema:
               $ref: './common.yaml#/ApiError'
 
+PlayersRecent:
+  get:
+    operationId: ListRecentPlayers
+    tags: [players]
+    summary: Recent players for the current user's player picker
+    description: >
+      Players for the picker's "Недавние" tab, computed for the authenticated
+      user: their own player pinned first, then players who recently played
+      alongside their player or a member of their clubs, and players recently
+      created by them or by the users of their clubs (per the audit log).
+      Sorted by recency — the later of the last relevant match date and the
+      creation date — ties by name. At most 15 entries.
+    security:
+      - cookieAuth: []
+    responses:
+      "200":
+        description: Recent players, most recent first
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/RecentPlayer'
+              required: [status, data]
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 PlayerItem:
   patch:
     operationId: PatchPlayer
@@ -288,6 +324,23 @@ PlayerRef:
       $ref: './common.yaml#/Base58ID'
     name:
       type: string
+  required: [id, name]
+
+RecentPlayer:
+  type: object
+  properties:
+    id:
+      $ref: './common.yaml#/Base58ID'
+    name:
+      type: string
+    recent_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: >
+        The recency key the entry was ranked by — the later of the last
+        relevant match date and the creation date. Null for entries with no
+        activity, e.g. the pinned current player.
   required: [id, name]
 
 RatingPoint:

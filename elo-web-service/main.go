@@ -104,6 +104,8 @@ func main() {
 
 	// Players
 	router.GET("/players", strictWrapper.ListPlayers)
+	// "Недавние" picker candidates for the signed-in user — before /players/:id.
+	router.GET("/players/recent", oauth2Handler.DeserializeUser(), strictWrapper.ListRecentPlayers)
 	router.GET("/players/:id/stats", strictWrapper.GetPlayerStats)
 	router.POST("/players", append(editorAuth(), strictWrapper.CreatePlayer)...)
 	router.PATCH("/players/:id", append(editorAuth(), strictWrapper.PatchPlayer)...)

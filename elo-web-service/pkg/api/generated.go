@@ -1871,6 +1871,16 @@ type RatingPoint struct {
 	Rating float64   `json:"rating"`
 }
 
+// RecentPlayer defines model for RecentPlayer.
+type RecentPlayer struct {
+	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	Id   Base58ID `json:"id"`
+	Name string   `json:"name"`
+
+	// RecentAt The recency key the entry was ranked by — the later of the last relevant match date and the creation date. Null for entries with no activity, e.g. the pinned current player.
+	RecentAt *time.Time `json:"recent_at,omitempty"`
+}
+
 // Settings defines model for Settings.
 type Settings struct {
 	EliteLeagueMatches2months int     `json:"elite_league_matches_2months"`
@@ -3793,6 +3803,9 @@ type ServerInterface interface {
 	// CreatePlayer Create a new player
 	// (POST /players)
 	CreatePlayer(c *gin.Context)
+	// ListRecentPlayers Recent players for the current user's player picker
+	// (GET /players/recent)
+	ListRecentPlayers(c *gin.Context)
 	// DeletePlayer Delete a player
 	// (DELETE /players/{id})
 	DeletePlayer(c *gin.Context, id string)
@@ -5133,6 +5146,19 @@ func (siw *ServerInterfaceWrapper) CreatePlayer(c *gin.Context) {
 	siw.Handler.CreatePlayer(c)
 }
 
+// ListRecentPlayers operation middleware
+func (siw *ServerInterfaceWrapper) ListRecentPlayers(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListRecentPlayers(c)
+}
+
 // DeletePlayer operation middleware
 func (siw *ServerInterfaceWrapper) DeletePlayer(c *gin.Context) {
 
@@ -6059,6 +6085,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/ping", wrapper.GetPing)
 	router.GET(options.BaseURL+"/players", wrapper.ListPlayers)
 	router.POST(options.BaseURL+"/players", wrapper.CreatePlayer)
+	router.GET(options.BaseURL+"/players/recent", wrapper.ListRecentPlayers)
 	router.DELETE(options.BaseURL+"/players/:id", wrapper.DeletePlayer)
 	router.PATCH(options.BaseURL+"/players/:id", wrapper.PatchPlayer)
 	router.GET(options.BaseURL+"/players/:id/stats", wrapper.GetPlayerStats)
@@ -8964,6 +8991,44 @@ func (response CreatePlayer409JSONResponse) VisitCreatePlayerResponse(w http.Res
 	return err
 }
 
+type ListRecentPlayersRequestObject struct {
+}
+
+type ListRecentPlayersResponseObject interface {
+	VisitListRecentPlayersResponse(w http.ResponseWriter) error
+}
+
+type ListRecentPlayers200JSONResponse struct {
+	Data   []RecentPlayer `json:"data"`
+	Status string         `json:"status"`
+}
+
+func (response ListRecentPlayers200JSONResponse) VisitListRecentPlayersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRecentPlayers401JSONResponse ApiError
+
+func (response ListRecentPlayers401JSONResponse) VisitListRecentPlayersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeletePlayerRequestObject struct {
 	Id string `json:"id"`
 }
@@ -11454,6 +11519,9 @@ type StrictServerInterface interface {
 	// CreatePlayer Create a new player
 	// (POST /players)
 	CreatePlayer(ctx context.Context, request CreatePlayerRequestObject) (CreatePlayerResponseObject, error)
+	// ListRecentPlayers Recent players for the current user's player picker
+	// (GET /players/recent)
+	ListRecentPlayers(ctx context.Context, request ListRecentPlayersRequestObject) (ListRecentPlayersResponseObject, error)
 	// DeletePlayer Delete a player
 	// (DELETE /players/{id})
 	DeletePlayer(ctx context.Context, request DeletePlayerRequestObject) (DeletePlayerResponseObject, error)
@@ -12973,6 +13041,30 @@ func (sh *strictHandler) CreatePlayer(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(CreatePlayerResponseObject); ok {
 		if err := validResponse.VisitCreatePlayerResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRecentPlayers operation middleware
+func (sh *strictHandler) ListRecentPlayers(ctx *gin.Context) {
+	var request ListRecentPlayersRequestObject
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRecentPlayers(ctx, request.(ListRecentPlayersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRecentPlayers")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListRecentPlayersResponseObject); ok {
+		if err := validResponse.VisitListRecentPlayersResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {

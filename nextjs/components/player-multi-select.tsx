@@ -4,12 +4,12 @@ import type { Base58ID } from "@/lib/id";
 import { usePlayers } from "@/app/players/PlayersContext"
 import { useCallback, useMemo, useRef, useState } from "react"
 import { MultiSelect, MultiSelectGroup, MultiSelectOption, MultiSelectTab } from "./vendor/multi-select"
-import { useMatches } from "@/app/matches/MatchesContext"
 import { useClubs } from "@/app/clubsContext"
 import { useCamps } from "@/app/arenas/campsContext"
 import { useMe } from "@/app/meContext"
 import { useOffline } from "@/app/offline/OfflineContext"
-import { buildPlayerGroups, buildPlayerTabs, recentCoPlayerIds } from "@/lib/player-groups"
+import { useRecentPlayerIds } from "@/app/players/useRecentPlayerIds"
+import { buildPlayerGroups, buildPlayerTabs } from "@/lib/player-groups"
 import { ClubIcon } from "@/components/club-icon"
 import { ClubIcons } from "@/components/player-name"
 import { AddPlayerForm, AddPlayerFormHandle } from "@/components/add-player-form"
@@ -36,17 +36,14 @@ export function PlayerMultiSelect({
   activeCampIds?: Base58ID[]
 }) {
   const { players, playerDisplayName } = usePlayers()
-  const { matches } = useMatches()
   const { clubs, clubDisplayName } = useClubs()
   const { camps } = useCamps()
   const { playerId: myPlayerId, canEdit } = useMe()
   const { pendingPlayers } = useOffline()
 
-  // "Недавние" = the last players from my own most recent matches.
-  const recentPlayerIds = useMemo(
-    () => recentCoPlayerIds(matches, myPlayerId),
-    [matches, myPlayerId],
-  )
+  // "Недавние" = server-computed for the signed-in user (club co-players,
+  // created players, own player pinned); falls back to my own co-players.
+  const recentPlayerIds = useRecentPlayerIds()
 
   const checkedCamps = useMemo(
     () => camps.filter(c => activeCampIds.includes(c.id)),

@@ -33,6 +33,8 @@ components:
       $ref: './players.yaml#/Player'
     PlayerRef:
       $ref: './players.yaml#/PlayerRef'
+    RecentPlayer:
+      $ref: './players.yaml#/RecentPlayer'
     RatingPoint:
       $ref: './players.yaml#/RatingPoint'
     GameMatchStat:
@@ -229,6 +231,8 @@ paths:
   # Players
   /players:
     $ref: './players.yaml#/PlayersCollection'
+  /players/recent:
+    $ref: './players.yaml#/PlayersRecent'
   /players/{id}/stats:
     $ref: './players.yaml#/PlayerStatsPath'
   /players/{id}:

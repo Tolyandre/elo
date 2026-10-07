@@ -60,14 +60,14 @@ describe("recentCoPlayerIds", () => {
         expect(recentCoPlayerIds([match("2024-01-01", ["me"])], "me" as Base58ID)).toEqual(["me"]);
     });
 
-    it("respects the co-player limit and orders by match recency", () => {
+    it("respects the total limit (self included) and orders by match recency", () => {
         const matches = [
             match("2024-01-04", ["me", "5"]),
             match("2024-01-03", ["me", "6"]),
             match("2024-01-02", ["me", "7"]),
             match("2024-01-01", ["me", "8"]),
         ];
-        expect(recentCoPlayerIds(matches, "me" as Base58ID, 3)).toEqual(["me", "5", "6", "7"]);
+        expect(recentCoPlayerIds(matches, "me" as Base58ID, 3)).toEqual(["me", "5", "6"]);
     });
 
     it("is empty without a current player", () => {
