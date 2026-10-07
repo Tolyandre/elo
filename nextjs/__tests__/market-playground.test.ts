@@ -13,7 +13,7 @@ import {
 } from "@/app/help/markets/playground/playground";
 import { costForShares, marginalProbability } from "@/app/markets/lmsr";
 
-const CONFIG = { outcomeCount: 3, maxGuarantorLoss: 16 };
+const CONFIG = { outcomeCount: 3 };
 const ANYA = "Anya";
 const BORYA = "Borya";
 const VERA = "Vera";

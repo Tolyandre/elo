@@ -60,7 +60,6 @@ export async function createMarketPromise(payload: {
     wins_required?: number | null;
     max_losses?: number | null;
     tournament_id?: Base58ID;
-    max_guarantor_loss?: number;
 }): Promise<{ id: Base58ID }> {
     return (await unwrap(client.POST("/markets", {
         body: {
@@ -68,7 +67,6 @@ export async function createMarketPromise(payload: {
             ...payload,
             starts_at: payload.starts_at ?? undefined,
             wins_required: payload.wins_required ?? undefined,
-            max_guarantor_loss: payload.max_guarantor_loss ?? undefined,
         },
     }))).data;
 }
@@ -106,15 +104,14 @@ export async function placeBetPromise(marketId: Base58ID, outcomeId: Base58ID, e
 
 // A guarantee is the player's voluntary, immutable guarantor wager (ADR-20):
 // the risk amount (their maximum loss, reserved against the betting limit)
-// and their maker fee rate. The market's liquidity grows without moving
-// prices; wagers over-subscribing the market's L are accepted but add no
-// liquidity.
+// and their maker fee rate. Every wagered elo converts to liquidity (b =
+// Σrisk/ln(n), ADR-34); the join moves prices toward uniform without a q
+// rescale (ADR-22).
 export async function createGuaranteePromise(marketId: Base58ID, riskAmount: number, feeRate: number): Promise<{
     risk_amount: number;
     fee_rate: number;
     liquidity_b: number;
     total_risk: number;
-    max_guarantor_loss: number;
 }> {
     const res = await unwrap(client.POST("/markets/{id}/guarantees", {
         params: { path: { id: marketId } },

@@ -66,39 +66,37 @@ func MarketFeeRate(wagers []GuaranteeWager) float64 {
 }
 
 // liquidityBForRisk maps the total guarantor risk to the LMSR liquidity
-// parameter: b = min(maxLoss, totalRisk)/ln(n). The min keeps each guarantor's
-// maximum loss at their risked amount (the combined worst case is b·ln(n)).
-func liquidityBForRisk(maxLoss, totalRisk float64, outcomeCount int) float64 {
+// parameter: b = totalRisk/ln(n). Every wagered elo converts to depth (ADR-34
+// removed the L cap); each guarantor's maximum loss still stays at their
+// risked amount, because the combined worst case is b·ln(n) = Σrisk exactly
+// and the settlement waterfall caps each wager at its risk.
+func liquidityBForRisk(totalRisk float64, outcomeCount int) float64 {
 	if outcomeCount < 2 || totalRisk <= 0 {
 		return 0
 	}
-	effective := totalRisk
-	if maxLoss < effective {
-		effective = maxLoss
-	}
-	return effective / math.Log(float64(outcomeCount))
+	return totalRisk / math.Log(float64(outcomeCount))
 }
 
 // standbyRate is the standby fraction ρ of the current liquidity envelope
-// (min(maxGuarantorLoss, Σrisk) — the b·ln(n) worst case) that every backed
-// trade accrues as a floor, even when the book itself carries no uncovered
-// liability: idle-but-present capital earns a per-trade royalty in proportion
-// to the trading it enabled. Deliberately hardcoded (ADR-23) — not expected
-// to be tuned per deployment.
+// (Σrisk — the b·ln(n) worst case) that every backed trade accrues as a
+// floor, even when the book itself carries no uncovered liability: idle-but-
+// present capital earns a per-trade royalty in proportion to the trading it
+// enabled. Deliberately hardcoded (ADR-23) — not expected to be tuned per
+// deployment.
 const standbyRate = 0.1
 
 // exposureAccruals replays the bet stream (in placed_at order, as delivered
 // by GetBetsForSettlement) and samples, at every bet, the house's live
 // worst-case liability
 //
-//	V = max( max_i Q_i − collected , standbyRate·min(maxGuarantorLoss, Σrisk_active) )
+//	V = max( max_i Q_i − collected , standbyRate·Σrisk_active )
 //
 // (uncovered outstanding shares, floored at the standby rate of the current
 // liquidity envelope), crediting it to the wagers active at that bet
 // (created no later than the bet — the fee pool's window) in proportion to
 // their risk. The weights are sequence-only: identical event sequences yield
 // identical accruals regardless of wall-clock spacing (ADR-23).
-func exposureAccruals(bets []betRecord, ordered []GuaranteeWager, maxGuarantorLoss float64) []float64 {
+func exposureAccruals(bets []betRecord, ordered []GuaranteeWager) []float64 {
 	accruals := make([]float64, len(ordered))
 	risk := make([]float64, len(ordered))
 	var totalRisk float64
@@ -131,7 +129,7 @@ func exposureAccruals(bets []betRecord, ordered []GuaranteeWager, maxGuarantorLo
 			sumRisk = totalRisk
 		}
 		v := maxQ - collected
-		if floor := standbyRate * min(maxGuarantorLoss, sumRisk); floor > v {
+		if floor := standbyRate * sumRisk; floor > v {
 			v = floor
 		}
 		if v <= 0 {
@@ -148,14 +146,13 @@ func exposureAccruals(bets []betRecord, ordered []GuaranteeWager, maxGuarantorLo
 
 // settleGuarantors computes the per-player guarantor net result (positive =
 // earned, negative = staked) from the bet stream and wagers. residual is the
-// equity residual (collected − paid, fees excluded); maxGuarantorLoss is the
-// market's immutable liquidity cap L. The returned shares sum to residual +
-// feePool exactly, except when the deficit exceeds the combined risk
-// (insolvency): then no wager is charged beyond its risk and the uncovered
-// remainder is dropped (see cappedProportional). Empty wagers yield nil
-// (callers skip guarantor rows entirely — possible only for bet-less
+// equity residual (collected − paid, fees excluded). The returned shares sum
+// to residual + feePool exactly, except when the deficit exceeds the combined
+// risk (insolvency): then no wager is charged beyond its risk and the
+// uncovered remainder is dropped (see cappedProportional). Empty wagers yield
+// nil (callers skip guarantor rows entirely — possible only for bet-less
 // markets).
-func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, maxGuarantorLoss float64, residual float64) map[id.ID]float64 {
+func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, residual float64) map[id.ID]float64 {
 	if len(wagers) == 0 {
 		return nil
 	}
@@ -189,7 +186,7 @@ func settleGuarantors(bets []betRecord, wagers []GuaranteeWager, maxGuarantorLos
 	// Equity residual: exposure-accrual split on surplus (ADR-23), first-loss
 	// waterfall on deficit.
 	if residual >= 0 {
-		weights := exposureAccruals(bets, ordered, maxGuarantorLoss)
+		weights := exposureAccruals(bets, ordered)
 		var sumWeights float64
 		for _, w := range weights {
 			sumWeights += w

@@ -33,7 +33,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 	bets := []betRecord{
 		betAt("buyer", 1.0, gBase.Add(3*time.Hour)), // after both: weights 0 vs 0.4
 	}
-	shares := settleGuarantors(bets, []GuaranteeWager{early, late}, 16, 0)
+	shares := settleGuarantors(bets, []GuaranteeWager{early, late}, 0)
 	if !approxEq(shares["p2"], 1.0) || !approxEq(shares["p1"], 0) {
 		t.Errorf("fee after both joins must go to the fee-charging wager: %v", shares)
 	}
@@ -44,7 +44,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 	// i.e. again to the fee-charging wager. The property that matters (and is
 	// tested here) is exact conservation either way.
 	bets = []betRecord{betAt("buyer", 1.0, gBase.Add(time.Hour))}
-	shares = settleGuarantors(bets, []GuaranteeWager{early, late}, 16, 0)
+	shares = settleGuarantors(bets, []GuaranteeWager{early, late}, 0)
 	if !approxEq(shares["p1"]+shares["p2"], 1.0) {
 		t.Errorf("fee pool must be fully attributed: %v", shares)
 	}
@@ -57,7 +57,7 @@ func TestSettleGuarantorsFeePoolTimeWindow(t *testing.T) {
 		betAt("buyer", 1.0, gBase.Add(time.Hour)),   // between: only p1 active
 		betAt("buyer", 3.0, gBase.Add(3*time.Hour)), // after: weights 0.2 vs 0.8
 	}
-	shares = settleGuarantors(bets, []GuaranteeWager{earlyFee, lateFee}, 16, 0)
+	shares = settleGuarantors(bets, []GuaranteeWager{earlyFee, lateFee}, 0)
 	// Between: 1.0 → p1. After: 3.0 split 1:4 → 0.6 p1, 2.4 p2.
 	if !approxEq(shares["p1"], 1.6) || !approxEq(shares["p2"], 2.4) {
 		t.Errorf("time-windowed fee attribution: want p1=1.6 p2=2.4, got %v", shares)
@@ -72,7 +72,7 @@ func TestSettleGuarantorsSurplusProRataByRisk(t *testing.T) {
 		wagerAt("p1", 3, 0.10, gBase),
 		wagerAt("p2", 1, 0.00, gBase),
 	}
-	shares := settleGuarantors(nil, wagers, 16, 8)
+	shares := settleGuarantors(nil, wagers, 8)
 	if !approxEq(shares["p1"], 6) || !approxEq(shares["p2"], 2) {
 		t.Errorf("surplus must be pro-rata by risk: %v", shares)
 	}
@@ -96,7 +96,7 @@ func TestSettleGuarantorsExposureAccrualSequenceOnly(t *testing.T) {
 		// Active {G1, G2}: q=[A,B]=2, collected 2.4 → V_raw < 0, floor 1.6 → +0.8 each.
 		betOn("B", 2, 1.30, gBase.Add(3*time.Hour)),
 	}
-	shares := settleGuarantors(bets, []GuaranteeWager{g1, g2}, 16, 0.4)
+	shares := settleGuarantors(bets, []GuaranteeWager{g1, g2}, 0.4)
 	if !approxEq(shares["g1"], 0.272) || !approxEq(shares["g2"], 0.128) {
 		t.Errorf("exposure accrual split: want g1=0.272 g2=0.128, got %v", shares)
 	}
@@ -111,7 +111,7 @@ func TestSettleGuarantorsExposureAccrualSequenceOnly(t *testing.T) {
 		betOn("A", 2, 1.10, gBase.Add(50*time.Hour)),
 		betOn("B", 2, 1.30, gBase.Add(200*time.Hour)),
 	}
-	spaced := settleGuarantors(spacedBets, spacedWagers, 16, 0.4)
+	spaced := settleGuarantors(spacedBets, spacedWagers, 0.4)
 	if !approxEq(spaced["g1"], shares["g1"]) || !approxEq(spaced["g2"], shares["g2"]) {
 		t.Errorf("accrual must be sequence-only: %v vs %v", spaced, shares)
 	}
@@ -135,7 +135,7 @@ func TestSettleGuarantorsStandbyFloorSplitsByBackedTrades(t *testing.T) {
 	// Envelope 0.1 while thin is alone (floor 0.01/trade), 4.1 afterwards
 	// (floor 0.41/trade at 0.1/4.1 vs 4/4.1 shares): thin = 2·0.01 +
 	// 3·0.41·(0.1/4.1) = 0.05; deep = 3·0.41·(4/4.1) = 1.2.
-	shares := settleGuarantors(bets, []GuaranteeWager{thin, deep}, 16, 13)
+	shares := settleGuarantors(bets, []GuaranteeWager{thin, deep}, 13)
 	if !approxEq(shares["thin"], 13*0.05/1.25) || !approxEq(shares["deep"], 13*1.2/1.25) {
 		t.Errorf("standby-only split: want thin=%.4f deep=%.4f, got %v", 13*0.05/1.25, 13*1.2/1.25, shares)
 	}
@@ -150,7 +150,7 @@ func TestSettleGuarantorsDeficitWaterfall(t *testing.T) {
 	// Deficit 8: tier1 = weights {0.5, 0.3, 0} over {p1, p2}: proportional would
 	// be 5 and 3 — p1 caps at its risk 2, so the remaining 6 goes to p2 (exactly
 	// p2's risk).
-	shares := settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, 16, -8)
+	shares := settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -8)
 	if !approxEq(shares["p1"], -2) {
 		t.Errorf("high-fee wager must pay exactly its risk: %v", shares["p1"])
 	}
@@ -165,7 +165,7 @@ func TestSettleGuarantorsDeficitWaterfall(t *testing.T) {
 	// remaining risk: deficit 17 exhausts p1 (2) and p2 (6), leaving 9 for p3
 	// (within its 10 risk — deficits beyond Σrisk are the insolvency case
 	// covered by TestSettleGuarantorsInsolventDeficitDropped).
-	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, 16, -17)
+	shares = settleGuarantors(nil, []GuaranteeWager{highFeeSmallRisk, midFee, zeroFee}, -17)
 	if !approxEq(shares["p1"], -2) || !approxEq(shares["p2"], -6) || !approxEq(shares["p3"], -9) {
 		t.Errorf("waterfall spill to senior: %v", shares)
 	}
@@ -186,7 +186,7 @@ func TestSettleGuarantorsCombinesPotsExactly(t *testing.T) {
 	}
 	feePool := 0.9 + 1.6
 	residual := -5.0
-	shares := settleGuarantors(bets, wagers, 16, residual)
+	shares := settleGuarantors(bets, wagers, residual)
 	var total float64
 	for _, s := range shares {
 		total += s
@@ -201,7 +201,7 @@ func TestSettleGuarantorsCombinesPotsExactly(t *testing.T) {
 }
 
 func TestSettleGuarantorsEmptyWagers(t *testing.T) {
-	if shares := settleGuarantors(nil, nil, 16, 5); shares != nil {
+	if shares := settleGuarantors(nil, nil, 5); shares != nil {
 		t.Errorf("no wagers must yield nil, got %v", shares)
 	}
 }
@@ -213,7 +213,7 @@ func TestSettleGuarantorsEmptyWagers(t *testing.T) {
 // epsilons must respect: a wager's loss never exceeds its risk beyond
 // capSlack, whatever the bet stream's float dust does.
 func TestGuarantorLossBoundedByRisk(t *testing.T) {
-	b := liquidityBForRisk(16, 1, 3)
+	b := liquidityBForRisk(1, 3)
 	q := []float64{0, 0, 0}
 	wagers := []GuaranteeWager{wagerAt(id.ID("0196-sat-guarantor"), 1, 0, gBase)}
 
@@ -251,7 +251,7 @@ func TestGuarantorLossBoundedByRisk(t *testing.T) {
 		collected += bet.Cost
 	}
 	residual := collected - 35
-	shares := settleGuarantors(bets, wagers, 16, residual)
+	shares := settleGuarantors(bets, wagers, residual)
 
 	var loss float64
 	for _, share := range shares {
@@ -276,7 +276,7 @@ func TestSettleGuarantorsInsolventDeficitDropped(t *testing.T) {
 		wagerAt(id.ID("p-insolv-1"), 0.1, 0, gBase),
 		wagerAt(id.ID("p-insolv-2"), 4, 0, gBase),
 	}
-	shares := settleGuarantors(nil, wagers, 16, -118.6)
+	shares := settleGuarantors(nil, wagers, -118.6)
 
 	total := 0.0
 	for _, w := range wagers {

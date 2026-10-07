@@ -258,7 +258,6 @@ export function MarketCard({ market, probabilityHistory, className }: { market: 
                     : market.guarantees && market.guarantees.length > 0 && (
                         <p className="text-xs text-muted-foreground pt-2">
                             Поручители обеспечили {formatAmount(market.guarantees.reduce((sum, g) => sum + g.risk_amount, 0))}
-                            {" "}из {formatAmount(market.max_guarantor_loss)}
                             {" "}({[...new Set(market.guarantees.map(g => g.player_name))].join(", ")})
                         </p>
                     ))}

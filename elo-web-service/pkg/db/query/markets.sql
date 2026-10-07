@@ -1,7 +1,7 @@
 -- name: CreateMarket :one
-INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b, max_guarantor_loss)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, max_guarantor_loss;
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b;
 
 -- name: LockMarket :exec
 -- Serializes market mutations (bets and guarantee joins) on the market row so
@@ -125,7 +125,7 @@ VALUES ($1, $2);
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -175,7 +175,7 @@ LIMIT sqlc.arg('limit')::int4;
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -196,7 +196,7 @@ WHERE om.id = ANY(sqlc.arg('ids')::uuid[]);
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,

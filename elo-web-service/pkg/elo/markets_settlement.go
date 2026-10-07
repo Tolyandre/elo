@@ -143,12 +143,8 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 	// guarantors).
 	var shares map[id.ID]float64
 	if !isCancelled && len(wagers) > 0 {
-		market, err := q.GetMarket(ctx, marketID)
-		if err != nil {
-			return fmt.Errorf("get market %s for settlement: %w", marketID, err)
-		}
 		residual := totalCollected - totalPaid // +surplus / −deficit
-		shares = settleGuarantors(betRecs, wagers, market.MaxGuarantorLoss, residual)
+		shares = settleGuarantors(betRecs, wagers, residual)
 	}
 
 	// A player may be both buyer and guarantor (guarantors may buy). They get

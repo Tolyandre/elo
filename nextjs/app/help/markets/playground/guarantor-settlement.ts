@@ -65,23 +65,23 @@ export function marketFeeRate(wagers: GuaranteeWager[]): number {
 
 /**
  * Maps the total guarantor risk to the LMSR liquidity parameter:
- * b = min(maxLoss, totalRisk)/ln(n). The min keeps each guarantor's maximum
- * loss at their risked amount (the combined worst case is b·ln(n)).
+ * b = totalRisk/ln(n). Every wagered elo converts to depth (ADR-34 removed
+ * the L cap); each guarantor's maximum loss still stays at their risked
+ * amount, because the combined worst case is b·ln(n) = Σrisk exactly.
  */
-export function liquidityBForRisk(maxLoss: number, totalRisk: number, outcomeCount: number): number {
+export function liquidityBForRisk(totalRisk: number, outcomeCount: number): number {
     if (outcomeCount < 2 || totalRisk <= 0) return 0;
-    const effective = Math.min(maxLoss, totalRisk);
-    return effective / Math.log(outcomeCount);
+    return totalRisk / Math.log(outcomeCount);
 }
 
-/** standbyRate is the standby fraction ρ of the current liquidity envelope (min(maxGuarantorLoss, Σrisk) — the b·ln(n) worst case) that every backed trade accrues as a floor, even when the book itself carries no uncovered liability: idle-but-present capital earns a per-trade royalty in proportion to the trading it enabled. Deliberately hardcoded (ADR-23) — not expected to be tuned per deployment. */
+/** standbyRate is the standby fraction ρ of the current liquidity envelope (Σrisk — the b·ln(n) worst case) that every backed trade accrues as a floor, even when the book itself carries no uncovered liability: idle-but-present capital earns a per-trade royalty in proportion to the trading it enabled. Deliberately hardcoded (ADR-23) — not expected to be tuned per deployment. */
 const STANDBY_RATE = 0.1;
 
 /**
  * exposureAccruals replays the bet stream (in seq order) and samples, at every
  * bet, the house's live worst-case liability
  *
- *   V = max( max_i Q_i − collected , standbyRate·min(maxGuarantorLoss, Σrisk_active) )
+ *   V = max( max_i Q_i − collected , standbyRate·Σrisk_active )
  *
  * (uncovered outstanding shares, floored at the standby rate of the current
  * liquidity envelope), crediting it to the wagers active at that bet (joined
@@ -89,7 +89,7 @@ const STANDBY_RATE = 0.1;
  * The weights are sequence-only: identical event sequences yield identical
  * accruals regardless of wall-clock spacing (ADR-23).
  */
-function exposureAccruals(bets: BetRecord[], ordered: GuaranteeWager[], maxGuarantorLoss: number): number[] {
+function exposureAccruals(bets: BetRecord[], ordered: GuaranteeWager[]): number[] {
     const accruals = new Array<number>(ordered.length).fill(0);
     const risk = ordered.map((w) => w.riskAmount);
     const totalRisk = risk.reduce((sum, v) => sum + v, 0);
@@ -112,7 +112,7 @@ function exposureAccruals(bets: BetRecord[], ordered: GuaranteeWager[], maxGuara
         const allActive = sumRisk <= 0;
         if (allActive) sumRisk = totalRisk;
         let v = maxQ - collected;
-        const floor = STANDBY_RATE * Math.min(maxGuarantorLoss, sumRisk);
+        const floor = STANDBY_RATE * sumRisk;
         if (floor > v) v = floor;
         if (v <= 0) continue;
         for (let i = 0; i < ordered.length; i++) {
@@ -245,18 +245,16 @@ function cappedProportional(total: number, weights: number[], caps: number[]): n
 /**
  * settleGuarantors computes the per-player guarantor net result (positive =
  * earned, negative = staked) from the bet stream and wagers. residual is the
- * equity residual (collected − paid, fees excluded); maxGuarantorLoss is the
- * market's immutable liquidity cap L. The returned shares sum to residual +
- * feePool exactly, except when the deficit exceeds the combined risk
- * (insolvency): then no wager is charged beyond its risk and the uncovered
- * remainder is dropped (see cappedProportional). Empty wagers yield an empty
- * map (callers skip guarantor rows entirely — possible only for bet-less
- * markets).
+ * equity residual (collected − paid, fees excluded). The returned shares sum
+ * to residual + feePool exactly, except when the deficit exceeds the combined
+ * risk (insolvency): then no wager is charged beyond its risk and the
+ * uncovered remainder is dropped (see cappedProportional). Empty wagers yield
+ * an empty map (callers skip guarantor rows entirely — possible only for
+ * bet-less markets).
  */
 export function settleGuarantors(
     bets: BetRecord[],
     wagers: GuaranteeWager[],
-    maxGuarantorLoss: number,
     residual: number,
 ): Map<string, number> {
     if (wagers.length === 0) return new Map();
@@ -279,7 +277,7 @@ export function settleGuarantors(
     // Equity residual: exposure-accrual split on surplus (ADR-23), first-loss
     // waterfall on deficit.
     if (residual >= 0) {
-        let weights = exposureAccruals(bets, ordered, maxGuarantorLoss);
+        let weights = exposureAccruals(bets, ordered);
         const sumWeights = weights.reduce((sum, w) => sum + w, 0);
         if (sumWeights <= 0) {
             // Degenerate (a surplus with no bet events ever sampled): fall

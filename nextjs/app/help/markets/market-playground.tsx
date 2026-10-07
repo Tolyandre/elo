@@ -17,7 +17,6 @@ import { InfoIcon, TriangleAlertIcon } from "lucide-react"
 import { buyFee, sharesForTotal } from "@/app/markets/lmsr"
 import { formatAmount } from "@/app/markets/format"
 import { outcomeColors } from "@/app/markets/outcomeColors"
-import { DEFAULT_MAX_GUARANTOR_LOSS } from "@/components/markets/liquidity"
 import {
     PlaygroundResolution,
     PlaygroundState,
@@ -138,13 +137,13 @@ function squashIdentical(guarantees: PlaygroundState["guarantees"]) {
 
 /**
  * The interactive market of the help page: a fully local market with the real
- * math. The reader configures the outcome count and the guarantors' max loss,
- * then acts as different players — betting or backing the market — and
- * finally resolves it to see the real settlement.
+ * math. The reader configures the outcome count, then acts as different
+ * players — betting or backing the market — and finally resolves it to see the
+ * real settlement.
  */
 export function MarketPlayground() {
     const [state, setState] = useState<PlaygroundState>(() =>
-        initialPlaygroundState({ outcomeCount: 3, maxGuarantorLoss: DEFAULT_MAX_GUARANTOR_LOSS }),
+        initialPlaygroundState({ outcomeCount: 3 }),
     );
     const [playerId, setPlayerId] = useState<string>(PLAYGROUND_PLAYERS[0].id);
     const [stake, setStake] = useState(1);
@@ -159,8 +158,8 @@ export function MarketPlayground() {
     const probs = useMemo(() => probabilities(state), [state]);
     const frozen = resolution != null;
 
-    function reset(outcomeCount = state.outcomeCount, maxGuarantorLoss = state.maxGuarantorLoss) {
-        setState(initialPlaygroundState({ outcomeCount, maxGuarantorLoss }));
+    function reset(outcomeCount = state.outcomeCount) {
+        setState(initialPlaygroundState({ outcomeCount }));
         setResolution(null);
         setError(null);
     }
@@ -224,28 +223,17 @@ export function MarketPlayground() {
                     <CardTitle className="text-base">Настройка рынка</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label>Исходов: {state.outcomeCount}</Label>
-                            <Slider
-                                min={2} max={8} step={1}
-                                value={[state.outcomeCount]}
-                                onValueChange={([v]) => reset(v)}
-                                disabled={frozen}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Максимальный риск поручителей L: {state.maxGuarantorLoss}</Label>
-                            <Slider
-                                min={2} max={64} step={1}
-                                value={[state.maxGuarantorLoss]}
-                                onValueChange={([v]) => reset(state.outcomeCount, v)}
-                                disabled={frozen}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Настройка пересоздаёт рынок.
-                            </p>
-                        </div>
+                    <div className="space-y-2">
+                        <Label>Исходов: {state.outcomeCount}</Label>
+                        <Slider
+                            min={2} max={8} step={1}
+                            value={[state.outcomeCount]}
+                            onValueChange={([v]) => reset(v)}
+                            disabled={frozen}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Настройка пересоздаёт рынок.
+                        </p>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                         <p className="text-xs text-muted-foreground">
@@ -337,7 +325,7 @@ export function MarketPlayground() {
                         <CardTitle className="text-base">Поручители</CardTitle>
                         {state.guarantees.length > 0 && (
                             <Badge variant="secondary" className="shrink-0">
-                                Обеспечили {formatAmount(totalRisk(state))} из {formatAmount(state.maxGuarantorLoss)}
+                                Обеспечили {formatAmount(totalRisk(state))}
                             </Badge>
                         )}
                         <Popover>
@@ -353,7 +341,7 @@ export function MarketPlayground() {
                             <PopoverContent align="end" className="w-72 space-y-2 text-xs text-muted-foreground">
                                 <p className="font-medium text-foreground">Как работают поручители</p>
                                 <p>
-                                    Риск поручителей задаёт ликвидность b = min(L, Σрисков)/ln(n), а их комиссия
+                                    Риск поручителей задаёт ликвидность b = Σрисков/ln(n), а их комиссия
                                     становится надбавкой к цене голоса. Вхождение нового поручителя пересчитывает b
                                     при неизменных позициях — цены сдвигаются к равномерным.
                                 </p>

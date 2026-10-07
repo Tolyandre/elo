@@ -27,8 +27,9 @@ import "math"
 //
 // Guarantors are the zero-sum counterparty: their combined worst-case loss is
 // bounded by b · ln(n) per market with n outcomes. Since guarantees became
-// voluntary (ADR-20), b is dynamic — b = min(max_guarantor_loss, Σ risk)/ln(n)
-// — and grows as guarantor wagers arrive. A market with no guarantors yet has
+// voluntary (ADR-20), b is dynamic — b = Σrisk/ln(n) (ADR-34 removed the L
+// cap: every wagered elo converts to depth) — and grows as guarantor wagers
+// arrive. A market with no guarantors yet has
 // b = 0: bets are rejected and prices display the uniform 1/n vector (the exact
 // q=0 limit of the LMSR). Raising b over the fixed q moves prices toward the
 // uniform vector — the honest repricing of the same order flow against deeper

@@ -8,10 +8,6 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/db"
 )
 
-// defaultMarketMaxGuarantorLoss mirrors elo_settings.market_default_max_guarantor_loss
-// (DEFAULT 16) and covers degenerate settings rows.
-const defaultMarketMaxGuarantorLoss = 16
-
 func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketParams) (db.Market, error) {
 	handler, ok := marketTypeHandlers[params.MarketType]
 	if !ok {
@@ -20,20 +16,9 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 
 	// The market is created without guarantors (ADR-20): liquidity_b starts at
 	// 0 — the market is untradable until the first guarantee wager arrives.
-	// MaxGuarantorLoss caps the combined risk the wagers can turn into
-	// liquidity: b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the
-	// amount they risked. Use the caller's L, else the configured default.
-	maxGuarantorLoss := params.MaxGuarantorLoss
-	if maxGuarantorLoss <= 0 {
-		settingsRow, err := s.Queries.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: params.StartsAt, Valid: true})
-		if err != nil {
-			return db.Market{}, fmt.Errorf("get elo settings for default max guarantor loss: %w", err)
-		}
-		maxGuarantorLoss = settingsRow.MarketDefaultMaxGuarantorLoss
-		if maxGuarantorLoss <= 0 {
-			maxGuarantorLoss = defaultMarketMaxGuarantorLoss
-		}
-	}
+	// Every wagered elo then converts to liquidity: b = Σrisk/ln(n) (ADR-34
+	// removed the L cap), so a guarantor's maximum loss stays the amount they
+	// risked.
 
 	// A tournament_winner market has no deadline of its own — it resolves when
 	// the tournament completes and is refunded when it is cancelled. Infinity
@@ -46,13 +31,12 @@ func (s *MarketService) CreateMarket(ctx context.Context, params CreateMarketPar
 		}
 
 		market, err := q.CreateMarket(ctx, db.CreateMarketParams{
-			ID:               params.ID,
-			MarketType:       params.MarketType,
-			StartsAt:         pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
-			ClosesAt:         closesAt,
-			CreatedBy:        params.CreatedBy,
-			LiquidityB:       0,
-			MaxGuarantorLoss: maxGuarantorLoss,
+			ID:         params.ID,
+			MarketType: params.MarketType,
+			StartsAt:   pgtype.Timestamptz{Time: params.StartsAt, Valid: true},
+			ClosesAt:   closesAt,
+			CreatedBy:  params.CreatedBy,
+			LiquidityB: 0,
 		})
 		if err != nil {
 			return db.Market{}, fmt.Errorf("insert market: %w", err)

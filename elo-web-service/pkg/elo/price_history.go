@@ -10,7 +10,7 @@ import (
 // This file reconstructs a market's probability history by replaying its
 // timeline — the ordered stream of bets and guarantee joins — through the
 // LMSR. Every bet shifts the AMM state vector q by its shares on one outcome;
-// every guarantee join raises b = min(L, Σrisk)/ln(n) over the fixed q, which
+// every guarantee join raises b = Σrisk/ln(n) over the fixed q, which
 // moves prices toward the uniform 1/n vector (ADR-22 — the earlier
 // price-preserving q rescale detached the AMM from settlement accounting and
 // was removed). Replaying the merged stream from the creation state q=0, b=0
@@ -59,7 +59,7 @@ type ProbabilityPoint struct {
 // its length); bets on unknown outcomes are skipped (defensive — the FK
 // guarantees they reference real outcome rows of this market). Returns an
 // empty slice for an event-less market.
-func ProbabilityHistory(events []TimelineEvent, outcomeIDs []id.ID, maxGuarantorLoss float64) []ProbabilityPoint {
+func ProbabilityHistory(events []TimelineEvent, outcomeIDs []id.ID) []ProbabilityPoint {
 	index := make(map[id.ID]int, len(outcomeIDs))
 	for i, oid := range outcomeIDs {
 		index[oid] = i
@@ -72,7 +72,7 @@ func ProbabilityHistory(events []TimelineEvent, outcomeIDs []id.ID, maxGuarantor
 		switch ev.Kind {
 		case TimelineGuarantee:
 			totalRisk += ev.RiskAmount
-			b = liquidityBForRisk(maxGuarantorLoss, totalRisk, len(outcomeIDs))
+			b = liquidityBForRisk(totalRisk, len(outcomeIDs))
 		case TimelineBet:
 			i, ok := index[ev.Outcome]
 			if !ok || ev.Shares <= 0 {

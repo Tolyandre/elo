@@ -125,18 +125,6 @@ MarketsCollection:
                 description: >-
                   The tournament the market resolves on. Must be running; one
                   "player wins" outcome is created per tournament participant.
-              # fixed-odds / LMSR fields
-              max_guarantor_loss:
-                type: number
-                format: double
-                minimum: 0
-                exclusiveMinimum: true
-                description: >-
-                  Maximum combined guarantor risk L the market accepts: liquidity
-                  is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is
-                  the amount they risked. Wagers beyond L are accepted in full
-                  (they still earn fees) but add no liquidity. Defaults to the
-                  settings' market_default_max_guarantor_loss when omitted.
             required: [market_type, id]
     responses:
       "201":
@@ -492,10 +480,7 @@ MarketGuarantees:
                       type: number
                       format: double
                       description: Combined risk of all guarantor wagers after this one.
-                    max_guarantor_loss:
-                      type: number
-                      format: double
-                  required: [risk_amount, fee_rate, liquidity_b, total_risk, max_guarantor_loss]
+                  required: [risk_amount, fee_rate, liquidity_b, total_risk]
               required: [status, data]
       "400":
         description: Bad request
@@ -799,14 +784,9 @@ Market:
       format: double
       description: >-
         LMSR liquidity parameter, dynamic since guarantees became voluntary
-        (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor
-        wagers arrive. 0 while the market awaits its first guarantor.
-    max_guarantor_loss:
-      type: number
-      format: double
-      description: >-
-        Maximum combined guarantor risk L: bounds b (and with it the guarantors'
-        combined worst-case loss at their risked amounts).
+        (ADR-20): b = Σrisk/ln(n) (ADR-34 removed the L cap — every wagered
+        elo converts to depth), growing as guarantor wagers arrive. 0 while
+        the market awaits its first guarantor.
     fee_rate:
       type: number
       format: double
@@ -845,7 +825,7 @@ Market:
         who also bought on the market has a separate buyer row (shown in
         `settlement`), so their entry here carries only the house result
         (payout/surcharge).
-  required: [id, market_type, status, outcomes, liquidity_b, max_guarantor_loss]
+  required: [id, market_type, status, outcomes, liquidity_b]
 
 MarketDetail:
   allOf:

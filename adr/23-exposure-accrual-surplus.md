@@ -40,7 +40,9 @@ unsettle → re-settle):
   rate** ρ = 0.1 (hardcoded) of the current liquidity envelope. `V` is
   credited to the wagers **active at that bet** (`created_at ≤ bet time` —
   the fee pool's window; on a timestamp inversion, all wagers, as
-  `activeFeeWeights` does) in proportion to their risk.
+  `activeFeeWeights` does) in proportion to their risk. (The envelope's
+  `min(L, …)` term is gone with ADR-34: the standby floor is now
+  `ρ · Σrisk_active`.)
 
 - The surplus is then split ∝ the accrued totals. If no event was ever
   sampled (degenerate), the split falls back to the plain risk-proportional
@@ -70,8 +72,9 @@ unsettle → re-settle):
 
 ## Consequences
 
-- `settleGuarantors` takes the market's `max_guarantor_loss` (immutable after
-  creation) to evaluate the envelope, and settlement now replays the bet
+- `settleGuarantors` took the market's `max_guarantor_loss` (immutable after
+  creation) to evaluate the envelope — **ADR-34 removed the parameter** (the
+  envelope is Σrisk now) — and settlement now replays the bet
   stream a second time (it already did for the fee pool's windows).
 - Equal-risk guarantors no longer split a surplus equally when their backing
   windows differed — that is the point.

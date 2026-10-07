@@ -74,8 +74,6 @@ export function MarketGuarantees({
 }) {
     const guarantees = market.guarantees ?? [];
     const totalRisk = guarantees.reduce((sum, g) => sum + g.risk_amount, 0);
-    const L = market.max_guarantor_loss;
-    const overSubscribed = totalRisk > L + 1e-9;
     const awaitsGuarantors = market.liquidity_b <= 0;
 
     const [risk, setRisk] = useState(DEFAULT_RISK);
@@ -145,10 +143,7 @@ export function MarketGuarantees({
                         <div className="space-y-1">
                             <div className="text-sm">
                                 <span className="text-muted-foreground">Поручители обеспечили </span>
-                                <span>
-                                    {formatAmount(totalRisk)} <span className="text-muted-foreground">из </span> {formatAmount(L)}
-                                    {overSubscribed && " (максимальная волатильность) "}
-                                </span>
+                                <span>{formatAmount(totalRisk)}</span>
                             </div>
                             <table className="w-full table-fixed text-sm">
                                 <thead>

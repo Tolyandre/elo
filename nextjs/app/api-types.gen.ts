@@ -1640,14 +1640,9 @@ export interface components {
             outcomes: components["schemas"]["MarketOutcome"][];
             /**
              * Format: double
-             * @description LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
+             * @description LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = Σrisk/ln(n) (ADR-34 removed the L cap — every wagered elo converts to depth), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
              */
             liquidity_b: number;
-            /**
-             * Format: double
-             * @description Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
-             */
-            max_guarantor_loss: number;
             /**
              * Format: double
              * @description The market's current maker fee c: the risk-weighted mean of the guarantor wagers' fee rates. Buyers pay the variance-proportional surcharge p + 4c·p(1−p) per share (0 while there are no fee-charging guarantors).
@@ -5384,11 +5379,6 @@ export interface operations {
                     max_losses?: number | null;
                     /** @description The tournament the market resolves on. Must be running; one "player wins" outcome is created per tournament participant. */
                     tournament_id?: components["schemas"]["Base58ID"];
-                    /**
-                     * Format: double
-                     * @description Maximum combined guarantor risk L the market accepts: liquidity is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the amount they risked. Wagers beyond L are accepted in full (they still earn fees) but add no liquidity. Defaults to the settings' market_default_max_guarantor_loss when omitted.
-                     */
-                    max_guarantor_loss?: number;
                 };
             };
         };
@@ -5774,8 +5764,6 @@ export interface operations {
                              * @description Combined risk of all guarantor wagers after this one.
                              */
                             total_risk: number;
-                            /** Format: double */
-                            max_guarantor_loss: number;
                         };
                     };
                 };

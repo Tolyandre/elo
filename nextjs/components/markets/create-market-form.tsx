@@ -26,7 +26,6 @@ import { PlayerCombobox } from "@/components/player-combobox";
 import { useSessionStorage } from "@/hooks/useSessionStorage";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { formatDateTime } from "@/lib/datetime";
-import { DEFAULT_MAX_GUARANTOR_LOSS } from "./liquidity";
 import { matchWinnerFormIssue, tournamentWinnerFormIssue } from "./validation";
 
 
@@ -43,7 +42,6 @@ const STORAGE_KEYS = [
     "new-market/winsRequired",
     "new-market/maxLosses",
     "new-market/tournamentID",
-    "new-market/maxGuarantorLoss",
 ] as const;
 
 /**
@@ -73,13 +71,6 @@ export function CreateMarketForm() {
     // "player wins" outcome per participant, no closes_at (the market's fate
     // is the tournament's).
     const [tournamentID, setTournamentID] = useSessionStorage<Base58ID | "">("new-market/tournamentID", "" as Base58ID | "");
-    // Guarantors are voluntary since ADR-20: the market is created without
-    // them, and players back it afterwards (risk + maker fee) from the market
-    // page. The form only sets the ceiling on their combined risk.
-    const [maxGuarantorLoss, setMaxGuarantorLoss] = useSessionStorage(
-        "new-market/maxGuarantorLoss",
-        String(DEFAULT_MAX_GUARANTOR_LOSS),
-    );
 
     const { data: tournaments } = useAsyncResource(() => getTournamentsPromise(), []);
     const allTournaments = tournaments ?? [];
@@ -129,9 +120,6 @@ export function CreateMarketForm() {
                 // tournament's.
                 payload.tournament_id = tournamentID || undefined;
             }
-            payload.max_guarantor_loss = parseFloat(maxGuarantorLoss) > 0
-                ? parseFloat(maxGuarantorLoss)
-                : undefined;
             await createMarketPromise(payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
             router.push("/?tab=feed");
@@ -148,7 +136,6 @@ export function CreateMarketForm() {
         // The preview shows the market as it will be created (ADR-20): no
         // guarantors yet, so no liquidity — probabilities are the uniform
         // opening state.
-        const previewL = parseFloat(maxGuarantorLoss) > 0 ? parseFloat(maxGuarantorLoss) : DEFAULT_MAX_GUARANTOR_LOSS;
         if (marketType === "match_winner") {
             // Preview outcomes: one per target plus "other", uniform probabilities.
             const n = targetPlayerIDs.length + 1;
@@ -158,7 +145,6 @@ export function CreateMarketForm() {
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
                 liquidity_b: 0,
-                max_guarantor_loss: previewL,
                 outcomes: [
                     ...targetPlayerIDs.map((id) => ({
                         id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
@@ -180,7 +166,6 @@ export function CreateMarketForm() {
                 starts_at: startsAtISO, closes_at: null,
                 created_at: null, resolved_at: null,
                 liquidity_b: 0,
-                max_guarantor_loss: previewL,
                 outcomes: participants.map((id) => ({
                     id: `preview:${id}` as Base58ID, kind: "player" as const, player_id: id, name: "",
                     probability, shares: 0, pool: 0,
@@ -196,7 +181,6 @@ export function CreateMarketForm() {
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
             liquidity_b: 0,
-            max_guarantor_loss: previewL,
             outcomes: [
                 { id: "preview:yes" as Base58ID, kind: "yes" as const, player_id: null, name: "Да", probability: 0.5, shares: 0, pool: 0 },
                 { id: "preview:no" as Base58ID, kind: "no" as const, player_id: null, name: "Нет", probability: 0.5, shares: 0, pool: 0 },
@@ -369,25 +353,11 @@ export function CreateMarketForm() {
 
                 <ResolutionDescription market={buildPreviewMarket()} />
 
-                <div className="space-y-1.5">
-                    <Label htmlFor="max_guarantor_loss">Макс. убыток поручителей (L)</Label>
-                    <Input
-                        id="max_guarantor_loss"
-                        type="number"
-                        min={1}
-                        step="any"
-                        value={maxGuarantorLoss}
-                        onChange={e => setMaxGuarantorLoss(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Чем больше поручителей, тем выше ликвидность рынка и тем плавнее двигаются цены.
-                        Это ограничение задаёт предел суммарного риска поручителей.
-                        Даже если все ставки сыграли против поручителей, они потеряют не больше этой суммы.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                         Ставки откроются с появлением первого поручителя.
-                    </p>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                    Ставки откроются с появлением первого поручителя: их суммарный риск
+                    задаёт ликвидность рынка — чем глубже обеспечение, тем плавнее
+                    двигаются цены.
+                </p>
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
 

@@ -19,9 +19,8 @@ type CreateMarketParams struct {
 	CreatedBy  id.ID
 
 	// Fixed-odds / LMSR fields. Markets are created without guarantors (ADR-20):
-	// liquidity_b starts at 0 and grows as guarantee wagers arrive, bounded by
-	// MaxGuarantorLoss.
-	MaxGuarantorLoss float64 // <=0 ⇒ derived from elo_settings.market_default_max_guarantor_loss
+	// liquidity_b starts at 0 and grows as guarantee wagers arrive — every
+	// wagered elo converts to depth, b = Σrisk/ln(n) (ADR-34 removed the L cap).
 
 	MatchWinner      *MatchWinnerCreateParams      // set when MarketType == "match_winner"
 	WinStreak        *WinStreakCreateParams        // set when MarketType == "win_streak"

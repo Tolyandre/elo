@@ -20,9 +20,11 @@ capital makes possible.
 
 ### Markets are created without guarantors
 
-`CreateMarket` no longer takes guarantors. It takes `max_guarantor_loss` (L,
-defaulting to `elo_settings.market_default_max_guarantor_loss` = 16): the cap on
-the combined risk that wagers can turn into liquidity. New markets start with
+`CreateMarket` no longer takes guarantors. It originally also took
+`max_guarantor_loss` (L, defaulting to
+`elo_settings.market_default_max_guarantor_loss` = 16): the cap on the combined
+risk that wagers can turn into liquidity — **REVISED in ADR-34**, which removed
+L entirely; every wagered elo now converts to depth. New markets start with
 `liquidity_b = 0`.
 
 ### Guarantees: immutable wagers {risk, fee}
@@ -39,7 +41,9 @@ limit (supersedes the ADR-10 exemption).
 - `b = min(L, Σrisk) / ln(n)` — recomputed as wagers arrive. The `min` keeps
   each guarantor's worst-case loss at their risked amount (combined worst case
   `b·ln(n)`). Wagers over-subscribing L are accepted in full (they still earn
-  fees and bear losses, proportional to risk) but add no liquidity.
+  fees and bear losses, proportional to risk) but add no liquidity —
+  **REVISED in ADR-34**: `b = Σrisk/ln(n)`; every wagered elo converts to
+  liquidity, the per-wager waterfall caps keep the worst case at Σrisk.
 - **b = 0 is untradable.** In the b→0 limit the LMSR degenerates to
   `C(q) = max(q)`: favorites cost exactly 1 (pointless) and underdogs cost 0 —
   free lottery tickets with nobody to pay the winners. Bets on a guarantor-less
@@ -90,7 +94,8 @@ integration, exact for any outcome count. The fee is snapshotted on the bet row
     `fee·risk`, each capped at their risk), everyone else backs them up
     pro-rata by remaining risk. Zero-fee guarantors are the senior tranche.
 
-The combined worst case is `b·ln(n) = min(L, Σrisk) ≤ Σrisk`, so the waterfall
+The combined worst case is `b·ln(n) = min(L, Σrisk) ≤ Σrisk` (with ADR-34's
+`b = Σrisk/ln(n)` it is exactly Σrisk), so the waterfall
 fully allocates whenever the AMM accounting is consistent (ADR-22 hard-caps
 the wagers and drops any remainder if it ever is not). Buyers' stakes include
 the fee; cancelled markets refund
@@ -126,7 +131,8 @@ pre-existing lost-update window on concurrent same-outcome bets).
   market page and the 422 checks now include wager risk.
 - Over-subscription beyond L is accepted but announced as such ("риск сверх L
   не увеличивает ликвидность") — accepted trade-off: simple writes, allocations
-  stay risk-proportional.
+  stay risk-proportional. **Superseded in ADR-34**: over-subscription no longer
+  exists; every wager deepens the market.
 - Known edge (documented, harmless): through a timestamp inversion of
   concurrently committed rows a bet's fee could be attributed by the
   conservation fallback (all wagers) instead of its strict time window; the

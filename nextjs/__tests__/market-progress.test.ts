@@ -72,7 +72,6 @@ describe('streakWindowEnd', () => {
         market_type: 'win_streak' as const,
         outcomes: [],
         liquidity_b: 8,
-        max_guarantor_loss: 16,
         params: streakParams(),
     }
 
@@ -130,7 +129,6 @@ describe('streakTimeRow', () => {
         market_type: 'win_streak' as const,
         outcomes: [],
         liquidity_b: 8,
-        max_guarantor_loss: 16,
         params: streakParams(),
         closes_at: '2026-09-30T00:00:00Z',
     }

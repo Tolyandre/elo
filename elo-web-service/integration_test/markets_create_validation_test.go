@@ -88,12 +88,12 @@ func TestMarkets_Create_SinglePlayerNeedsOtherPlayers(t *testing.T) {
 	}
 }
 
-// TestMarkets_Create_DefaultMaxGuarantorLossAndGuarantee pins the settings
-// fallback and the voluntary-guarantor flow (ADR-20): a market is created
-// without guarantors (b = 0, L from the settings default 16), stays untradable,
-// and its first guarantee wager derives b = min(L, Σrisk)/ln(n) = 16/ln(3) for
-// the two-target (n = 3) market.
-func TestMarkets_Create_DefaultMaxGuarantorLossAndGuarantee(t *testing.T) {
+// TestMarkets_Create_NoLiquidityThenGuaranteeDepth pins the voluntary-guarantor
+// flow (ADR-20, ADR-34): a market is created without guarantors (b = 0), stays
+// untradable, and its first guarantee wager converts the full wagered risk to
+// liquidity: b = Σrisk/ln(n) = 16/ln(3) for the two-target (n = 3) market —
+// the max-loss cap L is gone.
+func TestMarkets_Create_NoLiquidityThenGuaranteeDepth(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -130,11 +130,8 @@ func TestMarkets_Create_DefaultMaxGuarantorLossAndGuarantee(t *testing.T) {
 	if m.LiquidityB != 0 {
 		t.Errorf("guarantor-less market must start with liquidity_b = 0, got %v", m.LiquidityB)
 	}
-	if math.Abs(m.MaxGuarantorLoss-16) > 1e-9 {
-		t.Errorf("default max_guarantor_loss = %v, want 16 (settings default)", m.MaxGuarantorLoss)
-	}
 
-	// The guarantor joins with the market's full L: b = min(16, 16)/ln(3).
+	// The guarantor risks 16: every wagered elo converts to depth, b = 16/ln(3).
 	payload, _ := json.Marshal(map[string]any{
 		"id":          uuid.MustParse("00000000-0000-0000-0000-000000000115").String(),
 		"risk_amount": 16,

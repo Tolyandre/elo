@@ -37,3 +37,4 @@ ADRs are numbered sequentially; the highest numbers describe the current behavio
 | [31](31-bgg-integration.md) | BGG integration: box-art enrichment via the XML API |
 | [32](32-general-feed.md) | The general feed: server-merged arena/home event streams; markets lobby pagination |
 | [33](33-game-modes.md) | Game modes: competitive, coop/solo, mixed — coop matches feed the home feed only |
+| [34](34-guarantor-risk-to-depth.md) | Guarantor risk fully converts to liquidity (the L cap removal) |

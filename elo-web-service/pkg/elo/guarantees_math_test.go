@@ -99,15 +99,17 @@ func TestMarketFeeRateWeightedMean(t *testing.T) {
 	}
 }
 
-func TestLiquidityBForRiskCapsAtMaxLoss(t *testing.T) {
-	// Honest risk: b = min(L, Σrisk)/ln(n); Σrisk past L adds no liquidity.
-	if b := liquidityBForRisk(16, 8, 2); !approxEq(b, 8/math.Ln2) {
-		t.Errorf("b(Σr=8, L=16, n=2) = %v, want 8/ln2", b)
+func TestLiquidityBForRisk(t *testing.T) {
+	// Honest risk: every wagered elo converts to depth, b = Σrisk/ln(n)
+	// (ADR-34 removed the L cap); the waterfall still bounds each guarantor's
+	// loss at their risk because b·ln(n) = Σrisk exactly.
+	if b := liquidityBForRisk(8, 2); !approxEq(b, 8/math.Ln2) {
+		t.Errorf("b(Σr=8, n=2) = %v, want 8/ln2", b)
 	}
-	if b := liquidityBForRisk(16, 40, 2); !approxEq(b, 16/math.Ln2) {
-		t.Errorf("b(Σr=40, L=16, n=2) = %v, want 16/ln2 (capped)", b)
+	if b := liquidityBForRisk(40, 2); !approxEq(b, 40/math.Ln2) {
+		t.Errorf("b(Σr=40, n=2) = %v, want 40/ln2", b)
 	}
-	if b := liquidityBForRisk(16, 0, 2); b != 0 {
+	if b := liquidityBForRisk(0, 2); b != 0 {
 		t.Errorf("no risk must give b=0, got %v", b)
 	}
 }

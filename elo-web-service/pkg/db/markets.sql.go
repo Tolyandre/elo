@@ -14,19 +14,18 @@ import (
 )
 
 const createMarket = `-- name: CreateMarket :one
-INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b, max_guarantor_loss)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b, max_guarantor_loss
+INSERT INTO markets (id, market_type, starts_at, closes_at, created_by, liquidity_b)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, market_type, status, starts_at, closes_at, created_by, created_at, resolved_at, resolution_match_id, resolution_outcome, betting_closed_at, liquidity_b
 `
 
 type CreateMarketParams struct {
-	ID               id.ID              `json:"id"`
-	MarketType       string             `json:"market_type"`
-	StartsAt         pgtype.Timestamptz `json:"starts_at"`
-	ClosesAt         pgtype.Timestamptz `json:"closes_at"`
-	CreatedBy        id.ID              `json:"created_by"`
-	LiquidityB       float64            `json:"liquidity_b"`
-	MaxGuarantorLoss float64            `json:"max_guarantor_loss"`
+	ID         id.ID              `json:"id"`
+	MarketType string             `json:"market_type"`
+	StartsAt   pgtype.Timestamptz `json:"starts_at"`
+	ClosesAt   pgtype.Timestamptz `json:"closes_at"`
+	CreatedBy  id.ID              `json:"created_by"`
+	LiquidityB float64            `json:"liquidity_b"`
 }
 
 func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Market, error) {
@@ -37,7 +36,6 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		arg.ClosesAt,
 		arg.CreatedBy,
 		arg.LiquidityB,
-		arg.MaxGuarantorLoss,
 	)
 	var i Market
 	err := row.Scan(
@@ -53,7 +51,6 @@ func (q *Queries) CreateMarket(ctx context.Context, arg CreateMarketParams) (Mar
 		&i.ResolutionOutcome,
 		&i.BettingClosedAt,
 		&i.LiquidityB,
-		&i.MaxGuarantorLoss,
 	)
 	return i, err
 }
@@ -305,7 +302,7 @@ const getMarket = `-- name: GetMarket :one
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -336,7 +333,6 @@ type GetMarketRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	MaxGuarantorLoss  float64            `json:"max_guarantor_loss"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -364,7 +360,6 @@ func (q *Queries) GetMarket(ctx context.Context, argID id.ID) (GetMarketRow, err
 		&i.ResolutionMatchID,
 		&i.BettingClosedAt,
 		&i.LiquidityB,
-		&i.MaxGuarantorLoss,
 		&i.TargetPlayerIds,
 		&i.AllowOtherPlayers,
 		&i.MwGameIds,
@@ -1202,7 +1197,7 @@ const listMarketsByIDs = `-- name: ListMarketsByIDs :many
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -1233,7 +1228,6 @@ type ListMarketsByIDsRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	MaxGuarantorLoss  float64            `json:"max_guarantor_loss"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -1269,7 +1263,6 @@ func (q *Queries) ListMarketsByIDs(ctx context.Context, ids []id.ID) ([]ListMark
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
 			&i.LiquidityB,
-			&i.MaxGuarantorLoss,
 			&i.TargetPlayerIds,
 			&i.AllowOtherPlayers,
 			&i.MwGameIds,
@@ -1294,7 +1287,7 @@ const listMarketsByResolutionMatch = `-- name: ListMarketsByResolutionMatch :man
 SELECT
     om.id, om.market_type, om.status, om.resolution_outcome, om.starts_at, om.closes_at,
     om.created_by, om.created_at, om.resolved_at, om.resolution_match_id, om.betting_closed_at,
-    om.liquidity_b, om.max_guarantor_loss,
+    om.liquidity_b,
     mwp.target_player_ids,
     mwp.allow_other_players,
     mwp.game_ids AS mw_game_ids,
@@ -1325,7 +1318,6 @@ type ListMarketsByResolutionMatchRow struct {
 	ResolutionMatchID *id.ID             `json:"resolution_match_id"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	MaxGuarantorLoss  float64            `json:"max_guarantor_loss"`
 	TargetPlayerIds   []id.ID            `json:"target_player_ids"`
 	AllowOtherPlayers pgtype.Bool        `json:"allow_other_players"`
 	MwGameIds         []id.ID            `json:"mw_game_ids"`
@@ -1359,7 +1351,6 @@ func (q *Queries) ListMarketsByResolutionMatch(ctx context.Context, resolutionMa
 			&i.ResolutionMatchID,
 			&i.BettingClosedAt,
 			&i.LiquidityB,
-			&i.MaxGuarantorLoss,
 			&i.TargetPlayerIds,
 			&i.AllowOtherPlayers,
 			&i.MwGameIds,

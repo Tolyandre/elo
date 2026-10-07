@@ -174,7 +174,7 @@ func TestAMMZeroSharesIsZero(t *testing.T) {
 // difference cancelled the underdog cost (true value ~1e-16) to exactly 0,
 // tripping the bets cost > 0 constraint.
 func TestAMMSaturatedMarketCosts(t *testing.T) {
-	b := liquidityBForRisk(16, 1, 3)
+	b := liquidityBForRisk(1, 3)
 	q := []float64{34.000000000000014, 0, 0}
 
 	p := MarginalProbabilitiesN(q, b)
@@ -223,7 +223,7 @@ func TestAMMExtremeGapCostFloor(t *testing.T) {
 // exact and positive.
 func TestAMMTinyLiquidity(t *testing.T) {
 	const risk = 0.00001
-	b := liquidityBForRisk(16, risk, 3)
+	b := liquidityBForRisk(risk, 3)
 	if !approxEq(b, risk/math.Log(3)) {
 		t.Fatalf("b = %v, want risk/ln 3", b)
 	}

@@ -39,12 +39,10 @@ export const PLAYGROUND_PLAYERS = [
 
 export interface PlaygroundConfig {
     outcomeCount: number;
-    maxGuarantorLoss: number;
 }
 
 export interface PlaygroundState {
     outcomeCount: number;
-    maxGuarantorLoss: number;
     /** LMSR q vector, one position per outcome. */
     q: number[];
     bets: BetRecord[];
@@ -66,7 +64,6 @@ export function playgroundOutcomeName(i: number): string {
 export function initialPlaygroundState(config: PlaygroundConfig): PlaygroundState {
     return {
         outcomeCount: config.outcomeCount,
-        maxGuarantorLoss: config.maxGuarantorLoss,
         q: new Array(config.outcomeCount).fill(0),
         bets: [],
         guarantees: [],
@@ -80,9 +77,9 @@ export function totalRisk(state: PlaygroundState): number {
     return state.guarantees.reduce((sum, g) => sum + g.riskAmount, 0);
 }
 
-/** The market's LMSR liquidity: 0 while awaiting guarantors. */
+/** The market's LMSR liquidity: 0 while awaiting guarantors; every wagered elo converts to depth (ADR-34). */
 export function liquidityB(state: PlaygroundState): number {
-    return liquidityBForRisk(state.maxGuarantorLoss, totalRisk(state), state.outcomeCount);
+    return liquidityBForRisk(totalRisk(state), state.outcomeCount);
 }
 
 /** The market's maker fee c (risk-weighted mean of the wager fee rates). */
@@ -199,7 +196,7 @@ export function resolveMarket(state: PlaygroundState, outcomeIndex: number): Pla
 
     // SettlementList renders earned − staked; a guarantor's net maps to
     // (staked = loss, earned = win) so the signed column stays the net.
-    const guarantors: SettlementDetail[] = [...settleGuarantors(state.bets, state.guarantees, state.maxGuarantorLoss, residual)]
+    const guarantors: SettlementDetail[] = [...settleGuarantors(state.bets, state.guarantees, residual)]
         .map(([playerId, net]) => ({
             player_id: fid(playerId),
             player_name: nameOf(playerId),

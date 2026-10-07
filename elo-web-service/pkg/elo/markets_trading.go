@@ -158,11 +158,10 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 
 // GuaranteeOutcome is returned when a player becomes a guarantor.
 type GuaranteeOutcome struct {
-	RiskAmount       float64
-	FeeRate          float64
-	LiquidityB       float64
-	TotalRisk        float64
-	MaxGuarantorLoss float64
+	RiskAmount float64
+	FeeRate    float64
+	LiquidityB float64
+	TotalRisk  float64
 }
 
 // maxGuaranteeFeeRate caps each guarantor's maker fee: with c ≤ 0.25 the
@@ -171,13 +170,13 @@ const maxGuaranteeFeeRate = 0.25
 
 // JoinAsGuarantee adds the player's voluntary guarantor wager to an open
 // market: the risk amount (their maximum loss) is reserved against the betting
-// limit, and the market's liquidity grows to b = min(L, Σrisk)/ln(n) — capped
-// by L even when wagers over-subscribe it, with all earnings and losses staying
-// proportional to the risked amounts. b rises over a fixed q, so prices move
-// toward the uniform 1/n vector (the market deepens; ADR-22) — scaling q with
-// b would preserve prices but detach the AMM's cost function from the
-// unscaled, real collected elo and bet shares, letting post-join buys amass
-// payouts far beyond the guarantors' risk. Wagers are immutable.
+// limit, and the market's liquidity grows to b = Σrisk/ln(n) — every wagered
+// elo converts to depth (ADR-34 removed the L cap), with all earnings and
+// losses staying proportional to the risked amounts. b rises over a fixed q,
+// so prices move toward the uniform 1/n vector (the market deepens; ADR-22) —
+// scaling q with b would preserve prices but detach the AMM's cost function
+// from the unscaled, real collected elo and bet shares, letting post-join buys
+// amass payouts far beyond the guarantors' risk. Wagers are immutable.
 func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, marketID id.ID, playerID id.ID, riskAmount, feeRate float64) (GuaranteeOutcome, error) {
 	if riskAmount <= 0 {
 		return GuaranteeOutcome{}, ErrGuaranteeRiskNotPositive
@@ -235,7 +234,7 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 	if err != nil {
 		return GuaranteeOutcome{}, fmt.Errorf("list market outcomes: %w", err)
 	}
-	newB := liquidityBForRisk(market.MaxGuarantorLoss, totalRisk, len(outcomes))
+	newB := liquidityBForRisk(totalRisk, len(outcomes))
 
 	// Liquidity injection with q fixed: the probabilities move toward the
 	// uniform 1/n vector (ADR-22). q must never be scaled along with b —
@@ -281,11 +280,10 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 	}
 
 	return GuaranteeOutcome{
-		RiskAmount:       riskAmount,
-		FeeRate:          feeRate,
-		LiquidityB:       newB,
-		TotalRisk:        totalRisk,
-		MaxGuarantorLoss: market.MaxGuarantorLoss,
+		RiskAmount: riskAmount,
+		FeeRate:    feeRate,
+		LiquidityB: newB,
+		TotalRisk:  totalRisk,
 	}, nil
 }
 

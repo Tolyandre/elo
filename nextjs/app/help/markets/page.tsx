@@ -149,10 +149,6 @@ export default function HelpMarketsPage() {
                                 <td className="py-2">Максимум, который поручитель может потерять. Резервируется против его кредитного лимита ставок.</td>
                             </tr>
                             <tr>
-                                <td className="py-2 pr-4 font-medium text-foreground">Максимальный риск <InlineMath math="L" /></td>
-                                <td className="py-2">Параметр рынка: суммарная волатильность рынка ограничена величиной <InlineMath math="b\ln n \le L" />.</td>
-                            </tr>
-                            <tr>
                                 <td className="py-2 pr-4 font-medium text-foreground">Ликвидность <InlineMath math="b" /></td>
                                 <td className="py-2">Параметр, определяющий, насколько резко цены двигаются от ставок: большой b — цены инертные, малый — резкие.</td>
                             </tr>
@@ -264,14 +260,15 @@ export default function HelpMarketsPage() {
                 </p>
                 <Card className="bg-muted/50">
                     <CardContent className="py-3 overflow-x-auto space-y-1">
-                        <BlockMath math={String.raw`b = \frac{\min(L,\; \sum_k r_k)}{\ln n}`} />
+                        <BlockMath math={String.raw`b = \frac{\sum_k r_k}{\ln n}`} />
                         <BlockMath math={String.raw`c = \frac{\sum_k f_k \, r_k}{\sum_k r_k}`} />
                     </CardContent>
                 </Card>
                 <p>
-                    Минимум с <InlineMath math="L" /> ограничивает волатильность: худший случай для
-                    поручителей — <InlineMath math="b \ln n \le L" />. Когда суммарный риск растёт
-                    сверх <InlineMath math="L" />, ликвидность больше не увеличивается.
+                    Весь риск поручителей уходит в глубину рынка: суммарный худший
+                    случай для поручителей — <InlineMath math="b \ln n = \sum_k r_k" />,
+                    а водопад убытков ограничивает потерю каждого их собственным
+                    риском <InlineMath math="r_k" />.
                 </p>
 
                 <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">
@@ -314,7 +311,7 @@ export default function HelpMarketsPage() {
                 </p>
                 <Card className="bg-muted/50">
                     <CardContent className="py-3 overflow-x-auto">
-                        <BlockMath math={String.raw`V = \max\!\Bigl(\max_i Q_i - \text{собрано},\; 0{,}1 \cdot \min(L,\; \Sigma r_{\text{активных}})\Bigr)`} />
+                        <BlockMath math={String.raw`V = \max\!\Bigl(\max_i Q_i - \text{собрано},\; 0{,}1 \cdot \Sigma r_{\text{активных}}\Bigr)`} />
                     </CardContent>
                 </Card>
                 <p>

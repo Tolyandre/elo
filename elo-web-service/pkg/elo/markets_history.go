@@ -12,8 +12,8 @@ import (
 // from the creation state q=0, b=0. No probabilities are persisted — see
 // price_history.go.
 func MarketProbabilityHistory(ctx context.Context, q *db.Queries, marketID id.ID) ([]ProbabilityPoint, error) {
-	market, err := q.GetMarket(ctx, marketID)
-	if err != nil {
+	// Existence check: a missing market must 404, not return an empty series.
+	if _, err := q.GetMarket(ctx, marketID); err != nil {
 		return nil, err
 	}
 	outcomes, err := q.ListMarketOutcomes(ctx, marketID)
@@ -39,5 +39,5 @@ func MarketProbabilityHistory(ctx context.Context, q *db.Queries, marketID id.ID
 	// Both streams arrive ordered (placed_at, id) / (created_at, id); the merge
 	// fixes the cross-stream order ProbabilityHistory expects.
 	events := mergeTimeline(bets, guaranteeWagersFromDB(wagerRows))
-	return ProbabilityHistory(events, outcomeIDs, market.MaxGuarantorLoss), nil
+	return ProbabilityHistory(events, outcomeIDs), nil
 }

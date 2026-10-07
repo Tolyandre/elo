@@ -99,20 +99,19 @@ type Correction struct {
 }
 
 type EloSetting struct {
-	EffectiveDate                 pgtype.Timestamptz `json:"effective_date"`
-	EloConstK                     float64            `json:"elo_const_k"`
-	EloConstD                     float64            `json:"elo_const_d"`
-	StartingElo                   float64            `json:"starting_elo"`
-	WinReward                     float64            `json:"win_reward"`
-	EliteLeagueMatches6months     int32              `json:"elite_league_matches_6months"`
-	EliteLeagueMatches2months     int32              `json:"elite_league_matches_2months"`
-	NewbieLeagueEarnedMin         float64            `json:"newbie_league_earned_min"`
-	NewbieLeagueEarnedMax         float64            `json:"newbie_league_earned_max"`
-	NewbieLeagueEarnedTau         float64            `json:"newbie_league_earned_tau"`
-	NewbieLeagueGoalGap           float64            `json:"newbie_league_goal_gap"`
-	StartingRatingGlobalArena     float64            `json:"starting_rating_global_arena"`
-	StartingRatingGameArena       float64            `json:"starting_rating_game_arena"`
-	MarketDefaultMaxGuarantorLoss float64            `json:"market_default_max_guarantor_loss"`
+	EffectiveDate             pgtype.Timestamptz `json:"effective_date"`
+	EloConstK                 float64            `json:"elo_const_k"`
+	EloConstD                 float64            `json:"elo_const_d"`
+	StartingElo               float64            `json:"starting_elo"`
+	WinReward                 float64            `json:"win_reward"`
+	EliteLeagueMatches6months int32              `json:"elite_league_matches_6months"`
+	EliteLeagueMatches2months int32              `json:"elite_league_matches_2months"`
+	NewbieLeagueEarnedMin     float64            `json:"newbie_league_earned_min"`
+	NewbieLeagueEarnedMax     float64            `json:"newbie_league_earned_max"`
+	NewbieLeagueEarnedTau     float64            `json:"newbie_league_earned_tau"`
+	NewbieLeagueGoalGap       float64            `json:"newbie_league_goal_gap"`
+	StartingRatingGlobalArena float64            `json:"starting_rating_global_arena"`
+	StartingRatingGameArena   float64            `json:"starting_rating_game_arena"`
 }
 
 type Game struct {
@@ -158,7 +157,6 @@ type Market struct {
 	ResolutionOutcome *id.ID             `json:"resolution_outcome"`
 	BettingClosedAt   pgtype.Timestamptz `json:"betting_closed_at"`
 	LiquidityB        float64            `json:"liquidity_b"`
-	MaxGuarantorLoss  float64            `json:"max_guarantor_loss"`
 }
 
 type MarketGuarantee struct {

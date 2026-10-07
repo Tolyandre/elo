@@ -1589,12 +1589,9 @@ type Market struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
+	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = Σrisk/ln(n) (ADR-34 removed the L cap — every wagered elo converts to depth), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
 	LiquidityB float64          `json:"liquidity_b"`
 	MarketType MarketMarketType `json:"market_type"`
-
-	// MaxGuarantorLoss Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
-	MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
 
 	// Outcomes The market's mutually-exclusive outcomes; probabilities sum to 1.
 	Outcomes []MarketsMarketOutcome `json:"outcomes"`
@@ -1648,12 +1645,9 @@ type MarketDetail struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id Base58ID `json:"id"`
 
-	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = min(max_guarantor_loss, Σrisk)/ln(n), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
+	// LiquidityB LMSR liquidity parameter, dynamic since guarantees became voluntary (ADR-20): b = Σrisk/ln(n) (ADR-34 removed the L cap — every wagered elo converts to depth), growing as guarantor wagers arrive. 0 while the market awaits its first guarantor.
 	LiquidityB float64                `json:"liquidity_b"`
 	MarketType MarketDetailMarketType `json:"market_type"`
-
-	// MaxGuarantorLoss Maximum combined guarantor risk L: bounds b (and with it the guarantors' combined worst-case loss at their risked amounts).
-	MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
 
 	// MyPositions The user's per-outcome holdings on this market (empty when none).
 	MyPositions *[]struct {
@@ -2527,10 +2521,7 @@ type CreateMarketJSONBody struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	Id         Base58ID                       `json:"id"`
 	MarketType CreateMarketJSONBodyMarketType `json:"market_type"`
-
-	// MaxGuarantorLoss Maximum combined guarantor risk L the market accepts: liquidity is b = min(L, Σrisk)/ln(n), so a guarantor's maximum loss is the amount they risked. Wagers beyond L are accepted in full (they still earn fees) but add no liquidity. Defaults to the settings' market_default_max_guarantor_loss when omitted.
-	MaxGuarantorLoss *float64 `json:"max_guarantor_loss,omitempty"`
-	MaxLosses        *int     `json:"max_losses,omitempty"`
+	MaxLosses  *int                           `json:"max_losses,omitempty"`
 
 	// StartsAt Defaults to now if omitted; must not be in the past if provided
 	StartsAt *time.Time `json:"starts_at,omitempty"`
@@ -8401,9 +8392,8 @@ type CreateMarketGuarantee201JSONResponse struct {
 		FeeRate float64 `json:"fee_rate"`
 
 		// LiquidityB The market's liquidity after the wager.
-		LiquidityB       float64 `json:"liquidity_b"`
-		MaxGuarantorLoss float64 `json:"max_guarantor_loss"`
-		RiskAmount       float64 `json:"risk_amount"`
+		LiquidityB float64 `json:"liquidity_b"`
+		RiskAmount float64 `json:"risk_amount"`
 
 		// TotalRisk Combined risk of all guarantor wagers after this one.
 		TotalRisk float64 `json:"total_risk"`

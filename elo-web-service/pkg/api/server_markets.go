@@ -48,7 +48,6 @@ type marketRow struct {
 	ResolvedAt        pgtype.Timestamptz
 	BettingClosedAt   pgtype.Timestamptz
 	LiquidityB        float64
-	MaxGuarantorLoss  float64
 	TargetPlayerIds   []id.ID
 	AllowOtherPlayers pgtype.Bool
 	MwGameIds         []id.ID
@@ -73,7 +72,6 @@ func marketRowFromIDs(r db.ListMarketsByIDsRow) marketRow {
 		ResolvedAt:        r.ResolvedAt,
 		BettingClosedAt:   r.BettingClosedAt,
 		LiquidityB:        r.LiquidityB,
-		MaxGuarantorLoss:  r.MaxGuarantorLoss,
 		TargetPlayerIds:   r.TargetPlayerIds,
 		AllowOtherPlayers: r.AllowOtherPlayers,
 		MwGameIds:         r.MwGameIds,
@@ -99,7 +97,6 @@ func marketRowFromByMatch(r db.ListMarketsByResolutionMatchRow) marketRow {
 		ResolvedAt:        r.ResolvedAt,
 		BettingClosedAt:   r.BettingClosedAt,
 		LiquidityB:        r.LiquidityB,
-		MaxGuarantorLoss:  r.MaxGuarantorLoss,
 		TargetPlayerIds:   r.TargetPlayerIds,
 		AllowOtherPlayers: r.AllowOtherPlayers,
 		MwGameIds:         r.MwGameIds,
@@ -285,12 +282,11 @@ func apiClosesAt(marketType string, closesAt pgtype.Timestamptz) *time.Time {
 // already carrying probabilities.
 func buildMarket(r marketRow, outcomes []MarketsMarketOutcome) Market {
 	m := Market{
-		Id:               r.ID,
-		MarketType:       MarketMarketType(r.MarketType),
-		Status:           MarketStatus(r.Status),
-		LiquidityB:       r.LiquidityB,
-		MaxGuarantorLoss: r.MaxGuarantorLoss,
-		Outcomes:         outcomes,
+		Id:         r.ID,
+		MarketType: MarketMarketType(r.MarketType),
+		Status:     MarketStatus(r.Status),
+		LiquidityB: r.LiquidityB,
+		Outcomes:   outcomes,
 		Params: buildTypedMarketParams(r.MarketType, r.TargetPlayerIds, r.AllowOtherPlayers,
 			r.MwGameIds, r.WsTargetPlayerID, r.WsGameIds, r.WinsRequired, r.MaxLosses,
 			r.TwTournamentID, r.TwTournamentName),
@@ -486,12 +482,11 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 	}
 
 	detail := MarketDetail{
-		Id:               row.ID,
-		MarketType:       MarketDetailMarketType(row.MarketType),
-		Status:           MarketDetailStatus(row.Status),
-		LiquidityB:       row.LiquidityB,
-		MaxGuarantorLoss: row.MaxGuarantorLoss,
-		Outcomes:         buildOutcomes(outcomeRows, row.LiquidityB),
+		Id:         row.ID,
+		MarketType: MarketDetailMarketType(row.MarketType),
+		Status:     MarketDetailStatus(row.Status),
+		LiquidityB: row.LiquidityB,
+		Outcomes:   buildOutcomes(outcomeRows, row.LiquidityB),
 		Params: buildTypedMarketDetailParams(row.MarketType, row.TargetPlayerIds, row.AllowOtherPlayers,
 			row.MwGameIds, row.WsTargetPlayerID, row.WsGameIds, row.WinsRequired, row.MaxLosses,
 			row.TwTournamentID, row.TwTournamentName),
@@ -682,10 +677,6 @@ func (s *StrictServer) CreateMarket(ctx context.Context, request CreateMarketReq
 		params.ClosesAt = *body.ClosesAt
 	}
 
-	if body.MaxGuarantorLoss != nil {
-		params.MaxGuarantorLoss = *body.MaxGuarantorLoss
-	}
-
 	switch string(body.MarketType) {
 	case "match_winner":
 		if body.TargetPlayerIds == nil || len(*body.TargetPlayerIds) == 0 {
@@ -862,7 +853,8 @@ func (s *StrictServer) PlaceBet(ctx context.Context, request PlaceBetRequestObje
 // CreateMarketGuarantee adds the caller's linked player as a guarantor of an
 // open market: a wager of {risk amount, maker fee rate} that is reserved
 // against the betting limit, is immutable, and grows the market's liquidity
-// without moving prices (ADR-20).
+// (b = Σrisk/ln(n); the join reprices prices toward uniform over the fixed q,
+// ADR-22) (ADR-20).
 func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request CreateMarketGuaranteeRequestObject) (CreateMarketGuaranteeResponseObject, error) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
@@ -907,7 +899,6 @@ func (s *StrictServer) CreateMarketGuarantee(ctx context.Context, request Create
 	resp.Data.FeeRate = outcome.FeeRate
 	resp.Data.LiquidityB = outcome.LiquidityB
 	resp.Data.TotalRisk = outcome.TotalRisk
-	resp.Data.MaxGuarantorLoss = outcome.MaxGuarantorLoss
 	return resp, nil
 }
 

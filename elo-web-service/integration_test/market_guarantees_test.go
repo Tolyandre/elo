@@ -15,9 +15,9 @@ import (
 
 // TestMarketGuarantees_LiquidityGrowsAndPricesArePreserved walks the voluntary
 // guarantor lifecycle: a guarantor-less market rejects bets, the first wager
-// opens trading, a mid-market wager grows b while preserving every probability
-// (q is rescaled), wagers over-subscribing L stop growing b, and a
-// fee-charging guarantor makes buys pay a maker fee.
+// opens trading, a mid-market wager grows b while repricing toward uniform
+// (q fixed, ADR-22), every wagered elo converts to depth (ADR-34 — no L cap),
+// and a fee-charging guarantor makes buys pay a maker fee.
 func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -38,12 +38,11 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:               newID(t),
-		MarketType:       "match_winner",
-		StartsAt:         time.Now().Add(-time.Minute),
-		ClosesAt:         time.Now().Add(24 * time.Hour),
-		CreatedBy:        adminID,
-		MaxGuarantorLoss: 10,
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -60,7 +59,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 		t.Fatal("PlaceBet on a guarantor-less market must fail")
 	}
 
-	// First guarantor: b = min(10, 6)/ln(3); the fresh market is uniform.
+	// First guarantor: b = 6/ln(3); the fresh market is uniform.
 	setBetLimit(t, pool, g1, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, g1, 6, 0); err != nil {
 		t.Fatalf("JoinAsGuarantee g1: %v", err)
@@ -80,9 +79,9 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	postBet := liveProbabilities(t, marketSvc, market.ID)
 
 	// A second, fee-charging wager joins mid-market: b grows from 6/ln(3) to
-	// 10/ln(3) (Σrisk 12 capped at L = 10). The join reprices the market
-	// toward uniform over the fixed q (ADR-22 — no rescale): the favourite's
-	// price drops, the others rise, Σ stays 1.
+	// 12/ln(3) — every wagered elo converts to depth (ADR-34, no L cap). The
+	// join reprices the market toward uniform over the fixed q (ADR-22 — no
+	// rescale): the favourite's price drops, the others rise, Σ stays 1.
 	setBetLimit(t, pool, g2, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, g2, 6, 0.25); err != nil {
 		t.Fatalf("JoinAsGuarantee g2: %v", err)
@@ -108,8 +107,8 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMarket: %v", err)
 	}
-	if wantB := 10 / math.Log(3); math.Abs(m.LiquidityB-wantB) > 1e-9 {
-		t.Errorf("liquidity_b after two wagers = %v, want %v (capped at L/ln3)", m.LiquidityB, wantB)
+	if wantB := 12 / math.Log(3); math.Abs(m.LiquidityB-wantB) > 1e-9 {
+		t.Errorf("liquidity_b after two wagers = %v, want %v (Σrisk/ln3)", m.LiquidityB, wantB)
 	}
 
 	// The fee-charging guarantor makes the next buy pay a maker fee: the
@@ -147,12 +146,11 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:               newID(t),
-		MarketType:       "match_winner",
-		StartsAt:         time.Now().Add(-time.Minute),
-		ClosesAt:         time.Now().Add(24 * time.Hour),
-		CreatedBy:        adminID,
-		MaxGuarantorLoss: 16,
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
@@ -244,12 +242,11 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
-		ID:               newID(t),
-		MarketType:       "match_winner",
-		StartsAt:         time.Now().Add(-time.Minute),
-		ClosesAt:         time.Now().Add(24 * time.Hour),
-		CreatedBy:        adminID,
-		MaxGuarantorLoss: 16,
+		ID:         newID(t),
+		MarketType: "match_winner",
+		StartsAt:   time.Now().Add(-time.Minute),
+		ClosesAt:   time.Now().Add(24 * time.Hour),
+		CreatedBy:  adminID,
 		MatchWinner: &elo.MatchWinnerCreateParams{
 			TargetPlayerIDs:   []idpkg.ID{playerA, playerB},
 			AllowOtherPlayers: true,
