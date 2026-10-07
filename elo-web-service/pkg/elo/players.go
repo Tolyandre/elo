@@ -40,8 +40,11 @@ type IPlayerService interface {
 	// users (via the audit log), the user's player pinned first.
 	ListRecentPlayers(ctx context.Context, userID id.ID, limit int) ([]RecentPlayer, error)
 	RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error)
-	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error)
-	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
+	// GetPlayerGameStats/GetPlayerGameEloStats scope their arena_settlements
+	// reads to the given display arena (ADR-36: the caller's current club main
+	// arena; the global arena until ?club= lands).
+	GetPlayerGameStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
 }
 
 type PlayerService struct {
@@ -131,7 +134,7 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 		return nil, err
 	}
 
-	rows, err := s.Queries.ListPlayersWithStats(ctx, dt)
+	rows, err := s.Queries.ListPlayersWithStats(ctx, db.ListPlayersWithStatsParams{Date: dt, ArenaID: GlobalArenaID})
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve players from db: %w", err)
 	}
@@ -310,10 +313,10 @@ func (s *PlayerService) RatingHistory(ctx context.Context, playerID id.ID) ([]db
 	})
 }
 
-func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error) {
-	return s.Queries.GetPlayerGameStats(ctx, playerID)
+func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameStatsRow, error) {
+	return s.Queries.GetPlayerGameStats(ctx, db.GetPlayerGameStatsParams{PlayerID: playerID, ArenaID: arenaID})
 }
 
-func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameEloStatsRow, error) {
-	return s.Queries.GetPlayerGameEloStats(ctx, playerID)
+func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error) {
+	return s.Queries.GetPlayerGameEloStats(ctx, db.GetPlayerGameEloStatsParams{PlayerID: playerID, ArenaID: arenaID})
 }

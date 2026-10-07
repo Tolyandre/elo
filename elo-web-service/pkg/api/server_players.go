@@ -239,7 +239,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		}
 	}
 
-	gameStats, err := s.api.PlayerService.GetPlayerGameStats(ctx, playerID)
+	gameStats, err := s.api.PlayerService.GetPlayerGameStats(ctx, playerID, elo.GlobalArenaID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		})
 	}
 
-	eloStats, err := s.api.PlayerService.GetPlayerGameEloStats(ctx, playerID)
+	eloStats, err := s.api.PlayerService.GetPlayerGameEloStats(ctx, playerID, elo.GlobalArenaID)
 	if err != nil {
 		return nil, err
 	}

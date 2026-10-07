@@ -91,3 +91,36 @@ WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL;
 -- name: GetClubByID :one
 -- Old-name read for the rename audit trail (ADR-14).
 SELECT * FROM clubs WHERE id = $1;
+
+-- name: ClubContainsPlayers :one
+-- Whether the participants count into the club's main arena under its CURRENT
+-- openness mode, evaluated at @date against stint history (ADR-36): any_member
+-- — at least one participant was a member at @date; members_only — all were.
+-- The Go settlement gate consults this before settling a match into the
+-- club's arena (the SQL-side twin, club_arena_contains_match, probes
+-- match_scores itself and lives in migration 069).
+SELECT CASE c.arena_membership_mode
+           WHEN 'any_member' THEN EXISTS (
+               SELECT 1
+               FROM player_club_membership pcm
+               WHERE pcm.club_id = c.id
+                 AND pcm.player_id = ANY(sqlc.arg('player_ids')::uuid[])
+                 AND pcm.joined_at <= sqlc.arg('date')::timestamptz
+                 AND (pcm.left_at IS NULL OR pcm.left_at > sqlc.arg('date')::timestamptz)
+           )
+           WHEN 'members_only' THEN NOT EXISTS (
+               SELECT 1
+               FROM unnest(sqlc.arg('player_ids')::uuid[]) AS pid
+               WHERE NOT EXISTS (
+                   SELECT 1
+                   FROM player_club_membership pcm2
+                   WHERE pcm2.club_id = c.id
+                     AND pcm2.player_id = pid
+                     AND pcm2.joined_at <= sqlc.arg('date')::timestamptz
+                     AND (pcm2.left_at IS NULL OR pcm2.left_at > sqlc.arg('date')::timestamptz)
+               )
+           )
+           ELSE false
+       END AS contains
+FROM clubs c
+WHERE c.id = sqlc.arg('club_id');

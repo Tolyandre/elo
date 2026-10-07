@@ -135,14 +135,21 @@ type IMatchService interface {
 	// tool: a stable recalculation must report no changed players.
 	RecalculateAllGlobalElo(ctx context.Context) (GlobalReplayReport, error)
 
+	// RecalculateGlobalWithinTx is the ClubService's replay handle (ADR-36):
+	// re-settles the global arena from startDate inside the caller's open
+	// transaction, honoring the main-arena openness at every match date.
+	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
+
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
 	DeleteMarketAndRecalculate(ctx context.Context, marketID id.ID) error
 
-	// Read-side queries used by the match list/detail handlers.
+	// Read-side queries used by the match list/detail handlers. The rating
+	// columns are scoped to the given display arena (ADR-36: the caller's
+	// current club main arena; the global arena until ?club= lands).
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg db.ListMatchesWithPlayersPaginatedParams) ([]db.ListMatchesWithPlayersPaginatedRow, error)
-	GetMatchWithPlayers(ctx context.Context, matchID id.ID) ([]db.GetMatchWithPlayersRow, error)
+	GetMatchWithPlayers(ctx context.Context, matchID, arenaID id.ID) ([]db.GetMatchWithPlayersRow, error)
 	ListCampArenasByMatchIDs(ctx context.Context, matchIDs []id.ID) ([]db.ListCampArenasByMatchIDsRow, error)
 }
 
@@ -338,16 +345,34 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 		}
 	} else {
 		if mode == MatchModeCompetitive {
-			// Lock players and collect all prior state needed for dual-track settlement
-			state, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
+			// Lock players and collect all prior state needed for dual-track
+			// settlement. settles=false when the club predicate (ADR-36) keeps
+			// the match out of the global arena's rating.
+			state, settles, err := s.lockAndGetPrevElos(ctx, q, createdMatch, playerScores)
 			if err != nil {
 				return db.Match{}, err
+			}
+
+			if !settles {
+				// No Elo settlement — the participant rows still record the
+				// match's players (they are what the club predicate of a
+				// later mode change / recalculation reads).
+				for playerID, score := range playerScores {
+					if err := q.UpsertMatchScore(ctx, db.UpsertMatchScoreParams{
+						MatchID:  createdMatch.ID,
+						PlayerID: playerID,
+						Score:    score,
+					}); err != nil {
+						return db.Match{}, fmt.Errorf("unable to insert match score for player %s: %w", playerID, err)
+					}
+				}
 			}
 
 			if err := s.EventProcessor.processMatchSettlements(
 				ctx, q, createdMatch.ID, playerScores,
 				state, date,
 				mode,
+				settles,
 				s.calculateAndStoreEloWithScores,
 			); err != nil {
 				return db.Match{}, err
@@ -710,17 +735,53 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 	return s.EventProcessor.RecalculateFrom(ctx, q, startDate, s.calculateAndUpdateElo, s.lockAndGetPrevElos)
 }
 
+// IGlobalReplay is the ClubService's handle for the full global-arena replay
+// (ADR-36): a main-arena openness change on the converted global arena must
+// re-settle the whole history in the caller's transaction — the global arena
+// is never drained by the background worker (that would lose its market and
+// correction settlements).
+type IGlobalReplay interface {
+	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
+}
+
+// RecalculateGlobalWithinTx replays the global arena's settlements (matches,
+// corrections, markets) from startDate — the settlement gate inside respects
+// the club's openness mode at every match date.
+func (s *MatchService) RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error {
+	return s.recalculateEloFromDate(ctx, q, startDate)
+}
+
 // lockAndGetPrevElos locks the match's players in sorted order and returns
 // their prior state in the global arena — the only arena the transactional
 // settlement path (matches, markets, corrections) maintains (ADR-24).
-func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, error) {
+//
+// Since the attribution phase (ADR-36) the global arena is «Синие люди»'s
+// main arena: the club's openness mode, evaluated at the match date against
+// membership stints, decides whether the match settles into it at all. When
+// the club predicate does not hold, settles=false and nothing is locked —
+// the caller must still advance everything that is not Elo settlement
+// (market resolution, expiry) and must write the match's score rows itself.
+func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error) {
 	globalArena, err := s.Arenas.GetArena(ctx, GlobalArenaID)
 	if err != nil {
-		return MatchPrevState{}, fmt.Errorf("get global arena: %w", err)
+		return MatchPrevState{}, false, fmt.Errorf("get global arena: %w", err)
+	}
+	if globalArena.ClubID != nil {
+		contains, err := q.ClubContainsPlayers(ctx, db.ClubContainsPlayersParams{
+			ClubID:    *globalArena.ClubID,
+			PlayerIds: playerIDsOf(playerScores),
+			Date:      match.Date.Time,
+		})
+		if err != nil {
+			return MatchPrevState{}, false, fmt.Errorf("check club membership: %w", err)
+		}
+		if !contains {
+			return MatchPrevState{}, false, nil
+		}
 	}
 	prev, err := lockAndGetPrevArenaState(ctx, q, globalArena, match, playerScores)
 	if err != nil {
-		return MatchPrevState{}, err
+		return MatchPrevState{}, false, err
 	}
 	return MatchPrevState{
 		Arena:    globalArena,
@@ -730,7 +791,7 @@ func (s *MatchService) lockAndGetPrevElos(ctx context.Context, q *db.Queries, ma
 		Count6M:  prev.Count6M,
 		Count2M:  prev.Count2M,
 		Settings: prev.Settings,
-	}, nil
+	}, true, nil
 }
 
 // eloCalcResult and buildEloResults moved to arena_calc.go: since ADR-24 the
@@ -798,9 +859,10 @@ func (s *MatchService) ListMatchesWithPlayersPaginated(ctx context.Context, arg 
 	return s.Queries.ListMatchesWithPlayersPaginated(ctx, arg)
 }
 
-// GetMatchWithPlayers is the single-match read for the GetMatchById handler.
-func (s *MatchService) GetMatchWithPlayers(ctx context.Context, matchID id.ID) ([]db.GetMatchWithPlayersRow, error) {
-	return s.Queries.GetMatchWithPlayers(ctx, matchID)
+// GetMatchWithPlayers is the single-match read for the GetMatchById handler;
+// rating columns are scoped to arenaID.
+func (s *MatchService) GetMatchWithPlayers(ctx context.Context, matchID, arenaID id.ID) ([]db.GetMatchWithPlayersRow, error) {
+	return s.Queries.GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: matchID, ArenaID: arenaID})
 }
 
 // ListCampArenasByMatchIDs returns the camp arenas (ADR-27) linked to a set

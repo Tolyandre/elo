@@ -110,8 +110,9 @@ func TestListFavoriteGames_ClubRecentAndPopular(t *testing.T) {
 	}
 
 	// Guests fill the second seat (matches require at least two players);
-	// they belong to no club, so "Outside" must appear in neither section.
-	g1, g2 := createTestPlayer(t, pool, "Guest1"), createTestPlayer(t, pool, "Guest2")
+	// they belong to no club at all (bare players), so "Outside" must appear
+	// in neither section.
+	g1, g2 := createBareTestPlayer(t, pool, "Guest1"), createBareTestPlayer(t, pool, "Guest2")
 
 	// Seven games played once each by club members, one per day, 1..7 days
 	// ago — they fill «Недавние» completely. "Old" is played twice by club
@@ -186,10 +187,11 @@ func TestListFavoriteGames_UserWithoutClubFallsBackToGlobalPopular(t *testing.T)
 	q := db.New(pool)
 	router := setupRouter(pool)
 
-	// A user whose player belongs to no club: «Недавние» keeps their own
-	// games, «Популярные» falls back to the globally most played ones.
+	// A user whose player belongs to no club (a bare player): «Недавние»
+	// keeps their own games, «Популярные» falls back to the globally most
+	// played ones.
 	myToken, myUserID := createTestUserWithID(t, pool, true)
-	me := createTestPlayer(t, pool, "Me")
+	me := createBareTestPlayer(t, pool, "Me")
 	if err := q.UpdateUserPlayerID(ctx, db.UpdateUserPlayerIDParams{ID: idpkg.ID(myUserID), PlayerID: &me}); err != nil {
 		t.Fatalf("link my player: %v", err)
 	}

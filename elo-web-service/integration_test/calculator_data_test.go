@@ -50,7 +50,7 @@ func TestAddMatch_PersistsCalculatorData(t *testing.T) {
 	}
 
 	// Read columns back directly via the row query.
-	rows, err := db.New(pool).GetMatchWithPlayers(ctx, created.ID)
+	rows, err := db.New(pool).GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: created.ID, ArenaID: elo.GlobalArenaID})
 	if err != nil || len(rows) == 0 {
 		t.Fatalf("GetMatchWithPlayers: %v (rows=%d)", err, len(rows))
 	}
@@ -115,7 +115,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 		t.Fatalf("UpdateMatch replace: %v", err)
 	}
 
-	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, created.ID)
+	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: created.ID, ArenaID: elo.GlobalArenaID})
 	var got map[string]any
 	_ = json.Unmarshal(rows[0].CalculatorData, &got)
 	dv := got["direct_vp"].([]any)[0].(map[string]any)
@@ -129,7 +129,7 @@ func TestAddMatch_CalculatorDataRoundtrips(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpdateMatch clear: %v", err)
 	}
-	rows2, _ := db.New(pool).GetMatchWithPlayers(ctx, created.ID)
+	rows2, _ := db.New(pool).GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: created.ID, ArenaID: elo.GlobalArenaID})
 	if rows2[0].CalculatorKind.Valid {
 		t.Errorf("calculator_kind should be NULL after clear, got %q", rows2[0].CalculatorKind.String)
 	}
@@ -164,7 +164,7 @@ func TestUpdateMatch_LeavesCalculatorUntouchedWhenOptsNil(t *testing.T) {
 	if _, err := svc.UpdateMatch(ctx, created.ID, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 10}, created.Date.Time, elo.UpdateMatchOpts{}); err != nil {
 		t.Fatalf("UpdateMatch: %v", err)
 	}
-	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, created.ID)
+	rows, _ := db.New(pool).GetMatchWithPlayers(ctx, db.GetMatchWithPlayersParams{ID: created.ID, ArenaID: elo.GlobalArenaID})
 	if !rows[0].CalculatorKind.Valid || rows[0].CalculatorKind.String != "skull-king" {
 		t.Errorf("calculator_kind changed during plain update: %+v", rows[0].CalculatorKind)
 	}

@@ -1,4 +1,9 @@
 -- name: ListPlayersWithStats :many
+-- Every player with their latest state in the display arena (@arena_id — the
+-- caller's current club main arena, ADR-36; the global arena until the
+-- frontend carries ?club=). The site-wide catalog lists all players, members
+-- or not; a members_only arena hides former members only on its own listing
+-- (ListArenaPlayers).
 SELECT p.id, p.name,
   CASE WHEN latest_elo.rating_after IS NULL THEN NULL ELSE latest_elo.rating_after END AS rating,
   CASE WHEN latest_elo.elo_after IS NULL THEN NULL ELSE latest_elo.elo_after END AS elo,
@@ -9,7 +14,7 @@ FROM players p
 LEFT JOIN LATERAL (
   SELECT gas.rating_after, gas.elo_after, gas.league
   FROM arena_settlements gas
-  WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  WHERE gas.arena_id = sqlc.arg('arena_id')::uuid
     AND gas.player_id = p.id AND gas.date <= $1
   ORDER BY gas.date DESC, gas.id DESC
   LIMIT 1

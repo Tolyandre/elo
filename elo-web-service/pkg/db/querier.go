@@ -57,6 +57,13 @@ type Querier interface {
 	// The champion is invalidated by a post-completion bracket change (an edit
 	// cascade); the tournament re-runs its final and completes again.
 	ClearTournamentWinner(ctx context.Context, argID id.ID) error
+	// Whether the participants count into the club's main arena under its CURRENT
+	// openness mode, evaluated at @date against stint history (ADR-36): any_member
+	// — at least one participant was a member at @date; members_only — all were.
+	// The Go settlement gate consults this before settling a match into the
+	// club's arena (the SQL-side twin, club_arena_contains_match, probes
+	// match_scores itself and lives in migration 069).
+	ClubContainsPlayers(ctx context.Context, arg ClubContainsPlayersParams) (bool, error)
 	// One-way group → tenant conversion (ADR-36); returns no rows when the club
 	// is missing or already a tenant. The caller creates the main arena in the
 	// same transaction.
@@ -152,10 +159,18 @@ type Querier interface {
 	DeleteTournamentParticipantsNotIn(ctx context.Context, arg DeleteTournamentParticipantsNotInParams) error
 	DeleteUser(ctx context.Context, argID id.ID) error
 	// Arena queries (ADR-24, ADR-27, ADR-26). The "does this match belong to this
-	// arena" condition — tournament link, camp link, or the filter (date range,
-	// game OR tag) — has ONE canonical definition: the arena_contains_match()
-	// function created by migrations 054–056 (see adr/28-arena-membership-function.md).
-	// The queries below call it; never inline the condition back.
+	// arena" condition has ONE canonical structure, dispatched per flavor:
+	//
+	//   * club arenas (arenas.club_id, ADR-36): club_arena_contains_match() —
+	//     openness evaluated at the match date against player_club_membership
+	//     stints, per the club's CURRENT mode. It probes tables, so it is a
+	//     separate STABLE function — the explicit exception to the ADR-28
+	//     pure-expression rule — and the queries dispatch with
+	//     CASE WHEN a.club_id IS NOT NULL. It only ever runs for club arenas,
+	//     whose count stays proportional to the number of tenants.
+	//   * every other flavor: the arena_contains_match() function created by
+	//     migrations 054–056 (see adr/28-arena-membership-function.md). The
+	//     queries below call it; never inline the condition back.
 	//
 	// The function is a pure expression: callers pass the columns they already
 	// joined PLUS the probes it cannot express without sub-SELECTs — the camp-link
@@ -222,7 +237,9 @@ type Querier interface {
 	GetMatchScores(ctx context.Context, matchID id.ID) ([]GetMatchScoresRow, error)
 	GetMatchScoresForMatch(ctx context.Context, matchID id.ID) ([]GetMatchScoresForMatchRow, error)
 	GetMatchWinnerParams(ctx context.Context, marketID id.ID) (MarketMatchWinnerParam, error)
-	GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMatchWithPlayersRow, error)
+	// Single-match payload; rating columns scoped to @arena_id (see
+	// ListMatchesWithPlayersPaginated).
+	GetMatchWithPlayers(ctx context.Context, arg GetMatchWithPlayersParams) ([]GetMatchWithPlayersRow, error)
 	GetMatchesFromDate(ctx context.Context, date pgtype.Timestamptz) ([]Match, error)
 	GetNearestGameTableExpiry(ctx context.Context) (time.Time, error)
 	GetNearestMarketExpiry(ctx context.Context) (pgtype.Timestamptz, error)
@@ -233,13 +250,13 @@ type Querier interface {
 	// maker fee) on the detail page.
 	GetPlayerBetsForMarket(ctx context.Context, arg GetPlayerBetsForMarketParams) ([]GetPlayerBetsForMarketRow, error)
 	GetPlayerByName(ctx context.Context, name string) (Player, error)
-	GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error)
+	GetPlayerGameEloStats(ctx context.Context, arg GetPlayerGameEloStatsParams) ([]GetPlayerGameEloStatsRow, error)
 	// Per-game stats for the player profile "Частые игры" table: match count plus
 	//   gold/silver/bronze counts from ranking players by score within each match.
 	//   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 	//   every player in each of the target player's matches and the outer query then
 	//   filters down to the target player's own rows.
-	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error)
+	GetPlayerGameStats(ctx context.Context, arg GetPlayerGameStatsParams) ([]GetPlayerGameStatsRow, error)
 	// Returns the true Elo value (elo_after) for Elo calculations.
 	GetPlayerLatestArenaElo(ctx context.Context, arg GetPlayerLatestArenaEloParams) (float64, error)
 	GetPlayerLatestArenaEloAtDate(ctx context.Context, arg GetPlayerLatestArenaEloAtDateParams) (float64, error)
@@ -424,6 +441,8 @@ type Querier interface {
 	// replay input. The membership function selects camp-linked matches for camp
 	// arenas and filter matches for every other kind (one replay source, ADR-28).
 	ListMatchesForArenaReplay(ctx context.Context, arg ListMatchesForArenaReplayParams) ([]Match, error)
+	// The rating columns are the display arena's (@arena_id — the caller's current
+	// club main arena, ADR-36; the global arena until the frontend carries ?club=).
 	ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error)
 	ListOpenMatchWinnerMarkets(ctx context.Context) ([]ListOpenMatchWinnerMarketsRow, error)
 	// Open tournament_winner markets of one tournament — the completion hook's
@@ -446,7 +465,12 @@ type Querier interface {
 	// creator lives only in audit_log.actor_user_id), with the creation date.
 	// Joined to players so deleted ones drop out.
 	ListPlayersCreatedByUsers(ctx context.Context, arg ListPlayersCreatedByUsersParams) ([]ListPlayersCreatedByUsersRow, error)
-	ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error)
+	// Every player with their latest state in the display arena (@arena_id — the
+	// caller's current club main arena, ADR-36; the global arena until the
+	// frontend carries ?club=). The site-wide catalog lists all players, members
+	// or not; a members_only arena hides former members only on its own listing
+	// (ListArenaPlayers).
+	ListPlayersWithStats(ctx context.Context, arg ListPlayersWithStatsParams) ([]ListPlayersWithStatsRow, error)
 	// Games most played by members of the given clubs — the recency/popularity
 	// pair of the game picker's «Популярные» section. A match counts once when at
 	// least one club member took part in it; last_match_at breaks count ties.
@@ -582,9 +606,12 @@ type Querier interface {
 	UpsertArenaSettlementByMarket(ctx context.Context, arg UpsertArenaSettlementByMarketParams) error
 	// Arena settlement queries (ADR-24). Every query is arena-scoped; callers
 	// working with the global arena pass elo.GlobalArenaID. The global arena is
-	// seeded by migration 051 with the well-known id below; SQL literals of the
-	// same value (matches.sql, players.sql, player_ranks.sql, corrections.sql,
-	// markets.sql display reads) must be kept in sync with it.
+	// seeded by migration 051 with the well-known id below; since ADR-36 phase 2
+	// the display reads in matches.sql, players.sql and player_ranks.sql take the
+	// arena as a parameter (the global arena until the frontend carries ?club=),
+	// and the global arena itself is «Синие люди»'s main arena (migration 068).
+	// corrections.sql and markets.sql keep the SQL literal until the
+	// tournaments/markets phase settles them into the owning club's arena.
 	UpsertArenaSettlementByMatch(ctx context.Context, arg UpsertArenaSettlementByMatchParams) error
 	UpsertMatchScore(ctx context.Context, arg UpsertMatchScoreParams) error
 }

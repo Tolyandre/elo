@@ -43,6 +43,9 @@ type EventProcessor struct {
 // A coop match (ADR-33) settles nothing: the Elo step and match-triggered
 // market resolution are skipped, but time-based market expiry still advances
 // — the match is a point on the replay timeline regardless of its mode.
+// settleElo=false (the club predicate keeps the match out of the global
+// arena's rating, ADR-36) skips only the Elo step: match-triggered market
+// resolution still runs, and so does expiry.
 func (p *EventProcessor) processMatchSettlements(
 	ctx context.Context,
 	q *db.Queries,
@@ -51,15 +54,18 @@ func (p *EventProcessor) processMatchSettlements(
 	state MatchPrevState,
 	matchDate time.Time,
 	matchMode string,
+	settleElo bool,
 	eloCalcFn EloCalcFunc,
 ) error {
-	// Steps 1 & 2: Calculate and store/update the global arena settlement
-	if matchMode != MatchModeCoop {
+	// Step 1: Calculate and store/update the global arena settlement
+	if matchMode != MatchModeCoop && settleElo {
 		if err := eloCalcFn(ctx, q, matchID, playerScores, state); err != nil {
 			return fmt.Errorf("elo calc for match %s: %w", matchID, err)
 		}
+	}
 
-		// Steps 3 & 4: Match-triggered market resolution (SettleMarket applies rating inside)
+	// Steps 3 & 4: Match-triggered market resolution (SettleMarket applies rating inside)
+	if matchMode != MatchModeCoop {
 		if err := p.MarketService.TriggerResolutionForMatch(ctx, q, matchID); err != nil {
 			return fmt.Errorf("market resolution for match %s: %w", matchID, err)
 		}
@@ -75,12 +81,15 @@ func (p *EventProcessor) processMatchSettlements(
 
 // RecalculateFrom unsettle and reapply all settlements from startDate.
 // Must be called within an active transaction.
+// The lockAndGetPrevElos callback doubles as the club-membership gate
+// (ADR-36): settles=false skips the match's Elo settlement while markets
+// still resolve/expire on it.
 func (p *EventProcessor) RecalculateFrom(
 	ctx context.Context,
 	q *db.Queries,
 	startDate time.Time,
 	calcAndUpdateElo EloCalcFunc,
-	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, error),
+	lockAndGetPrevElos func(ctx context.Context, q *db.Queries, match db.Match, playerScores map[id.ID]float64) (MatchPrevState, bool, error),
 ) error {
 	// Snapshot resolved_at for all markets that will be unsettled. Used later to detect
 	// whether recalculation moves any market's resolution to an earlier time.
@@ -133,13 +142,13 @@ func (p *EventProcessor) RecalculateFrom(
 				allAffectedPlayers[ms.PlayerID] = true
 			}
 
-			state, err := lockAndGetPrevElos(ctx, q, match, playerScores)
+			state, settles, err := lockAndGetPrevElos(ctx, q, match, playerScores)
 			if err != nil {
 				return fmt.Errorf("lock/get prev elos for match %s: %w", match.ID, err)
 			}
 
 			if err := p.processMatchSettlements(ctx, q, match.ID, playerScores,
-				state, match.Date.Time, match.Mode, calcAndUpdateElo); err != nil {
+				state, match.Date.Time, match.Mode, settles, calcAndUpdateElo); err != nil {
 				return err
 			}
 		} else {

@@ -23,7 +23,7 @@ FROM players p
 LEFT JOIN LATERAL (
   SELECT gas.rating_after, gas.elo_after, gas.league
   FROM arena_settlements gas
-  WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+  WHERE gas.arena_id = $2::uuid
     AND gas.player_id = p.id AND gas.date <= $1
   ORDER BY gas.date DESC, gas.id DESC
   LIMIT 1
@@ -43,6 +43,11 @@ LEFT JOIN LATERAL (
 ORDER BY latest_elo.rating_after DESC NULLS LAST, p.name
 `
 
+type ListPlayersWithStatsParams struct {
+	Date    pgtype.Timestamptz `json:"date"`
+	ArenaID id.ID              `json:"arena_id"`
+}
+
 type ListPlayersWithStatsRow struct {
 	ID     id.ID       `json:"id"`
 	Name   string      `json:"name"`
@@ -53,8 +58,13 @@ type ListPlayersWithStatsRow struct {
 	Cnt180 int64       `json:"cnt_180"`
 }
 
-func (q *Queries) ListPlayersWithStats(ctx context.Context, date pgtype.Timestamptz) ([]ListPlayersWithStatsRow, error) {
-	rows, err := q.db.Query(ctx, listPlayersWithStats, date)
+// Every player with their latest state in the display arena (@arena_id — the
+// caller's current club main arena, ADR-36; the global arena until the
+// frontend carries ?club=). The site-wide catalog lists all players, members
+// or not; a members_only arena hides former members only on its own listing
+// (ListArenaPlayers).
+func (q *Queries) ListPlayersWithStats(ctx context.Context, arg ListPlayersWithStatsParams) ([]ListPlayersWithStatsRow, error) {
+	rows, err := q.db.Query(ctx, listPlayersWithStats, arg.Date, arg.ArenaID)
 	if err != nil {
 		return nil, err
 	}

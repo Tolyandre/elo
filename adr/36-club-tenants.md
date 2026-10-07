@@ -54,8 +54,12 @@ Tenant-only columns on `clubs`, CHECK-constrained to NULL for groups:
 - `tournaments_openness` — `members_only` (registration restricted to current
   members) or `open`; «Синие люди» converts with `open` (today's behavior).
 
-The mode is a current setting applied over all history: changing it marks the
-main arena stale for a full recalculation.
+The mode is a current setting applied over all history: changing it
+recalculates the main arena from scratch in the settings transaction — a
+fresh arena via a full stale mark for the background updater, the converted
+global arena via the full in-transaction replay (the worker never drains the
+global arena: a match-only replay would lose its market and correction
+settlements).
 
 ### Membership history
 
@@ -70,13 +74,23 @@ well-defined for `members_only` arenas and for players who leave and return.
 
 Club-arena attribution cannot live in `arena_contains_match`: the function
 must stay a pure inlinable expression (ADR-28), and membership-at-date needs
-table probes. Phase 1 keeps club arenas out of the generic machinery by
-extending the call sites' link-only argument with
-`(a.club_id IS NOT NULL AND a.match_filter_id IS NULL)` — a *fresh* club
-arena is link-only with no links, so it matches nothing until the attribution
-phase. The converted global arena keeps its unconditional filter and stays on
-the filter branch. The club predicate will be a dedicated SQL fragment in the
-arena queries.
+table probes. It is a dedicated STABLE function,
+`club_arena_contains_match` (migration 069), and the arena queries dispatch
+per flavor: `CASE WHEN a.club_id IS NOT NULL THEN club_arena_contains_match(...)
+ELSE arena_contains_match(...) END`. This is the explicit exception to the
+ADR-28 pure-expression rule — acceptable because the branch only ever runs
+for club arenas, whose count is proportional to the number of tenants.
+
+The dispatch covers **every** main arena, including the converted global one:
+from the attribution phase on its unconditional filter stays on the row for
+mechanical reasons (schema flavor, the games-tab exclusion) but no longer
+decides membership — club rules do, and member-less matches leave its rating
+at the next recalculation (backdated edit, correction, market replay, or an
+openness change). A fresh club arena is filter-less, so it is matched by the
+club predicate alone. The transactional settlement path consults the same
+rule before settling a match into the global arena
+(`ClubContainsPlayers` in matches/players; a rejected match still records
+its score rows — it just settles no rating).
 
 ### Tournaments and markets
 
@@ -109,13 +123,14 @@ switches it. A player's page shows per-tenant-club stats tabs.
 
 Staged forward, each phase shippable:
 
-1. **Data model** (this phase): 068 adds club tenancy columns, stint history,
-   the arena club flavor, and converts «Синие люди»; clubs/arenas API grows
-   the new fields and `POST /clubs/{id}/convert`. Zero behavior change
+1. **Data model**: 068 adds club tenancy columns, stint history, the arena
+   club flavor, and converts «Синие люди»; clubs/arenas API grows the new
+   fields and `POST /clubs/{id}/convert`. Zero behavior change
    otherwise.
-2. **Attribution & ranking**: the club-arena membership predicate, the
-   hardcoded global-arena SQL literals parameterized by arena, mode-change →
-   stale recalc, members-only listing.
+2. **Attribution & ranking** (this phase): the club-arena membership
+   predicate (069), the display reads (matches, players, player ranks)
+   parameterized by arena, mode-change → full recalculation, members-only
+   listing.
 3. **Tournaments & markets**: explicit `club_id` + NOT NULL on creates,
    registration/settlement/guarantee rules, `GET /clubs/{id}/feed`.
 4. **Frontend shell**: `?club=`, switcher, defaults, player-page club tabs,

@@ -222,12 +222,12 @@ FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+LEFT JOIN arena_settlements gas ON gas.arena_id = $2::uuid
     AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
     FROM arena_settlements gas2
-    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    WHERE gas2.arena_id = $2::uuid
       AND gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
@@ -235,6 +235,11 @@ LEFT JOIN LATERAL (
 WHERE m.id = $1
 ORDER BY s.score DESC
 `
+
+type GetMatchWithPlayersParams struct {
+	ID      id.ID `json:"id"`
+	ArenaID id.ID `json:"arena_id"`
+}
 
 type GetMatchWithPlayersRow struct {
 	MatchID        id.ID              `json:"match_id"`
@@ -255,8 +260,10 @@ type GetMatchWithPlayersRow struct {
 	PrevRating     interface{}        `json:"prev_rating"`
 }
 
-func (q *Queries) GetMatchWithPlayers(ctx context.Context, argID id.ID) ([]GetMatchWithPlayersRow, error) {
-	rows, err := q.db.Query(ctx, getMatchWithPlayers, argID)
+// Single-match payload; rating columns scoped to @arena_id (see
+// ListMatchesWithPlayersPaginated).
+func (q *Queries) GetMatchWithPlayers(ctx context.Context, arg GetMatchWithPlayersParams) ([]GetMatchWithPlayersRow, error) {
+	rows, err := q.db.Query(ctx, getMatchWithPlayers, arg.ID, arg.ArenaID)
 	if err != nil {
 		return nil, err
 	}
@@ -335,23 +342,23 @@ WITH paginated_matches AS (
     FROM matches m
     JOIN match_scores ms ON ms.match_id = m.id
     WHERE
-        ($1::uuid IS NULL OR m.game_id = $1::uuid)
-        AND ($2::uuid IS NULL OR ms.player_id = $2::uuid)
+        ($2::uuid IS NULL OR m.game_id = $2::uuid)
+        AND ($3::uuid IS NULL OR ms.player_id = $3::uuid)
         AND (
-            $3::timestamptz IS NULL
-            OR m.date < $3::timestamptz
+            $4::timestamptz IS NULL
+            OR m.date < $4::timestamptz
         )
         AND (
-            $4::uuid IS NULL
+            $5::uuid IS NULL
             OR EXISTS (
                 SELECT 1 FROM player_club_membership pcm
-                WHERE pcm.club_id = $4::uuid
+                WHERE pcm.club_id = $5::uuid
                 AND pcm.left_at IS NULL
                 AND pcm.player_id = ms.player_id
             )
         )
         AND (
-            $5::bool IS NOT TRUE
+            $6::bool IS NOT TRUE
             OR NOT EXISTS (
                 SELECT 1 FROM player_club_membership pcm2
                 WHERE pcm2.player_id = ms.player_id
@@ -359,18 +366,18 @@ WITH paginated_matches AS (
             )
         )
         AND (
-            $6::uuid IS NULL
+            $7::uuid IS NULL
             OR EXISTS (
                 SELECT 1
                 FROM tournament_slot_matches tsm
                 JOIN tournament_slots ts ON ts.id = tsm.slot_id
                 JOIN tournament_rounds tr ON tr.id = ts.round_id
-                WHERE tr.tournament_id = $6::uuid
+                WHERE tr.tournament_id = $7::uuid
                 AND tsm.match_id = m.id
             )
         )
     ORDER BY m.date DESC, m.id DESC
-    LIMIT $7::int4
+    LIMIT $8::int4
 )
 SELECT
     pm.id AS match_id,
@@ -395,12 +402,12 @@ FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+LEFT JOIN arena_settlements gas ON gas.arena_id = $1::uuid
     AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
     FROM arena_settlements gas2
-    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    WHERE gas2.arena_id = $1::uuid
       AND gas2.player_id = p.id AND gas2.date < pm.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
@@ -409,6 +416,7 @@ ORDER BY pm.date DESC, pm.id DESC, s.score DESC
 `
 
 type ListMatchesWithPlayersPaginatedParams struct {
+	ArenaID      id.ID              `json:"arena_id"`
 	GameID       *id.ID             `json:"game_id"`
 	PlayerID     *id.ID             `json:"player_id"`
 	CursorDate   pgtype.Timestamptz `json:"cursor_date"`
@@ -437,8 +445,11 @@ type ListMatchesWithPlayersPaginatedRow struct {
 	HasMarkets     bool               `json:"has_markets"`
 }
 
+// The rating columns are the display arena's (@arena_id — the caller's current
+// club main arena, ADR-36; the global arena until the frontend carries ?club=).
 func (q *Queries) ListMatchesWithPlayersPaginated(ctx context.Context, arg ListMatchesWithPlayersPaginatedParams) ([]ListMatchesWithPlayersPaginatedRow, error) {
 	rows, err := q.db.Query(ctx, listMatchesWithPlayersPaginated,
+		arg.ArenaID,
 		arg.GameID,
 		arg.PlayerID,
 		arg.CursorDate,

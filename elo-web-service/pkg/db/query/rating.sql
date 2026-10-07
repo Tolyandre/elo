@@ -1,8 +1,11 @@
 -- Arena settlement queries (ADR-24). Every query is arena-scoped; callers
 -- working with the global arena pass elo.GlobalArenaID. The global arena is
--- seeded by migration 051 with the well-known id below; SQL literals of the
--- same value (matches.sql, players.sql, player_ranks.sql, corrections.sql,
--- markets.sql display reads) must be kept in sync with it.
+-- seeded by migration 051 with the well-known id below; since ADR-36 phase 2
+-- the display reads in matches.sql, players.sql and player_ranks.sql take the
+-- arena as a parameter (the global arena until the frontend carries ?club=),
+-- and the global arena itself is «Синие люди»'s main arena (migration 068).
+-- corrections.sql and markets.sql keep the SQL literal until the
+-- tournaments/markets phase settles them into the owning club's arena.
 
 -- name: UpsertArenaSettlementByMatch :exec
 INSERT INTO arena_settlements

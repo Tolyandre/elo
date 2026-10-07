@@ -22,6 +22,8 @@ DELETE FROM match_scores;
 DELETE FROM matches;
 
 -- name: ListMatchesWithPlayersPaginated :many
+-- The rating columns are the display arena's (@arena_id — the caller's current
+-- club main arena, ADR-36; the global arena until the frontend carries ?club=).
 WITH paginated_matches AS (
     SELECT DISTINCT m.id, m.date, m.game_id, m.calculator_kind, m.mode, m.game_score, m.game_won
     FROM matches m
@@ -87,12 +89,12 @@ FROM paginated_matches pm
 JOIN games g ON g.id = pm.game_id
 JOIN match_scores s ON s.match_id = pm.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+LEFT JOIN arena_settlements gas ON gas.arena_id = sqlc.arg('arena_id')::uuid
     AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
     FROM arena_settlements gas2
-    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    WHERE gas2.arena_id = sqlc.arg('arena_id')::uuid
       AND gas2.player_id = p.id AND gas2.date < pm.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1
@@ -100,6 +102,8 @@ LEFT JOIN LATERAL (
 ORDER BY pm.date DESC, pm.id DESC, s.score DESC;
 
 -- name: GetMatchWithPlayers :many
+-- Single-match payload; rating columns scoped to @arena_id (see
+-- ListMatchesWithPlayersPaginated).
 SELECT
     m.id AS match_id,
     m.date,
@@ -123,12 +127,12 @@ FROM matches m
 JOIN games g ON g.id = m.game_id
 JOIN match_scores s ON s.match_id = m.id
 JOIN players p ON p.id = s.player_id
-LEFT JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+LEFT JOIN arena_settlements gas ON gas.arena_id = sqlc.arg('arena_id')::uuid
     AND gas.match_id = s.match_id AND gas.player_id = s.player_id AND gas.discriminator = 'match'
 LEFT JOIN LATERAL (
     SELECT gas2.rating_after
     FROM arena_settlements gas2
-    WHERE gas2.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+    WHERE gas2.arena_id = sqlc.arg('arena_id')::uuid
       AND gas2.player_id = p.id AND gas2.date < m.date
     ORDER BY gas2.date DESC, gas2.id DESC
     LIMIT 1

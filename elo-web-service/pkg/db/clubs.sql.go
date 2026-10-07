@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -29,6 +30,53 @@ type AddClubMemberParams struct {
 func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
 	_, err := q.db.Exec(ctx, addClubMember, arg.ClubID, arg.PlayerID)
 	return err
+}
+
+const clubContainsPlayers = `-- name: ClubContainsPlayers :one
+SELECT CASE c.arena_membership_mode
+           WHEN 'any_member' THEN EXISTS (
+               SELECT 1
+               FROM player_club_membership pcm
+               WHERE pcm.club_id = c.id
+                 AND pcm.player_id = ANY($1::uuid[])
+                 AND pcm.joined_at <= $2::timestamptz
+                 AND (pcm.left_at IS NULL OR pcm.left_at > $2::timestamptz)
+           )
+           WHEN 'members_only' THEN NOT EXISTS (
+               SELECT 1
+               FROM unnest($1::uuid[]) AS pid
+               WHERE NOT EXISTS (
+                   SELECT 1
+                   FROM player_club_membership pcm2
+                   WHERE pcm2.club_id = c.id
+                     AND pcm2.player_id = pid
+                     AND pcm2.joined_at <= $2::timestamptz
+                     AND (pcm2.left_at IS NULL OR pcm2.left_at > $2::timestamptz)
+               )
+           )
+           ELSE false
+       END AS contains
+FROM clubs c
+WHERE c.id = $3
+`
+
+type ClubContainsPlayersParams struct {
+	PlayerIds []id.ID   `json:"player_ids"`
+	Date      time.Time `json:"date"`
+	ClubID    id.ID     `json:"club_id"`
+}
+
+// Whether the participants count into the club's main arena under its CURRENT
+// openness mode, evaluated at @date against stint history (ADR-36): any_member
+// — at least one participant was a member at @date; members_only — all were.
+// The Go settlement gate consults this before settling a match into the
+// club's arena (the SQL-side twin, club_arena_contains_match, probes
+// match_scores itself and lives in migration 069).
+func (q *Queries) ClubContainsPlayers(ctx context.Context, arg ClubContainsPlayersParams) (bool, error) {
+	row := q.db.QueryRow(ctx, clubContainsPlayers, arg.PlayerIds, arg.Date, arg.ClubID)
+	var contains bool
+	err := row.Scan(&contains)
+	return contains, err
 }
 
 const convertClubToTenant = `-- name: ConvertClubToTenant :one

@@ -135,12 +135,17 @@ SELECT
 FROM match_scores ms
 JOIN matches m ON ms.match_id = m.id
 JOIN games g ON m.game_id = g.id
-JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+JOIN arena_settlements gas ON gas.arena_id = $2::uuid
   AND gas.match_id = ms.match_id AND gas.player_id = ms.player_id AND gas.discriminator = 'match'
 WHERE ms.player_id = $1
 GROUP BY g.id, g.name
 ORDER BY elo_earned DESC
 `
+
+type GetPlayerGameEloStatsParams struct {
+	PlayerID id.ID `json:"player_id"`
+	ArenaID  id.ID `json:"arena_id"`
+}
 
 type GetPlayerGameEloStatsRow struct {
 	GameID    id.ID   `json:"game_id"`
@@ -148,8 +153,8 @@ type GetPlayerGameEloStatsRow struct {
 	EloEarned float64 `json:"elo_earned"`
 }
 
-func (q *Queries) GetPlayerGameEloStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameEloStatsRow, error) {
-	rows, err := q.db.Query(ctx, getPlayerGameEloStats, playerID)
+func (q *Queries) GetPlayerGameEloStats(ctx context.Context, arg GetPlayerGameEloStatsParams) ([]GetPlayerGameEloStatsRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerGameEloStats, arg.PlayerID, arg.ArenaID)
 	if err != nil {
 		return nil, err
 	}
@@ -192,13 +197,18 @@ JOIN ranked
   AND ranked.player_id = gas.player_id
 JOIN matches m ON m.id = gas.match_id
 JOIN games g ON g.id = m.game_id
-WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+WHERE gas.arena_id = $2::uuid
   AND gas.player_id = $1
   AND gas.discriminator = 'match'
 GROUP BY g.id, g.name
 ORDER BY matches_count DESC
 LIMIT 10
 `
+
+type GetPlayerGameStatsParams struct {
+	PlayerID id.ID `json:"player_id"`
+	ArenaID  id.ID `json:"arena_id"`
+}
 
 type GetPlayerGameStatsRow struct {
 	GameID       id.ID  `json:"game_id"`
@@ -215,8 +225,8 @@ type GetPlayerGameStatsRow struct {
 //	NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
 //	every player in each of the target player's matches and the outer query then
 //	filters down to the target player's own rows.
-func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error) {
-	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
+func (q *Queries) GetPlayerGameStats(ctx context.Context, arg GetPlayerGameStatsParams) ([]GetPlayerGameStatsRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerGameStats, arg.PlayerID, arg.ArenaID)
 	if err != nil {
 		return nil, err
 	}

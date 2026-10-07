@@ -65,7 +65,7 @@ JOIN ranked
   AND ranked.player_id = gas.player_id
 JOIN matches m ON m.id = gas.match_id
 JOIN games g ON g.id = m.game_id
-WHERE gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+WHERE gas.arena_id = sqlc.arg('arena_id')::uuid
   AND gas.player_id = $1
   AND gas.discriminator = 'match'
 GROUP BY g.id, g.name
@@ -83,7 +83,7 @@ SELECT
 FROM match_scores ms
 JOIN matches m ON ms.match_id = m.id
 JOIN games g ON m.game_id = g.id
-JOIN arena_settlements gas ON gas.arena_id = 'a2ea0000-0000-0000-0000-000000000001'
+JOIN arena_settlements gas ON gas.arena_id = sqlc.arg('arena_id')::uuid
   AND gas.match_id = ms.match_id AND gas.player_id = ms.player_id AND gas.discriminator = 'match'
 WHERE ms.player_id = $1
 GROUP BY g.id, g.name

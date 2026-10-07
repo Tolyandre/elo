@@ -59,6 +59,9 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}
 
 	rows, err := s.api.MatchService.ListMatchesWithPlayersPaginated(ctx, db.ListMatchesWithPlayersPaginatedParams{
+		// The display arena: the global arena (== «Синие люди»'s main arena)
+		// until the frontend carries ?club= (ADR-36 phase 4).
+		ArenaID:      elo.GlobalArenaID,
 		GameID:       idPtr(gameID),
 		PlayerID:     idPtr(playerID),
 		ClubID:       idPtr(clubID),
@@ -287,7 +290,7 @@ func (s *StrictServer) tournamentByMatch(ctx context.Context, matchIDs []id.ID) 
 }
 
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
-	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id))
+	rows, err := s.api.MatchService.GetMatchWithPlayers(ctx, parseIDParam(request.Id), elo.GlobalArenaID)
 	if err != nil {
 		return nil, err
 	}

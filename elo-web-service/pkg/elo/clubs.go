@@ -2,6 +2,7 @@ package elo
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,13 +50,19 @@ type ClubService struct {
 	Queries *db.Queries
 	Pool    *pgxpool.Pool
 	Arenas  *ArenaService
+	// GlobalReplay runs the full global-arena settlement replay inside an open
+	// transaction (ADR-36): a main-arena openness change on the converted
+	// global arena re-settles the whole history right in the settings
+	// transaction — the global arena is never drained by the background worker.
+	GlobalReplay IGlobalReplay
 }
 
-func NewClubService(pool *pgxpool.Pool, arenas *ArenaService) IClubService {
+func NewClubService(pool *pgxpool.Pool, arenas *ArenaService, globalReplay IGlobalReplay) IClubService {
 	return &ClubService{
-		Queries: db.New(pool),
-		Pool:    pool,
-		Arenas:  arenas,
+		Queries:      db.New(pool),
+		Pool:         pool,
+		Arenas:       arenas,
+		GlobalReplay: globalReplay,
 	}
 }
 
@@ -202,14 +209,21 @@ func (s *ClubService) ConvertToTenant(ctx context.Context, clubID id.ID, arenaMe
 }
 
 // UpdateTenantSettings changes the openness settings of an existing tenant
-// (ADR-36). A mode change re-interprets the main arena's whole history; the
-// recalculation itself lands with the attribution phase.
+// (ADR-36). An arena_membership_mode change re-interprets the main arena's
+// whole history (the mode is a current setting applied over all history), so
+// the arena is recalculated in the same transaction: the converted global
+// arena via the full in-transaction replay, any fresh tenant arena via a
+// full stale mark picked up by the background updater.
 func (s *ClubService) UpdateTenantSettings(ctx context.Context, clubID id.ID, arenaMembershipMode, tournamentsOpenness string, actor id.ID) (db.Club, error) {
 	if err := validateTenantSettings(arenaMembershipMode, tournamentsOpenness); err != nil {
 		return db.Club{}, err
 	}
 	var updated db.Club
 	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetClubByID(ctx, clubID)
+		if err != nil {
+			return err
+		}
 		modeArg, opennessArg := tenantSettingsText(arenaMembershipMode, tournamentsOpenness)
 		row, err := q.UpdateClubTenantSettings(ctx, db.UpdateClubTenantSettingsParams{
 			ID:                  clubID,
@@ -222,10 +236,35 @@ func (s *ClubService) UpdateTenantSettings(ctx context.Context, clubID id.ID, ar
 		if err != nil {
 			return err
 		}
+		if old.ArenaMembershipMode.String != arenaMembershipMode {
+			if err := s.recalculateMainArenaForModeChange(ctx, q, clubID); err != nil {
+				return err
+			}
+		}
 		updated = row
 		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID, audit.KindEntity, audit.NewEntityDetails(row.Name))
 	})
 	return updated, err
+}
+
+// recalculateMainArenaForModeChange re-settles the club's main arena from
+// scratch after its arena_membership_mode changed (ADR-36).
+func (s *ClubService) recalculateMainArenaForModeChange(ctx context.Context, q *db.Queries, clubID id.ID) error {
+	arena, err := q.GetArenaByClub(ctx, &clubID)
+	if db.IsNoRows(err) {
+		// A tenant always has a main arena; nothing to re-settle otherwise.
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if arena.ID == GlobalArenaID {
+		// The global arena is never drained by the background worker (its
+		// market/correction settlements would be lost by a match-only
+		// replay) — run the full replay right here, in this transaction.
+		return s.GlobalReplay.RecalculateGlobalWithinTx(ctx, q, time.Time{})
+	}
+	return q.MarkArenasStaleFull(ctx, []id.ID{arena.ID})
 }
 
 func (s *ClubService) AddMember(ctx context.Context, clubID, playerID id.ID) error {

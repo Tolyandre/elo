@@ -423,8 +423,24 @@ func newMatchOpts(t *testing.T) elo.AddMatchOpts {
 	return elo.AddMatchOpts{ID: newID(t)}
 }
 
-// createTestPlayer inserts a player and returns its ID.
+// createTestPlayer inserts a player and returns its ID. The player joins
+// «Синие люди» with a -infinity stint — the pre-tenancy reality migration 068
+// backfills (every player of the original community was a member since
+// forever). Since the attribution phase (ADR-36 phase 2) the club predicate
+// governs the global arena, so matches among these players keep settling into
+// it; use createBareTestPlayer for guests.
 func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
+	t.Helper()
+	p := createBareTestPlayer(t, pool, name)
+	if err := addBlueMenStint(context.Background(), pool, p); err != nil {
+		t.Fatalf("add «Синие люди» stint for %q: %v", name, err)
+	}
+	return p
+}
+
+// createBareTestPlayer inserts a player with no club membership — a guest for
+// the club-rule tests (ADR-36).
+func createBareTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 	t.Helper()
 	q := db.New(pool)
 	id := newID(t)
@@ -433,6 +449,15 @@ func createTestPlayer(t *testing.T, pool *pgxpool.Pool, name string) idpkg.ID {
 		t.Fatalf("create player %q: %v", name, err)
 	}
 	return p.ID
+}
+
+// addBlueMenStint opens a «Синие люди» stint since -infinity for the player.
+func addBlueMenStint(ctx context.Context, pool *pgxpool.Pool, playerID idpkg.ID) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO player_club_membership (club_id, player_id, joined_at)
+		 VALUES ($1, $2, '-infinity')`,
+		blueMenClubUUID, playerID)
+	return err
 }
 
 // createTestGame inserts a game and returns its ID.

@@ -51,17 +51,18 @@ func NewWithClients(pool *pgxpool.Pool, teseraClient *tesera.Client, bggClient *
 	marketService := elo.NewMarketServiceWithHub(pool, hub)
 	arenaService := elo.NewArenaService(pool, hub)
 	tournamentService := elo.NewTournamentService(pool, arenaService, marketService)
+	matchService := elo.NewMatchService(pool, marketService, arenaService, tournamentService)
 
 	return &API{
 		UserService:        elo.NewUserService(pool),
 		GameService:        elo.NewGameService(pool, arenaService, teseraClient, bggClient),
 		PlayerService:      elo.NewPlayerService(pool),
-		MatchService:       elo.NewMatchService(pool, marketService, arenaService, tournamentService),
+		MatchService:       matchService,
 		MarketService:      marketService,
 		MarketQueries:      db.New(pool),
 		CorrectionService:  elo.NewCorrectionService(pool, arenaService),
 		EloSettingsService: elo.NewEloSettingsService(pool),
-		ClubService:        elo.NewClubService(pool, arenaService),
+		ClubService:        elo.NewClubService(pool, arenaService, matchService),
 		TagService:         elo.NewTagService(pool, arenaService),
 		TableService:       elo.NewTableService(pool, hub),
 		AuditService:       elo.NewAuditService(pool),
