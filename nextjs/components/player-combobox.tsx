@@ -16,7 +16,7 @@ import useIsMobile from "@/hooks/use-is-mobile"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from "./ui/command"
 import { ClubIcon } from "@/components/club-icon"
 import { ClubIcons } from "@/components/player-name"
-import { buildPlayerTabs, PlayerTab } from "@/lib/player-groups"
+import { buildPlayerGroups, buildPlayerTabs, PlayerTab } from "@/lib/player-groups"
 
 type Option = { value: string; label: string }
 
@@ -46,12 +46,12 @@ export function PlayerCombobox({
     [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
   )
 
-  // Flat, de-duplicated, name-sorted list used while searching (search spans all players).
-  const allOptions = React.useMemo<Option[]>(
-    () => [...players]
-      .sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b), undefined, { sensitivity: "base" }))
-      .map((p) => ({ value: p.id, label: playerDisplayName(p) })),
-    [players, playerDisplayName]
+  // Search view: the same grouped sections as the multi-select's search —
+  // Недавние, camps (none here), the current user's clubs, then other clubs,
+  // then club-less players. cmdk hides the groups whose players don't match.
+  const searchGroups = React.useMemo(
+    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, [], myPlayerId),
+    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
   )
 
   // cmdk hands us the raw string; it is one of the ids we put into the items.
@@ -89,7 +89,7 @@ export function PlayerCombobox({
     <PlayerCommand
       value={value}
       tabs={tabs}
-      allOptions={allOptions}
+      searchGroups={searchGroups}
       onSelect={handleSelect}
       listClassName={mobileListClass}
       allowClear={allowClear}
@@ -110,14 +110,14 @@ export function PlayerCombobox({
 type PlayerCommandProps = {
   value: string
   tabs: PlayerTab[]
-  allOptions: Option[]
+  searchGroups: PlayerTab["sections"]
   onSelect: (value: string) => void
   listClassName?: string
   allowClear?: boolean
   onClear?: () => void
 }
 
-function PlayerCommand({ value, tabs, allOptions, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
+function PlayerCommand({ value, tabs, searchGroups, onSelect, listClassName, allowClear, onClear }: PlayerCommandProps) {
   const { playerId } = useMe()
   const [search, setSearch] = React.useState("")
   const [activeTab, setActiveTab] = React.useState<string | undefined>(tabs[0]?.key)
@@ -170,15 +170,22 @@ function PlayerCommand({ value, tabs, allOptions, onSelect, listClassName, allow
         )}
 
         {searching
-          ? <CommandGroup>{allOptions.map((o) => renderItem(o, "search"))}</CommandGroup>
+          ? searchGroups.map((section, i) => (
+              <React.Fragment key={section.heading || `s${i}`}>
+                {i > 0 && <CommandSeparator />}
+                <CommandGroup heading={section.heading || undefined}>
+                  {section.options.map((o) => renderItem(o, `search-${i}`))}
+                </CommandGroup>
+              </React.Fragment>
+            ))
           : current?.sections.map((section, i) => (
-            <React.Fragment key={section.heading || `s${i}`}>
-              {i > 0 && <CommandSeparator />}
-              <CommandGroup heading={section.heading || undefined}>
-                {section.options.map((o) => renderItem(o, `${activeKey}-${i}`))}
-              </CommandGroup>
-            </React.Fragment>
-          ))}
+              <React.Fragment key={section.heading || `s${i}`}>
+                {i > 0 && <CommandSeparator />}
+                <CommandGroup heading={section.heading || undefined}>
+                  {section.options.map((o) => renderItem(o, `${activeKey}-${i}`))}
+                </CommandGroup>
+              </React.Fragment>
+            ))}
       </CommandList>
     </Command>
   )
