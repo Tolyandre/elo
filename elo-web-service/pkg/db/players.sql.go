@@ -191,24 +191,18 @@ SELECT
   COUNT(*) FILTER (WHERE ranked.place = 1)::int AS gold_count,
   COUNT(*) FILTER (WHERE ranked.place = 2)::int AS silver_count,
   COUNT(*) FILTER (WHERE ranked.place = 3)::int AS bronze_count
-FROM arena_settlements gas
+FROM match_scores mine
 JOIN ranked
-  ON ranked.match_id = gas.match_id
-  AND ranked.player_id = gas.player_id
-JOIN matches m ON m.id = gas.match_id
+  ON ranked.match_id = mine.match_id
+  AND ranked.player_id = mine.player_id
+JOIN matches m ON m.id = mine.match_id
 JOIN games g ON g.id = m.game_id
-WHERE gas.arena_id = $2::uuid
-  AND gas.player_id = $1
-  AND gas.discriminator = 'match'
+WHERE mine.player_id = $1
+  AND m.mode <> 'coop'
 GROUP BY g.id, g.name
 ORDER BY matches_count DESC
 LIMIT 10
 `
-
-type GetPlayerGameStatsParams struct {
-	PlayerID id.ID `json:"player_id"`
-	ArenaID  id.ID `json:"arena_id"`
-}
 
 type GetPlayerGameStatsRow struct {
 	GameID       id.ID  `json:"game_id"`
@@ -222,11 +216,14 @@ type GetPlayerGameStatsRow struct {
 // Per-game stats for the player profile "Частые игры" table: match count plus
 //
 //	gold/silver/bronze counts from ranking players by score within each match.
-//	NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
-//	every player in each of the target player's matches and the outer query then
+//	Tenant-independent (ADR-36 phase 4): computed from match_scores over every
+//	stored COMPETITIVE match of the player, whatever arena (if any) settled
+//	it — coop matches affect no rating and stay out, as before. NOTE: the
+//	rank must be computed over ALL players in a match, so the CTE ranks every
+//	player in each of the target player's matches and the outer query then
 //	filters down to the target player's own rows.
-func (q *Queries) GetPlayerGameStats(ctx context.Context, arg GetPlayerGameStatsParams) ([]GetPlayerGameStatsRow, error) {
-	rows, err := q.db.Query(ctx, getPlayerGameStats, arg.PlayerID, arg.ArenaID)
+func (q *Queries) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error) {
+	rows, err := q.db.Query(ctx, getPlayerGameStats, playerID)
 	if err != nil {
 		return nil, err
 	}

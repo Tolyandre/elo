@@ -2464,7 +2464,10 @@ export interface operations {
     };
     GetPlayerStats: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Without the parameter the global arena is used. The per-game match counts ("Частые игры") are tenant-independent either way. */
+                tenant?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -5560,6 +5563,8 @@ export interface operations {
             query?: {
                 /** @description Filter match and market events by player ID (the arena feed's matching rule) */
                 player_id?: string;
+                /** @description Filter match and market events by club ID (the arena feed's matching rule — through any current member of the club) */
+                club_id?: string;
                 /** @description Filter match and market events by game ID (the arena feed's matching rule) */
                 game_id?: string;
                 /** @description Cursor token from previous page's "next" field */

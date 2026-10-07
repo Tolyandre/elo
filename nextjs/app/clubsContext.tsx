@@ -7,6 +7,8 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type ClubsContextType = {
   clubs: Club[];
+  /** True while the club list is in flight (the tenant-scope default resolution waits for it). */
+  loading: boolean;
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string;
   /** Clubs the given player belongs to, ordered by display name. Empty if none. */
   clubsForPlayer: (playerId: string) => Club[];
@@ -16,7 +18,7 @@ type ClubsContextType = {
 const ClubsContext = createContext<ClubsContextType | undefined>(undefined);
 
 export const ClubsProvider = ({ children }: { children: ReactNode }) => {
-    const { data, invalidate } = useAsyncResource(listClubsPromise);
+    const { data, loading, invalidate } = useAsyncResource(listClubsPromise);
     const clubs = useMemo(() => data ?? [], [data]);
 
     const { geologistMode } = useMe();
@@ -51,7 +53,7 @@ export const ClubsProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <ClubsContext.Provider value={{ clubs, clubDisplayName, clubsForPlayer, invalidate }}>
+    <ClubsContext.Provider value={{ clubs, loading, clubDisplayName, clubsForPlayer, invalidate }}>
       {children}
     </ClubsContext.Provider>
   );

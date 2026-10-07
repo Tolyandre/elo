@@ -27,16 +27,20 @@ export function NavigationBar() {
   const me = useMe();
   const pathname = usePathname();
 
-  // «Главная» is / — the global arena (ADR-25). From any other route the Link
-  // is a normal cross-route client navigation. On / itself the router would
-  // drop a query-only change (a static-export no-op), so clearing the arena
-  // state goes through the History API instead; the arena view derives
-  // everything from the query and falls back to its defaults.
+  // «Главная» is / — the tenant's main arena (ADR-36). From any other route
+  // the Link is a normal cross-route client navigation. On / itself the router
+  // would drop a query-only change (a static-export no-op), so clearing the
+  // arena state goes through the History API instead; the arena view derives
+  // everything from the query and falls back to its defaults. The tenant
+  // survives the reset — every navigation preserves it until the user
+  // switches it (ADR-36).
   function goHome(e: React.MouseEvent) {
     if (pathname !== "/" || window.location.search === "") return;
     e.preventDefault();
     setUrlQuery((params) => {
+      const tenant = params.get("tenant");
       for (const key of [...params.keys()]) params.delete(key);
+      if (tenant) params.set("tenant", tenant);
     }, "push");
   }
 

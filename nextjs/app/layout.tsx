@@ -13,6 +13,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { GamesProvider } from "./gamesContext";
 import { ClubsProvider } from "./clubsContext";
 import { TenantsProvider } from "./tenantsContext";
+import { TenantScopeProvider } from "./tenantScopeContext";
 import { TagsProvider } from "./tagsContext";
 import { CampsProvider } from "./arenas/campsContext";
 import { TournamentsProvider } from "./tournaments/tournamentsContext";
@@ -67,6 +68,7 @@ export default function RootLayout({
           <GamesProvider>
             <ClubsProvider>
             <TenantsProvider>
+            <TenantScopeProvider>
             <TagsProvider>
             <CampsProvider>
             <TournamentsProvider>
@@ -123,6 +125,7 @@ export default function RootLayout({
             </TournamentsProvider>
             </CampsProvider>
             </TagsProvider>
+            </TenantScopeProvider>
             </TenantsProvider>
             </ClubsProvider>
           </GamesProvider>

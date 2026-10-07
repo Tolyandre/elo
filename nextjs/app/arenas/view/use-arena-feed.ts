@@ -6,6 +6,7 @@ import {
     Match,
     getArenaFeedPagePromise,
     getHomeFeedPagePromise,
+    getTenantFeedPagePromise,
     type FeedEvent,
     type FeedPage,
 } from "@/app/api";
@@ -16,6 +17,15 @@ export type ArenaMatchFilters = {
     playerId?: Base58ID;
     clubId?: Base58ID;
     gameId?: Base58ID;
+};
+
+export type ArenaFeedScope = {
+    /** The home feed (GET /feed) — the id-less main page without a tenant (ADR-32). */
+    home: boolean;
+    /** The arena whose own feed renders (an explicit ?id= view). */
+    arenaId: Base58ID | null;
+    /** The tenant whose community feed renders (the tenant-mode main page, ADR-36). */
+    tenantId: Base58ID | null;
 };
 
 /**
@@ -37,9 +47,10 @@ function eventKey(e: FeedEvent): string {
  * (matches, and for the global arena corrections and market resolutions), so
  * the client keeps one cursor instead of merging two timelines.
  *
- * `isHome` selects the home feed (GET /feed) — the main page's surface, which
- * will also carry content that affects no rating (cooperative matches, posts);
- * an explicit arena page always renders that arena's own feed, even when it is
+ * The scope selects the source (ADR-36 phase 4): a tenantId renders the
+ * tenant's community feed (membership-scoped, the tenant's own markets and
+ * coop matches included); `home` selects the home feed (GET /feed); an
+ * explicit arena page always renders that arena's own feed, even when it is
  * the global one.
  *
  * `allMatches` is the match-only slice the leaders tab pulls once via loadAll
@@ -47,10 +58,10 @@ function eventKey(e: FeedEvent): string {
  * re-renders hundreds of cards.
  */
 export function useArenaFeed(
-    isHome: boolean,
-    arenaId: Base58ID | null,
+    scope: ArenaFeedScope,
     filters: ArenaMatchFilters,
 ) {
+    const { home, arenaId, tenantId } = scope;
     const [events, setEvents] = useState<FeedEvent[]>([]);
     const [allMatches, setAllMatches] = useState<Match[] | null>(null);
     const [loading, setLoading] = useState(false);
@@ -61,12 +72,13 @@ export function useArenaFeed(
     // Live invalidation: the feed must reflect matches recorded elsewhere
     // (SSE "matches-changed") and landed by this device's offline sync — the
     // redirect to the arena races the background POST, so the mount-time
-    // fetch is routinely stale. The home feed also carries markets (ADR-32),
-    // so a market opening, being locked or settling — the markets-lobby SSE
-    // tick — reloads it too; for arena feeds the subscription stays off.
+    // fetch is routinely stale. The home and tenant feeds carry markets
+    // (ADR-32/36), so a market opening, being locked or settling — the
+    // markets-lobby SSE tick — reloads them too; for arena feeds the
+    // subscription stays off.
     const [stamp, setStamp] = useState(0);
     const invalidate = useCallback(() => setStamp((s) => s + 1), []);
-    const marketsTick = useMarketsLobbySSE(isHome);
+    const marketsTick = useMarketsLobbySSE(home || tenantId != null);
     useEffect(() => {
         return subscribeDataChange((batch) => {
             if (batch.matches) invalidate();
@@ -76,15 +88,17 @@ export function useArenaFeed(
     const { playerId, clubId, gameId } = filters;
 
     const fetchPage = useCallback(
-        (params: { player_id?: Base58ID; club_id?: Base58ID; game_id?: Base58ID; next?: string; limit?: number }): Promise<FeedPage> =>
-            isHome ? getHomeFeedPagePromise(params) : getArenaFeedPagePromise({ id: arenaId!, ...params }),
-        [isHome, arenaId],
+        (params: { player_id?: Base58ID; club_id?: Base58ID; game_id?: Base58ID; next?: string; limit?: number }): Promise<FeedPage> => {
+            if (tenantId) return getTenantFeedPagePromise(tenantId, params);
+            return home ? getHomeFeedPagePromise(params) : getArenaFeedPagePromise({ id: arenaId!, ...params });
+        },
+        [home, arenaId, tenantId],
     );
 
     // (Re)load page 1 whenever the scope, the filters, the invalidation
     // stamp, or the markets tick change.
     useEffect(() => {
-        if (!isHome && !arenaId) return;
+        if (!home && !tenantId && !arenaId) return;
         let cancelled = false;
         /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading before async fetch */
         setLoading(true);
@@ -108,10 +122,10 @@ export function useArenaFeed(
         return () => {
             cancelled = true;
         };
-    }, [isHome, arenaId, playerId, clubId, gameId, stamp, marketsTick, fetchPage]);
+    }, [home, arenaId, tenantId, playerId, clubId, gameId, stamp, marketsTick, fetchPage]);
 
     const loadMore = useCallback(() => {
-        if (loadingMore || (!isHome && !arenaId)) return;
+        if (loadingMore || (!home && !tenantId && !arenaId)) return;
         const cursor = cursorRef.current;
         if (!cursor) return;
 
@@ -123,7 +137,7 @@ export function useArenaFeed(
                 setEvents((prev) => appendUnique(prev, page.items, eventKey));
             })
             .finally(() => setLoadingMore(false));
-    }, [loadingMore, isHome, arenaId, fetchPage]);
+    }, [loadingMore, home, arenaId, tenantId, fetchPage]);
 
     // The leaders tab needs the full match set. Drains the feed's cursor,
     // keeping only match events, into allMatches (a separate state, seeded
@@ -134,7 +148,7 @@ export function useArenaFeed(
     );
 
     const loadAll = useCallback(async () => {
-        if (!isHome && !arenaId) return;
+        if (!home && !tenantId && !arenaId) return;
         setLoadingMore(true);
         try {
             let acc: Match[] = matchEvents.map((e) => e.data);
@@ -156,7 +170,7 @@ export function useArenaFeed(
         } finally {
             setLoadingMore(false);
         }
-    }, [isHome, arenaId, matchEvents, fetchPage]);
+    }, [home, arenaId, tenantId, matchEvents, fetchPage]);
 
     return {
         events,

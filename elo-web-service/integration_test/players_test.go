@@ -137,3 +137,148 @@ func TestCreateAndListPlayer(t *testing.T) {
 		t.Errorf("expected [{Alice}], got %+v", resp.Data)
 	}
 }
+
+// playerStatsJSON is the GET /players/{id}/stats payload (the fields the
+// tenant-scoping assertions touch).
+type playerStatsJSON struct {
+	Data struct {
+		PlayerName    string `json:"player_name"`
+		RatingHistory []struct {
+			Date   string  `json:"date"`
+			Rating float64 `json:"rating"`
+			Elo    float64 `json:"elo"`
+		} `json:"rating_history"`
+		TopGamesByMatches []struct {
+			GameID       string `json:"game_id"`
+			MatchesCount int    `json:"matches_count"`
+		} `json:"top_games_by_matches"`
+		TopGamesByEloEarned []struct {
+			GameID    string  `json:"game_id"`
+			EloEarned float64 `json:"elo_earned"`
+		} `json:"top_games_by_elo_earned"`
+	} `json:"data"`
+}
+
+func getPlayerStats(t *testing.T, router http.Handler, path string) (int, *playerStatsJSON) {
+	t.Helper()
+	w := doJSON(t, router, http.MethodGet, path, "", "")
+	if w.Code != http.StatusOK {
+		return w.Code, nil
+	}
+	var resp playerStatsJSON
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode player stats: %v", err)
+	}
+	return w.Code, &resp
+}
+
+// TestPlayerStats_TenantScoped pins GET /players/{id}/stats?tenant= (ADR-36
+// phase 4): the rating history and the Elo-per-game tables read the tenant's
+// main arena; "Частые игры" is tenant-independent and counts matches that
+// settle into no arena at all; a missing tenant is a 404; the parameter-less
+// call keeps reading the global arena.
+func TestPlayerStats_TenantScoped(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	tenantID, clubA, tenantArena := createTenant(t, router, token, "Статистическое", "any_member", "open")
+
+	member := createTestPlayer(t, pool, "Статист-член")
+	guest := createBareTestPlayer(t, pool, "Статист-гость")
+	addClubMember(t, router, token, clubA.String(), member)
+
+	game := createTestGame(t, pool, "Игра статистики")
+	otherGame := createTestGame(t, pool, "Другая игра статистики")
+	svc := newMatchService(pool)
+
+	// member+guest: settles into the tenant's main arena (any_member), not
+	// into the global one (no «Синие люди» membership).
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch member+guest: %v", err)
+	}
+	// guest-only: settles nowhere — yet "Частые игры" must count it.
+	if _, err := svc.AddMatch(ctx, otherGame, map[idpkg.ID]float64{guest: 50, createBareTestPlayer(t, pool, "Статист-второй"): 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch guests: %v", err)
+	}
+
+	// The guest's tenant-scoped profile: one main-arena rating point (the
+	// mixed match), the Elo table from the main arena's only game, and BOTH
+	// games in "Частые игры" — the second settled into no arena.
+	code, guestStats := getPlayerStats(t, router,
+		"/players/"+guest.String()+"/stats?tenant="+tenantID.String())
+	if code != http.StatusOK {
+		t.Fatalf("guest stats: %d", code)
+	}
+	if len(guestStats.Data.RatingHistory) != 1 {
+		t.Fatalf("guest rating history = %d points, want the one main-arena settlement", len(guestStats.Data.RatingHistory))
+	}
+	if len(guestStats.Data.TopGamesByEloEarned) != 1 || guestStats.Data.TopGamesByEloEarned[0].GameID != short(game) {
+		t.Fatalf("guest elo games = %+v, want only the main-arena game", guestStats.Data.TopGamesByEloEarned)
+	}
+	if len(guestStats.Data.TopGamesByMatches) != 2 {
+		t.Fatalf("guest frequent games = %+v, want both games regardless of settlement", guestStats.Data.TopGamesByMatches)
+	}
+
+	// A missing tenant is a 404; garbage is too (unparsable id).
+	if code := decodeFeedStatus(t, router, "/players/"+guest.String()+"/stats?tenant="+newID(t).String()); code != http.StatusNotFound {
+		t.Fatalf("unknown tenant stats gave %d, want 404", code)
+	}
+	if code := decodeFeedStatus(t, router, "/players/"+guest.String()+"/stats?tenant=garbage"); code != http.StatusNotFound {
+		t.Fatalf("garbage tenant stats gave %d, want 404", code)
+	}
+
+	// Without the parameter the stats read the global arena. The member
+	// carries a «Синие люди» stint (the pre-tenancy reality), so the mixed
+	// match settled there too — one point. A club-less outsider's match
+	// settles into no arena: empty history both scoped and unscoped, while
+	// "Частые игры" still counts the game.
+	code, globalStats := getPlayerStats(t, router, "/players/"+member.String()+"/stats")
+	if code != http.StatusOK {
+		t.Fatalf("member global stats: %d", code)
+	}
+	if len(globalStats.Data.RatingHistory) != 1 {
+		t.Fatalf("member global rating history = %d points, want the «Синие люди» settlement", len(globalStats.Data.RatingHistory))
+	}
+	code, tenantStats := getPlayerStats(t, router,
+		"/players/"+member.String()+"/stats?tenant="+tenantID.String())
+	if code != http.StatusOK {
+		t.Fatalf("member tenant stats: %d", code)
+	}
+	if len(tenantStats.Data.RatingHistory) != 1 {
+		t.Fatalf("member tenant rating history = %d points, want the main-arena settlement", len(tenantStats.Data.RatingHistory))
+	}
+
+	outsider := createBareTestPlayer(t, pool, "Статист-посторонний")
+	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-четвёртый"): 10}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch outsiders: %v", err)
+	}
+	code, outsiderGlobal := getPlayerStats(t, router, "/players/"+outsider.String()+"/stats")
+	if code != http.StatusOK {
+		t.Fatalf("outsider global stats: %d", code)
+	}
+	if len(outsiderGlobal.Data.RatingHistory) != 0 {
+		t.Fatalf("outsider global rating history = %d points, want none (settles nowhere)", len(outsiderGlobal.Data.RatingHistory))
+	}
+	code, outsiderTenant := getPlayerStats(t, router,
+		"/players/"+outsider.String()+"/stats?tenant="+tenantID.String())
+	if code != http.StatusOK {
+		t.Fatalf("outsider tenant stats: %d", code)
+	}
+	if len(outsiderTenant.Data.RatingHistory) != 0 {
+		t.Fatalf("outsider tenant rating history = %d points, want none", len(outsiderTenant.Data.RatingHistory))
+	}
+	if len(outsiderTenant.Data.TopGamesByMatches) != 1 {
+		t.Fatalf("outsider frequent games = %+v, want the arena-less game counted", outsiderTenant.Data.TopGamesByMatches)
+	}
+
+	// The tenant's main arena is the one the ?tenant= resolves to (sanity
+	// check the fixture itself).
+	_, tenant := getTenant(t, router, tenantID.String())
+	if tenant.MainArenaId != tenantArena {
+		t.Fatalf("fixture main arena %s != created %s", tenant.MainArenaId, tenantArena)
+	}
+}

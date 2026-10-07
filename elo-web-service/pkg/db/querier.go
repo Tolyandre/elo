@@ -254,10 +254,13 @@ type Querier interface {
 	GetPlayerGameEloStats(ctx context.Context, arg GetPlayerGameEloStatsParams) ([]GetPlayerGameEloStatsRow, error)
 	// Per-game stats for the player profile "Частые игры" table: match count plus
 	//   gold/silver/bronze counts from ranking players by score within each match.
-	//   NOTE: the rank must be computed over ALL players in a match, so the CTE ranks
-	//   every player in each of the target player's matches and the outer query then
+	//   Tenant-independent (ADR-36 phase 4): computed from match_scores over every
+	//   stored COMPETITIVE match of the player, whatever arena (if any) settled
+	//   it — coop matches affect no rating and stay out, as before. NOTE: the
+	//   rank must be computed over ALL players in a match, so the CTE ranks every
+	//   player in each of the target player's matches and the outer query then
 	//   filters down to the target player's own rows.
-	GetPlayerGameStats(ctx context.Context, arg GetPlayerGameStatsParams) ([]GetPlayerGameStatsRow, error)
+	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]GetPlayerGameStatsRow, error)
 	// Returns the true Elo value (elo_after) for Elo calculations.
 	GetPlayerLatestArenaElo(ctx context.Context, arg GetPlayerLatestArenaEloParams) (float64, error)
 	GetPlayerLatestArenaEloAtDate(ctx context.Context, arg GetPlayerLatestArenaEloAtDateParams) (float64, error)
@@ -526,9 +529,11 @@ type Querier interface {
 	// current member's matches — of any club of the tenant (coop included:
 	// community life, not just rating); correction events to corrections of
 	// current members; market events to the markets the tenant OWNS (a member's
-	// bet on another tenant's market is that tenant's news). Parameters and
-	// cursor are the arena feed's minus the arena and the include flags; the
-	// tenant itself is the feed's identity.
+	// bet on another tenant's market is that tenant's news). The player/club/game
+	// filters apply to the match and market branches (the arena feed's matching
+	// rule); corrections stay unfiltered. Parameters and cursor are the arena
+	// feed's minus the arena and the include flags; the tenant itself is the
+	// feed's identity.
 	ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error)
 	// Tenant queries (ADR-36). A tenant is a separate community entity: name,
 	// openness settings, one main arena (arenas.tenant_id), and one or many

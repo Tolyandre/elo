@@ -129,9 +129,11 @@ SELECT EXISTS (
 -- current member's matches — of any club of the tenant (coop included:
 -- community life, not just rating); correction events to corrections of
 -- current members; market events to the markets the tenant OWNS (a member's
--- bet on another tenant's market is that tenant's news). Parameters and
--- cursor are the arena feed's minus the arena and the include flags; the
--- tenant itself is the feed's identity.
+-- bet on another tenant's market is that tenant's news). The player/club/game
+-- filters apply to the match and market branches (the arena feed's matching
+-- rule); corrections stay unfiltered. Parameters and cursor are the arena
+-- feed's minus the arena and the include flags; the tenant itself is the
+-- feed's identity.
 WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM matches m
@@ -146,6 +148,15 @@ WITH events AS (
           )
       AND (
           sqlc.narg('player_id')::uuid IS NULL OR ms.player_id = sqlc.narg('player_id')::uuid
+      )
+      AND (
+          sqlc.narg('club_id')::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND pcm.left_at IS NULL
+                AND pcm.player_id = ms.player_id
+          )
       )
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
@@ -194,6 +205,31 @@ WITH events AS (
           OR EXISTS (SELECT 1 FROM arena_settlements ars
                      WHERE ars.market_id = om.id
                        AND ars.player_id = sqlc.narg('player_id')::uuid)
+      )
+      AND (
+          sqlc.narg('club_id')::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = sqlc.narg('club_id')::uuid
+                AND pcm.left_at IS NULL
+                AND (
+                    EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                            WHERE mwp.market_id = om.id
+                              AND pcm.player_id = ANY(mwp.target_player_ids))
+                    OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                               WHERE wsp.market_id = om.id
+                                 AND wsp.target_player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_outcomes mo
+                               WHERE mo.market_id = om.id
+                                 AND mo.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_guarantees mg
+                               WHERE mg.market_id = om.id
+                                 AND mg.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM arena_settlements ars
+                               WHERE ars.market_id = om.id
+                                 AND ars.player_id = pcm.player_id)
+                )
+          )
       )
       AND (
           sqlc.narg('game_id')::uuid IS NULL

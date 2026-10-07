@@ -237,7 +237,7 @@ func (s *StrictServer) ListTenantFeed(ctx context.Context, request ListTenantFee
 		}
 		return nil, err
 	}
-	req, err := parseTenantFeedRequest(arenaID, tenantID, request.Params.PlayerId, request.Params.GameId, request.Params.Next, request.Params.Limit)
+	req, err := parseTenantFeedRequest(arenaID, tenantID, request.Params.PlayerId, request.Params.ClubId, request.Params.GameId, request.Params.Next, request.Params.Limit)
 	if err != nil {
 		return ListTenantFeed400JSONResponse{Status: StatusFail, Message: "Invalid cursor"}, nil
 	}

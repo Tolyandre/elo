@@ -7,6 +7,12 @@ vi.mock("@/components/player-name", () => ({
     ClubIcons: () => null,
 }));
 
+// The player links carry the current tenant (ADR-36); the stub keeps hrefs
+// unscoped — link targets are not what this table's tests assert.
+vi.mock("@/app/tenantScopeContext", () => ({
+    useTenantScope: () => ({ playerHref: (id: string) => `/players/view?id=${id}` }),
+}));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 import React from "react";

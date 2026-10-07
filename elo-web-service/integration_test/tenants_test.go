@@ -1332,6 +1332,43 @@ func TestTenants_ClubFeed(t *testing.T) {
 		t.Fatalf("tenant feed holds %d corrections, want only the member's", got)
 	}
 
+	// The club filter (ADR-36 phase 4) narrows the community feed to one
+	// club: matches through the club's current members, markets through the
+	// members the market is about, corrections unfiltered (the arena feed's
+	// rule).
+	clubAFeed := tenantFeed + "?club_id=" + clubA.String()
+	pageA := decodeFeedPage(t, router, clubAFeed)
+	if got := countFeedEventsOfType(pageA, "match"); got != 1 {
+		t.Fatalf("club A feed holds %d matches, want only club A member's", got)
+	}
+	if got := countFeedEventsOfType(pageA, "market"); got != 1 {
+		t.Fatalf("club A feed holds %d markets, want the one targeting its member", got)
+	}
+	if got := countFeedEventsOfType(pageA, "correction"); got != 1 {
+		t.Fatalf("club A feed holds %d corrections, want the unfiltered member's one", got)
+	}
+	clubBFeed := tenantFeed + "?club_id=" + clubB.String()
+	pageB := decodeFeedPage(t, router, clubBFeed)
+	if got := countFeedEventsOfType(pageB, "match"); got != 1 {
+		t.Fatalf("club B feed holds %d matches, want only club B member's", got)
+	}
+	if got := countFeedEventsOfType(pageB, "market"); got != 0 {
+		t.Fatalf("club B feed holds %d markets, want none (its member is not the target)", got)
+	}
+	// The filter rides in the cursor: the continuation keeps narrowing.
+	walked := 0
+	walkPage := decodeFeedPage(t, router, clubAFeed+"&limit=1")
+	for {
+		walked += len(walkPage.Data)
+		if walkPage.Next == nil {
+			break
+		}
+		walkPage = decodeFeedPage(t, router, clubAFeed+"&limit=1&next="+url.QueryEscape(*walkPage.Next))
+	}
+	if walked != 3 {
+		t.Fatalf("club A cursor walk collected %d events, want match + market + correction", walked)
+	}
+
 	// Cursor pagination: limit=1 walks without repeats; a foreign tenant's
 	// token is a bad request.
 	first := decodeFeedPage(t, router, tenantFeed+"?limit=1")

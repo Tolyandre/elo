@@ -447,10 +447,11 @@ func parseFeedRequest(arenaID id.ID, includeSettlements, includeCoop bool, playe
 // parseTenantFeedRequest parses GET /tenants/{id}/feed (ADR-36): the event
 // query is the tenant's own (membership-scoped), the payload settlements come
 // from the tenant's main arena, and the cursor token bakes the tenant
-// identity so a token from another tenant's feed is a bad request.
-func parseTenantFeedRequest(arenaID, tenantID id.ID, playerId, gameId, next *string, limitParam *int) (feedRequest, error) {
+// identity so a token from another tenant's feed is a bad request. The
+// player/club/game filters are the arena feed's.
+func parseTenantFeedRequest(arenaID, tenantID id.ID, playerId, clubId, gameId, next *string, limitParam *int) (feedRequest, error) {
 	tenant := string(tenantID)
-	req, err := parseFeedRequest(arenaID, true, true, playerId, nil, gameId, next, limitParam)
+	req, err := parseFeedRequest(arenaID, true, true, playerId, clubId, gameId, next, limitParam)
 	if err != nil {
 		return req, err
 	}
@@ -482,6 +483,7 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 			CursorType: req.cursorType,
 			CursorID:   req.cursorID,
 			PlayerID:   idPtr(req.playerID),
+			ClubID:     idPtr(req.clubID),
 			GameID:     idPtr(req.gameID),
 			Limit:      req.limit,
 		})

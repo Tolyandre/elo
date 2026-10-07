@@ -98,7 +98,12 @@ function mapFeedEvent(e: components["schemas"]["FeedEvent"]): FeedEvent | null {
     }
 }
 
-function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: string | null): FeedPage {
+/**
+ * Maps one page of wire feed events to the client FeedPage (Dates revived,
+ * unknown event kinds skipped). Shared with the tenant feed (ADR-36) — same
+ * event union, same envelope.
+ */
+export function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: string | null): FeedPage {
     return {
         items: data.map(mapFeedEvent).filter((e): e is FeedEvent => e !== null),
         next: next ?? null,

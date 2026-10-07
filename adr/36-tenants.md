@@ -169,13 +169,19 @@ are.
 ### UI contract (later phases)
 
 The main page and the player page carry the current tenant in the URL
-(`?tenant=<Base58ID>`); the main-page feed's existing club **filter**
-parameter renames to `?club_filter=` to free the namespace. Default
-resolution: query param → the signed-in user player's tenant (via their
-clubs) → last displayed tenant (localStorage) → a prompt. The header shows
-the current tenant's name with a switcher; every navigation preserves the
-tenant until the user switches it. A player's page shows per-club stats
-tabs within the tenant.
+(`?tenant=<Base58ID>`). Default resolution: query param → last displayed
+tenant (localStorage) → the signed-in user player's tenant (via their clubs) →
+a single tenant auto-selected → a prompt. (The stored tenant outranks the
+user-player default so an explicit switch survives navigation and reloads —
+"preserves the tenant until the user switches it"; a player straddling several
+tenants gets the first in list order and can switch.) The header shows the
+current tenant's name with a switcher; every navigation preserves the tenant
+until the user switches it. The main page renders the tenant's main arena and
+the tenant's community feed (the club filter stays `?club=`). A player's page
+is tenant-scoped: opened with `?tenant=`, its rating, chart and
+Elo-per-game tables come from the tenant's main arena («Частые игры» counts
+every stored match, tenant-independent), and a note names the community the
+rating is from.
 
 ## Migration plan
 
@@ -193,8 +199,9 @@ Staged forward, each phase shippable:
    /tenants/{id}/tournaments`, `POST /tenants/{id}/markets`; flat creates
    removed), `tenant_id` NOT NULL (070), per-tenant settlement arenas,
    registration/bet/guarantee members-only gates, `GET /tenants/{id}/feed`.
-4. **Frontend shell**: `?tenant=`, switcher, defaults, player-page club
-   tabs, `GET /players/{id}/stats?tenant=`.
+4. **Frontend shell**: `?tenant=`, switcher, defaults, the tenant-scoped
+   player profile (`GET /players/{id}/stats?tenant=`; «Частые игры» becomes
+   tenant-independent), the club filter on `GET /tenants/{id}/feed`.
 5. **Admin UI**: tenant settings page (openness, member stints across its
    clubs, composition), main-arena settings editor.
 

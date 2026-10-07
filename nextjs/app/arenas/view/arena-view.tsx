@@ -21,6 +21,7 @@ import { ClubSelect } from "@/components/club-select";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useClubs } from "@/app/clubsContext";
 import { useMe } from "@/app/meContext";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { ArenaMedalsTab } from "./arena-medals-tab";
 import { ArenaFeedTab } from "./arena-feed-tab";
 import { useArenaFeed, type ArenaMatchFilters } from "./use-arena-feed";
@@ -42,16 +43,19 @@ function parseTab(value: string | null, hasLeaders: boolean): string {
 
 /**
  * The arena view (players / feed / medals / leaders tabs), rendered by both
- * `/` (the main page — the global arena, whose feed tab is the home feed) and
- * `/arenas/view?id=…`. All view state — the arena id, the active tab, the
- * match filters — lives in the query string via useUrlQuery: shareable,
- * refresh-stable, and restored by Back/Forward (ADR-25).
+ * `/` (the main page) and `/arenas/view?id=…`. All view state — the arena id,
+ * the active tab, the match filters — lives in the query string via
+ * useUrlQuery: shareable, refresh-stable, and restored by Back/Forward
+ * (ADR-25). On the main page the rendered arena is the current tenant's main
+ * arena (ADR-36) and the feed tab is the tenant's community feed; the id-less
+ * fallback without a tenant is the global arena with the home feed (ADR-32).
  */
 export function ArenaView() {
   const params = useUrlQuery();
+  const { tenant } = useTenantScope();
   const explicitId = toBase58ID(params.get("id") ?? "");
-  const id = explicitId ?? GLOBAL_ARENA_ID;
-  const isGlobal = id === GLOBAL_ARENA_ID;
+  const baseId = explicitId ?? tenant?.main_arena_id ?? GLOBAL_ARENA_ID;
+  const isGlobal = baseId === GLOBAL_ARENA_ID;
 
   // A missing arena (stale id in the URL, or the global arena absent from a
   // not-yet-migrated database) must not brick the main page: when the id-less
@@ -59,11 +63,11 @@ export function ArenaView() {
   // the list. An explicitly requested arena that is gone renders a friendly
   // not-found state instead of an error.
   const [overrideId, setOverrideId] = useState<Base58ID | null>(null);
-  const effectiveId = explicitId ?? overrideId ?? id;
+  const effectiveId = explicitId ?? overrideId ?? baseId;
 
   const { data, loading, error, invalidate } = useAsyncResource(async () => {
     let arena = await getArenaSafePromise(effectiveId);
-    if (arena == null && explicitId == null) {
+    if (arena == null && explicitId == null && tenant == null) {
       const list = await getArenasPromise();
       arena = list.find(isUnconditional) ?? null;
       if (arena != null) setOverrideId(arena.id);
@@ -73,7 +77,7 @@ export function ArenaView() {
     }
     const players = await getArenaPlayersPromise(arena.id);
     return { notFound: false as const, arena, players };
-  }, [effectiveId, explicitId]);
+  }, [effectiveId, explicitId, tenant]);
 
   const notFound = data?.notFound === true;
   const arena = notFound ? null : data?.arena ?? null;
@@ -91,12 +95,18 @@ export function ArenaView() {
     [params],
   );
 
-  // The feed tab. The main page (no explicit id) loads the home feed (ADR-32);
-  // an explicit arena — the global one included — loads that arena's own feed,
-  // which for every arena but the global one is matches only (corrections and
-  // market resolutions settle only into the global arena, ADR-24 — the server
-  // merges them in there and nowhere else).
-  const feed = useArenaFeed(explicitId == null, effectiveId, filters);
+  // The feed tab. The tenant-mode main page renders the tenant's community
+  // feed (membership-scoped, ADR-36); the id-less main page without a tenant
+  // loads the home feed (ADR-32); an explicit arena — the global one
+  // included — loads that arena's own feed, which for every arena but the
+  // global one is matches only (corrections and market resolutions settle
+  // only into the global arena, ADR-24 — the server merges them in there and
+  // nowhere else).
+  const tenantFeed = explicitId == null && tenant != null;
+  const feed = useArenaFeed(
+    { home: explicitId == null && tenant == null, arenaId: effectiveId, tenantId: tenantFeed ? tenant.id : null },
+    filters,
+  );
 
   // Players tab: period for the change indicators, club filter. The filter
   // only narrows the list — ranks stay the server-computed global ones, and
@@ -120,11 +130,12 @@ export function ArenaView() {
   const hasLeaders = singleGameId != null;
 
   // The edit form is for user-created arenas only: auto-managed ones are
-  // system-owned (the API rejects edits), and the global arena — the main
-  // page — is permanent. Camp arenas are user-created and editable (ADR-27).
+  // system-owned (the API rejects edits), the global arena — the main page —
+  // is permanent, and a tenant main arena is system-managed too (ADR-36).
+  // Camp arenas are user-created and editable (ADR-27).
   const { canEdit } = useMe();
   const canEditArena =
-    canEdit && !isGlobal && arena != null && arena.game_id == null && arena.tournament_id == null;
+    canEdit && tenant == null && !isGlobal && arena != null && arena.game_id == null && arena.tournament_id == null;
 
   // The active tab is a URL parameter ("push": Back/Forward walk through
   // tabs). A value the current arena does not offer — e.g. a carried-over
@@ -155,7 +166,7 @@ export function ArenaView() {
 
   return (
     <PageContainer width="narrow">
-      {!isGlobal && <BackButton href="/arenas" />}
+      {explicitId != null && !isGlobal && <BackButton href="/arenas" />}
       <div className="space-y-4">
         <PageHeader
           title={arena?.name ?? "Главная"}

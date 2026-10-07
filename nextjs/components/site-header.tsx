@@ -5,6 +5,7 @@ import { NavigationBar } from "@/components/navigation-bar"
 import { SyncStatus } from "@/components/sync-status"
 import { SwUpdateChip } from "@/components/sw-update-chip"
 import { TableIndicator } from "@/components/tables/table-indicator"
+import { TenantSwitcher } from "@/components/tenant-switcher"
 
 export function SiteHeader() {
   const { title, icon, action } = usePageHeaderContext()
@@ -19,6 +20,7 @@ export function SiteHeader() {
         <SyncStatus />
         <SwUpdateChip />
         <TableIndicator />
+        <TenantSwitcher />
         <NavigationBar />
       </div>
 

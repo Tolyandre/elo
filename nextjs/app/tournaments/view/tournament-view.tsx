@@ -13,6 +13,7 @@ import {
 } from "@/app/api";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { useMe } from "@/app/meContext";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { useGames } from "@/app/gamesContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useTournaments } from "../tournamentsContext";
@@ -110,6 +111,7 @@ function TournamentViewLoaded({
     const { games } = useGames();
     const { playerMap, playerDisplayName } = usePlayers();
     const { invalidate: invalidateTournaments } = useTournaments();
+    const { playerHref } = useTenantScope();
     const [registering, setRegistering] = useState(false);
 
     const playerName = (pid: string): string => {
@@ -168,7 +170,7 @@ function TournamentViewLoaded({
                         <Trophy className="h-5 w-5 text-warning shrink-0" />
                         <span>
                             Победитель:{" "}
-                            <Link href={`/players/view?id=${winnerId}`} className="font-semibold underline">
+                            <Link href={playerHref(winnerId)} className="font-semibold underline">
                                 {playerName(winnerId)}
                             </Link>
                         </span>
@@ -251,6 +253,7 @@ function RegistrationSection({
     registering: boolean;
     onRegistration: (withdraw: boolean) => void;
 }) {
+    const { playerHref } = useTenantScope();
     return (
         <Card className="gap-1">
             <CardHeader>
@@ -263,7 +266,7 @@ function RegistrationSection({
                     <ul className="space-y-1 text-sm">
                         {participants.map((pid) => (
                             <li key={pid}>
-                                <Link href={`/players/view?id=${pid}`} className="underline">{playerName(pid)}</Link>
+                                <Link href={playerHref(pid)} className="underline">{playerName(pid)}</Link>
                             </li>
                         ))}
                     </ul>

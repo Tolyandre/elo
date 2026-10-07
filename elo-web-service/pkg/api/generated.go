@@ -2833,6 +2833,12 @@ type PatchPlayerJSONBody struct {
 	Name string `json:"name"`
 }
 
+// GetPlayerStatsParams defines parameters for GetPlayerStats.
+type GetPlayerStatsParams struct {
+	// Tenant Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Without the parameter the global arena is used. The per-game match counts ("Частые игры") are tenant-independent either way.
+	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
+}
+
 // DeleteSettingsJSONBody defines parameters for DeleteSettings.
 type DeleteSettingsJSONBody struct {
 	EffectiveDate time.Time `json:"effective_date"`
@@ -2919,6 +2925,9 @@ type SetTenantClubsJSONBody struct {
 type ListTenantFeedParams struct {
 	// PlayerId Filter match and market events by player ID (the arena feed's matching rule)
 	PlayerId *string `form:"player_id,omitempty" json:"player_id,omitempty"`
+
+	// ClubId Filter match and market events by club ID (the arena feed's matching rule — through any current member of the club)
+	ClubId *string `form:"club_id,omitempty" json:"club_id,omitempty"`
 
 	// GameId Filter match and market events by game ID (the arena feed's matching rule)
 	GameId *string `form:"game_id,omitempty" json:"game_id,omitempty"`
@@ -4054,7 +4063,7 @@ type ServerInterface interface {
 	PatchPlayer(c *gin.Context, id string)
 	// GetPlayerStats Get player rating history and game statistics
 	// (GET /players/{id}/stats)
-	GetPlayerStats(c *gin.Context, id string)
+	GetPlayerStats(c *gin.Context, id string, params GetPlayerStatsParams)
 	// DeleteSettings Delete future Elo settings
 	// (DELETE /settings)
 	DeleteSettings(c *gin.Context)
@@ -5485,6 +5494,17 @@ func (siw *ServerInterfaceWrapper) GetPlayerStats(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPlayerStatsParams
+
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5492,7 +5512,7 @@ func (siw *ServerInterfaceWrapper) GetPlayerStats(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetPlayerStats(c, id)
+	siw.Handler.GetPlayerStats(c, id, params)
 }
 
 // DeleteSettings operation middleware
@@ -5934,6 +5954,14 @@ func (siw *ServerInterfaceWrapper) ListTenantFeed(c *gin.Context) {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "player_id", c.Request.URL.Query(), &params.PlayerId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter player_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "club_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "club_id", c.Request.URL.Query(), &params.ClubId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter club_id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -9639,7 +9667,8 @@ func (response PatchPlayer409JSONResponse) VisitPatchPlayerResponse(w http.Respo
 }
 
 type GetPlayerStatsRequestObject struct {
-	Id string `json:"id"`
+	Id     string `json:"id"`
+	Params GetPlayerStatsParams
 }
 
 type GetPlayerStatsResponseObject interface {
@@ -14081,10 +14110,11 @@ func (sh *strictHandler) PatchPlayer(ctx *gin.Context, id string) {
 }
 
 // GetPlayerStats operation middleware
-func (sh *strictHandler) GetPlayerStats(ctx *gin.Context, id string) {
+func (sh *strictHandler) GetPlayerStats(ctx *gin.Context, id string, params GetPlayerStatsParams) {
 	var request GetPlayerStatsRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetPlayerStats(ctx, request.(GetPlayerStatsRequestObject))

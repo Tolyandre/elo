@@ -313,6 +313,11 @@ TenantFeedPath:
         schema:
           type: string
         description: Filter match and market events by player ID (the arena feed's matching rule)
+      - name: club_id
+        in: query
+        schema:
+          type: string
+        description: Filter match and market events by club ID (the arena feed's matching rule — through any current member of the club)
       - name: game_id
         in: query
         schema:

@@ -39,11 +39,14 @@ type IPlayerService interface {
 	// user: club co-players, players created by the user or their club's
 	// users (via the audit log), the user's player pinned first.
 	ListRecentPlayers(ctx context.Context, userID id.ID, limit int) ([]RecentPlayer, error)
-	RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error)
-	// GetPlayerGameStats/GetPlayerGameEloStats scope their arena_settlements
-	// reads to the given display arena (ADR-36: the caller's current club main
-	// arena; the global arena until ?club= lands).
-	GetPlayerGameStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameStatsRow, error)
+	RatingHistory(ctx context.Context, playerID, arenaID id.ID) ([]db.ArenaRatingHistoryRow, error)
+	// GetPlayerGameStats is tenant-independent (ADR-36 phase 4): the profile's
+	// "Частые игры" counts come from every stored match, whatever arena (if
+	// any) settled it.
+	GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error)
+	// GetPlayerGameEloStats scopes its arena_settlements read to the given
+	// display arena (ADR-36: the ?tenant= main arena; the global arena
+	// otherwise).
 	GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error)
 }
 
@@ -306,15 +309,15 @@ func (s *PlayerService) ListPlayerUserLinks(ctx context.Context) ([]db.ListPlaye
 	return s.Queries.ListPlayerUserLinks(ctx)
 }
 
-func (s *PlayerService) RatingHistory(ctx context.Context, playerID id.ID) ([]db.ArenaRatingHistoryRow, error) {
+func (s *PlayerService) RatingHistory(ctx context.Context, playerID, arenaID id.ID) ([]db.ArenaRatingHistoryRow, error) {
 	return s.Queries.ArenaRatingHistory(ctx, db.ArenaRatingHistoryParams{
-		ArenaID:  GlobalArenaID,
+		ArenaID:  arenaID,
 		PlayerID: playerID,
 	})
 }
 
-func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameStatsRow, error) {
-	return s.Queries.GetPlayerGameStats(ctx, db.GetPlayerGameStatsParams{PlayerID: playerID, ArenaID: arenaID})
+func (s *PlayerService) GetPlayerGameStats(ctx context.Context, playerID id.ID) ([]db.GetPlayerGameStatsRow, error) {
+	return s.Queries.GetPlayerGameStats(ctx, playerID)
 }
 
 func (s *PlayerService) GetPlayerGameEloStats(ctx context.Context, playerID, arenaID id.ID) ([]db.GetPlayerGameEloStatsRow, error) {

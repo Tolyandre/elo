@@ -7,13 +7,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { renderHook } from "./render-hook";
 import { emitDataChange } from "@/lib/live-data";
-import { getArenaFeedPagePromise, getHomeFeedPagePromise, type FeedEvent } from "@/app/api";
+import { getArenaFeedPagePromise, getHomeFeedPagePromise, getTenantFeedPagePromise, type FeedEvent } from "@/app/api";
 import { useArenaFeed } from "@/app/arenas/view/use-arena-feed";
 import type { Base58ID } from "@/lib/id";
 
 vi.mock("@/app/api", () => ({
     getArenaFeedPagePromise: vi.fn(),
     getHomeFeedPagePromise: vi.fn(),
+    getTenantFeedPagePromise: vi.fn(),
 }));
 
 // The markets-lobby SSE subscription stays mocked out: the tests assert fetch
@@ -25,6 +26,12 @@ vi.mock("@/hooks/useMarketsSSE", () => ({
 }));
 
 const ARENA_ID = "arena-1" as Base58ID;
+const TENANT_ID = "tenant-1" as Base58ID;
+
+// The two scopes every non-tenant test exercises: the id-less home feed and
+// an explicit arena's own feed.
+const homeScope = { home: true, arenaId: ARENA_ID, tenantId: null as Base58ID | null };
+const arenaScope = { home: false, arenaId: ARENA_ID, tenantId: null as Base58ID | null };
 
 function matchEvent(id: string): FeedEvent {
     return {
@@ -62,22 +69,53 @@ describe("useArenaFeed endpoint selection", () => {
     beforeEach(() => {
         vi.mocked(getArenaFeedPagePromise).mockReset();
         vi.mocked(getHomeFeedPagePromise).mockReset();
+        vi.mocked(getTenantFeedPagePromise).mockReset();
         vi.mocked(getArenaFeedPagePromise).mockResolvedValue({ items: [], next: null });
         vi.mocked(getHomeFeedPagePromise).mockResolvedValue({ items: [], next: null });
+        vi.mocked(getTenantFeedPagePromise).mockResolvedValue({ items: [], next: null });
         marketsSSE.tick = 0;
     });
 
     it("uses the home feed for the main page and the arena feed for an explicit arena", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
         expect(getArenaFeedPagePromise).not.toHaveBeenCalled();
         unmount();
 
-        const { unmount: unmount2 } = renderHook(() => useArenaFeed(false, ARENA_ID, {}));
+        const { unmount: unmount2 } = renderHook(() => useArenaFeed(arenaScope, {}));
         await flushFetches();
         expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
         unmount2();
+    });
+
+    it("uses the tenant community feed for the tenant-mode main page (ADR-36)", async () => {
+        const { unmount } = renderHook(() =>
+            useArenaFeed({ home: false, arenaId: ARENA_ID, tenantId: TENANT_ID }, { clubId: "c1" as Base58ID }),
+        );
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenCalledWith(TENANT_ID, { club_id: "c1" });
+        expect(getHomeFeedPagePromise).not.toHaveBeenCalled();
+        expect(getArenaFeedPagePromise).not.toHaveBeenCalled();
+        unmount();
+    });
+
+    it("continues the tenant feed with the cursor only", async () => {
+        vi.mocked(getTenantFeedPagePromise)
+            .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "tcursor-1" })
+            .mockResolvedValueOnce({ items: [], next: null });
+
+        const { current, unmount } = renderHook(() =>
+            useArenaFeed({ home: false, arenaId: ARENA_ID, tenantId: TENANT_ID }, {}),
+        );
+        await flushFetches();
+        act(() => {
+            current.value.loadMore();
+        });
+        await flushFetches();
+        expect(getTenantFeedPagePromise).toHaveBeenLastCalledWith(TENANT_ID, { next: "tcursor-1" });
+        expect(current.value.events.map((e) => e.data.id)).toEqual(["m1"]);
+        unmount();
     });
 
     it("passes filters on page 1 and only the cursor on continuation", async () => {
@@ -86,7 +124,7 @@ describe("useArenaFeed endpoint selection", () => {
             .mockResolvedValueOnce({ items: [correctionEvent("c1")], next: null });
 
         const { current, unmount } = renderHook(() =>
-            useArenaFeed(false, ARENA_ID, { playerId: "p1" as Base58ID }),
+            useArenaFeed(arenaScope, { playerId: "p1" as Base58ID }),
         );
         await flushFetches();
         expect(getArenaFeedPagePromise).toHaveBeenCalledWith({
@@ -113,7 +151,7 @@ describe("useArenaFeed endpoint selection", () => {
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
             .mockResolvedValueOnce({ items: [matchEvent("m1"), matchEvent("m2")], next: null });
 
-        const { current, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         act(() => {
             current.value.loadMore();
@@ -134,7 +172,7 @@ describe("useArenaFeed live invalidation", () => {
     });
 
     it("refetches page 1 when a matches data-change batch arrives", async () => {
-        const { current, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
         expect(current.value.loading).toBe(false);
@@ -148,31 +186,31 @@ describe("useArenaFeed live invalidation", () => {
     });
 
     it("refetches the home feed on a markets tick, but never the arena feed", async () => {
-        const { rerender, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { rerender, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(1);
 
         marketsSSE.tick = 1;
-        rerender(() => useArenaFeed(true, ARENA_ID, {}));
+        rerender(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         expect(getHomeFeedPagePromise).toHaveBeenCalledTimes(2);
         unmount();
 
         const { rerender: rerenderArena, unmount: unmountArena } = renderHook(() =>
-            useArenaFeed(false, ARENA_ID, {}),
+            useArenaFeed(arenaScope, {}),
         );
         await flushFetches();
         expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
 
         marketsSSE.tick = 2;
-        rerenderArena(() => useArenaFeed(false, ARENA_ID, {}));
+        rerenderArena(() => useArenaFeed(arenaScope, {}));
         await flushFetches();
         expect(getArenaFeedPagePromise).toHaveBeenCalledTimes(1);
         unmountArena();
     });
 
     it("ignores players-only batches", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
 
         act(() => emitDataChange({ matches: false, players: true }));
@@ -183,7 +221,7 @@ describe("useArenaFeed live invalidation", () => {
     });
 
     it("exposes invalidate for a direct refresh", async () => {
-        const { current, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
 
         act(() => {
@@ -196,7 +234,7 @@ describe("useArenaFeed live invalidation", () => {
     });
 
     it("unsubscribes on unmount", async () => {
-        const { unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
         unmount();
 
@@ -220,7 +258,7 @@ describe("useArenaFeed loadAll (leaders tab)", () => {
             .mockResolvedValueOnce({ items: [correctionEvent("c1"), matchEvent("m2")], next: "cursor-2" })
             .mockResolvedValueOnce({ items: [], next: null });
 
-        const { current, unmount } = renderHook(() => useArenaFeed(true, ARENA_ID, {}));
+        const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));
         await flushFetches();
 
         await act(async () => {

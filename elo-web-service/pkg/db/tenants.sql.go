@@ -127,7 +127,16 @@ WITH events AS (
           $6::uuid IS NULL OR ms.player_id = $6::uuid
       )
       AND (
-          $7::uuid IS NULL OR m.game_id = $7::uuid
+          $7::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = $7::uuid
+                AND pcm.left_at IS NULL
+                AND pcm.player_id = ms.player_id
+          )
+      )
+      AND (
+          $8::uuid IS NULL OR m.game_id = $8::uuid
       )
     UNION ALL
     SELECT c.id, c.date, 'correction'::text
@@ -176,15 +185,40 @@ WITH events AS (
       )
       AND (
           $7::uuid IS NULL
+          OR EXISTS (
+              SELECT 1 FROM player_club_membership pcm
+              WHERE pcm.club_id = $7::uuid
+                AND pcm.left_at IS NULL
+                AND (
+                    EXISTS (SELECT 1 FROM market_match_winner_params mwp
+                            WHERE mwp.market_id = om.id
+                              AND pcm.player_id = ANY(mwp.target_player_ids))
+                    OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
+                               WHERE wsp.market_id = om.id
+                                 AND wsp.target_player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_outcomes mo
+                               WHERE mo.market_id = om.id
+                                 AND mo.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM market_guarantees mg
+                               WHERE mg.market_id = om.id
+                                 AND mg.player_id = pcm.player_id)
+                    OR EXISTS (SELECT 1 FROM arena_settlements ars
+                               WHERE ars.market_id = om.id
+                                 AND ars.player_id = pcm.player_id)
+                )
+          )
+      )
+      AND (
+          $8::uuid IS NULL
           OR EXISTS (SELECT 1 FROM market_match_winner_params mwp
                      WHERE mwp.market_id = om.id
-                       AND $7::uuid = ANY(mwp.game_ids))
+                       AND $8::uuid = ANY(mwp.game_ids))
           OR EXISTS (SELECT 1 FROM market_win_streak_params wsp
                      WHERE wsp.market_id = om.id
-                       AND $7::uuid = ANY(wsp.game_ids))
+                       AND $8::uuid = ANY(wsp.game_ids))
           OR EXISTS (SELECT 1 FROM matches rm
                      WHERE rm.id = om.resolution_match_id
-                       AND rm.game_id = $7::uuid)
+                       AND rm.game_id = $8::uuid)
       )
 )
 SELECT id, sort_date, event_type
@@ -210,6 +244,7 @@ type ListTenantFeedEventsParams struct {
 	Limit      int32              `json:"limit"`
 	TenantID   id.ID              `json:"tenant_id"`
 	PlayerID   *id.ID             `json:"player_id"`
+	ClubID     *id.ID             `json:"club_id"`
 	GameID     *id.ID             `json:"game_id"`
 }
 
@@ -226,9 +261,11 @@ type ListTenantFeedEventsRow struct {
 // current member's matches — of any club of the tenant (coop included:
 // community life, not just rating); correction events to corrections of
 // current members; market events to the markets the tenant OWNS (a member's
-// bet on another tenant's market is that tenant's news). Parameters and
-// cursor are the arena feed's minus the arena and the include flags; the
-// tenant itself is the feed's identity.
+// bet on another tenant's market is that tenant's news). The player/club/game
+// filters apply to the match and market branches (the arena feed's matching
+// rule); corrections stay unfiltered. Parameters and cursor are the arena
+// feed's minus the arena and the include flags; the tenant itself is the
+// feed's identity.
 func (q *Queries) ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error) {
 	rows, err := q.db.Query(ctx, listTenantFeedEvents,
 		arg.CursorDate,
@@ -237,6 +274,7 @@ func (q *Queries) ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEv
 		arg.Limit,
 		arg.TenantID,
 		arg.PlayerID,
+		arg.ClubID,
 		arg.GameID,
 	)
 	if err != nil {

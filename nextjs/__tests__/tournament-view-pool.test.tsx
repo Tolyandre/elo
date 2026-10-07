@@ -56,6 +56,12 @@ vi.mock("@/app/tournaments/tournamentsContext", () => ({
     useTournaments: () => ({ invalidate: () => {} }),
 }));
 
+// Player links carry the current tenant (ADR-36); the stub keeps hrefs
+// unscoped — not what the pool tests assert.
+vi.mock("@/app/tenantScopeContext", () => ({
+    useTenantScope: () => ({ playerHref: (id: string) => `/players/view?id=${id}` }),
+}));
+
 vi.mock("@/app/pageHeaderContext", () => ({
     PageHeader: () => null,
 }));

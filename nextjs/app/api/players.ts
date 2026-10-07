@@ -26,8 +26,10 @@ export async function deletePlayerPromise(playerId: Base58ID) {
     return unwrap(client.DELETE("/players/{id}", { params: { path: { id: playerId } } }));
 }
 
-export async function getPlayerStatsPromise(id: Base58ID): Promise<PlayerStats> {
-    return (await unwrap(client.GET("/players/{id}/stats", { params: { path: { id } } }))).data;
+export async function getPlayerStatsPromise(id: Base58ID, opts?: { tenant?: Base58ID }): Promise<PlayerStats> {
+    return (await unwrap(client.GET("/players/{id}/stats", {
+        params: { path: { id }, query: opts?.tenant ? { tenant: opts.tenant } : undefined },
+    }))).data;
 }
 
 export async function createPlayerCorrectionPromise(playerId: Base58ID, diff: number) {

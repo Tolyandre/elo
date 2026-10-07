@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/elo"
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
@@ -224,7 +225,21 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		return nil, err
 	}
 
-	ratingRows, err := s.api.PlayerService.RatingHistory(ctx, playerID)
+	// The display arena for the rating history and the Elo-per-game tables:
+	// the ?tenant='s main arena (ADR-36 phase 4), the global arena otherwise.
+	// "Частые игры" is tenant-independent and reads no arena at all.
+	arenaID := elo.GlobalArenaID
+	if request.Params.Tenant != nil && *request.Params.Tenant != "" {
+		arenaID, err = s.api.TenantService.FeedArena(ctx, parseIDParam(*request.Params.Tenant))
+		if err != nil {
+			if db.IsNoRows(err) {
+				return GetPlayerStats404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+			}
+			return nil, err
+		}
+	}
+
+	ratingRows, err := s.api.PlayerService.RatingHistory(ctx, playerID, arenaID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +254,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		}
 	}
 
-	gameStats, err := s.api.PlayerService.GetPlayerGameStats(ctx, playerID, elo.GlobalArenaID)
+	gameStats, err := s.api.PlayerService.GetPlayerGameStats(ctx, playerID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +270,7 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 		})
 	}
 
-	eloStats, err := s.api.PlayerService.GetPlayerGameEloStats(ctx, playerID, elo.GlobalArenaID)
+	eloStats, err := s.api.PlayerService.GetPlayerGameEloStats(ctx, playerID, arenaID)
 	if err != nil {
 		return nil, err
 	}

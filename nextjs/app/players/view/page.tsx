@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { toBase58ID } from '@/lib/id'
+import { toBase58ID, type Base58ID } from '@/lib/id'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -10,6 +10,7 @@ import { RatingChart } from '@/components/rating-chart'
 import { findExtremes } from '@/lib/rating-chart'
 import { getPlayerStatsPromise, type PlayerStats, type GameEloStat, type GameMatchStat } from '@/app/api'
 import { useMe } from '@/app/meContext'
+import { useTenantScope } from '@/app/tenantScopeContext'
 import { PageHeader } from '@/app/pageHeaderContext'
 import { PageContainer } from '@/components/page-container'
 import { ErrorAlert } from '@/components/error-alert'
@@ -116,7 +117,7 @@ function LoadingSkeleton() {
     )
 }
 
-function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
+function PlayerProfileContent({ stats, tenantName }: { stats: PlayerStats; tenantName?: string }) {
     const history = stats.rating_history
     const current = history.length > 0 ? history[history.length - 1] : null
     const extremes = useMemo(() => findExtremes(history), [history])
@@ -140,12 +141,19 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
                             </div>
                         )}
                     </div>
-                    {extremes && (
-                        <div className="flex flex-wrap gap-1 pt-2 text-xs">
-                            <Badge variant="secondary">эло макс {extremes.eloMax.value} · {formatDate(extremes.eloMax.date)}</Badge>
-                            <Badge variant="secondary">эло мин {extremes.eloMin.value} · {formatDate(extremes.eloMin.date)}</Badge>
-                        </div>
-                    )}
+                    <div className="flex flex-wrap gap-1 pt-2 text-xs">
+                        {tenantName && (
+                            <Badge variant="secondary" title="Рейтинг и игры этой страницы считаются в основном арене сообщества">
+                                Рейтинг сообщества «{tenantName}»
+                            </Badge>
+                        )}
+                        {extremes && (
+                            <>
+                                <Badge variant="secondary">эло макс {extremes.eloMax.value} · {formatDate(extremes.eloMax.date)}</Badge>
+                                <Badge variant="secondary">эло мин {extremes.eloMin.value} · {formatDate(extremes.eloMin.date)}</Badge>
+                            </>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <RatingChart history={history} />
@@ -162,17 +170,28 @@ function PlayerProfileContent({ stats }: { stats: PlayerStats }) {
 function PlayerPageContent() {
     const searchParams = useSearchParams()
     const id = toBase58ID(searchParams.get('id') ?? '')
-    const { data: stats, loading, error } = useAsyncResource(
-        () => (id ? getPlayerStatsPromise(id) : Promise.reject(new Error('no id'))),
-        [id],
-    )
+    const { ready, tenantId, tenant } = useTenantScope()
 
     if (!id) return <div className="p-6 text-muted-foreground">Игрок не указан</div>
+    // The tenant scope settles within the first ticks (a deep link carries
+    // ?tenant=; otherwise the default resolution needs the tenants list) —
+    // hold the skeleton rather than flash global-arena numbers.
+    if (!ready) return <LoadingSkeleton />
+
+    return <PlayerStatsView id={id} tenantId={tenantId} tenantName={tenant?.name} />
+}
+
+function PlayerStatsView({ id, tenantId, tenantName }: { id: Base58ID; tenantId: Base58ID | null; tenantName?: string }) {
+    const { data: stats, loading, error } = useAsyncResource(
+        () => getPlayerStatsPromise(id, tenantId ? { tenant: tenantId } : undefined),
+        [id, tenantId],
+    )
+
     if (loading) return <LoadingSkeleton />
     if (error) return <div className="p-6"><ErrorAlert message={error} /></div>
     if (!stats) return <div className="p-6"><ErrorAlert message="Данные игрока не найдены" /></div>
 
-    return <PlayerProfileContent stats={stats} />
+    return <PlayerProfileContent stats={stats} tenantName={tenantName} />
 }
 
 export default function PlayerPage() {
