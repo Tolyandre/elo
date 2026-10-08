@@ -118,9 +118,9 @@ export default function StyleguidePage() {
             <Label htmlFor="sg-disabled">Заблокировано</Label>
             <Input id="sg-disabled" disabled />
           </div>
-          <div className="flex items-center gap-2">
-            <Switch id="sg-switch" />
+          <div className="flex items-center justify-between">
             <Label htmlFor="sg-switch">Переключатель</Label>
+            <Switch id="sg-switch" />
           </div>
         </div>
       </section>
