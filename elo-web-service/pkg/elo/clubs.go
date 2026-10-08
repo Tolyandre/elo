@@ -31,14 +31,15 @@ type IClubService interface {
 	GetClub(ctx context.Context, clubID id.ID) ([]db.GetClubRow, error)
 	// CreateClub/UpdateClub/DeleteClub record audit events for the actor
 	// (ADR-14); a zero actor skips the audit row. Icon updates and membership
-	// changes are not audited.
+	// changes are audited the same way (club-update events, ADR-36); their
+	// no-ops (same icon, stint already open/closed) write no row.
 	CreateClub(ctx context.Context, clubID id.ID, name string, actor id.ID) (db.Club, error)
 	UpdateClub(ctx context.Context, clubID id.ID, name string, actor id.ID) (db.Club, error)
 	// UpdateClubIcon sets (icon non-nil) or clears (icon nil) the club's icon key.
-	UpdateClubIcon(ctx context.Context, clubID id.ID, icon *string) (db.Club, error)
+	UpdateClubIcon(ctx context.Context, clubID id.ID, icon *string, actor id.ID) (db.Club, error)
 	DeleteClub(ctx context.Context, clubID id.ID, actor id.ID) (db.Club, error)
-	AddMember(ctx context.Context, clubID, playerID id.ID) error
-	RemoveMember(ctx context.Context, clubID, playerID id.ID) error
+	AddMember(ctx context.Context, actor, clubID, playerID id.ID) error
+	RemoveMember(ctx context.Context, actor, clubID, playerID id.ID) error
 	// ListMemberHistory exposes the club's membership stint history (ADR-36) —
 	// the raw material of tenant membership, shown as audit-style items on the
 	// admin club page.
@@ -112,12 +113,28 @@ func (s *ClubService) UpdateClub(ctx context.Context, clubID id.ID, name string,
 	return updated, err
 }
 
-func (s *ClubService) UpdateClubIcon(ctx context.Context, clubID id.ID, icon *string) (db.Club, error) {
+func (s *ClubService) UpdateClubIcon(ctx context.Context, clubID id.ID, icon *string, actor id.ID) (db.Club, error) {
 	iconText := pgtype.Text{}
 	if icon != nil {
 		iconText = pgtype.Text{String: *icon, Valid: true}
 	}
-	return s.Queries.UpdateClubIcon(ctx, db.UpdateClubIconParams{ID: clubID, Icon: iconText})
+	var updated db.Club
+	err := runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		old, err := q.GetClubByID(ctx, clubID)
+		if err != nil {
+			return err
+		}
+		updated, err = q.UpdateClubIcon(ctx, db.UpdateClubIconParams{ID: clubID, Icon: iconText})
+		if err != nil {
+			return err
+		}
+		if textEqual(old.Icon, updated.Icon) {
+			return nil
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID,
+			audit.KindClubUpdate, audit.NewClubIconChange(textPtr(old.Icon), textPtr(updated.Icon)))
+	})
+	return updated, err
 }
 
 func (s *ClubService) DeleteClub(ctx context.Context, clubID id.ID, actor id.ID) (db.Club, error) {
@@ -144,12 +161,36 @@ func (s *ClubService) DeleteClub(ctx context.Context, clubID id.ID, actor id.ID)
 	return deleted, err
 }
 
-func (s *ClubService) AddMember(ctx context.Context, clubID, playerID id.ID) error {
-	return s.Queries.AddClubMember(ctx, db.AddClubMemberParams{ClubID: clubID, PlayerID: playerID})
+// AddMember opens a membership stint and records the change in the audit log
+// for the actor (ADR-14). A still-active stint for the same (club, player)
+// makes this a no-op via the partial unique index — no audit row.
+func (s *ClubService) AddMember(ctx context.Context, actor, clubID, playerID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if _, err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: clubID, PlayerID: playerID}); err != nil {
+			if db.IsNoRows(err) {
+				return nil
+			}
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID,
+			audit.KindClubUpdate, audit.NewClubMemberChange([]string{string(playerID)}, nil))
+	})
 }
 
-func (s *ClubService) RemoveMember(ctx context.Context, clubID, playerID id.ID) error {
-	return s.Queries.RemoveClubMember(ctx, db.RemoveClubMemberParams{ClubID: clubID, PlayerID: playerID})
+// RemoveMember closes the active stint and records the change in the audit
+// log for the actor (ADR-14); removing a player without an active stint is a
+// no-op with no audit row.
+func (s *ClubService) RemoveMember(ctx context.Context, actor, clubID, playerID id.ID) error {
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if _, err := q.RemoveClubMember(ctx, db.RemoveClubMemberParams{ClubID: clubID, PlayerID: playerID}); err != nil {
+			if db.IsNoRows(err) {
+				return nil
+			}
+			return err
+		}
+		return recordAuditEvent(ctx, q, actor, audit.EntityClub, audit.ActionUpdated, clubID,
+			audit.KindClubUpdate, audit.NewClubMemberChange(nil, []string{string(playerID)}))
+	})
 }
 
 func (s *ClubService) ListMemberHistory(ctx context.Context, clubID id.ID) ([]db.ListClubMembershipHistoryRow, error) {

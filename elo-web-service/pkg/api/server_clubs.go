@@ -178,7 +178,7 @@ func (s *StrictServer) PatchClub(ctx context.Context, request PatchClubRequestOb
 	}
 
 	if updateIcon {
-		if _, err := s.api.ClubService.UpdateClubIcon(ctx, clubID, iconArg); err != nil {
+		if _, err := s.api.ClubService.UpdateClubIcon(ctx, clubID, iconArg, currentActorID(ctx)); err != nil {
 			if domainStatusCode(err) == http.StatusNotFound {
 				return PatchClub404JSONResponse{Status: StatusFail, Message: "club not found"}, nil
 			}
@@ -218,7 +218,7 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 		return AddClubMember400JSONResponse{Status: StatusFail, Message: "player_id is required"}, nil
 	}
 
-	err := s.api.ClubService.AddMember(ctx, parseIDParam(request.Id), playerID)
+	err := s.api.ClubService.AddMember(ctx, currentActorID(ctx), parseIDParam(request.Id), playerID)
 	if err != nil {
 		// A still-active stint for the same (club, player) is a silent no-op
 		// (the query's ON CONFLICT), so only referential errors land here.
@@ -232,7 +232,7 @@ func (s *StrictServer) AddClubMember(ctx context.Context, request AddClubMemberR
 }
 
 func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error) {
-	err := s.api.ClubService.RemoveMember(ctx, parseIDParam(request.Id), parseIDParam(request.PlayerId))
+	err := s.api.ClubService.RemoveMember(ctx, currentActorID(ctx), parseIDParam(request.Id), parseIDParam(request.PlayerId))
 	if err != nil {
 		return nil, err
 	}

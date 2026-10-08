@@ -49,19 +49,23 @@ DELETE FROM clubs
 WHERE id = $1
 RETURNING *;
 
--- name: AddClubMember :exec
+-- name: AddClubMember :one
 -- Opens a membership stint at now() (ADR-36). A still-active stint for the
 -- same (club, player) makes this a no-op via the partial unique index
--- player_club_membership_active_uniq.
+-- player_club_membership_active_uniq — the RETURNING comes back empty then,
+-- and the service skips the audit row.
 INSERT INTO player_club_membership (club_id, player_id, joined_at)
 VALUES ($1, $2, NOW())
-ON CONFLICT DO NOTHING;
+ON CONFLICT DO NOTHING
+RETURNING player_id;
 
--- name: RemoveClubMember :exec
--- Closes the active stint; closed stints stay as history (ADR-36).
+-- name: RemoveClubMember :one
+-- Closes the active stint; closed stints stay as history (ADR-36). No active
+-- stint → empty RETURNING → the service skips the audit row.
 UPDATE player_club_membership
 SET left_at = NOW()
-WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL;
+WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL
+RETURNING player_id;
 
 -- name: GetClubByID :one
 -- Old-name read for the rename audit trail (ADR-14).

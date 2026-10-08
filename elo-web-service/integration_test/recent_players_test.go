@@ -89,10 +89,10 @@ func TestListRecentPlayers_ClubCoPlayersAndCreations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create club: %v", err)
 	}
-	if err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: me}); err != nil {
+	if _, err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: me}); err != nil {
 		t.Fatalf("add me to club: %v", err)
 	}
-	if err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: mate}); err != nil {
+	if _, err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: mate}); err != nil {
 		t.Fatalf("add mate to club: %v", err)
 	}
 

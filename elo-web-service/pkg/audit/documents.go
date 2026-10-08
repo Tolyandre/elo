@@ -215,8 +215,15 @@ func NewClubIconChange(from, to *string) ClubUpdateDetails {
 	return ClubUpdateDetails{SchemaVersion: 1, Icon: &ValueChange{From: from, To: to}}
 }
 
-// NewClubMemberChange builds the details of a membership add or remove.
+// NewClubMemberChange builds the details of a membership add or remove. Nil
+// sides become empty arrays — the schema demands arrays on both sides.
 func NewClubMemberChange(added, removed []string) ClubUpdateDetails {
+	if added == nil {
+		added = []string{}
+	}
+	if removed == nil {
+		removed = []string{}
+	}
 	return ClubUpdateDetails{
 		SchemaVersion:  1,
 		PlayersChanged: true,

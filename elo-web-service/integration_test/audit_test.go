@@ -300,7 +300,7 @@ func TestAuditPlayerAndClubEvents(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/clubs", alice, `{"id":"`+clubID+`","name":"Клуб Один"}`); w.Code != http.StatusOK {
 		t.Fatalf("create club: %d %s", w.Code, w.Body.String())
 	}
-	// Icon-only patch: not audited (out of scope by design).
+	// Icon-only patch: audited as a club-update event (ADR-36).
 	if w := doJSON(t, router, http.MethodPatch, "/clubs/"+clubID, alice, `{"icon":"clover"}`); w.Code != http.StatusOK {
 		t.Fatalf("patch club icon: %d %s", w.Code, w.Body.String())
 	}
@@ -309,8 +309,26 @@ func TestAuditPlayerAndClubEvents(t *testing.T) {
 	}
 
 	clubPage := listAudit(t, router, "?entity_type=club&entity_id="+clubID)
-	if len(clubPage.Data) != 2 {
-		t.Fatalf("expected 2 club events (renamed, created), got %+v", clubPage.Data)
+	if len(clubPage.Data) != 3 {
+		t.Fatalf("expected 3 club events (renamed, icon, created), got %+v", clubPage.Data)
+	}
+	wantClubActions := []string{"renamed", "updated", "created"}
+	for i, want := range wantClubActions {
+		if clubPage.Data[i].Action != want {
+			t.Errorf("club event %d = %s, want %s", i, clubPage.Data[i].Action, want)
+		}
+	}
+	var iconChange struct {
+		Icon *struct {
+			From *string `json:"from"`
+			To   *string `json:"to"`
+		} `json:"icon"`
+	}
+	if err := json.Unmarshal(clubPage.Data[1].Details, &iconChange); err != nil {
+		t.Fatalf("club icon details: %v (%s)", err, clubPage.Data[1].Details)
+	}
+	if iconChange.Icon == nil || iconChange.Icon.From != nil || iconChange.Icon.To == nil || *iconChange.Icon.To != "clover" {
+		t.Errorf("club icon diff = %+v, want null → clover", iconChange.Icon)
 	}
 	var rename struct {
 		OldName string `json:"old_name"`
@@ -538,11 +556,11 @@ func TestAuditClubMembershipAndIcon(t *testing.T) {
 		t.Fatalf("re-set icon: %d %s", w.Code, w.Body.String())
 	}
 
-	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "` + player.String() + `"}`); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "`+player.String()+`"}`); w.Code != http.StatusOK {
 		t.Fatalf("add member: %d %s", w.Code, w.Body.String())
 	}
 	// Re-add while the stint is open: no-op, no second membership event.
-	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "` + player.String() + `"}`); w.Code != http.StatusOK {
+	if w := doJSON(t, router, http.MethodPost, "/clubs/"+clubID+"/members", admin, `{"player_id": "`+player.String()+`"}`); w.Code != http.StatusOK {
 		t.Fatalf("re-add member: %d %s", w.Code, w.Body.String())
 	}
 	if w := doJSON(t, router, http.MethodDelete, "/clubs/"+clubID+"/members/"+player.String(), admin, ""); w.Code != http.StatusOK {

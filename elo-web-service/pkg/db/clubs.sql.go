@@ -12,10 +12,11 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-const addClubMember = `-- name: AddClubMember :exec
+const addClubMember = `-- name: AddClubMember :one
 INSERT INTO player_club_membership (club_id, player_id, joined_at)
 VALUES ($1, $2, NOW())
 ON CONFLICT DO NOTHING
+RETURNING player_id
 `
 
 type AddClubMemberParams struct {
@@ -25,10 +26,13 @@ type AddClubMemberParams struct {
 
 // Opens a membership stint at now() (ADR-36). A still-active stint for the
 // same (club, player) makes this a no-op via the partial unique index
-// player_club_membership_active_uniq.
-func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) error {
-	_, err := q.db.Exec(ctx, addClubMember, arg.ClubID, arg.PlayerID)
-	return err
+// player_club_membership_active_uniq — the RETURNING comes back empty then,
+// and the service skips the audit row.
+func (q *Queries) AddClubMember(ctx context.Context, arg AddClubMemberParams) (id.ID, error) {
+	row := q.db.QueryRow(ctx, addClubMember, arg.ClubID, arg.PlayerID)
+	var player_id id.ID
+	err := row.Scan(&player_id)
+	return player_id, err
 }
 
 const createClub = `-- name: CreateClub :one
@@ -245,10 +249,11 @@ func (q *Queries) ListClubs(ctx context.Context) ([]ListClubsRow, error) {
 	return items, nil
 }
 
-const removeClubMember = `-- name: RemoveClubMember :exec
+const removeClubMember = `-- name: RemoveClubMember :one
 UPDATE player_club_membership
 SET left_at = NOW()
 WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL
+RETURNING player_id
 `
 
 type RemoveClubMemberParams struct {
@@ -256,10 +261,13 @@ type RemoveClubMemberParams struct {
 	PlayerID id.ID `json:"player_id"`
 }
 
-// Closes the active stint; closed stints stay as history (ADR-36).
-func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error {
-	_, err := q.db.Exec(ctx, removeClubMember, arg.ClubID, arg.PlayerID)
-	return err
+// Closes the active stint; closed stints stay as history (ADR-36). No active
+// stint → empty RETURNING → the service skips the audit row.
+func (q *Queries) RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) (id.ID, error) {
+	row := q.db.QueryRow(ctx, removeClubMember, arg.ClubID, arg.PlayerID)
+	var player_id id.ID
+	err := row.Scan(&player_id)
+	return player_id, err
 }
 
 const updateClubIcon = `-- name: UpdateClubIcon :one

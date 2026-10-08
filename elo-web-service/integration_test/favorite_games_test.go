@@ -106,7 +106,7 @@ func TestListFavoriteGames_ClubRecentAndPopular(t *testing.T) {
 		t.Fatalf("create club: %v", err)
 	}
 	for _, pid := range []idpkg.ID{me, mate} {
-		if err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: pid}); err != nil {
+		if _, err := q.AddClubMember(ctx, db.AddClubMemberParams{ClubID: club.ID, PlayerID: pid}); err != nil {
 			t.Fatalf("add club member: %v", err)
 		}
 	}

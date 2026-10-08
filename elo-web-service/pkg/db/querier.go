@@ -22,8 +22,9 @@ type Querier interface {
 	AddArenaMatch(ctx context.Context, arg AddArenaMatchParams) error
 	// Opens a membership stint at now() (ADR-36). A still-active stint for the
 	// same (club, player) makes this a no-op via the partial unique index
-	// player_club_membership_active_uniq.
-	AddClubMember(ctx context.Context, arg AddClubMemberParams) error
+	// player_club_membership_active_uniq — the RETURNING comes back empty then,
+	// and the service skips the audit row.
+	AddClubMember(ctx context.Context, arg AddClubMemberParams) (id.ID, error)
 	AddGame(ctx context.Context, arg AddGameParams) (Game, error)
 	AddGameTablePlayer(ctx context.Context, arg AddGameTablePlayerParams) (GameTable, error)
 	AddGameTag(ctx context.Context, arg AddGameTagParams) error
@@ -568,8 +569,9 @@ type Querier interface {
 	PlayerIsTenantMember(ctx context.Context, arg PlayerIsTenantMemberParams) (bool, error)
 	// Restores the q = Σ bets.shares invariant across every market.
 	RecomputeOutcomeQFromBets(ctx context.Context) error
-	// Closes the active stint; closed stints stay as history (ADR-36).
-	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) error
+	// Closes the active stint; closed stints stay as history (ADR-36). No active
+	// stint → empty RETURNING → the service skips the audit row.
+	RemoveClubMember(ctx context.Context, arg RemoveClubMemberParams) (id.ID, error)
 	RemoveGameTag(ctx context.Context, arg RemoveGameTagParams) error
 	RemoveTournamentParticipant(ctx context.Context, arg RemoveTournamentParticipantParams) error
 	// resolution_outcome is the winning outcome id; NULL for cancelled markets
