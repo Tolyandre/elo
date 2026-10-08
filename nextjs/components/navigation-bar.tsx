@@ -86,9 +86,12 @@ export function NavigationBar() {
         </NavigationMenuItem>
 
         <NavigationMenuItem>
-          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "px-1.5 sm:px-2")}>
+          {/* flex-row: NavigationMenuLink's base carries flex-col (for the
+              dropdown's stacked link content) — without the override the
+              icon stacks above the text and the label drops out of the row. */}
+          <NavigationMenuLink asChild className={cn(navigationMenuTriggerStyle(), "flex-row gap-1 px-1.5 sm:px-2")}>
             <Link href="/help">
-              <CircleHelp className="h-4 w-4 mr-1" />
+              <CircleHelp className="h-4 w-4 shrink-0" />
               Справка
             </Link>
           </NavigationMenuLink>
