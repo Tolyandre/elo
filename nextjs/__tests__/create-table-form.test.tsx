@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 const tenantScope = vi.hoisted(() => ({
     tenant: null as { id: string; name: string; arena_membership_mode: "all" | "any_member" | "members_only" } | null,
     memberIds: [] as string[],
+    membersKnown: true,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -41,7 +42,7 @@ vi.mock("@/app/players/PlayersContext", () => ({
 
 vi.mock("@/app/tenantScopeContext", () => ({
     useTenantScope: () => ({ tenant: tenantScope.tenant, tenantId: tenantScope.tenant?.id ?? null, ready: true }),
-    useTenantMemberIds: () => new Set(tenantScope.memberIds),
+    useTenantMembership: () => ({ memberIds: new Set(tenantScope.memberIds), known: tenantScope.membersKnown }),
 }));
 
 vi.mock("sonner", async () => {
@@ -141,6 +142,7 @@ beforeEach(() => {
     // «Есть участник сообщества» rule.
     tenantScope.tenant = { id: pid("tDefault"), name: "Синие люди", arena_membership_mode: "all" as const };
     tenantScope.memberIds = [];
+    tenantScope.membersKnown = true;
     vi.mocked(createTablePromise).mockResolvedValue(makeTable("tNew"));
 });
 
@@ -338,6 +340,25 @@ describe("CreateTableForm tenant membership rules (ADR-36)", () => {
         act(() => {
             view.byTestId("pick-three").click();
         });
+        await act(async () => {
+            view.createButton().click();
+        });
+        expect(createTablePromise).toHaveBeenCalledTimes(1);
+        view.unmount();
+    });
+
+    it("members_only with the club list unavailable: creation degrades open (the server validates at sync)", async () => {
+        // Offline without a cached club list the rule is not checkable — the
+        // picker opens up and the roster goes to the server unchecked.
+        tenantScope.tenant = membersOnlyTenant;
+        tenantScope.memberIds = [];
+        tenantScope.membersKnown = false;
+        const view = renderForm();
+        expect(view.byTestId("allowed").textContent).toBe("all");
+        act(() => {
+            view.byTestId("pick-three").click();
+        });
+        expect(view.text()).not.toContain("только своих участников");
         await act(async () => {
             view.createButton().click();
         });

@@ -122,12 +122,18 @@ export const useTenantScope = () => {
 };
 
 /**
- * The current tenant's member player ids (ADR-36): active participants of any
- * of its clubs. The creation forms consult this to keep rosters within what
- * the tenant accepts into its feed — see lib/tenant-members.ts.
+ * The current tenant's membership (ADR-36): active participants of any of its
+ * clubs (see lib/tenant-members.ts) — the creation forms consult this to keep
+ * rosters within what the tenant accepts into its feed — plus whether that
+ * rule is checkable at all right now. `known` is false while the club list is
+ * unresolved — the creation forms keep the gate open then and let the server
+ * validate the queued create at sync time, instead of blocking offline on
+ * data that never arrived.
  */
-export function useTenantMemberIds(): Set<string> {
+export function useTenantMembership(): { memberIds: Set<string>; known: boolean } {
     const { tenant } = useTenantScope();
-    const { clubs } = useClubs();
-    return useMemo(() => memberPlayerIds(tenant, clubs), [tenant, clubs]);
+    const { clubs, loading: clubsLoading, error: clubsError } = useClubs();
+    const known = !clubsLoading && clubsError == null;
+    const memberIds = useMemo(() => memberPlayerIds(tenant, clubs), [tenant, clubs]);
+    return { memberIds, known };
 }

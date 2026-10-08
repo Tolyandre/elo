@@ -7,6 +7,7 @@ import { TenantIcon } from "@/components/tenant-icon";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
 import { LoadingRows } from "@/components/loading-rows";
+import { TenantsLoadError } from "@/components/tenants-load-error";
 
 /**
  * The one "no community chosen" surface (ADR-36 phase 7): every
@@ -17,13 +18,17 @@ import { LoadingRows } from "@/components/loading-rows";
  * the URL, so deep-linkable pages keep it on refresh and sharing.
  */
 export function TenantChooser() {
-    const { tenants, loading } = useTenants();
+    const { tenants, loading, error } = useTenants();
     const { setTenant } = useTenantScope();
 
     return (
         <EmptyState icon={Users} title="Выберите сообщество">
             {loading ? (
                 <LoadingRows count={2} />
+            ) : error ? (
+                // The list never arrived (offline, API down) — a retry, not an
+                // empty chooser that looks like "no communities exist".
+                <TenantsLoadError />
             ) : (
                 <div className="flex min-w-56 flex-col gap-2 pt-1">
                     {tenants.map((t) => (

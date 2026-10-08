@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
-import { useTenantScope, useTenantMemberIds } from "@/app/tenantScopeContext";
+import { useTenantScope, useTenantMembership } from "@/app/tenantScopeContext";
 import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
@@ -88,7 +88,9 @@ export function CreateMarketForm() {
     const { tenant } = useTenantScope();
     const tenantId = tenant?.id ?? "";
     const membersOnly = tenant?.arena_membership_mode === "members_only";
-    const memberIds = useTenantMemberIds();
+    // Membership degrades open when the club list is unavailable (offline,
+    // nothing cached): the server validates the market at sync time instead.
+    const { memberIds, known: membershipKnown } = useTenantMembership();
     // The membership check on the exact target set (a stale draft can hold a
     // non-member even with the picker restricted).
     const conditionIds = marketType === "match_winner"
@@ -96,7 +98,7 @@ export function CreateMarketForm() {
         : streakTargetPlayerID
             ? [streakTargetPlayerID]
             : [];
-    const membershipIssue = tenant && membersOnly
+    const membershipIssue = tenant && membersOnly && membershipKnown
         ? participantsMembershipIssue(conditionIds, memberIds, "members_only", tenant.name)
         : null;
 
@@ -259,7 +261,7 @@ export function CreateMarketForm() {
                             <PlayerMultiSelect
                                 value={targetPlayerIDs}
                                 onChange={setTargetPlayerIDs}
-                                allowedPlayerIds={membersOnly ? [...memberIds] : undefined}
+                                allowedPlayerIds={membersOnly && membershipKnown ? [...memberIds] : undefined}
                             />
                         </div>
                         <div className="space-y-1.5">
@@ -292,7 +294,7 @@ export function CreateMarketForm() {
                                 value={streakTargetPlayerID || undefined}
                                 onChange={v => setStreakTargetPlayerID((v ?? "") as Base58ID | "")}
                                 allowClear
-                                allowedPlayerIds={membersOnly ? [...memberIds] : undefined}
+                                allowedPlayerIds={membersOnly && membershipKnown ? [...memberIds] : undefined}
                             />
                         </div>
                         <div className="space-y-1.5">

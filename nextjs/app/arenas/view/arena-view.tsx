@@ -194,11 +194,6 @@ export function ArenaView() {
         )}
 
         {error && <ErrorAlert message={error} />}
-        {needsTenant && (
-          <p className="text-muted-foreground">
-            Выберите сообщество — его главная арена откроется на этой странице.
-          </p>
-        )}
         {loading && !needsTenant && (
           <div className="space-y-2">
             <Skeleton className="h-6 w-40" />

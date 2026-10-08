@@ -7,9 +7,11 @@ import { ArenaView } from "@/app/arenas/view/arena-view";
 import { useCamps } from "@/app/arenas/campsContext";
 import { useTournaments } from "@/app/tournaments/tournamentsContext";
 import { useTenantScope } from "@/app/tenantScopeContext";
+import { useTenants } from "@/app/tenantsContext";
 import { MarketsHighlight } from "@/components/markets-highlight";
 import { RunningTables } from "@/components/tables/running-tables";
 import { TenantChooser } from "@/components/tenant-chooser";
+import { TenantsLoadError } from "@/components/tenants-load-error";
 import { LoadingRows } from "@/components/loading-rows";
 import { PageContainer } from "@/components/page-container";
 
@@ -77,6 +79,10 @@ function NowBlock() {
 // community the user did not pick (ADR-36 phase 7).
 export default function MainPage() {
     const { ready, tenantId } = useTenantScope();
+    // Without the tenants list the arena view cannot resolve the community's
+    // main arena and would render header-only with no explanation — surface
+    // the load failure (and its retry) instead.
+    const { error: tenantsError } = useTenants();
     if (!ready) {
         return (
             <PageContainer width="narrow">
@@ -89,6 +95,15 @@ export default function MainPage() {
             <PageContainer width="narrow">
                 <div className="max-w-sm mx-auto py-8">
                     <TenantChooser />
+                </div>
+            </PageContainer>
+        );
+    }
+    if (tenantsError) {
+        return (
+            <PageContainer width="narrow">
+                <div className="max-w-sm mx-auto py-8">
+                    <TenantsLoadError />
                 </div>
             </PageContainer>
         );

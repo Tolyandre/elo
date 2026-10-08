@@ -8,7 +8,7 @@ import { Loader2 } from "lucide-react";
 import { createTablePromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
-import { useTenantScope, useTenantMemberIds } from "@/app/tenantScopeContext";
+import { useTenantScope, useTenantMembership } from "@/app/tenantScopeContext";
 import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { writeTableSession } from "@/hooks/useTableSession";
 import { GAME_APPS, gameAppByGameId, TABLE_PAGE_PATH } from "@/lib/game-apps";
@@ -32,7 +32,9 @@ export function CreateTableForm() {
     // is created (ADR-36): the same openness rules as the match form — the
     // roster must satisfy the tenant or the match would never reach its feed.
     const { tenant, tenantId } = useTenantScope();
-    const memberIds = useTenantMemberIds();
+    // Membership degrades open when the club list is unavailable (offline,
+    // nothing cached): the server validates the seating at sync time instead.
+    const { memberIds, known: membershipKnown } = useTenantMembership();
 
     const [gameId, setGameId] = useState<Base58ID>(GAME_APPS[0].id);
     const [playerIds, setPlayerIds] = useState<Base58ID[]>([]);
@@ -40,7 +42,7 @@ export function CreateTableForm() {
 
     const app = gameAppByGameId(gameId);
     const canCreate = !!(me.isAuthenticated && me.playerId) && !!tenantId;
-    const membershipIssue = tenant
+    const membershipIssue = tenant && membershipKnown
         ? participantsMembershipIssue(playerIds, memberIds, tenant.arena_membership_mode, tenant.name)
         : null;
 
@@ -112,7 +114,7 @@ export function CreateTableForm() {
                 <PlayerMultiSelect
                     value={playerIds}
                     onChange={setPlayerIds}
-                    allowedPlayerIds={tenant?.arena_membership_mode === "members_only" ? [...memberIds] : undefined}
+                    allowedPlayerIds={tenant?.arena_membership_mode === "members_only" && membershipKnown ? [...memberIds] : undefined}
                 />
 
                 {membershipIssue && (

@@ -3,12 +3,14 @@
 import { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
 import { Club, listClubsPromise } from "./api";
 import { useMe } from "./meContext";
-import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useCachedAsyncResource } from "@/hooks/useCachedAsyncResource";
 
 type ClubsContextType = {
   clubs: Club[];
   /** True while the club list is in flight (the tenant-scope default resolution waits for it). */
   loading: boolean;
+  /** Set when the fetch failed and no cached copy stands in (offline with a cold cache). */
+  error: string | null;
   clubDisplayName: (club: Pick<Club, "name" | "geologist_name">) => string;
   /** Clubs the given player belongs to, ordered by display name. Empty if none. */
   clubsForPlayer: (playerId: string) => Club[];
@@ -17,8 +19,13 @@ type ClubsContextType = {
 
 const ClubsContext = createContext<ClubsContextType | undefined>(undefined);
 
+// The club list is cached in localStorage: the tenant membership rule
+// (lib/tenant-members.ts) is computed from it, so offline creation forms must
+// resolve it from the last known state rather than block on a failed fetch.
+const CLUBS_CACHE_KEY = "clubs-cache-v1";
+
 export const ClubsProvider = ({ children }: { children: ReactNode }) => {
-    const { data, loading, invalidate } = useAsyncResource(listClubsPromise);
+    const { data, loading, error, invalidate } = useCachedAsyncResource(listClubsPromise, CLUBS_CACHE_KEY);
     const clubs = useMemo(() => data ?? [], [data]);
 
     const { geologistMode } = useMe();
@@ -53,7 +60,7 @@ export const ClubsProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <ClubsContext.Provider value={{ clubs, loading, clubDisplayName, clubsForPlayer, invalidate }}>
+    <ClubsContext.Provider value={{ clubs, loading, error, clubDisplayName, clubsForPlayer, invalidate }}>
       {children}
     </ClubsContext.Provider>
   );

@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 const tenantScope = vi.hoisted(() => ({
     tenant: null as { id: string; name: string; arena_membership_mode: "any_member" | "members_only" } | null,
     memberIds: [] as string[],
+    membersKnown: true,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -42,7 +43,7 @@ vi.mock("@/app/meContext", () => ({
 
 vi.mock("@/app/tenantScopeContext", () => ({
     useTenantScope: () => ({ tenant: tenantScope.tenant, tenantId: tenantScope.tenant?.id ?? null, ready: true }),
-    useTenantMemberIds: () => new Set(tenantScope.memberIds),
+    useTenantMembership: () => ({ memberIds: new Set(tenantScope.memberIds), known: tenantScope.membersKnown }),
 }));
 
 vi.mock("sonner", async () => {
@@ -142,6 +143,7 @@ beforeEach(() => {
     sessionStorage.clear();
     tenantScope.tenant = null;
     tenantScope.memberIds = [];
+    tenantScope.membersKnown = true;
     vi.mocked(createMarketPromise).mockResolvedValue({ id: pid("m1") });
 });
 
@@ -205,6 +207,26 @@ describe("CreateMarketForm", () => {
         act(() => {
             view.byTestId("pick").click();
         });
+        expect(view.submitButton().disabled).toBe(false);
+        view.submit();
+        await act(async () => {});
+        expect(createMarketPromise).toHaveBeenCalledTimes(1);
+        view.unmount();
+    });
+
+    it("members_only with the club list unavailable: pickers open up and the submit passes", async () => {
+        // Offline without a cached club list the rule is not checkable — the
+        // gate degrades open and the server validates the market at sync time.
+        tenantScope.tenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "members_only" };
+        tenantScope.memberIds = [];
+        tenantScope.membersKnown = false;
+        const view = renderForm();
+        expect(view.byTestId("allowed").textContent).toBe("all");
+        view.setCloseAt("2026-10-10T12:00");
+        act(() => {
+            view.byTestId("pick").click(); // p1 (member) + g1 (guest)
+        });
+        expect(view.text()).not.toContain("только своих участников");
         expect(view.submitButton().disabled).toBe(false);
         view.submit();
         await act(async () => {});

@@ -8,6 +8,7 @@ import { PageContainer } from "@/components/page-container";
 import { LoadingRows } from "@/components/loading-rows";
 import { useMatches } from "../MatchesContext";
 import { useTenantScope } from "../../tenantScopeContext";
+import { useTenants } from "@/app/tenantsContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -16,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, AlertCircleIcon, Loader2 } from "lucide-react";
 import { ErrorAlert } from "@/components/error-alert";
 import { TenantChooser } from "@/components/tenant-chooser";
+import { TenantsLoadError } from "@/components/tenants-load-error";
 import { MatchForm, MatchFormAuthAlerts } from "../MatchForm";
 import { AuthWarning } from "@/components/auth-warning";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,9 @@ function MatchEditPageWrapped() {
     // columns to its main arena and the update validates that the match
     // still belongs to its feed — a tenantless edit does not work.
     const { tenant, tenantId, ready: tenantReady } = useTenantScope();
+    // The tenant object resolves from the tenants list; a list that never
+    // loaded (offline, API down) must not read as a deleted community.
+    const { error: tenantsError } = useTenants();
     const searchParams = useSearchParams();
     const id = toBase58ID(searchParams.get("id") ?? "");
 
@@ -97,13 +102,18 @@ function MatchEditPageWrapped() {
         return (
             <PageContainer width="form">
                 <PageHeader title="Редактирование партии" />
-                {!tenantReady ? (
-                    <LoadingRows />
-                ) : tenantId ? (
-                    <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
+            {!tenantReady ? (
+                <LoadingRows />
+            ) : tenantId ? (
+                tenantsError ? (
+                    // The list failed to load — the community may well exist.
+                    <TenantsLoadError />
                 ) : (
-                    <TenantChooser />
-                )}
+                    <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
+                )
+            ) : (
+                <TenantChooser />
+            )}
             </PageContainer>
         );
     }

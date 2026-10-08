@@ -8,7 +8,7 @@ import { useGames } from "../gamesContext";
 import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
-import { useTenantScope, useTenantMemberIds } from "../tenantScopeContext";
+import { useTenantScope, useTenantMembership } from "../tenantScopeContext";
 import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { Match, updateMatchPromise } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
@@ -127,9 +127,12 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     // members_only only members, all («Все партии») accepts any roster. The
     // rule binds edits too since phase 7: the server rejects a guest-carrying
     // roster under members_only, and the form says so before the submit.
+    // With the club list unavailable (offline, nothing cached) the rule is
+    // not checkable — the gate stays open and the server validates the
+    // queued create at sync time instead of the form blocking offline.
     const { tenant } = useTenantScope();
-    const memberIds = useTenantMemberIds();
-    const membershipIssue = tenant
+    const { memberIds, known: membershipKnown } = useTenantMembership();
+    const membershipIssue = tenant && membershipKnown
         ? participantsMembershipIssue(
               participants.map((p) => p.id),
               memberIds,
@@ -525,7 +528,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
                     value={participants.map(p => p.id)}
                     onChange={handlePlayersChange}
                     activeCampIds={coopMode ? [] : checkedCampIds}
-                    allowedPlayerIds={!isEdit && tenant?.arena_membership_mode === "members_only" ? [...memberIds] : undefined}
+                    allowedPlayerIds={!isEdit && tenant?.arena_membership_mode === "members_only" && membershipKnown ? [...memberIds] : undefined}
                 />
                 {membershipIssue && (
                     <p className="text-xs text-destructive mt-2">{membershipIssue}</p>

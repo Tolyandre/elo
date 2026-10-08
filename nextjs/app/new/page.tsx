@@ -7,7 +7,9 @@ import { PageContainer } from "@/components/page-container";
 import { ErrorAlert } from "@/components/error-alert";
 import { LoadingRows } from "@/components/loading-rows";
 import { useTenantScope } from "@/app/tenantScopeContext";
+import { useTenants } from "@/app/tenantsContext";
 import { TenantChooser } from "@/components/tenant-chooser";
+import { TenantsLoadError } from "@/components/tenants-load-error";
 import { MatchForm, MatchFormAuthAlerts } from "@/app/matches/MatchForm";
 import { CreateTableForm } from "@/components/tables/create-table-form";
 import { CreateMarketForm } from "@/components/markets/create-market-form";
@@ -29,6 +31,10 @@ export default function NewEntityPage() {
     const tabParam = params.get("tab");
     const tab = tabParam === "table" || tabParam === "market" ? tabParam : "match";
     const { tenant, tenantId, ready } = useTenantScope();
+    // The tenant object resolves from the tenants list; when that list never
+    // loaded (offline, API down) the id must not be reported as a deleted
+    // community — offer a retry instead.
+    const { error: tenantsError } = useTenants();
 
     return (
         <PageContainer width="form">
@@ -36,8 +42,13 @@ export default function NewEntityPage() {
             {!ready ? (
                 <LoadingRows count={3} />
             ) : tenantId != null && tenant == null ? (
-                // A well-formed but unknown ?tenant= (removed community, stale link).
-                <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
+                tenantsError ? (
+                    // The list failed to load — the community may well exist.
+                    <TenantsLoadError />
+                ) : (
+                    // A well-formed but unknown ?tenant= (removed community, stale link).
+                    <ErrorAlert message="Сообщество не найдено — возможно, оно было удалено." />
+                )
             ) : tenant == null ? (
                 // No community chosen yet: the shared chooser, one click away
                 // from storing the choice (ADR-36 phase 7).
