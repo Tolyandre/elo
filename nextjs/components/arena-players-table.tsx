@@ -136,7 +136,10 @@ function LeagueFooter({ kind, arena }: { kind: string; arena: Arena }) {
   const newbie = leagues.find((l) => l.kind === "newbie");
   const elite = leagues.find((l) => l.kind === "elite");
 
-  if (kind === "elite" && elite) {
+  // The promotion description only makes sense when the arena actually has a
+  // league below to promote from — in an elite-only arena every player is
+  // already in the top league and the requirements are dead weight.
+  if (kind === "elite" && elite && leagues.length > 1) {
     return (
       <p className="text-xs text-muted-foreground mb-2">
         Для Высшей Лиги нужно {elite.matches_6m} партий за последние 6 месяцев, среди них{" "}
