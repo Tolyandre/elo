@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 
 // Shared mutable state the module mocks read from on every render.
 const state = vi.hoisted(() => ({
+    pathname: "/" as string,
     tenants: [] as { id: string; name: string; club_ids: string[] }[],
     tenantsLoading: false,
     clubs: [] as { id: string; name: string; player_ids: string[]; tenant_id?: string }[],
@@ -25,9 +26,9 @@ vi.mock("../app/meContext", () => ({
     useMe: () => ({ playerId: state.playerId, loading: state.meLoading }),
 }));
 // The provider reads the pathname only to decide which pages carry ?tenant=
-// in the URL; the tests exercise the "/" behavior.
+// in the URL; the tests exercise "/" and "/new" behavior.
 vi.mock("next/navigation", () => ({
-    usePathname: () => "/",
+    usePathname: () => state.pathname,
 }));
 
 import { TenantScopeProvider, useTenantScope, type TenantScope } from "../app/tenantScopeContext";
@@ -78,6 +79,7 @@ describe("TenantScopeProvider resolution chain (ADR-36)", () => {
     beforeEach(() => {
         setLocation("");
         localStorage.clear();
+        state.pathname = "/";
         state.tenants = tenants;
         state.tenantsLoading = false;
         state.clubs = [];
@@ -167,5 +169,14 @@ describe("TenantScopeProvider resolution chain (ADR-36)", () => {
 
         renderScope().unmount();
         expect(capturedRef.current!.playerHref("p1")).toBe(`/players/view?id=p1&tenant=${BLUE_MEN}`);
+    });
+
+    it("writes the resolved tenant into the URL on /new (creation names its community)", () => {
+        state.pathname = "/new";
+        state.tenants = [tenants[0]]; // auto-selected single tenant
+
+        renderScope().unmount();
+        expect(capturedRef.current?.tenantId).toBe(BLUE_MEN);
+        expect(window.location.search).toBe(`?tenant=${BLUE_MEN}`);
     });
 });

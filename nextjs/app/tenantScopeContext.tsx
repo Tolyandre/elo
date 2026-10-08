@@ -8,6 +8,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useTenants } from "./tenantsContext";
 import { useClubs } from "./clubsContext";
 import { useMe } from "./meContext";
+import { memberPlayerIds } from "@/lib/tenant-members";
 import type { Tenant } from "./api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,9 +24,11 @@ const TENANT_STORAGE_KEY = "current-tenant-id";
 
 // The pages whose URL carries the current tenant (deep-linkable surfaces).
 // Everywhere else the tenant lives in localStorage and is re-resolved on
-// navigation.
+// navigation. /new is one of them: its forms create under the tenant, so the
+// URL must always name it (a created match/market lands in that tenant's
+// feed — a stale default would be a silent mismatch).
 function pageHonorsTenant(pathname: string | null): boolean {
-    return pathname === "/" || (pathname?.startsWith("/players/view") ?? false);
+    return pathname === "/" || (pathname?.startsWith("/players/view") ?? false) || pathname === "/new";
 }
 
 export type TenantScope = {
@@ -152,3 +155,14 @@ export const useTenantScope = () => {
     }
     return ctx;
 };
+
+/**
+ * The current tenant's member player ids (ADR-36): active participants of any
+ * of its clubs. The creation forms consult this to keep rosters within what
+ * the tenant accepts into its feed — see lib/tenant-members.ts.
+ */
+export function useTenantMemberIds(): Set<string> {
+    const { tenant } = useTenantScope();
+    const { clubs } = useClubs();
+    return useMemo(() => memberPlayerIds(tenant, clubs), [tenant, clubs]);
+}

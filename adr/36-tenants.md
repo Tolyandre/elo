@@ -281,5 +281,19 @@ Staged forward, each phase shippable:
   Member stints stay internal logic: the settings page does not show them;
   instead the admin club page renders the stint history as audit-style items
   (`GET /clubs/{id}/members/history`).
+- **Creation flows are tenant-scoped (phase 6).** `/new` renders its forms
+  only under a resolved tenant and the scope writes `?tenant=` back into its
+  URL (every inbound link carries it), so everything created there names its
+  community explicitly instead of silently landing outside the feed. The
+  match form validates the roster against the tenant's openness rule at
+  creation (any_member: at least one member, else the match would never reach
+  the feed; members_only: members only, enforced by restricting the player
+  pickers to the member set), the table form applies the same rules to its
+  seating, and the market form takes its tenant from the URL — a members_only
+  tenant's markets may target members only (the server already restricts
+  their bets). The main page's market cards render only the current tenant's
+  markets, consistent with the feed. Arena responses carry `tenant_id` (the
+  API mapping had omitted it), so the arena view's edit pencil correctly
+  stays off the system-managed main arena.
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
   seeds the tenant itself (with its `blue-figure` icon, phase 6).

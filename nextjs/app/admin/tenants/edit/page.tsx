@@ -248,7 +248,10 @@ function TenantSettingsContent() {
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <div className="flex-1 space-y-1.5">
+                            {/* min-w-0: the nowrap SelectTrigger must be allowed to
+                                shrink — flex's content-based minimum otherwise pushes
+                                the column past the card's edge. */}
+                            <div className="flex-1 min-w-0 space-y-1.5">
                                 <label className="block text-sm" htmlFor="tenantMembershipMode">Какие партии идут в общий рейтинг:</label>
                                 <Select
                                     value={membershipMode}
@@ -267,7 +270,7 @@ function TenantSettingsContent() {
                                     Смена правила пересчитывает рейтинг сообщества с самого начала.
                                 </p>
                             </div>
-                            <div className="flex-1 space-y-1.5">
+                            <div className="flex-1 min-w-0 space-y-1.5">
                                 <label className="block text-sm" htmlFor="tenantOpenness">Турниры:</label>
                                 <Select
                                     value={tournamentsOpenness}

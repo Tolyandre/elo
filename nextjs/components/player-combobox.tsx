@@ -24,10 +24,16 @@ export function PlayerCombobox({
   value: controlledValue,
   onChange,
   allowClear = false,
+  allowedPlayerIds,
 }: {
   value?: Base58ID
   onChange?: (id?: Base58ID) => void
   allowClear?: boolean
+  /**
+   * When set, only these players are offered. The membership rules on the
+   * creation forms pass the tenant's member set (ADR-36).
+   */
+  allowedPlayerIds?: string[]
 }) {
   const [open, setOpen] = React.useState(false)
   const [internalValue, setInternalValue] = React.useState("")
@@ -41,17 +47,26 @@ export function PlayerCombobox({
 
   const recentPlayerIds = useRecentPlayerIds()
 
+  const allowedSet = React.useMemo(
+    () => (allowedPlayerIds ? new Set(allowedPlayerIds) : null),
+    [allowedPlayerIds],
+  )
+  const visiblePlayers = React.useMemo(
+    () => (allowedSet ? players.filter((p) => allowedSet.has(p.id)) : players),
+    [players, allowedSet],
+  )
+
   const tabs = React.useMemo(
-    () => buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId),
-    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
+    () => buildPlayerTabs(visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId),
+    [visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
   )
 
   // Search view: the same grouped sections as the multi-select's search —
   // Недавние, camps (none here), the current user's clubs, then other clubs,
   // then club-less players. cmdk hides the groups whose players don't match.
   const searchGroups = React.useMemo(
-    () => buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, [], myPlayerId),
-    [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
+    () => buildPlayerGroups(visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, [], myPlayerId),
+    [visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId]
   )
 
   // cmdk hands us the raw string; it is one of the ids we put into the items.

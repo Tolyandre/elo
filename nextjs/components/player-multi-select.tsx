@@ -29,11 +29,18 @@ export function PlayerMultiSelect({
   value: controlledValue,
   onChange,
   activeCampIds = [],
+  allowedPlayerIds,
 }: {
   value: Base58ID[]
   onChange?: (ids: Base58ID[]) => void
   /** Camp arena ids (checked in the match form, ADR-27) whose participants get their own section. */
   activeCampIds?: Base58ID[]
+  /**
+   * When set, only these players are offered (offline-pending included —
+   * they are not members until synced). The membership rules on the creation
+   * forms pass the tenant's member set (ADR-36).
+   */
+  allowedPlayerIds?: string[]
 }) {
   const { players, playerDisplayName } = usePlayers()
   const { clubs, clubDisplayName } = useClubs()
@@ -44,6 +51,19 @@ export function PlayerMultiSelect({
   // "Недавние" = server-computed for the signed-in user (club co-players,
   // created players, own player pinned); falls back to my own co-players.
   const recentPlayerIds = useRecentPlayerIds()
+
+  const allowedSet = useMemo(
+    () => (allowedPlayerIds ? new Set(allowedPlayerIds) : null),
+    [allowedPlayerIds],
+  )
+  const visiblePlayers = useMemo(
+    () => (allowedSet ? players.filter((p) => allowedSet.has(p.id)) : players),
+    [players, allowedSet],
+  )
+  const visiblePendingPlayers = useMemo(
+    () => (allowedSet ? pendingPlayers.filter((p) => allowedSet.has(p.clientId)) : pendingPlayers),
+    [pendingPlayers, allowedSet],
+  )
 
   const checkedCamps = useMemo(
     () => camps.filter(c => activeCampIds.includes(c.id)),
@@ -65,14 +85,14 @@ export function PlayerMultiSelect({
   }), [myPlayerId])
 
   const offlineGroup = useMemo<MultiSelectGroup | null>(() => (
-    pendingPlayers.length > 0
-      ? { heading: "Офлайн (не сохранено)", options: pendingPlayers.map(p => ({ value: p.clientId, label: `${p.name} (офлайн)` })) }
+    visiblePendingPlayers.length > 0
+      ? { heading: "Офлайн (не сохранено)", options: visiblePendingPlayers.map(p => ({ value: p.clientId, label: `${p.name} (офлайн)` })) }
       : null
-  ), [pendingPlayers])
+  ), [visiblePendingPlayers])
 
   // Browsing view: one tab per "Недавние" / club / "Другие" (+ pending players).
   const tabs = useMemo<MultiSelectTab[]>(() => {
-    const built = buildPlayerTabs(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps)
+    const built = buildPlayerTabs(visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps)
       .map<MultiSelectTab>(tab => ({
         key: tab.key,
         label: tab.label,
@@ -85,15 +105,15 @@ export function PlayerMultiSelect({
       built.push({ key: "offline", label: "Офлайн", groups: [offlineGroup] })
     }
     return built
-  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps, toOption, offlineGroup])
+  }, [visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, myPlayerId, checkedCamps, toOption, offlineGroup])
 
   // Search view: a flat grouped list spanning every player (+ pending players).
   const searchGroups = useMemo<MultiSelectGroup[]>(() => {
-    const groups = buildPlayerGroups(players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId)
+    const groups = buildPlayerGroups(visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId)
       .map(group => ({ heading: group.heading, options: group.options.map(toOption) }))
     if (offlineGroup) groups.unshift(offlineGroup)
     return groups
-  }, [players, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId, toOption, offlineGroup])
+  }, [visiblePlayers, clubs, recentPlayerIds, playerDisplayName, clubDisplayName, checkedCamps, myPlayerId, toOption, offlineGroup])
 
   // The lib speaks plain strings; the values are the ids this component put
   // into the options, so the widening cast back is safe.

@@ -22,6 +22,7 @@ import { MultiSelect } from "@/components/vendor/multi-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
 import {
     ArenaSettingsFields,
@@ -233,7 +234,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
     }
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
             {offline && (
                 <Alert variant="destructive">
                     <CloudOff />
@@ -242,20 +243,22 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                 </Alert>
             )}
 
-            <div>
-                <label className="block font-semibold mb-2" htmlFor="arenaName">Название:</label>
-                <Input
-                    id="arenaName"
-                    type="text"
-                    value={values.name}
-                    placeholder={defaultName || "Название арены"}
-                    onChange={(e) => set("name", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                    Название должно быть уникальным.
+            <Card>
+                <CardHeader>
+                    <CardTitle>Название</CardTitle>
+                    <CardDescription>Название должно быть уникальным.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                    <Input
+                        id="arenaName"
+                        type="text"
+                        value={values.name}
+                        placeholder={defaultName || "Название арены"}
+                        onChange={(e) => set("name", e.target.value)}
+                    />
                     {defaultName && (
-                        <>
-                            {" "}По умолчанию:{" "}
+                        <p className="text-xs text-muted-foreground">
+                            По умолчанию:{" "}
                             <button
                                 type="button"
                                 onClick={() => set("name", defaultName)}
@@ -263,61 +266,92 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                             >
                                 {defaultName}
                             </button>
-                        </>
+                        </p>
                     )}
-                </p>
-            </div>
+                </CardContent>
+            </Card>
 
             {!isCamp && (
-            <div>
-                <h2 className="font-semibold mb-2">Игры:</h2>
-                <GameMultiSelect value={values.gameIds} onChange={(ids) => set("gameIds", ids)} />
-            </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Игры и теги</CardTitle>
+                        <CardDescription>
+                            Партия попадает в арену, когда совпадает её игра или тег игр.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="block text-sm" htmlFor="arenaGames">Игры:</label>
+                            <GameMultiSelect value={values.gameIds} onChange={(ids) => set("gameIds", ids)} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-sm" htmlFor="arenaTags">Теги игр:</label>
+                            <MultiSelect
+                                options={tagOptions}
+                                placeholder="Выберите теги"
+                                searchPlaceholder="Искать тег..."
+                                hideSelectAll={true}
+                                onValueChange={(ids: string[]) => set("tagIds", ids as Base58ID[])}
+                                defaultValue={values.tagIds}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
             )}
 
-            {!isCamp && (
-            <div>
-                <h2 className="font-semibold mb-2">Теги игр:</h2>
-                <MultiSelect
-                    options={tagOptions}
-                    placeholder="Выберите теги"
-                    searchPlaceholder="Искать тег..."
-                    hideSelectAll={true}
-                    onValueChange={(ids: string[]) => set("tagIds", ids as Base58ID[])}
-                    defaultValue={values.tagIds}
-                />
-            </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                    <label className="block font-semibold mb-2" htmlFor="arenaDateFrom">{isCamp ? "Начало:" : "Начало (необязательно):"}</label>
-                    <Input
-                        id="arenaDateFrom"
-                        type="datetime-local"
-                        value={values.dateFrom}
-                        onChange={(e) => set("dateFrom", e.target.value)}
-                        required={isCamp}
-                    />
-                </div>
-                <div className="flex-1">
-                    <label className="block font-semibold mb-2" htmlFor="arenaDateTo">{isCamp ? "Окончание:" : "Окончание (необязательно):"}</label>
-                    <Input
-                        id="arenaDateTo"
-                        type="datetime-local"
-                        value={values.dateTo}
-                        onChange={(e) => set("dateTo", e.target.value)}
-                        required={isCamp}
-                    />
-                </div>
-            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>{isCamp ? "Окно кэмпа" : "Даты"}</CardTitle>
+                    <CardDescription>
+                        {isCamp
+                            ? "Кэмп собирает партии между началом и окончанием."
+                            : "Необязательное окно: партии вне его не попадают в арену."}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                            <label className="block text-sm" htmlFor="arenaDateFrom">{isCamp ? "Начало:" : "Начало (необязательно):"}</label>
+                            <Input
+                                id="arenaDateFrom"
+                                type="datetime-local"
+                                value={values.dateFrom}
+                                onChange={(e) => set("dateFrom", e.target.value)}
+                                required={isCamp}
+                            />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                            <label className="block text-sm" htmlFor="arenaDateTo">{isCamp ? "Окончание:" : "Окончание (необязательно):"}</label>
+                            <Input
+                                id="arenaDateTo"
+                                type="datetime-local"
+                                value={values.dateTo}
+                                onChange={(e) => set("dateTo", e.target.value)}
+                                required={isCamp}
+                            />
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {!isCamp && (
-                <ArenaSettingsFields
-                    values={{ startingRating: values.startingRating, leagues: values.leagues }}
-                    onChange={(settings) => setValues((v) => ({ ...v, ...settings }))}
-                    disabled={!canEdit}
-                />
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Рейтинг и лиги</CardTitle>
+                        <CardDescription>
+                            Смена стартового рейтинга или лиг пересчитывает рейтинг арены заново —
+                            в фоне, уже после сохранения.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ArenaSettingsFields
+                            values={{ startingRating: values.startingRating, leagues: values.leagues }}
+                            onChange={(settings) => setValues((v) => ({ ...v, ...settings }))}
+                            disabled={!canEdit}
+                            heading={false}
+                        />
+                    </CardContent>
+                </Card>
             )}
 
             {error && <div className="text-destructive text-sm">{error}</div>}

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { highlightMarkets } from "@/components/markets-highlight";
+import { pid } from "./test-utils";
 import type { Market } from "@/app/api";
 
 // The component module imports the API layer at runtime; mocking it keeps
@@ -8,11 +9,13 @@ import type { Market } from "@/app/api";
 vi.mock("@/app/api", () => ({ getMarketsPagePromise: vi.fn() }));
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
+const TENANT = "t1";
 
 function market(overrides: Omit<Partial<Market>, "id"> & { id: string }): Market {
     return {
         market_type: "match_winner",
         status: "open",
+        tenant_id: TENANT,
         starts_at: "2026-10-06T00:00:00Z",
         closes_at: "2026-10-08T00:00:00Z",
         created_at: "2026-10-06T00:00:00Z",
@@ -30,7 +33,7 @@ describe("highlightMarkets", () => {
             market({ id: "open", status: "open" }),
             market({ id: "locked", status: "betting_closed", betting_closed_at: "2026-10-06T10:00:00Z" }),
         ];
-        expect(highlightMarkets(active, [], NOW).map((m) => m.id)).toEqual(["open", "locked"]);
+        expect(highlightMarkets(active, [], NOW, TENANT).map((m) => m.id)).toEqual(["open", "locked"]);
     });
 
     it("adds markets resolved within the last day, newest resolution order intact", () => {
@@ -38,7 +41,7 @@ describe("highlightMarkets", () => {
             market({ id: "fresh", status: "resolved", resolved_at: "2026-10-07T08:00:00Z" }),
             market({ id: "edge", status: "resolved", resolved_at: "2026-10-06T12:00:01Z" }),
         ];
-        expect(highlightMarkets([], closed, NOW).map((m) => m.id)).toEqual(["fresh", "edge"]);
+        expect(highlightMarkets([], closed, NOW, TENANT).map((m) => m.id)).toEqual(["fresh", "edge"]);
     });
 
     it("drops cancelled markets and resolutions older than a day", () => {
@@ -47,7 +50,7 @@ describe("highlightMarkets", () => {
             market({ id: "stale", status: "resolved", resolved_at: "2026-10-06T11:59:59Z" }),
             market({ id: "no-date", status: "resolved", resolved_at: null }),
         ];
-        expect(highlightMarkets([], closed, NOW)).toEqual([]);
+        expect(highlightMarkets([], closed, NOW, TENANT)).toEqual([]);
     });
 
     it("lists active markets before the day's resolutions", () => {
@@ -55,7 +58,20 @@ describe("highlightMarkets", () => {
             [market({ id: "open" })],
             [market({ id: "resolved", status: "resolved", resolved_at: "2026-10-07T10:00:00Z" })],
             NOW,
+            TENANT,
         );
         expect(result.map((m) => m.id)).toEqual(["open", "resolved"]);
+    });
+
+    it("keeps only the tenant's markets — active and resolved alike (ADR-36)", () => {
+        const active = [
+            market({ id: "ours" }),
+            market({ id: "theirs", tenant_id: pid("t2") }),
+        ];
+        const closed = [
+            market({ id: "our-fresh", status: "resolved", resolved_at: "2026-10-07T08:00:00Z" }),
+            market({ id: "their-fresh", tenant_id: pid("t2"), status: "resolved", resolved_at: "2026-10-07T09:00:00Z" }),
+        ];
+        expect(highlightMarkets(active, closed, NOW, TENANT).map((m) => m.id)).toEqual(["ours", "our-fresh"]);
     });
 });

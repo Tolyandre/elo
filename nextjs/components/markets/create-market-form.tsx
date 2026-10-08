@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Market, createMarketPromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
-import { useTenants } from "@/app/tenantsContext";
+import { useTenantScope, useTenantMemberIds } from "@/app/tenantScopeContext";
+import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { ResolutionDescription } from "@/components/resolution-description";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -80,16 +81,28 @@ export function CreateMarketForm() {
 
     const canEdit = me.canEdit;
 
-    // The owning tenant (ADR-36): settlements land in its main arena and a
-    // members_only tenant restricts bets to its members. A single tenant
-    // community (today's production shape) preselects itself.
-    const { tenants } = useTenants();
-    const [tenantId, setTenantId] = useState<Base58ID | "">("");
-    const effectiveTenantId = tenantId || (tenants.length === 1 ? tenants[0].id : "");
+    // The owning tenant (ADR-36) comes from the URL — the /new hub only renders
+    // the form under a resolved tenant. Settlements land in its main arena; a
+    // members_only tenant restricts bets to its members, so its markets may
+    // only target members (otherwise the outcomes would be unbetable-by-rule).
+    const { tenant } = useTenantScope();
+    const tenantId = tenant?.id ?? "";
+    const membersOnly = tenant?.arena_membership_mode === "members_only";
+    const memberIds = useTenantMemberIds();
+    // The membership check on the exact target set (a stale draft can hold a
+    // non-member even with the picker restricted).
+    const conditionIds = marketType === "match_winner"
+        ? targetPlayerIDs
+        : streakTargetPlayerID
+            ? [streakTargetPlayerID]
+            : [];
+    const membershipIssue = tenant && membersOnly
+        ? participantsMembershipIssue(conditionIds, memberIds, "members_only", tenant.name)
+        : null;
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!effectiveTenantId) {
+        if (!tenant) {
             setError("Укажите сообщество");
             return;
         }
@@ -112,9 +125,9 @@ export function CreateMarketForm() {
                 payload.wins_required = parseInt(winsRequired) || 0;
                 payload.max_losses = maxLosses !== "" ? parseInt(maxLosses) : null;
             }
-            await createMarketPromise(effectiveTenantId, payload);
+            await createMarketPromise(tenant.id, payload);
             STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
-            router.push("/?tab=feed");
+            router.push(`/?tenant=${tenant.id}&tab=feed`);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Ошибка");
         } finally {
@@ -134,7 +147,7 @@ export function CreateMarketForm() {
             const probability = 1 / n;
             return {
                 id: "" as Base58ID, market_type: marketType, status: "open",
-                tenant_id: (effectiveTenantId || "") as Base58ID,
+                tenant_id: (tenantId || "") as Base58ID,
                 starts_at: startsAtISO, closes_at: closesAtISO,
                 created_at: null, resolved_at: null,
                 liquidity_b: 0,
@@ -150,7 +163,7 @@ export function CreateMarketForm() {
         }
         return {
             id: "" as Base58ID, market_type: marketType, status: "open",
-            tenant_id: (effectiveTenantId || "") as Base58ID,
+            tenant_id: (tenantId || "") as Base58ID,
             starts_at: startsAtISO, closes_at: closesAtISO,
             created_at: null, resolved_at: null,
             liquidity_b: 0,
@@ -177,18 +190,15 @@ export function CreateMarketForm() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                    <Label>Сообщество</Label>
-                    <Select value={effectiveTenantId || undefined} onValueChange={(v) => setTenantId(v as Base58ID)}>
-                        <SelectTrigger className="w-full" aria-label="Сообщество">
-                            <SelectValue placeholder="Выберите сообщество" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {tenants.map((t) => (
-                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                        Сообщество: <span className="font-medium text-foreground">{tenant?.name ?? "—"}</span>
+                    </p>
+                    {membersOnly && (
+                        <p className="text-xs text-muted-foreground">
+                            Рынок принимает ставки только от участников сообщества — назначить можно тоже только их.
+                        </p>
+                    )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -246,7 +256,11 @@ export function CreateMarketForm() {
                     <>
                         <div className="space-y-1.5">
                             <Label>Участники партии</Label>
-                            <PlayerMultiSelect value={targetPlayerIDs} onChange={setTargetPlayerIDs} />
+                            <PlayerMultiSelect
+                                value={targetPlayerIDs}
+                                onChange={setTargetPlayerIDs}
+                                allowedPlayerIds={membersOnly ? [...memberIds] : undefined}
+                            />
                         </div>
                         <div className="space-y-1.5">
                             <label className="flex items-center gap-2 font-normal cursor-pointer">
@@ -274,7 +288,12 @@ export function CreateMarketForm() {
                     <>
                         <div className="space-y-1.5">
                             <Label>Целевой игрок</Label>
-                            <PlayerCombobox value={streakTargetPlayerID || undefined} onChange={v => setStreakTargetPlayerID((v ?? "") as Base58ID | "")} allowClear />
+                            <PlayerCombobox
+                                value={streakTargetPlayerID || undefined}
+                                onChange={v => setStreakTargetPlayerID((v ?? "") as Base58ID | "")}
+                                allowClear
+                                allowedPlayerIds={membersOnly ? [...memberIds] : undefined}
+                            />
                         </div>
                         <div className="space-y-1.5">
                             <Label>Игры (необязательно)</Label>
@@ -315,9 +334,10 @@ export function CreateMarketForm() {
                     двигаются цены.
                 </p>
 
+                {membershipIssue && <p className="text-xs text-destructive">{membershipIssue}</p>}
                 {error && <p className="text-sm text-destructive">{error}</p>}
 
-                <Button type="submit" disabled={submitting || !canEdit || formIssue !== null || needsPlayers} className="w-full">
+                <Button type="submit" disabled={submitting || !canEdit || formIssue !== null || membershipIssue !== null || needsPlayers} className="w-full">
                     {submitting ? "Создание..." : "Создать"}
                 </Button>
             </form>

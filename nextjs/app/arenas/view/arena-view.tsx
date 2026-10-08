@@ -180,7 +180,8 @@ export function ArenaView() {
                 </Button>
               )}
               <Button asChild size="sm">
-                <Link href="/new">Добавить</Link>
+                {/* The creation hub creates under the tenant in its URL (ADR-36). */}
+                <Link href={tenant ? `/new?tenant=${tenant.id}` : "/new"}>Добавить</Link>
               </Button>
             </div>
           }

@@ -15,6 +15,13 @@ const mocks = vi.hoisted(() => ({
     push: vi.fn(),
 }));
 
+// The tenant the form creates under (ADR-36); tests mutate this to exercise
+// the openness rules.
+const tenantScope = vi.hoisted(() => ({
+    tenant: null as { id: string; name: string; arena_membership_mode: "any_member" | "members_only" } | null,
+    memberIds: [] as string[],
+}));
+
 vi.mock("next/navigation", () => ({
     useRouter: () => ({ push: mocks.push }),
 }));
@@ -32,6 +39,11 @@ vi.mock("@/app/players/PlayersContext", () => ({
     usePlayers: vi.fn(),
 }));
 
+vi.mock("@/app/tenantScopeContext", () => ({
+    useTenantScope: () => ({ tenant: tenantScope.tenant, tenantId: tenantScope.tenant?.id ?? null, ready: true }),
+    useTenantMemberIds: () => new Set(tenantScope.memberIds),
+}));
+
 vi.mock("sonner", async () => {
     const { mockSonnerModule } = await import("./test-utils");
     return mockSonnerModule();
@@ -42,16 +54,22 @@ import { usePlayers } from "@/app/players/PlayersContext";
 
 
 // The picker is a heavy provider-backed component; the form only needs to
-// drive the selected id list through it.
+// drive the selected id list through it — and to expose the allowed-ids
+// restriction the member rules pass in.
 vi.mock("@/components/player-multi-select", () => ({
-    PlayerMultiSelect: ({ value, onChange }: {
+    PlayerMultiSelect: ({ value, onChange, allowedPlayerIds }: {
         value: Base58ID[];
         onChange: (ids: Base58ID[]) => void;
+        allowedPlayerIds?: string[];
     }) => (
         <div>
             <span data-testid="picked-count">{value.length}</span>
+            <span data-testid="allowed">{allowedPlayerIds ? allowedPlayerIds.join(",") : "all"}</span>
             <button data-testid="pick-three" onClick={() => onChange([pid("p1"), pid("p2"), pid("p3")])}>
                 pick
+            </button>
+            <button data-testid="pick-guests" onClick={() => onChange([pid("g1"), pid("g2")])}>
+                guests
             </button>
             <button data-testid="pick-none" onClick={() => onChange([])}>clear</button>
         </div>
@@ -118,6 +136,8 @@ function renderForm() {
 beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    tenantScope.tenant = null;
+    tenantScope.memberIds = [];
     vi.mocked(createTablePromise).mockResolvedValue(makeTable("tNew"));
 });
 
@@ -241,6 +261,82 @@ describe("CreateTableForm", () => {
         expect(toast.error).toHaveBeenCalledWith("Не удалось создать стол: boom");
         expect(mocks.push).not.toHaveBeenCalled();
         expect(localStorage.getItem(TABLE_SESSION_KEY)).toBeNull();
+        view.unmount();
+    });
+});
+
+describe("CreateTableForm tenant membership rules (ADR-36)", () => {
+    const membersOnlyTenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "members_only" as const };
+    const anyMemberTenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "any_member" as const };
+
+    it("without a tenant no restriction is passed and nothing blocks", () => {
+        const view = renderForm();
+        expect(view.byTestId("allowed").textContent).toBe("all");
+        act(() => {
+            view.byTestId("pick-three").click();
+        });
+        expect(view.createButton().disabled).toBe(false);
+        view.unmount();
+    });
+
+    it("members_only: the picker is restricted to the member set", () => {
+        tenantScope.tenant = membersOnlyTenant;
+        tenantScope.memberIds = [pid("p1"), pid("p2")];
+        const view = renderForm();
+        expect(view.byTestId("allowed").textContent).toBe([pid("p1"), pid("p2")].join(","));
+        view.unmount();
+    });
+
+    it("members_only: a roster with a non-member blocks creation with the reason", () => {
+        tenantScope.tenant = membersOnlyTenant;
+        tenantScope.memberIds = [pid("p1"), pid("p2"), pid("p3")];
+        const view = renderForm();
+        act(() => {
+            view.byTestId("pick-guests").click();
+        });
+        expect(view.createButton().disabled).toBe(true);
+        expect(view.text()).toContain("только своих участников");
+        view.unmount();
+    });
+
+    it("members_only: an all-member roster creates normally", async () => {
+        tenantScope.tenant = membersOnlyTenant;
+        tenantScope.memberIds = [pid("p1"), pid("p2"), pid("p3")];
+        const view = renderForm();
+        act(() => {
+            view.byTestId("pick-three").click();
+        });
+        await act(async () => {
+            view.createButton().click();
+        });
+        expect(createTablePromise).toHaveBeenCalledTimes(1);
+        expect(mocks.push).toHaveBeenCalled();
+        view.unmount();
+    });
+
+    it("any_member: guests only blocks creation with the reason", () => {
+        tenantScope.tenant = anyMemberTenant;
+        tenantScope.memberIds = [pid("p1"), pid("p2"), pid("p3")];
+        const view = renderForm();
+        act(() => {
+            view.byTestId("pick-guests").click();
+        });
+        expect(view.createButton().disabled).toBe(true);
+        expect(view.text()).toContain("Нужен хотя бы один участник сообщества");
+        view.unmount();
+    });
+
+    it("any_member: one member among the guests lets the create through", async () => {
+        tenantScope.tenant = anyMemberTenant;
+        tenantScope.memberIds = [pid("p1"), pid("p2"), pid("p3")];
+        const view = renderForm();
+        act(() => {
+            view.byTestId("pick-three").click();
+        });
+        await act(async () => {
+            view.createButton().click();
+        });
+        expect(createTablePromise).toHaveBeenCalledTimes(1);
         view.unmount();
     });
 });

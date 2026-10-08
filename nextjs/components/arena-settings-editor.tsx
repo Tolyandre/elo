@@ -189,17 +189,21 @@ function NumberField({
 /**
  * The rating + leagues fields of an arena settings document. `idPrefix`
  * namespaces the inputs' ids so several forms can coexist on one page.
+ * `heading={false}` drops the built-in «Рейтинг и лиги» heading when the
+ * fields are embedded in a titled card.
  */
 export function ArenaSettingsFields({
     values,
     onChange,
     disabled = false,
     idPrefix = "arena",
+    heading = true,
 }: {
     values: ArenaSettingsValues;
     onChange: (values: ArenaSettingsValues) => void;
     disabled?: boolean;
     idPrefix?: string;
+    heading?: boolean;
 }) {
     function set<K extends keyof ArenaSettingsValues>(field: K, value: ArenaSettingsValues[K]) {
         onChange({ ...values, [field]: value });
@@ -211,7 +215,7 @@ export function ArenaSettingsFields({
 
     return (
         <div className="space-y-3">
-            <h2 className="font-semibold">Рейтинг и лиги:</h2>
+            {heading && <h2 className="font-semibold">Рейтинг и лиги:</h2>}
             <div className="flex items-center gap-2 text-sm">
                 <label htmlFor={`${idPrefix}StartingRating`}>Стартовый рейтинг:</label>
                 <Input

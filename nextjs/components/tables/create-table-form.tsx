@@ -8,6 +8,8 @@ import { Loader2 } from "lucide-react";
 import { createTablePromise } from "@/app/api";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
+import { useTenantScope, useTenantMemberIds } from "@/app/tenantScopeContext";
+import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { writeTableSession } from "@/hooks/useTableSession";
 import { GAME_APPS, gameAppByGameId, TABLE_PAGE_PATH } from "@/lib/game-apps";
 import { PlayerMultiSelect } from "@/components/player-multi-select";
@@ -26,6 +28,11 @@ export function CreateTableForm() {
     const me = useMe();
     const { players: allPlayers, playerDisplayName } = usePlayers();
     const router = useRouter();
+    // The table's eventual match lands in the community under which the table
+    // is created (ADR-36): the same openness rules as the match form — the
+    // roster must satisfy the tenant or the match would never reach its feed.
+    const { tenant } = useTenantScope();
+    const memberIds = useTenantMemberIds();
 
     const [gameId, setGameId] = useState<Base58ID>(GAME_APPS[0].id);
     const [playerIds, setPlayerIds] = useState<Base58ID[]>([]);
@@ -33,6 +40,9 @@ export function CreateTableForm() {
 
     const app = gameAppByGameId(gameId);
     const canCreate = !!(me.isAuthenticated && me.playerId);
+    const membershipIssue = tenant
+        ? participantsMembershipIssue(playerIds, memberIds, tenant.arena_membership_mode, tenant.name)
+        : null;
 
     async function create() {
         const players = playerIds
@@ -41,6 +51,7 @@ export function CreateTableForm() {
             .map((p) => ({ id: p!.id, name: playerDisplayName(p!) }));
         if (!app || players.length < app.minPlayers) return;
         if (!(me.isAuthenticated && me.playerId)) return;
+        if (membershipIssue) return;
 
         setIsSubmitting(true);
         try {
@@ -85,10 +96,22 @@ export function CreateTableForm() {
                     })}
                 </div>
 
+                {tenant && (
+                    <p className="text-xs text-muted-foreground">
+                        {tenant.arena_membership_mode === "members_only"
+                            ? `Сообщество «${tenant.name}» принимает только партии своих участников.`
+                            : `Партия стола попадёт в ленту сообщества «${tenant.name}», если среди участников есть хотя бы один его участник.`}
+                    </p>
+                )}
                 <PlayerMultiSelect
                     value={playerIds}
                     onChange={setPlayerIds}
+                    allowedPlayerIds={tenant?.arena_membership_mode === "members_only" ? [...memberIds] : undefined}
                 />
+
+                {membershipIssue && (
+                    <p className="text-xs text-destructive">{membershipIssue}</p>
+                )}
 
                 {playerIds.length > 0 && (
                     <PlayerOrderList
@@ -103,7 +126,7 @@ export function CreateTableForm() {
 
                 <Button
                     className="w-full md:h-12 md:text-base lg:h-14 lg:text-lg"
-                    disabled={playerIds.length < (app?.minPlayers ?? 2) || isSubmitting || !canCreate}
+                    disabled={playerIds.length < (app?.minPlayers ?? 2) || isSubmitting || !canCreate || membershipIssue !== null}
                     onClick={create}
                     title={!canCreate
                         ? "Для создания стола нужна авторизация и привязка к игроку"

@@ -8,6 +8,8 @@ import { useGames } from "../gamesContext";
 import { useMatches } from "./MatchesContext";
 import { useMe } from "../meContext";
 import { useOffline } from "../offline/OfflineContext";
+import { useTenantScope, useTenantMemberIds } from "../tenantScopeContext";
+import { participantsMembershipIssue } from "@/lib/tenant-members";
 import { Match, updateMatchPromise } from "../api";
 import { unchangedEditDateISO } from "./edit-date";
 import { useCampSelection, type CampOverrides } from "@/hooks/useCampSelection";
@@ -119,6 +121,22 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
 
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
+
+    // The community the match is created under (ADR-36): the feed shows the
+    // match only when the roster satisfies the tenant's openness rule —
+    // any_member wants at least one member, members_only only members. The
+    // rules bind creation only; editing a saved match stays unrestricted.
+    const { tenant } = useTenantScope();
+    const memberIds = useTenantMemberIds();
+    const membershipIssue =
+        !isEdit && tenant
+            ? participantsMembershipIssue(
+                  participants.map((p) => p.id),
+                  memberIds,
+                  tenant.arena_membership_mode,
+                  tenant.name,
+              )
+            : null;
 
     // The selected game's mode decides what the form offers (ADR-33): a fixed
     // competitive or coop form, or the toggle for a mixed one. An offline
@@ -312,6 +330,10 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             setBottomErrorMessage("Укажите дату партии");
             return;
         }
+        if (membershipIssue) {
+            setBottomErrorMessage(membershipIssue);
+            return;
+        }
 
         const score: Record<string, number> = {};
         participants.forEach(p => {
@@ -397,7 +419,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             // away while online) invalidates the lists once it lands. The community
             // feed shows the pending card, then the saved one
             // with the ratings.
-            router.push(`/?tab=feed`);
+            router.push(tenant ? `/?tenant=${tenant.id}&tab=feed` : `/?tab=feed`);
         } catch (err) {
             setSuccess(false);
             if (err instanceof Error) {
@@ -491,7 +513,22 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             )}
             <div>
                 <h2 className="font-semibold mb-2">Участники:</h2>
-                <PlayerMultiSelect value={participants.map(p => p.id)} onChange={handlePlayersChange} activeCampIds={coopMode ? [] : checkedCampIds} />
+                {!isEdit && tenant && (
+                    <p className="text-xs text-muted-foreground mb-2">
+                        {tenant.arena_membership_mode === "members_only"
+                            ? `Сообщество «${tenant.name}» принимает только партии своих участников.`
+                            : `Партия попадёт в ленту сообщества «${tenant.name}», если среди участников есть хотя бы один его участник.`}
+                    </p>
+                )}
+                <PlayerMultiSelect
+                    value={participants.map(p => p.id)}
+                    onChange={handlePlayersChange}
+                    activeCampIds={coopMode ? [] : checkedCampIds}
+                    allowedPlayerIds={!isEdit && tenant?.arena_membership_mode === "members_only" ? [...memberIds] : undefined}
+                />
+                {membershipIssue && (
+                    <p className="text-xs text-destructive mt-2">{membershipIssue}</p>
+                )}
 
             </div>
             {participants.length > 0 && (coopMode ? (
@@ -586,7 +623,7 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
             )}
             <Button
                 type="submit"
-                disabled={participants.length === 0 || !selectedGameId || submitting || syncBlocked}
+                disabled={participants.length === 0 || !selectedGameId || submitting || syncBlocked || membershipIssue !== null}
                 aria-busy={submitting}
             >
                 {submitting ? (

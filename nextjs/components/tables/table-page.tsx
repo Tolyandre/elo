@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMe } from "@/app/meContext";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { useOffline } from "@/app/offline/OfflineContext";
 import { useCampSelection } from "@/hooks/useCampSelection";
 import { useTableSession, waitForSyncedMatch } from "@/hooks/useTableSession";
@@ -51,7 +52,15 @@ function ConnectingCard() {
     );
 }
 
+// The creation hub creates tables under the tenant in its URL (ADR-36), so
+// both entry cards carry the current tenant along.
+function useNewTableHref(): string {
+    const { tenant } = useTenantScope();
+    return tenant ? `/new?tab=table&tenant=${tenant.id}` : "/new?tab=table";
+}
+
 function EmptyStateCard() {
+    const newTableHref = useNewTableHref();
     return (
         <Card>
             <CardHeader>
@@ -63,7 +72,7 @@ function EmptyStateCard() {
             </CardHeader>
             <CardContent>
                 <Button asChild className="w-full">
-                    <Link href="/new?tab=table">Создать стол</Link>
+                    <Link href={newTableHref}>Создать стол</Link>
                 </Button>
             </CardContent>
         </Card>
@@ -72,6 +81,7 @@ function EmptyStateCard() {
 
 /** A table created by an older client, whose participants were picked in-app. */
 function LegacySetupCard() {
+    const newTableHref = useNewTableHref();
     return (
         <Card>
             <CardHeader>
@@ -83,7 +93,7 @@ function LegacySetupCard() {
             </CardHeader>
             <CardContent>
                 <Button asChild className="w-full">
-                    <Link href="/new?tab=table">Создать новый стол</Link>
+                    <Link href={newTableHref}>Создать новый стол</Link>
                 </Button>
             </CardContent>
         </Card>
