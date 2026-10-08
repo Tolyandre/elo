@@ -1995,7 +1995,7 @@ export interface components {
             entity_type: "match" | "game" | "player" | "club" | "tag" | "arena" | "tournament" | "tenant" | "user";
             entity_id: components["schemas"]["Base58ID"];
             /**
-             * @description A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
+             * @description A rename is an `updated` whose details carry the name's before → after (migration 079 retired the dedicated action).
              * @enum {string}
              */
             action: "created" | "updated" | "deleted";

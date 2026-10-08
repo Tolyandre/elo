@@ -193,7 +193,7 @@ func NewUserUpdateDetails(from, to bool) UserUpdateDetails {
 
 // ---------------------------------------------------------------------------
 // Games, players, tags: meta updates with field-level diffs. A rename is not
-// a distinct action — it is the name field's before → after (migration 077).
+// a distinct action — it is the name field's before → after (migration 079).
 // ---------------------------------------------------------------------------
 
 // GameUpdateDetails describes everything that changed in one game meta

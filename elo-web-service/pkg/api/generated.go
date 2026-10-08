@@ -1265,7 +1265,7 @@ type AuditEntityDetails struct {
 
 // AuditEntry defines model for AuditEntry.
 type AuditEntry struct {
-	// Action A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
+	// Action A rename is an `updated` whose details carry the name's before → after (migration 079 retired the dedicated action).
 	Action AuditEntryAction `json:"action"`
 
 	// ActorName Display name of the acting user at read time; null for system events.
@@ -1286,7 +1286,7 @@ type AuditEntry struct {
 	Id Base58ID `json:"id"`
 }
 
-// AuditEntryAction A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
+// AuditEntryAction A rename is an `updated` whose details carry the name's before → after (migration 079 retired the dedicated action).
 type AuditEntryAction string
 
 // AuditEntry_Details Action-specific payload; null when the event carries no details (match created). Narrow by action: entity → AuditEntityDetails (created/deleted of game/player/club/tag/tenant), updated → AuditMatchUpdateDetails or AuditTenantUpdateDetails (ADR-36, tenant name/settings/composition) or AuditUserUpdateDetails (edit-permission toggle) or AuditClubUpdateDetails (club name/icon/membership, ADR-36) or AuditGameUpdateDetails (game meta, rename included) or AuditPlayerUpdateDetails / AuditTagUpdateDetails (the name); arena → AuditArenaCampConfigDetails (camp config) or AuditCampLinkDetails (match attach/detach); tournament → AuditTournamentConfigDetails / AuditTournamentStartDetails / AuditTournamentStateDetails / AuditSlotRulingDetails / AuditSlotLinkDetails / AuditSlotAdjustDetails (ADR-26).

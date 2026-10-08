@@ -60,7 +60,7 @@ const (
 
 // Audited actions, stored in audit_log.action. Kept in sync with the DB CHECK
 // constraint. A rename is not an action of its own: it is an `updated` whose
-// details carry the name's before → after (migration 077).
+// details carry the name's before → after (migration 079).
 const (
 	ActionCreated = "created"
 	ActionUpdated = "updated"

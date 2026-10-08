@@ -79,7 +79,7 @@ AuditEntry:
     action:
       type: string
       enum: [created, updated, deleted]
-      description: A rename is an `updated` whose details carry the name's before → after (migration 077 retired the dedicated action).
+      description: A rename is an `updated` whose details carry the name's before → after (migration 079 retired the dedicated action).
     details:
       description: >-
         Action-specific payload; null when the event carries no details (match
