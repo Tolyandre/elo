@@ -61,7 +61,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	}
 
 	// First guarantor: b = 6/ln(3); the fresh market is uniform.
-	setBetLimit(t, pool, g1, 16)
+	setBetLimit(t, pool, blueMenTenantID, g1, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, g1, 6, 0); err != nil {
 		t.Fatalf("JoinAsGuarantee g1: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestMarketGuarantees_LiquidityGrowsAndReprices(t *testing.T) {
 	// 12/ln(3) — every wagered elo converts to depth (ADR-34, no L cap). The
 	// join reprices the market toward uniform over the fixed q (ADR-22 — no
 	// rescale): the favourite's price drops, the others rise, Σ stays 1.
-	setBetLimit(t, pool, g2, 16)
+	setBetLimit(t, pool, blueMenTenantID, g2, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, g2, 6, 0.25); err != nil {
 		t.Fatalf("JoinAsGuarantee g2: %v", err)
 	}
@@ -164,8 +164,8 @@ func TestMarketGuarantees_SettlementWithFees(t *testing.T) {
 
 	// Two guarantors: one charges 10%, one nothing. Equal risks of 8 ⇒ the
 	// weighted market fee is 5%.
-	setBetLimit(t, pool, feeGuarantor, 16)
-	setBetLimit(t, pool, zeroGuarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, feeGuarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, zeroGuarantor, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, feeGuarantor, 8, 0.10); err != nil {
 		t.Fatalf("JoinAsGuarantee feeGuarantor: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestMarketGuarantees_ReservedRiskBlocksBets(t *testing.T) {
 
 	// playerA (bet limit 16 from the warm-up) risks 15 as guarantor; only ~1
 	// of headroom remains, and a 10-share buy must now exceed the limit.
-	setBetLimit(t, pool, playerA, 16)
+	setBetLimit(t, pool, blueMenTenantID, playerA, 16)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, playerA, 15, 0); err != nil {
 		t.Fatalf("JoinAsGuarantee: %v", err)
 	}

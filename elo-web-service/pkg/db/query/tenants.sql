@@ -127,11 +127,10 @@ SELECT EXISTS (
 -- arena-attribution-scoped, so a tournament match appears even when it does
 -- not count into the tenant's main arena rating. Match events go to any
 -- current member's matches — of any club of the tenant (coop included:
--- community life, not just rating); correction events to corrections of
--- current members; market events to the markets the tenant OWNS (a member's
--- bet on another tenant's market is that tenant's news). The player/club/game
--- filters apply to the match and market branches (the arena feed's matching
--- rule); corrections stay unfiltered. Parameters and cursor are the arena
+-- community life, not just rating); market events to the markets the tenant
+-- OWNS (a member's bet on another tenant's market is that tenant's news).
+-- The player/club/game filters apply to both branches (the arena feed's
+-- matching rule). Parameters and cursor are the arena
 -- feed's minus the arena and the include flags; the tenant itself is the
 -- feed's identity.
 WITH events AS (
@@ -161,17 +160,6 @@ WITH events AS (
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
       )
-    UNION ALL
-    SELECT c.id, c.date, 'correction'::text
-    FROM corrections c
-    WHERE EXISTS (
-              SELECT 1
-              FROM clubs c2
-              JOIN player_club_membership pcm ON pcm.club_id = c2.id
-              WHERE c2.tenant_id = sqlc.arg('tenant_id')::uuid
-                AND pcm.left_at IS NULL
-                AND pcm.player_id = c.player_id
-          )
     UNION ALL
     -- The tenant's markets: an active market (open or betting-locked) sorts
     -- at its creation moment, a settled one (resolved or cancelled) at its

@@ -213,7 +213,7 @@ func TestAddMatch_BackdatedConflictsWithMarket(t *testing.T) {
 	}
 	// playerA is the sole guarantor and also buys 10 shares: fund both the
 	// wager risk (16) and the buy.
-	setBetLimit(t, pool, playerA, 24)
+	setBetLimit(t, pool, blueMenTenantID, playerA, 24)
 	joinGuarantee(ctx, t, marketSvc, market.ID, playerA)
 
 	// Bets placed now.

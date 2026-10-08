@@ -135,6 +135,8 @@ components:
     # Clubs
     Club:
       $ref: './clubs.yaml#/Club'
+    ClubMemberStint:
+      $ref: './clubs.yaml#/ClubMemberStint'
 
     # Tags
     Tag:
@@ -164,10 +166,6 @@ components:
     MarketGuarantee:
       $ref: './markets.yaml#/MarketGuarantee'
 
-    # Corrections
-    Correction:
-      $ref: './admin.yaml#/Correction'
-
     # Feeds (ADR-32)
     FeedPage:
       $ref: './arenas.yaml#/FeedPage'
@@ -175,8 +173,6 @@ components:
       $ref: './arenas.yaml#/FeedEvent'
     FeedMatchEvent:
       $ref: './arenas.yaml#/FeedMatchEvent'
-    FeedCorrectionEvent:
-      $ref: './arenas.yaml#/FeedCorrectionEvent'
     FeedMarketEvent:
       $ref: './arenas.yaml#/FeedMarketEvent'
 
@@ -322,6 +318,8 @@ paths:
     $ref: './clubs.yaml#/ClubItem'
   /clubs/{id}/members:
     $ref: './clubs.yaml#/ClubMembers'
+  /clubs/{id}/members/history:
+    $ref: './clubs.yaml#/ClubMemberHistory'
   /clubs/{id}/members/{playerId}:
     $ref: './clubs.yaml#/ClubMemberItem'
 
@@ -375,18 +373,13 @@ paths:
   /auth/me:
     $ref: './auth.yaml#/AuthMe'
 
-  # Corrections are created via POST /admin/players/{id}/corrections and read
-  # through the feeds (ADR-32 removed the standalone list endpoint).
-
-  # Audit
+  # Admin
   /audit:
     $ref: './audit.yaml#/AuditCollection'
 
-  # Admin
+  # Admin / debug
   /admin/update-arenas:
     $ref: './admin.yaml#/UpdateArenas'
-  /admin/players/{id}/corrections:
-    $ref: './admin.yaml#/AdminPlayerCorrections'
 
   # Game tables (generic live tables, ADR-16)
   /tables:

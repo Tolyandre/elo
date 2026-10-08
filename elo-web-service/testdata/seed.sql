@@ -299,12 +299,8 @@ BEGIN
         SELECT id INTO dev_user_id FROM users WHERE allow_editing ORDER BY id LIMIT 1;
     END IF;
 
-    -- bet_limit for players (formula: K / (1 + 10^((startingElo - playerElo) / D)) with K=32, D=400, startingElo=1000)
-    -- bet_limits based on final Elo after match 202
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1004.6571570250732) / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000064'::uuid;
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1005.2067380581842) / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000065'::uuid;
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 982.1361049167427)  / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000066'::uuid;
-    UPDATE players SET bet_limit = 32.0 / (1.0 + POWER(10.0, (1000.0 - 1008.0)             / 400.0)) WHERE id = '00000000-0000-0000-0000-000000000067'::uuid;
+    -- Bet limits are derived at read time from the market's tenant main arena
+    -- (ADR-36 phase 5); nothing to seed.
 
     -- Market 1: open match_winner (Alice or Bob wins in Skull King)
     INSERT INTO markets (id, market_type, status, starts_at, closes_at, created_by, tenant_id)

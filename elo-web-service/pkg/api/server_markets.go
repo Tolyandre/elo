@@ -534,7 +534,7 @@ func (s *StrictServer) GetMarket(ctx context.Context, request GetMarketRequestOb
 		}
 	}
 
-	s.enrichMarketDetailForPlayer(ctx, &detail, marketID)
+	s.enrichMarketDetailForPlayer(ctx, &detail, marketID, row.TenantID)
 
 	return GetMarket200JSONResponse{Status: StatusSuccess, Data: detail}, nil
 }
@@ -570,8 +570,9 @@ func (s *StrictServer) GetMarketProbabilityHistory(ctx context.Context, request 
 // spent and shares held, reserved, bet limit) when the caller is authenticated
 // with a linked player. Projections sum the player's per-buy shares (each pays
 // 1 on a win) and spent elo. Failures of the individual reads are non-fatal: a
-// missing field stays nil.
-func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID id.ID) {
+// missing field stays nil. The bet limit counts against the market's tenant
+// main arena (ADR-36 phase 5).
+func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *MarketDetail, marketID, tenantID id.ID) {
 	ginCtx := ginCtxFromContext(ctx)
 	if ginCtx == nil {
 		return
@@ -629,8 +630,10 @@ func (s *StrictServer) enrichMarketDetailForPlayer(ctx context.Context, detail *
 	if reserved, err := s.api.MarketQueries.GetPlayerReservedAmount(ctx, playerID); err == nil {
 		detail.Reserved = &reserved
 	}
-	if limit, err := s.api.MarketQueries.GetPlayerBetLimit(ctx, playerID); err == nil {
-		detail.BetLimit = &limit
+	if arenaID, err := s.api.TenantService.FeedArena(ctx, tenantID); err == nil {
+		if limit, err := elo.BetLimitForPlayer(ctx, s.api.MarketQueries, arenaID, playerID); err == nil {
+			detail.BetLimit = &limit
+		}
 	}
 }
 

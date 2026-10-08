@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -140,6 +141,52 @@ func (q *Queries) GetClubByID(ctx context.Context, argID id.ID) (Club, error) {
 		&i.TenantID,
 	)
 	return i, err
+}
+
+const listClubMembershipHistory = `-- name: ListClubMembershipHistory :many
+SELECT pcm.club_id, pcm.player_id, p.name AS player_name,
+       pcm.joined_at, pcm.left_at
+FROM player_club_membership pcm
+JOIN players p ON p.id = pcm.player_id
+WHERE pcm.club_id = $1
+ORDER BY pcm.joined_at DESC, pcm.player_id
+`
+
+type ListClubMembershipHistoryRow struct {
+	ClubID     id.ID              `json:"club_id"`
+	PlayerID   id.ID              `json:"player_id"`
+	PlayerName string             `json:"player_name"`
+	JoinedAt   time.Time          `json:"joined_at"`
+	LeftAt     pgtype.Timestamptz `json:"left_at"`
+}
+
+// The club's membership stint history (ADR-36), latest stint first: the raw
+// material of tenant membership, shown as audit-style items on the admin club
+// page. A NULL left_at is the current active stint.
+func (q *Queries) ListClubMembershipHistory(ctx context.Context, clubID id.ID) ([]ListClubMembershipHistoryRow, error) {
+	rows, err := q.db.Query(ctx, listClubMembershipHistory, clubID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListClubMembershipHistoryRow{}
+	for rows.Next() {
+		var i ListClubMembershipHistoryRow
+		if err := rows.Scan(
+			&i.ClubID,
+			&i.PlayerID,
+			&i.PlayerName,
+			&i.JoinedAt,
+			&i.LeftAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listClubs = `-- name: ListClubs :many

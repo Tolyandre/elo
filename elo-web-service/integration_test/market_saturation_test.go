@@ -43,8 +43,8 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	// The buyers need headroom for ~40 reserved elo (the warm-up match alone
 	// grants far less). playerA's limit is set after the warm-up match: its
 	// recalculation rewrites participants' limits from the elo formula.
-	setBetLimit(t, pool, playerU, 16)
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, playerU, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		TenantID:   blueMenTenantID,
@@ -76,7 +76,7 @@ func TestMarketSaturation_BetsKeepWorking(t *testing.T) {
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerA: 5, playerB: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
-	setBetLimit(t, pool, playerA, 100) // after the warm-up: it rewrites participants' limits
+	setBetLimit(t, pool, blueMenTenantID, playerA, 100) // after the warm-up: it rewrites participants' limits
 
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeU := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerB)

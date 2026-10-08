@@ -66,3 +66,14 @@ WHERE club_id = $1 AND player_id = $2 AND left_at IS NULL;
 -- name: GetClubByID :one
 -- Old-name read for the rename audit trail (ADR-14).
 SELECT * FROM clubs WHERE id = $1;
+
+-- name: ListClubMembershipHistory :many
+-- The club's membership stint history (ADR-36), latest stint first: the raw
+-- material of tenant membership, shown as audit-style items on the admin club
+-- page. A NULL left_at is the current active stint.
+SELECT pcm.club_id, pcm.player_id, p.name AS player_name,
+       pcm.joined_at, pcm.left_at
+FROM player_club_membership pcm
+JOIN players p ON p.id = pcm.player_id
+WHERE pcm.club_id = $1
+ORDER BY pcm.joined_at DESC, pcm.player_id;

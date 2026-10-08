@@ -106,7 +106,12 @@ func (s *MarketService) PlaceBet(ctx context.Context, betID id.ID, marketID id.I
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("get reserved amount: %w", err)
 	}
-	limit, err := q.GetPlayerBetLimit(ctx, playerID)
+	// The limit counts against the market's tenant main arena (ADR-36 phase 5).
+	arena, err := marketArena(ctx, q, market.TenantID)
+	if err != nil {
+		return PlaceBetOutcome{}, fmt.Errorf("get market arena: %w", err)
+	}
+	limit, err := BetLimitForPlayer(ctx, q, arena.ID, playerID)
 	if err != nil {
 		return PlaceBetOutcome{}, fmt.Errorf("get bet limit: %w", err)
 	}
@@ -225,12 +230,17 @@ func (s *MarketService) JoinAsGuarantee(ctx context.Context, guaranteeID id.ID, 
 		totalRisk += w.RiskAmount
 	}
 
-	// Guarantor exposure is reserved against the betting limit (ADR-20).
+	// Guarantor exposure is reserved against the betting limit (ADR-20) —
+	// counted against the market's tenant main arena (ADR-36 phase 5).
 	reserved, err := q.GetPlayerReservedAmount(ctx, playerID)
 	if err != nil {
 		return GuaranteeOutcome{}, fmt.Errorf("get reserved amount: %w", err)
 	}
-	limit, err := q.GetPlayerBetLimit(ctx, playerID)
+	arena, err := marketArena(ctx, q, market.TenantID)
+	if err != nil {
+		return GuaranteeOutcome{}, fmt.Errorf("get market arena: %w", err)
+	}
+	limit, err := BetLimitForPlayer(ctx, q, arena.ID, playerID)
 	if err != nil {
 		return GuaranteeOutcome{}, fmt.Errorf("get bet limit: %w", err)
 	}

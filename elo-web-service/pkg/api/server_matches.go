@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -59,12 +60,15 @@ func (s *StrictServer) ListMatches(ctx context.Context, request ListMatchesReque
 	}
 
 	// The display arena behind the per-player settlement columns: the
-	// ?tenant='s main arena (ADR-36), the global arena otherwise. The
-	// parameter scopes the columns only — the match set itself is not
-	// arena-filtered; continuation requests pass the same ?tenant= (the
-	// cursor token does not carry it).
+	// ?tenant='s main arena (ADR-36) — required since phase 5, reads are
+	// tenant-scoped. The parameter scopes the columns only — the match set
+	// itself is not arena-filtered; continuation requests pass the same
+	// ?tenant= (the cursor token does not carry it).
 	arenaID, err := s.resolveDisplayArena(ctx, params.Tenant)
 	if err != nil {
+		if errors.Is(err, errTenantRequired) {
+			return ListMatches400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+		}
 		if db.IsNoRows(err) {
 			return ListMatches404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 		}
@@ -302,9 +306,13 @@ func (s *StrictServer) tournamentByMatch(ctx context.Context, matchIDs []id.ID) 
 
 func (s *StrictServer) GetMatchById(ctx context.Context, request GetMatchByIdRequestObject) (GetMatchByIdResponseObject, error) {
 	// The display arena behind the per-player settlement columns: the
-	// ?tenant='s main arena (ADR-36), the global arena otherwise.
+	// ?tenant='s main arena (ADR-36) — required since phase 5, reads are
+	// tenant-scoped.
 	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
 	if err != nil {
+		if errors.Is(err, errTenantRequired) {
+			return GetMatchById400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+		}
 		if db.IsNoRows(err) {
 			return GetMatchById404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 		}

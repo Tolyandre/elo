@@ -41,7 +41,7 @@ func TestMarketSurplusSplit_ExposureAccrual(t *testing.T) {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
 	for _, p := range []idpkg.ID{buyerA, buyerB, g1, g2} {
-		setBetLimit(t, pool, p, 16)
+		setBetLimit(t, pool, blueMenTenantID, p, 16)
 	}
 
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{

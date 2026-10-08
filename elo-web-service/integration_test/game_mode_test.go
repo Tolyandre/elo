@@ -81,7 +81,7 @@ func listMatchesModes(t *testing.T, router interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }, query string) []matchModeJSON {
 	t.Helper()
-	w := doJSON(t, router, http.MethodGet, "/matches"+query, "", "")
+	w := doJSON(t, router, http.MethodGet, "/matches?tenant="+blueMenTenantUUID+"&"+query, "", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list matches: %d %s", w.Code, w.Body.String())
 	}
@@ -210,7 +210,7 @@ func TestGameMode_CoopMatchLifecycle(t *testing.T) {
 	}
 
 	// Player profile stats: no rating history, no game stats for the coop game.
-	w := doJSON(t, router, http.MethodGet, "/players/"+player.String()+"/stats", "", "")
+	w := doJSON(t, router, http.MethodGet, "/players/"+player.String()+"/stats?tenant="+blueMenTenantUUID, "", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("player stats: %d %s", w.Code, w.Body.String())
 	}

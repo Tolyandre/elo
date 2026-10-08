@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/tolyandre/elo-web-service/pkg/db"
@@ -144,7 +145,18 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 		opennessArg = string(*request.Body.TournamentsOpenness)
 		updateSettings = true
 	}
-	if !updateName && !updateSettings {
+	// The main arena's settings document (starting rating, leagues) is edited
+	// through the tenant (ADR-36 phase 5) — arena PATCH on a main arena is a
+	// 409 by design.
+	var settingsArg []byte
+	if request.Body.Settings != nil {
+		raw, err := json.Marshal(request.Body.Settings)
+		if err != nil {
+			return PatchTenant400JSONResponse{Status: StatusFail, Message: "invalid settings document"}, nil
+		}
+		settingsArg = raw
+	}
+	if !updateName && !updateSettings && request.Body.Settings == nil {
 		return PatchTenant400JSONResponse{Status: StatusFail, Message: "nothing to update"}, nil
 	}
 	if updateName && *request.Body.Name == "" {
@@ -152,6 +164,22 @@ func (s *StrictServer) PatchTenant(ctx context.Context, request PatchTenantReque
 	}
 
 	tenantID := parseIDParam(request.Id)
+
+	if request.Body.Settings != nil {
+		if _, err := s.api.TenantService.UpdateTenantArenaSettings(ctx, tenantID, settingsArg, currentActorID(ctx)); err != nil {
+			if msg, ok := invalidSettings(err); ok {
+				return PatchTenant400JSONResponse{Status: StatusFail, Message: msg}, nil
+			}
+			switch domainStatusCode(err) {
+			case http.StatusNotFound:
+				return PatchTenant404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+			case http.StatusBadRequest:
+				return PatchTenant400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+			default:
+				return nil, err
+			}
+		}
+	}
 
 	if updateSettings {
 		if _, err := s.api.TenantService.UpdateTenantSettings(ctx, tenantID, modeArg, opennessArg, currentActorID(ctx)); err != nil {

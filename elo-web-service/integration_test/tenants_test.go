@@ -1026,7 +1026,7 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 	}
 
 	// The member stands as guarantor (allowed) and gives the market liquidity.
-	setBetLimit(t, pool, member, 100)
+	setBetLimit(t, pool, tenantID, member, 100)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, member, 10, 0); err != nil {
 		t.Fatalf("member guarantee: %v", err)
 	}
@@ -1044,11 +1044,11 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 }
 
 // TestTenants_MatchDisplayArena pins the display arena of the match reads
-// (ADR-36 phase 4): ?tenant= scopes the per-player settlement columns
+// (ADR-36): ?tenant= scopes the per-player settlement columns
 // (rating staked/earned/after) to the tenant's main arena on both
-// GET /matches/{id} and GET /matches; without the parameter the global arena
-// is used, so a fresh tenant's match (settling nowhere globally) shows no
-// rating there. A missing tenant is a 404.
+// GET /matches/{id} and GET /matches. Since phase 5 the parameter is
+// required — reads are tenant-scoped, there is no global default (400
+// without it) — and a missing tenant is a 404.
 func TestTenants_MatchDisplayArena(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -1110,16 +1110,13 @@ func TestTenants_MatchDisplayArena(t *testing.T) {
 		t.Fatalf("tenant match shows no rating changes: %+v", tenantMatch.Score)
 	}
 
-	// The same match unscoped: the global arena never settled it — zeroed
-	// columns, same match payload otherwise.
-	globalMatch := decodeMatch("/matches/" + url.PathEscape(matchID))
-	if len(globalMatch.Score) != 2 {
-		t.Fatalf("global match score holds %d players, want 2", len(globalMatch.Score))
+	// Since phase 5 the ?tenant= parameter is required: both reads without it
+	// are a bad request — there is no global-arena read default.
+	if code := decodeFeedStatus(t, router, "/matches/"+url.PathEscape(matchID)); code != http.StatusBadRequest {
+		t.Fatalf("match without tenant gave %d, want 400", code)
 	}
-	for pid, p := range globalMatch.Score {
-		if p.RatingEarned != 0 || p.RatingAfter != 0 {
-			t.Fatalf("player %s leaks global columns (%+v), want zeros", pid, p)
-		}
+	if code := decodeFeedStatus(t, router, "/matches"); code != http.StatusBadRequest {
+		t.Fatalf("match list without tenant gave %d, want 400", code)
 	}
 
 	// A missing tenant is a 404 on both reads.
@@ -1202,7 +1199,7 @@ func TestTenants_MarketSettlesIntoTenantArena(t *testing.T) {
 		t.Fatalf("CreateMarket: %v", err)
 	}
 	// The member guarantees and bets on their own win.
-	setBetLimit(t, pool, member, 100)
+	setBetLimit(t, pool, tenantID, member, 100)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, member, 10, 0); err != nil {
 		t.Fatalf("guarantee: %v", err)
 	}
@@ -1330,7 +1327,7 @@ func TestTenants_TournamentWinnerMarketInTenantArena(t *testing.T) {
 	// Guarantee + bet, then cancel the tournament: the net-zero refund rows
 	// land in the tenant's main arena, not the global one.
 	marketSvc := elo.NewMarketService(pool)
-	setBetLimit(t, pool, p1, 100)
+	setBetLimit(t, pool, tenantID, p1, 100)
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), marketID, p1, 10, 0); err != nil {
 		t.Fatalf("guarantee: %v", err)
 	}
@@ -1351,8 +1348,8 @@ func TestTenants_TournamentWinnerMarketInTenantArena(t *testing.T) {
 
 // TestTenants_ClubFeed pins the tenant feed: membership-scoped events across
 // all clubs of the tenant (a mixed match appears even when it does not count
-// into a members_only main arena), tenant-owned markets only, member
-// corrections only, and cursor pagination.
+// into a members_only main arena), tenant-owned markets only, and cursor
+// pagination.
 func TestTenants_ClubFeed(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -1426,20 +1423,14 @@ func TestTenants_ClubFeed(t *testing.T) {
 		t.Fatalf("create blue market: %v", err)
 	}
 
-	// Corrections: the member's is in, the guest's is not.
-	correctionSvc := newCorrectionService(pool)
-	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), member, 5); err != nil {
-		t.Fatalf("member correction: %v", err)
-	}
-	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), guest, 5); err != nil {
-		t.Fatalf("guest correction: %v", err)
-	}
+	// Corrections are gone (ADR-36 phase 5): the feed is match and market
+	// events only.
 
 	tenantFeed := "/tenants/" + tenantID.String() + "/feed"
 	page := decodeFeedPage(t, router, tenantFeed)
 	eventTypes := feedEventTypesOf(page)
-	if !slices.Contains(eventTypes, "match") || !slices.Contains(eventTypes, "market") || !slices.Contains(eventTypes, "correction") {
-		t.Fatalf("tenant feed = %v, want match, market and correction events", eventTypes)
+	if !slices.Contains(eventTypes, "match") || !slices.Contains(eventTypes, "market") {
+		t.Fatalf("tenant feed = %v, want match and market events", eventTypes)
 	}
 	if got := countFeedEventsOfType(page, "match"); got != 2 {
 		t.Fatalf("tenant feed holds %d matches, want both members'", got)
@@ -1447,14 +1438,13 @@ func TestTenants_ClubFeed(t *testing.T) {
 	if got := countFeedEventsOfType(page, "market"); got != 1 {
 		t.Fatalf("tenant feed holds %d markets, want only the tenant-owned one", got)
 	}
-	if got := countFeedEventsOfType(page, "correction"); got != 1 {
-		t.Fatalf("tenant feed holds %d corrections, want only the member's", got)
+	if got := countFeedEventsOfType(page, "correction"); got != 0 {
+		t.Fatalf("tenant feed holds %d corrections, want none (removed in phase 5)", got)
 	}
 
 	// The club filter (ADR-36 phase 4) narrows the community feed to one
 	// club: matches through the club's current members, markets through the
-	// members the market is about, corrections unfiltered (the arena feed's
-	// rule).
+	// members the market is about (the arena feed's rule).
 	clubAFeed := tenantFeed + "?club_id=" + clubA.String()
 	pageA := decodeFeedPage(t, router, clubAFeed)
 	if got := countFeedEventsOfType(pageA, "match"); got != 1 {
@@ -1462,9 +1452,6 @@ func TestTenants_ClubFeed(t *testing.T) {
 	}
 	if got := countFeedEventsOfType(pageA, "market"); got != 1 {
 		t.Fatalf("club A feed holds %d markets, want the one targeting its member", got)
-	}
-	if got := countFeedEventsOfType(pageA, "correction"); got != 1 {
-		t.Fatalf("club A feed holds %d corrections, want the unfiltered member's one", got)
 	}
 	clubBFeed := tenantFeed + "?club_id=" + clubB.String()
 	pageB := decodeFeedPage(t, router, clubBFeed)
@@ -1484,8 +1471,8 @@ func TestTenants_ClubFeed(t *testing.T) {
 		}
 		walkPage = decodeFeedPage(t, router, clubAFeed+"&limit=1&next="+url.QueryEscape(*walkPage.Next))
 	}
-	if walked != 3 {
-		t.Fatalf("club A cursor walk collected %d events, want match + market + correction", walked)
+	if walked != 2 {
+		t.Fatalf("club A cursor walk collected %d events, want match + market", walked)
 	}
 
 	// Cursor pagination: limit=1 walks without repeats; a foreign tenant's

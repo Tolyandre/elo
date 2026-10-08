@@ -72,6 +72,20 @@ func (q *Queries) DeleteArenaSettlementsFromDate(ctx context.Context, arg Delete
 	return err
 }
 
+const deleteGlobalSettlementsFromDate = `-- name: DeleteGlobalSettlementsFromDate :exec
+DELETE FROM arena_settlements
+WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1
+`
+
+// Single delete covering match AND market settlements of the global arena
+// («Синие люди»'s main arena — ADR-36). Other clubs' market rows are removed
+// by the per-market deletes in UnsettleMarketsFromDate, in each market's own
+// arena. Called at the start of RecalculateFrom.
+func (q *Queries) DeleteGlobalSettlementsFromDate(ctx context.Context, date pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteGlobalSettlementsFromDate, date)
+	return err
+}
+
 const getPlayerLatestArenaElo = `-- name: GetPlayerLatestArenaElo :one
 SELECT s.elo_after AS rating
 FROM arena_settlements s

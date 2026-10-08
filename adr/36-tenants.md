@@ -226,20 +226,33 @@ Staged forward, each phase shippable:
   composition change replays the arena's match rows and then re-chains every
   market settlement via the epoch sweep, so the whole ledger is consistent
   with the new history.
-- **Corrections are scheduled for removal (phase 5).** They were a one-off
-  proof of concept — tracing a new player's path up the rating ladder — and
-  are no longer needed; the same insight is recoverable from a rating
-  replay, and deleting them leaves a recalculation by history replay as the
-  only settlement source. Until removal they keep settling into «Синие
-  люди»'s main arena (they have no tenant of their own).
-- **Bet limits will count against the tenant's main arena (phase 5)**,
-  replacing the single global-derived column (fresh-tenant members fall
-  back to the starting Elo until they play there — the per-tenant basis
-  removes that quirk).
+- **Corrections were removed entirely (phase 5, migration 071).** They were a
+  one-off proof of concept — tracing a new player's path up the rating ladder —
+  and are no longer needed; the same insight is recoverable from a rating
+  replay, and deleting them left a recalculation by history replay as the only
+  settlement source. The migration deletes their settlement rows, drops the
+  `corrections` table and marks the global arena stale; a boot step replays it
+  in full (the background worker never drains the global arena). The admin
+  correction endpoint and the feed's correction event kind are gone.
+- **Bet limits count against the tenant's main arena (phase 5)**, replacing
+  the single global-derived `players.bet_limit` column (dropped in migration
+  071): the limit is derived at read time from the player's latest elo in the
+  market's tenant main arena (fresh-tenant members fall back to the starting
+  Elo until they play there — the per-tenant basis removes that quirk).
 - **The `GlobalArenaID` fallback is retired (phase 5).** Reads stop
-  defaulting to the global arena when no tenant is given; when the frontend
-  cannot resolve the current tenant (no localStorage history — rare, since
-  every link carries `?tenant=`, including a URL copied from the browser),
-  it prompts for a tenant instead of silently showing the global arena.
+  defaulting to the global arena when no tenant is given: `?tenant=` is
+  required on the match reads, the player stats and the player list, and a
+  missing parameter is a 400. When the frontend cannot resolve the current
+  tenant (no localStorage history — rare, since every link carries
+  `?tenant=`, including a URL copied from the browser), it prompts for a
+  tenant instead of silently showing the global arena.
+- **Phase 5 shipped the admin UI** under `/admin/tenants`: the list with
+  tenant creation, and the settings page — name, the openness pair, club
+  composition, and the main-arena settings editor (starting rating and
+  leagues, the arena form's editor reused; `PATCH /tenants/{id}` accepts the
+  settings document and recalculates the arena in the same transaction).
+  Member stints stay internal logic: the settings page does not show them;
+  instead the admin club page renders the stint history as audit-style items
+  (`GET /clubs/{id}/members/history`).
 - The dev seed keeps its default club as the «Синие люди» tenant's club and
   seeds the tenant itself.

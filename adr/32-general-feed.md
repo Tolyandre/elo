@@ -6,6 +6,10 @@ lazily nested under match cards — becomes a general **feed**: one server-side
 merged, cursor-paginated stream of the events an arena's rating is built from,
 designed to carry non-rating content later (cooperative matches, posts).
 
+**Update (ADR-36 phase 5):** the feed's correction event kind is removed
+together with the corrections feature — feeds merge match and market events
+only.
+
 ## Problem
 
 - The feed was assembled **client-side** from two endpoints

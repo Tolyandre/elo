@@ -44,7 +44,7 @@ func TestPlaceBet_ExpectedProbabilityValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so the players have a bet limit.

@@ -329,9 +329,8 @@ func arenaRankPoint(p elo.ArenaPlayer, ok bool) ArenaRankPoint {
 
 // Feed event discriminators (ADR-32).
 const (
-	feedEventMatch      = "match"
-	feedEventCorrection = "correction"
-	feedEventMarket     = "market"
+	feedEventMatch  = "match"
+	feedEventMarket = "market"
 )
 
 // arenaFeedCursor is the pagination token for the arena and home feeds: the
@@ -383,9 +382,9 @@ func decodeArenaFeedCursor(token string) (arenaFeedCursor, pgtype.Timestamptz, e
 // (GET /tenants/{id}/feed, ADR-36) endpoints (ADR-32).
 type feedRequest struct {
 	arenaID id.ID
-	// includeSettlements merges the correction and market-resolution events
-	// into the stream. They settle only into the global arena (ADR-24), so it
-	// is the only arena whose feed carries them.
+	// includeSettlements merges the market-resolution events into the stream.
+	// They settle only into the global arena (ADR-24), so it is the only arena
+	// whose feed carries them.
 	includeSettlements bool
 	// includeCoop merges coop matches (ADR-33) into the stream. They belong to
 	// no arena (the membership function rejects their mode), so only the home
@@ -515,24 +514,17 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 	}
 
 	matchIDs := make([]id.ID, 0, len(keys))
-	correctionIDs := make([]id.ID, 0)
 	marketIDs := make([]id.ID, 0)
 	for _, k := range keys {
 		switch k.EventType {
 		case feedEventMatch:
 			matchIDs = append(matchIDs, k.ID)
-		case feedEventCorrection:
-			correctionIDs = append(correctionIDs, k.ID)
 		case feedEventMarket:
 			marketIDs = append(marketIDs, k.ID)
 		}
 	}
 
 	matches, err := s.feedMatches(ctx, req.arenaID, matchIDs)
-	if err != nil {
-		return FeedPage{}, err
-	}
-	corrections, err := s.feedCorrections(ctx, correctionIDs)
 	if err != nil {
 		return FeedPage{}, err
 	}
@@ -551,14 +543,6 @@ func (s *StrictServer) serveFeedPage(ctx context.Context, req feedRequest) (Feed
 				continue
 			}
 			if err := event.FromFeedMatchEvent(FeedMatchEvent{Type: FeedMatchEventTypeMatch, Data: m}); err != nil {
-				return FeedPage{}, err
-			}
-		case feedEventCorrection:
-			c, ok := corrections[k.ID]
-			if !ok {
-				continue
-			}
-			if err := event.FromFeedCorrectionEvent(FeedCorrectionEvent{Type: FeedCorrectionEventTypeCorrection, Data: c}); err != nil {
 				return FeedPage{}, err
 			}
 		case feedEventMarket:
@@ -671,28 +655,6 @@ func (s *StrictServer) feedMatches(ctx context.Context, arenaID id.ID, ids []id.
 			match.CalculatorKind = &kind
 		}
 		out[mid] = match
-	}
-	return out, nil
-}
-
-// feedCorrections fetches the payload rows for the page's correction events.
-func (s *StrictServer) feedCorrections(ctx context.Context, ids []id.ID) (map[id.ID]Correction, error) {
-	out := make(map[id.ID]Correction, len(ids))
-	if len(ids) == 0 {
-		return out, nil
-	}
-	rows, err := s.api.CorrectionService.ListCorrectionsByIDs(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range rows {
-		out[r.ID] = Correction{
-			Id:         Base58ID(r.ID),
-			PlayerId:   Base58ID(r.PlayerID),
-			PlayerName: r.PlayerName,
-			Diff:       r.Diff,
-			Date:       r.Date.Time,
-		}
 	}
 	return out, nil
 }

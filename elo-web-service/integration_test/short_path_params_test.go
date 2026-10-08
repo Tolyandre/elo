@@ -55,7 +55,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create market: %v", err)
 	}
-	setBetLimit(t, pool, playerA.ID, 16)
+	setBetLimit(t, pool, blueMenTenantID, playerA.ID, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, playerA.ID)
 	_ = token
 
@@ -95,7 +95,7 @@ func TestShortPathAndQueryParams(t *testing.T) {
 	// Query filters carry wire-form ids too.
 	shortGame := string(gameRow.ID.Base58())
 	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, httptest.NewRequest(http.MethodGet, "/matches?game_id="+shortGame, nil))
+	router.ServeHTTP(w3, httptest.NewRequest(http.MethodGet, "/matches?tenant="+blueMenTenantUUID+"&game_id="+shortGame, nil))
 	if w3.Code != http.StatusOK {
 		t.Fatalf("GET /matches?game_id={short id}: %d: %s (want 200)", w3.Code, w3.Body.String())
 	}

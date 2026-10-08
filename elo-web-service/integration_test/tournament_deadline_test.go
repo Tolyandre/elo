@@ -89,7 +89,7 @@ func TestTournament_DeadlineAutoCancel(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post match: %d %s", w.Code, w.Body.String())
 	}
-	w := doJSON(t, router, http.MethodGet, "/matches/"+mid, "", "")
+	w := doJSON(t, router, http.MethodGet, "/matches/"+mid+"?tenant="+blueMenTenantUUID, "", "")
 	var mr struct {
 		Data struct {
 			Tournament *string `json:"tournament"`

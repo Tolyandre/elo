@@ -2,6 +2,7 @@ package elo
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -17,39 +18,26 @@ func CalcBetLimit(playerElo float64, settings EloSettings) float64 {
 	return settings.K / (1 + math.Pow(10, (settings.StartingElo-playerElo)/settings.D))
 }
 
-// RecalculateBetLimits updates bet_limit for the given players using current Elo settings.
-// Must be called within a transaction (q is a transactional *db.Queries).
-func RecalculateBetLimits(ctx context.Context, q *db.Queries, playerIDs []id.ID) error {
-	if len(playerIDs) == 0 {
-		return nil
-	}
-
+// BetLimitForPlayer derives the player's bet limit against the given arena —
+// since ADR-36 phase 5 the market's tenant main arena, not a stored global
+// column: current settings, the player's latest elo in that arena, falling
+// back to the starting elo until they have played there.
+func BetLimitForPlayer(ctx context.Context, q *db.Queries, arenaID id.ID, playerID id.ID) (float64, error) {
 	row, err := q.GetEloSettingsForDate(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true})
 	if err != nil {
-		return err
+		return 0, fmt.Errorf("get elo settings: %w", err)
 	}
 	settings := EloSettingsFromDB(row)
 
-	for _, playerID := range playerIDs {
-		var playerElo float64
-		elo, err := q.GetPlayerLatestArenaElo(ctx, db.GetPlayerLatestArenaEloParams{
-			ArenaID:  GlobalArenaID,
-			PlayerID: playerID,
-		})
-		if err != nil {
-			playerElo = settings.StartingElo
-		} else {
-			playerElo = elo
-		}
-
-		limit := CalcBetLimit(playerElo, settings)
-		if err := q.UpdatePlayerBetLimit(ctx, db.UpdatePlayerBetLimitParams{
-			ID:       playerID,
-			BetLimit: limit,
-		}); err != nil {
-			return err
-		}
+	playerElo := settings.StartingElo
+	if elo, err := q.GetPlayerLatestArenaElo(ctx, db.GetPlayerLatestArenaEloParams{
+		ArenaID:  arenaID,
+		PlayerID: playerID,
+	}); err == nil {
+		playerElo = elo
+	} else if !db.IsNoRows(err) {
+		return 0, fmt.Errorf("get player arena elo: %w", err)
 	}
 
-	return nil
+	return CalcBetLimit(playerElo, settings), nil
 }

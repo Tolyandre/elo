@@ -140,6 +140,10 @@ type IMatchService interface {
 	// transaction, honoring the main-arena openness at every match date.
 	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
 
+	// ReplayStaleGlobal drains the global arena at boot when a migration
+	// marked it stale (ADR-36 phase 5); a no-op otherwise.
+	ReplayStaleGlobal(ctx context.Context) error
+
 	// DeleteMarketAndRecalculate hard-deletes an open market and recalculates
 	// Elo from the market's created_at date. Returns ErrMarketNotOpen if the
 	// market is already resolved or cancelled.
@@ -376,11 +380,6 @@ func (s *MatchService) AddMatch(ctx context.Context, gameID id.ID, playerScores 
 				s.calculateAndStoreEloWithScores,
 			); err != nil {
 				return db.Match{}, err
-			}
-
-			playerIDs := playerIDsOf(playerScores)
-			if err := RecalculateBetLimits(ctx, q, playerIDs); err != nil {
-				return db.Match{}, fmt.Errorf("recalculate bet limits: %w", err)
 			}
 		} else {
 			// A coop match settles nothing (ADR-33): no Elo, no market
@@ -742,24 +741,49 @@ func (s *MatchService) recalculateEloFromDate(ctx context.Context, q *db.Queries
 }
 
 // IGlobalReplay is the TenantService's handle for the full global-arena replay
-// (ADR-36): a main-arena openness change on the converted global arena must
-// re-settle the whole history in the caller's transaction — the global arena
-// is never drained by the background worker (that would lose its market and
-// correction settlements).
+// (ADR-36): a main-arena openness, composition or settings change on the
+// converted global arena must re-settle the whole history in the caller's
+// transaction — the global arena is never drained by the background worker
+// (that would lose its market settlements).
 type IGlobalReplay interface {
 	RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error
 }
 
 // RecalculateGlobalWithinTx replays the global arena's settlements (matches,
-// corrections, markets) from startDate — the settlement gate inside respects
+// markets) from startDate — the settlement gate inside respects
 // the tenant's openness mode at every match date.
 func (s *MatchService) RecalculateGlobalWithinTx(ctx context.Context, q *db.Queries, startDate time.Time) error {
 	return s.recalculateEloFromDate(ctx, q, startDate)
 }
 
+// ReplayStaleGlobal drains the global arena when a migration marked it stale
+// (ADR-36 phase 5: migration 071 deleted the correction settlements, so the
+// arena's chains had to be rebuilt by history replay). The background worker
+// never drains the global arena — it is maintained transactionally by the
+// settlement path — so boot does it here: a full in-transaction replay, then
+// the stale mark clears. A no-op when the arena is not stale.
+func (s *MatchService) ReplayStaleGlobal(ctx context.Context) error {
+	row, err := s.Queries.GetArena(ctx, GlobalArenaID)
+	if err != nil {
+		return fmt.Errorf("get global arena: %w", err)
+	}
+	if !row.StaleAt.Valid {
+		return nil
+	}
+	mark := row.StaleAt
+	return runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if err := s.RecalculateGlobalWithinTx(ctx, q, time.Time{}); err != nil {
+			return err
+		}
+		// Conditional clear: a re-mark during the run leaves the arena stale
+		// (staleness cancellation, ADR-24).
+		return q.ClearArenaStale(ctx, db.ClearArenaStaleParams{ID: GlobalArenaID, StaleAt: mark})
+	})
+}
+
 // lockAndGetPrevElos locks the match's players in sorted order and returns
-// their prior state in the global arena — the only arena the transactional
-// settlement path (matches, markets, corrections) maintains (ADR-24).
+// their prior state in the global arena — the arena the transactional
+// settlement path (matches, markets) maintains (ADR-24).
 //
 // Since the attribution phase (ADR-36) the global arena is «Синие люди»'s
 // main arena: the tenant's openness mode, evaluated at the match date against

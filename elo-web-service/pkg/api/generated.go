@@ -234,21 +234,6 @@ func (e EloRankLeague) Valid() bool {
 	}
 }
 
-// Defines values for FeedCorrectionEventType.
-const (
-	FeedCorrectionEventTypeCorrection FeedCorrectionEventType = "correction"
-)
-
-// Valid indicates whether the value is a known member of the FeedCorrectionEventType enum.
-func (e FeedCorrectionEventType) Valid() bool {
-	switch e {
-	case FeedCorrectionEventTypeCorrection:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for FeedMarketEventType.
 const (
 	FeedMarketEventTypeMarket FeedMarketEventType = "market"
@@ -807,21 +792,6 @@ func (e TournamentsBracketPlanFacetsEliminations) Valid() bool {
 	case TournamentsBracketPlanFacetsEliminationsDouble:
 		return true
 	case TournamentsBracketPlanFacetsEliminationsSingle:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for CreatePlayerCorrectionJSONBodyDiscriminator.
-const (
-	CreatePlayerCorrectionJSONBodyDiscriminatorCorrection CreatePlayerCorrectionJSONBodyDiscriminator = "correction"
-)
-
-// Valid indicates whether the value is a known member of the CreatePlayerCorrectionJSONBodyDiscriminator enum.
-func (e CreatePlayerCorrectionJSONBodyDiscriminator) Valid() bool {
-	switch e {
-	case CreatePlayerCorrectionJSONBodyDiscriminatorCorrection:
 		return true
 	default:
 		return false
@@ -1410,13 +1380,14 @@ type Club struct {
 	TenantId *Base58ID `json:"tenant_id,omitempty"`
 }
 
-// Correction defines model for Correction.
-type Correction struct {
-	Date time.Time `json:"date"`
-	Diff float64   `json:"diff"`
+// ClubMemberStint One membership stint of a club (ADR-36).
+type ClubMemberStint struct {
+	// ClubId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
+	ClubId   Base58ID  `json:"club_id"`
+	JoinedAt time.Time `json:"joined_at"`
 
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
+	// LeftAt null while the stint is active.
+	LeftAt *time.Time `json:"left_at"`
 
 	// PlayerId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
 	PlayerId   Base58ID `json:"player_id"`
@@ -1460,15 +1431,6 @@ type FavoriteGames struct {
 	// Recent «Недавние» — most recently played first
 	Recent []RecentGame `json:"recent"`
 }
-
-// FeedCorrectionEvent An admin rating correction (global arena only, ADR-24).
-type FeedCorrectionEvent struct {
-	Data Correction              `json:"data"`
-	Type FeedCorrectionEventType `json:"type"`
-}
-
-// FeedCorrectionEventType defines model for FeedCorrectionEvent.Type.
-type FeedCorrectionEventType string
 
 // FeedEvent One feed event (ADR-32). New content kinds (posts) extend the union with another event schema — the envelope never changes.
 type FeedEvent struct {
@@ -1651,9 +1613,8 @@ type GameTag struct {
 
 // GlobalReplayReport defines model for GlobalReplayReport.
 type GlobalReplayReport struct {
-	ChangedPlayers      []PlayerStateChange `json:"changed_players"`
-	CorrectionsReplayed int64               `json:"corrections_replayed"`
-	MatchesReplayed     int64               `json:"matches_replayed"`
+	ChangedPlayers  []PlayerStateChange `json:"changed_players"`
+	MatchesReplayed int64               `json:"matches_replayed"`
 }
 
 // HistoryRank defines model for HistoryRank.
@@ -2522,18 +2483,6 @@ type TournamentsBracketPlanFacets struct {
 // TournamentsBracketPlanFacetsEliminations defines model for TournamentsBracketPlanFacets.Eliminations.
 type TournamentsBracketPlanFacetsEliminations string
 
-// CreatePlayerCorrectionJSONBody defines parameters for CreatePlayerCorrection.
-type CreatePlayerCorrectionJSONBody struct {
-	Diff          float32                                     `json:"diff"`
-	Discriminator CreatePlayerCorrectionJSONBodyDiscriminator `json:"discriminator"`
-
-	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	Id Base58ID `json:"id"`
-}
-
-// CreatePlayerCorrectionJSONBodyDiscriminator defines parameters for CreatePlayerCorrection.
-type CreatePlayerCorrectionJSONBodyDiscriminator string
-
 // ListArenasParams defines parameters for ListArenas.
 type ListArenasParams struct {
 	// Kind games returns every user-created arena except camps and the global one; camps returns only camp arenas (ADR-27); tournaments returns only the tournament arenas (empty until ADR-26).
@@ -2741,8 +2690,8 @@ type ListMatchesParams struct {
 	// TournamentId Filter to matches counted for the tournament's bracket
 	TournamentId *string `form:"tournament_id,omitempty" json:"tournament_id,omitempty"`
 
-	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. Continuation requests must pass the same tenant — the cursor token does not carry it.
-	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
+	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Continuation requests must pass the same tenant — the cursor token does not carry it. Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
 
 	// Next Cursor token from previous page's "next" field
 	Next *string `form:"next,omitempty" json:"next,omitempty"`
@@ -2792,8 +2741,8 @@ type AddMatchJSONBody struct {
 
 // GetMatchByIdParams defines parameters for GetMatchById.
 type GetMatchByIdParams struct {
-	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used.
-	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
+	// Tenant Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
 }
 
 // UpdateMatchJSONBody defines parameters for UpdateMatch.
@@ -2830,6 +2779,12 @@ type UpdateMatchJSONBody struct {
 	SkipTournamentLink *bool `json:"skip_tournament_link,omitempty"`
 }
 
+// ListPlayersParams defines parameters for ListPlayers.
+type ListPlayersParams struct {
+	// Tenant The tenant whose main arena the ratings and leagues are read from (ADR-36). Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
+}
+
 // CreatePlayerJSONBody defines parameters for CreatePlayer.
 type CreatePlayerJSONBody struct {
 	// Id Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
@@ -2844,8 +2799,8 @@ type PatchPlayerJSONBody struct {
 
 // GetPlayerStatsParams defines parameters for GetPlayerStats.
 type GetPlayerStatsParams struct {
-	// Tenant Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Without the parameter the global arena is used. The per-game match counts ("Частые игры") are tenant-independent either way.
-	Tenant *string `form:"tenant,omitempty" json:"tenant,omitempty"`
+	// Tenant Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. The per-game match counts ("Частые игры") are tenant-independent either way. Naming no existing tenant is a 404.
+	Tenant string `form:"tenant" json:"tenant"`
 }
 
 // DeleteSettingsJSONBody defines parameters for DeleteSettings.
@@ -2915,6 +2870,9 @@ type CreateTenantJSONBodyTournamentsOpenness string
 type PatchTenantJSONBody struct {
 	ArenaMembershipMode *PatchTenantJSONBodyArenaMembershipMode `json:"arena_membership_mode,omitempty"`
 	Name                *string                                 `json:"name,omitempty"`
+
+	// Settings Versioned arena settings document (ADR-24), validated server-side against the JSON Schema in pkg/arenasettings. Shape v1: {starting_rating: number, leagues: [{kind: newbie|amateur|elite, ...params}]}.
+	Settings            *ArenaSettings                          `json:"settings,omitempty"`
 	TournamentsOpenness *PatchTenantJSONBodyTournamentsOpenness `json:"tournaments_openness,omitempty"`
 }
 
@@ -3044,9 +3002,6 @@ type StartTournamentJSONBody struct {
 type PatchUserJSONBody struct {
 	CanEdit bool `json:"can_edit"`
 }
-
-// CreatePlayerCorrectionJSONRequestBody defines body for CreatePlayerCorrection for application/json ContentType.
-type CreatePlayerCorrectionJSONRequestBody CreatePlayerCorrectionJSONBody
 
 // CreateArenaJSONRequestBody defines body for CreateArena for application/json ContentType.
 type CreateArenaJSONRequestBody = ArenaInput
@@ -3483,40 +3438,6 @@ func (t *FeedEvent) MergeFeedMatchEvent(v FeedMatchEvent) error {
 	return err
 }
 
-// AsFeedCorrectionEvent returns the union data inside the FeedEvent as a FeedCorrectionEvent
-func (t FeedEvent) AsFeedCorrectionEvent() (FeedCorrectionEvent, error) {
-	var body FeedCorrectionEvent
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromFeedCorrectionEvent overwrites any union data inside the FeedEvent as the provided FeedCorrectionEvent
-func (t *FeedEvent) FromFeedCorrectionEvent(v FeedCorrectionEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"correction"}`))
-	t.union = b
-	return err
-}
-
-// MergeFeedCorrectionEvent performs a merge with any union data inside the FeedEvent, using the provided FeedCorrectionEvent
-func (t *FeedEvent) MergeFeedCorrectionEvent(v FeedCorrectionEvent) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	b, err = runtime.JSONMerge(b, []byte(`{"type":"correction"}`))
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
 // AsFeedMarketEvent returns the union data inside the FeedEvent as a FeedMarketEvent
 func (t FeedEvent) AsFeedMarketEvent() (FeedMarketEvent, error) {
 	var body FeedMarketEvent
@@ -3565,8 +3486,6 @@ func (t FeedEvent) ValueByDiscriminator() (interface{}, error) {
 		return nil, err
 	}
 	switch discriminator {
-	case "correction":
-		return t.AsFeedCorrectionEvent()
 	case "market":
 		return t.AsFeedMarketEvent()
 	case "match":
@@ -3914,10 +3833,7 @@ func (t *SubmitTableJSONBody) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// CreatePlayerCorrection Apply a manual rating correction for a player
-	// (POST /admin/players/{id}/corrections)
-	CreatePlayerCorrection(c *gin.Context, id string)
-	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches, corrections and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
+	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
 	// (POST /admin/update-arenas)
 	UpdateArenas(c *gin.Context)
 	// ListArenas List arenas, optionally narrowed to a game or a tournament
@@ -3935,7 +3851,7 @@ type ServerInterface interface {
 	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(c *gin.Context, id string)
-	// ListArenaFeed The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+	// ListArenaFeed The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
 	// (GET /arenas/{id}/feed)
 	ListArenaFeed(c *gin.Context, id string, params ListArenaFeedParams)
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
@@ -3977,6 +3893,9 @@ type ServerInterface interface {
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(c *gin.Context, id string)
+	// ListClubMemberHistory The club's membership stint history (ADR-36)
+	// (GET /clubs/{id}/members/history)
+	ListClubMemberHistory(c *gin.Context, id string)
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(c *gin.Context, id string, playerId string)
@@ -4057,7 +3976,7 @@ type ServerInterface interface {
 	GetPing(c *gin.Context)
 	// ListPlayers List all players with Elo rankings
 	// (GET /players)
-	ListPlayers(c *gin.Context)
+	ListPlayers(c *gin.Context, params ListPlayersParams)
 	// CreatePlayer Create a new player
 	// (POST /players)
 	CreatePlayer(c *gin.Context)
@@ -4130,7 +4049,7 @@ type ServerInterface interface {
 	// GetTenant Get a tenant by ID
 	// (GET /tenants/{id})
 	GetTenant(c *gin.Context, id string)
-	// PatchTenant Update a tenant (name, openness settings)
+	// PatchTenant Update a tenant (name, openness settings, main-arena settings)
 	// (PATCH /tenants/{id})
 	PatchTenant(c *gin.Context, id string)
 	// SetTenantClubs Replace the tenant's club composition
@@ -4200,31 +4119,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(c *gin.Context)
-
-// CreatePlayerCorrection operation middleware
-func (siw *ServerInterfaceWrapper) CreatePlayerCorrection(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreatePlayerCorrection(c, id)
-}
 
 // UpdateArenas operation middleware
 func (siw *ServerInterfaceWrapper) UpdateArenas(c *gin.Context) {
@@ -4725,6 +4619,31 @@ func (siw *ServerInterfaceWrapper) AddClubMember(c *gin.Context) {
 	}
 
 	siw.Handler.AddClubMember(c, id)
+}
+
+// ListClubMemberHistory operation middleware
+func (siw *ServerInterfaceWrapper) ListClubMemberHistory(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListClubMemberHistory(c, id)
 }
 
 // RemoveClubMember operation middleware
@@ -5272,9 +5191,9 @@ func (siw *ServerInterfaceWrapper) ListMatches(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "tenant" -------------
+	// ------------- Required query parameter "tenant" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
 		return
@@ -5337,9 +5256,9 @@ func (siw *ServerInterfaceWrapper) GetMatchById(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetMatchByIdParams
 
-	// ------------- Optional query parameter "tenant" -------------
+	// ------------- Required query parameter "tenant" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
 		return
@@ -5421,6 +5340,20 @@ func (siw *ServerInterfaceWrapper) GetPing(c *gin.Context) {
 // ListPlayers operation middleware
 func (siw *ServerInterfaceWrapper) ListPlayers(c *gin.Context) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlayersParams
+
+	// ------------- Required query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -5428,7 +5361,7 @@ func (siw *ServerInterfaceWrapper) ListPlayers(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListPlayers(c)
+	siw.Handler.ListPlayers(c, params)
 }
 
 // CreatePlayer operation middleware
@@ -5525,9 +5458,9 @@ func (siw *ServerInterfaceWrapper) GetPlayerStats(c *gin.Context) {
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPlayerStatsParams
 
-	// ------------- Optional query parameter "tenant" -------------
+	// ------------- Required query parameter "tenant" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tenant", c.Request.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tenant: %w", err), http.StatusBadRequest)
 		return
@@ -6551,7 +6484,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.POST(options.BaseURL+"/admin/players/:id/corrections", wrapper.CreatePlayerCorrection)
 	router.POST(options.BaseURL+"/admin/update-arenas", wrapper.UpdateArenas)
 	router.GET(options.BaseURL+"/arenas", wrapper.ListArenas)
 	router.POST(options.BaseURL+"/arenas", wrapper.CreateArena)
@@ -6572,6 +6504,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/clubs/:id", wrapper.GetClub)
 	router.PATCH(options.BaseURL+"/clubs/:id", wrapper.PatchClub)
 	router.POST(options.BaseURL+"/clubs/:id/members", wrapper.AddClubMember)
+	router.GET(options.BaseURL+"/clubs/:id/members/history", wrapper.ListClubMemberHistory)
 	router.DELETE(options.BaseURL+"/clubs/:id/members/:playerId", wrapper.RemoveClubMember)
 	router.GET(options.BaseURL+"/feed", wrapper.ListHomeFeed)
 	router.GET(options.BaseURL+"/games", wrapper.ListGames)
@@ -6643,57 +6576,6 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/tournaments/:id/start", wrapper.StartTournament)
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers)
 	router.PATCH(options.BaseURL+"/users/:userId", wrapper.PatchUser)
-}
-
-type CreatePlayerCorrectionRequestObject struct {
-	Id   string `json:"id"`
-	Body *CreatePlayerCorrectionJSONRequestBody
-}
-
-type CreatePlayerCorrectionResponseObject interface {
-	VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error
-}
-
-type CreatePlayerCorrection200JSONResponse ApiSuccessMessage
-
-func (response CreatePlayerCorrection200JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreatePlayerCorrection400JSONResponse ApiError
-
-func (response CreatePlayerCorrection400JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreatePlayerCorrection500JSONResponse ApiError
-
-func (response CreatePlayerCorrection500JSONResponse) VisitCreatePlayerCorrectionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
 }
 
 type UpdateArenasRequestObject struct {
@@ -7710,6 +7592,45 @@ func (response AddClubMember403JSONResponse) VisitAddClubMemberResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClubMemberHistoryRequestObject struct {
+	Id string `json:"id"`
+}
+
+type ListClubMemberHistoryResponseObject interface {
+	VisitListClubMemberHistoryResponse(w http.ResponseWriter) error
+}
+
+type ListClubMemberHistory200JSONResponse struct {
+	Data   []ClubMemberStint `json:"data"`
+	Status string            `json:"status"`
+}
+
+func (response ListClubMemberHistory200JSONResponse) VisitListClubMemberHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListClubMemberHistory400JSONResponse ApiError
+
+func (response ListClubMemberHistory400JSONResponse) VisitListClubMemberHistoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9391,6 +9312,7 @@ func (response GetPing200JSONResponse) VisitGetPingResponse(w http.ResponseWrite
 }
 
 type ListPlayersRequestObject struct {
+	Params ListPlayersParams
 }
 
 type ListPlayersResponseObject interface {
@@ -9410,6 +9332,34 @@ func (response ListPlayers200JSONResponse) VisitListPlayersResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlayers400JSONResponse ApiError
+
+func (response ListPlayers400JSONResponse) VisitListPlayersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPlayers404JSONResponse ApiError
+
+func (response ListPlayers404JSONResponse) VisitListPlayersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -12379,10 +12329,7 @@ func (response PatchUser404JSONResponse) VisitPatchUserResponse(w http.ResponseW
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// CreatePlayerCorrection Apply a manual rating correction for a player
-	// (POST /admin/players/{id}/corrections)
-	CreatePlayerCorrection(ctx context.Context, request CreatePlayerCorrectionRequestObject) (CreatePlayerCorrectionResponseObject, error)
-	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches, corrections and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
+	// UpdateArenas Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page.
 	// (POST /admin/update-arenas)
 	UpdateArenas(ctx context.Context, request UpdateArenasRequestObject) (UpdateArenasResponseObject, error)
 	// ListArenas List arenas, optionally narrowed to a game or a tournament
@@ -12400,7 +12347,7 @@ type StrictServerInterface interface {
 	// UpdateArena Update a user-created arena's name, filter/dates and settings (editor only)
 	// (PATCH /arenas/{id})
 	UpdateArena(ctx context.Context, request UpdateArenaRequestObject) (UpdateArenaResponseObject, error)
-	// ListArenaFeed The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+	// ListArenaFeed The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
 	// (GET /arenas/{id}/feed)
 	ListArenaFeed(ctx context.Context, request ListArenaFeedRequestObject) (ListArenaFeedResponseObject, error)
 	// GetArenaPlayers Arena players ranked, with precalculated match and medal stats
@@ -12442,6 +12389,9 @@ type StrictServerInterface interface {
 	// AddClubMember Add a player to a club
 	// (POST /clubs/{id}/members)
 	AddClubMember(ctx context.Context, request AddClubMemberRequestObject) (AddClubMemberResponseObject, error)
+	// ListClubMemberHistory The club's membership stint history (ADR-36)
+	// (GET /clubs/{id}/members/history)
+	ListClubMemberHistory(ctx context.Context, request ListClubMemberHistoryRequestObject) (ListClubMemberHistoryResponseObject, error)
 	// RemoveClubMember Remove a player from a club
 	// (DELETE /clubs/{id}/members/{playerId})
 	RemoveClubMember(ctx context.Context, request RemoveClubMemberRequestObject) (RemoveClubMemberResponseObject, error)
@@ -12595,7 +12545,7 @@ type StrictServerInterface interface {
 	// GetTenant Get a tenant by ID
 	// (GET /tenants/{id})
 	GetTenant(ctx context.Context, request GetTenantRequestObject) (GetTenantResponseObject, error)
-	// PatchTenant Update a tenant (name, openness settings)
+	// PatchTenant Update a tenant (name, openness settings, main-arena settings)
 	// (PATCH /tenants/{id})
 	PatchTenant(ctx context.Context, request PatchTenantRequestObject) (PatchTenantResponseObject, error)
 	// SetTenantClubs Replace the tenant's club composition
@@ -12712,39 +12662,6 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictGinServerOptions
-}
-
-// CreatePlayerCorrection operation middleware
-func (sh *strictHandler) CreatePlayerCorrection(ctx *gin.Context, id string) {
-	var request CreatePlayerCorrectionRequestObject
-
-	request.Id = id
-
-	var body CreatePlayerCorrectionJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreatePlayerCorrection(ctx, request.(CreatePlayerCorrectionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreatePlayerCorrection")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreatePlayerCorrectionResponseObject); ok {
-		if err := validResponse.VisitCreatePlayerCorrectionResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
 }
 
 // UpdateArenas operation middleware
@@ -13287,6 +13204,32 @@ func (sh *strictHandler) AddClubMember(ctx *gin.Context, id string) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(AddClubMemberResponseObject); ok {
 		if err := validResponse.VisitAddClubMemberResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListClubMemberHistory operation middleware
+func (sh *strictHandler) ListClubMemberHistory(ctx *gin.Context, id string) {
+	var request ListClubMemberHistoryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListClubMemberHistory(ctx, request.(ListClubMemberHistoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListClubMemberHistory")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListClubMemberHistoryResponseObject); ok {
+		if err := validResponse.VisitListClubMemberHistoryResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -14016,8 +13959,10 @@ func (sh *strictHandler) GetPing(ctx *gin.Context) {
 }
 
 // ListPlayers operation middleware
-func (sh *strictHandler) ListPlayers(ctx *gin.Context) {
+func (sh *strictHandler) ListPlayers(ctx *gin.Context, params ListPlayersParams) {
 	var request ListPlayersRequestObject
+
+	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListPlayers(ctx, request.(ListPlayersRequestObject))

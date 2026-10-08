@@ -591,10 +591,6 @@ WITH events AS (
           $9::uuid IS NULL OR m.game_id = $9::uuid
       )
     UNION ALL
-    SELECT c.id, c.date, 'correction'::text
-    FROM corrections c
-    WHERE $10::bool
-    UNION ALL
     -- Every market appears once: an active market (open or betting-locked)
     -- sorts at its creation moment, a settled one (resolved or cancelled —
     -- cancellation rides only on the status column) at its resolution
@@ -711,15 +707,14 @@ type ListArenaFeedEventsRow struct {
 	EventType string             `json:"event_type"`
 }
 
-// One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
-// correction and market events. A market enters at its creation moment while
+// One page of the arena feed (ADR-32): a merged, date-ordered stream of match
+// and market events. A market enters at its creation moment while
 // it is active (open/betting_closed) and re-enters at its resolution moment
 // once settled, so a match-triggered resolution sits right after its match.
-// Corrections and market events settle only into the global arena (ADR-24),
-// so their branches join the union only when the caller passes
-// include_settlements. The player/club/game
-// filters apply to the match and market branches; corrections stay
-// unfiltered. The cursor is the last returned (sort_date, event_type, id)
+// Market events settle only into the global arena (ADR-24), so that branch
+// joins the union only when the caller passes include_settlements. The
+// player/club/game filters apply to both branches. The cursor is the last
+// returned (sort_date, event_type, id)
 // tuple; the token carries the filters, so continuation requests pass only
 // the token.
 func (q *Queries) ListArenaFeedEvents(ctx context.Context, arg ListArenaFeedEventsParams) ([]ListArenaFeedEventsRow, error) {
@@ -1583,5 +1578,23 @@ type UpdateArenaNameParams struct {
 // Name sync for auto-managed arenas when their game is renamed.
 func (q *Queries) UpdateArenaName(ctx context.Context, arg UpdateArenaNameParams) error {
 	_, err := q.db.Exec(ctx, updateArenaName, arg.ID, arg.Name)
+	return err
+}
+
+const updateArenaSettings = `-- name: UpdateArenaSettings :exec
+UPDATE arenas SET settings = $2, settings_schema_version = $3 WHERE id = $1
+`
+
+type UpdateArenaSettingsParams struct {
+	ID                    id.ID           `json:"id"`
+	Settings              json.RawMessage `json:"settings"`
+	SettingsSchemaVersion int32           `json:"settings_schema_version"`
+}
+
+// Settings-only update for the system-managed main arenas: the tenant's main
+// arena settings document is edited through the tenant (ADR-36 phase 5) —
+// arena PATCH on it is a 409.
+func (q *Queries) UpdateArenaSettings(ctx context.Context, arg UpdateArenaSettingsParams) error {
+	_, err := q.db.Exec(ctx, updateArenaSettings, arg.ID, arg.Settings, arg.SettingsSchemaVersion)
 	return err
 }

@@ -28,13 +28,15 @@ MatchesCollection:
         description: Filter to matches counted for the tournament's bracket
       - name: tenant
         in: query
+        required: true
         schema:
           type: string
         description: >-
           Scope the per-player settlement columns (rating staked/earned/after)
-          to the tenant's main arena (ADR-36). Without the parameter the
-          global arena is used. Continuation requests must pass the same
-          tenant — the cursor token does not carry it.
+          to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 —
+          reads are tenant-scoped, there is no global default. Continuation
+          requests must pass the same tenant — the cursor token does not carry
+          it. Naming no existing tenant is a 404.
       - name: next
         in: query
         schema:
@@ -214,12 +216,14 @@ MatchItem:
           type: string
       - name: tenant
         in: query
+        required: true
         schema:
           type: string
         description: >-
           Scope the per-player settlement columns (rating staked/earned/after)
-          to the tenant's main arena (ADR-36). Without the parameter the
-          global arena is used.
+          to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 —
+          reads are tenant-scoped, there is no global default. Naming no
+          existing tenant is a 404.
     responses:
       "200":
         description: Match details

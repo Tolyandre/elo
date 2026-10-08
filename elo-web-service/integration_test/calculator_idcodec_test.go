@@ -89,7 +89,7 @@ func TestCalculatorData_IDCodecRoundtrip(t *testing.T) {
 
 	// GET it back.
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/matches/00000000-0000-0000-0000-0000000000c1", nil))
+	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/matches/00000000-0000-0000-0000-0000000000c1?tenant="+blueMenTenantUUID, nil))
 	if w2.Code != http.StatusOK {
 		t.Fatalf("GET /matches/{id}: %d: %s", w2.Code, w2.Body.String())
 	}

@@ -136,14 +136,18 @@ TenantItem:
   patch:
     operationId: PatchTenant
     tags: [tenants]
-    summary: Update a tenant (name, openness settings)
+    summary: Update a tenant (name, openness settings, main-arena settings)
     description: >-
       Partial update. A field that is omitted is left unchanged. The openness
       settings `arena_membership_mode` / `tournaments_openness` are always
-      provided together. An `arena_membership_mode` change re-interprets the
-      main arena's whole history: the recalculation runs in the same
-      transaction. Renaming the tenant also renames its main arena. Clubs are
-      managed through the dedicated clubs endpoint, not here.
+      provided together. The main arena is system-managed — its settings
+      document (starting rating and leagues, the same shape as arena PATCH,
+      arenas.yaml ADR-24) is edited here, through the tenant; changing it
+      re-interprets the arena's whole history, so the recalculation runs in the
+      same transaction. An `arena_membership_mode` change re-interprets the
+      main arena's whole history the same way. Renaming the tenant also renames
+      its main arena. Clubs are managed through the dedicated clubs endpoint,
+      not here.
     security:
       - cookieAuth: []
     parameters:
@@ -167,6 +171,8 @@ TenantItem:
               tournaments_openness:
                 type: string
                 enum: [members_only, open]
+              settings:
+                $ref: './arenas.yaml#/ArenaSettings'
     responses:
       "200":
         description: Updated tenant
@@ -181,7 +187,7 @@ TenantItem:
                   $ref: '#/Tenant'
               required: [status, data]
       "400":
-        description: Bad request, or an invalid settings pair
+        description: Bad request, an invalid settings pair, or an invalid arena settings document
         content:
           application/json:
             schema:
@@ -293,10 +299,9 @@ TenantFeedPath:
     tags: [tenants]
     summary: The tenant's feed (ADR-36) — the community's activity, membership-scoped
     description: >-
-      A merged, date-ordered stream of match, correction and market events.
+      A merged, date-ordered stream of match and market events.
       Match events go to any current member's matches — of any club of the
-      tenant (coop included); correction events to corrections of current
-      members; market events to the markets the tenant OWNS.
+      tenant (coop included); market events to the markets the tenant OWNS.
       Membership-scoped by design — a tournament match appears even when it
       does not count into the tenant's main arena rating. Match payloads
       carry settlement columns from the tenant's main arena. Parameters and

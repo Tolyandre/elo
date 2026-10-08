@@ -128,7 +128,7 @@ func TestUpdateMatch_RejectsDateChangeWhenBetPrecedes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// 3. Bets placed NOW (placed_at ≈ now, before tFuture = now+2h).

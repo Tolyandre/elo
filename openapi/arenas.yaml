@@ -232,13 +232,12 @@ ArenaFeedPath:
   get:
     operationId: ListArenaFeed
     tags: [arenas]
-    summary: The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
+    summary: The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
     description: >-
-      Correction and market-resolution events settle only into the global arena
+      Market-resolution events settle only into the global arena
       (ADR-24), so they appear only in the global arena's feed; every other
-      arena's feed is its matches. Filters apply to match and market events
-      (corrections stay unfiltered); for markets see the parameter
-      descriptions.
+      arena's feed is its matches. Filters apply to match and market events;
+      for markets see the parameter descriptions.
     parameters:
       - name: id
         in: path
@@ -593,13 +592,11 @@ FeedPage:
 FeedEvent:
   oneOf:
     - $ref: '#/FeedMatchEvent'
-    - $ref: '#/FeedCorrectionEvent'
     - $ref: '#/FeedMarketEvent'
   discriminator:
     propertyName: type
     mapping:
       match: '#/FeedMatchEvent'
-      correction: '#/FeedCorrectionEvent'
       market: '#/FeedMarketEvent'
   description: >-
     One feed event (ADR-32). New content kinds (posts) extend the union with
@@ -618,17 +615,6 @@ FeedMatchEvent:
       enum: [match]
     data:
       $ref: './matches.yaml#/Match'
-  required: [type, data]
-
-FeedCorrectionEvent:
-  type: object
-  description: An admin rating correction (global arena only, ADR-24).
-  properties:
-    type:
-      type: string
-      enum: [correction]
-    data:
-      $ref: './admin.yaml#/Correction'
   required: [type, data]
 
 FeedMarketEvent:

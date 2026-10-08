@@ -4,6 +4,12 @@ Revises ADR-02. Arenas stop being two hard-coded special cases (the global
 arena and per-game arenas) and become one entity type: named instances with
 their own settings and a *match filter* deciding which matches belong to them.
 
+**Update (ADR-36 phase 5):** rating corrections were removed entirely
+(migration 071 dropped the `corrections` table and the `correction`
+settlement discriminator; the unified ledger keeps `match` / `market` /
+`market_guarantor`), and bet limits are no longer a stored `players.bet_limit`
+column — they are derived at read time from the market's tenant main arena.
+
 ## Problem
 
 - Per-game arenas are not configurable, and an arena spanning several games

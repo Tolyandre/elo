@@ -12,8 +12,8 @@ import (
 )
 
 // TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory exercises the /debug
-// endpoint's backend: a full replay of the settlement history (matches, a
-// market resolution and a correction) from the beginning of time must
+// endpoint's backend: a full replay of the settlement history (matches and a
+// market resolution) from the beginning of time must
 // reproduce every player's global arena state bit-for-bit.
 //
 // Complements TestRecalculation_IdempotencyForMarkets, which triggers the same
@@ -61,7 +61,7 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
 	outcomeOther := marketOutcomeID(t, ctx, marketSvc, market.ID, "other", "")
@@ -78,12 +78,6 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 		t.Fatalf("M3 AddMatch: %v", err)
 	}
 
-	// A manual correction after all matches: the replay's third event kind.
-	correctionSvc := newCorrectionService(pool)
-	if err := correctionSvc.CreateGlobalArenaRatingCorrection(ctx, newID(t), playerB, 3.5); err != nil {
-		t.Fatalf("CreateGlobalArenaRatingCorrection: %v", err)
-	}
-
 	for run := 1; run <= 2; run++ {
 		report, err := matchSvc.RecalculateAllGlobalElo(ctx)
 		if err != nil {
@@ -91,9 +85,6 @@ func TestRecalculateAllGlobalElo_NoDriftOnUnchangedHistory(t *testing.T) {
 		}
 		if report.MatchesReplayed != 3 {
 			t.Errorf("run %d: MatchesReplayed = %d, want 3", run, report.MatchesReplayed)
-		}
-		if report.CorrectionsReplayed != 1 {
-			t.Errorf("run %d: CorrectionsReplayed = %d, want 1", run, report.CorrectionsReplayed)
 		}
 		if len(report.ChangedPlayers) != 0 {
 			t.Errorf("run %d: ChangedPlayers = %+v, want none (A, B, guarantor must all reproduce exactly)", run, report.ChangedPlayers)

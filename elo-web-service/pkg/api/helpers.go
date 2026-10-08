@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -378,15 +379,20 @@ func parseIDParam(s string) id.ID {
 	return parsed
 }
 
+// errTenantRequired marks a tenant-scoped read that arrived without its
+// ?tenant= parameter (ADR-36 phase 5: reads are tenant-scoped, there is no
+// global default).
+var errTenantRequired = errors.New("tenant query parameter is required")
+
 // resolveDisplayArena resolves the display arena behind a request's ?tenant=
-// query parameter (ADR-36): the tenant's main arena, or the global arena when
-// the parameter is absent. A named but missing tenant yields no rows
+// query parameter (ADR-36): the tenant's main arena. An empty value is
+// errTenantRequired (400); a named but missing tenant yields no rows
 // (db.ErrNoRows) — the caller maps that to its 404 response.
-func (s *StrictServer) resolveDisplayArena(ctx context.Context, tenant *string) (id.ID, error) {
-	if tenant == nil || *tenant == "" {
-		return elo.GlobalArenaID, nil
+func (s *StrictServer) resolveDisplayArena(ctx context.Context, tenant string) (id.ID, error) {
+	if tenant == "" {
+		return "", errTenantRequired
 	}
-	return s.api.TenantService.FeedArena(ctx, parseIDParam(*tenant))
+	return s.api.TenantService.FeedArena(ctx, parseIDParam(tenant))
 }
 
 // derefIDs returns the pointed-to id slice, or nil if the pointer is nil.

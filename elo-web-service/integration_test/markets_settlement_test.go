@@ -48,7 +48,7 @@ func TestMarketSettlement_MatchTriggered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Give players enough bet limit by adding a warm-up match first
@@ -168,7 +168,7 @@ func TestRecalculation_IdempotencyForMarkets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 	// Bet limit after a starting-Elo match = K/(1+1) = 16; use 1-share buys (cost < 1 elo) to stay within it.
 	outcomeA := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", playerA)
@@ -275,7 +275,7 @@ func TestMarketSettlement_FixedOddsZeroSum(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Warm-up match so players have a bet limit > 0.
@@ -401,7 +401,7 @@ func TestMarketSettlement_GuarantorBuysOwnMarket(t *testing.T) {
 
 	// playerA becomes the sole guarantor (risk 16) and also buys — the wager
 	// and the buy both reserve against the betting limit, so fund both.
-	setBetLimit(t, pool, playerA, 20)
+	setBetLimit(t, pool, blueMenTenantID, playerA, 20)
 	joinGuarantee(ctx, t, marketSvc, market.ID, playerA)
 
 	// The guarantor (playerA) buys 1 share of their own win outcome on their own

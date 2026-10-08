@@ -24,8 +24,10 @@ const (
 	globalArenaFilterIDStr = "a2ea0000-0000-0000-0000-000000000002"
 )
 
-// GlobalArenaID is the arena behind /players, market settlements and
-// corrections.
+// GlobalArenaID is the well-known id of the converted global arena —
+// «Синие люди»'s main arena since migration 068 and the settlement path's
+// arena (ADR-36). Not a read default: display reads take their ?tenant='s
+// main arena (phase 5).
 var GlobalArenaID = mustParseID("elo: global arena id", globalArenaIDUUID)
 
 // League kind names stored in arena settings and settlement rows.
@@ -150,7 +152,7 @@ type IArenaService interface {
 	// (read-time over the settlement ledger) for the rank-change history.
 	GetArenaPlayersAt(ctx context.Context, arenaID id.ID, at time.Time) ([]ArenaPlayer, error)
 	// ListArenaFeedEvents selects one page of the arena feed (ADR-32): the
-	// merged match/correction/market-resolution event keys in date order.
+	// merged match/market-resolution event keys in date order.
 	ListArenaFeedEvents(ctx context.Context, arg db.ListArenaFeedEventsParams) ([]db.ListArenaFeedEventsRow, error)
 	// ListFeedMatchesWithPlayers fetches the payload rows (per-player scores
 	// with this arena's settlement data) for the page's match-event ids.

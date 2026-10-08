@@ -239,3 +239,28 @@ func (s *StrictServer) RemoveClubMember(ctx context.Context, request RemoveClubM
 
 	return RemoveClubMember200JSONResponse{Status: StatusSuccess, Message: "Member removed"}, nil
 }
+
+// ListClubMemberHistory serves GET /clubs/{id}/members/history (ADR-36): the
+// club's membership stint history, latest first — the raw material of tenant
+// membership, shown as audit-style items on the admin club page.
+func (s *StrictServer) ListClubMemberHistory(ctx context.Context, request ListClubMemberHistoryRequestObject) (ListClubMemberHistoryResponseObject, error) {
+	rows, err := s.api.ClubService.ListMemberHistory(ctx, parseIDParam(request.Id))
+	if err != nil {
+		return nil, err
+	}
+	stints := make([]ClubMemberStint, 0, len(rows))
+	for _, r := range rows {
+		stint := ClubMemberStint{
+			ClubId:     Base58ID(r.ClubID),
+			PlayerId:   Base58ID(r.PlayerID),
+			PlayerName: r.PlayerName,
+			JoinedAt:   r.JoinedAt,
+		}
+		if r.LeftAt.Valid {
+			t := r.LeftAt.Time
+			stint.LeftAt = &t
+		}
+		stints = append(stints, stint)
+	}
+	return ListClubMemberHistory200JSONResponse{Status: StatusSuccess, Data: stints}, nil
+}

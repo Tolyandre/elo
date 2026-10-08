@@ -13,13 +13,12 @@ import (
 // GlobalReplayReport is the outcome of reapplying the global arena's entire
 // settlement history: how many user events were replayed and whose state moved.
 type GlobalReplayReport struct {
-	MatchesReplayed     int
-	CorrectionsReplayed int
-	ChangedPlayers      []PlayerStateChange
+	MatchesReplayed int
+	ChangedPlayers  []PlayerStateChange
 }
 
-// RecalculateAllGlobalElo replays the global arena's full history (matches,
-// corrections and market settlements) from the beginning of time inside one
+// RecalculateAllGlobalElo replays the global arena's full history (matches and
+// market settlements) from the beginning of time inside one
 // transaction — exactly the computation an edit+save of the chronologically
 // first match triggers — and reports every player whose state changed.
 //
@@ -47,10 +46,6 @@ func (s *MatchService) RecalculateAllGlobalElo(ctx context.Context) (GlobalRepla
 	if err != nil {
 		return GlobalReplayReport{}, fmt.Errorf("count matches: %w", err)
 	}
-	correctionsReplayed, err := q.CountCorrectionsFromDate(ctx, fromStart)
-	if err != nil {
-		return GlobalReplayReport{}, fmt.Errorf("count corrections: %w", err)
-	}
 
 	if err := s.recalculateEloFromDate(ctx, q, time.Time{}); err != nil {
 		return GlobalReplayReport{}, err
@@ -66,9 +61,8 @@ func (s *MatchService) RecalculateAllGlobalElo(ctx context.Context) (GlobalRepla
 	}
 
 	return GlobalReplayReport{
-		MatchesReplayed:     int(matchesReplayed),
-		CorrectionsReplayed: int(correctionsReplayed),
-		ChangedPlayers:      diffArenaState(before, after),
+		MatchesReplayed: int(matchesReplayed),
+		ChangedPlayers:  diffArenaState(before, after),
 	}, nil
 }
 

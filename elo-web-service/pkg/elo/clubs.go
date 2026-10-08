@@ -38,6 +38,10 @@ type IClubService interface {
 	DeleteClub(ctx context.Context, clubID id.ID, actor id.ID) (db.Club, error)
 	AddMember(ctx context.Context, clubID, playerID id.ID) error
 	RemoveMember(ctx context.Context, clubID, playerID id.ID) error
+	// ListMemberHistory exposes the club's membership stint history (ADR-36) —
+	// the raw material of tenant membership, shown as audit-style items on the
+	// admin club page.
+	ListMemberHistory(ctx context.Context, clubID id.ID) ([]db.ListClubMembershipHistoryRow, error)
 }
 
 type ClubService struct {
@@ -145,4 +149,8 @@ func (s *ClubService) AddMember(ctx context.Context, clubID, playerID id.ID) err
 
 func (s *ClubService) RemoveMember(ctx context.Context, clubID, playerID id.ID) error {
 	return s.Queries.RemoveClubMember(ctx, db.RemoveClubMemberParams{ClubID: clubID, PlayerID: playerID})
+}
+
+func (s *ClubService) ListMemberHistory(ctx context.Context, clubID id.ID) ([]db.ListClubMembershipHistoryRow, error) {
+	return s.Queries.ListClubMembershipHistory(ctx, clubID)
 }

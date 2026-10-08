@@ -52,7 +52,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post skipped match: %d %s", w.Code, w.Body.String())
 	}
-	w := doJSON(t, router, http.MethodGet, "/matches/"+skippedID, "", "")
+	w := doJSON(t, router, http.MethodGet, "/matches/"+skippedID+"?tenant="+blueMenTenantUUID, "", "")
 	var mr struct {
 		Data struct {
 			Tournament *string `json:"tournament"`
@@ -77,7 +77,7 @@ func TestTournament_MatchSkipAndNonFit(t *testing.T) {
 	if w := doJSON(t, router, http.MethodPost, "/matches", admin, body); w.Code != http.StatusOK {
 		t.Fatalf("post stranger match: %d %s", w.Code, w.Body.String())
 	}
-	w = doJSON(t, router, http.MethodGet, "/matches/"+strangerID, "", "")
+	w = doJSON(t, router, http.MethodGet, "/matches/"+strangerID+"?tenant="+blueMenTenantUUID, "", "")
 	mr.Data.Tournament = nil
 	if err := json.Unmarshal(w.Body.Bytes(), &mr); err != nil {
 		t.Fatalf("decode: %v", err)

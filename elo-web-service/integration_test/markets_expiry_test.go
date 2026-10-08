@@ -57,7 +57,7 @@ func TestMarketExpiry_TimeBasedSettlement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Bet limit after starting-Elo warm-up match = K/(1+1) = 16; use 1-share buys.

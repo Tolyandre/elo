@@ -59,7 +59,7 @@ func TestShortIds_EndToEnd(t *testing.T) {
 
 	// GET /players — the list response must also carry the short id.
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/players", nil))
+	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/players?tenant="+blueMenTenantUUID, nil))
 	if w2.Code != http.StatusOK {
 		t.Fatalf("list players: expected 200, got %d: %s", w2.Code, w2.Body.String())
 	}
@@ -72,14 +72,14 @@ func TestShortIds_EndToEnd(t *testing.T) {
 
 	// GET /players/:id/stats with the SHORT path id — must decode and find the row.
 	w3 := httptest.NewRecorder()
-	router.ServeHTTP(w3, httptest.NewRequest(http.MethodGet, "/players/"+short+"/stats", nil))
+	router.ServeHTTP(w3, httptest.NewRequest(http.MethodGet, "/players/"+short+"/stats?tenant="+blueMenTenantUUID, nil))
 	if w3.Code == http.StatusNotFound || w3.Code >= 500 {
 		t.Errorf("GET by short id failed: status %d: %s", w3.Code, w3.Body.String())
 	}
 
 	// GET /players/:id/stats with the CANONICAL path id — backward compatibility.
 	w4 := httptest.NewRecorder()
-	router.ServeHTTP(w4, httptest.NewRequest(http.MethodGet, "/players/"+canonical+"/stats", nil))
+	router.ServeHTTP(w4, httptest.NewRequest(http.MethodGet, "/players/"+canonical+"/stats?tenant="+blueMenTenantUUID, nil))
 	if w4.Code == http.StatusNotFound || w4.Code >= 500 {
 		t.Errorf("GET by canonical id failed: status %d: %s", w4.Code, w4.Body.String())
 	}

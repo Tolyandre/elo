@@ -58,10 +58,10 @@ func TestMarketLiquidityJoin_RepricesAndStaysSolvent(t *testing.T) {
 	if _, err := matchSvc.AddMatch(ctx, gameID, map[idpkg.ID]float64{playerFav: 5, playerDog: 5}, time.Now().Add(-2*time.Hour), newMatchOpts(t)); err != nil {
 		t.Fatalf("warm-up AddMatch: %v", err)
 	}
-	setBetLimit(t, pool, playerFav, 16)
-	setBetLimit(t, pool, playerDog, 16)
-	setBetLimit(t, pool, guarantorThin, 16)
-	setBetLimit(t, pool, guarantorDeep, 16)
+	setBetLimit(t, pool, blueMenTenantID, playerFav, 16)
+	setBetLimit(t, pool, blueMenTenantID, playerDog, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantorThin, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantorDeep, 16)
 
 	// 1. Thin guarantor (risk 0.1): b = 0.1/ln 3.
 	if _, err := marketSvc.JoinAsGuarantee(ctx, newID(t), market.ID, guarantorThin, 0.1, 0.01); err != nil {

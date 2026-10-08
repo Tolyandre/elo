@@ -463,7 +463,7 @@ func TestTournament_SingleElimEndToEnd(t *testing.T) {
 	}
 
 	// The match DTO carries the tournament badge.
-	w := doJSON(t, router, http.MethodGet, "/matches/"+m1, "", "")
+	w := doJSON(t, router, http.MethodGet, "/matches/"+m1+"?tenant="+blueMenTenantUUID, "", "")
 	var matchResp struct {
 		Data struct {
 			Tournament *struct {

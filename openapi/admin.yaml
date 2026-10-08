@@ -1,78 +1,13 @@
 # ─── Path items ──────────────────────────────────────────────────────────────
 
-AdminPlayerCorrections:
-  post:
-    operationId: CreatePlayerCorrection
-    tags: [admin]
-    summary: Apply a manual rating correction for a player
-    security:
-      - cookieAuth: []
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            type: object
-            required: [id, discriminator, diff]
-            properties:
-              id:
-                $ref: './common.yaml#/Base58ID'
-              discriminator:
-                type: string
-                enum: [correction]
-              diff:
-                type: number
-    responses:
-      "200":
-        description: Correction applied
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiSuccessMessage'
-      "400":
-        description: Bad request
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-      "500":
-        description: Internal server error
-        content:
-          application/json:
-            schema:
-              $ref: './common.yaml#/ApiError'
-
-Correction:
-  type: object
-  properties:
-    id:
-      $ref: './common.yaml#/Base58ID'
-    player_id:
-      $ref: './common.yaml#/Base58ID'
-    player_name:
-      type: string
-    diff:
-      type: number
-      format: double
-    date:
-      type: string
-      format: date-time
-  required: [id, player_id, player_name, diff, date]
-
 UpdateArenas:
   post:
     operationId: UpdateArenas
     tags: [admin]
     summary: >-
       Recalculate every arena to the actual state (ADR-24): the global arena by
-      replaying the whole settlement history (matches, corrections and market
-      settlements — the same computation an edit+save of the chronologically
+      replaying the whole settlement history (matches and market settlements —
+      the same computation an edit+save of the chronologically
       first match triggers), and every other arena by a full replay of its
       filtered matches. A stable recalculation reports no changed players.
       Invoked manually after deployments via the /debug page.
@@ -131,14 +66,11 @@ GlobalReplayReport:
     matches_replayed:
       type: integer
       format: int64
-    corrections_replayed:
-      type: integer
-      format: int64
     changed_players:
       type: array
       items:
         $ref: '#/PlayerStateChange'
-  required: [matches_replayed, corrections_replayed, changed_players]
+  required: [matches_replayed, changed_players]
 
 ArenaUpdateReport:
   type: object

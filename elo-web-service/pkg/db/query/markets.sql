@@ -458,12 +458,6 @@ JOIN players p ON p.id = g.player_id
 WHERE g.market_id = $1 AND bsd.discriminator = 'market_guarantor'
 ORDER BY sort_key DESC;
 
--- name: GetPlayerBetLimit :one
-SELECT bet_limit FROM players WHERE id = $1;
-
--- name: UpdatePlayerBetLimit :exec
-UPDATE players SET bet_limit = $2 WHERE id = $1;
-
 -- name: LockMarketBetting :exec
 -- Sets status = 'betting_closed' and records the betting_closed_at timestamp (user event).
 -- Only succeeds if current status = 'open'; the caller must check affected rows or

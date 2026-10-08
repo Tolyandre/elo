@@ -53,7 +53,6 @@ type ArenaSettlement struct {
 	Discriminator string             `json:"discriminator"`
 	MatchID       *id.ID             `json:"match_id"`
 	MarketID      *id.ID             `json:"market_id"`
-	CorrectionID  *id.ID             `json:"correction_id"`
 	EloStaked     float64            `json:"elo_staked"`
 	EloEarned     float64            `json:"elo_earned"`
 	RatingStaked  float64            `json:"rating_staked"`
@@ -90,14 +89,6 @@ type Club struct {
 	GeologistName pgtype.Text `json:"geologist_name"`
 	Icon          pgtype.Text `json:"icon"`
 	TenantID      *id.ID      `json:"tenant_id"`
-}
-
-type Correction struct {
-	ID            id.ID              `json:"id"`
-	PlayerID      id.ID              `json:"player_id"`
-	Discriminator string             `json:"discriminator"`
-	Diff          float64            `json:"diff"`
-	Date          pgtype.Timestamptz `json:"date"`
 }
 
 type EloSetting struct {
@@ -229,7 +220,6 @@ type Player struct {
 	ID            id.ID       `json:"id"`
 	Name          string      `json:"name"`
 	GeologistName pgtype.Text `json:"geologist_name"`
-	BetLimit      float64     `json:"bet_limit"`
 }
 
 type PlayerClubMembership struct {

@@ -2,10 +2,8 @@
 -- working with the global arena pass elo.GlobalArenaID. The global arena is
 -- seeded by migration 051 with the well-known id below; since ADR-36 phase 2
 -- the display reads in matches.sql, players.sql and player_ranks.sql take the
--- arena as a parameter (the global arena until the frontend carries ?tenant=),
--- and the global arena itself is «Синие люди»'s main arena (migration 068).
--- corrections.sql and markets.sql keep the SQL literal until the
--- tournaments/markets phase settles them into the owning tenant's arena.
+-- arena as a parameter, and the global arena itself is «Синие люди»'s main
+-- arena (migration 068).
 
 -- name: UpsertArenaSettlementByMatch :exec
 INSERT INTO arena_settlements
@@ -24,11 +22,10 @@ DO UPDATE SET rating_after  = EXCLUDED.rating_after,
 
 -- name: DeleteArenaSettlementsFromDate :exec
 -- Replay support for the arena updater: removes the arena's MATCH settlement
--- rows from the date on — the replay re-settles matches only. Market and
--- correction rows belong to their own lifecycles (markets re-settle via the
--- unsettle/re-resolve sweep in RecalculateFrom, per-market in the owning
--- tenant's arena; corrections live only in the global arena) and must survive
--- an arena replay.
+-- rows from the date on — the replay re-settles matches only. Market rows
+-- belong to their own lifecycle (they re-settle via the unsettle/re-resolve
+-- sweep in RecalculateFrom, per-market in the owning tenant's arena) and must
+-- survive an arena replay.
 DELETE FROM arena_settlements
 WHERE arena_id = $1 AND date >= $2 AND discriminator = 'match';
 
@@ -99,3 +96,11 @@ SELECT s.date, s.rating_after AS rating, s.elo_after AS elo
 FROM arena_settlements s
 WHERE s.arena_id = $1 AND s.player_id = $2
 ORDER BY s.date;
+
+-- name: DeleteGlobalSettlementsFromDate :exec
+-- Single delete covering match AND market settlements of the global arena
+-- («Синие люди»'s main arena — ADR-36). Other clubs' market rows are removed
+-- by the per-market deletes in UnsettleMarketsFromDate, in each market's own
+-- arena. Called at the start of RecalculateFrom.
+DELETE FROM arena_settlements
+WHERE arena_id = 'a2ea0000-0000-0000-0000-000000000001' AND date >= $1;

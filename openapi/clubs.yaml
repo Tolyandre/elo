@@ -314,7 +314,65 @@ ClubMemberItem:
             schema:
               $ref: './common.yaml#/ApiError'
 
+ClubMemberHistory:
+  get:
+    operationId: ListClubMemberHistory
+    tags: [clubs]
+    summary: The club's membership stint history (ADR-36)
+    description: >-
+      Every membership stint of the club, latest first — the raw material of
+      tenant membership (ADR-36). A null left_at is the current active stint.
+      Shown as audit-style items on the admin club page; membership is derived
+      from these stints, so this is the human-readable record of it.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      "200":
+        description: Stint history, latest first
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                data:
+                  type: array
+                  items:
+                    $ref: '#/ClubMemberStint'
+              required: [status, data]
+      "400":
+        description: Bad request
+        content:
+          application/json:
+            schema:
+              $ref: './common.yaml#/ApiError'
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
+
+ClubMemberStint:
+  type: object
+  description: One membership stint of a club (ADR-36).
+  properties:
+    club_id:
+      $ref: './common.yaml#/Base58ID'
+    player_id:
+      $ref: './common.yaml#/Base58ID'
+    player_name:
+      type: string
+    joined_at:
+      type: string
+      format: date-time
+    left_at:
+      type: string
+      format: date-time
+      nullable: true
+      description: null while the stint is active.
+  required: [club_id, player_id, player_name, joined_at, left_at]
 
 Club:
   type: object

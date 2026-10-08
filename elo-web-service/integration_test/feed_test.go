@@ -44,7 +44,7 @@ func decodeFeedPage(t *testing.T, router http.Handler, path string) feedPageJSON
 }
 
 // TestArena_Feed_CompositionAndPagination covers the global arena's feed
-// (ADR-32): matches, a correction and a market resolution merge into one
+// (ADR-32): matches and a market resolution merge into one
 // date-ordered stream; the same-timestamp match and its resolving market keep
 // the match above the market; the cursor walks the stream without repeats.
 // The home feed (/feed) must return the same events as the global arena's
@@ -93,7 +93,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// The resolving match: A wins — settles the market in the same instant
@@ -103,22 +103,16 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 		t.Fatalf("trigger AddMatch: %v", err)
 	}
 
-	// A rating correction — settles only into the global arena, created last
-	// so it is the feed's newest event.
-	if err := newCorrectionService(pool).CreateGlobalArenaRatingCorrection(ctx, newID(t), playerA, 3.5); err != nil {
-		t.Fatalf("CreateGlobalArenaRatingCorrection: %v", err)
-	}
-
-	// The home feed: correction first, then the resolving match above its
-	// market resolution (tie at the trigger instant: 'match' > 'market'),
-	// then the warm-up match. The market appears once — at its resolution
-	// position; its creation event existed only while it was active.
+	// The home feed: the resolving match above its market resolution (tie at
+	// the trigger instant: 'match' > 'market'), then the warm-up match. The
+	// market appears once — at its resolution position; its creation event
+	// existed only while it was active.
 	home := decodeFeedPage(t, router, "/feed")
 	gotTypes := make([]string, 0, len(home.Data))
 	for _, e := range home.Data {
 		gotTypes = append(gotTypes, e.Type)
 	}
-	wantTypes := []string{"correction", "match", "market", "match"}
+	wantTypes := []string{"match", "market", "match"}
 	if len(gotTypes) != len(wantTypes) {
 		t.Fatalf("home feed events = %v, want %v (next present: %v)", gotTypes, wantTypes, home.Next != nil)
 	}
@@ -166,7 +160,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 			t.Fatalf("cursor walk produced %v, want %v", order, wantTypes)
 		}
 	}
-	// A per-game arena's feed stays matches-only (no correction, no market).
+	// A per-game arena's feed stays matches-only (no market resolutions).
 	gameArena, err := newArenaService(pool).GetArenaByGame(ctx, gameID)
 	if err != nil {
 		t.Fatalf("GetArenaByGame: %v", err)
@@ -183,7 +177,7 @@ func TestArena_Feed_CompositionAndPagination(t *testing.T) {
 }
 
 // TestArena_Feed_TournamentOnlyMatches pins the tournament arena fix: its
-// feed holds the linked matches only — never corrections or market
+// feed holds the linked matches only — never market
 // resolutions, although the tournament arena serializes an empty filter like
 // the global arena does.
 func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
@@ -229,10 +223,8 @@ func TestArena_Feed_TournamentOnlyMatches(t *testing.T) {
 		t.Fatalf("insert probe link: %v", err)
 	}
 
-	// Global-arena noise that must not leak into the tournament feed.
-	if err := newCorrectionService(pool).CreateGlobalArenaRatingCorrection(ctx, newID(t), playerA, 2); err != nil {
-		t.Fatalf("CreateGlobalArenaRatingCorrection: %v", err)
-	}
+	// The unlinked match above is global-arena noise that must not leak into
+	// the tournament feed.
 
 	page := decodeFeedPage(t, router, "/arenas/"+string(tournArenaID)+"/feed")
 	if len(page.Data) != 1 {
@@ -326,9 +318,9 @@ func TestArena_Feed_MarketFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateMarket mw1: %v", err)
 	}
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, mw1.ID, guarantor)
-	setBetLimit(t, pool, bettor, 16)
+	setBetLimit(t, pool, blueMenTenantID, bettor, 16)
 	placeBetOnPlayer(t, ctx, marketSvc, mw1.ID, bettor, targetA)
 
 	// MW2: no condition games ("any game"), targets C/D only — resolved by a

@@ -241,7 +241,7 @@ func TestCamp_MatchLinkingAndDrain(t *testing.T) {
 	}
 
 	// The match response carries the camp as {id, name}.
-	w = doJSON(t, router, http.MethodGet, "/matches", "", "")
+	w = doJSON(t, router, http.MethodGet, "/matches?tenant="+blueMenTenantUUID, "", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET /matches: %d %s", w.Code, w.Body.String())
 	}

@@ -63,7 +63,7 @@ func TestListPlayers_EmptyOnFreshDB(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	setupRouter(pool).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/players", nil))
+	setupRouter(pool).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/players?tenant="+blueMenTenantUUID, nil))
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -120,7 +120,7 @@ func TestCreateAndListPlayer(t *testing.T) {
 
 	// GET /players
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/players", nil))
+	router.ServeHTTP(w2, httptest.NewRequest(http.MethodGet, "/players?tenant="+blueMenTenantUUID, nil))
 	if w2.Code != http.StatusOK {
 		t.Fatalf("list players: expected 200, got %d: %s", w2.Code, w2.Body.String())
 	}
@@ -172,11 +172,11 @@ func getPlayerStats(t *testing.T, router http.Handler, path string) (int, *playe
 	return w.Code, &resp
 }
 
-// TestPlayerStats_TenantScoped pins GET /players/{id}/stats?tenant= (ADR-36
-// phase 4): the rating history and the Elo-per-game tables read the tenant's
+// TestPlayerStats_TenantScoped pins GET /players/{id}/stats?tenant= (ADR-36):
+// the rating history and the Elo-per-game tables read the tenant's
 // main arena; "Частые игры" is tenant-independent and counts matches that
-// settle into no arena at all; a missing tenant is a 404; the parameter-less
-// call keeps reading the global arena.
+// settle into no arena at all; a missing tenant is a 404; since phase 5 the
+// parameter is required — reads are tenant-scoped, there is no global default.
 func TestPlayerStats_TenantScoped(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -223,25 +223,28 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 		t.Fatalf("guest frequent games = %+v, want both games regardless of settlement", guestStats.Data.TopGamesByMatches)
 	}
 
-	// A missing tenant is a 404; garbage is too (unparsable id).
+	// A missing tenant is a 404; garbage is too (unparsable id); since phase 5
+	// the parameter-less call is a 400 — reads are tenant-scoped.
 	if code := decodeFeedStatus(t, router, "/players/"+guest.String()+"/stats?tenant="+newID(t).String()); code != http.StatusNotFound {
 		t.Fatalf("unknown tenant stats gave %d, want 404", code)
 	}
 	if code := decodeFeedStatus(t, router, "/players/"+guest.String()+"/stats?tenant=garbage"); code != http.StatusNotFound {
 		t.Fatalf("garbage tenant stats gave %d, want 404", code)
 	}
-
-	// Without the parameter the stats read the global arena. The member
-	// carries a «Синие люди» stint (the pre-tenancy reality), so the mixed
-	// match settled there too — one point. A club-less outsider's match
-	// settles into no arena: empty history both scoped and unscoped, while
-	// "Частые игры" still counts the game.
-	code, globalStats := getPlayerStats(t, router, "/players/"+member.String()+"/stats")
-	if code != http.StatusOK {
-		t.Fatalf("member global stats: %d", code)
+	if code := decodeFeedStatus(t, router, "/players/"+guest.String()+"/stats"); code != http.StatusBadRequest {
+		t.Fatalf("stats without tenant gave %d, want 400", code)
 	}
-	if len(globalStats.Data.RatingHistory) != 1 {
-		t.Fatalf("member global rating history = %d points, want the «Синие люди» settlement", len(globalStats.Data.RatingHistory))
+
+	// The «Синие люди» main arena (the converted global arena) is just another
+	// tenant scope now. The member carries a «Синие люди» stint (the
+	// pre-tenancy reality), so the mixed match settled there too — one point.
+	code, blueStats := getPlayerStats(t, router,
+		"/players/"+member.String()+"/stats?tenant="+blueMenTenantUUID)
+	if code != http.StatusOK {
+		t.Fatalf("member «Синие люди» stats: %d", code)
+	}
+	if len(blueStats.Data.RatingHistory) != 1 {
+		t.Fatalf("member «Синие люди» rating history = %d points, want the «Синие люди» settlement", len(blueStats.Data.RatingHistory))
 	}
 	code, tenantStats := getPlayerStats(t, router,
 		"/players/"+member.String()+"/stats?tenant="+tenantID.String())
@@ -256,12 +259,13 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 	if _, err := svc.AddMatch(ctx, game, map[idpkg.ID]float64{outsider: 40, createBareTestPlayer(t, pool, "Статист-четвёртый"): 10}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch outsiders: %v", err)
 	}
-	code, outsiderGlobal := getPlayerStats(t, router, "/players/"+outsider.String()+"/stats")
+	code, outsiderBlue := getPlayerStats(t, router,
+		"/players/"+outsider.String()+"/stats?tenant="+blueMenTenantUUID)
 	if code != http.StatusOK {
-		t.Fatalf("outsider global stats: %d", code)
+		t.Fatalf("outsider «Синие люди» stats: %d", code)
 	}
-	if len(outsiderGlobal.Data.RatingHistory) != 0 {
-		t.Fatalf("outsider global rating history = %d points, want none (settles nowhere)", len(outsiderGlobal.Data.RatingHistory))
+	if len(outsiderBlue.Data.RatingHistory) != 0 {
+		t.Fatalf("outsider «Синие люди» rating history = %d points, want none (settles nowhere there)", len(outsiderBlue.Data.RatingHistory))
 	}
 	code, outsiderTenant := getPlayerStats(t, router,
 		"/players/"+outsider.String()+"/stats?tenant="+tenantID.String())

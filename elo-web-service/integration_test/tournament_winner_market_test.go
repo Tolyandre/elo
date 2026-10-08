@@ -211,10 +211,10 @@ func TestTournamentWinnerMarket_CompletesWithDeterminingMatch(t *testing.T) {
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 
 	guarantor := createTestPlayer(t, pool, "Рыночный поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
-	setBetLimit(t, pool, players[1], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[1], 16)
 
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	outcome1 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[1])
@@ -293,9 +293,9 @@ func TestTournamentWinnerMarket_RulingCompletionHasNoMatch(t *testing.T) {
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 
 	guarantor := createTestPlayer(t, pool, "Регламентный поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, players[0], outcome0, 1); err != nil {
 		t.Fatalf("PlaceBet players[0]: %v", err)
@@ -336,10 +336,10 @@ func TestTournamentWinnerMarket_OrganizerCancelRefunds(t *testing.T) {
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 
 	guarantor := createTestPlayer(t, pool, "Отменный поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
-	setBetLimit(t, pool, players[1], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[1], 16)
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	outcome1 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[1])
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, players[0], outcome0, 1); err != nil {
@@ -390,9 +390,9 @@ func TestTournamentWinnerMarket_DeadlineCancelRefunds(t *testing.T) {
 
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 	guarantor := createTestPlayer(t, pool, "Дедл поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, players[0], outcome0, 1); err != nil {
 		t.Fatalf("PlaceBet players[0]: %v", err)
@@ -429,10 +429,10 @@ func TestTournamentWinnerMarket_RevertOnEdit(t *testing.T) {
 
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 	guarantor := createTestPlayer(t, pool, "Каскад поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
-	setBetLimit(t, pool, players[1], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[1], 16)
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	outcome1 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[1])
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, players[0], outcome0, 1); err != nil {
@@ -505,9 +505,9 @@ func TestTournamentWinnerMarket_RecalcIdempotent(t *testing.T) {
 
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, players)
 	guarantor := createTestPlayer(t, pool, "Реплей поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
-	setBetLimit(t, pool, players[0], 16)
+	setBetLimit(t, pool, blueMenTenantID, players[0], 16)
 	outcome0 := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", players[0])
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, players[0], outcome0, 1); err != nil {
 		t.Fatalf("PlaceBet players[0]: %v", err)
@@ -566,7 +566,7 @@ func TestTournamentWinnerMarket_RecalcKeepsFinalResolution(t *testing.T) {
 	participants := append(append([]idpkg.ID{}, semis[0]...), semis[1]...)
 	marketSvc, market := createTournamentWinnerMarket(t, ctx, pool, adminID, tid, participants)
 	guarantor := createTestPlayer(t, pool, "Досрочный поручитель")
-	setBetLimit(t, pool, guarantor, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor, 16)
 	joinGuarantee(ctx, t, marketSvc, market.ID, guarantor)
 
 	// Both winners rounds play out with a strict top-2 cut, hours apart.
@@ -579,7 +579,7 @@ func TestTournamentWinnerMarket_RecalcKeepsFinalResolution(t *testing.T) {
 
 	// A bet lands between the rounds — inside the bogus window that a
 	// wrong replay opens when it resolves the market at a winners date.
-	setBetLimit(t, pool, semis[0][0], 16)
+	setBetLimit(t, pool, blueMenTenantID, semis[0][0], 16)
 	champion := semis[0][0]
 	outcomeChampion := marketOutcomeID(t, ctx, marketSvc, market.ID, "player", champion)
 	if _, err := placeBetAtCurrentPrice(ctx, t, marketSvc, market.ID, champion, outcomeChampion, 1); err != nil {

@@ -591,17 +591,6 @@ func (q *Queries) GetNearestMarketExpiry(ctx context.Context) (pgtype.Timestampt
 	return closes_at, err
 }
 
-const getPlayerBetLimit = `-- name: GetPlayerBetLimit :one
-SELECT bet_limit FROM players WHERE id = $1
-`
-
-func (q *Queries) GetPlayerBetLimit(ctx context.Context, argID id.ID) (float64, error) {
-	row := q.db.QueryRow(ctx, getPlayerBetLimit, argID)
-	var bet_limit float64
-	err := row.Scan(&bet_limit)
-	return bet_limit, err
-}
-
 const getPlayerBetsAggregatedForMarket = `-- name: GetPlayerBetsAggregatedForMarket :many
 SELECT outcome, SUM(cost + fee)::float8 AS total_cost
 FROM bets
@@ -1876,20 +1865,6 @@ type UpdateMarketOutcomeQParams struct {
 // outstanding shares of an outcome.
 func (q *Queries) UpdateMarketOutcomeQ(ctx context.Context, arg UpdateMarketOutcomeQParams) error {
 	_, err := q.db.Exec(ctx, updateMarketOutcomeQ, arg.MarketID, arg.ID, arg.Q)
-	return err
-}
-
-const updatePlayerBetLimit = `-- name: UpdatePlayerBetLimit :exec
-UPDATE players SET bet_limit = $2 WHERE id = $1
-`
-
-type UpdatePlayerBetLimitParams struct {
-	ID       id.ID   `json:"id"`
-	BetLimit float64 `json:"bet_limit"`
-}
-
-func (q *Queries) UpdatePlayerBetLimit(ctx context.Context, arg UpdatePlayerBetLimitParams) error {
-	_, err := q.db.Exec(ctx, updatePlayerBetLimit, arg.ID, arg.BetLimit)
 	return err
 }
 

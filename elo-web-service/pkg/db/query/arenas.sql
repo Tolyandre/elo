@@ -180,6 +180,12 @@ RETURNING *;
 -- Name sync for auto-managed arenas when their game is renamed.
 UPDATE arenas SET name = $2 WHERE id = $1;
 
+-- name: UpdateArenaSettings :exec
+-- Settings-only update for the system-managed main arenas: the tenant's main
+-- arena settings document is edited through the tenant (ADR-36 phase 5) —
+-- arena PATCH on it is a 409.
+UPDATE arenas SET settings = $2, settings_schema_version = $3 WHERE id = $1;
+
 -- name: ArenaNameExists :one
 -- Uniqueness guard for the user-facing arena CRUD (case-insensitive).
 -- @exclude_id skips the arena being updated; NULL on create.
@@ -389,15 +395,14 @@ WHERE st.arena_id = sqlc.arg('arena_id')
 ORDER BY p.name;
 
 -- name: ListArenaFeedEvents :many
--- One page of the arena feed (ADR-32): a merged, date-ordered stream of match,
--- correction and market events. A market enters at its creation moment while
+-- One page of the arena feed (ADR-32): a merged, date-ordered stream of match
+-- and market events. A market enters at its creation moment while
 -- it is active (open/betting_closed) and re-enters at its resolution moment
 -- once settled, so a match-triggered resolution sits right after its match.
--- Corrections and market events settle only into the global arena (ADR-24),
--- so their branches join the union only when the caller passes
--- include_settlements. The player/club/game
--- filters apply to the match and market branches; corrections stay
--- unfiltered. The cursor is the last returned (sort_date, event_type, id)
+-- Market events settle only into the global arena (ADR-24), so that branch
+-- joins the union only when the caller passes include_settlements. The
+-- player/club/game filters apply to both branches. The cursor is the last
+-- returned (sort_date, event_type, id)
 -- tuple; the token carries the filters, so continuation requests pass only
 -- the token.
 WITH events AS (
@@ -437,10 +442,6 @@ WITH events AS (
       AND (
           sqlc.narg('game_id')::uuid IS NULL OR m.game_id = sqlc.narg('game_id')::uuid
       )
-    UNION ALL
-    SELECT c.id, c.date, 'correction'::text
-    FROM corrections c
-    WHERE sqlc.arg('include_settlements')::bool
     UNION ALL
     -- Every market appears once: an active market (open or betting-locked)
     -- sorts at its creation moment, a settled one (resolved or cancelled —

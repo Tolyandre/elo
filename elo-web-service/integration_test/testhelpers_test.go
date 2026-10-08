@@ -83,6 +83,28 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	// Mirror production boot (ADR-36 phase 5): a migration that rewrites the
+	// global arena's settlement history (071 dropped the corrections) marks
+	// it stale, and the API process replays it in full before serving. The
+	// background worker never drains the global arena, so nothing else would
+	// clear the mark.
+	{
+		bootPool, err := pgxpool.New(ctx, connStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "connect for boot replay: %v\n", err)
+			os.Exit(1)
+		}
+		arenaSvc := elo.NewArenaService(bootPool, elo.NewHub())
+		marketSvc := elo.NewMarketService(bootPool)
+		tournamentSvc := elo.NewTournamentService(bootPool, arenaSvc, marketSvc)
+		matchSvc := elo.NewMatchService(bootPool, marketSvc, arenaSvc, tournamentSvc)
+		if err := matchSvc.ReplayStaleGlobal(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "boot replay of the global arena: %v\n", err)
+			os.Exit(1)
+		}
+		bootPool.Close()
+	}
+
 	// Turn the migrated database into the template every test clones. The
 	// migrate instance leaves a backend connected, so terminate those first.
 	u, err := url.Parse(connStr)
@@ -187,6 +209,11 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 
 	strictWrapper := &mainapi.ServerInterfaceWrapper{
 		Handler: mainapi.NewStrictHandler(mainapi.NewStrictServer(a, o), nil),
+		// Binding failures (a missing required query parameter) answer as 400s
+		// instead of panicking on a nil handler.
+		ErrorHandler: func(c *gin.Context, err error, status int) {
+			c.JSON(status, gin.H{"status": "fail", "message": err.Error()})
+		},
 	}
 
 	r.GET("/ping", strictWrapper.GetPing)
@@ -230,6 +257,7 @@ func setupRouterWithClients(pool *pgxpool.Pool, teseraBaseURL, bggBaseURL string
 	r.PATCH("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.PatchClub)
 	r.DELETE("/clubs/:id", o.DeserializeUser(), a.RequireEditor(), strictWrapper.DeleteClub)
 	r.POST("/clubs/:id/members", o.DeserializeUser(), a.RequireEditor(), strictWrapper.AddClubMember)
+	r.GET("/clubs/:id/members/history", strictWrapper.ListClubMemberHistory)
 	r.DELETE("/clubs/:id/members/:playerId", o.DeserializeUser(), a.RequireEditor(), strictWrapper.RemoveClubMember)
 	// Tenants (ADR-36): the community surface.
 	r.GET("/tenants", strictWrapper.ListTenants)
@@ -307,12 +335,66 @@ func joinGuarantee(ctx context.Context, t *testing.T, svc elo.IMarketService, ma
 	}
 }
 
-// setBetLimit overrides a player's bet limit directly (tests use it to fund
-// guarantor risk; recalculation may rewrite it from the elo formula later).
-func setBetLimit(t *testing.T, pool *pgxpool.Pool, playerID idpkg.ID, limit float64) {
+// setBetLimit funds a player for betting. Since ADR-36 phase 5 the bet limit
+// is derived at read time from the player's latest elo in the market's tenant
+// main arena (no stored column), so the helper seeds a synthetic arena
+// settlement with the elo the formula needs — and raises K in the base
+// settings row when the requested limit exceeds the K cap (tests needing that
+// much headroom do not assert elo values).
+func setBetLimit(t *testing.T, pool *pgxpool.Pool, tenantID, playerID idpkg.ID, limit float64) {
 	t.Helper()
-	if _, err := pool.Exec(context.Background(), `UPDATE players SET bet_limit = $2 WHERE id = $1`, playerID, limit); err != nil {
-		t.Fatalf("set bet limit for %s: %v", playerID, err)
+	ctx := context.Background()
+	var k, d, starting float64
+	if err := pool.QueryRow(ctx,
+		`SELECT elo_const_k, elo_const_d, starting_elo FROM elo_settings WHERE effective_date = '-infinity'`,
+	).Scan(&k, &d, &starting); err != nil {
+		t.Fatalf("read elo settings: %v", err)
+	}
+	if limit > k {
+		k = 2 * limit
+		if _, err := pool.Exec(ctx, `UPDATE elo_settings SET elo_const_k = $1 WHERE effective_date = '-infinity'`, k); err != nil {
+			t.Fatalf("raise K for %s: %v", playerID, err)
+		}
+	}
+	// Invert CalcBetLimit: limit = K / (1 + 10^((starting − elo)/D)).
+	elo := starting - d*math.Log10(k/limit-1)
+	var arenaID string
+	if err := pool.QueryRow(ctx, `SELECT id::text FROM arenas WHERE tenant_id = $1`, tenantID).Scan(&arenaID); err != nil {
+		t.Fatalf("find main arena of tenant %s: %v", tenantID, err)
+	}
+	// A player with no settlements in the arena sits at the starting elo —
+	// the natural limit when the target equals K/2 — so no seed is needed,
+	// and inserting one would only distort the arena's rating chain.
+	var hasRows bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM arena_settlements WHERE arena_id = $1::uuid AND player_id = $2::uuid)`, arenaID, playerID).Scan(&hasRows); err != nil {
+		t.Fatalf("check arena settlements: %v", err)
+	}
+	if !hasRows && elo == starting {
+		return
+	}
+	u, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate settlement id: %v", err)
+	}
+	// The synthetic settlement must postdate the player's existing chain in
+	// the arena — the limit reads the LATEST settlement row — but stay in the
+	// past so fixture matches added later still order after it.
+	var seededAt time.Time
+	var latest pgtype.Timestamptz
+	err = pool.QueryRow(ctx, `SELECT max(date) FROM arena_settlements WHERE arena_id = $1::uuid AND player_id = $2::uuid`, arenaID, playerID).Scan(&latest)
+	if err != nil {
+		t.Fatalf("read latest settlement: %v", err)
+	}
+	if latest.Valid {
+		seededAt = latest.Time.Add(time.Second)
+	} else {
+		seededAt = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO arena_settlements (id, arena_id, player_id, date, rating_after, elo_after, discriminator, elo_staked, elo_earned, rating_staked, rating_earned)
+		 VALUES ($1, $2, $3, $4, $5, $5, 'match', 0, 0, 0, 0)`,
+		idpkg.ID(u.String()), arenaID, playerID, seededAt, elo); err != nil {
+		t.Fatalf("seed arena elo for %s: %v", playerID, err)
 	}
 }
 
@@ -690,10 +772,6 @@ func newTagService(pool *pgxpool.Pool) elo.ITagService {
 func newGameService(pool *pgxpool.Pool) elo.IGameService {
 	// No Tesera/BGG clients: service-level tests don't touch the catalogues.
 	return elo.NewGameService(pool, newArenaService(pool), nil, nil)
-}
-
-func newCorrectionService(pool *pgxpool.Pool) elo.ICorrectionService {
-	return elo.NewCorrectionService(pool, newArenaService(pool))
 }
 
 // GlobalArenaID re-exported for raw SQL assertions against the unified

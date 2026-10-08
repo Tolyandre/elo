@@ -26,7 +26,10 @@ type Player struct {
 	WinsNeededForAmateurUpper int // upper bound: elo also grows ≈ K/2 per win
 }
 type IPlayerService interface {
-	GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error)
+	// GetPlayersWithRank ranks the player catalog in the given display arena —
+	// since ADR-36 phase 5 the ?tenant='s main arena (reads are tenant-scoped;
+	// there is no global default).
+	GetPlayersWithRank(ctx context.Context, arenaID id.ID, when *time.Time) ([]Player, error)
 	// CreatePlayer/UpdatePlayer/DeletePlayer record audit events for the actor
 	// (ADR-14); a zero actor skips the audit row.
 	CreatePlayer(ctx context.Context, playerID id.ID, name string, actor id.ID) (db.Player, error)
@@ -113,8 +116,9 @@ func leaguePriority(league string) int {
 }
 
 // GetPlayersWithRank returns players with their Elo and rank as of `when` (or
-// now if nil). The ranking is the global arena's (ADR-24).
-func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time) ([]Player, error) {
+// now if nil), ranked in the given display arena — since ADR-36 phase 5 the
+// ?tenant='s main arena.
+func (s *PlayerService) GetPlayersWithRank(ctx context.Context, arenaID id.ID, when *time.Time) ([]Player, error) {
 	ref := time.Now()
 	if when != nil {
 		ref = *when
@@ -128,16 +132,16 @@ func (s *PlayerService) GetPlayersWithRank(ctx context.Context, when *time.Time)
 	}
 	settings := EloSettingsFromDB(settingsRow)
 
-	globalArena, err := s.Queries.GetArena(ctx, GlobalArenaID)
+	arenaRow, err := s.Queries.GetArena(ctx, arenaID)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get global arena: %w", err)
+		return nil, fmt.Errorf("unable to get display arena: %w", err)
 	}
-	arena, err := arenaFromGetArenaRow(globalArena)
+	arena, err := arenaFromGetArenaRow(arenaRow)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := s.Queries.ListPlayersWithStats(ctx, db.ListPlayersWithStatsParams{Date: dt, ArenaID: GlobalArenaID})
+	rows, err := s.Queries.ListPlayersWithStats(ctx, db.ListPlayersWithStatsParams{Date: dt, ArenaID: arenaID})
 	if err != nil {
 		return nil, fmt.Errorf("unable to retrieve players from db: %w", err)
 	}

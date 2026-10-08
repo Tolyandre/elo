@@ -98,7 +98,7 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("snapshot market resolutions: %w", err)
 	}
 
-	// Delete all settlement rows from startDate in one query (match, market, and correction).
+	// Delete all settlement rows from startDate in one query (match and market).
 	// The per-market deletes inside UnsettleMarketsFromDate will become no-ops.
 	if err := q.DeleteGlobalSettlementsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true}); err != nil {
 		return fmt.Errorf("delete settlements from date: %w", err)
@@ -114,60 +114,26 @@ func (p *EventProcessor) RecalculateFrom(
 		return fmt.Errorf("get matches from date %v: %w", startDate, err)
 	}
 
-	corrections, err := q.GetCorrectionsFromDate(ctx, pgtype.Timestamptz{Time: startDate, Valid: true})
-	if err != nil {
-		return fmt.Errorf("get corrections from date %v: %w", startDate, err)
-	}
-
-	allAffectedPlayers := make(map[id.ID]bool)
-
-	// Merge matches and corrections in date order. On the same date, matches come first.
-	mi, ci := 0, 0
-	for mi < len(matches) || ci < len(corrections) {
-		pickMatch := mi < len(matches) &&
-			(ci >= len(corrections) || !corrections[ci].Date.Time.Before(matches[mi].Date.Time))
-
-		if pickMatch {
-			match := matches[mi]
-			mi++
-
-			matchScores, err := q.GetMatchScoresForMatch(ctx, match.ID)
-			if err != nil {
-				return fmt.Errorf("get scores for match %s: %w", match.ID, err)
-			}
-
-			playerScores := make(map[id.ID]float64)
-			for _, ms := range matchScores {
-				playerScores[ms.PlayerID] = ms.Score
-				allAffectedPlayers[ms.PlayerID] = true
-			}
-
-			state, settles, err := lockAndGetPrevElos(ctx, q, match, playerScores)
-			if err != nil {
-				return fmt.Errorf("lock/get prev elos for match %s: %w", match.ID, err)
-			}
-
-			if err := p.processMatchSettlements(ctx, q, match.ID, playerScores,
-				state, match.Date.Time, match.Mode, settles, calcAndUpdateElo); err != nil {
-				return err
-			}
-		} else {
-			correction := corrections[ci]
-			ci++
-
-			if err := applyCorrectionWithinTx(ctx, q, correction); err != nil {
-				return fmt.Errorf("apply correction %s: %w", correction.ID, err)
-			}
-			allAffectedPlayers[correction.PlayerID] = true
+	for _, match := range matches {
+		matchScores, err := q.GetMatchScoresForMatch(ctx, match.ID)
+		if err != nil {
+			return fmt.Errorf("get scores for match %s: %w", match.ID, err)
 		}
-	}
 
-	affectedIDs := make([]id.ID, 0, len(allAffectedPlayers))
-	for pid := range allAffectedPlayers {
-		affectedIDs = append(affectedIDs, pid)
-	}
-	if err := RecalculateBetLimits(ctx, q, affectedIDs); err != nil {
-		return fmt.Errorf("recalculate bet limits: %w", err)
+		playerScores := make(map[id.ID]float64)
+		for _, ms := range matchScores {
+			playerScores[ms.PlayerID] = ms.Score
+		}
+
+		state, settles, err := lockAndGetPrevElos(ctx, q, match, playerScores)
+		if err != nil {
+			return fmt.Errorf("lock/get prev elos for match %s: %w", match.ID, err)
+		}
+
+		if err := p.processMatchSettlements(ctx, q, match.ID, playerScores,
+			state, match.Date.Time, match.Mode, settles, calcAndUpdateElo); err != nil {
+			return err
+		}
 	}
 
 	// Tournament-winner markets are settled by tournament state, which the

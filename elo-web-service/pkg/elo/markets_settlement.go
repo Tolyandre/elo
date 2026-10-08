@@ -269,10 +269,6 @@ func (s *MarketService) SettleMarket(ctx context.Context, q *db.Queries, marketI
 		return fmt.Errorf("resolve market %s: %w", marketID, err)
 	}
 
-	if err := RecalculateBetLimits(ctx, q, allPlayerIDs); err != nil {
-		return fmt.Errorf("recalculate bet limits: %w", err)
-	}
-
 	return nil
 }
 

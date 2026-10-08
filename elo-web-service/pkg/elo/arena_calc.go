@@ -130,30 +130,6 @@ func determineArenaLeague(prev *string, newRating, newElo float64, count6M, coun
 	return strPtr(baseLeague(arena))
 }
 
-// determineCorrectionLeague returns the league after a manual rating
-// correction. Corrections can demote any player to newbie (a correction may
-// re-open the elo−rating gap), unlike match settlements which only keep
-// newbies in the newbie league.
-func determineCorrectionLeague(prev *string, newRating, prevElo float64, arena Arena) *string {
-	if len(arena.Settings.Leagues) == 0 {
-		return nil
-	}
-	if nl, ok := arena.Settings.Newbie(); ok {
-		if prevElo-newRating > nl.GoalGap {
-			return strPtr(LeagueNewbie)
-		}
-	}
-	if prev != nil && *prev == LeagueNewbie {
-		for _, l := range arena.Settings.Leagues {
-			if l.Kind != LeagueNewbie {
-				return strPtr(l.Kind)
-			}
-		}
-		return strPtr(LeagueNewbie)
-	}
-	return prev
-}
-
 // ---------------------------------------------------------------------------
 // Newbie rating scaling (ADR-03), parameterized by the arena's newbie league.
 // ---------------------------------------------------------------------------

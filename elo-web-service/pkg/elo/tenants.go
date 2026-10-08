@@ -2,11 +2,13 @@ package elo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tolyandre/elo-web-service/pkg/arenasettings"
 	"github.com/tolyandre/elo-web-service/pkg/audit"
 	"github.com/tolyandre/elo-web-service/pkg/db"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -32,6 +34,12 @@ type ITenantService interface {
 	// changes who is a member, so a change recalculates the main arena inside
 	// the same transaction.
 	UpdateTenantClubs(ctx context.Context, tenantID id.ID, clubIDs []id.ID, actor id.ID) error
+	// UpdateTenantArenaSettings replaces the main arena's settings document
+	// (starting rating and leagues, ADR-24 shape) through the tenant (ADR-36
+	// phase 5): main arenas are system-managed, arena PATCH on them is a 409.
+	// A settings change re-derives every rating from the settlement history,
+	// so the recalculation runs inside the same transaction.
+	UpdateTenantArenaSettings(ctx context.Context, tenantID id.ID, settingsRaw json.RawMessage, actor id.ID) (db.Tenant, error)
 	// FeedArena returns the tenant's main arena id — the tenant feed's
 	// settlement source (ADR-36). No rows means the tenant is missing.
 	FeedArena(ctx context.Context, tenantID id.ID) (id.ID, error)
@@ -257,6 +265,61 @@ func attachedClubIDs(ctx context.Context, q *db.Queries, tenantID id.ID) ([]id.I
 	}
 	slices.Sort(out)
 	return out, nil
+}
+
+// UpdateTenantArenaSettings replaces the main arena's settings document
+// (starting rating and leagues) through the tenant (ADR-36 phase 5). Main
+// arenas are system-managed — arena PATCH/DELETE on them is a 409 — so the
+// tenant is the only edit path. A genuine settings change re-derives every
+// rating from the settlement history, so the recalculation runs inside the
+// settings transaction (same machinery as an openness or composition change).
+func (s *TenantService) UpdateTenantArenaSettings(ctx context.Context, tenantID id.ID, settingsRaw json.RawMessage, actor id.ID) (db.Tenant, error) {
+	settings, err := validateSettings(settingsRaw)
+	if err != nil {
+		return db.Tenant{}, err
+	}
+	var updated db.Tenant
+	err = runInTx(ctx, s.Pool, func(q *db.Queries) error {
+		if _, err := q.GetTenantByID(ctx, tenantID); err != nil {
+			return err
+		}
+		row, err := q.GetArenaByTenant(ctx, &tenantID)
+		if err != nil {
+			return err
+		}
+		current, err := arenaFromGetArenaByTenantRow(row)
+		if err != nil {
+			return err
+		}
+		if err := q.UpdateArenaSettings(ctx, db.UpdateArenaSettingsParams{
+			ID:                    current.ID,
+			Settings:              settingsRaw,
+			SettingsSchemaVersion: arenasettings.CurrentVersion,
+		}); err != nil {
+			return err
+		}
+		// Only a genuine change re-derives the arena's history.
+		if !settingsEqual(current.Settings, settings) {
+			if err := s.recalculateMainArena(ctx, q, tenantID); err != nil {
+				return err
+			}
+		}
+		tenant, err := q.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		updated = tenant
+		return recordAuditEvent(ctx, q, actor, audit.EntityTenant, audit.ActionUpdated, tenantID, audit.KindEntity, audit.NewEntityDetails(tenant.Name))
+	})
+	return updated, err
+}
+
+// settingsEqual compares two parsed arena settings documents.
+func settingsEqual(a, b arenasettings.Settings) bool {
+	return a.StartingRating == b.StartingRating && slices.EqualFunc(a.Leagues, b.Leagues, func(x, y arenasettings.League) bool {
+		return x.Kind == y.Kind && x.GoalGap == y.GoalGap && x.EarnedMin == y.EarnedMin && x.EarnedMax == y.EarnedMax &&
+			x.Tau == y.Tau && x.Matches6M == y.Matches6M && x.Matches2M == y.Matches2M
+	})
 }
 
 // recalculateMainArena re-settles the tenant's main arena from scratch after

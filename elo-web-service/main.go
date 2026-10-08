@@ -46,6 +46,13 @@ func main() {
 	apiHandler := api.New(pool)
 	oauth2Handler := oauth2.New(pool)
 
+	// A migration that rewrites the global arena's settlement history marks it
+	// stale; the background worker never drains the global arena, so boot
+	// replays it in full before the API starts serving (ADR-36 phase 5).
+	if err := apiHandler.MatchService.ReplayStaleGlobal(context.Background()); err != nil {
+		log.Fatalf("global arena replay failed: %v", err)
+	}
+
 	go apiHandler.MarketService.ScheduleNextExpiry(context.Background())
 	go apiHandler.TableService.ScheduleNextCleanup(context.Background())
 	// Arena updater (ADR-24): recalculates stale arenas (tag-driven filter
@@ -87,6 +94,12 @@ func main() {
 
 	strictWrapper := &api.ServerInterfaceWrapper{
 		Handler: api.NewStrictHandler(api.NewStrictServer(apiHandler, oauth2Handler), []api.StrictMiddlewareFunc{errorMiddleware}),
+		// Binding failures (a missing required query parameter, a malformed
+		// path parameter) answer in the common envelope; a nil handler would
+		// panic instead.
+		ErrorHandler: func(c *gin.Context, err error, status int) {
+			c.JSON(status, gin.H{"status": "fail", "message": err.Error()})
+		},
 	}
 
 	// editorAuth returns the standard editor-gated middleware chain (valid
@@ -143,7 +156,6 @@ func main() {
 	// with a per-arena diff). Editor-gated like every other write route; the
 	// page for it is /debug (unlinked).
 	router.POST("/admin/update-arenas", append(editorAuth(), strictWrapper.UpdateArenas)...)
-	router.POST("/admin/players/:id/corrections", append(editorAuth(), strictWrapper.CreatePlayerCorrection)...)
 
 	// Arenas (ADR-24) — public reads, editor-gated writes. /arenas/:id/feed is
 	// the arena feed, /feed the main page's home feed (ADR-32).
@@ -182,6 +194,7 @@ func main() {
 	router.PATCH("/clubs/:id", append(editorAuth(), strictWrapper.PatchClub)...)
 	router.DELETE("/clubs/:id", append(editorAuth(), strictWrapper.DeleteClub)...)
 	router.POST("/clubs/:id/members", append(editorAuth(), strictWrapper.AddClubMember)...)
+	router.GET("/clubs/:id/members/history", strictWrapper.ListClubMemberHistory)
 	router.DELETE("/clubs/:id/members/:playerId", append(editorAuth(), strictWrapper.RemoveClubMember)...)
 
 	// Tenants (ADR-36): the community surface — lifecycle, openness settings,

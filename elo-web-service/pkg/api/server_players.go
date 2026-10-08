@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,20 +12,33 @@ import (
 	"github.com/tolyandre/elo-web-service/pkg/id"
 )
 
-func (s *StrictServer) ListPlayers(ctx context.Context, _ ListPlayersRequestObject) (ListPlayersResponseObject, error) {
+func (s *StrictServer) ListPlayers(ctx context.Context, request ListPlayersRequestObject) (ListPlayersResponseObject, error) {
+	// The catalog is global but the ranking columns come from a tenant's main
+	// arena — required since ADR-36 phase 5, reads are tenant-scoped.
+	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
+	if err != nil {
+		if errors.Is(err, errTenantRequired) {
+			return ListPlayers400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+		}
+		if db.IsNoRows(err) {
+			return ListPlayers404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
+		}
+		return nil, err
+	}
+
 	now := time.Now()
 	tDay := now.Add(-time.Hour * 12)
 	tWeek := now.Add(-time.Hour * (24*7 - 12))
 
-	actualPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, nil)
+	actualPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, nil)
 	if err != nil {
 		return nil, err
 	}
-	dayAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, &tDay)
+	dayAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tDay)
 	if err != nil {
 		return nil, err
 	}
-	weekAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, &tWeek)
+	weekAgoPlayers, err := s.api.PlayerService.GetPlayersWithRank(ctx, arenaID, &tWeek)
 	if err != nil {
 		return nil, err
 	}
@@ -226,10 +240,14 @@ func (s *StrictServer) GetPlayerStats(ctx context.Context, request GetPlayerStat
 	}
 
 	// The display arena for the rating history and the Elo-per-game tables:
-	// the ?tenant='s main arena (ADR-36 phase 4), the global arena otherwise.
-	// "Частые игры" is tenant-independent and reads no arena at all.
+	// the ?tenant='s main arena (ADR-36) — required since phase 5, reads are
+	// tenant-scoped. "Частые игры" is tenant-independent and reads no arena at
+	// all.
 	arenaID, err := s.resolveDisplayArena(ctx, request.Params.Tenant)
 	if err != nil {
+		if errors.Is(err, errTenantRequired) {
+			return GetPlayerStats400JSONResponse{Status: StatusFail, Message: "tenant query parameter is required"}, nil
+		}
 		if db.IsNoRows(err) {
 			return GetPlayerStats404JSONResponse{Status: StatusFail, Message: "tenant not found"}, nil
 		}

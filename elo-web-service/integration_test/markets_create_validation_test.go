@@ -108,7 +108,7 @@ func TestMarkets_Create_NoLiquidityThenGuaranteeDepth(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE users SET player_id = $2 WHERE id = $1`, userID, guarantor.ID); err != nil {
 		t.Fatalf("link guarantor player: %v", err)
 	}
-	setBetLimit(t, pool, guarantor.ID, 16)
+	setBetLimit(t, pool, blueMenTenantID, guarantor.ID, 16)
 
 	// Two targets → n = 3 outcomes.
 	marketID := uuid.MustParse("00000000-0000-0000-0000-000000000114").String()
