@@ -71,18 +71,11 @@ export default function TenantsAdminPage() {
                     <h2 className="text-lg font-medium mb-3">Список сообществ</h2>
                     <div className="space-y-2">
                         {sortedTenants.map((tenant) => (
-                            <div key={tenant.id} className="border rounded p-3 flex flex-col sm:flex-row sm:items-center gap-2">
-                                <div className="flex-1 min-w-0">
-                                    <Link href={`/?tenant=${tenant.id}`} className="font-medium underline inline-flex items-center gap-1.5 min-w-0">
-                                        <TenantIcon icon={tenant.icon} />
-                                        <span className="truncate">{tenant.name}</span>
-                                    </Link>
-                                </div>
-                                <div className="w-full sm:w-auto">
-                                    <Button asChild variant="outline" className="w-full sm:w-auto">
-                                        <Link href={`/admin/tenants/edit?id=${tenant.id}`}>Настроить</Link>
-                                    </Button>
-                                </div>
+                            <div key={tenant.id} className="border rounded p-3">
+                                <Link href={`/admin/tenants/edit?id=${tenant.id}`} className="font-medium underline inline-flex items-center gap-1.5 min-w-0">
+                                    <TenantIcon icon={tenant.icon} />
+                                    <span className="truncate">{tenant.name}</span>
+                                </Link>
                             </div>
                         ))}
                     </div>
