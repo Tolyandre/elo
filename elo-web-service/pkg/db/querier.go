@@ -516,15 +516,17 @@ type Querier interface {
 	// community's activity, membership-scoped — deliberately NOT
 	// arena-attribution-scoped, so a tournament match appears even when it does
 	// not count into the tenant's main arena rating. Under arena_membership_mode
-	// 'all' the match branch widens to every match — the arena counts matches the
-	// membership predicate would hide, and the feed must not be narrower than the
-	// rating (ADR-36 phase 7). Match events go to any current member's matches —
-	// of any club of the tenant (coop included: community life, not just rating);
-	// market events to the markets the tenant OWNS (a member's bet on another
-	// tenant's market is that tenant's news). The player/club/game filters apply
-	// to both branches (the arena feed's matching rule). Parameters and cursor
-	// are the arena feed's minus the arena and the include flags; the tenant
-	// itself is the feed's identity.
+	// 'all' the match branch widens to every match; under 'members_only' it
+	// tightens to matches whose WHOLE roster are current members — the openness
+	// rule the creation and edit guards enforce, applied to the feed too, so a
+	// guest-carrying (historical) match stays out (ADR-36 phase 7). Match events
+	// otherwise go to any current member's matches — of any club of the tenant
+	// (coop included: community life, not just rating); market events to the
+	// markets the tenant OWNS (a member's bet on another tenant's market is that
+	// tenant's news). The player/club/game filters apply to both branches (the
+	// arena feed's matching rule). Parameters and cursor are the arena feed's
+	// minus the arena and the include flags; the tenant itself is the feed's
+	// identity.
 	ListTenantFeedEvents(ctx context.Context, arg ListTenantFeedEventsParams) ([]ListTenantFeedEventsRow, error)
 	// Tenant queries (ADR-36). A tenant is a separate community entity: name,
 	// openness settings, one main arena (arenas.tenant_id), and one or many

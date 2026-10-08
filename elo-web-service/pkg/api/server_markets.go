@@ -755,6 +755,10 @@ func (s *StrictServer) CreateTenantMarket(ctx context.Context, request CreateTen
 		if domainStatusCode(err) == http.StatusNotFound {
 			return CreateTenantMarket404JSONResponse{Status: StatusFail, Message: "Tenant not found"}, nil
 		}
+		// The members_only creation gate (ADR-36 phase 7) is a 400.
+		if domainStatusCode(err) == http.StatusBadRequest {
+			return CreateTenantMarket400JSONResponse{Status: StatusFail, Message: err.Error()}, nil
+		}
 		return nil, err
 	}
 

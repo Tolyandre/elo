@@ -13,9 +13,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 // The tenant the match is created under (ADR-36); tests mutate this to
-// exercise the openness rules (create mode only — edits stay unrestricted).
+// exercise the openness rules in create and edit modes — since phase 7 the
+// rule binds both (the server rejects guest-carrying rosters under
+// members_only on either path).
 const tenantScope = vi.hoisted(() => ({
-    tenant: null as { id: string; name: string; arena_membership_mode: "any_member" | "members_only" } | null,
+    tenant: null as { id: string; name: string; arena_membership_mode: "all" | "any_member" | "members_only" } | null,
     memberIds: [] as string[],
 }));
 
@@ -205,6 +207,60 @@ describe("MatchForm tenant membership rules, create mode (ADR-36)", () => {
             view.byTestId("pick-guests").click();
         });
         expect(view.byTestId("allowed").textContent).toBe("all");
+        expect(view.submitButton().disabled).toBe(false);
+        view.unmount();
+    });
+});
+
+describe("MatchForm tenant membership rules, edit mode (ADR-36 phase 7)", () => {
+    // An offline-pending match with a guest in the roster: the edit path
+    // applies the same openness rule the create path does.
+    const pendingWithGuest = {
+        clientId: pid("m1"),
+        createdAt: "2026-06-01T11:00:00Z",
+        status: "pending" as const,
+        gameId: pid("game1"),
+        score: { [pid("g1")]: 10, [pid("p1")]: 5 },
+        campArenaIds: [] as Base58ID[],
+    };
+
+    function renderEditForm() {
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        act(() => {
+            root.render(<MatchForm editPending={pendingWithGuest} />);
+        });
+        const submitButton = () =>
+            Array.from(container.querySelectorAll("button")).find((b) =>
+                b.textContent?.includes("Сохранить изменения"),
+            ) as HTMLButtonElement;
+        return {
+            text: () => container.textContent ?? "",
+            submitButton,
+            unmount() {
+                act(() => {
+                    root.unmount();
+                });
+                container.remove();
+            },
+        };
+    }
+
+    it("members_only: a guest-carrying roster is blocked with the reason", () => {
+        tenantScope.tenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "members_only" };
+        tenantScope.memberIds = [pid("p1"), pid("p2")];
+        const view = renderEditForm();
+        expect(view.text()).toContain("только своих участников");
+        expect(view.submitButton().disabled).toBe(true);
+        view.unmount();
+    });
+
+    it("all («Все партии»): the same roster submits", async () => {
+        tenantScope.tenant = { id: pid("t1"), name: "Синие люди", arena_membership_mode: "all" };
+        tenantScope.memberIds = [];
+        const view = renderEditForm();
+        expect(view.text()).not.toContain("только своих участников");
         expect(view.submitButton().disabled).toBe(false);
         view.unmount();
     });

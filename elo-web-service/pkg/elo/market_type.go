@@ -56,6 +56,11 @@ type MarketTypeHandler interface {
 	// CreateParams stores type-specific parameters in the DB within a transaction.
 	CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error
 
+	// TargetPlayers returns the players the market is about — the ones its
+	// outcomes and settlements attach to. The members_only creation gate
+	// (ADR-36 phase 7) checks them against the tenant's current membership.
+	TargetPlayers(ctx context.Context, q *db.Queries, params CreateMarketParams) ([]id.ID, error)
+
 	// ResolutionTrigger returns the strategy that decides when and how markets of
 	// this type are resolved. Called once per handler; the result may be cached.
 	ResolutionTrigger() ResolutionTrigger

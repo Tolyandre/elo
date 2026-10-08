@@ -12,6 +12,11 @@ import (
 
 type matchWinnerHandler struct{}
 
+// TargetPlayers returns the market's target players (match_winner).
+func (h *matchWinnerHandler) TargetPlayers(_ context.Context, _ *db.Queries, params CreateMarketParams) ([]id.ID, error) {
+	return params.MatchWinner.TargetPlayerIDs, nil
+}
+
 func (h *matchWinnerHandler) CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error {
 	p := params.MatchWinner
 	targets := p.TargetPlayerIDs

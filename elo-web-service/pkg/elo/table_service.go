@@ -300,32 +300,10 @@ func (s *TableService) ListTables(ctx context.Context, tenantID id.ID) ([]TableS
 // joins and submissions are deliberately unguarded — a live game must never
 // break mid-play.
 func validateSeatingTenant(ctx context.Context, q *db.Queries, tenant db.Tenant, playerIDs []id.ID) error {
-	if tenant.ArenaMembershipMode == ArenaMembershipAll || len(playerIDs) == 0 {
+	if tenant.ArenaMembershipMode == ArenaMembershipAll {
 		return nil
 	}
-	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {
-		for _, pid := range playerIDs {
-			member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenant.ID, PlayerID: pid})
-			if err != nil {
-				return fmt.Errorf("check tenant membership: %w", err)
-			}
-			if !member {
-				return ErrTableOutsideTenant
-			}
-		}
-		return nil
-	}
-	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
-		TenantID:  tenant.ID,
-		PlayerIds: playerIDs,
-	})
-	if err != nil {
-		return fmt.Errorf("check tenant membership: %w", err)
-	}
-	if !hasMember {
-		return ErrTableOutsideTenant
-	}
-	return nil
+	return checkTenantParticipantRule(ctx, q, tenant, playerIDs, ErrTableOutsideTenant, ErrTableOutsideTenant)
 }
 
 func (s *TableService) CreateTable(ctx context.Context, tenantID, tableID, hostUserID, gameID id.ID, hostClientToken string, initialState json.RawMessage) (TableSummary, error) {

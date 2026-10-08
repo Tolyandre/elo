@@ -9,6 +9,7 @@ var (
 	ErrBetLimitExceeded                 = errors.New("ставка превысит лимит бронирования")
 	ErrMarketNotOpen                    = errors.New("рынок не открыт")
 	ErrMarketMembersOnly                = errors.New("ставки и поручительство на этом рынке доступны только участникам сообщества")
+	ErrMarketTargetOutsideTenant        = errors.New("рынок сообщества может касаться только его участников")
 	ErrMarketOutcomeNotFound            = errors.New("указанный исход не существует на этом рынке")
 	ErrProbabilityChanged               = errors.New("цена изменилась, обновите страницу и повторите ставку")
 	ErrMarketNeedsGuarantor             = errors.New("рынок ждёт поручителей: пока ставок нет, встать поручителем можно на странице рынка")
@@ -68,6 +69,9 @@ var (
 	// The match-edit feed guard (ADR-36): the edit would drop the match from
 	// the tenant's feed, so it is rejected.
 	ErrMatchOutsideTenant = errors.New("нужен хотя бы один участник сообщества")
+	// The members_only strictness (ADR-36 phase 7): a match under such a
+	// tenant admits current members only — a guest in the roster is rejected.
+	ErrMatchMembersOnly = errors.New("сообщество принимает в партии только своих участников")
 	// The table-create guard (ADR-36 phase 7): the seating does not relate to
 	// the tenant the table is created under.
 	ErrTableOutsideTenant = errors.New("состав стола не относится к сообществу: посадка должна соответствовать правилу открытости сообщества")

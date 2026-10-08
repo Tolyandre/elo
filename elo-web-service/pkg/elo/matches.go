@@ -263,8 +263,9 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 	q := s.Queries.WithTx(tx)
 
 	// The path tenant must exist (a 404, not a silent default — ADR-36 phase
-	// 5 retired the fallback).
-	if _, err := q.GetTenantByID(ctx, tenantID); err != nil {
+	// 5 retired the fallback). Its row drives the participant rule below.
+	tenant, err := q.GetTenantByID(ctx, tenantID)
+	if err != nil {
 		if db.IsNoRows(err) {
 			return db.Match{}, ErrTenantNotFound
 		}
@@ -309,22 +310,14 @@ func (s *MatchService) AddMatch(ctx context.Context, tenantID id.ID, gameID id.I
 	}
 
 	// The feed guard at creation (ADR-36 phase 7): the match must relate to
-	// the tenant it is created under — at least one participant is a current
-	// member of any of its clubs. The same predicate the edit applies and the
-	// tenant feed selects by; without it a match could never appear in the
-	// community it was recorded for. Checked inside the write transaction, so
-	// a concurrent membership change cannot slip past it. Coop matches are
-	// gated the same way (they are community news even though they settle no
-	// rating, ADR-33).
-	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
-		TenantID:  tenantID,
-		PlayerIds: playerIDsOf(playerScores),
-	})
-	if err != nil {
-		return db.Match{}, fmt.Errorf("check tenant membership: %w", err)
-	}
-	if !hasMember {
-		return db.Match{}, ErrMatchOutsideTenant
+	// the tenant it is created under, per its openness rule — members_only
+	// admits current members only, any_member and all demand at least one
+	// current member. The same predicate the edit applies and the tenant feed
+	// selects by; without it a match could never appear in the community it
+	// was recorded for. Coop matches are gated the same way (they are
+	// community news even though they settle no rating, ADR-33).
+	if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
+		return db.Match{}, err
 	}
 
 	if mode == MatchModeCoop && len(opts.CampArenaIDs) > 0 {
@@ -588,24 +581,21 @@ func (s *MatchService) UpdateMatch(ctx context.Context, tenantID id.ID, matchID 
 		return db.Match{}, err
 	}
 
-	// ADR-36: the edit must not drop the match out of the tenant's feed — at
-	// least one participant has to remain a current member of the community
-	// the edit is submitted under (the feed predicate: an active stint in any
-	// club of the tenant). Checked inside the write transaction, so a
-	// concurrent membership change cannot slip past it. An unknown tenant is
-	// a 404, a failed check a 400.
-	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
-		TenantID:  tenantID,
-		PlayerIds: playerIDsOf(playerScores),
-	})
+	// ADR-36 (revised phase 7): the edit keeps the match inside the tenant's
+	// feed and openness rule — the same predicate creation applies:
+	// members_only admits current members only, any_member and all demand at
+	// least one current member among the participants. Checked inside the
+	// write transaction, so a concurrent membership change cannot slip past
+	// it. An unknown tenant is a 404, a failed check a 400.
+	tenant, err := q.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return db.Match{}, ErrTenantNotFound
 		}
-		return db.Match{}, fmt.Errorf("check tenant membership: %w", err)
+		return db.Match{}, fmt.Errorf("get tenant: %w", err)
 	}
-	if !hasMember {
-		return db.Match{}, ErrMatchOutsideTenant
+	if err := checkTenantParticipantRule(ctx, q, tenant, playerIDsOf(playerScores), ErrMatchMembersOnly, ErrMatchOutsideTenant); err != nil {
+		return db.Match{}, err
 	}
 
 	// ADR-27 (revised): camp links are editable — editing a match exists to

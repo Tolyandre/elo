@@ -53,9 +53,28 @@ func createMarketTx(ctx context.Context, q *db.Queries, params CreateMarketParam
 	}
 
 	// The owning tenant must exist (ADR-36): the market settles into its main
-	// arena. A missing tenant maps to the handler's 404.
-	if _, err := q.GetTenantByID(ctx, params.TenantID); err != nil {
+	// arena. A missing tenant maps to the handler's 404. Under members_only
+	// the strictness extends to creation (ADR-36 phase 7): the market must be
+	// about the tenant's current members — its outcomes and settlements land
+	// in the tenant's arena, and bets are members-only anyway.
+	tenant, err := q.GetTenantByID(ctx, params.TenantID)
+	if err != nil {
 		return db.Market{}, fmt.Errorf("get tenant: %w", err)
+	}
+	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {
+		targets, err := handler.TargetPlayers(ctx, q, params)
+		if err != nil {
+			return db.Market{}, err
+		}
+		for _, pid := range targets {
+			member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenant.ID, PlayerID: pid})
+			if err != nil {
+				return db.Market{}, fmt.Errorf("check tenant membership: %w", err)
+			}
+			if !member {
+				return db.Market{}, ErrMarketTargetOutsideTenant
+			}
+		}
 	}
 
 	market, err := q.CreateMarket(ctx, db.CreateMarketParams{

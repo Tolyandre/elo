@@ -12,6 +12,20 @@ import (
 
 type tournamentWinnerHandler struct{}
 
+// TargetPlayers returns the tournament's participants — read server-side,
+// the same roster CreateParams freezes into the outcomes.
+func (h *tournamentWinnerHandler) TargetPlayers(ctx context.Context, q *db.Queries, params CreateMarketParams) ([]id.ID, error) {
+	participants, err := q.ListTournamentParticipants(ctx, params.TournamentWinner.TournamentID)
+	if err != nil {
+		return nil, fmt.Errorf("list tournament participants: %w", err)
+	}
+	playerIDs := make([]id.ID, 0, len(participants))
+	for _, p := range participants {
+		playerIDs = append(playerIDs, p.PlayerID)
+	}
+	return playerIDs, nil
+}
+
 // CreateParams stores the tournament link and creates one "player wins"
 // outcome per tournament participant, read server-side: the roster is frozen
 // once the tournament is running (registration closes on start), so the

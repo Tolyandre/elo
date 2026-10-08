@@ -13,6 +13,11 @@ import (
 
 type winStreakHandler struct{}
 
+// TargetPlayers returns the market's target player (win_streak).
+func (h *winStreakHandler) TargetPlayers(_ context.Context, _ *db.Queries, params CreateMarketParams) ([]id.ID, error) {
+	return []id.ID{params.WinStreak.TargetPlayerID}, nil
+}
+
 func (h *winStreakHandler) CreateParams(ctx context.Context, q *db.Queries, marketID id.ID, params CreateMarketParams) error {
 	p := params.WinStreak
 	maxLosses := pgtype.Int4{}

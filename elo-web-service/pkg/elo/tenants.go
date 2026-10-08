@@ -115,6 +115,43 @@ func validateTenantClubs(ctx context.Context, q *db.Queries, tenantID id.ID, clu
 	return nil
 }
 
+// checkTenantParticipantRule enforces the openness rule for a participant
+// set (ADR-36 phase 7): under members_only every participant must be a
+// current member of any club of the tenant — a guest in the roster is
+// rejected (errMembersOnly); under any_member and all at least one current
+// member anchors the entity to the community (errNoMember). The caller picks
+// the errors: matches and tables word their rejections differently. Checked
+// inside the caller's write transaction, so a concurrent membership change
+// cannot slip past it.
+func checkTenantParticipantRule(ctx context.Context, q *db.Queries, tenant db.Tenant, playerIDs []id.ID, errMembersOnly, errNoMember error) error {
+	if len(playerIDs) == 0 {
+		return nil
+	}
+	if tenant.ArenaMembershipMode == ArenaMembershipMembersOnly {
+		for _, pid := range playerIDs {
+			member, err := q.PlayerIsTenantMember(ctx, db.PlayerIsTenantMemberParams{TenantID: &tenant.ID, PlayerID: pid})
+			if err != nil {
+				return fmt.Errorf("check tenant membership: %w", err)
+			}
+			if !member {
+				return errMembersOnly
+			}
+		}
+		return nil
+	}
+	hasMember, err := q.TenantHasActiveMemberAmong(ctx, db.TenantHasActiveMemberAmongParams{
+		TenantID:  tenant.ID,
+		PlayerIds: playerIDs,
+	})
+	if err != nil {
+		return fmt.Errorf("check tenant membership: %w", err)
+	}
+	if !hasMember {
+		return errNoMember
+	}
+	return nil
+}
+
 func (s *TenantService) CreateTenant(ctx context.Context, tenantID id.ID, name, arenaMembershipMode, tournamentsOpenness string, clubIDs []id.ID, actor id.ID) (db.Tenant, error) {
 	if name == "" {
 		return db.Tenant{}, ErrTenantSettingsInvalid

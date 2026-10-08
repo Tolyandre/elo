@@ -122,22 +122,21 @@ export function MatchForm({ editPending, editSaved }: { editPending?: PendingMat
     const { invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
 
-    // The community the match is created under (ADR-36): the feed shows the
-    // match only when the roster satisfies the tenant's openness rule —
-    // any_member wants at least one member, members_only only members, all
-    // («Все партии») accepts any roster. The rules bind creation only;
-    // editing a saved match stays unrestricted (the server re-checks both).
+    // The community the match belongs to (ADR-36): the roster must satisfy
+    // the tenant's openness rule — any_member wants at least one member,
+    // members_only only members, all («Все партии») accepts any roster. The
+    // rule binds edits too since phase 7: the server rejects a guest-carrying
+    // roster under members_only, and the form says so before the submit.
     const { tenant } = useTenantScope();
     const memberIds = useTenantMemberIds();
-    const membershipIssue =
-        !isEdit && tenant
-            ? participantsMembershipIssue(
-                  participants.map((p) => p.id),
-                  memberIds,
-                  tenant.arena_membership_mode,
-                  tenant.name,
-              )
-            : null;
+    const membershipIssue = tenant
+        ? participantsMembershipIssue(
+              participants.map((p) => p.id),
+              memberIds,
+              tenant.arena_membership_mode,
+              tenant.name,
+          )
+        : null;
 
     // The selected game's mode decides what the form offers (ADR-33): a fixed
     // competitive or coop form, or the toggle for a mixed one. An offline

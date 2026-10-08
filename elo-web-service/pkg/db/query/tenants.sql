@@ -155,15 +155,17 @@ WHERE t.id = sqlc.arg('tenant_id');
 -- community's activity, membership-scoped — deliberately NOT
 -- arena-attribution-scoped, so a tournament match appears even when it does
 -- not count into the tenant's main arena rating. Under arena_membership_mode
--- 'all' the match branch widens to every match — the arena counts matches the
--- membership predicate would hide, and the feed must not be narrower than the
--- rating (ADR-36 phase 7). Match events go to any current member's matches —
--- of any club of the tenant (coop included: community life, not just rating);
--- market events to the markets the tenant OWNS (a member's bet on another
--- tenant's market is that tenant's news). The player/club/game filters apply
--- to both branches (the arena feed's matching rule). Parameters and cursor
--- are the arena feed's minus the arena and the include flags; the tenant
--- itself is the feed's identity.
+-- 'all' the match branch widens to every match; under 'members_only' it
+-- tightens to matches whose WHOLE roster are current members — the openness
+-- rule the creation and edit guards enforce, applied to the feed too, so a
+-- guest-carrying (historical) match stays out (ADR-36 phase 7). Match events
+-- otherwise go to any current member's matches — of any club of the tenant
+-- (coop included: community life, not just rating); market events to the
+-- markets the tenant OWNS (a member's bet on another tenant's market is that
+-- tenant's news). The player/club/game filters apply to both branches (the
+-- arena feed's matching rule). Parameters and cursor are the arena feed's
+-- minus the arena and the include flags; the tenant itself is the feed's
+-- identity.
 WITH events AS (
     SELECT DISTINCT m.id, m.date AS sort_date, 'match'::text AS event_type
     FROM matches m
@@ -172,13 +174,33 @@ WITH events AS (
     WHERE t.id = sqlc.arg('tenant_id')::uuid
       AND (
           t.arena_membership_mode = 'all'
-          OR EXISTS (
-              SELECT 1
-              FROM clubs c
-              JOIN player_club_membership pcm ON pcm.club_id = c.id
-              WHERE c.tenant_id = sqlc.arg('tenant_id')::uuid
-                AND pcm.left_at IS NULL
-                AND pcm.player_id = ms.player_id
+          OR (
+              -- any_member / members_only base: a current member took part.
+              EXISTS (
+                  SELECT 1
+                  FROM clubs c
+                  JOIN player_club_membership pcm ON pcm.club_id = c.id
+                  WHERE c.tenant_id = sqlc.arg('tenant_id')::uuid
+                    AND pcm.left_at IS NULL
+                    AND pcm.player_id = ms.player_id
+              )
+              -- members_only: no participant outside the current membership.
+              AND (
+                  t.arena_membership_mode <> 'members_only'
+                  OR NOT EXISTS (
+                      SELECT 1
+                      FROM match_scores ms2
+                      WHERE ms2.match_id = m.id
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM clubs c2
+                            JOIN player_club_membership pcm2 ON pcm2.club_id = c2.id
+                            WHERE c2.tenant_id = sqlc.arg('tenant_id')::uuid
+                              AND pcm2.left_at IS NULL
+                              AND pcm2.player_id = ms2.player_id
+                        )
+                  )
+              )
           )
       )
       AND (

@@ -63,6 +63,9 @@ func domainStatusCode(err error) int {
 		errors.Is(err, elo.ErrTenantClubsInvalid),
 		errors.Is(err, elo.ErrClubInTenantDeleteForbidden),
 		errors.Is(err, elo.ErrMatchOutsideTenant),
+		errors.Is(err, elo.ErrMatchMembersOnly),
+		errors.Is(err, elo.ErrTableOutsideTenant),
+		errors.Is(err, elo.ErrMarketTargetOutsideTenant),
 		db.IsForeignKeyViolation(err):
 		return http.StatusBadRequest
 

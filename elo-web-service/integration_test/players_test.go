@@ -265,19 +265,24 @@ func TestPlayerStats_TenantScoped(t *testing.T) {
 		t.Fatalf("AddMatch guests under the tenant: err = %v, want ErrMatchOutsideTenant", err)
 	}
 
-	// The members_only tenant keeps the "recorded, settles nowhere" case
-	// alive: the create guard only demands one member of the creating tenant,
-	// and the arena mode then rejects the guest's rating. «Частые игры»
-	// counts the match regardless of settlement (tenant-independent).
+	// The members_only tenant: the strict rule rejects a guest-carrying
+	// roster at the source, and a match of its member with a guest can only
+	// exist as a recording under another community (here «Синие люди», whose
+	// mode is all). Such a historical match settles nothing in the
+	// members_only arena, yet «Частые игры» still counts it
+	// (tenant-independent).
 	closedID, closedClub, closedArena := createTenant(t, router, token, "Закрытое статистическое", "members_only", "open")
 	closedArenaID, err := idpkg.ParseTolerant(closedArena)
 	if err != nil {
 		t.Fatalf("parse closed arena id: %v", err)
 	}
-	closedMember := createBareTestPlayer(t, pool, "Закрытый член")
+	closedMember := createTestPlayer(t, pool, "Закрытый член")
 	addClubMember(t, router, token, closedClub.String(), closedMember)
-	if _, err := svc.AddMatch(ctx, closedID, otherGame, map[idpkg.ID]float64{closedMember: 50, guest: 30}, time.Now(), newMatchOpts(t)); err != nil {
-		t.Fatalf("AddMatch closed member+guest: %v", err)
+	if _, err := svc.AddMatch(ctx, closedID, otherGame, map[idpkg.ID]float64{closedMember: 50, guest: 30}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchMembersOnly) {
+		t.Fatalf("AddMatch closed member+guest under the members_only tenant: err = %v, want ErrMatchMembersOnly", err)
+	}
+	if _, err := svc.AddMatch(ctx, blueMenTenantID, otherGame, map[idpkg.ID]float64{closedMember: 50, guest: 30}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch closed member+guest under BlueMen: %v", err)
 	}
 	if got := settlementCount(t, pool, closedArenaID, nil); got != 0 {
 		t.Fatalf("members_only arena settled %d rows for a guest match, want 0", got)

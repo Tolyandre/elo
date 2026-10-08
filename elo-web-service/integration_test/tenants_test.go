@@ -700,14 +700,24 @@ func TestTenants_MembersOnlyRules(t *testing.T) {
 	// Member-only match across BOTH clubs: the arena joins the affected set
 	// and the synchronous drain replays it — the mixed match stays out of the
 	// replay.
-	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
+	membersMatch, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t))
+	if err != nil {
 		t.Fatalf("AddMatch members: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
 		t.Fatalf("members_only arena settled %d rows, want only the cross-club member match", got)
 	}
 	if got := settlementCount(t, pool, elo.BlueMenArenaID, nil); got != 4 {
-		t.Fatalf("global arena settled %d rows, want both matches («Синие люди» is any_member)", got)
+		t.Fatalf("anchor arena settled %d rows, want both matches («Синие люди» is all)", got)
+	}
+
+	// The strict rule on edit (ADR-36 phase 7): swapping a member for a guest
+	// is rejected; keeping the roster all-members goes through.
+	if _, err := svc.UpdateMatch(ctx, tenantID, membersMatch.ID, game, map[idpkg.ID]float64{member: 60, guest: 20}, membersMatch.Date.Time, elo.UpdateMatchOpts{}); !errors.Is(err, elo.ErrMatchMembersOnly) {
+		t.Fatalf("edit adding a guest: err = %v, want ErrMatchMembersOnly", err)
+	}
+	if _, err := svc.UpdateMatch(ctx, tenantID, membersMatch.ID, game, map[idpkg.ID]float64{member: 55, memberB: 25}, membersMatch.Date.Time, elo.UpdateMatchOpts{}); err != nil {
+		t.Fatalf("edit keeping members: %v", err)
 	}
 
 	// Current listing: members only.
@@ -1035,6 +1045,9 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 
 	game := createTestGame(t, pool, "Игра ставок")
 	marketSvc := elo.NewMarketService(pool)
+	// The market targets the member only: under members_only the creation
+	// gate requires member targets (ADR-36 phase 7) — an outsider target is
+	// a 400 (TestMarkets_Create_MembersOnlyTargetMustBeMember pins that).
 	market, err := marketSvc.CreateMarket(ctx, elo.CreateMarketParams{
 		ID:         newID(t),
 		TenantID:   tenantID,
@@ -1043,7 +1056,7 @@ func TestTenants_MarketMembersOnly(t *testing.T) {
 		ClosesAt:   time.Now().Add(24 * time.Hour),
 		CreatedBy:  createTestAdmin(t, pool),
 		MatchWinner: &elo.MatchWinnerCreateParams{
-			TargetPlayerIDs:   []idpkg.ID{member, outsider},
+			TargetPlayerIDs:   []idpkg.ID{member},
 			AllowOtherPlayers: true,
 			GameIDs:           []idpkg.ID{game},
 		},
@@ -1459,17 +1472,32 @@ func TestTenants_ClubFeed(t *testing.T) {
 	game := createTestGame(t, pool, "Игра ленты")
 	svc := newMatchService(pool)
 
-	// A mixed member+guest match: does NOT count into the members_only main
-	// arena, yet appears in the tenant feed — membership-scoped by design.
+	// A mixed member+guest match: neither counts into the members_only main
+	// arena nor appears in the tenant feed — the feed applies the same
+	// openness rule the creation guard enforces (ADR-36 phase 7); such
+	// matches exist only as recordings under other communities.
 	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch mixed: %v", err)
 	}
 	if got := settlementCount(t, pool, tenantArenaID, nil); got != 0 {
 		t.Fatalf("mixed match counted into the members_only arena (%d rows)", got)
 	}
-	// A member of club B: in the same feed.
+	// A member of club B with the same guest: stays out of the feed too.
 	if _, err := svc.AddMatch(ctx, blueMenTenantID, game, map[idpkg.ID]float64{memberB: 55, guest: 25}, time.Now(), newMatchOpts(t)); err != nil {
 		t.Fatalf("AddMatch clubB member: %v", err)
+	}
+	// And the strict rule at the source: recording the same roster under the
+	// members_only tenant itself is rejected.
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, guest: 20}, time.Now(), newMatchOpts(t)); !errors.Is(err, elo.ErrMatchMembersOnly) {
+		t.Fatalf("AddMatch mixed under the members_only tenant: err = %v, want ErrMatchMembersOnly", err)
+	}
+	// An all-members match across BOTH clubs: created under the tenant, in
+	// the feed, and settled into its arena by the affected-set drain.
+	if _, err := svc.AddMatch(ctx, tenantID, game, map[idpkg.ID]float64{member: 60, memberB: 20}, time.Now(), newMatchOpts(t)); err != nil {
+		t.Fatalf("AddMatch members: %v", err)
+	}
+	if got := settlementCount(t, pool, tenantArenaID, nil); got != 2 {
+		t.Fatalf("members_only arena settled %d rows, want the all-members match", got)
 	}
 	// A guest-only match is unrepresentable since the create guard (ADR-36
 	// phase 7): no member of the creating tenant among the participants.
@@ -1506,8 +1534,8 @@ func TestTenants_ClubFeed(t *testing.T) {
 	if !slices.Contains(eventTypes, "match") || !slices.Contains(eventTypes, "market") {
 		t.Fatalf("tenant feed = %v, want match and market events", eventTypes)
 	}
-	if got := countFeedEventsOfType(page, "match"); got != 2 {
-		t.Fatalf("tenant feed holds %d matches, want both members'", got)
+	if got := countFeedEventsOfType(page, "match"); got != 1 {
+		t.Fatalf("tenant feed holds %d matches, want only the all-members one (guest-carrying matches stay out, ADR-36 phase 7)", got)
 	}
 	if got := countFeedEventsOfType(page, "market"); got != 1 {
 		t.Fatalf("tenant feed holds %d markets, want only the tenant-owned one", got)

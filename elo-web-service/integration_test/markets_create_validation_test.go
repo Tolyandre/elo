@@ -23,8 +23,16 @@ func postMarket(t *testing.T, router interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }, token string, body map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
+	return postMarketTo(t, router, token, "00000000-0000-0000-0000-000000000101", body)
+}
+
+// postMarketTo is postMarket against an explicit tenant path.
+func postMarketTo(t *testing.T, router interface {
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}, token, tenantID string, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
 	payload, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/tenants/00000000-0000-0000-0000-000000000101/markets", strings.NewReader(string(payload)))
+	req := httptest.NewRequest(http.MethodPost, "/tenants/"+tenantID+"/markets", strings.NewReader(string(payload)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
@@ -40,10 +48,10 @@ func TestMarkets_Create_SinglePlayerNeedsOtherPlayers(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
+	ctx := context.Background()
 	token, _ := createTestUserWithID(t, pool, true)
 	router := setupRouter(pool)
 
-	ctx := context.Background()
 	q := db.New(pool)
 	player, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-000000000101", Name: "SoloPlayer"})
 	shortPlayer := shortOf(t, player.ID)
@@ -97,10 +105,10 @@ func TestMarkets_Create_NoLiquidityThenGuaranteeDepth(t *testing.T) {
 	pool, cleanup := setupTestDB(t)
 	defer cleanup()
 
+	ctx := context.Background()
 	token, userID := createTestUserWithID(t, pool, true)
 	router := setupRouter(pool)
 
-	ctx := context.Background()
 	q := db.New(pool)
 	playerA, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-000000000111", Name: "LiqA"})
 	playerB, _ := q.CreatePlayer(ctx, db.CreatePlayerParams{ID: "00000000-0000-0000-0000-000000000112", Name: "LiqB"})
@@ -183,5 +191,43 @@ func TestMarkets_Create_NoLiquidityThenGuaranteeDepth(t *testing.T) {
 	router.ServeHTTP(w3, req2)
 	if w3.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("fee above 25%%: %d: %s (want 422)", w3.Code, w3.Body.String())
+	}
+}
+
+// TestMarkets_Create_MembersOnlyTargetMustBeMember pins the members_only
+// creation gate (ADR-36 phase 7): a market created under a members_only
+// tenant must target its current members — the same strictness matches and
+// tables follow. Bets were already members-only; this closes the creation
+// side, so a non-member can never be the subject of the tenant's market.
+func TestMarkets_Create_MembersOnlyTargetMustBeMember(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	token, _ := createTestUserWithID(t, pool, true)
+	router := setupRouter(pool)
+
+	member := createTestPlayer(t, pool, "Рынок-свой")
+	outsider := createBareTestPlayer(t, pool, "Рынок-чужой")
+
+	tenantID, clubID, _ := createTenant(t, router, token, "Рынки только свои", "members_only", "open")
+	addClubMember(t, router, token, clubID.String(), member)
+
+	body := func(target idpkg.ID) map[string]any {
+		return map[string]any{
+			"id":               string(newID(t).Base58()),
+			"market_type":      "win_streak",
+			"closes_at":        time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+			"target_player_id": string(target.Base58()),
+			"wins_required":    3,
+		}
+	}
+
+	w := postMarketTo(t, router, token, tenantID.String(), body(outsider))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("create with an outsider target: %d %s, want 400", w.Code, w.Body.String())
+	}
+	w = postMarketTo(t, router, token, tenantID.String(), body(member))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create with a member target: %d %s, want 201", w.Code, w.Body.String())
 	}
 }
