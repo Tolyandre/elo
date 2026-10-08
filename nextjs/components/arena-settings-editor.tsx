@@ -296,7 +296,11 @@ export function ArenaSettingsFields({
                 </div>
             )}
 
-            {values.leagues.elite && (
+            {/* The entry/holding requirements only matter when a league below
+                exists to promote from — in an elite-only arena everyone is in
+                it from the start (and the server never demotes out of the only
+                league), so the counts would be dead configuration. */}
+            {values.leagues.elite && (values.leagues.newbie || values.leagues.amateur) && (
                 <div className="space-y-2">
                     <NumberField
                         id={`${idPrefix}Matches6m`}
