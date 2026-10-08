@@ -75,6 +75,13 @@ func arenaToAPI(a elo.Arena) Arena {
 		t := Base58ID(*a.TournamentID)
 		out.TournamentId = &t
 	}
+	// Marks the tenant main arena (ADR-36): the arena view gates its edit
+	// pencil on it, so a missing value would render the system-owned arena
+	// as user-editable.
+	if a.TenantID != nil {
+		t := Base58ID(*a.TenantID)
+		out.TenantId = &t
+	}
 	out.StaleAt = a.StaleAt
 	return out
 }

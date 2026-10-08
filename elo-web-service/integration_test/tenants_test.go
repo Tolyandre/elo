@@ -232,6 +232,20 @@ func TestTenants_Lifecycle(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET main arena: %d %s", w.Code, w.Body.String())
 	}
+	// The wire form carries the tenant anchor: the arena view gates its edit
+	// pencil on it (ADR-36).
+	var fetched struct {
+		Data struct {
+			TenantId *string `json:"tenant_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode main arena: %v", err)
+	}
+	wantTenant := string(tenantID.Base58())
+	if fetched.Data.TenantId == nil || *fetched.Data.TenantId != wantTenant {
+		t.Fatalf("GET main arena tenant_id = %v, want %s", fetched.Data.TenantId, wantTenant)
+	}
 	w = doJSON(t, router, http.MethodPatch, "/arenas/"+mainArenaID, token,
 		`{"name": "Переименовали", "settings": {"starting_rating": 1000, "leagues": []}, "filter": {"game_ids": [], "tag_ids": []}}`)
 	if w.Code != http.StatusConflict {
