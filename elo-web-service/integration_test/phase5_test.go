@@ -174,6 +174,51 @@ func TestPhase5_ClubMemberHistory(t *testing.T) {
 	}
 }
 
+// TestPhase5_ClubMemberHistoryInfiniteJoinedAt pins the -infinity shape: stints
+// created before joined_at was tracked are backfilled with -infinity
+// (migration 068) and pgx cannot decode infinity into time.Time — the endpoint
+// must report them as joined_at null instead of failing the scan.
+func TestPhase5_ClubMemberHistoryInfiniteJoinedAt(t *testing.T) {
+	pool, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	router := setupRouter(pool)
+	token, _ := createTestUserWithID(t, pool, true)
+
+	clubID := newID(t)
+	if w := doJSON(t, router, http.MethodPost, "/clubs", token,
+		fmt.Sprintf(`{"id": %q, "name": "Доисторический"}`, clubID)); w.Code != http.StatusOK {
+		t.Fatalf("POST /clubs: %d %s", w.Code, w.Body.String())
+	}
+
+	member := createTestPlayer(t, pool, "Древний")
+	addClubMember(t, router, token, clubID.String(), member)
+	if _, err := pool.Exec(context.Background(),
+		`UPDATE player_club_membership SET joined_at = '-infinity' WHERE club_id = $1`, clubID); err != nil {
+		t.Fatalf("backfill joined_at to -infinity: %v", err)
+	}
+
+	w := doJSON(t, router, http.MethodGet, "/clubs/"+clubID.String()+"/members/history", "", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET history: %d %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			PlayerID string  `json:"player_id"`
+			JoinedAt *string `json:"joined_at"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode history: %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("history holds %d stints, want 1", len(resp.Data))
+	}
+	if resp.Data[0].JoinedAt != nil {
+		t.Fatalf("backfilled -infinity must read as joined_at null, got %v", *resp.Data[0].JoinedAt)
+	}
+}
+
 // TestPhase5_BetLimitFollowsTenantArena pins the bet-limit basis (ADR-36
 // phase 5): the limit derives from the player's latest elo in the market's
 // tenant main arena at read time — a bigger elo in that arena buys headroom,

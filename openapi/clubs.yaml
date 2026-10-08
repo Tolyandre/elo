@@ -367,6 +367,8 @@ ClubMemberStint:
     joined_at:
       type: string
       format: date-time
+      nullable: true
+      description: null when the stint predates joined_at tracking (backfilled -infinity, migration 068).
     left_at:
       type: string
       format: date-time

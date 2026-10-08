@@ -40,13 +40,16 @@ export function ClubMemberHistory({ clubId, revision }: { clubId: Base58ID; revi
 }
 
 function StintRow({ stint }: { stint: ClubMemberStint }) {
+    // Stints that predate joined_at tracking (backfilled -infinity) arrive as
+    // null — shown as "—" like other unknown values.
+    const joined = stint.joined_at ? `с ${formatDateTime(stint.joined_at)}` : "с —";
     if (!stint.left_at) {
         return (
             <div className="flex items-start gap-2 py-3">
                 <UserPlus className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                 <div className="flex flex-1 flex-wrap items-baseline gap-x-2">
                     <span className="font-medium">{stint.player_name}</span>
-                    <span>участвует с {formatDateTime(stint.joined_at)}</span>
+                    <span>участвует {joined}</span>
                     <span className="text-sm text-success">сейчас в клубе</span>
                 </div>
             </div>
@@ -58,7 +61,7 @@ function StintRow({ stint }: { stint: ClubMemberStint }) {
             <div className="flex flex-1 flex-wrap items-baseline gap-x-2">
                 <span className="font-medium">{stint.player_name}</span>
                 <span className="text-muted-foreground">
-                    состоял: с {formatDateTime(stint.joined_at)} до {formatDateTime(stint.left_at)}
+                    состоял: {joined} до {formatDateTime(stint.left_at)}
                 </span>
             </div>
         </div>

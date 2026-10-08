@@ -70,7 +70,11 @@ SELECT * FROM clubs WHERE id = $1;
 -- name: ListClubMembershipHistory :many
 -- The club's membership stint history (ADR-36), latest stint first: the raw
 -- material of tenant membership, shown as audit-style items on the admin club
--- page. A NULL left_at is the current active stint.
+-- page. A NULL left_at is the current active stint. joined_at scans into
+-- pgtype.Timestamptz (sqlc column override) because stints created before the
+-- column existed are backfilled with -infinity (migration 068), which pgx
+-- refuses to scan into time.Time; the API layer reports -infinity as null —
+-- "predates tracking".
 SELECT pcm.club_id, pcm.player_id, p.name AS player_name,
        pcm.joined_at, pcm.left_at
 FROM player_club_membership pcm

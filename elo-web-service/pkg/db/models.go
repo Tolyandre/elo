@@ -226,7 +226,7 @@ type Player struct {
 type PlayerClubMembership struct {
 	ClubID   id.ID              `json:"club_id"`
 	PlayerID id.ID              `json:"player_id"`
-	JoinedAt time.Time          `json:"joined_at"`
+	JoinedAt pgtype.Timestamptz `json:"joined_at"`
 	LeftAt   pgtype.Timestamptz `json:"left_at"`
 }
 

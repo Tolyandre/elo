@@ -15,6 +15,14 @@ sql:
         overrides:
           - db_type: "timestamptz"
             go_type: "time.Time"
+          # player_club_membership.joined_at carries -infinity backfills for
+          # stints that predate the column (migration 068); pgtype.Timestamptz
+          # is the only scan target that survives infinity — the API layer maps
+          # -infinity to null ("predates tracking") on egress.
+          - column: "player_club_membership.joined_at"
+            go_type:
+              import: "github.com/jackc/pgx/v5/pgtype"
+              type: "Timestamptz"
           # uuid columns map to the typed identifier (canonical UUID string).
           # Its JSON hooks keep the wire form short Base58 (ADR-12); Scan/Value
           # make it a transparent pgx/database-sql value.

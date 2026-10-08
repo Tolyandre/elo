@@ -1791,8 +1791,11 @@ export interface components {
             club_id: components["schemas"]["Base58ID"];
             player_id: components["schemas"]["Base58ID"];
             player_name: string;
-            /** Format: date-time */
-            joined_at: string;
+            /**
+             * Format: date-time
+             * @description null when the stint predates joined_at tracking (backfilled -infinity, migration 068).
+             */
+            joined_at: string | null;
             /**
              * Format: date-time
              * @description null while the stint is active.

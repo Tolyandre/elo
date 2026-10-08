@@ -1507,8 +1507,10 @@ type Club struct {
 // ClubMemberStint One membership stint of a club (ADR-36).
 type ClubMemberStint struct {
 	// ClubId Entity identifier: a UUID (v7 for client-minted ids) encoded as a short Base58 string (~22 chars, Bitcoin alphabet — no 0/O/I/l). In create requests the client generates the id; it serves as both the primary key and the idempotency key, so a repeated request with the same id returns the already-created entity. The backend also accepts the standard 36-char canonical UUID form for backward compatibility.
-	ClubId   Base58ID  `json:"club_id"`
-	JoinedAt time.Time `json:"joined_at"`
+	ClubId Base58ID `json:"club_id"`
+
+	// JoinedAt null when the stint predates joined_at tracking (backfilled -infinity, migration 068).
+	JoinedAt *time.Time `json:"joined_at"`
 
 	// LeftAt null while the stint is active.
 	LeftAt *time.Time `json:"left_at"`

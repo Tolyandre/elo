@@ -7,7 +7,6 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tolyandre/elo-web-service/pkg/id"
@@ -156,13 +155,17 @@ type ListClubMembershipHistoryRow struct {
 	ClubID     id.ID              `json:"club_id"`
 	PlayerID   id.ID              `json:"player_id"`
 	PlayerName string             `json:"player_name"`
-	JoinedAt   time.Time          `json:"joined_at"`
+	JoinedAt   pgtype.Timestamptz `json:"joined_at"`
 	LeftAt     pgtype.Timestamptz `json:"left_at"`
 }
 
 // The club's membership stint history (ADR-36), latest stint first: the raw
 // material of tenant membership, shown as audit-style items on the admin club
-// page. A NULL left_at is the current active stint.
+// page. A NULL left_at is the current active stint. joined_at scans into
+// pgtype.Timestamptz (sqlc column override) because stints created before the
+// column existed are backfilled with -infinity (migration 068), which pgx
+// refuses to scan into time.Time; the API layer reports -infinity as null —
+// "predates tracking".
 func (q *Queries) ListClubMembershipHistory(ctx context.Context, clubID id.ID) ([]ListClubMembershipHistoryRow, error) {
 	rows, err := q.db.Query(ctx, listClubMembershipHistory, clubID)
 	if err != nil {

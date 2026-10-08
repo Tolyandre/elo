@@ -387,7 +387,11 @@ type Querier interface {
 	ListClubMemberUserIDs(ctx context.Context, clubIds []id.ID) ([]id.ID, error)
 	// The club's membership stint history (ADR-36), latest stint first: the raw
 	// material of tenant membership, shown as audit-style items on the admin club
-	// page. A NULL left_at is the current active stint.
+	// page. A NULL left_at is the current active stint. joined_at scans into
+	// pgtype.Timestamptz (sqlc column override) because stints created before the
+	// column existed are backfilled with -infinity (migration 068), which pgx
+	// refuses to scan into time.Time; the API layer reports -infinity as null —
+	// "predates tracking".
 	ListClubMembershipHistory(ctx context.Context, clubID id.ID) ([]ListClubMembershipHistoryRow, error)
 	// Club queries (ADR-05 grouping + ADR-36 membership stints).
 	// player_club_membership is stint history: joined_at / left_at, left_at NULL

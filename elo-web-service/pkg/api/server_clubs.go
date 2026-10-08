@@ -254,9 +254,14 @@ func (s *StrictServer) ListClubMemberHistory(ctx context.Context, request ListCl
 			ClubId:     Base58ID(r.ClubID),
 			PlayerId:   Base58ID(r.PlayerID),
 			PlayerName: r.PlayerName,
-			JoinedAt:   r.JoinedAt,
 		}
-		if r.LeftAt.Valid {
+		// -infinity joined_at (stints predating the column, migration 068)
+		// has no wire representation — report null ("predates tracking").
+		if r.JoinedAt.Valid && r.JoinedAt.InfinityModifier == pgtype.Finite {
+			t := r.JoinedAt.Time
+			stint.JoinedAt = &t
+		}
+		if r.LeftAt.Valid && r.LeftAt.InfinityModifier == pgtype.Finite {
 			t := r.LeftAt.Time
 			stint.LeftAt = &t
 		}
