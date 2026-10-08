@@ -5,40 +5,49 @@ import { mapMatch, type Match, type MatchesPage } from "./types";
 import type { Base58ID } from "@/lib/id";
 import type { MatchMode } from "@/lib/game-modes";
 
-export async function getMatchesPagePromise(params?: {
+export async function getMatchesPagePromise(params: {
     player_id?: string;
     game_id?: string;
     club_id?: string;
     tournament_id?: string;
-    /** The display arena's tenant (ADR-36): settlement columns from its main arena. */
-    tenant?: Base58ID;
+    /** The display arena's tenant (ADR-36): required — settlement columns from its main arena. */
+    tenant: Base58ID;
     next?: string;
     limit?: number;
 }): Promise<MatchesPage> {
-    const query: Record<string, string | number> = {};
-    if (params?.next) {
+    const { tenant } = params;
+    // Typed to the generated query shape — `tenant` is required there (ADR-36
+    // phase 5), so a hand-built Record<string, string | number> won't typecheck.
+    const query: {
+        player_id?: string;
+        game_id?: string;
+        club_id?: string;
+        tournament_id?: string;
+        tenant: string;
+        next?: string;
+        limit?: number;
+    } = { tenant };
+    if (params.next) {
         // Continuation mode: search params are encoded in the cursor — except
         // the tenant, which the cursor does not carry and every page must
         // repeat (ADR-36).
         query.next = params.next;
-        if (params?.tenant) query.tenant = params.tenant;
     } else {
         // Initial mode: pass search params explicitly.
-        if (params?.player_id) query.player_id = params.player_id;
-        if (params?.game_id) query.game_id = params.game_id;
-        if (params?.club_id) query.club_id = params.club_id;
-        if (params?.tournament_id) query.tournament_id = params.tournament_id;
-        if (params?.tenant) query.tenant = params.tenant;
+        if (params.player_id) query.player_id = params.player_id;
+        if (params.game_id) query.game_id = params.game_id;
+        if (params.club_id) query.club_id = params.club_id;
+        if (params.tournament_id) query.tournament_id = params.tournament_id;
     }
-    if (params?.limit) query.limit = params.limit;
+    if (params.limit) query.limit = params.limit;
 
     const data = await unwrap(client.GET("/matches", { params: { query } }));
     return { items: data.data.map(mapMatch), next: data.next ?? null };
 }
 
-export async function getMatchByIdPromise(id: Base58ID, opts?: { tenant?: Base58ID }): Promise<Match> {
+export async function getMatchByIdPromise(id: Base58ID, tenant: Base58ID): Promise<Match> {
     return mapMatch((await unwrap(client.GET("/matches/{id}", {
-        params: { path: { id }, query: opts?.tenant ? { tenant: opts.tenant } : undefined },
+        params: { path: { id }, query: { tenant } },
     }))).data);
 }
 

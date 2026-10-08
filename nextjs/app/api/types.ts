@@ -9,6 +9,7 @@ export type Player = components["schemas"]["Player"];
 export type RecentPlayer = components["schemas"]["RecentPlayer"];
 export type User = components["schemas"]["User"];
 export type Club = components["schemas"]["Club"];
+export type ClubMemberStint = components["schemas"]["ClubMemberStint"];
 export type Tenant = components["schemas"]["Tenant"];
 export type GameList = components["schemas"]["GameList"];
 export type GameListItem = components["schemas"]["GameListItem"];
@@ -126,24 +127,14 @@ export type MatchesPage = {
 
 export type RatingPoint = { date: string; rating: number };
 
-// date is a Date object
-export type Correction = {
-    id: Base58ID;
-    player_id: Base58ID;
-    player_name: string;
-    diff: number;
-    date: Date | null;
-};
-
 /**
  * One feed event (ADR-32). The wire shape is a discriminated union on `type`;
  * new content kinds (cooperative matches, posts) extend it server-side — the
  * envelope never changes. Match data is mapped through mapMatch (Date objects,
- * camelCase scores); corrections get Date dates; markets pass through.
+ * camelCase scores); markets pass through.
  */
 export type FeedEvent =
     | { type: "match"; data: Match }
-    | { type: "correction"; data: Correction }
     | { type: "market"; data: Market };
 
 export type FeedPage = {

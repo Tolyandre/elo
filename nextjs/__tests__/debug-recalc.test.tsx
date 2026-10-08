@@ -55,7 +55,7 @@ type UpdateArenasData = UpdateArenasResult["data"];
 
 function report(overrides: Partial<UpdateArenasData["global"]> = {}): UpdateArenasData {
     return {
-        global: { matches_replayed: 3, corrections_replayed: 1, changed_players: [], ...overrides },
+        global: { matches_replayed: 3, changed_players: [], ...overrides },
         arenas: [],
     };
 }
@@ -119,7 +119,7 @@ describe("DebugPage arena update", () => {
 
         expect(mocks.updateArenas).toHaveBeenCalledTimes(1);
         expect(view.text()).toContain("Расхождений нет");
-        expect(view.text()).toContain("переиграно партий 3, коррекций 1");
+        expect(view.text()).toContain("переиграно партий 3");
         expect(view.dialog()).toBeNull();
         view.unmount();
     });
@@ -163,7 +163,7 @@ describe("DebugPage arena update", () => {
 
     it("summarizes the other arenas' reports", async () => {
         mocks.updateArenas.mockResolvedValue({
-            global: { matches_replayed: 1, corrections_replayed: 0, changed_players: [] },
+            global: { matches_replayed: 1, changed_players: [] },
             arenas: [
                 {
                     arena_id: pid("a1"),

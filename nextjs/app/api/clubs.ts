@@ -1,6 +1,6 @@
 // Clubs and their player memberships.
 import { client, unwrap, newId } from "./client";
-import type { Club } from "./types";
+import type { Club, ClubMemberStint } from "./types";
 import type { Base58ID } from "@/lib/id";
 
 export async function listClubsPromise(): Promise<Club[]> {
@@ -40,4 +40,11 @@ export async function removeClubMemberPromise(clubId: Base58ID, playerId: Base58
     return unwrap(client.DELETE("/clubs/{id}/members/{playerId}", {
         params: { path: { id: clubId, playerId } },
     }));
+}
+
+/** The club's membership stint history (ADR-36), latest first. */
+export async function listClubMemberHistoryPromise(clubId: Base58ID): Promise<ClubMemberStint[]> {
+    return (await unwrap(client.GET("/clubs/{id}/members/history", {
+        params: { path: { id: clubId } },
+    }))).data;
 }

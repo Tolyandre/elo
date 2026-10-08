@@ -2,7 +2,7 @@
 import type { Base58ID } from "@/lib/id";
 import React, { useRef, useState } from "react";
 import Link from "next/link";
-import { patchPlayerPromise, deletePlayerPromise, createPlayerCorrectionPromise, listUsersPromise } from "@/app/api";
+import { patchPlayerPromise, deletePlayerPromise, listUsersPromise } from "@/app/api";
 import { PageHeader } from "@/app/pageHeaderContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { LoginLink } from "@/components/login-link";
@@ -28,13 +28,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { Edit2 } from "lucide-react";
 import { MeepleIcon } from "@/components/meeple-icon";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type DeleteTarget = { id: Base58ID; name: string };
 type RenameTarget = { id: Base58ID; name: string };
-type CorrectionTarget = { id: Base58ID; rating: number };
 
 export default function PlayersAdminPage() {
     const { players: playersFromContext, playerDisplayName, invalidate: invalidatePlayers } = usePlayers();
@@ -43,8 +41,6 @@ export default function PlayersAdminPage() {
     const [nameQuery, setNameQuery] = useState<string>("");
     const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
     const [renameValue, setRenameValue] = useState<string>("");
-    const [correctionTarget, setCorrectionTarget] = useState<CorrectionTarget | null>(null);
-    const [correctionValue, setCorrectionValue] = useState<string>("");
     const [actionLoading, setActionLoading] = useState(false);
 
     // The single name field doubles as a search filter over existing players
@@ -107,27 +103,6 @@ export default function PlayersAdminPage() {
             await patchPlayerPromise(renameTarget.id, { name: next });
             invalidatePlayers();
             setRenameTarget(null);
-        } catch {
-            // toast shown by API helper
-        } finally {
-            setActionLoading(false);
-        }
-    }
-
-    function openCorrection(id: Base58ID, rating: number) {
-        setCorrectionTarget({ id, rating: Math.round(rating) });
-        setCorrectionValue("");
-    }
-
-    async function confirmCorrection() {
-        if (!correctionTarget) return;
-        const diff = parseInt(correctionValue, 10);
-        if (isNaN(diff)) return;
-        try {
-            setActionLoading(true);
-            await createPlayerCorrectionPromise(correctionTarget.id, diff);
-            invalidatePlayers();
-            setCorrectionTarget(null);
         } catch {
             // toast shown by API helper
         } finally {
@@ -204,16 +179,6 @@ export default function PlayersAdminPage() {
                                             <div className="text-sm text-muted-foreground flex items-center gap-1">
                                                 Рейтинг: {Math.round(player.rank.now.rating)}
                                                 {player.rank.now.rank && ` (#${player.rank.now.rank})`}
-                                                <Button
-                                                    variant="outline"
-                                                    size="icon"
-                                                    className="h-6 w-6 ml-1"
-                                                    onClick={() => openCorrection(player.id, player.rank.now.rating)}
-                                                    disabled={!canEdit}
-                                                    aria-label="Корректировка рейтинга"
-                                                >
-                                                    <Edit2 className="h-3 w-3" />
-                                                </Button>
                                             </div>
                                             {player.user_id && (
                                                 <div className="text-xs text-muted-foreground">{userMap.get(player.user_id)}</div>
@@ -268,19 +233,7 @@ export default function PlayersAdminPage() {
                                                 {player.user_id ? userMap.get(player.user_id) : ""}
                                             </td>
                                             <td className="px-4 py-2">
-                                                <span className="flex items-center gap-1">
-                                                    {Math.round(player.rank.now.rating)}
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-6 w-6"
-                                                        onClick={() => openCorrection(player.id, player.rank.now.rating)}
-                                                        disabled={!canEdit}
-                                                        aria-label="Корректировка рейтинга"
-                                                    >
-                                                        <Edit2 className="h-3 w-3" />
-                                                    </Button>
-                                                </span>
+                                                {Math.round(player.rank.now.rating)}
                                             </td>
                                             <td className="px-4 py-2">{player.rank.now.rank ? `#${player.rank.now.rank}` : "—"}</td>
                                             <td className="px-4 py-2">
@@ -372,50 +325,6 @@ export default function PlayersAdminPage() {
                 loading={del.pending}
                 onConfirm={del.confirm}
             />
-
-            {/* Correction dialog */}
-            <Dialog open={correctionTarget !== null} onOpenChange={(o) => { if (!o) setCorrectionTarget(null); }}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Корректировка рейтинга</DialogTitle>
-                        {correctionTarget && (
-                            <DialogDescription>Текущий рейтинг: {correctionTarget.rating}</DialogDescription>
-                        )}
-                    </DialogHeader>
-                    <div className="flex flex-col gap-3 mt-2">
-                        {correctionTarget && (
-                            <Button
-                                variant="outline"
-                                onClick={() => setCorrectionValue(String(-correctionTarget.rating))}
-                                disabled={actionLoading}
-                            >
-                                Обнулить (−{correctionTarget.rating})
-                            </Button>
-                        )}
-                        <div className="flex gap-2 items-center">
-                            <Input
-                                type="number"
-                                step="1"
-                                className="flex-1"
-                                placeholder="Изменение рейтинга"
-                                value={correctionValue}
-                                onChange={(e) => setCorrectionValue(e.target.value)}
-                                aria-label="Значение корректировки"
-                            />
-                            <Button
-                                variant="destructive"
-                                onClick={confirmCorrection}
-                                disabled={actionLoading || isNaN(parseInt(correctionValue, 10))}
-                            >
-                                {actionLoading ? "Применение..." : "Применить"}
-                            </Button>
-                        </div>
-                    </div>
-                    <DialogFooter className="mt-2">
-                        <Button variant="outline" onClick={() => setCorrectionTarget(null)} disabled={actionLoading}>Отмена</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </PageContainer>
     );
 }

@@ -44,8 +44,8 @@ function eventKey(e: FeedEvent): string {
 
 /**
  * Cursor-paginated feed loader (ADR-32). The server merges the event stream
- * (matches, and for the global arena corrections and market resolutions), so
- * the client keeps one cursor instead of merging two timelines.
+ * (matches, and for the global arena market resolutions), so the client keeps
+ * one cursor instead of merging two timelines.
  *
  * The scope selects the source (ADR-36 phase 4): a tenantId renders the
  * tenant's community feed (membership-scoped, the tenant's own markets and

@@ -4,6 +4,7 @@ import { client, unwrap, newId } from "./client";
 import { mapFeedPage } from "./arenas";
 import type { FeedPage } from "./types";
 import type { Tenant } from "./types";
+import type { ArenaSettings } from "./types";
 import type { Base58ID } from "@/lib/id";
 
 export async function listTenantsPromise(): Promise<Tenant[]> {
@@ -29,6 +30,7 @@ export async function patchTenantPromise(
         name?: string;
         arena_membership_mode?: "any_member" | "members_only";
         tournaments_openness?: "members_only" | "open";
+        settings?: ArenaSettings;
     },
 ): Promise<Tenant> {
     return (await unwrap(client.PATCH("/tenants/{id}", {
@@ -56,9 +58,9 @@ export async function listTenantFeedPromise(id: Base58ID, query: {
 
 /**
  * The tenant's community feed (ADR-36), mapped like the arena feeds: match
- * events with settlement columns from the tenant's main arena, corrections of
- * current members, the tenant's own markets. The club filter narrows matches
- * and markets to one club's members (corrections stay unfiltered).
+ * events with settlement columns from the tenant's main arena, the tenant's
+ * own markets. The club filter narrows matches and markets to one club's
+ * members.
  */
 export async function getTenantFeedPagePromise(id: Base58ID, query: {
     player_id?: Base58ID;

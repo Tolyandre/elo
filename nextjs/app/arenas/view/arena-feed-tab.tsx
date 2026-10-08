@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Base58ID } from "@/lib/id";
 import { Arena } from "@/app/api";
 import { MatchCard } from "@/components/match-card";
-import { CorrectionCard } from "@/components/correction-card";
 import { MarketCard } from "@/components/market-card";
 import { PlayerCombobox } from "@/components/player-combobox";
 import { GameCombobox } from "@/components/game-combobox";
@@ -23,7 +22,7 @@ import type { FeedEvent } from "@/app/api";
 
 /**
  * The arena feed tab (ADR-32): the server-merged event stream — matches, and
- * for the global arena also corrections and market resolutions (they settle
+ * for the global arena also market resolutions (they settle
  * only there). Each event kind renders as its own card. The game filter is
  * hidden when the arena's filter pins it to exactly one game. The
  * offline-sync queue rides on top of the global feed, like /matches did.
@@ -147,8 +146,6 @@ export function ArenaFeedTab({
                                     clickable
                                 />
                             );
-                        case "correction":
-                            return <CorrectionCard key={`c-${event.data.id}`} correction={event.data} />;
                         case "market":
                             return (
                                 <Link

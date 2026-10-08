@@ -9,7 +9,7 @@ import { createDataEventBatcher, emitDataChange } from "@/lib/live-data";
 /**
  * Invisible app-wide subscriber to the global data-change signals (the
  * "data" topic of the multiplexed /events stream). Whenever any user
- * adds/edits a match, applies a correction or touches players, every open
+ * adds/edits a match or touches players, every open
  * app invalidates its matches and players contexts, so lists and rating
  * values update live.
  *

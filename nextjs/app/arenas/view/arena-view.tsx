@@ -99,9 +99,8 @@ export function ArenaView() {
   // feed (membership-scoped, ADR-36); the id-less main page without a tenant
   // loads the home feed (ADR-32); an explicit arena — the global one
   // included — loads that arena's own feed, which for every arena but the
-  // global one is matches only (corrections and market resolutions settle
-  // only into the global arena, ADR-24 — the server merges them in there and
-  // nowhere else).
+  // global one is matches only (market resolutions settle only into the
+  // global arena, ADR-24 — the server merges them in there and nowhere else).
   const tenantFeed = explicitId == null && tenant != null;
   const feed = useArenaFeed(
     { home: explicitId == null && tenant == null, arenaId: effectiveId, tenantId: tenantFeed ? tenant.id : null },

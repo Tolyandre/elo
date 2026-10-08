@@ -111,12 +111,13 @@ function SavedMatchView({ matchId }: { matchId: Base58ID }) {
   const matchFromContext = matches.find((m) => m.id === matchId) ?? null;
 
   // Fetch from API only once the context is done loading (it waits for the
-  // tenant scope) and the match is still not found in it
+  // tenant scope), the match is still not found in it, and the tenant is
+  // resolved — the detail read is tenant-required (ADR-36 phase 5)
   useEffect(() => {
-    if (matchFromContext || fetchedRef.current || contextLoading) return;
+    if (matchFromContext || fetchedRef.current || contextLoading || !tenantId) return;
     fetchedRef.current = true;
     setFetchLoading(true);
-    getMatchByIdPromise(matchId, tenantId ? { tenant: tenantId } : undefined)
+    getMatchByIdPromise(matchId, tenantId)
       .then(setMatchFromApi)
       .catch((e) => setError(e.message ?? "Неизвестная ошибка"))
       .finally(() => setFetchLoading(false));

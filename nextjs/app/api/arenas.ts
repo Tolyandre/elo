@@ -76,19 +76,6 @@ function mapFeedEvent(e: components["schemas"]["FeedEvent"]): FeedEvent | null {
     switch (e.type) {
         case "match":
             return { type: "match", data: mapMatch(e.data) };
-        case "correction": {
-            const c = e.data;
-            return {
-                type: "correction",
-                data: {
-                    id: c.id,
-                    player_id: c.player_id,
-                    player_name: c.player_name,
-                    diff: c.diff,
-                    date: c.date ? new Date(c.date) : null,
-                },
-            };
-        }
         case "market":
             return { type: "market", data: e.data };
         default:
@@ -111,10 +98,9 @@ export function mapFeedPage(data: components["schemas"]["FeedEvent"][], next?: s
 }
 
 /**
- * The arena's feed (ADR-32): merged match/correction/market-resolution events,
- * newest first. Corrections and market resolutions appear only in the global
- * arena's feed (they settle only there); filters apply to match and market
- * events (corrections stay unfiltered).
+ * The arena's feed (ADR-32): merged match/market-resolution events,
+ * newest first. Market resolutions appear only in the global
+ * arena's feed (they settle only there); filters apply to both event kinds.
  */
 export async function getArenaFeedPagePromise(params: FeedQuery & { id: Base58ID }): Promise<FeedPage> {
     const data = await unwrap(client.GET("/arenas/{id}/feed", {

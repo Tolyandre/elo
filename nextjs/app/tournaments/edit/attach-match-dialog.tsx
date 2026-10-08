@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { BracketSlot, Tournament } from "@/app/api";
 import type { Base58ID } from "@/lib/id";
 import { attachTournamentSlotMatchPromise, getMatchesPagePromise } from "@/app/api";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import { ConfirmDialogWithContent } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -30,6 +31,8 @@ export function AttachMatchDialog({
     const [candidates, setCandidates] = useState<{ id: Base58ID; label: string }[] | null>(null);
     const [pendingId, setPendingId] = useState<Base58ID | null>(null);
     const [error, setError] = useState("");
+    // The matches read is tenant-required (ADR-36 phase 5).
+    const { tenantId } = useTenantScope();
     // Reset per dialog session (render-phase reset), then fetch candidates.
     const [lastOpen, setLastOpen] = useState(false);
     if (open !== lastOpen) {
@@ -39,10 +42,10 @@ export function AttachMatchDialog({
     }
 
     useEffect(() => {
-        if (!open) return;
+        if (!open || !tenantId) return;
         let cancelled = false;
         const seatIds = slot.seats.map((s) => s.player_id).filter((p): p is Base58ID => p != null);
-        getMatchesPagePromise({ game_id: slot.game_id })
+        getMatchesPagePromise({ game_id: slot.game_id, tenant: tenantId })
             .then((page) => {
                 if (cancelled) return;
                 const seatSet = new Set<string>(seatIds);
@@ -61,7 +64,7 @@ export function AttachMatchDialog({
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, slot.id]);
+    }, [open, slot.id, tenantId]);
 
     const attach = async (matchId: Base58ID) => {
         setPendingId(matchId);

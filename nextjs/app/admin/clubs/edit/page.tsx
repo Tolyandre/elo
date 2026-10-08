@@ -16,6 +16,7 @@ import { useClubs } from "@/app/clubsContext";
 import { usePlayers } from "@/app/players/PlayersContext";
 import { useMe } from "@/app/meContext";
 import { ConfirmDialog, ConfirmDialogWithContent, useConfirmAction } from "@/components/confirm-dialog";
+import { ClubMemberHistory } from "@/components/club-member-history";
 import { AdminPageTabs } from "@/components/admin/admin-page-tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,6 +235,8 @@ function ClubAdminContent() {
                     </div>
                 )}
             </section>
+
+            <ClubMemberHistory clubId={clubId} revision={club.player_ids.join(",")} />
             </AdminPageTabs>
 
             {/* Rename dialog */}

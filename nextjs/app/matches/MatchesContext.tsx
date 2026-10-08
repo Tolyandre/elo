@@ -46,7 +46,10 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
 
   // Load page 1 whenever filters, the tenant scope, or the stamp change
   useEffect(() => {
-    if (!tenantScopeReady) return; // hold loading until the arena is known
+    // Hold loading until the tenant scope settles AND resolves — the list read
+    // is tenant-required (ADR-36 phase 5); an unresolved scope shows the
+    // prompt instead of loading.
+    if (!tenantScopeReady || !tenantId) return;
     let cancelled = false;
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading/error before async fetch */
     setLoading(true);
@@ -57,7 +60,7 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
       player_id: filters.playerId,
       game_id: filters.gameId,
       club_id: filters.clubId ?? undefined,
-      tenant: tenantId ?? undefined,
+      tenant: tenantId,
     })
       .then((matchPage) => {
         if (cancelled) return;
@@ -78,13 +81,13 @@ export const MatchesProvider = ({ children }: { children: ReactNode }) => {
   }, [filters, stamp, tenantScopeReady, tenantId]);
 
   const loadMore = useCallback(() => {
-    if (loadingMore || !tenantScopeReady) return;
+    if (loadingMore || !tenantScopeReady || !tenantId) return;
     const matchCursor = matchCursorRef.current;
     if (!matchCursor) return;
 
     setLoadingMore(true);
 
-    getMatchesPagePromise({ next: matchCursor, tenant: tenantId ?? undefined })
+    getMatchesPagePromise({ next: matchCursor, tenant: tenantId })
       .then((matchPage) => {
         matchCursorRef.current = matchPage.next;
         setMatchHasMore(matchPage.next !== null);

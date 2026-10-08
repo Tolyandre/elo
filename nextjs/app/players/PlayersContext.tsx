@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useCallback, useMemo, ReactNode } from "react";
 import { getPlayersPromise, Player } from "../api";
 import { useMe } from "../meContext";
+import { useTenantScope } from "../tenantScopeContext";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
 
 type PlayersContextType = {
@@ -20,10 +21,16 @@ export function PlayersProvider({ children
 }: {
     children: ReactNode
 }) {
+    // The catalog is global but the ranking columns are tenant-scoped
+    // (ADR-36 phase 5): hold the load until the tenant scope resolves, then
+    // fetch against its main arena. Refetching on a tenant switch is
+    // deliberate — the ranks are part of the payload.
+    const { tenantId } = useTenantScope();
     const { data, loading, error, invalidate } = useAsyncResource(async () => {
-        const data = await getPlayersPromise();
+        if (!tenantId) return null;
+        const data = await getPlayersPromise(tenantId);
         return [...data].sort((a, b) => (a.rank.now.rank ?? Number.MAX_VALUE) - (b.rank.now.rank ?? Number.MAX_VALUE));
-    });
+    }, [tenantId]);
 
     const players = useMemo(() => data ?? [], [data]);
 

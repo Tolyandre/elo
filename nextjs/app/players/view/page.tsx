@@ -182,8 +182,10 @@ function PlayerPageContent() {
 }
 
 function PlayerStatsView({ id, tenantId, tenantName }: { id: Base58ID; tenantId: Base58ID | null; tenantName?: string }) {
+    // The stats read is tenant-required (ADR-36 phase 5); hold loading while
+    // unresolved (the scope's prompt covers the rare no-tenant case).
     const { data: stats, loading, error } = useAsyncResource(
-        () => getPlayerStatsPromise(id, tenantId ? { tenant: tenantId } : undefined),
+        () => (tenantId ? getPlayerStatsPromise(id, { tenant: tenantId }) : new Promise<PlayerStats>(() => {})),
         [id, tenantId],
     )
 

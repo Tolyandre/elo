@@ -153,8 +153,7 @@ export default function DebugPage() {
           <CardHeader>
             <CardTitle>Результат</CardTitle>
             <CardDescription>
-              Глобальная арена: переиграно партий {report.global.matches_replayed}, коррекций{" "}
-              {report.global.corrections_replayed}.
+              Глобальная арена: переиграно партий {report.global.matches_replayed}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

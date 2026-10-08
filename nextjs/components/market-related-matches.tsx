@@ -11,6 +11,7 @@ import type { Base58ID } from "@/lib/id";
 import { MatchCard } from "@/components/match-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useTenantScope } from "@/app/tenantScopeContext";
 import {
     computeStreakProgress,
     fetchStreakMatches,
@@ -36,7 +37,13 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 /** The match that resolved a match_winner market, rendered like a /matches card. */
 function ResolvedMatch({ matchId, roundToInteger }: { matchId: Base58ID; roundToInteger: boolean }) {
-    const { data: match, loading } = useAsyncResource(() => getMatchByIdPromise(matchId), [matchId]);
+    // The detail read is tenant-required (ADR-36 phase 5); hold loading until
+    // the tenant scope resolves.
+    const { tenantId } = useTenantScope();
+    const { data: match, loading } = useAsyncResource(
+        () => (tenantId ? getMatchByIdPromise(matchId, tenantId) : new Promise<Match>(() => {})),
+        [matchId, tenantId],
+    );
     return (
         <div className="space-y-3">
             <SectionTitle>Партия, разрешившая рынок:</SectionTitle>
@@ -54,13 +61,15 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
     const params = market.params as WinStreakParams | null;
     const start = market.starts_at ? new Date(market.starts_at) : null;
     const end = streakWindowEnd(market);
+    // The matches read is tenant-required (ADR-36 phase 5).
+    const { tenantId } = useTenantScope();
 
     // Progress changes only when new (or edited) matches land in the window —
     // refetch when the market's lifecycle moves (a match resolving the market
     // flips status/resolution_match_id).
     const { data: matches, loading } = useAsyncResource(
-        () => (params && start ? fetchStreakMatches(params, start, end) : Promise.resolve([] as Match[])),
-        [market.id, market.status, market.resolution_match_id],
+        () => (tenantId && params && start ? fetchStreakMatches(tenantId, params, start, end) : Promise.resolve([] as Match[])),
+        [market.id, market.status, market.resolution_match_id, tenantId],
     );
 
     // Minute-level ticker so "осталось 5 дней, 20 часов" counts down while the page sits open.
@@ -123,12 +132,14 @@ function WinStreakSection({ market, roundToInteger }: { market: Market; roundToI
  */
 function TournamentWinnerSection({ market, roundToInteger }: { market: Market; roundToInteger: boolean }) {
     const params = market.params as TournamentWinnerParams | null;
+    // The matches read is tenant-required (ADR-36 phase 5).
+    const { tenantId } = useTenantScope();
 
     // The match list changes only when the market's lifecycle moves (the
     // deciding match flips status/resolution_match_id).
     const { data: matches, loading } = useAsyncResource(
-        () => (params ? fetchTournamentMatches(params.tournament_id) : Promise.resolve([] as Match[])),
-        [market.id, market.status, market.resolution_match_id],
+        () => (tenantId && params ? fetchTournamentMatches(tenantId, params.tournament_id) : Promise.resolve([] as Match[])),
+        [market.id, market.status, market.resolution_match_id, tenantId],
     );
 
     if (!params) return null;

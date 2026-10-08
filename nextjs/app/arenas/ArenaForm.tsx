@@ -4,15 +4,13 @@ import type { Base58ID } from "@/lib/id";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CloudOff, InfoIcon } from "lucide-react";
+import { CloudOff } from "lucide-react";
 import {
     Arena,
     ArenaSettings,
-    ArenaSettingsDoc,
     MatchFilter,
     createArenaPromise,
     deleteArenaPromise,
-    parseArenaSettings,
     updateArenaPromise,
 } from "@/app/api";
 import { useGames } from "@/app/gamesContext";
@@ -23,23 +21,16 @@ import { GameMultiSelect } from "@/components/game-multi-select";
 import { MultiSelect } from "@/components/vendor/multi-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ConfirmDialog, useConfirmAction } from "@/components/confirm-dialog";
+import {
+    ArenaSettingsFields,
+    ArenaSettingsValues,
+    buildSettingsFromValues,
+    initialSettingsValues,
+    settingsValuesError,
+} from "@/components/arena-settings-editor";
 import { toDatetimeLocal } from "@/lib/datetime";
-import { cn } from "@/lib/utils";
-
-type LeagueValues = {
-    newbie: boolean;
-    amateur: boolean;
-    elite: boolean;
-    goalGap: string;
-    earnedMin: string;
-    earnedMax: string;
-    tau: string;
-    matches6m: string;
-    matches2m: string;
-};
 
 type ArenaFormValues = {
     name: string;
@@ -47,14 +38,9 @@ type ArenaFormValues = {
     tagIds: Base58ID[];
     dateFrom: string;
     dateTo: string;
-    startingRating: string;
-    leagues: LeagueValues;
-};
+} & ArenaSettingsValues;
 
 function initialValues(existing?: Arena, camp = false): ArenaFormValues {
-    const doc = existing ? parseArenaSettings(existing.settings) : null;
-    const newbie = doc?.leagues.find((l) => l.kind === "newbie");
-    const elite = doc?.leagues.find((l) => l.kind === "elite");
     return {
         name: existing?.name ?? "",
         gameIds: existing?.filter?.game_ids ?? [],
@@ -70,64 +56,11 @@ function initialValues(existing?: Arena, camp = false): ArenaFormValues {
             : existing?.ends_at
                 ? toDatetimeLocal(existing.ends_at)
                 : "",
-        // A new arena starts like an auto-managed game arena: rating 900,
-        // newbie + amateur. A new camp starts like the old tournament arenas:
-        // rating = the starting elo (1000), no leagues.
-        startingRating: doc ? String(doc.starting_rating) : camp ? "1000" : "900",
-        leagues: {
-            newbie: doc ? !!newbie : !camp,
-            amateur: doc ? doc.leagues.some((l) => l.kind === "amateur") : !camp,
-            elite: !!elite,
-            goalGap: String(newbie?.goal_gap ?? 16),
-            earnedMin: String(newbie?.earned_min ?? 2),
-            earnedMax: String(newbie?.earned_max ?? 64),
-            tau: String(newbie?.tau ?? 100),
-            matches6m: String(elite?.matches_6m ?? 20),
-            matches2m: String(elite?.matches_2m ?? 3),
-        },
+        ...initialSettingsValues(existing?.settings, {
+            startingRating: camp ? "1000" : "900",
+            withLeagues: !camp,
+        }),
     };
-}
-
-function buildSettings(values: ArenaFormValues): ArenaSettings {
-    const { leagues } = values;
-    const leagueDocs: ArenaSettingsDoc["leagues"] = [];
-    if (leagues.newbie) {
-        leagueDocs.push({
-            kind: "newbie",
-            goal_gap: Number(leagues.goalGap),
-            earned_min: Number(leagues.earnedMin),
-            earned_max: Number(leagues.earnedMax),
-            tau: Number(leagues.tau),
-        });
-    }
-    if (leagues.amateur) {
-        leagueDocs.push({ kind: "amateur" });
-    }
-    if (leagues.elite) {
-        leagueDocs.push({ kind: "elite", matches_6m: Number(leagues.matches6m), matches_2m: Number(leagues.matches2m) });
-    }
-    return { starting_rating: Number(values.startingRating), leagues: leagueDocs };
-}
-
-/** The enabled leagues must carry valid parameters (the server re-validates). */
-function leagueParamsError(values: ArenaFormValues): string | null {
-    const nonNegative = (s: string) => Number.isFinite(Number(s)) && Number(s) >= 0;
-    const { leagues } = values;
-    if (!Number.isFinite(Number(values.startingRating))) {
-        return "Стартовый рейтинг должен быть числом";
-    }
-    if (leagues.newbie) {
-        if (!(nonNegative(leagues.goalGap) && nonNegative(leagues.earnedMin) && nonNegative(leagues.earnedMax))) {
-            return "Параметры лиги новичков должны быть неотрицательными числами";
-        }
-        if (!(Number(leagues.tau) > 0)) {
-            return "Значение τ должно быть положительным числом";
-        }
-    }
-    if (leagues.elite && !(nonNegative(leagues.matches6m) && nonNegative(leagues.matches2m))) {
-        return "Партии высшей лиги должны быть неотрицательными числами";
-    }
-    return null;
 }
 
 // Unsaved form values survive a page refresh. A single storage entry keyed by
@@ -216,10 +149,6 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
         setValues((v) => ({ ...v, [field]: value }));
     }
 
-    function setLeague<K extends keyof LeagueValues>(field: K, value: LeagueValues[K]) {
-        setValues((v) => ({ ...v, leagues: { ...v.leagues, [field]: value } }));
-    }
-
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!canSubmit) return;
@@ -236,7 +165,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
             setError("Дата окончания должна быть позже даты начала");
             return;
         }
-        const settingsError = leagueParamsError(values);
+        const settingsError = settingsValuesError(values);
         if (settingsError) {
             setError(settingsError);
             return;
@@ -247,7 +176,7 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
         // tournament arenas — a single rating ≡ elo list).
         const settings: ArenaSettings = isCamp
             ? { starting_rating: Number(values.startingRating), leagues: [] }
-            : buildSettings(values);
+            : buildSettingsFromValues(values);
         try {
             if (existing) {
                 await updateArenaPromise(existing.id, {
@@ -384,106 +313,11 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
             </div>
 
             {!isCamp && (
-            <div className="space-y-3">
-                <h2 className="font-semibold">{isCamp ? "Рейтинг:" : "Рейтинг и лиги:"}</h2>
-                <div className="flex items-center gap-2 text-sm">
-                    <label htmlFor="arenaStartingRating">Стартовый рейтинг:</label>
-                    <Input
-                        id="arenaStartingRating"
-                        type="number"
-                        value={values.startingRating}
-                        onChange={(e) => set("startingRating", e.target.value)}
-                        className="w-24"
-                    />
-                    <InfoHint label="Что такое стартовый рейтинг">
-                        <p>Рейтинг, с которого игрок начинает в этой арене, пока не сыграл в ней ни одной партии.</p>
-                    </InfoHint>
-                </div>
-
-                {!isCamp && (
-                <>
-                <p className="text-xs text-muted-foreground">
-                    Лиги — уровни таблицы в порядке повышения. Если лиг нет, игроки идут одним списком, а рейтинг равен эло.
-                </p>
-
-                <div className="flex flex-wrap gap-1 items-center">
-                    <LeagueChip
-                        selected={values.leagues.newbie}
-                        onClick={() => setLeague("newbie", !values.leagues.newbie)}
-                        disabled={!canEdit}
-                    >
-                        Новички
-                    </LeagueChip>
-                    <LeagueChip
-                        selected={values.leagues.amateur}
-                        onClick={() => setLeague("amateur", !values.leagues.amateur)}
-                        disabled={!canEdit}
-                    >
-                        Любители
-                    </LeagueChip>
-                    <LeagueChip
-                        selected={values.leagues.elite}
-                        onClick={() => setLeague("elite", !values.leagues.elite)}
-                        disabled={!canEdit}
-                    >
-                        Высшая лига
-                    </LeagueChip>
-                </div>
-
-                {values.leagues.newbie && (
-                    <div className="space-y-2">
-                        <NumberField
-                            id="arenaGoalGap"
-                            label="Разрыв эло"
-                            value={values.leagues.goalGap}
-                            onChange={(v) => setLeague("goalGap", v)}
-                            info="Пока эло игрока выше его рейтинга больше чем на это значение, он остаётся в лиге новичков. Новичок с меньшим отрывом сразу попадает в следующую лигу."
-                        />
-                        <NumberField
-                            id="arenaEarnedMin"
-                            label="Мин. очков за победу"
-                            value={values.leagues.earnedMin}
-                            onChange={(v) => setLeague("earnedMin", v)}
-                            info="Нижняя граница очков рейтинга за победу, пока рейтинг игрока догоняет его эло."
-                        />
-                        <NumberField
-                            id="arenaEarnedMax"
-                            label="Макс. очков за победу"
-                            value={values.leagues.earnedMax}
-                            onChange={(v) => setLeague("earnedMax", v)}
-                            info="Верхняя граница очков рейтинга за победу, пока рейтинг игрока догоняет его эло."
-                        />
-                        <NumberField
-                            id="arenaTau"
-                            label="τ"
-                            value={values.leagues.tau}
-                            onChange={(v) => setLeague("tau", v)}
-                            info="τ (Тау) — плавность догоняющего бонуса: чем больше τ, тем медленнее очки за победу растут при отставании рейтинга от эло."
-                        />
-                    </div>
-                )}
-
-                {values.leagues.elite && (
-                    <div className="space-y-2">
-                        <NumberField
-                            id="arenaMatches6m"
-                            label="Партий за полгода"
-                            value={values.leagues.matches6m}
-                            onChange={(v) => setLeague("matches6m", v)}
-                            info="Партий за последние 6 месяцев, нужных для входа и удержания в высшей лиге."
-                        />
-                        <NumberField
-                            id="arenaMatches2m"
-                            label="Партий за 2 месяца"
-                            value={values.leagues.matches2m}
-                            onChange={(v) => setLeague("matches2m", v)}
-                            info="Партий за последние 2 месяца, нужных для входа и удержания в высшей лиге."
-                        />
-                    </div>
-                )}
-                </>
-                )}
-            </div>
+                <ArenaSettingsFields
+                    values={{ startingRating: values.startingRating, leagues: values.leagues }}
+                    onChange={(settings) => setValues((v) => ({ ...v, ...settings }))}
+                    disabled={!canEdit}
+                />
             )}
 
             {error && <div className="text-destructive text-sm">{error}</div>}
@@ -510,87 +344,5 @@ export function ArenaForm({ existing, camp = false }: { existing?: Arena; camp?:
                 onConfirm={del.confirm}
             />
         </form>
-    );
-}
-
-/**
- * The "?" beside a setting: an info icon opening a small popover — the same
- * pattern as the market guarantors description.
- */
-function InfoHint({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <Popover>
-            <PopoverTrigger asChild>
-                <button
-                    type="button"
-                    aria-label={label}
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                >
-                    <InfoIcon className="size-3.5" />
-                </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 text-xs text-muted-foreground">
-                {children}
-            </PopoverContent>
-        </Popover>
-    );
-}
-
-/** The on/off chip for a league — the same chip style as game-create tags. */
-function LeagueChip({
-    selected,
-    onClick,
-    disabled,
-    children,
-}: {
-    selected: boolean;
-    onClick: () => void;
-    disabled?: boolean;
-    children: React.ReactNode;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            aria-pressed={selected}
-            className={cn(
-                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors",
-                selected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-transparent text-muted-foreground hover:bg-accent",
-                disabled && "opacity-50 cursor-not-allowed",
-            )}
-        >
-            {children}
-        </button>
-    );
-}
-
-function NumberField({
-    id,
-    label,
-    value,
-    onChange,
-    info,
-}: {
-    id: string;
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    info: string;
-}) {
-    return (
-        <div className="flex items-center gap-1.5 text-sm">
-            <label htmlFor={id} className="whitespace-nowrap">{label}:</label>
-            <Input
-                id={id}
-                type="number"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className="w-24"
-            />
-            <InfoHint label={label}>{info}</InfoHint>
-        </div>
     );
 }

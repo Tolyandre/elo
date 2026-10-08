@@ -14,6 +14,8 @@ export const PAGES = [
     "/admin/games",
     "/admin/markets",
     "/admin/players",
+    "/admin/tenants",
+    "/admin/tenants/edit",
     "/admin/users",
     "/arenas",
     "/arenas/edit",

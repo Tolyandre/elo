@@ -1,10 +1,12 @@
-// Players, their stats, and the rating corrections (admin).
-import { client, unwrap, newId } from "./client";
+// Players and their stats.
+import { client, unwrap } from "./client";
 import type { PlayerStats } from "./types";
 import type { Base58ID } from "@/lib/id";
 
-export async function getPlayersPromise() {
-    return (await unwrap(client.GET("/players"))).data;
+export async function getPlayersPromise(tenant: Base58ID) {
+    return (await unwrap(client.GET("/players", {
+        params: { query: { tenant } },
+    }))).data;
 }
 
 // "Недавние" picker candidates for the signed-in user: club co-players,
@@ -26,15 +28,8 @@ export async function deletePlayerPromise(playerId: Base58ID) {
     return unwrap(client.DELETE("/players/{id}", { params: { path: { id: playerId } } }));
 }
 
-export async function getPlayerStatsPromise(id: Base58ID, opts?: { tenant?: Base58ID }): Promise<PlayerStats> {
+export async function getPlayerStatsPromise(id: Base58ID, opts: { tenant: Base58ID }): Promise<PlayerStats> {
     return (await unwrap(client.GET("/players/{id}/stats", {
-        params: { path: { id }, query: opts?.tenant ? { tenant: opts.tenant } : undefined },
+        params: { path: { id }, query: { tenant: opts.tenant } },
     }))).data;
-}
-
-export async function createPlayerCorrectionPromise(playerId: Base58ID, diff: number) {
-    return unwrap(client.POST("/admin/players/{id}/corrections", {
-        params: { path: { id: playerId } },
-        body: { id: newId(), discriminator: "correction", diff },
-    }));
 }

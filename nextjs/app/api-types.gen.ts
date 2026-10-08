@@ -25,7 +25,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all players with Elo rankings */
+        /**
+         * List all players with Elo rankings
+         * @description The catalog is global (ADR-36) — every player appears — but the ranking columns come from the `tenant`'s main arena, which is required (ADR-36 phase 5: reads are tenant-scoped, there is no global default).
+         */
         get: operations["ListPlayers"];
         put?: never;
         /** Create a new player */
@@ -307,8 +310,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The arena's feed (ADR-32) — merged match/correction/market-resolution events with cursor-based pagination
-         * @description Correction and market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match and market events (corrections stay unfiltered); for markets see the parameter descriptions.
+         * The arena's feed (ADR-32) — merged match/market-resolution events with cursor-based pagination
+         * @description Market-resolution events settle only into the global arena (ADR-24), so they appear only in the global arena's feed; every other arena's feed is its matches. Filters apply to match and market events; for markets see the parameter descriptions.
          */
         get: operations["ListArenaFeed"];
         put?: never;
@@ -704,6 +707,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/clubs/{id}/members/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The club's membership stint history (ADR-36)
+         * @description Every membership stint of the club, latest first — the raw material of tenant membership (ADR-36). A null left_at is the current active stint. Shown as audit-style items on the admin club page; membership is derived from these stints, so this is the human-readable record of it.
+         */
+        get: operations["ListClubMemberHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/clubs/{id}/members/{playerId}": {
         parameters: {
             query?: never;
@@ -757,8 +780,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a tenant (name, openness settings)
-         * @description Partial update. A field that is omitted is left unchanged. The openness settings `arena_membership_mode` / `tournaments_openness` are always provided together. An `arena_membership_mode` change re-interprets the main arena's whole history: the recalculation runs in the same transaction. Renaming the tenant also renames its main arena. Clubs are managed through the dedicated clubs endpoint, not here.
+         * Update a tenant (name, openness settings, main-arena settings)
+         * @description Partial update. A field that is omitted is left unchanged. The openness settings `arena_membership_mode` / `tournaments_openness` are always provided together. The main arena is system-managed — its settings document (starting rating and leagues, the same shape as arena PATCH, arenas.yaml ADR-24) is edited here, through the tenant; changing it re-interprets the arena's whole history, so the recalculation runs in the same transaction. An `arena_membership_mode` change re-interprets the main arena's whole history the same way. Renaming the tenant also renames its main arena. Clubs are managed through the dedicated clubs endpoint, not here.
          */
         patch: operations["PatchTenant"];
         trace?: never;
@@ -792,7 +815,7 @@ export interface paths {
         };
         /**
          * The tenant's feed (ADR-36) — the community's activity, membership-scoped
-         * @description A merged, date-ordered stream of match, correction and market events. Match events go to any current member's matches — of any club of the tenant (coop included); correction events to corrections of current members; market events to the markets the tenant OWNS. Membership-scoped by design — a tournament match appears even when it does not count into the tenant's main arena rating. Match payloads carry settlement columns from the tenant's main arena. Parameters and cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the tenant itself is the feed's identity.
+         * @description A merged, date-ordered stream of match and market events. Match events go to any current member's matches — of any club of the tenant (coop included); market events to the markets the tenant OWNS. Membership-scoped by design — a tournament match appears even when it does not count into the tenant's main arena rating. Match payloads carry settlement columns from the tenant's main arena. Parameters and cursor are the arena feed's minus the arena (arenas.yaml ADR-32); the tenant itself is the feed's identity.
          */
         get: operations["ListTenantFeed"];
         put?: never;
@@ -1107,25 +1130,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches, corrections and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page. */
+        /** Recalculate every arena to the actual state (ADR-24): the global arena by replaying the whole settlement history (matches and market settlements — the same computation an edit+save of the chronologically first match triggers), and every other arena by a full replay of its filtered matches. A stable recalculation reports no changed players. Invoked manually after deployments via the /debug page. */
         post: operations["UpdateArenas"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/admin/players/{id}/corrections": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Apply a manual rating correction for a player */
-        post: operations["CreatePlayerCorrection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1739,6 +1745,19 @@ export interface components {
             /** @description The club's tenant (ADR-36). Present when the club belongs to a tenant; absent for plain group clubs. */
             tenant_id?: components["schemas"]["Base58ID"];
         };
+        /** @description One membership stint of a club (ADR-36). */
+        ClubMemberStint: {
+            club_id: components["schemas"]["Base58ID"];
+            player_id: components["schemas"]["Base58ID"];
+            player_name: string;
+            /** Format: date-time */
+            joined_at: string;
+            /**
+             * Format: date-time
+             * @description null while the stint is active.
+             */
+            left_at: string | null;
+        };
         Tag: {
             id: components["schemas"]["Base58ID"];
             name: string;
@@ -1897,15 +1916,6 @@ export interface components {
              */
             placed_at: string;
         };
-        Correction: {
-            id: components["schemas"]["Base58ID"];
-            player_id: components["schemas"]["Base58ID"];
-            player_name: string;
-            /** Format: double */
-            diff: number;
-            /** Format: date-time */
-            date: string;
-        };
         /** @description One cursor-paginated page of the arena or home feed (ADR-32). */
         FeedPage: {
             status: string;
@@ -1914,7 +1924,7 @@ export interface components {
             next?: string | null;
         };
         /** @description One feed event (ADR-32). New content kinds (posts) extend the union with another event schema — the envelope never changes. */
-        FeedEvent: components["schemas"]["FeedMatchEvent"] | components["schemas"]["FeedCorrectionEvent"] | components["schemas"]["FeedMarketEvent"];
+        FeedEvent: components["schemas"]["FeedMatchEvent"] | components["schemas"]["FeedMarketEvent"];
         /** @description A match of the arena — the event that moved its ratings. The home feed (ADR-32) also carries coop matches (data.mode = "coop", ADR-33), which affect no rating: their Match lacks rating data and carries the shared game_score/game_won instead of meaningful per-player scores. */
         FeedMatchEvent: {
             /**
@@ -1923,15 +1933,6 @@ export interface components {
              */
             type: "match";
             data: components["schemas"]["Match"];
-        };
-        /** @description An admin rating correction (global arena only, ADR-24). */
-        FeedCorrectionEvent: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "correction";
-            data: components["schemas"]["Correction"];
         };
         /** @description A market (global arena only, ADR-24). An active market (open or betting_closed) enters the feed at its creation moment; a settled one (resolved or cancelled) at its resolution moment — a match-triggered resolution lands immediately after the match that resolved it, because resolved_at carries the match's date. */
         FeedMarketEvent: {
@@ -1959,8 +1960,6 @@ export interface components {
         GlobalReplayReport: {
             /** Format: int64 */
             matches_replayed: number;
-            /** Format: int64 */
-            corrections_replayed: number;
             changed_players: components["schemas"]["PlayerStateChange"][];
         };
         ArenaUpdateReport: {
@@ -2343,7 +2342,10 @@ export interface operations {
     };
     ListPlayers: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description The tenant whose main arena the ratings and leagues are read from (ADR-36). Naming no existing tenant is a 404. */
+                tenant: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2360,6 +2362,24 @@ export interface operations {
                         status: string;
                         data: components["schemas"]["Player"][];
                     };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description Tenant not found (the ?tenant= parameter names no existing tenant) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };
@@ -2464,9 +2484,9 @@ export interface operations {
     };
     GetPlayerStats: {
         parameters: {
-            query?: {
-                /** @description Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Without the parameter the global arena is used. The per-game match counts ("Частые игры") are tenant-independent either way. */
-                tenant?: string;
+            query: {
+                /** @description Scope the stats to a tenant (ADR-36): the rating history and the Elo-per-game tables are read from the tenant's main arena. Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. The per-game match counts ("Частые игры") are tenant-independent either way. Naming no existing tenant is a 404. */
+                tenant: string;
             };
             header?: never;
             path: {
@@ -3803,7 +3823,7 @@ export interface operations {
     };
     ListMatches: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Filter by game ID */
                 game_id?: string;
                 /** @description Filter by player ID */
@@ -3812,8 +3832,8 @@ export interface operations {
                 club_id?: string;
                 /** @description Filter to matches counted for the tournament's bracket */
                 tournament_id?: string;
-                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. Continuation requests must pass the same tenant — the cursor token does not carry it. */
-                tenant?: string;
+                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Continuation requests must pass the same tenant — the cursor token does not carry it. Naming no existing tenant is a 404. */
+                tenant: string;
                 /** @description Cursor token from previous page's "next" field */
                 next?: string;
                 /** @description Number of matches per page */
@@ -3952,9 +3972,9 @@ export interface operations {
     };
     GetMatchById: {
         parameters: {
-            query?: {
-                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Without the parameter the global arena is used. */
-                tenant?: string;
+            query: {
+                /** @description Scope the per-player settlement columns (rating staked/earned/after) to the tenant's main arena (ADR-36). Required since ADR-36 phase 5 — reads are tenant-scoped, there is no global default. Naming no existing tenant is a 404. */
+                tenant: string;
             };
             header?: never;
             path: {
@@ -5227,6 +5247,40 @@ export interface operations {
             };
         };
     };
+    ListClubMemberHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stint history, latest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        data: components["schemas"]["ClubMemberStint"][];
+                    };
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
     RemoveClubMember: {
         parameters: {
             query?: never;
@@ -5432,6 +5486,7 @@ export interface operations {
                     arena_membership_mode?: "any_member" | "members_only";
                     /** @enum {string} */
                     tournaments_openness?: "members_only" | "open";
+                    settings?: components["schemas"]["ArenaSettings"];
                 };
             };
         };
@@ -5448,7 +5503,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Bad request, or an invalid settings pair */
+            /** @description Bad request, an invalid settings pair, or an invalid arena settings document */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6732,55 +6787,6 @@ export interface operations {
             };
             /** @description History change conflict during the global replay */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            /** @description Internal server error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-        };
-    };
-    CreatePlayerCorrection: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    id: components["schemas"]["Base58ID"];
-                    /** @enum {string} */
-                    discriminator: "correction";
-                    diff: number;
-                };
-            };
-        };
-        responses: {
-            /** @description Correction applied */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiSuccessMessage"];
-                };
-            };
-            /** @description Bad request */
-            400: {
                 headers: {
                     [name: string]: unknown;
                 };

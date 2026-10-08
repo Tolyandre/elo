@@ -7,6 +7,7 @@ import { PageHeader } from "@/app/pageHeaderContext";
 import { PageContainer } from "@/components/page-container";
 import { LoadingRows } from "@/components/loading-rows";
 import { useMatches } from "../MatchesContext";
+import { useTenantScope } from "../../tenantScopeContext";
 import { useOffline } from "../../offline/OfflineContext";
 import { useMe } from "@/app/meContext";
 import { usePlayers } from "@/app/players/PlayersContext";
@@ -34,6 +35,7 @@ function MatchEditPageWrapped() {
     const { matches, loading: matchesLoading, invalidate: invalidateMatches } = useMatches();
     const { invalidate: invalidatePlayers } = usePlayers();
     const me = useMe();
+    const { tenantId } = useTenantScope();
     const searchParams = useSearchParams();
     const id = toBase58ID(searchParams.get("id") ?? "");
 
@@ -67,15 +69,15 @@ function MatchEditPageWrapped() {
     const needsDetail = isSaved && (!!matchFromContext?.calculator_kind || !matchFromContext);
 
     useEffect(() => {
-        if (!needsDetail || fetchedRef.current) return;
+        if (!needsDetail || fetchedRef.current || !tenantId) return;
         // For the generic-form path, matchFromContext already has everything we
         // need — skip the fetch.
         if (matchFromContext && !matchFromContext.calculator_kind) return;
         fetchedRef.current = true;
-        getMatchByIdPromise(id)
+        getMatchByIdPromise(id, tenantId)
             .then(setMatchFromApi)
             .catch((e) => setFetchError(e.message ?? "Неизвестная ошибка"));
-    }, [needsDetail, matchFromContext, id]);
+    }, [needsDetail, matchFromContext, id, tenantId]);
 
     const editSaved = matchFromApi ?? matchFromContext ?? undefined;
     // True while the detail fetch is in flight for a non-calculator saved match

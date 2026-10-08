@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { renderHook } from "./render-hook";
 import { emitDataChange } from "@/lib/live-data";
-import { getArenaFeedPagePromise, getHomeFeedPagePromise, getTenantFeedPagePromise, type FeedEvent } from "@/app/api";
+import { getArenaFeedPagePromise, getHomeFeedPagePromise, getTenantFeedPagePromise, type FeedEvent, type Market } from "@/app/api";
 import { useArenaFeed } from "@/app/arenas/view/use-arena-feed";
 import type { Base58ID } from "@/lib/id";
 
@@ -52,11 +52,10 @@ function matchEvent(id: string): FeedEvent {
     };
 }
 
-function correctionEvent(id: string): FeedEvent {
-    return {
-        type: "correction",
-        data: { id: id as Base58ID, player_id: "p1" as Base58ID, player_name: "P", diff: 5, date: new Date("2026-01-02T00:00:00Z") },
-    };
+function marketEvent(id: string): FeedEvent {
+    // loadAll keeps only match events; the market payload's shape beyond the
+    // id is irrelevant to that filter.
+    return { type: "market", data: { id: id as Base58ID } as unknown as Market };
 }
 
 async function flushFetches() {
@@ -121,7 +120,7 @@ describe("useArenaFeed endpoint selection", () => {
     it("passes filters on page 1 and only the cursor on continuation", async () => {
         vi.mocked(getArenaFeedPagePromise)
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
-            .mockResolvedValueOnce({ items: [correctionEvent("c1")], next: null });
+            .mockResolvedValueOnce({ items: [marketEvent("c1")], next: null });
 
         const { current, unmount } = renderHook(() =>
             useArenaFeed(arenaScope, { playerId: "p1" as Base58ID }),
@@ -255,7 +254,7 @@ describe("useArenaFeed loadAll (leaders tab)", () => {
     it("drains the cursor keeping only match events", async () => {
         vi.mocked(getHomeFeedPagePromise)
             .mockResolvedValueOnce({ items: [matchEvent("m1")], next: "cursor-1" })
-            .mockResolvedValueOnce({ items: [correctionEvent("c1"), matchEvent("m2")], next: "cursor-2" })
+            .mockResolvedValueOnce({ items: [marketEvent("c1"), matchEvent("m2")], next: "cursor-2" })
             .mockResolvedValueOnce({ items: [], next: null });
 
         const { current, unmount } = renderHook(() => useArenaFeed(homeScope, {}));

@@ -6,6 +6,7 @@
 
 import { getMatchesPagePromise, Match, WinStreakParams } from "@/app/api";
 import type { Market } from "@/app/api";
+import type { Base58ID } from "@/lib/id";
 
 /** Upper bound on cursor pages fetched per game, so a pathological feed can't hang the page. */
 const MAX_PAGES_PER_GAME = 5;
@@ -29,14 +30,17 @@ export function streakWindowEnd(market: Market): Date | null {
  * (the server's convention, same as match_winner), so the player's whole feed
  * counts. Composed from the same paginated global feed the /matches page uses;
  * pages are followed until a page is entirely older than the window start.
+ * `tenant` is required by the read itself (ADR-36 phase 5) — callers pass the
+ * current scope's tenant.
  */
-export async function fetchStreakMatches(params: WinStreakParams, start: Date, end: Date | null): Promise<Match[]> {
+export async function fetchStreakMatches(tenant: Base58ID, params: WinStreakParams, start: Date, end: Date | null): Promise<Match[]> {
     const byId = new Map<string, Match>();
     const gameIds: (string | undefined)[] = params.game_ids.length > 0 ? params.game_ids : [undefined];
     await Promise.all(gameIds.map(async (gameId) => {
         let next: string | undefined;
         for (let page = 0; page < MAX_PAGES_PER_GAME; page++) {
             const res = await getMatchesPagePromise({
+                tenant,
                 player_id: params.target_player_id,
                 game_id: gameId,
                 next,
@@ -63,11 +67,11 @@ export type StreakProgress = { wins: number; losses: number };
  * follows the slot link). Composed from the same paginated global feed with
  * the tournament filter; pages are followed until the feed is exhausted.
  */
-export async function fetchTournamentMatches(tournamentId: string): Promise<Match[]> {
+export async function fetchTournamentMatches(tenant: Base58ID, tournamentId: string): Promise<Match[]> {
     const byId = new Map<string, Match>();
     let next: string | undefined;
     for (let page = 0; page < MAX_PAGES_PER_GAME; page++) {
-        const res = await getMatchesPagePromise({ tournament_id: tournamentId, next, limit: PAGE_LIMIT });
+        const res = await getMatchesPagePromise({ tenant, tournament_id: tournamentId, next, limit: PAGE_LIMIT });
         for (const m of res.items) byId.set(m.id, m);
         if (!res.next) break;
         next = res.next;

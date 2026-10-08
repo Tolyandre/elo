@@ -40,6 +40,8 @@ function makeMatch(id: string, date: string, scores: Record<string, number>): Ma
     }
 }
 
+const TENANT = 't-blue' as Base58ID
+
 const streakParams = (gameIds: Base58ID[] = ['g1' as Base58ID]): WinStreakParams => ({
     target_player_id: TARGET,
     game_ids: gameIds,
@@ -186,7 +188,7 @@ describe('fetchStreakMatches', () => {
         const end = new Date('2026-09-10T00:00:00Z')
 
         // Game 1: two pages — the second one entirely older than the window.
-        mockedGet.mockImplementation(async ({ game_id, next } = {}) => {
+        mockedGet.mockImplementation(async ({ game_id, next } = { tenant: TENANT }) => {
             if (game_id === 'g1') {
                 if (!next) {
                     return {
@@ -212,7 +214,7 @@ describe('fetchStreakMatches', () => {
             }
         })
 
-        const matches = await fetchStreakMatches(streakParams(['g1', 'g2'] as Base58ID[]), start, end)
+        const matches = await fetchStreakMatches(TENANT, streakParams(['g1', 'g2'] as Base58ID[]), start, end)
 
         expect(matches.map((m) => m.id)).toEqual(['m3', 'm2', 'm1'])
         // The g1 feed was followed into its second (cursor) page; the games
@@ -223,6 +225,7 @@ describe('fetchStreakMatches', () => {
     it('stops after a single page when the feed is exhausted', async () => {
         mockedGet.mockResolvedValue({ items: [], next: null })
         const matches = await fetchStreakMatches(
+            TENANT,
             streakParams(),
             new Date('2026-09-01T00:00:00Z'),
             null,
@@ -237,6 +240,7 @@ describe('fetchStreakMatches', () => {
             next: null,
         })
         const matches = await fetchStreakMatches(
+            TENANT,
             streakParams([]),
             new Date('2026-09-01T00:00:00Z'),
             null,
@@ -261,6 +265,7 @@ describe('fetchStreakMatches', () => {
             next: null,
         })
         const matches = await fetchStreakMatches(
+            TENANT,
             streakParams(),
             new Date('2026-09-01T00:00:00Z'),
             null,
